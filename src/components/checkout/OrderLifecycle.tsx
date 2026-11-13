@@ -45,7 +45,7 @@ export function OrderLifecycle({ orderId, mode, onDone, onPending, onOpen }: {
   if (view === undefined || (mode === "restore" && review === undefined)) return <Spinner label="Reviewing order" />;
   if (!view || !review) return <div className="grid gap-3"><p role="alert">Order not found.</p><Button onClick={onDone}>Back to orders</Button></div>;
   if (done) return <div className="grid gap-3" role="status">
-    <p>{view.order.title} {mode === "discard" ? "discarded. Contents, customer, links and history are kept. Bookings are not cancelled." : "restored. Review retained rows and any source warnings before payment."}</p>
+    <p>{view.order.title} {mode === "discard" ? "discarded. Contents, customer, links and history are kept, and its charges are released for other orders; bookings are not cancelled. Restore it from Discarded." : "restored. Review retained rows and any source warnings before payment."}</p>
     {removed.length ? <p>Removed conflicting rows: {removed.join(", ")}. Their snapshots remain in Order history.</p> : null}
     {warnings.length ? <ul className="grid gap-2 text-sm">{warnings.map((message, i) => <li key={i}>{message}</li>)}</ul> : null}
     {mode === "restore" ? <Button onClick={() => onOpen(orderId)}>Open restored order</Button> : null}
@@ -56,7 +56,7 @@ export function OrderLifecycle({ orderId, mode, onDone, onPending, onOpen }: {
     <p className="text-sm">Contents, customer and booking links are retained. Bookings and appointments are not cancelled.</p>
     {view.discarded ? <p className="text-xs text-muted-foreground">Discarded {historyTime(view.discarded.at)} by {view.discarded.by ?? "Unknown"}{view.discarded.reason ? ` · ${view.discarded.reason}` : ""}</p> : null}
     {mode === "restore" ? <>
-      <p className="text-sm">{view.lines.length} retained rows. Changed or settled sources must be updated or removed before payment.</p>
+      <p className="text-sm">{view.lines.length} retained rows. Its charges were released while discarded, so another order may now hold some of them. Changed or settled sources must be updated or removed before payment.</p>
       <ul className="grid gap-2 text-sm">{review.conflicts.toSorted((a, b) => Number(b.blocking) - Number(a.blocking)).map((conflict, i) => <li key={`${conflict.lineId}:${i}`}>
         <p className={conflict.blocking ? "text-destructive" : "text-muted-foreground"}>{conflict.message}</p>
         {conflict.order ? <Button variant="link" disabled={pending} onClick={() => onOpen(conflict.order!._id)}>Open {conflict.order.title}</Button> : null}

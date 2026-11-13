@@ -55,9 +55,9 @@ test('receipt pages older financial amendments while preserving the original ten
   await open(page, '?scenario=history');
   await expect(page.locator('.pos-receipt')).toContainText('Card');
   await page.getByText('Browse all financial history', { exact: true }).click();
-  const ledger = page.getByRole('region', { name: 'All payment amendments', exact: true });
+  const ledger = page.getByRole('region', { name: 'Payment corrections', exact: true });
   await expect(ledger.locator('li')).toHaveCount(20);
-  await ledger.getByRole('button', { name: 'Load older payment amendments' }).click();
+  await ledger.getByRole('button', { name: 'Load older payment corrections' }).click();
   await expect(ledger.locator('li')).toHaveCount(26);
   await expect(ledger).toContainText('Tender correction 1');
   await expect(page.locator('.pos-receipt')).toContainText('Card');

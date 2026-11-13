@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { orderTitle } from './billMath';
@@ -68,7 +69,7 @@ export async function openOrderCharging(ctx: ReadCtx, source: OrderSource, excep
 	const seen = new Set<Id<'bills'>>();
 	let count = 0;
 	for await (const line of sourceLines(ctx, source)) {
-		if (++count > MAX_SOURCE_LINES) throw new Error('This booking has too much order history to check. Contact support.');
+		if (++count > MAX_SOURCE_LINES) throw new ConvexError('This booking has too much order history to check. Contact support.');
 		if (line.billId === exceptOrderId || seen.has(line.billId)) continue;
 		seen.add(line.billId);
 		const order = await ctx.db.get(line.billId);
@@ -162,6 +163,6 @@ export async function deletePlaceholderOrders(ctx: MutationCtx, bookingId: Id<'b
 export async function assertNotOnOpenOrder(ctx: ReadCtx, source: OrderSource, what: string) {
 	const order = await openOrderCharging(ctx, source);
 	if (order) {
-		throw new Error(`${what} is on ${orderTitle(order.orderNumber)}, which is still open. Take the payment on that order, or remove it from the order first.`);
+		throw new ConvexError(`${what} is on ${orderTitle(order.orderNumber)}, which is still open. Take the payment on that order, or remove it from the order first.`);
 	}
 }

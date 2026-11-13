@@ -470,7 +470,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
   const rows = backend.useAttachable({ orderId, query });
-  const lookup = backend.useAttachLookupStatus();
+  const lookup = backend.useAttachLookupStatus({ orderId, query });
   const searching = query.trim().length >= 2;
 
   // Stays open while there is more to add, so a stay and its appointment take one visit.
@@ -486,10 +486,12 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
     <>
       {lookup?.complete === false ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-400/40 dark:bg-amber-400/10">
-          Some older appointments can&apos;t be found by phone or email yet. Search them by reference or guest name, or ask an admin to finish the appointment lookup migration.
+          {lookup.bookingsIncomplete
+            ? "This contact has a long booking history, so the search is incomplete. Search the stay by its reference, or open checkout from its booking."
+            : "Some older appointments can't be found by phone or email yet. Search them by reference or guest name, or ask an admin to finish the appointment lookup migration."}
         </p>
       ) : null}
-      {rows === undefined && (orderId || searching) ? (
+      {(rows === undefined || (rows.length === 0 && lookup === undefined)) && (orderId || searching) ? (
         <Spinner label="Loading bookings" />
       ) : rows?.length ? (
         <ul className="grid max-h-[50dvh] gap-2 overflow-y-auto">
@@ -504,7 +506,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
                   <span className="block truncate text-xs text-muted-foreground">Guest: {row.guestName || "Unnamed"}</span>
                   <span className="block text-xs text-muted-foreground">
                     {formatMoney(row.price, row.currency)}
-                    {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} already paid` : ""}
+                    {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} paid in advance` : ""}
                   </span>
                   {row.unavailableReason ? <span className="mt-1 block text-xs text-destructive">{row.unavailableReason}</span> : null}
                 </span>
@@ -517,7 +519,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
         </ul>
       ) : (
         <p className="text-sm text-muted-foreground">
-          {searching || orderId ? "No unpaid bookings or appointments found." : "Search for a booking by its reference, the guest's phone, email or name."}
+          {searching || orderId ? (lookup?.complete === false ? "No matches in the records searched." : "No unpaid bookings or appointments found.") : "Search for a booking by its reference, the guest's phone, email or name."}
         </p>
       )}
     </>
@@ -540,7 +542,7 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
       <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
-      <p className="text-xs text-muted-foreground">Discard retains contents and history. It releases charges for other orders; bookings are not cancelled.</p>
+      {filter === "unpaid" || filter === "discarded" ? <p className="text-xs text-muted-foreground">{filter === "unpaid" ? "Discard keeps the order and its history. Bookings are not cancelled." : "Restore… checks for rows now on another order first."}</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
         <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onAction={(id, mode) => setAction({ id, mode })} />
       </InlineErrorBoundary>
@@ -559,12 +561,13 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
     <div className="grid gap-2">
       <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
-          <li key={row._id}>
+          // Open and Discard/Restore… are sibling buttons on one row, never one inside the other.
+          <li key={row._id} className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onOpen(row._id)}
               aria-current={row._id === currentId ? "true" : undefined}
-              className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+              className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">
@@ -589,7 +592,18 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 </span>
               </span>
             </button>
-            {filter === "unpaid" || filter === "discarded" ? <Button variant="outline" size="sm" className="mb-2" aria-label={`${filter === "unpaid" ? "Discard" : "Restore"} ${row.title}`} onClick={() => onAction(row._id, filter === "unpaid" ? "discard" : "restore")}>{filter === "unpaid" ? "Discard" : "Restore…"}</Button> : null}
+            {/* Discard is direct (one click, no confirmation); Restore… opens the conflict review. */}
+            {row.state === "unpaid" || row.state === "discarded" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-11 max-w-28 shrink-0 whitespace-normal"
+                aria-label={`${row.state === "unpaid" ? "Discard" : "Restore"} ${row.title}`}
+                onClick={() => onAction(row._id, row.state === "unpaid" ? "discard" : "restore")}
+              >
+                {row.state === "unpaid" ? "Discard" : "Restore…"}
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>

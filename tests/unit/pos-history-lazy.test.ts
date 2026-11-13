@@ -54,14 +54,14 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('Browse all financial history', true);
   expect(mounts).toHaveBeenCalledTimes(5);
-  await click('Load older payment amendments');
-  const rows = () => document.querySelectorAll('[aria-label="All payment amendments"] li');
+  await click('Load older payment corrections');
+  const rows = () => document.querySelectorAll('[aria-label="Payment corrections"] li');
   expect(rows()).toHaveLength(40);
   await toggle('Browse all financial history', false); await toggle('Order history', false);
   expect(unmounts).not.toHaveBeenCalled();
   await toggle('Browse all financial history', true); await toggle('Order history', true);
   expect(rows()).toHaveLength(40); expect(mounts).toHaveBeenCalledTimes(5);
-  await click('Load older payment amendments'); await click('Load older payment amendments');
+  await click('Load older payment corrections'); await click('Load older payment corrections');
   expect(rows()).toHaveLength(61);
   const priorCalls = hooks.map(h => calls[h].mock.calls.length);
   await show(backend, second);

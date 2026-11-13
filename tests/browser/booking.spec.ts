@@ -74,11 +74,25 @@ for (const mode of ["villa", "service"]) {
       page.getByText(`No ${mode}s match.`, { exact: true }),
     ).toBeVisible();
     await search.fill("");
-    await page.locator('button[aria-label^="View photo of"]').first().click();
+    // The thumbnail is part of selection; photo inspection is a separate action
+    // for the selected value, outside the option list.
+    const picturedOption = page.getByRole("option", {
+      name: mode === "villa" ? /Tideglass Pool Residence/ : /Thai Massage/,
+    });
+    await picturedOption.locator("img").click();
+    await expect(search).not.toBeVisible();
+    const preview = page.getByRole("button", {
+      name: mode === "villa" ? "View photo of Tideglass Pool Residence" : "View photo of Thai Massage",
+      exact: true,
+    });
+    await preview.focus();
+    await preview.press("Enter");
     const photo = page.getByRole("img", { name: /^Photo of/ });
     await expect(photo).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(photo).not.toBeVisible();
+    await expect(preview).toBeFocused();
+    await trigger.click();
     await expect(search).toBeFocused();
     await search.fill(mode === "villa" ? " GARDEN " : "Wellness");
     await search.press("ArrowDown");
@@ -120,9 +134,15 @@ test("new booking submits the selected villa slug", async ({ page }) => {
 test("villa filter preserves All villas and empty and disabled states", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
   await page.goto("/tests/browser/index.html?mode=filter");
   const trigger = page.getByRole("button", { name: /^Villa:/ });
   await expect(trigger).toContainText("All villas");
+  await trigger.click();
+  await page.getByRole("option", { name: /Tideglass Pool Residence/ }).click();
+  await expect(trigger).toContainText("Tideglass Pool Residence");
+  await expect(page.getByRole("button", { name: /^View photo/ })).toHaveCount(0);
+  expect((await trigger.boundingBox())!.width).toBeGreaterThanOrEqual(190);
   await trigger.click();
   await page.getByRole("option", { name: /Garden Villa/ }).click();
   await trigger.click();

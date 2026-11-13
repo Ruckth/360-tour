@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { useEffect, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
 import { STATUS_LABELS } from "@/components/admin/labels";
@@ -135,8 +136,14 @@ export function initials(name: string) {
     .join("");
 }
 
-/** Convex prefixes server errors with request metadata; keep the readable part. */
+/** Application refusals carry public data; legacy development errors include request metadata. */
 export function errorText(err: unknown, fallback: string) {
+  if (err instanceof ConvexError) {
+    const data: unknown = err.data;
+    if (typeof data === "string" && data) return data;
+    if (data && typeof data === "object" && "message" in data && typeof data.message === "string" && data.message) return data.message;
+    return fallback;
+  }
   if (!(err instanceof Error)) return fallback;
   return err.message.match(/Uncaught Error: (.+?)(?:\n|$)/)?.[1] ?? (err.message || fallback);
 }

@@ -47,7 +47,6 @@ import {
   notifyDefault,
   parseAmount,
   payLink,
-  paymentText,
   serverTodayIso,
   statusKey,
   type AdminProperty,
@@ -64,12 +63,16 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+export type BookingSheetAction = "pay" | "cancel";
+
 export function BookingSheet({
   bookingId,
+  initialAction,
   properties,
   onClose,
 }: {
   bookingId: Id<"bookings"> | null;
+  initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onClose: () => void;
 }) {
@@ -97,7 +100,7 @@ export function BookingSheet({
             <SheetDescription>It may have been deleted.</SheetDescription>
           </>
         ) : (
-          <BookingDetails key={booking._id} booking={booking} properties={properties} onDeleted={onClose} />
+          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} />
         )}
       </SheetContent>
     </Sheet>
@@ -108,10 +111,12 @@ type OpenDialog = "edit" | "cancel" | "reopen" | null;
 
 function BookingDetails({
   booking,
+  initialAction,
   properties,
   onDeleted,
 }: {
   booking: BookingDetail;
+  initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onDeleted: () => void;
 }) {
@@ -123,7 +128,14 @@ function BookingDetails({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [dialog, setDialog] = useState<OpenDialog>(null);
+  // This details instance mounts only after the booking loads. Consume a shortcut once,
+  // so later live updates or closing a form never reopen it.
+  const [dialog, setDialog] = useState<OpenDialog>(() =>
+    initialAction === "cancel" && canEditBooking(booking) && !booking.checkoutLive ? "cancel" : null,
+  );
+  const [paymentShortcut] = useState<"pay" | undefined>(() =>
+    initialAction === "pay" && canEditBooking(booking) && !booking.checkoutLive ? "pay" : undefined,
+  );
   const [notes, setNotes] = useState(booking.adminNotes ?? "");
   /** The revision the notes edit started from, so another device's change isn't overwritten. */
   const [notesRevision, setNotesRevision] = useState<number | null>(null);
@@ -139,8 +151,6 @@ function BookingDetails({
     !booking.paidAt &&
     !booking.hasStripePayment &&
     booking.money.gross === 0;
-  const nightly = booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0;
-  const balance = booking.amountPaid !== undefined ? balanceText(booking.total, booking.amountPaid, booking.currency) : null;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
 
@@ -207,6 +217,8 @@ function BookingDetails({
         </SheetDescription>
       </div>
 
+      <BookingFinancials booking={booking} initialAction={paymentShortcut} />
+
       <dl className="divide-y divide-border border-y border-border">
         <Detail label="Villa">
           {booking.propertyName}
@@ -218,33 +230,6 @@ function BookingDetails({
             {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {booking.guests}{" "}
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
-        </Detail>
-        <Detail label="Price">
-          <span className="block text-muted-foreground">
-            {formatMoney(nightly, booking.currency)} × {booking.nights} = {formatMoney(booking.subtotal, booking.currency)}
-          </span>
-          {booking.discountAmount > 0 ? (
-            <span className="block text-muted-foreground">
-              Direct discount −{formatMoney(booking.discountAmount, booking.currency)}
-            </span>
-          ) : null}
-          {booking.priceOverride ? (
-            <span className="block text-muted-foreground">
-              Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}
-            </span>
-          ) : null}
-          <span className="block font-medium">Total {formatMoney(booking.total, booking.currency)}</span>
-          {booking.amountPaid !== undefined ? (
-            <span className="block text-muted-foreground">Paid {formatMoney(booking.amountPaid, booking.currency)}</span>
-          ) : null}
-          {balance && !cancelled ? <span className={`block font-medium ${balance.tone}`}>{balance.text}</span> : null}
-        </Detail>
-        <Detail label="Payment">
-          {paymentText(booking)}
-          {booking.paidAt ? (
-            <span className="block text-muted-foreground">{format(new Date(booking.paidAt), "d MMM yyyy, HH:mm")}</span>
-          ) : null}
-          {booking.checkoutLive ? <span className="block text-muted-foreground">Guest has a Stripe checkout open</span> : null}
         </Detail>
         <Detail label="Orders">
           <BookingOrders
@@ -275,8 +260,6 @@ function BookingDetails({
           </Detail>
         ) : null}
       </dl>
-
-      <BookingFinancials booking={booking} />
 
       <div className="grid gap-2">
         <Label htmlFor="booking-notes">Notes (staff only)</Label>
@@ -368,8 +351,10 @@ function BookingDetails({
           </Button>
         ) : null}
       </div>
-      {booking.historical && booking.status !== "cancelled" && booking.guestEmail ? (
-        <p className="text-xs text-muted-foreground">This stay started in the past: confirming, editing and cancelling don’t email the guest unless you choose to.</p>
+      {editable && booking.status === "pending" && booking.historical && booking.guestEmail ? (
+        <p className="text-xs text-muted-foreground">
+          {booking.notifyByDefault ? "Confirming emails the guest." : "Confirming this past stay won’t email the guest."}
+        </p>
       ) : null}
       {!editable ? <p className="text-xs text-muted-foreground">Cancelled bookings are read-only. Reopen one to change it.</p> : null}
 

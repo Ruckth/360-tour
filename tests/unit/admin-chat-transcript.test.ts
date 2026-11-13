@@ -5,7 +5,38 @@ import { AdminSessionDetail, chronologicalTranscriptMessages } from "@/component
 
 type DetailProps = Parameters<typeof AdminSessionDetail>[0];
 
+const detailWith = (session: Partial<NonNullable<DetailProps["selectedSession"]>>, overrides: Partial<DetailProps> = {}): DetailProps => ({
+  canLoadOlderMessages: false, loadOlderMessages: () => {}, loadingTranscript: false, loadingOlderMessages: false,
+  messages: [], now: 100, selectedSession: {
+    _id: "session" as NonNullable<DetailProps["selectedSession"]>["_id"], channel: "whatsapp", createdAt: 1, isActive: false, ...session,
+  },
+  replyDraft: "Unsent draft", onReplyDraftChange: () => {}, onSendReply: async () => {}, replyPending: false,
+  replyError: "Could not send your reply", replyStatus: null, ...overrides,
+});
+
 describe("admin transcript", () => {
+  it.each([false, true])("keeps failed-send, automation, owner, task and reply-window facts visible together (closed: %s)", closed => {
+    const html = renderToStaticMarkup(createElement(AdminSessionDetail, detailWith({
+      adminStatus: "open", needsReply: true, inboxReason: "send_failed", aiPaused: true, keepWithStaff: true,
+      staffTask: "Check the late checkout", inboxSendError: "Provider unavailable",
+    }, { replyWindow: { applies: true, closesAt: closed ? 99 : 60_100, lastGuestMessageAt: 1 } }))).replace(/<!--.*?-->/g, "");
+    for (const fact of ["Needs you", "Reply failed", "AI paused", "Next issue: Staff", "Check the late checkout", "Provider unavailable", "Could not send your reply"]) {
+      expect(html).toContain(fact);
+    }
+    expect(html.match(/Needs you/g)).toHaveLength(1);
+    expect(html).toContain(closed ? "reply window has ended" : "reply window closes in");
+    expect(html).not.toContain("Staff is replying");
+  });
+
+  it("does not turn a paused AI into staff activity on a completed conversation", () => {
+    const html = renderToStaticMarkup(createElement(AdminSessionDetail, detailWith({
+      adminStatus: "resolved", resolutionSource: "ai", aiPaused: true, keepWithStaff: false,
+    }))).replace(/<!--.*?-->/g, "");
+    expect(html).toContain("Done"); expect(html).toContain("AI answered");
+    expect(html).toContain("AI paused"); expect(html).toContain("Next issue: AI");
+    expect(html).not.toContain("Staff is replying");
+    expect(html).not.toContain("Staff replying");
+  });
   it.each([false, true])("renders the newest message beside the reply box (compact: %s)", (compact) => {
     const newestFirst = [
       { _id: "newest", role: "user", content: "Newest guest message", timestamp: 3 },

@@ -1,3 +1,4 @@
+import { ConvexError } from 'convex/values';
 import { isIsoDate } from './dates';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -8,7 +9,7 @@ export function normalizeEmail(email: string): string {
 
 export function assertValidEmail(email: string): void {
 	if (!EMAIL_RE.test(email.trim())) {
-		throw new Error('Please enter a valid email address');
+		throw new ConvexError('Please enter a valid email address');
 	}
 }
 

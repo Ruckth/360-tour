@@ -8,6 +8,7 @@ import type { AdminSession } from "@/components/admin/admin-chat-types";
 type DetailProps = {
   selectedSession: AdminSession | null;
   actions: ReactNode;
+  followUp: ReactNode;
   compact?: boolean;
   replyDraft: string;
   onReplyDraftChange: (value: string) => void;
@@ -65,6 +66,7 @@ vi.mock("@/components/admin/AdminSessionDetail", () => ({
       "div",
       { "data-selected": props.selectedSession?._id ?? "none", "data-compact": String(Boolean(props.compact)) },
       props.actions,
+      props.followUp,
       createElement(
         "button",
         { type: "button", disabled: props.replyPending, onClick: () => void props.onSendReply() },
@@ -271,7 +273,7 @@ describe("inbox navigation", () => {
   it("shows follow-up save errors inside the open dialog and keeps the task", async () => {
     await render();
     await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
-    await click("Add follow-up / Keep open");
+    await click("Add follow-up");
     const input = document.querySelector<HTMLInputElement>('input[id="follow-up-session-a"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Check housekeeping");
@@ -284,6 +286,31 @@ describe("inbox navigation", () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Connection lost. Try again.");
     expect(input.value).toBe("Check housekeeping");
+  });
+
+  it("wires direct follow-up actions to the selected conversation and resets the editor on navigation", async () => {
+    mocks.page = [{ ...session("session-a"), staffTask: "Follow up A" }, { ...session("session-b"), staffTask: "Follow up B" }];
+    mocks.detail = { session: { ...session("session-a"), staffTask: "Follow up A" }, replyWindow: { applies: false } };
+    await render();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Edit follow-up"]')!.click());
+    const input = document.getElementById("follow-up-session-a") as HTMLInputElement;
+    expect(input.value).toBe("Follow up A");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Unsaved A");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    mocks.search = new URLSearchParams("view=all&session=session-b");
+    mocks.detail = { session: { ...session("session-b"), staffTask: "Follow up B" }, replyWindow: { applies: false } };
+    await render();
+    expect(document.getElementById("follow-up-session-a")).toBeNull();
+    expect(mocks.mutation).not.toHaveBeenCalled();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Edit follow-up"]')!.click());
+    const current = document.getElementById("follow-up-session-b") as HTMLInputElement;
+    expect(current.value).toBe("Follow up B");
+    mocks.replace.mockClear();
+    await act(async () => current.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-b", task: "Follow up B" });
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it("queries only the debounced search", async () => {

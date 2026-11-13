@@ -153,7 +153,7 @@ export function NewBookingDialog({
     <Dialog open onOpenChange={(next) => (next || saving ? undefined : onClose())}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New booking</DialogTitle>
+          <DialogTitle>{historical ? "Record past stay" : "New booking"}</DialogTitle>
           <DialogDescription>For phone or walk-in guests. Manual bookings never expire automatically.</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
@@ -286,8 +286,8 @@ export function NewBookingDialog({
             onChange={setNotifyChoice}
             action="this booking"
           />
-          {historical && notifyChoice === null ? (
-            <p className="-mt-2 text-xs text-muted-foreground">Past stays don’t email the guest unless you tick this.</p>
+          {historical && guest.email.trim() && notifyChoice === null ? (
+            <p className="-mt-2 text-xs text-muted-foreground">Past stay · Email off by default</p>
           ) : null}
           <div className="grid gap-3 rounded-lg border border-border p-3">
             <label htmlFor="nb-custom" className="flex items-center gap-2 text-sm font-medium">

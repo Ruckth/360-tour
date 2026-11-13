@@ -69,7 +69,7 @@ export function VillaPicker({
   className?: string;
 }) {
   const [viewing, setViewing] = useState<AdminProperty | null>(null);
-  const search = useRef<HTMLInputElement>(null);
+  const photoTrigger = useRef<HTMLButtonElement>(null);
   const options = useMemo(() => {
     const items: PickerOption<string>[] = [...properties]
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -80,7 +80,12 @@ export function VillaPicker({
         renderThumbnail: (size: string) => (
           <VillaThumb property={property} className={size} />
         ),
-        onPreview: property.imageUrl ? () => setViewing(property) : undefined,
+        // The All-villas variant filters the calendar; it needs the available
+        // width for its selected name rather than a photo-inspection action.
+        onPreview: property.imageUrl && !includeAll ? (trigger: HTMLButtonElement) => {
+            photoTrigger.current = trigger;
+            setViewing(property);
+          } : undefined,
       }));
     return includeAll
       ? [{ value: "all", label: "All villas" }, ...items]
@@ -104,7 +109,6 @@ export function VillaPicker({
         emptyLabel="No villas yet. Add one under Villas."
         noResultsLabel="No villas match."
         interactionLocked={viewing !== null}
-        searchRef={search}
       />
       <Dialog
         open={viewing !== null}
@@ -113,8 +117,10 @@ export function VillaPicker({
         <DialogContent
           className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto"
           onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            search.current?.focus();
+            if (photoTrigger.current?.isConnected) {
+              event.preventDefault();
+              photoTrigger.current.focus();
+            }
           }}
         >
           <DialogTitle className="pr-8">{viewing?.name}</DialogTitle>

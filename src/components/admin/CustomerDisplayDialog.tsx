@@ -6,13 +6,14 @@ import type { DisplayDriver } from "convex/displays";
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";
-import { ArrowRightLeft, Check, Copy, ExternalLink, Link2, MonitorSmartphone, RefreshCw, Share2 } from "lucide-react";
-import { memo, useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { ArrowRightLeft, Check, Copy, ExternalLink, Link2, MonitorSmartphone, RefreshCw, Share2, X } from "lucide-react";
+import { memo, useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import QRCode from "react-qr-code";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import { CheckoutDialogContent } from "@/components/checkout/CheckoutLayers";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText, useNow } from "@/lib/staff-bookings";
@@ -23,6 +24,7 @@ const MemoQRCode = memo(QRCode);
 
 const ONLINE_MS = 60_000;
 const THIS_COMPUTER = "This computer";
+const CODE_LENGTH = 6;
 type Mode = "link" | "code" | "computer";
 const MODES = [
   { value: "link", label: "Send link" },
@@ -34,6 +36,9 @@ type Display = { _id: Id<"displays">; name: string; lastSeenAt: number | null };
 
 const isOnline = (display: Display, now: number) => display.lastSeenAt !== null && now - display.lastSeenAt < ONLINE_MS;
 
+/** Pairing codes as convex/displays.ts reads them: letters and digits, upper case. */
+const normalizeCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
 /** convex/displays.ts throws ConvexError({ code, message }) for pairing problems; anything else is a plain Error. */
 function displayErrorText(error: unknown, fallback: string) {
   if (error instanceof ConvexError && typeof error.data?.message === "string") return error.data.message as string;
@@ -44,6 +49,11 @@ function StatusDot({ online }: { online: boolean }) {
   return <span aria-hidden className={cn("size-2 shrink-0 rounded-full", online ? "bg-emerald-500" : "bg-muted-foreground/40")} />;
 }
 
+/** What pairing another display does to the one paired now, shown where staff commit to it. */
+function ReplaceNote({ children }: { children: ReactNode }) {
+  return <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{children}</p>;
+}
+
 /**
  * Checkout top-strip button that opens the pairing dialog: "Display · Front iPad" (green when seen in
  * the last minute) when this checkout tab drives it, "Display · on another checkout" when another does.
@@ -51,10 +61,10 @@ function StatusDot({ online }: { online: boolean }) {
  * booking link is still opening its order, when take-over waits.
  */
 export function CustomerDisplayControl({ orderId }: { orderId: string | null | undefined }) {
-  const { clientId, displays = [], driver = "none" } = useDisplayDriver();
+  const { clientId, displays, driver = "none" } = useDisplayDriver();
   const now = useNow(5_000);
   const [open, setOpen] = useState(false);
-  const display = displays[0];
+  const display = displays?.[0];
   const online = display ? isOnline(display, now) : false;
 
   return (
@@ -80,35 +90,123 @@ export function CustomerDisplayControl({ orderId }: { orderId: string | null | u
           )}
         </Button>
       </DialogTrigger>
-      <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
-        {open && clientId ? <PairingPanel clientId={clientId} orderId={orderId} displays={displays} driver={driver} now={now} /> : null}
+      {/* The panel draws the dialog's one close control, so paired success can offer Done alone. */}
+      <CheckoutDialogContent showCloseButton={false} className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
+        {open && clientId && displays ? (
+          <PairingPanel clientId={clientId} orderId={orderId} displays={displays} driver={driver} now={now} />
+        ) : open ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Customer display</DialogTitle>
+              <DialogDescription className="sr-only">Loading the display&apos;s status.</DialogDescription>
+            </DialogHeader>
+            <div className="grid min-h-40 place-items-center"><Spinner label="Loading display" className="size-5" /></div>
+            <CloseButton />
+          </>
+        ) : null}
       </CheckoutDialogContent>
     </Dialog>
   );
 }
 
+function CloseButton() {
+  return (
+    <DialogClose className="absolute right-3 top-3 rounded-full p-2 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <X aria-hidden className="h-4 w-4" />
+      <span className="sr-only">Close</span>
+    </DialogClose>
+  );
+}
+
 type PairLink = { url: string; expiresAt: number };
 
-/** Mounted only while the dialog is open, so the link below lives for one opening of the dialog. */
+/**
+ * Mounted only while the dialog is open, so a link made here is shown for one opening of the dialog.
+ * With a display paired, its status leads and setup waits behind "Pair a different display"; with
+ * none, setup shows straight away. A display paired from here (code, link or this computer) ends
+ * on "Paired with …" and Done, which closes the dialog.
+ */
 function PairingPanel({ clientId, orderId, displays, driver, now }: { clientId: string; orderId: string | null | undefined; displays: Display[]; driver: DisplayDriver; now: number }) {
   const id = useId();
   const [mode, setMode] = useState<Mode>("link");
+  const [setupShown, setSetupShown] = useState(false);
+  const [codePaired, setCodePaired] = useState<string | null>(null);
+  // The displays paired when staff asked for a link or a display window. A display not among them
+  // since then was paired by it: the link is used up, and the dialog says so.
+  const [pairingFrom, setPairingFrom] = useState<ReadonlySet<string> | null>(null);
   const pairLink = usePairLink(clientId);
+  const linkPaired = pairingFrom ? displays.find((display) => !pairingFrom.has(display._id))?.name : undefined;
+  const paired = codePaired ?? linkPaired ?? null;
+  const replacing = displays.length > 0 ? displays.map((display) => display.name).join(", ") : null;
+  const showSetup = !replacing || setupShown;
+
+  const watchForPairing = () => setPairingFrom(new Set(displays.map((display) => display._id)));
+  function createLink() {
+    watchForPairing();
+    return pairLink.create();
+  }
+  // Revealing setup removes the button that did it, so focus moves to the selected pairing tab.
+  function revealSetup() {
+    flushSync(() => setSetupShown(true));
+    document.getElementById(`${id}-tab-${mode}`)?.focus();
+  }
+
+  if (paired) {
+    return (
+      <>
+        <DialogHeader>
+          <DialogTitle>Customer display</DialogTitle>
+          <DialogDescription className="sr-only">The display is paired.</DialogDescription>
+        </DialogHeader>
+        <div role="status" className="grid min-h-56 place-items-center text-center">
+          <div className="grid gap-3">
+            <p className="text-base font-semibold">Paired with {paired}</p>
+            {driver === "here" ? <p className="text-sm text-muted-foreground">It now shows the order open at this checkout.</p> : null}
+            <DialogClose asChild>
+              <Button type="button" className="mx-auto" autoFocus>
+                Done
+              </Button>
+            </DialogClose>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <DialogHeader>
         <DialogTitle>Customer display</DialogTitle>
         <DialogDescription>
-          A screen facing the guest that shows the order open at this checkout, then a thank-you once it is paid. Pairing
-          a new display disconnects the previous one.
+          A screen facing the guest that shows the order open at this checkout, then a thank-you once it is paid. One
+          display at a time.
         </DialogDescription>
       </DialogHeader>
       {driver === "elsewhere" ? <TakeOver clientId={clientId} orderId={orderId} /> : null}
-      <SegmentedTabs id={id} tabs={MODES} value={mode} onValueChange={setMode} label="How to pair" fill />
-      <div {...tabPanelProps(id, mode)} className="min-h-56">
-        {mode === "link" ? <SendLink {...pairLink} /> : mode === "code" ? <EnterCode clientId={clientId} onPaired={() => setMode("link")} /> : <ThisComputer clientId={clientId} />}
-      </div>
-      <DisplayList displays={displays} now={now} />
+      {displays.length ? (
+        <DisplayStatus
+          displays={displays}
+          driver={driver}
+          now={now}
+          onPairAnother={setupShown ? undefined : revealSetup}
+        />
+      ) : null}
+      {showSetup ? (
+        <section aria-labelledby={replacing ? `${id}-setup` : undefined} className={cn("grid gap-3", replacing && "border-t border-border pt-4")}>
+          {replacing ? <h3 id={`${id}-setup`} className="admin-eyebrow">Pair a different display</h3> : null}
+          <SegmentedTabs id={id} tabs={MODES} value={mode} onValueChange={setMode} label="How to pair" fill />
+          <div {...tabPanelProps(id, mode)} className="min-h-56">
+            {mode === "link" ? (
+              <SendLink {...pairLink} create={createLink} replacing={replacing} />
+            ) : mode === "code" ? (
+              <EnterCode clientId={clientId} replacing={replacing} onPaired={setCodePaired} />
+            ) : (
+              <ThisComputer clientId={clientId} replacing={replacing} onOpen={watchForPairing} />
+            )}
+          </div>
+        </section>
+      ) : null}
+      <CloseButton />
     </>
   );
 }
@@ -145,7 +243,80 @@ function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | n
   );
 }
 
-/** One link per dialog opening, created on the first view of the Link tab and reused until it expires. */
+const FOLLOWING: Record<DisplayDriver, string> = {
+  here: "Showing this checkout",
+  elsewhere: "Showing another checkout",
+  none: "Not showing a checkout",
+};
+
+/**
+ * The paired display first: its name, whether it is online (or when it was last seen), and which
+ * checkout it follows. Disconnect acts at once, so it sits after the safer "Pair a different display".
+ */
+function DisplayStatus({ displays, driver, now, onPairAnother }: { displays: Display[]; driver: DisplayDriver; now: number; onPairAnother?: () => void }) {
+  const revoke = useMutation(api.displays.revoke);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function disconnect(displayId: Id<"displays">) {
+    setPending(displayId);
+    setError(null);
+    try {
+      await revoke({ displayId });
+    } catch (revokeError) {
+      setError(displayErrorText(revokeError, "Unable to disconnect the display. Try again."));
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <section aria-label="Paired display" className="grid gap-2">
+      <ul className="grid gap-2">
+        {displays.map((display) => {
+          const online = isOnline(display, now);
+          return (
+            <li key={display._id} className="grid gap-3 rounded-xl border border-border p-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <MonitorSmartphone aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{display.name}</p>
+                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <StatusDot online={online} />
+                    {online
+                      ? "Online"
+                      : display.lastSeenAt
+                        ? `Offline · last seen ${formatDistanceStrict(display.lastSeenAt, now)} ago`
+                        : "Not seen yet"}
+                    <span aria-hidden>·</span>
+                    {FOLLOWING[driver]}
+                  </p>
+                  {!online ? <p className="mt-1 text-xs text-muted-foreground">Check the screen is on and online. It reconnects by itself.</p> : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {onPairAnother ? (
+                  <Button type="button" variant="outline" onClick={onPairAnother}>
+                    Pair a different display
+                  </Button>
+                ) : null}
+                <Button type="button" variant="ghost" disabled={pending === display._id} onClick={() => void disconnect(display._id)}>
+                  Disconnect
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+    </section>
+  );
+}
+
+/**
+ * A link only when staff ask for one: opening the dialog to check status, take over or disconnect
+ * puts no QR on screen. Making a new link cancels the last one (convex/displays.ts).
+ */
 function usePairLink(clientId: string) {
   const createPairLink = useMutation(api.displays.createPairLink);
   const [link, setLink] = useState<PairLink | null>(null);
@@ -174,17 +345,12 @@ function usePairLink(clientId: string) {
   return { link, error, loading, create };
 }
 
-function SendLink({ link, error: createError, loading, create }: ReturnType<typeof usePairLink>) {
+function SendLink({ link, error: createError, loading, create, replacing }: ReturnType<typeof usePairLink> & { replacing: string | null }) {
   const now = useNow(1_000);
   const [copyError, setCopyError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const expired = link !== null && link.expiresAt <= now;
   const error = copyError ?? createError;
-
-  // Lazily, on the first view of this tab; switching tabs keeps the same link. Expired links wait for "New link".
-  useEffect(() => {
-    if (!link && !createError) void create();
-  }, [link, createError, create]);
 
   useEffect(() => {
     setCopied(false);
@@ -205,17 +371,16 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
 
   if (!link) {
     return (
-      <div className="grid min-h-56 place-items-center text-sm text-muted-foreground">
-        {error ? (
-          <div className="grid justify-items-center gap-3">
-            <p role="alert" className="text-destructive">{error}</p>
-            <Button type="button" variant="outline" onClick={() => void create()} disabled={loading}>
-              Try again
-            </Button>
-          </div>
-        ) : (
-          <Spinner label="Creating link" className="size-5" />
-        )}
+      <div className="grid min-h-56 place-items-center text-center text-sm text-muted-foreground">
+        <div className="grid max-w-sm justify-items-center gap-3">
+          <p>Make a one-time link to open on the display, by QR or sent to the device.</p>
+          {replacing ? <ReplaceNote>Opening the link on another display disconnects {replacing}.</ReplaceNote> : null}
+          <Button type="button" onClick={() => void create()} disabled={loading}>
+            {loading ? <Spinner label="Creating link" className="size-4" /> : <Link2 aria-hidden className="size-4" />}
+            Create link
+          </Button>
+          {error ? <p role="alert" className="text-destructive">{error}</p> : null}
+        </div>
       </div>
     );
   }
@@ -228,9 +393,12 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
       </div>
       <div className="grid min-w-0 gap-3">
         <p className="text-sm text-muted-foreground">
-          Open this link on the display (scan the QR, or send it to the device). It works once
-          {expired ? "" : `, for the next ${formatDistanceStrict(link.expiresAt, now)}`}. No camera needed on the display.
+          Open this link on the display (scan the QR, or send it to the device). No camera needed on the display.
         </p>
+        <p className="text-sm font-medium">
+          {expired ? "This link has expired." : `Works once, for the next ${formatDistanceStrict(link.expiresAt, now)}.`}
+        </p>
+        {replacing && !expired ? <ReplaceNote>Opening it disconnects {replacing}.</ReplaceNote> : null}
         <div className="flex gap-2">
           <Input readOnly value={link.url} aria-label="Display link" onFocus={(event) => event.currentTarget.select()} className="font-mono text-xs" />
           <Button type="button" variant="outline" size="icon" onClick={copy} disabled={expired} aria-label={copied ? "Copied" : "Copy link"}>
@@ -255,42 +423,28 @@ function SendLink({ link, error: createError, loading, create }: ReturnType<type
   );
 }
 
-function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => void }) {
+function EnterCode({ clientId, replacing, onPaired }: { clientId: string; replacing: string | null; onPaired: (name: string) => void }) {
   const approveCode = useMutation(api.displays.approveCode);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [paired, setPaired] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const inputId = useId();
-  const clean = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const clean = normalizeCode(code);
+  const ready = clean.length === CODE_LENGTH;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!ready || saving) return;
     setSaving(true);
     setError(null);
     try {
       const { name } = await approveCode({ code: clean, clientId });
-      setPaired(name);
-      setCode("");
+      onPaired(name);
     } catch (approveError) {
+      // A wrong or expired code changes nothing: any paired display stays paired.
       setError(displayErrorText(approveError, "Unable to pair that display."));
-    } finally {
       setSaving(false);
     }
-  }
-
-  if (paired) {
-    return (
-      <div className="grid min-h-56 place-items-center text-center">
-        <div className="grid gap-3">
-          <p className="text-base font-semibold">Paired with {paired}</p>
-          <p className="text-sm text-muted-foreground">It now shows the order open at this checkout.</p>
-          <Button type="button" variant="outline" className="mx-auto" onClick={onPaired}>
-            Done
-          </Button>
-        </div>
-      </div>
-    );
   }
 
   return (
@@ -300,7 +454,7 @@ function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => v
       </label>
       <p className="-mt-1 text-sm text-muted-foreground">
         Open <span className="font-mono">{typeof window === "undefined" ? "/display" : `${window.location.host}/display`}</span> on
-        the display. It shows a 6-character code for 10 minutes.
+        the display. It shows a {CODE_LENGTH}-character code for 10 minutes.
       </p>
       <div className="flex gap-2">
         <Input
@@ -315,11 +469,12 @@ function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => v
           aria-invalid={error ? true : undefined}
           className="h-12 font-mono text-2xl uppercase tracking-[0.3em]"
         />
-        <Button type="submit" className="h-12" disabled={clean.length !== 6 || saving}>
+        <Button type="submit" className="h-12" disabled={!ready || saving}>
           {saving ? <Spinner label="Pairing" className="size-4" /> : null}
           Pair
         </Button>
       </div>
+      {replacing ? <ReplaceNote>Pairing disconnects {replacing}.</ReplaceNote> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </form>
   );
@@ -329,7 +484,7 @@ function EnterCode({ clientId, onPaired }: { clientId: string; onPaired: () => v
  * A display window on this computer: an ordinary paired display, opened with a one-time link (listed
  * as "This computer" and disconnected like any other). Pairing it disconnects the previous display.
  */
-function ThisComputer({ clientId }: { clientId: string }) {
+function ThisComputer({ clientId, replacing, onOpen }: { clientId: string; replacing: string | null; onOpen: () => void }) {
   const createPairLink = useMutation(api.displays.createPairLink);
   const [error, setError] = useState<string | null>(null);
 
@@ -339,6 +494,7 @@ function ThisComputer({ clientId }: { clientId: string }) {
     // display window is reused, and picks the new link up from its fragment.
     const popup = window.open("", "customer-display", "popup,width=1280,height=800");
     if (!popup) return setError("The browser blocked the window. Allow pop-ups for this site and try again.");
+    onOpen();
     try {
       const { secret } = await createPairLink({ clientId });
       popup.location.href = `${window.location.origin}/display#pair=${secret}&name=${encodeURIComponent(THIS_COMPUTER)}`;
@@ -352,8 +508,9 @@ function ThisComputer({ clientId }: { clientId: string }) {
     <div className="grid gap-3 pt-2">
       <p className="text-sm text-muted-foreground">
         Opens the display in a new window on this computer. Drag it to the screen that faces the guest and make it
-        full screen. It replaces any other paired display.
+        full screen.
       </p>
+      {replacing ? <ReplaceNote>Opening it disconnects {replacing}.</ReplaceNote> : null}
       <Button
         type="button"
         variant="outline"
@@ -365,63 +522,5 @@ function ThisComputer({ clientId }: { clientId: string }) {
       </Button>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     </div>
-  );
-}
-
-function DisplayList({ displays, now }: { displays: Display[]; now: number }) {
-  const revoke = useMutation(api.displays.revoke);
-  const [pending, setPending] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function disconnect(displayId: Id<"displays">) {
-    setPending(displayId);
-    setError(null);
-    try {
-      await revoke({ displayId });
-    } catch (revokeError) {
-      setError(displayErrorText(revokeError, "Unable to disconnect the display. Try again."));
-    } finally {
-      setPending(null);
-    }
-  }
-
-  return (
-    <section className="border-t border-border pt-4">
-      <h3 className="admin-eyebrow mb-2">Paired display</h3>
-      {displays.length === 0 ? (
-        <p className="text-sm text-muted-foreground">None yet.</p>
-      ) : (
-        <ul className="grid gap-2">
-          {displays.map((display) => {
-            const online = isOnline(display, now);
-            return (
-              <li key={display._id} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2">
-                <Link2 aria-hidden className="size-4 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{display.name}</p>
-                  <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <StatusDot online={online} />
-                    {online
-                      ? "Online"
-                      : display.lastSeenAt
-                        ? `Last seen ${formatDistanceStrict(display.lastSeenAt, now)} ago`
-                        : "Not seen yet"}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={pending === display._id}
-                  onClick={() => void disconnect(display._id)}
-                >
-                  Disconnect
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {error ? <p role="alert" className="mt-2 text-sm text-destructive">{error}</p> : null}
-    </section>
   );
 }

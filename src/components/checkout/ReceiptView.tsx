@@ -1,8 +1,7 @@
 "use client";
 
-import { format } from "date-fns";
 import { Ban, Copy, Plus, Printer, Share2 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -17,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { PaymentRecord } from "./PaymentRecord";
 import { OrderHistory } from "./OrderHistory";
-import { TENDER_LABELS, TOUCH_TARGETS, receiptBookings, receiptName, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, formatResort, receiptBookings, receiptName, receiptText } from "./checkout-ui";
 
 type Paper = "58" | "80";
 
@@ -52,13 +51,19 @@ function printCss(paper: Paper, lengthMm: number) {
   `;
 }
 
-/** Receipt after payment: thermal print (58/80mm), share or copy, and void with a reason. */
+const noSubscription = () => () => undefined;
+/** Whether the system share sheet exists here; false on the server so hydration matches. */
+const useCanShare = () =>
+  useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
+
+/** Receipt after payment: thermal print (58/80mm), share (where the device can) or copy, and void with a reason. */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
   const view = backend.useOrder(orderId);
   const business = backend.useBusinessName() ?? "";
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
+  const canShare = useCanShare();
   const receiptRef = useRef<HTMLElement>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
@@ -97,21 +102,19 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const bookings = receiptBookings(view);
   const change = changeDue(payments);
 
+  // Share only opens the system sheet; copying is the Copy button's job, so neither outcome claims the other.
   async function share() {
-    const text = receiptText(view!, business);
+    setNotice("");
     try {
-      if (navigator.share) {
-        await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text });
-        return;
-      }
-      await navigator.clipboard.writeText(text);
-      setNotice("Receipt copied.");
+      await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text: receiptText(view!, business) });
     } catch (err) {
-      if ((err as Error).name !== "AbortError") setNotice("Couldn't share. Try copy instead.");
+      // Closing the share sheet is not a failure, and nothing was copied.
+      if ((err as Error).name !== "AbortError") setNotice("Couldn't share. Use Copy to copy the receipt instead.");
     }
   }
 
   async function copy() {
+    setNotice("");
     try {
       await navigator.clipboard.writeText(receiptText(view!, business));
       setNotice("Receipt copied.");
@@ -124,21 +127,36 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     <div className={cn("flex min-w-0 flex-1 flex-col items-center gap-4 px-4 py-6", TOUCH_TARGETS)}>
       <style>{printCss(paper, pageLengthMm)}</style>
 
+      {/* The receipt's actions sit above it, so New sale is reachable without scrolling past the record and history. */}
       <div className="flex w-full max-w-md flex-wrap items-center gap-2 print:hidden">
+        <Button onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
         <ToggleGroup value={paper} onValueChange={setPaper} aria-label="Paper width">
           <ToggleGroupItem value="58">58 mm</ToggleGroupItem>
           <ToggleGroupItem value="80">80 mm</ToggleGroupItem>
         </ToggleGroup>
         <Button variant="outline" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
-        <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button>
-        <Button variant="ghost" size="icon" onClick={copy} aria-label="Copy receipt"><Copy aria-hidden className="size-4" /></Button>
+        {canShare ? <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button> : null}
+        <Button variant="outline" onClick={copy} aria-label="Copy receipt"><Copy aria-hidden className="size-4" /> Copy</Button>
+        {!isVoid ? <VoidDialog orderId={orderId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
       </div>
       {/* The browser sets the page size; the printer's driver decides what reaches the paper. */}
-      <p id="receipt-print-help" className="w-full max-w-md text-xs text-muted-foreground print:hidden">
-        Prints on a {paper} mm wide page, as long as the receipt. In the print dialog, choose the receipt printer, margins None and scale 100%.
-        If it still prints on another paper size, select the {paper} mm roll in the printer&apos;s own settings.
-      </p>
+      <div className="w-full max-w-md text-xs text-muted-foreground print:hidden">
+        <p id="receipt-print-help">Prints {paper} mm wide, as long as the receipt.</p>
+        <details className="mt-1">
+          <summary className="cursor-pointer select-none py-1 font-medium text-foreground/80 pointer-coarse:min-h-11">Printing tips</summary>
+          <p className="mt-1">
+            In the print dialog, choose the receipt printer, margins None and scale 100%. If it still prints on another
+            paper size, select the {paper} mm roll in the printer&apos;s own settings.
+          </p>
+        </details>
+      </div>
       {notice ? <p role="status" className="text-sm text-muted-foreground print:hidden">{notice}</p> : null}
+      {isVoid ? (
+        <div className="grid w-full max-w-md gap-1 rounded-lg border border-destructive/40 px-3 py-2 text-sm print:hidden" data-testid="receipt-void-status">
+          <p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
+          {view.paymentRecord.voidUnreceived ? <p>Voided as a mistaken entry: no money was received. No refund was sent.</p> : null}
+        </div>
+      ) : null}
 
       <article ref={receiptRef} className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
         {isVoid ? (
@@ -150,7 +168,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <p className="text-base font-bold">{business}</p>
           <p>Receipt {formatReceiptNumber(order.receiptNumber ?? 0)}</p>
           <p className="text-xs">{order.title}</p>
-          <p className="text-xs">Issued {order.paidAt ? format(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
+          <p className="text-xs">Issued {order.paidAt ? formatResort(order.paidAt, "d MMM yyyy, HH:mm") : ""}</p>
           {customerName ? <p className="text-xs">Customer: {customerName}</p> : null}
           {bookings ? <p className="text-xs [overflow-wrap:anywhere]">{bookings}</p> : null}
         </header>
@@ -178,7 +196,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <dl className="space-y-1">
           <div className="flex justify-between font-bold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(totals.total)}</dd></div>
           <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="tabular-nums">{formatMoney(totals.vat)}</dd></div>
-          {totals.deposit ? <div className="flex justify-between"><dt>Paid before checkout</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
+          {totals.deposit ? <div className="flex justify-between"><dt>Paid in advance</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
           {payments.map((payment) => (
             <div key={payment._id} className="flex justify-between">
               <dt>{TENDER_LABELS[payment.method].long}</dt>
@@ -192,11 +210,6 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
 
       <PaymentRecord view={view} />
       <div className="w-full max-w-md"><OrderHistory orderId={orderId} /></div>
-      <div className="flex w-full max-w-sm flex-wrap gap-2 print:hidden">
-        <Button className="flex-1" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
-        {!isVoid ? <VoidDialog orderId={orderId} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} /> : null}
-      </div>
-      {isVoid ? <p className="max-w-sm text-center text-xs text-muted-foreground print:hidden">Voided by {order.voidedBy}{order.voidedAt ? ` on ${format(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p> : null}
     </div>
   );
 }

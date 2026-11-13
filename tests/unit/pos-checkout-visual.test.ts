@@ -176,7 +176,7 @@ describe("checkout order rows", () => {
     const stay = row("Stay · Lagoon Pool Villa");
     expect(stay.querySelector("img")?.getAttribute("src")).toBe("/pool-villa-veranda-view.webp");
     expect(stay.querySelector('[role="group"]')).toBeNull();
-    expect(stay.textContent).toContain("paid online");
+    expect(stay.textContent).toContain("฿10,000 paid in advance");
     expect(row("Sunrise yoga by the pool 60").querySelector("img")?.getAttribute("src")).toBe("/experiences/wellness-yoga.png");
     expect(row("Breakfast basket").querySelector("[data-photo-fallback]")).toBeTruthy();
 

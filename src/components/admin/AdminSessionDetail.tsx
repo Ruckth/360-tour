@@ -127,6 +127,31 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+/** Lifecycle, automation and follow-up are independent facts. */
+function conversationStatus(session: AdminSession): { label: string; tone: Tone; reason?: string } {
+  if (session.adminStatus === "archived") return { label: "Archived", tone: "muted" };
+  if (session.adminStatus === "resolved") return {
+    label: "Done",
+    tone: "success",
+    reason: session.inboxReason === "awaiting_guest" ? "Waiting for guest"
+      : session.resolutionSource === "ai" ? "AI answered"
+      : session.resolutionSource === "staff" ? "Staff answered"
+      : session.inboxReason === "no_reply_needed" ? "No reply needed" : "Marked done",
+  };
+  const reasons: Partial<Record<NonNullable<AdminSession["inboxReason"]>, string>> = {
+    handoff: "Staff help needed",
+    send_failed: "Reply failed",
+    sending: "Sending reply…",
+    answering: "AI answering…",
+    review_required: "Staff review needed",
+  };
+  return {
+    label: session.needsReply ? "Needs you" : "In progress",
+    tone: session.needsReply ? "warning" : "info",
+    reason: session.inboxReason ? reasons[session.inboxReason] : undefined,
+  };
+}
+
 export function AdminSessionDetail({
   canLoadOlderMessages,
   compact = false,
@@ -149,6 +174,7 @@ export function AdminSessionDetail({
   replyWindow,
   onAddBusinessFact,
   actions,
+  followUp,
   onBack,
 }: {
   canLoadOlderMessages: boolean;
@@ -173,6 +199,8 @@ export function AdminSessionDetail({
   onAddBusinessFact?: (message: AdminMessage) => void;
   /** Primary status action and the occasional-action menu, rendered inside the header. */
   actions?: ReactNode;
+  /** Existing task and its direct actions, owned by the same controller as the menu. */
+  followUp?: ReactNode;
   onBack?: () => void;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
@@ -291,10 +319,11 @@ export function AdminSessionDetail({
     : "";
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
   const replyHintId = `${replyInputId}-hint`;
+  const status = conversationStatus(session);
 
   return (
     <Sheet>
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
           <div className="flex items-center justify-between gap-2 p-3 sm:px-6 sm:py-4">
             <div className="flex min-w-0 items-center gap-3">
@@ -347,51 +376,19 @@ export function AdminSessionDetail({
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 px-4 py-2 text-xs text-muted-foreground sm:px-6">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              {session.aiPaused ? (
-                <Hand className="size-3.5 shrink-0" aria-hidden="true" />
-              ) : (
-                <Bot className="size-3.5 shrink-0" aria-hidden="true" />
-              )}
-              {session.adminStatus === "archived"
-                ? "Archived conversation"
-                : session.adminStatus === "resolved"
-                  ? session.inboxReason === 'awaiting_guest' ? 'Done automatically · Waiting for guest'
-                    : session.resolutionSource === 'ai' ? 'Done automatically · AI answered'
-                    : session.resolutionSource === 'staff' ? 'Done automatically · Staff answered'
-                    : session.inboxReason === 'no_reply_needed' ? 'No reply needed' : 'Marked Done'
-                  : session.inboxReason === 'handoff' ? 'Staff handoff · A person needs to help'
-                  : session.inboxReason === 'send_failed' ? 'Reply failed · Staff attention needed'
-                  : session.inboxReason === 'sending' ? 'Sending reply…'
-                  : session.inboxReason === 'answering' ? 'AI is answering…'
-                  : session.inboxReason === 'review_required' ? 'Previous conversation · Staff review needed'
-                  : session.staffTask ? 'Staff follow-up in progress'
-                  : session.aiPaused
-                    ? "Staff is replying · AI paused"
-                    : "AI is active · Your reply takes over"}
+            <span className="inline-flex flex-wrap items-center gap-2">
+              <StatusBadge tone={status.tone} label={status.label} />
+              {status.reason ? <span>{status.reason}</span> : null}
             </span>
-            <StatusBadge
-              tone={
-                session.adminStatus === "archived"
-                  ? "muted"
-                  : session.adminStatus === "resolved"
-                    ? "success"
-                    : session.needsReply
-                      ? "warning"
-                      : "info"
-              }
-              label={
-                session.adminStatus === "archived"
-                  ? "Archived"
-                  : session.adminStatus === "resolved"
-                    ? "Done"
-                    : session.needsReply
-                      ? "Needs you"
-                      : "In progress"
-              }
-            />
+            <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="inline-flex items-center gap-1.5">
+                {session.aiPaused ? <Hand className="size-3.5 shrink-0" aria-hidden="true" /> : <Bot className="size-3.5 shrink-0" aria-hidden="true" />}
+                {session.aiPaused ? "AI paused" : "AI on"}
+              </span>
+              <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
+            </span>
           </div>
-          {session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null}
+          {followUp ?? (session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null)}
           {session.inboxSendError ? <p role="alert" className="border-t border-border/40 px-4 py-2 text-xs text-destructive sm:px-6">{session.inboxSendError}</p> : null}
         </div>
 
@@ -512,6 +509,8 @@ export function AdminSessionDetail({
                 ) : null}
               </div>
             </div>
+            {replyError ? <p role="alert" className="mt-2 text-xs text-destructive">{replyError}</p> : null}
+            {replyStatus ? <p role="status" className="mt-2 text-xs text-muted-foreground">{replyStatus}</p> : null}
           </div>
         ) : (
           <form
@@ -586,9 +585,7 @@ export function AdminSessionDetail({
         </SheetHeader>
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
-            <DetailRow label="Handled by">
-              {session.aiPaused ? (session.assignedAdminEmail ?? "Staff") : "AI assistant"}
-            </DetailRow>
+            <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
             <DetailRow label="Email">{session.visitorEmail ?? "None"}</DetailRow>
             <DetailRow label="Contact">{contactLabel(session)}</DetailRow>
             <DetailRow label="Started">{formatDateTime(session.createdAt)}</DetailRow>

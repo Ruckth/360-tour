@@ -16,7 +16,7 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
   return <HistoryDetails orderId={orderId} title="Browse all financial history">
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
-      <Ledger title="All payment amendments"><Corrections orderId={orderId} /></Ledger>
+      <Ledger title="Payment corrections"><Corrections orderId={orderId} /></Ledger>
       <Ledger title="All receipt activity"><Audit orderId={orderId} /></Ledger>
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
@@ -36,8 +36,8 @@ function Page<T extends { _id: string }>({ page, label, render }: { page: Custom
 }
 function Corrections({ orderId }: { orderId: OrderId }) {
   const page = useCheckoutBackend().useCorrectionHistory(orderId);
-  return <Page page={page} label="payment amendments" render={r => <>
-    <p className="font-medium">{r.kind === "void_unreceived" ? "Mistaken payment entry voided" : "Payment recording amended"} · #{r.sequence}</p><p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
+  return <Page page={page} label="payment corrections" render={r => <>
+    <p className="font-medium">{r.kind === "void_unreceived" ? "Mistaken payment entry voided" : "Payment recording corrected"} · #{r.sequence}</p><p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
     {r.tendersBefore ? <p>Before: {r.tendersBefore.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.tendersAfter ? <p>After: {r.tendersAfter.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.effectiveAtBefore !== undefined ? <p>Received date: {historyTime(r.effectiveAtBefore)} → {r.effectiveAtAfter !== undefined ? historyTime(r.effectiveAtAfter) : "Unknown"}</p> : null}

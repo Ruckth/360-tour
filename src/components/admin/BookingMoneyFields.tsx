@@ -76,7 +76,7 @@ export function MethodPicker<T extends string>({
   );
 }
 
-/** "Email the guest" with the current choice spelled out; hidden when the guest has no email. */
+/** One action-labelled notification choice; defaults and explicit opt-in stay with the caller. */
 export function NotifyGuestField({
   id,
   guestEmail,
@@ -91,14 +91,14 @@ export function NotifyGuestField({
   /** What the email is about, e.g. "the cancellation". */
   action: string;
 }) {
-  if (!guestEmail) return <p className="text-xs text-muted-foreground">No guest email on file, so nobody is emailed.</p>;
+  if (!guestEmail) return <p className="text-xs text-muted-foreground">No guest email on file.</p>;
   return (
     <div className="grid gap-1">
-      <label htmlFor={id} className="flex items-center gap-2 text-sm">
+      <label htmlFor={id} className="flex min-h-11 items-center gap-2 text-sm">
         <input id={id} type="checkbox" className="size-4 accent-foreground" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-        Email {guestEmail} about {action}
+        Email guest about {action}
       </label>
-      <p className="ps-6 text-xs text-muted-foreground">{checked ? "The guest will be emailed." : "The guest will not be emailed."}</p>
+      <p className="ps-6 text-xs text-muted-foreground [overflow-wrap:anywhere]">{guestEmail}</p>
     </div>
   );
 }

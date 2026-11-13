@@ -73,6 +73,7 @@ function Fixture() {
           includeAll={!params.has("empty")}
           disabled={params.has("disabled")}
           compact
+          className="flex-1 sm:w-48 sm:flex-none"
         />
       </div>
     );

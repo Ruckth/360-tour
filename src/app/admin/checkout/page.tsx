@@ -58,7 +58,9 @@ function CheckoutPage() {
     (orderId: OrderId | null) => router.replace(orderId ? orderPath(orderId) : "/admin/checkout"),
     [router],
   );
-  const onPaid = useCallback((orderId: OrderId) => router.push(receiptPath(orderId)), [router]);
+  // Paying, or opening an order that is already paid, moves on to the receipt in place: the paid
+  // order's checkout URL would only redirect again, so Back from the receipt must not land there.
+  const onPaid = useCallback((orderId: OrderId) => router.replace(receiptPath(orderId)), [router]);
   const orderId = source.kind === "order" ? (source.id as OrderId) : null;
   const linkFailed = openError?.target === target;
   // While a booking link is still opening its order, the display keeps what it shows (no welcome flash).
