@@ -96,7 +96,7 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
     setOpening(true);
     setProblems([]);
     try {
-      setProblems(await openCheckout(booking._id, spa.appointments));
+      setProblems(await openCheckout(booking._id));
     } catch (err) {
       setProblems([errorText(err, "Couldn't open checkout for this stay.")]);
     } finally {

@@ -52,7 +52,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(today.getByRole("button", { name: /Arriving/ })).toContainText("2");
       await expect(today.getByRole("button", { name: /Leaving/ })).toContainText("1");
       await expect(today.getByRole("button", { name: /In house/ })).toContainText("1");
-      await expect(today.getByRole("button", { name: /Balance due/ })).toContainText("3");
+      await expect(today.getByRole("button", { name: /Balance due/ })).toContainText("฿44,300");
       await t.tap(today.getByRole("button", { name: /Arriving/ }), "Arriving");
       const list = today.getByRole("list", { name: "Arriving" });
       await expect(list.getByRole("button")).toHaveText([/Ken Tanaka/, /Maya Lin/]);
@@ -92,6 +92,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       // ฿26,000 left on the stay and her unpaid Hot stone 60 (฿1,500).
       await t.tap(popover(page, "Anna Schmidt").getByRole("button", { name: "Checkout ฿27,500" }), "Checkout ฿27,500");
       await expect(page.locator("[data-route=order]")).toBeVisible();
+      expect(await calls(page)).toEqual([{ name: "openStayCheckout", args: { bookingId: "fxbkg000001" } }]);
       if (size === "phone") await t.tap(page.getByRole("button", { name: /^View order/ }), "View order");
       await expect(page.getByText("Hot stone 60").first()).toBeVisible();
       await t.tap(page.getByRole("button", { name: "Cash", exact: true }), "Cash");

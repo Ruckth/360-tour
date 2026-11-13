@@ -27,8 +27,7 @@ const mutations = vi.hoisted(() => ({
   cancelStay: vi.fn(),
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
-  openOrderFor: vi.fn(),
-  attach: vi.fn(),
+  openStayCheckout: vi.fn(),
 }));
 const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn(), quoteBookingEdit: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));

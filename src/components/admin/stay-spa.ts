@@ -2,33 +2,20 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { Doc, Id } from "convex/_generated/dataModel";
+import type { Id } from "convex/_generated/dataModel";
+import type { FunctionReturnType } from "convex/server";
 import { useRouter } from "next/navigation";
-import { createContext, createElement, useCallback, useContext, type ReactNode } from "react";
-import type { CheckoutActions, CheckoutBackend } from "@/components/checkout/backend";
+import { useCallback } from "react";
 import { orderPath } from "@/components/checkout/checkout-source";
-import { DAY_MS, errorText, resortMidnight } from "@/lib/staff-bookings";
 
-/*
- * A stay's unpaid spa appointments, and checking the stay out with them.
- *
- * UI seam: there is no backend read for "this stay's appointments" yet, so the list comes from
- * adminServices.listSchedule over the stay's own days (listSchedule serves at most 14 days; a
- * longer stay reports `complete: false`). A dedicated query by booking (by_booking index) should
- * replace it; see the P5 report.
- */
-
-/** listSchedule's limit. */
-const MAX_SCHEDULE_DAYS = 14;
-
-type Appointment = Doc<"serviceAppointments">;
-type StayRef = { _id: Id<"bookings">; checkIn: string; checkOut: string; currency: string };
+type Appointment = FunctionReturnType<typeof api.adminBookings.stayAppointments>["appointments"][number];
+type StayRef = { _id: Id<"bookings">; currency: string };
 
 export type StaySpa = {
   /** Unpaid, chargeable appointments booked on this stay, earliest first. */
   appointments: Appointment[];
   total: number;
-  /** False when the stay is longer than one schedule read covers, so some may be missing. */
+  /** False when the bounded stay read found more appointments than it can display. */
   complete: boolean;
 };
 
@@ -39,61 +26,25 @@ export function spaChargeable(appointment: Pick<Appointment, "status" | "payment
 
 /** undefined while loading, or with no stay. */
 export function useStaySpa(stay: StayRef | null | undefined): StaySpa | undefined {
-  const from = stay ? resortMidnight(stay.checkIn) : 0;
-  const end = stay ? resortMidnight(stay.checkOut) + DAY_MS : 0;
-  const to = Math.min(end, from + MAX_SCHEDULE_DAYS * DAY_MS);
-  const schedule = useQuery(api.adminServices.listSchedule, stay && to > from ? { from, to } : "skip");
-  if (!stay || !schedule) return undefined;
-  const appointments = schedule.appointments.filter(
-    (a) => a.bookingId === stay._id && spaChargeable(a) && a.currency === stay.currency,
-  );
+  const result = useQuery(api.adminBookings.stayAppointments, stay ? { bookingId: stay._id } : "skip");
+  if (!stay || !result) return undefined;
+  const appointments = result.appointments.filter((a) => spaChargeable(a) && a.currency === stay.currency);
   const total = Math.round(appointments.reduce((sum, a) => sum + a.price, 0) * 100) / 100;
-  return { appointments, total, complete: end <= to };
+  return { appointments, total, complete: result.complete };
 }
 
-type DeskActions = Pick<CheckoutActions, "openOrderFor" | "attach">;
-const DeskCheckoutContext = createContext<DeskActions | null>(null);
-
-/** Desk screens open orders on this checkout backend instead of Convex (browser fixtures). */
-export function DeskCheckoutProvider({ backend, children }: { backend: CheckoutBackend; children: ReactNode }) {
-  const { openOrderFor, attach } = backend.useActions();
-  return createElement(DeskCheckoutContext.Provider, { value: { openOrderFor, attach } }, children);
-}
-
-/**
- * Opens checkout for a stay. Without spa appointments it is the plain `?booking=` link (checkout
- * opens or reuses the stay's order). With them, the stay's order is opened the same way
- * (pos.openOrderFor) and each appointment is added to it (pos.attach) before checkout opens on
- * that order. Nothing is paid here; the existing permission and revision checks run server-side.
- * Returns the problems, if any; then checkout is not opened.
- */
+/** One transaction opens the stay's order and attaches its appointments before navigation. */
 export function useStayCheckout() {
-  const fixture = useContext(DeskCheckoutContext);
-  const convexOpen = useMutation(api.pos.openOrderFor);
-  const convexAttach = useMutation(api.pos.attach);
-  const openOrderFor = fixture?.openOrderFor ?? convexOpen;
-  const attach = fixture?.attach ?? convexAttach;
+  const openStayCheckout = useMutation(api.pos.openStayCheckout);
   const router = useRouter();
   return useCallback(
-    async (bookingId: Id<"bookings">, spa: readonly Appointment[]): Promise<string[]> => {
-      if (spa.length === 0) {
-        router.push(`/admin/checkout?booking=${bookingId}`);
-        return [];
-      }
-      const { orderId } = await openOrderFor({ bookingId });
-      const problems: string[] = [];
-      for (const appointment of spa) {
-        try {
-          await attach({ orderId, appointmentId: appointment._id });
-        } catch (err) {
-          const message = errorText(err, "Couldn't add it to the order.");
-          // Opened twice, or from two devices: it is already where it should be.
-          if (!/already on this order/i.test(message)) problems.push(`${appointment.serviceNameSnapshot ?? "Spa"}: ${message}`);
-        }
-      }
+    async (bookingId: Id<"bookings">): Promise<string[]> => {
+      const { orderId, skipped } = await openStayCheckout({ bookingId });
+      // Paid/cancelled appointments and rows already on this order need no action from staff.
+      const problems = skipped.filter(({ reason }) => !/already on this order|nothing left to pay/i.test(reason)).map(({ reason }) => reason);
       if (problems.length === 0) router.push(orderPath(orderId));
       return problems;
     },
-    [attach, openOrderFor, router],
+    [openStayCheckout, router],
   );
 }

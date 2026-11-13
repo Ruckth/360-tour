@@ -37,9 +37,7 @@ import { BookingQuickActions, type QuickAction, type QuickTarget } from "./Booki
 import { RecordPaymentDialog } from "./BookingFinancials";
 import { CancelStayDialog } from "./BookingCorrectionDialogs";
 import { NewAppointmentDialog, type AppointmentDraft } from "./NewAppointmentDialog";
-import { DeskCheckoutProvider } from "./stay-spa";
 import { TodayStrip } from "./TodayStrip";
-import type { CheckoutBackend } from "@/components/checkout/backend";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { BookingSheet, useBookingEditQuote, type BookingSheetAction } from "./BookingSheet";
 import { bookingEditPrice, reviewedPrice } from "./booking-edit-price";
@@ -107,15 +105,9 @@ function isUnchanged({ booking, propertyId, checkIn, checkOut }: Move) {
   return propertyId === booking.propertyId && checkIn === booking.checkIn && checkOut === booking.checkOut;
 }
 
-/** The hotel calendar. Checkout opens orders on Convex, or on `checkoutBackend` (browser fixtures). */
-export function AdminBookingsView({ checkoutBackend }: { checkoutBackend?: CheckoutBackend } = {}) {
-  return checkoutBackend ? (
-    <DeskCheckoutProvider backend={checkoutBackend}>
-      <HotelBookings />
-    </DeskCheckoutProvider>
-  ) : (
-    <HotelBookings />
-  );
+/** The hotel calendar and today's stays. */
+export function AdminBookingsView() {
+  return <HotelBookings />;
 }
 
 function HotelBookings() {
