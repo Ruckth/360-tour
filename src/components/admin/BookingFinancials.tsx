@@ -396,12 +396,11 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
       onClose={done.close}
     >
       <MethodPicker label="Paid by" methods={DESK_PAYMENT_METHODS} value={method} onChange={setMethod} />
-      <ReceivedAtField id="pay-when" label="Received on" value={when}>
-        <div className="grid gap-2">
-          <Label htmlFor="pay-note">Note (optional)</Label>
-          <Input id="pay-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Slip number, who took it…" />
-        </div>
-      </ReceivedAtField>
+      <ReceivedAtField id="pay-when" label="Received on" value={when} />
+      <div className="grid gap-2">
+        <Label htmlFor="pay-note">Note (optional)</Label>
+        <Input id="pay-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Slip number, who took it…" />
+      </div>
       {firstConfirmation ? (
         <NotifyGuestField id="pay-notify" guestEmail={booking.guestEmail} checked={notify} onChange={setNotify} action="the confirmed booking" />
       ) : null}

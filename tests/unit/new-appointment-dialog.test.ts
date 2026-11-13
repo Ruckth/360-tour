@@ -105,22 +105,20 @@ it("never offers a time that has already started, and books the first later one"
   expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(true);
 });
 
-it("Other time… swaps the chips for a time box; a time before now is past work, a later one is a booking", async () => {
+it("Other time… swaps the chips for a time box; a service that has ended is past work, one that started minutes ago is a booking", async () => {
   withSlots('15:00');
   await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   await act(async () => timeButton('Other time…')!.click());
   expect(timeButton('15:00')).toBeUndefined();
   expect((document.getElementById('na-actual-time') as HTMLInputElement).value).toBe('15:00');
-  // One minute before now: past work, so the person must be named and Auto goes.
+  // Started one minute ago: still running, so a normal booking, as the server treats it.
   await setTime('11:59');
-  expect(document.body.textContent).toContain('In progress · Unpaid');
-  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(false);
-  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-  // Exactly now is not before now: a normal booking again, and the box stays while typing.
-  await setTime('12:00');
   expect(document.getElementById('na-actual-time')).not.toBeNull();
-  expect(document.body.textContent).not.toContain('In progress');
   expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(true);
+  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  // Hours ago: the service and its turnaround have ended, so past work names the person and Auto goes.
+  await setTime('08:00');
+  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(false);
 });
 
 it("a calendar slot that started before now opens as past work with the time box", async () => {

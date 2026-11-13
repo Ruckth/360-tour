@@ -113,7 +113,7 @@ export function NewAppointmentDialog({
   const [otherTime, setOtherTime] = useState(false);
   const now = useNow();
   const today = resortIsoDate(now);
-  const historicalDate = isPastEntry(date, start, now);
+  const historicalDate = isPastEntry(date, start, now, service ? service.durationMin + (service.bufferMin ?? 0) : 0);
   const qualified = staff.filter(person => historicalDate || (person.status === "active" && service?.staffIds.includes(person._id)));
   const staffId = qualified.some(person => person._id === staffChoice) ? staffChoice as Id<"staff"> : undefined;
   const [historicalReason, setHistoricalReason] = useState("");

@@ -127,7 +127,8 @@ export function CheckoutView({
   const due = view?.totals.due ?? 0;
   // The phone bar offers exact cash once the order could be paid with it.
   const { cannotPay } = usePayState(missing ? null : view);
-  const quickCash = !cannotPay && due > 0 && view?.order.state !== "discarded";
+  // Not while a change is still saving: the panel would open on an order about to change.
+  const quickCash = !cannotPay && !busy && due > 0 && view?.order.state !== "discarded";
 
   // A paid or void order opened by link goes straight to its receipt.
   useEffect(() => {

@@ -163,6 +163,8 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
   const setRow = (index: number, patch: Partial<TenderRow>) => setTenders((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const chips = single && tenders.length === 1 && recorded;
   const locked = saving || attempted;
+  // Every tender needs an amount above zero; the server refuses a ฿0 row.
+  const amountsValid = tenders.every((row) => Number(row.amountInput) > 0);
   // Save only once something differs from the recorded payment: the server refuses "Nothing changed."
   const changed =
     payer !== undefined ||
@@ -334,7 +336,7 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
       </fieldset>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {attempted && !saving ? <p className="text-xs text-muted-foreground">Retry sends this same correction; close to start over.</p> : null}
-      <Button type="submit" disabled={saving || (!attempted && (!reason.trim() || !changed))}>
+      <Button type="submit" disabled={saving || (!attempted && (!reason.trim() || !changed || !amountsValid))}>
         {saving ? <Spinner /> : null}
         {label}
       </Button>

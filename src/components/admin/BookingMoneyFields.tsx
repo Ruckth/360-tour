@@ -73,6 +73,8 @@ export function ReceivedAtField({
         </div>
       ) : value.future ? (
         <p className="text-xs text-destructive">Pick a time that has already happened.</p>
+      ) : value.at === null ? (
+        <p className="text-xs text-destructive">Enter a date and time.</p>
       ) : null}
     </div>
   );

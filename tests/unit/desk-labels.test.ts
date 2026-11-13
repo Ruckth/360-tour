@@ -31,6 +31,13 @@ describe("past work on the appointment form", () => {
     expect(isPastEntry("2026-11-12", now - 30 * minute, now)).toBe(true);
   });
 
+  it("keeps a slot that started minutes ago a normal booking until its service and turnaround end", () => {
+    // A 60-minute service with 15 minutes' turnaround, as the server's blockedUntil.
+    expect(isPastEntry("2026-11-12", now - 10 * minute, now, 75)).toBe(false);
+    expect(isPastEntry("2026-11-12", now - 75 * minute, now, 75)).toBe(false);
+    expect(isPastEntry("2026-11-12", now - 76 * minute, now, 75)).toBe(true);
+  });
+
   it("treats an earlier day as past work and a later day as a booking", () => {
     expect(isPastEntry("2026-11-11", null, now)).toBe(true);
     expect(isPastEntry("2026-11-13", null, now)).toBe(false);

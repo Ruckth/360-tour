@@ -4,11 +4,12 @@ import { pickSlot, resortIsoDate } from '@/lib/staff-bookings';
 type EntrySlot = { start: number; staffIds: Id<'staff'>[]; autoStaffId: Id<'staff'> };
 
 /**
- * Past work (any staff, archived services, no Auto) only for an earlier day or a chosen time that
- * starts before now. Today with no time chosen, or a later time today, is a normal booking.
+ * Past work (any staff, archived services, no Auto) for an earlier day, or a chosen time whose
+ * service and turnaround have already ended, as the server decides (start + duration + buffer).
+ * A slot that started minutes ago is still a normal booking.
  */
-export function isPastEntry(date: string, start: number | null, now: number) {
-  return date < resortIsoDate(now) || (start !== null && start < now);
+export function isPastEntry(date: string, start: number | null, now: number, blockMin = 0) {
+  return date < resortIsoDate(now) || (start !== null && start + blockMin * 60_000 < now);
 }
 
 /** A historical selection is evidence, so absence from today's availability never substitutes another time/person. */

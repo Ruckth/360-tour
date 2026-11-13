@@ -265,6 +265,12 @@ export function OrderPanel({
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
             {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
+            {/* The request sits on its line, which may be scrolled away: say why the tenders are off. */}
+            {waiting && shownLine ? (
+              <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
+                Waiting for a manager · {lines.find((line) => line._id === shownLine)?.name}
+              </p>
+            ) : null}
             {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
             {lines.length && totals.due === 0 ? (
               <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
