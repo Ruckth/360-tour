@@ -5,12 +5,15 @@ async function open(page: import('@playwright/test').Page, query = '') {
   await page.goto(`/tests/browser/checkout.html${query}`);
   await page.locator('[data-fixture-ready]').waitFor();
 }
-test('direct discard keeps the selected order read only and restores it through Discarded', async ({ page }) => {
+test('discard asks first, keeps the selected order read only and restores it through Discarded', async ({ page }) => {
   await open(page, '?lines=1');
   await page.getByRole('button', { name: 'Orders', exact: true }).click();
   const dialog = page.getByRole('dialog');
   const selected = dialog.locator('li').filter({ has: page.locator('[aria-current="true"]') });
   await selected.getByRole('button', { name: /^Discard Order/ }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm.getByRole('heading', { name: /^Discard order #\d+\?$/ })).toBeVisible();
+  await confirm.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(dialog.getByText(/discarded\. Contents/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Back to orders' }).click();
   await dialog.getByRole('radio', { name: 'Discarded', exact: true }).click();
