@@ -4,6 +4,7 @@ import { makeFunctionReference } from 'convex/server';
 import type { ValidatorJSON } from 'convex/values';
 import { expect, it } from 'vitest';
 import schema from './schema';
+import { api } from './_generated/api';
 
 const modules = import.meta.glob('./**/*.ts');
 const contracts = [
@@ -325,6 +326,8 @@ it('preserves active-villa projections, optional copy, private-token omission an
   expect(found).not.toHaveProperty('translations');
   expect(await t.query(bySlug, { slug: 'contract-villa' })).toEqual(found);
   expect(await t.query(makeFunctionReference<'query'>('catalog/properties:getTourSnippets'), { propertyId })).toEqual([]);
+  const snippet = await t.run(ctx => ctx.db.insert('tourSnippets', { propertyId, roomSlug: 'pool', position: [1, 2, 3], quote: 'Quiet pool', authorName: 'Guest', authorCity: '', rating: 5 }));
+  expect(await t.query(api.catalog.properties.getTourSnippets, { propertyId })).toMatchObject([{ _id: snippet, quote: 'Quiet pool', position: [1, 2, 3] }]);
   const loaded = await modules['./catalog/properties.ts']();
   const fn = Reflect.get(Object(loaded), 'getById'), original = Reflect.get(fn, '_handler');
   Reflect.set(fn, '_handler', async (...args: unknown[]) => {
@@ -337,4 +340,16 @@ it('preserves active-villa projections, optional copy, private-token omission an
   await t.run(ctx => ctx.db.patch(propertyId, { status: 'draft' }));
   expect(await t.query(byId, { id: propertyId })).toBeNull();
   expect(await t.query(bySlug, { slug: 'contract-villa' })).toBeNull();
+});
+
+
+it('validates guest lifecycle null and boolean responses while retaining token refusal', async () => {
+  const t = convexTest(schema, modules);
+  const guest = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
+  expect(await t.query(api.messaging.chat.isAiPaused, guest)).toBe(false);
+  expect(await t.mutation(api.messaging.chat.closeSession, guest)).toBeNull();
+  await t.run(ctx => ctx.db.patch(guest.sessionId, { aiPaused: true }));
+  expect(await t.query(api.messaging.chat.isAiPaused, guest)).toBe(true);
+  await expect(t.query(api.messaging.chat.isAiPaused, { ...guest, guestToken: 'wrong' })).rejects.toThrow('INVALID_GUEST_TOKEN');
+  await expect(t.mutation(api.messaging.chat.closeSession, { ...guest, guestToken: 'wrong' })).rejects.toThrow('INVALID_GUEST_TOKEN');
 });

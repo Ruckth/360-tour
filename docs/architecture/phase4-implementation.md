@@ -43,12 +43,12 @@ The existing functional suites run the successful and refused business responses
 | `messaging/chatSuggestions:markClicked` | `chatSuggestions.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:createSession` | `chatReuse.test.ts`, `adminChat.test.ts`, `factRetrieval.test.ts` |
 | `messaging/chat:touchSession` | `adminChat.test.ts`, `hotspotMeasure.test.ts`, `phase0Security.test.ts` |
-| `messaging/chat:closeSession` | `phase0Security.test.ts` |
+| `messaging/chat:closeSession` | `phase4Returns.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:createBrowserHandoff` | `chatBrowserHandoffs.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:claimBrowserHandoff` | `chatBrowserHandoffs.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:identifyVisitor` | `adminChat.test.ts`, `serviceBookings.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:getSession` | `hotspotMeasure.test.ts`, `chatReview.test.ts`, `phase0Security.test.ts` |
-| `messaging/chat:isAiPaused` | `phase0Security.test.ts` |
+| `messaging/chat:isAiPaused` | `phase4Returns.test.ts`, `phase0Security.test.ts` |
 | `messaging/chat:getMessages` | `chatReuse.test.ts`, `chatAi.test.ts`, `chatAdmission.test.ts` |
 | `messaging/chat:sendMessage` | `chatAdmission.test.ts`, `maintenanceGate.test.ts`, `phase0Security.test.ts` |
 | `messaging/leads:save` | `listPagination.test.ts`, `leads.test.ts`, `queryScale.test.ts` |
@@ -150,7 +150,7 @@ Root's read-only populated snapshot supplied this sizing evidence: conversations
 3. **Initialize atomically.** Root invokes that same internal mutation with `{"dryRun":false}`. One transaction writes changed projections and infers a missing state using the established last-message/settlement rule. Concurrent writer transactions conflict/retry against the same conversations, so the final committed projections match their source. Existing explicit states are preserved.
 4. **Verify and cut over.** Repeat `{"dryRun":true}` and require `changed:0, complete:true` with the expected checked count. Fresh needs-reply requests now use the indexed state/activity range automatically because no undefined-version row remains. Existing cursors finish on their original source. Compare ordered IDs, active/inactive, channel, message-date, empty/nonempty, resolved/archive and needs-reply filters with root's pre-run evidence; verify at most one property join per returned initialized row. An unforeseen uninitialized row disables fresh indexed requests rather than dropping it.
 5. **Initialize/verify reviews.** For each of the three actual villa IDs obtained from root's protected inventory, invoke `catalog/reviewMaintenance:initialize` with `{"propertyId":"<actual ID>","dryRun":true}`. Inspect `checked`, `ratingTotal`, `totalReviews`, `changed`; then invoke with `dryRun:false` only for the intended property and repeat dry run until `changed:false`. The mutation reads at most 1,001 reviews and one unique aggregate, refuses above 1,000 and replaces only the aggregate. The seven review records are untouched. Verify public count/rounded average and unchanged villa visibility before/after. Missing or corrupt duplicate aggregate rows fail explicitly rather than choosing an arbitrary row.
-6. **Audit verification.** No historical copy/delete job is needed. Confirm new appointment actions add one canonical record and no `appointmentChanges` row; confirm both history views and monetary fields. Existing history rows and all tables remain intact.
+6. **Audit verification.** No historical copy/delete job is needed. Confirm new appointment actions add one canonical record and no `appointmentChanges` row; confirm both history views and monetary fields. Refresh open paginated appointment-history views at deployment because the merged stream uses its own opaque cursor encoding; persisted history values remain intact. Existing history rows and all tables remain intact.
 
 The optional fields remain optional after verification: this PR does not claim a required-field narrowing or delete rollout support. If actual counts exceed these proven bounds, root should hold cutover and choose a separately reviewed paginated repair; the functions refuse rather than silently process an incomplete table. Check transaction byte limits as well as counts if populated content is unusually large. A failure rolls back the whole repair and preserves compatibility reads.
 
@@ -165,6 +165,7 @@ Node 22 and the parent hardware-aware ceiling of four Vitest workers are used. O
 - Frozen dependency install; complete application/test/backend types; lint with zero warnings; Knip: passed.
 - Focused final suites: 207 tests passed, plus 24 inbox/query-scale checks and the exact-parent counter probe. Later projection coverage is included in the final full run.
 - Actual local CLI codegen/function-spec and real record-return rejection: passed. `convex/_generated` is produced by CLI 1.50.0.
-- Full `pnpm verify:integration`: pending final result below. Earlier attempts stopped on implementation lint/test-typing issues before the app build; those issues were fixed, and owned test identities were cleaned by the runner.
-- Clean committed Phase 3 and Phase 4 scorecards: recorded after the final evidence commit below. The phase marker remains 3.
+- Full `pnpm verify:integration`: **passed**, including complete types, lint0, **3,059 unit/backend tests (251 files)**, production build, **228 component checks** and **73 actual-Clerk E2E checks**. The component configuration retains its 24 existing skips; no skip was added. The successful runner exited 0 after its owned-process and run-owned Clerk-user cleanup.
+- Earlier validation exposed implementation lint/test-typing issues and one old ownership assertion expecting the intentionally removed second audit. These were corrected while preserving rollback/history assertions. A prior component run had one unchanged coupon-fixture timeout; the exact case passed its focused recheck in 4.8 seconds under the original timeout, and the final complete component run passed all 228 enabled checks. No timeout or assertion was weakened.
+- Clean committed Phase 3 and Phase 4 scorecards: **30/30** and **32/32**. The phase marker remains 3. Final evidence is committed separately from private ignored logs.
 
