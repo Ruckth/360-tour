@@ -1,6 +1,6 @@
 # Phase 4 implementation and rollout
 
-The implementation starts at the required parent `161541b147c5e6943e4f4430c0ae70e71912839a` and incorporates parent follow-ups `17ba250` and `3eb40dd` by normal fast-forward updates in the prepared isolated checkout. The stacked base is `t3/phase3f-local-dev-preview` / [PR 83](https://github.com/Ruckth/360-tour/pull/83). `.arch-phase` stays **3**, as accepted by root. Convex remains the lockfile-pinned **1.50.0**. Parent Preview reuse, guarded dev/Preview startup, retention protections and bounded test workers remain intact.
+The implementation starts at the required parent `161541b147c5e6943e4f4430c0ae70e71912839a` and incorporates parent follow-ups `17ba250`, `3eb40dd` and `b3909c9` through normal Git updates (the final update is a merge) in the prepared isolated checkout. The stacked base is `t3/phase3f-local-dev-preview` / [PR 83](https://github.com/Ruckth/360-tour/pull/83). `.arch-phase` stays **3**, as accepted by root. Convex remains the lockfile-pinned **1.50.0**. Parent Preview reuse, guarded dev/Preview startup, retention protections and bounded test workers remain intact.
 
 Root owns independent reviews, CI/Preview acceptance, all shared/live data operations, production acceptance and merges. This implementation performs no shared, Preview or production backend operation, business-provider request, reset, retention deletion or merge.
 
@@ -107,6 +107,7 @@ Writer closure:
 | Staff takeover/release, staff follow-up/task edits, handoff, accepted reply, timeout, send failure, manual settlement, reopen/archive | Existing authoritative `inboxState` writes remain; the sparse index tracks the same transaction automatically |
 | Touch, identification, browser-handoff claim, profile update | Existing shared metadata builder updates activity/search metadata without rewriting message/event heads |
 | Archived-session deletion | Deletes the conversation first, as before, then bounded children; no retained conversation can serve a removed child's cached head |
+| Eval transcript writes | Preserve eval identity/length/pause guards and quota/alert/task exclusions; initialized rows refresh exact heads and their implicit last-guest state through the messaging model interface |
 | Seeds/historical imported rows | Missing projection version keeps the compatibility read path until bounded explicit initialization |
 
 `inboxProjectionReady` checks the separate undefined-version index bucket. A fresh `needs_reply` request uses the new index only when that bucket is empty. Until then, the existing paginated source plus live-message/event reads preserves old rows. A missing head also falls back to the authoritative live query. The cursor records its source index; a request begun before initialization stays on its original index after cutover. Read-only fallback never fabricates a preview or silently interprets missing optional state as false.
@@ -159,7 +160,7 @@ Remaining risks are the usual denormalized-writer closure and added contention/b
 
 ## Validation evidence
 
-Node 22 and the parent hardware-aware ceiling of four Vitest workers are used. Only the three allowed Clerk test fields were copied from the validated test env into this checkout's ignored mode-600 `.env.e2e.local`; no dirty original env, provider credential or shared deployment selector was loaded. Authenticated artifacts and function metadata remain private under ignored `output/phase4/` and the integration runner's mode-700 directories.
+Node 22 and the parent hardware-aware ceiling of four Vitest workers are used. Only the three allowed Clerk test fields were copied from the validated test env into this checkout's ignored mode-600 `.env.e2e.local`; no dirty original env, provider credential or shared deployment selector was loaded. Authenticated artifacts and function metadata remain private under ignored `output/phase4/` and the integration runner's mode-700 directories. The parent due-metric scorecard optimization is retained: `--phase3` measures its 30 due metrics, while `--phase4` and the unfiltered JSON report include Phase 4.
 
 - Frozen dependency install; complete application/test/backend types; lint with zero warnings; Knip: passed.
 - Focused final suites: 207 tests passed, plus 24 inbox/query-scale checks and the exact-parent counter probe. Later projection coverage is included in the final full run.

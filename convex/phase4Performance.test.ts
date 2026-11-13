@@ -151,3 +151,21 @@ it('keeps the durable Web delivery head exact through preparation and accepted c
   const session = await t.run(ctx => ctx.db.get(sessionId));
   expect(session).toMatchObject({ inboxState: 'done', lastDeliveryStatus: { status: 'replied', dispatchState: 'sent' }, lastMessagePreview: { content: 'Welcome' } });
 });
+
+it('refreshes an initialized eval transcript without introducing production admission or tasks', async () => {
+  const t = convexTest(schema, modules);
+  const sessionId = await t.mutation(internal.maintenance.chatEval.createSession, { channel: 'web' });
+  await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'user', content: 'First question' });
+  expect(await t.run(ctx => ctx.db.get(sessionId))).not.toHaveProperty('inboxState');
+  await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
+  await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'assistant', content: 'Eval answer' });
+  await t.run(async ctx => {
+    const session = (await ctx.db.get(sessionId))!;
+    expect(session).toMatchObject(await inboxProjection(ctx, session));
+    expect(session).toMatchObject({ inboxState: 'processing', lastMessagePreview: { role: 'assistant', content: 'Eval answer' } });
+    expect(session).not.toHaveProperty('lastStaffAlertAt');
+    expect(session).not.toHaveProperty('staffTask');
+    expect(await ctx.db.query('rateLimits').collect()).toEqual([]);
+    expect(await ctx.db.query('channelEvents').collect()).toEqual([]);
+  });
+});

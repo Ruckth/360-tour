@@ -1,3 +1,4 @@
+import { inboxProjection } from '../messaging/model';
 import { internalAction, internalMutation } from '../_generated/server';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
@@ -34,7 +35,12 @@ export const writeMessage = internalMutation({
     if (args.role === 'assistant' && session.aiPaused) return null;
     const timestamp = Date.now();
     const id = await ctx.db.insert('messages', { ...args, timestamp });
-    await ctx.db.patch(args.sessionId, { messageCount: (session.messageCount ?? 0) + 1, latestMessageAt: timestamp });
+    const metadata = { messageCount: (session.messageCount ?? 0) + 1, latestMessageAt: timestamp };
+    // Eval transcripts skip inbox tasks, but an explicitly initialized read projection must
+    // still follow the transcript's implicit last-guest-message rule.
+    const projection = session.inboxProjectionVersion === 1
+      ? await inboxProjection(ctx, { ...session, ...metadata, inboxState: undefined }) : {};
+    await ctx.db.patch(args.sessionId, { ...metadata, ...projection });
     return id;
   }
 });
