@@ -137,6 +137,8 @@ pnpm arch:score --phase 3    # run on a clean committed tree
 pnpm arch:score --phase3     # equivalent spelling, 30 completed-phase checks
 ```
 
+A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 3), so all 30 completed-phase gates remain enforced.
+
 `pnpm verify` runs typechecks, zero-warning lint, unit/backend tests and a production build with real configured app variables. With no configuration it must fail clearly. `pnpm verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `pnpm test:booking-ui` covers component/browser behavior; `pnpm test:e2e` owns a complete local backend/auth/build lifecycle. Never run two Next builds concurrently.
 
 For a refactor that claims unchanged backend contracts, compare to its **explicit reviewed parent**, not an old universal snapshot:
