@@ -1,15 +1,19 @@
 "use client";
+import type { Id } from 'convex/_generated/dataModel';
+import type { FunctionReturnType } from 'convex/server';
+import { getStoredGuestToken } from '@/components/chat/session/credentials';
+import { api } from 'convex/_generated/api';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useOptionalConvex } from '@/lib/react/convex';
-import { getNextChatSuggestions, markChatSuggestionsShown } from '@/lib/react/convex-api';
+import { useConvex } from 'convex/react';
+
 import { selectChatSuggestions, type ChatSuggestionId } from '@/lib/chat/suggestions';
 import type { ChatSuggestion } from '../chat-types';
 type StaticChatSuggestion = ChatSuggestion;
 const VISIBLE_FOLLOW_UP_SUGGESTION_LIMIT = 2;
-export function useChatSuggestions(sessionId: string | null, activePropertySlug: string | undefined, latestExchange: { userMessage: string; assistantMessage: string; clickedSuggestionId?: ChatSuggestionId | null } | null) {
+export function useChatSuggestions(sessionId: Id<"conversations"> | null, activePropertySlug: string | undefined, latestExchange: { userMessage: string; assistantMessage: string; clickedSuggestionId?: ChatSuggestionId | null } | null) {
  const t = useTranslations('Chat');
- const convex = useOptionalConvex();
+ const convex = useConvex();
  const [trackedSuggestionIds, setTrackedSuggestionIds] = useState<ChatSuggestionId[] | null>(null);
   const suggestions = useMemo(
     (): StaticChatSuggestion[] => [
@@ -111,25 +115,32 @@ export function useChatSuggestions(sessionId: string | null, activePropertySlug:
 
     async function loadTrackedStaticSuggestions() {
       setTrackedSuggestionIds(null);
-      if (!convex || !sessionId || orderedStaticSuggestions.length === 0)
+      if (!sessionId || orderedStaticSuggestions.length === 0)
         return;
 
       try {
-        const nextSuggestions = await getNextChatSuggestions(convex, {
-          sessionId,
-          candidateSuggestionIds: orderedStaticSuggestions.map(
-            (suggestion) => suggestion.id,
-          ),
-          limit: visibleSuggestionLimit,
-        });
+        const candidateIds = [...new Set(orderedStaticSuggestions.map(suggestion => suggestion.id))];
+        const selectionLimit = visibleSuggestionLimit;
+        const nextSuggestions: FunctionReturnType<typeof api.messaging.chatSuggestions.nextForSession> = [];
+        // The public query admits five candidates; retain ranking across all candidates.
+        for (let offset = 0; offset < candidateIds.length && nextSuggestions.length < selectionLimit; offset += 5) {
+          nextSuggestions.push(...await convex.query(api.messaging.chatSuggestions.nextForSession, {
+            sessionId, guestToken: getStoredGuestToken(sessionId),
+            candidateSuggestionIds: candidateIds.slice(offset, offset + 5),
+            limit: Math.min(selectionLimit - nextSuggestions.length, 5),
+          }));
+        }
         if (cancelled) return;
 
         if (nextSuggestions.length > 0) {
-          await markChatSuggestionsShown(convex, {
-            sessionId,
-            suggestions: nextSuggestions,
-          }).catch(() => null);
-          if (cancelled) return;
+          for (let offset = 0; offset < nextSuggestions.length; offset += 5) {
+            await convex.mutation(api.messaging.chatSuggestions.markShown, {
+              sessionId,
+              suggestions: nextSuggestions.slice(offset, offset + 5),
+              guestToken: getStoredGuestToken(sessionId)!,
+            }).catch(() => null);
+            if (cancelled) return;
+          }
         }
 
         const validIds = new Set(

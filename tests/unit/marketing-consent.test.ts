@@ -49,7 +49,7 @@ vi.mock("next/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => convex.client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => convex.client }));
 
 const CONSENT = "analytics-consent-v2";
 const VISITOR = "marketing-visitor";

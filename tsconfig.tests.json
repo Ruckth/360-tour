@@ -21,8 +21,7 @@
     "playwright.bench.config.ts",
     "vitest.config.ts",
     "vitest.bench.config.ts",
-    "scripts/demo-server-config.mjs",
-    "scripts/e2e-server.mjs"
+    "scripts/local-integration-config.mjs"
   ],
   "exclude": [
     "node_modules",

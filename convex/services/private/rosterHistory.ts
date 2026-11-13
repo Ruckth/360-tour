@@ -15,7 +15,7 @@ export type PatternEvidence = { pattern: WeeklyPattern; historyKnown: boolean; k
 const pattern = (staff: WeeklyPattern): WeeklyPattern => ({ workingHours: staff.workingHours, breaks: staff.breaks });
 
 function initialPatternEvidence(person: Doc<'staff'>): PatternEvidence {
-	// Creation is the only proven origin when the document has never been updated.
+	// Creation is the only proven origin when the document was not updated.
 	const proven = person.createdAt === person.updatedAt;
 	return {
 		pattern: pattern(person),

@@ -14,7 +14,7 @@ const fixture = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => fixture.t }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => fixture.client }));
+
 vi.mock("@/lib/i18n/use-public-messages", async () => {
   const { getPublicMessages } = await import("@/lib/i18n/messages-loader");
   const messages = getPublicMessages("en");
@@ -25,13 +25,12 @@ vi.mock("@/lib/booking/use-blocked-dates", () => {
   const stay = {};
   return { useVillaBlockedMonths: () => months, useStayBlockedDates: () => stay };
 });
-vi.mock("@/lib/react/convex-api", () => ({
-  listLiveProperties: async () => [{
+vi.mock("convex/react", () => ({
+  useConvex: () => ({ query: async () => true, mutation: (ref: unknown, args: { marketing?: unknown }) => fixture.createBooking(ref, args) }),
+  useQuery: () => [{
     _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 500000, maxGuests: 4,
     bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: "THB", directDiscountPercent: 1500,
   }],
-  isPropertyAvailable: async () => true,
-  createBooking: (client: unknown, args: { marketing?: unknown }) => fixture.createBooking(client, args),
 }));
 vi.mock("@/components/booking/useCouponPreview", () => {
   const state = { preview: { status: "idle" }, retry: () => {} };

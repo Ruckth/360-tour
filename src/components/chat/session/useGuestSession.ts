@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from 'convex/_generated/api';
 import { ConvexError } from 'convex/values';
-import { useOptionalConvex } from '@/lib/react/convex';
-import { closeChatSession, touchChatSession } from '@/lib/react/convex-api';
+import { useConvex } from 'convex/react';
+
 import { captureForBooking } from '@/lib/marketing/capture';
 import { clearStoredSessionId, getOrCreateVisitorId, getStoredGuestToken, getStoredSessionId, setStoredSessionId, storeGuestToken } from './credentials';
 import { startSessionHeartbeat, HEARTBEAT_MS } from './heartbeat';
@@ -19,7 +19,7 @@ export function invalidGuest(error: unknown) {
   return error instanceof ConvexError && typeof error.data === 'object' && error.data !== null && 'code' in error.data && error.data.code === 'INVALID_GUEST_TOKEN';
 }
 export function useGuestSession(propertySlug: string | undefined, open: boolean, handoffToken: string | null, onClaimed: () => void) {
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const [credentials, setCredentials] = useState<GuestCredentials | null>(null);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(false);
@@ -27,14 +27,12 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
   const sessionScope = useRef<AbortController | null>(null);
   const claimed = useRef<string | null>(null);
   const create = useCallback(async (signal: AbortSignal) => {
-    if (!convex) return null;
     const result = await convex.mutation(api.messaging.chat.createSession, { propertySlug, channel: 'web', visitorId: getOrCreateVisitorId(), ...getBrowserChatMetadata(), marketing: captureForBooking() });
     if (signal.aborted) return null;
     storeGuestToken(result.sessionId, result.guestToken);
     return result;
   }, [convex, propertySlug]);
   const ensureSession = useCallback((): Promise<GuestCredentials | null> => {
-    if (!convex) return Promise.resolve(null);
     if (sessionScope.current?.signal.aborted) { sessionScope.current = new AbortController(); activeRequest.current = null; }
     if (activeRequest.current) return activeRequest.current;
     const scope = sessionScope.current ??= new AbortController();
@@ -51,7 +49,7 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
       let next: GuestCredentials | null = null;
       if (id && getStoredGuestToken(id)) {
         try {
-          await touchChatSession(convex, { sessionId: id, propertySlug, ...getBrowserChatMetadata(), isOpen: true });
+          await convex.mutation(api.messaging.chat.touchSession, { sessionId: id, propertySlug, ...getBrowserChatMetadata(), isOpen: true, guestToken: getStoredGuestToken(id)! });
           next = { sessionId: id as Id<'conversations'>, guestToken: getStoredGuestToken(id)! };
         } catch (error) {
           if (!invalidGuest(error)) throw error;
@@ -70,11 +68,10 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
     return pending;
   }, [convex, credentials, create, handoffToken, onClaimed, propertySlug]);
   useEffect(() => {
-    if (!convex) { setReady(true); return; }
     if (open) void ensureSession().catch(() => undefined);
   }, [convex, open, ensureSession]);
   useEffect(() => {
-    if (!open || !convex) return;
+    if (!open) return;
     return startSessionHeartbeat({ intervalMs: HEARTBEAT_MS, touch: () => { void ensureSession().catch(() => undefined); } });
   }, [convex, open, ensureSession]);
   useEffect(() => () => { sessionScope.current?.abort(); }, []);
@@ -82,7 +79,7 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
     sessionScope.current?.abort(); sessionScope.current = new AbortController(); activeRequest.current = null;
     const old = credentials?.sessionId ?? getStoredSessionId();
     // Construct this authenticated request before removing the old per-session credential.
-    if (old && convex) void closeChatSession(convex, { sessionId: old }).catch(() => undefined);
+    if (old) void convex.mutation(api.messaging.chat.closeSession, { sessionId: old, guestToken: getStoredGuestToken(old)! }).catch(() => undefined);
     setCredentials(null); setReady(false); setError(false); clearStoredSessionId(old);
     const scope = sessionScope.current;
     const pending = create(scope.signal).then(next => {

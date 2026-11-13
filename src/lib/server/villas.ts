@@ -7,8 +7,6 @@ import { getPublicMessages, normalizePublicLocale } from "@/lib/i18n/messages-lo
 import {
   catalogFrom,
   reviewFromDb,
-  staticReviews,
-  topReviews,
   villaFromDb,
   type PublicVilla,
   type VillaCatalog,
@@ -16,8 +14,7 @@ import {
 
 // Server-side villa reads for pages, metadata and the sitemap. Results are cached for a
 // minute, so admin edits show up on the public site within ~60 s without a redeploy.
-// Bundled demo villas are only used when Convex is not configured (or has no villas yet);
-// while Convex is failing, the last good result is served instead.
+// During temporary backend failures, serve only previously read backend data.
 
 const REVALIDATE_SECONDS = 60;
 const TIMEOUT_MS = 3_000;
@@ -26,7 +23,8 @@ const cacheOptions = { revalidate: REVALIDATE_SECONDS, tags: ["villas"] };
 
 function convexUrl() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
-  return url && !url.includes("placeholder") ? url : undefined;
+  if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is required");
+  return url;
 }
 
 const cachedList = unstable_cache(
@@ -51,12 +49,11 @@ const lastGood = new Map<string, unknown>();
 let retryAfter = 0;
 
 /**
- * Runs a Convex read. `undefined` means Convex is not configured, or it is failing and nothing
- * has been read successfully yet (callers tell the two apart with `convexUrl()`).
+ * Runs a configured Convex read. `undefined` means it is failing and nothing has been read
+ * successfully yet. Missing configuration throws before entering the recovery path.
  */
 async function readConvex<T>(key: string, read: (url: string) => Promise<T>): Promise<T | undefined> {
   const url = convexUrl();
-  if (!url) return undefined;
   if (Date.now() < retryAfter) return lastGood.get(key) as T | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -87,7 +84,7 @@ async function listUnavailable() {
 }
 
 export async function getVillaCatalog(locale: string): Promise<VillaCatalog> {
-  // Show no villas rather than demo ones that can't be booked.
+  // An empty backend has no bookable inventory.
   if (await listUnavailable()) return { source: "db", villas: [] };
   return catalogFrom(await loadList(), getPublicMessages(locale), normalizePublicLocale(locale));
 }
@@ -104,7 +101,6 @@ export async function getVilla(
     if (await listUnavailable()) throw new Error("Villas are temporarily unavailable.");
     return null;
   }
-  if (catalog.source === "static") return { villa, reviews: staticReviews(slug, getPublicMessages(locale)) };
 
   const detail = await readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug));
   if (detail === null) return null;
@@ -115,16 +111,12 @@ export async function getVilla(
   };
 }
 
-export async function getFeaturedReviews(catalog: VillaCatalog, locale: string): Promise<Review[]> {
-  if (catalog.source === "static") {
-    const messages = getPublicMessages(locale);
-    return topReviews(catalog.villas.flatMap((villa) => staticReviews(villa.id, messages)));
-  }
+export async function getFeaturedReviews(): Promise<Review[]> {
   const rows = await loadFeaturedReviews();
   return (rows ?? []).map(reviewFromDb);
 }
 
 /** Whether the home page shows its reviews section (same source), so the header only links to it then. */
-export async function hasFeaturedReviews(locale: string) {
-  return (await getFeaturedReviews(await getVillaCatalog(locale), locale)).length > 0;
+export async function hasFeaturedReviews() {
+  return (await getFeaturedReviews()).length > 0;
 }

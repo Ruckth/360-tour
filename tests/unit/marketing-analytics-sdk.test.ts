@@ -17,7 +17,7 @@ vi.mock("next/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => null }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => null }));
 
 const HOST = "https://ph.invalid";
 const OPT_KEY = "__ph_opt_in_out_phc_test";

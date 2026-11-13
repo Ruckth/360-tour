@@ -2,6 +2,34 @@ import path from "node:path";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  plugins: [{
+    name: 'checkout-real-function-fixtures',
+    configureServer(server) {
+      const sessions = new Map<string, Awaited<ReturnType<typeof import('../support/checkout-backend').createFixtureBackend>>>();
+      server.middlewares.use('/__checkout-fixture', async (req, res) => {
+        if (req.method !== 'POST') { res.statusCode = 405; res.end(); return; }
+        try {
+          let raw = ''; for await (const chunk of req) raw += chunk;
+          const input = JSON.parse(raw);
+          let value: unknown;
+          if (input.kind === 'create') {
+            const fixtureModule = await server.ssrLoadModule('/tests/support/checkout-backend.ts');
+            const backend = await fixtureModule.createFixtureBackend(input.options);
+            value = crypto.randomUUID(); sessions.set(String(value), backend);
+          } else {
+            const backend = sessions.get(input.session); if (!backend) throw new Error('Missing browser fixture database');
+            const method = input.method.startsWith('action:') ? backend.useActions()[input.method.slice(7) as keyof ReturnType<typeof backend.useActions>] : backend[input.method as keyof typeof backend];
+            if (typeof method !== 'function') throw new Error('Unknown fixture operation');
+            value = await Reflect.apply(method, backend, input.args);
+          }
+          res.setHeader('content-type','application/json');res.end(JSON.stringify({value}));
+        } catch (error) {
+          res.statusCode = 500;res.setHeader('content-type','application/json');
+          res.end(JSON.stringify({message:error instanceof Error?error.message:'Fixture operation failed',data:error&&typeof error==='object'&&'data' in error?error.data:undefined}));
+        }
+      });
+    },
+  }],
   define: { "process.env": "{}" },
   optimizeDeps: {
     entries: ["tests/browser/*.html"],
@@ -15,10 +43,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: "@/lib/react/convex",
-        replacement: path.resolve("tests/browser/optional-convex-mock.ts"),
-      },
       {
         find: "convex/react",
         replacement: path.resolve("tests/browser/convex-mock.ts"),

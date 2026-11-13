@@ -263,7 +263,7 @@ export const revoke = staffMutation({
 	}
 });
 
-/** Cron: pending displays whose code was never entered, and expired (or used and since expired) pairing links. */
+/** Cron: pending displays whose code remains unused, and expired (or used and since expired) pairing links. */
 export const cleanPending = internalMutation({
 	args: {},
 	handler: async (ctx) => {

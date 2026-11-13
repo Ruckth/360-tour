@@ -1,7 +1,7 @@
 "use client";
 
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "convex/_generated/api";
 import { Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -16,14 +16,12 @@ import { CheckoutHeaderStaff } from "@/components/checkout/CheckoutHeaderStaff";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
 /** Auth gates, sidebar and header for every `/admin/*` page. Pages render only once the admin is connected. */
 export function AdminShell({ children }: { children: ReactNode }) {
-  const convex = useOptionalConvex();
-  const convexAuth = useOptionalConvexAuth();
+  const convexAuth = useConvexAuth();
   const { isLoaded, isSignedIn, user } = useUser();
 
   if (!isLoaded) {
@@ -52,20 +50,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!convex) {
-    return (
-      <div className="grid min-h-dvh place-items-center px-5">
-        <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
-          <h1 className="font-serif text-3xl font-semibold">Convex is not configured</h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Add `NEXT_PUBLIC_CONVEX_URL` so the admin dashboard can query chat sessions.
-          </p>
-        </section>
-      </div>
-    );
-  }
-
-  if (convexAuth.isAuthEnabled && convexAuth.isLoading) {
+  if (convexAuth.isLoading) {
     return (
       <div className="grid min-h-dvh place-items-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -76,7 +61,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (convexAuth.isAuthEnabled && !convexAuth.isAuthenticated) {
+  if (!convexAuth.isAuthenticated) {
     return (
       <div className="grid min-h-dvh place-items-center px-5">
         <section className="max-w-lg border border-border bg-card p-6 shadow-xl">

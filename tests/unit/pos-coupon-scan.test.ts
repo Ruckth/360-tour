@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 import type { Id } from "convex/_generated/dataModel";
 import { NextIntlClientProvider } from "next-intl";
-import { act, createElement, useState, type ComponentProps } from "react";
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../messages/en.json";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { scanProblem } from "@/components/checkout/CouponScanDialog";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 type Decode = (result: { data: string }) => void;
 const scanners = vi.hoisted(() => {
@@ -78,7 +79,7 @@ async function spaOrder(backend: CheckoutBackend) {
 
 /** The spa order open at checkout, with the coupon field showing; returns its applyOrderCoupon spy. */
 async function couponField() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const orderId = await spaOrder(backend);
   const apply = vi.spyOn(backend.useActions(), "applyOrderCoupon");
   await show(backend, orderId);

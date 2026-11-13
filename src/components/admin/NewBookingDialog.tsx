@@ -1,8 +1,8 @@
 "use client";
 
-import { useCouponRefusalReporter } from "@/lib/react/convex-api";
+import { useCouponRefusalReporter } from '@/lib/booking/coupon-refusals';
 import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvex } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode, type OfferResult } from "convex/shared/offers";
@@ -59,7 +59,7 @@ export function NewBookingDialog({
   onCreated: (id: Id<"bookings">) => void;
   onBlockInstead: (target: { propertyId: string; start: string; end: string }) => void;
 }) {
-  const reportRefusal = useCouponRefusalReporter(useConvex(), "admin_booking");
+  const reportRefusal = useCouponRefusalReporter("admin_booking");
   const createBooking = useMutation(api.bookings.commands.createBooking.createBooking);
   const [creationKey] = useState(() => newAttemptKey("booking"));
   const pending = useRef(false);

@@ -4,7 +4,6 @@ import { api } from "convex/_generated/api";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { useOptionalConvex } from "@/lib/react/convex";
 import { Message, PairingCode, Screen } from "./DisplayScreens";
 
 /**
@@ -61,9 +60,6 @@ function deviceName() {
 }
 
 export function CustomerDisplay() {
-  const t = useTranslations("Display");
-  const convex = useOptionalConvex();
-  if (!convex) return <Message>{t("notConfigured")}</Message>;
   return <PairedDisplay />;
 }
 

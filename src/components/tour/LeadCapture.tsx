@@ -1,12 +1,13 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import { Mail, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useOptionalConvex } from "@/lib/react/convex";
-import { saveLead } from "@/lib/react/convex-api";
+import { useConvex } from 'convex/react';
+
 
 export function LeadCapture({
   propertySlug,
@@ -17,7 +18,7 @@ export function LeadCapture({
 }) {
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -29,13 +30,11 @@ export function LeadCapture({
       return;
     }
     try {
-      if (convex) {
-        await saveLead(convex, {
+        await convex.mutation(api.messaging.leads.save, {
           propertySlug,
           email,
           source: "tour_completion",
         });
-      }
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : tourT("saveError"));

@@ -10,7 +10,7 @@ import { ProposalPayClient } from '@/components/booking/ProposalPayClient';
 import { extractChatBookingContext } from '@/lib/chat/booking-intent';
 
 const mock = vi.hoisted(() => ({ client: null as unknown, query: vi.fn(), mutation: vi.fn(), action: vi.fn(), preview: {} as unknown }));
-vi.mock('@/lib/react/convex', () => ({ useOptionalConvex: () => mock.client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => mock.client }));
 vi.mock('@/lib/marketing/capture', () => ({ captureForBooking: () => ({}) }));
 vi.mock('@/components/booking/useCouponPreview', () => ({ useCouponPreview: () => ({ preview: mock.preview }) }));
 vi.mock('@/components/booking/BookingDatePicker', () => ({ BookingRangePicker: () => null }));

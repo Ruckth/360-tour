@@ -10,7 +10,6 @@
   "scripts": {
     "dev": "npx convex dev --once && next dev",
     "dev:next": "next dev",
-    "dev:demo": "NEXT_PUBLIC_CONVEX_URL=placeholder NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=placeholder next dev",
     "dev:convex": "npx convex dev",
     "dev:full": "npx convex dev & next dev",
     "build": "next build",
@@ -24,9 +23,8 @@
     "test": "pnpm test:unit && pnpm test:e2e",
     "test:unit": "vitest run",
     "test:booking-ui": "playwright test -c playwright.booking.config.ts",
-    "test:e2e": "playwright test",
-    "test:e2e:smoke": "playwright test --grep @smoke",
-    "e2e:server": "node scripts/e2e-server.mjs",
+    "test:e2e": "node scripts/local-integration.mjs",
+    "test:e2e:smoke": "node scripts/local-integration.mjs -- pnpm exec playwright test --grep @smoke",
     "bench:routes": "node scripts/bench/route-js-size.mjs",
     "bench:browser": "playwright test -c playwright.bench.config.ts",
     "bench:messaging": "vitest run -c vitest.bench.config.ts",
@@ -40,7 +38,8 @@
     "ui-loop:anchors": "node scripts/ui-loop/anchors.ts",
     "ui-loop:annotate": "node scripts/ui-loop/annotate.ts",
     "arch:score": "node scripts/arch-scorecard.mjs",
-    "knip": "knip --include files,dependencies,unlisted,unresolved --treat-config-hints-as-errors"
+    "knip": "knip --include files,dependencies,unlisted,unresolved --treat-config-hints-as-errors",
+    "verify:integration": "node scripts/local-integration.mjs --verify"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

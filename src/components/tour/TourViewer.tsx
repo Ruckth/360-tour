@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
-import { useConvexQuery } from "@/lib/react/convex";
-import { resolveTourRooms, type DbTourRooms } from "@/lib/tour/rooms";
+import { useQuery } from "convex/react";
+import { resolveTourRooms } from "@/lib/tour/rooms";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
@@ -31,14 +31,13 @@ export function TourViewer({
   const messages = usePublicMessages();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const liveRooms = useConvexQuery<DbTourRooms>(tourRoomsQuery, { slug: property.id }, null);
+  const liveRooms = useQuery(tourRoomsQuery, { slug: property.id });
   const [timedOut, setTimedOut] = useState(false);
-  // Wait for the DB rooms so the tour never starts on bundled rooms and then swaps;
-  // if Convex does not answer in time, fall back to the bundled rooms.
-  const roomsReady = !liveRooms.loading || timedOut;
+  // Wait for actual DB rooms; a timeout shows the unavailable state without inventing rooms.
+  const roomsReady = liveRooms !== undefined || timedOut;
   const activeRooms = useMemo(
-    () => (roomsReady ? resolveTourRooms(property.tourRoomIds, liveRooms.data, messages) : []),
-    [liveRooms.data, messages, property.tourRoomIds, roomsReady],
+    () => (roomsReady ? resolveTourRooms(property.tourRoomIds, liveRooms, messages) : []),
+    [liveRooms, messages, property.tourRoomIds, roomsReady],
   );
   const [phase, setPhase] = useState<Phase>("intro");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
@@ -58,8 +57,7 @@ export function TourViewer({
   useBodyScrollLock(true);
 
   useEffect(() => {
-    // The DB-rooms fallback is still time-bounded; the intro no longer waits a fixed minimum —
-    // it advances as soon as the current room's texture is ready (see the effect below).
+    // Bound the loading state; the intro advances as soon as the current texture is ready.
     const roomsTimer = window.setTimeout(() => setTimedOut(true), ROOMS_TIMEOUT_MS);
     return () => window.clearTimeout(roomsTimer);
   }, []);

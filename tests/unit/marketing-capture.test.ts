@@ -13,7 +13,7 @@ vi.mock("next/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => convex.client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => convex.client }));
 
 type Capture = typeof import("@/lib/marketing/capture");
 let capture: Capture;

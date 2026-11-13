@@ -296,7 +296,7 @@ describe("booking history", () => {
         { _id: "h1", kind: "payment_amended", actor: "desk@example.com", recordedAt: NOW, effectiveAt: NOW, reason: "Was a transfer", before: {}, after: { before: { method: "cash" }, after: { method: "transfer" } } },
       ],
     });
-    await render(createElement(BookingHistory, { bookingId: "b1" as never, currency: "THB", villaName: () => "Pool Villa" }));
+    await render(createElement(BookingHistory, { bookingId: "b1" as import("convex/_generated/dataModel").Id<"bookings">, currency: "THB", villaName: () => "Pool Villa" }));
     const text = document.body.textContent ?? "";
     expect(text).toContain("Refund recorded");
     expect(text).toContain("Refunded: — → ฿8,500");
@@ -311,12 +311,12 @@ describe("booking history", () => {
 });
 
 describe("editing the stay price", () => {
-  const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 1500, currency: "THB" };
+  const villa: import("@/components/admin/admin-bookings-shared").AdminProperty = { _id: "p1" as import("convex/_generated/dataModel").Id<"properties">, slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 1500, currency: "THB" };
 
   it("sets a custom price with a reason against the reviewed revision, silent for a past stay unless chosen", async () => {
     mutations.editBooking.mockRejectedValueOnce(new Error("Uncaught Error: These dates are no longer available.\n"));
     const onClose = vi.fn();
-    await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
+    await render(createElement(EditBookingDialog, { booking, properties: [villa], onClose }));
     await click(document.getElementById("eb-custom"));
     await type("eb-custom-total", "15000");
     expect(button("Save changes")?.disabled).toBe(true);
@@ -340,7 +340,7 @@ describe("editing the stay price", () => {
   it("returns a custom price to the villa rate explicitly", async () => {
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     const custom = { ...booking, priceOverride: { total: 1500000, quotedTotal: 1700000, reason: "Deal", by: "a", at: 0 }, total: 1500000 } as BookingDetail;
-    await render(createElement(EditBookingDialog, { booking: custom, properties: [villa] as never, onClose: vi.fn() }));
+    await render(createElement(EditBookingDialog, { booking: custom, properties: [villa], onClose: vi.fn() }));
     await click(document.getElementById("eb-custom"));
     expect(document.body.textContent).toContain("Saving returns this stay to the villa rate.");
     expect(document.body.textContent).toContain("New total ฿17,000");
@@ -352,7 +352,7 @@ describe("editing the stay price", () => {
   it("shows the server's quote for a coupon stay and waits for it before saving", async () => {
     const promoted = { ...booking, total: 720000, amountPaid: 720000, promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 180000 } } as unknown as BookingDetail;
     queries.quoteBookingEdit.mockReturnValue(undefined);
-    await render(createElement(EditBookingDialog, { booking: promoted, properties: [villa] as never, onClose: vi.fn() }));
+    await render(createElement(EditBookingDialog, { booking: promoted, properties: [villa], onClose: vi.fn() }));
     expect(document.body.textContent).toContain("Checking the price…");
     expect(button("Save changes")?.disabled).toBe(true);
 
@@ -384,7 +384,7 @@ describe("editing the stay price", () => {
     const onClose = vi.fn();
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 450000, total: 2550000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     mutations.editBooking.mockRejectedValueOnce(new Error("The price changed to THB 26,000 since you reviewed THB 25,500. Check the new price and save again."));
-    await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
+    await render(createElement(EditBookingDialog, { booking, properties: [villa], onClose }));
     await type("eb-guests", "3");
     expect(document.body.textContent).toContain("New total ฿25,500");
     await click(button("Save changes"));
@@ -392,7 +392,7 @@ describe("editing the stay price", () => {
     expect(alertText()).toContain("Check the new price and save again.");
     expect(onClose).not.toHaveBeenCalled();
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 400000, total: 2600000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
-    await render(createElement(EditBookingDialog, { booking, properties: [villa] as never, onClose }));
+    await render(createElement(EditBookingDialog, { booking, properties: [villa], onClose }));
     expect(document.body.textContent).toContain("New total ฿26,000");
     await click(button("Save changes"));
     expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ expectedPrice: { total: 2600000, currency: "THB" } }));

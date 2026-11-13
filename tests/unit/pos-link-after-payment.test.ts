@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId } from "@/components/checkout/backend";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 
 /** Linking a paid service row to its appointment from the receipt screen, against the fixture backend. */
@@ -32,7 +33,7 @@ const printed = () => {
 };
 
 async function paidMassage() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const pending = async <T,>(promise: Promise<T>) => { await tick(); return promise; };
   const { orderId } = await pending(actions.addItem({ item: { kind: "service", serviceId: THAI_90 } }));
@@ -78,7 +79,7 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   expect(panel().textContent).toContain("Scheduling");
   expect(panel().textContent).not.toContain("to link to an appointment");
   expect(document.body.textContent).toContain("Row linked after payment · #1");
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 160000 });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 160000 });
   expect(printed()).toBe(issued);
 
   await click("Unlink…");
@@ -87,7 +88,7 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   await tick();
   expect(panel().textContent).toContain("No appointment");
   expect(document.body.textContent).toContain("Link undone · #2");
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 160000 });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 160000 });
   expect(printed()).toBe(issued);
 });
 
@@ -95,10 +96,10 @@ it("refuses a link reviewed before the appointment changed, and shows why", asyn
   const { backend } = await paidMassage();
   await click("Link appointment");
   await click("Review");
-  await act(async () => backend.setAppointmentSnapshot(SOMCHAI_APPOINTMENT, { revision: 3 }));
+  await act(async () => await backend.setAppointmentSnapshot(SOMCHAI_APPOINTMENT, { revision: 3 }));
   await type('textarea[id^="link-reason-"]', "Booked it");
   await click("Confirm link");
   await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/changed since you opened it/);
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false });
 });

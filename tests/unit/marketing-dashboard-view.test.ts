@@ -178,7 +178,7 @@ describe("dashboard view", () => {
       defaults: { campaignId: "c-ig", from: "2026-10-08", to: "2026-11-06" },
     });
     await act(async () => {
-      await spendDialog.last!.onSave({ campaignId: "c-ig" as never, amount: 500000, from: "2026-10-08", to: "2026-11-06" });
+      await spendDialog.last!.onSave({ campaignId: "c-ig" as import("convex/_generated/dataModel").Id<"marketingCampaigns">, amount: 500000, from: "2026-10-08", to: "2026-11-06" });
     });
     expect(calls.spend).toEqual([{ campaignId: "c-ig", amount: 500000, from: "2026-10-08", to: "2026-11-06" }]);
     expect(spendDialog.last?.open).toBe(false);
@@ -279,7 +279,7 @@ describe("dashboard view", () => {
 
     // Spend with no sales yet is a result, not an empty range.
     const empty = emptyRangeReport();
-    render(ready({ ...empty, spend: [{ id: "sp-only" as never, campaignId: "c-fb-nov" as never, amount: 1000000, from: empty.from, to: empty.to }] }));
+    render(ready({ ...empty, spend: [{ id: "sp-only" as import("convex/_generated/dataModel").Id<"marketingSpend">, campaignId: "c-fb-nov" as import("convex/_generated/dataModel").Id<"marketingCampaigns">, amount: 1000000, from: empty.from, to: empty.to }] }));
     expect(text()).not.toContain("No sales or tracked visits");
     expect(text()).toContain("0.00×");
 

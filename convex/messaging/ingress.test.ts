@@ -74,7 +74,7 @@ it('returns retryable failure when durable acceptance fails', async () => {
   const raw = JSON.stringify(payloads.line), signed = await signature(raw, 'test-only', true);
   // HTTP context deliberately fails its only mutation: success must never precede persistence.
   const calls: unknown[] = [];
-  const response = await handleWebhook('line', { runMutation: async (...args: unknown[]) => { calls.push(args); throw new Error('storage unavailable'); } } as never,
+  const response = await handleWebhook('line', { runMutation: async (...args: unknown[]) => { calls.push(args); throw new Error('storage unavailable'); } } as unknown as Parameters<typeof handleWebhook>[1],
     new Request('https://example.test/line/webhook', { method: 'POST', headers: { 'x-line-signature': signed }, body: raw }));
   expect(response.status).toBe(503); expect(calls).toHaveLength(1);
 });

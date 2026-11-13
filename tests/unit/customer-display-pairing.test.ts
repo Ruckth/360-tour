@@ -16,7 +16,8 @@ const mutations = vi.hoisted(() => ({
   "pos/displays:heartbeat": vi.fn(async () => null),
 }));
 
-vi.mock("convex/react", () => ({
+vi.mock('convex/react', async (importOriginal) => ({
+  ...await importOriginal<typeof import('convex/react')>(),
   useMutation: (ref: FunctionReference<"mutation">) => mutations[getFunctionName(ref) as keyof typeof mutations],
   // Pending tokens show their code; the claimed device token shows the welcome screen.
   useQuery: (_ref: unknown, args: "skip" | { token: string }) =>
@@ -26,7 +27,6 @@ vi.mock("convex/react", () => ({
     subscribeToConnectionState: () => () => undefined,
   }),
 }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => ({}) }));
 
 /** A promise resolved from the test, for responses that arrive later. */
 function later<T>() {

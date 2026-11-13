@@ -308,7 +308,7 @@ describe('AI service booking', () => {
 
 	it('does not let public callers mint or relabel messaging sessions', async () => {
 		const s = await setup();
-		await expect(s.t.mutation(api.messaging.chat.createSession, { channel: 'whatsapp' } as never)).rejects.toThrow();
+		await expect(s.t.mutation(api.messaging.chat.createSession, { channel: 'whatsapp' } as unknown as import('convex/server').FunctionArgs<typeof api.messaging.chat.createSession>)).rejects.toThrow();
 		await expect(s.t.mutation(api.messaging.chat.identifyVisitor, { guestToken: fixtureGuestToken, sessionId: s.sessionId, phone: '66000000000', contactApp: 'whatsapp' })).rejects.toThrow(/INVALID_GUEST_TOKEN/);
 	});
 });

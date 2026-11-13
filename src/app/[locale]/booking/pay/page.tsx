@@ -28,7 +28,7 @@ export default async function PayPage({
   searchParams: Promise<PaySearchParams>;
 }) {
   const params = await searchParams;
-  const bookingId = params.bookingId ?? params.booking_id ?? "demo";
+  const bookingId = params.bookingId ?? params.booking_id ?? "";
   const accessToken = params.token ?? params.bookingToken ?? "";
 
   if (params.proposal !== undefined) return <ProposalPayClient token={params.proposal} />;

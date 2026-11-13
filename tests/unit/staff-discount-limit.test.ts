@@ -1,21 +1,23 @@
 // The cashier's "over your limit" hint must agree with the server's refusal, satang for satang.
 import { describe, expect, it } from "vitest";
+import { convexTest } from "convex-test";
+import { createHarness } from "../../convex/testing/harness";
 import type { LineDiscount } from "convex/shared/orderMath";
 import { assertCashierDiscount, type StaffActor } from 'convex/auth/private/staffAccess';
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { discountOverLimit } from "@/components/checkout/staff-approvals";
 
 const cashier = { role: "cashier", email: "mint@example.com", tokenIdentifier: "mint" } as StaffActor;
-/** A query context whose only read is the cashier rules row. */
-const ctxWithLimit = (discountLimitPercent: number) =>
-  ({ db: { query: () => ({ withIndex: () => ({ unique: async () => ({ ...DEFAULT_CASHIER_RULES, discountLimitPercent }) }) }) } }) as never;
-
 type Line = { unitPrice: number; qty: number; catalogUnitPrice?: number; priceOverride?: { price: number }; couponDiscount?: number };
 
 /** What the server does with this discount: null when allowed, else the amount it reports. */
 async function server(line: Line, discount: LineDiscount, limit: number) {
   try {
-    await assertCashierDiscount(ctxWithLimit(limit), cashier, { ...line, discount });
+    const backend = createHarness(convexTest);
+    await backend.run(async ctx => {
+      await ctx.db.insert('cashierRules', { key: 'default', ...DEFAULT_CASHIER_RULES, discountLimitPercent: limit, updatedAt: 1, updatedByEmail: 'test' });
+      await assertCashierDiscount(ctx, cashier, { ...line, discount });
+    });
     return null;
   } catch (err) {
     const data = (err as { data?: { code?: string; amount?: number } }).data;

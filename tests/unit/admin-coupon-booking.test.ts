@@ -22,7 +22,7 @@ const client = vi.hoisted(() => ({
   mutation: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("convex/react", () => ({
-  useMutation: (ref: FunctionReference<"mutation">) => mutations[getFunctionName(ref).split(":").pop() as keyof typeof mutations],
+  useMutation: (ref: FunctionReference<"mutation">) => getFunctionName(ref) === "marketing/report:noteCouponRefusal" ? (args: unknown) => client.mutation(ref,args) : mutations[getFunctionName(ref).split(":").pop() as keyof typeof mutations],
   useQuery: (ref: FunctionReference<"query">, args: unknown) => {
     if (args === "skip") return undefined;
     return queries[getFunctionName(ref).split(":").pop() as keyof typeof queries]?.(args);
@@ -37,7 +37,7 @@ vi.mock("@/components/reui/phone-input", () => ({
 
 const NOW = Date.parse("2026-11-07T03:00:00Z");
 // kit/data.md: Mossbell Garden Suite ฿4,500/night, 15% direct offer.
-const villa = { _id: "p1", slug: "mossbell", name: "Mossbell Garden Suite", maxGuests: 2, status: "active", pricePerNight: 450000, directDiscountPercent: 1500, currency: "THB" };
+const villa: import("@/components/admin/admin-bookings-shared").AdminProperty = { _id: "p1" as import("convex/_generated/dataModel").Id<"properties">, slug: "mossbell", name: "Mossbell Garden Suite", maxGuests: 2, status: "active", pricePerNight: 450000, directDiscountPercent: 1500, currency: "THB" };
 const F1: CouponRules = {
   code: "DCNT-F1-20", version: 1, status: "active", benefit: { kind: "percent", percent: 2000 }, scope: "accommodation",
   stayFrom: "2026-11-01", stayTo: "2026-12-20", minNights: 2, maxSaving: 300000, used: 35, discountGranted: 0,
@@ -83,7 +83,7 @@ afterEach(async () => {
 async function openDialog(checkOut = "2026-11-14") {
   await render(
     createElement(NewBookingDialog, {
-      properties: [villa] as never, prefill: { propertyId: "p1", checkIn: "2026-11-12", checkOut }, onClose: vi.fn(), onCreated: vi.fn(), onBlockInstead: vi.fn(),
+      properties: [villa], prefill: { propertyId: "p1", checkIn: "2026-11-12", checkOut }, onClose: vi.fn(), onCreated: vi.fn(), onBlockInstead: vi.fn(),
     }),
   );
   await type("nb-phone", "+66812345678");
@@ -188,9 +188,9 @@ describe("coupon usage", () => {
 
   it("lists uses newest first, filters by state and flags over-limit uses", async () => {
     const rows = [
-      row({ _id: "r1" as never, state: "consumed", createdAt: 1, booking: { guestName: "Older Guest", checkIn: "2026-11-05", checkOut: "2026-11-07" } }),
-      row({ _id: "r2" as never, state: "held", createdAt: 2 }),
-      row({ _id: "r3" as never, state: "consumed", overLimit: true, createdAt: 3, booking: undefined }),
+      row({ _id: "r1" as import("convex/_generated/dataModel").Id<"couponRedemptions">, state: "consumed", createdAt: 1, booking: { guestName: "Older Guest", checkIn: "2026-11-05", checkOut: "2026-11-07" } }),
+      row({ _id: "r2" as import("convex/_generated/dataModel").Id<"couponRedemptions">, state: "held", createdAt: 2 }),
+      row({ _id: "r3" as import("convex/_generated/dataModel").Id<"couponRedemptions">, state: "consumed", overLimit: true, createdAt: 3, booking: undefined }),
     ];
     await render(createElement(CouponLedger, { code: "DCNT-F1-20", redemptions: rows }));
     const items = [...document.querySelectorAll("[data-testid='ledger-row']")].map((el) => el.textContent ?? "");
@@ -205,8 +205,8 @@ describe("coupon usage", () => {
   });
 
   it("lists checkout sales beside bookings, linked to their receipts", async () => {
-    const order = { orderId: "fxbill000042" as never, title: "Order #42", receiptNumber: "R-000318", customerName: "Mia Tanaka" };
-    await render(createElement(CouponLedger, { code: "DCNT-SPA-500", redemptions: [row({ _id: "r4" as never, state: "consumed", discount: 50000, createdAt: 4, booking: undefined, order })] }));
+    const order = { orderId: "fxbill000042" as import("convex/_generated/dataModel").Id<"orders">, title: "Order #42", receiptNumber: "R-000318", customerName: "Mia Tanaka" };
+    await render(createElement(CouponLedger, { code: "DCNT-SPA-500", redemptions: [row({ _id: "r4" as import("convex/_generated/dataModel").Id<"couponRedemptions">, state: "consumed", discount: 50000, createdAt: 4, booking: undefined, order })] }));
     const entry = document.querySelector("[data-testid='ledger-row']")!;
     expect(entry.textContent).toContain("Order #42R-000318");
     expect(entry.textContent).toContain("Checkout · Mia Tanaka · v1");

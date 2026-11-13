@@ -121,8 +121,8 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
   await expect(receipt(page).getByTestId("receipt-net")).toHaveText("Net฿1,500");
   await expect(page.locator('[data-approval-status="applied"]')).toHaveText("Approved by Ploy");
-  // The approved refund used the request's own attempt key.
-  const attempts = await page.evaluate(() => window.fixture.refundAttempts());
+  // The real backend recorded the approved request with its own attempt key.
+  const attempts = await page.evaluate(() => window.fixture.recordedRefunds());
   expect(attempts).toHaveLength(1);
   expect(attempts[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
   expect(attempts[0]).toMatchObject({ amount: 30_000, currency: "THB", method: "card", reason: "Shortened treatment" });

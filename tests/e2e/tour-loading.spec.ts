@@ -1,5 +1,4 @@
-import { expect, test, type Page, type Request } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test, type Page, type Request } from "./fixtures";
 
 /**
  * Progressive tour loading (agent E). In demo mode Convex is unavailable, so the viewer falls back
@@ -28,9 +27,6 @@ function isPanorama(url: string, name: string): boolean {
   return url.includes(name);
 }
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 test("@smoke first tour room loads without fetching every panorama, and switching rooms works", async ({
   page,

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "./checkout-transport";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import en from "../../messages/en.json";
 import th from "../../messages/th.json";
@@ -32,7 +32,7 @@ const locale = params.get("locale") === "th" ? "th" : "en";
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 
 const scenario = params.get("scenario") ?? "";
-const backend = createFixtureBackend({
+const backend = await createFixtureBackend({
   appointments: scenario === "fee" ? [{ appointmentId: "fxappt000002" as Id<"appointments">, status: "no_show" }] : [],
   bookings: scenario === "coupon-stay" ? [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 300000 } }] : [],
 });
@@ -60,7 +60,7 @@ async function couponSeed(): Promise<OrderId | null> {
   if (scenario === "coupon-soldout" || scenario === "coupon-changed") {
     await actions.applyOrderCoupon({ orderId, code: scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10" });
     // Another till used the last DCNT-L2-300; DCNT-L-10 was capped by its manager.
-    backend.setCouponSnapshot(scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10", scenario === "coupon-soldout" ? { used: 50 } : { maxSaving: 10000 });
+    await backend.setCouponSnapshot(scenario === "coupon-soldout" ? "DCNT-L2-300" : "DCNT-L-10", scenario === "coupon-soldout" ? { used: 50 } : { maxSaving: 10000 });
     return orderId;
   }
   const applied = await actions.applyOrderCoupon({ orderId, slug: "q1" });

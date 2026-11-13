@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
+import { act } from '../support/checkout-act';
 // Real shell/sidebar, with only auth, transport and router boundaries mocked.
 import type { Window as HappyDOMWindow } from 'happy-dom';
-import { act, createElement, type ComponentProps } from 'react';
+import { createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AdminShell } from '@/components/admin/AdminShell';
 import { CheckoutPhoto } from '@/components/checkout/CheckoutPhoto';
 import { CheckoutBackendProvider } from '@/components/checkout/backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 
 const route = vi.hoisted(() => ({ pathname: '/admin/checkout', push: vi.fn() }));
 vi.mock('@clerk/nextjs', () => ({
@@ -16,11 +17,7 @@ vi.mock('@clerk/nextjs', () => ({
   UserButton: () => null,
   SignInButton: () => null,
 }));
-vi.mock('@/lib/react/convex', () => ({
-  useOptionalConvex: () => ({}),
-  useOptionalConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }),
-}));
-vi.mock('convex/react', async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => ({}), useConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }), ...await (async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }))() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
@@ -125,7 +122,7 @@ it('recovers from a failed photo when its URL changes, and falls back when the U
 });
 
 it('enforces the new inline stepper bounds and keeps totals correct at 99 and one', async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const { orderId, lineId } = await actions.addItem({ item: { kind: 'extra', name: 'Bounded extra', price: 10000 } });
   await actions.updateLine({ lineId, qtyChange: 98 });
@@ -180,7 +177,7 @@ for (const theme of ['light', 'dark'] as const) {
   it(`${theme}: the checkout Orders dialog and its blurred backdrop take the app theme`, async () => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     await act(async () => root.render(createElement(CheckoutBackendProvider, {
-      backend: createFixtureBackend(), children: null,
+      backend: await createFixtureBackend(), children: null,
     } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId: null, onOrderChange: () => {}, onPaid: () => {} }))));
     await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Orders')!.click());
     const content = document.querySelector('[role=dialog]')!;

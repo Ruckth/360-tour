@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, Component, createElement, type ComponentProps, type ReactNode } from 'react';
+import { act } from '../support/checkout-act';
+import { Component, createElement, type ComponentProps, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from '@/components/checkout/backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 
 let root: Root;
 class PageBoundary extends Component<{ children?: ReactNode }, { failed: boolean }> {
@@ -21,7 +22,7 @@ async function render(backend: CheckoutBackend, orderId: OrderId) {
   await act(async () => root.render(createElement(PageBoundary, {}, createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId, onOrderChange: () => {}, onPaid: () => {} })))));
 }
 async function setup() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const adding = backend.useActions().addItem({ item: { kind: 'extra', name: 'Audit item', price: 10000 } });
   await vi.advanceTimersByTimeAsync(200);
   return { backend, orderId: (await adding).orderId };
@@ -42,7 +43,7 @@ describe('Checkout error recovery', () => {
     const { backend, orderId } = await setup();
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const failed: CheckoutBackend = kind === 'customer'
-      ? { ...backend, useCustomerSearch: query => { if (query.trim().length >= 2) throw new Error('Search unavailable'); return []; } }
+      ? { ...backend, useCustomerPage: () => { throw new Error('Search unavailable'); } }
       : { ...backend, useAttachable: ({ query }) => { if (query.trim().length >= 2) throw new Error('Search unavailable'); return []; } };
     await render(failed, orderId);
     await act(async () => button(kind === 'customer' ? 'Add customer' : 'Add booking').click());
@@ -106,7 +107,7 @@ describe('Checkout error recovery', () => {
 
   it('shows a query loading state and keeps customer separate from booking', async () => {
     const { backend, orderId } = await setup();
-    const pending: CheckoutBackend = { ...backend, useCustomerSearch: query => query.length >= 2 ? undefined : [] };
+    const pending: CheckoutBackend = { ...backend, useCustomerPage: () => ({ results: [], status: 'LoadingFirstPage', loadMore: () => {} }) };
     await render(pending, orderId);
     await act(async () => button('Add customer').click());
     await act(async () => type(document.querySelector<HTMLInputElement>('[aria-label="Search customers"]')!, 'Anna'));

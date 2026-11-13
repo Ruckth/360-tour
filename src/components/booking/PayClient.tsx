@@ -1,4 +1,6 @@
 "use client";
+import type { Id } from 'convex/_generated/dataModel';
+import { api } from 'convex/_generated/api';
 
 import { satangToBaht } from 'convex/shared/money';
 
@@ -11,16 +13,13 @@ import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
-import {
-  createStripeCheckout,
-  getPublicBooking,
-  type PublicBooking,
-} from "@/lib/react/convex-api";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { type PublicBooking } from '@/lib/booking/backend-types';
+
+import { useConvex } from 'convex/react';
 import { currencyPrefix } from "@/lib/villas";
 
 export function PayClient({
-  bookingId = "demo",
+  bookingId = "",
   accessToken = "",
   quotedTotal = null,
 }: {
@@ -33,29 +32,19 @@ export function PayClient({
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
-  const convex = useOptionalConvex();
-  const isDemo = bookingId === "demo";
+  const convex = useConvex();
   const successHref = localizeHref(
     `/booking/success?bookingId=${encodeURIComponent(bookingId)}${accessToken ? `&token=${encodeURIComponent(accessToken)}` : ""}`,
     locale,
   );
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(Boolean(convex && !isDemo));
+  const [checking, setChecking] = useState(true);
   const [booking, setBooking] = useState<PublicBooking | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let active = true;
     async function loadBooking() {
-      if (isDemo) {
-        setChecking(false);
-        return;
-      }
-      if (!convex) {
-        setError(t("liveVerificationUnavailable"));
-        setChecking(false);
-        return;
-      }
       if (!accessToken) {
         setError(t("missingToken"));
         setChecking(false);
@@ -63,8 +52,8 @@ export function PayClient({
       }
       setChecking(true);
       try {
-        const result = await getPublicBooking(convex, {
-          id: bookingId,
+        const result = await convex.query(api.bookings.bookings.getById, {
+          id: bookingId as Id<"bookings">,
           accessToken,
         });
         if (!active) return;
@@ -85,7 +74,7 @@ export function PayClient({
     return () => {
       active = false;
     };
-  }, [accessToken, bookingId, convex, isDemo, t]);
+  }, [accessToken, bookingId, convex, t]);
 
   useEffect(() => {
     router.prefetch(successHref);
@@ -95,14 +84,8 @@ export function PayClient({
     setLoading(true);
     setError("");
     try {
-      if (!isDemo) {
-        if (!convex) throw new Error(t("liveVerificationUnavailable"));
-        const checkout = await createStripeCheckout(convex, { bookingId, accessToken });
-        window.location.assign(checkout.url);
-        return;
-      }
-      // The standalone demo has no persisted booking or payment.
-      router.push(successHref);
+      const checkout = await convex.action(api.bookings.payments.stripe.createCheckout, { bookingId: bookingId as Id<'bookings'>, accessToken });
+      window.location.assign(checkout.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("paymentCouldNotConfirm"));
     } finally {
@@ -117,10 +100,10 @@ export function PayClient({
           <CreditCard className="h-6 w-6 text-gold" />
         </div>
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
-          {t(isDemo ? "confirmDemoPayment" : "confirmPayment")}
+          {t("confirmPayment")}
         </h1>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {t(isDemo ? "demoPaymentCopy" : "livePaymentCopy")}
+          {t("livePaymentCopy")}
         </p>
         <div className="mt-5 flex items-center gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-gold" />
@@ -152,13 +135,13 @@ export function PayClient({
         <div className="mt-6 grid gap-3">
           <Button
             onClick={confirmPayment}
-            disabled={loading || checking || (!isDemo && !booking)}
+            disabled={loading || checking || !booking}
           >
             {checking
               ? t("verifying")
               : loading
                 ? t("confirming")
-                : t(isDemo ? "confirmDemoPaymentCta" : "pay")}
+                : t("pay")}
           </Button>
           <Link
             href={localizeHref("/booking", locale)}

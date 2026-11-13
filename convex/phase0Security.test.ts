@@ -40,7 +40,7 @@ it('rejects assistant messages from the browser', async () => {
 	expect(recordUnknownQuestion.isInternal).toBe(true);
 	expect(concierge.getGuardrailReply).not.toHaveProperty('isPublic');
 	await expect(t.action(makeFunctionReference<'action'>('chatAi:generateReply'), {})).rejects.toThrow();
-	await expect(t.mutation(api.messaging.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as never)).rejects.toThrow();
+	await expect(t.mutation(api.messaging.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as unknown as import('convex/server').FunctionArgs<typeof api.messaging.chat.sendMessage>)).rejects.toThrow();
 	expect(await t.query(api.messaging.chat.getMessages, guest)).toEqual([]);
 });
 
@@ -163,9 +163,9 @@ it('bounds suggestion tracking to known keys and five items per call', async () 
 	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
 	for (const suggestionId of ['invented-key', 'x'.repeat(10000)]) {
-		await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [suggestionId] } as never)).rejects.toThrow();
-		await expect(t.mutation(api.messaging.chatSuggestions.markShown, { ...guest, suggestions: [{ source: 'static', suggestionId }] } as never)).rejects.toThrow();
-		await expect(t.mutation(api.messaging.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId } } as never)).rejects.toThrow();
+		await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [suggestionId] } as unknown as import('convex/server').FunctionArgs<typeof api.messaging.chatSuggestions.nextForSession>)).rejects.toThrow();
+		await expect(t.mutation(api.messaging.chatSuggestions.markShown, { ...guest, suggestions: [{ source: 'static', suggestionId }] } as unknown as import('convex/server').FunctionArgs<typeof api.messaging.chatSuggestions.markShown>)).rejects.toThrow();
+		await expect(t.mutation(api.messaging.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId } } as unknown as import('convex/server').FunctionArgs<typeof api.messaging.chatSuggestions.markClicked>)).rejects.toThrow();
 	}
 	const keys = ['availability', 'totalPrice', 'direct', 'tour', 'guests', 'contact'] as const;
 	await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [...keys] })).rejects.toThrow('At most 5');

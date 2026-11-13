@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { useConvex } from 'convex/react';
 import { CalendarDays, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { DateRange, DayPickerProps } from "react-day-picker";
@@ -55,7 +55,7 @@ export function BookingDatePicker({
   helperText?: string;
   onMonthChange?: (month: Date) => void;
 }) {
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const [rules, setRules] = useState(BOOKING_RULE_DEFAULTS);
   useEffect(() => {
     let active = true;

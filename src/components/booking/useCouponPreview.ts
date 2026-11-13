@@ -1,9 +1,10 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/shared/offers";
 import { useCallback, useEffect, useState } from "react";
-import { previewCoupon, useCouponRefusalReporter } from "@/lib/react/convex-api";
+import { useCouponRefusalReporter } from '@/lib/booking/coupon-refusals';
 
 export type CouponStay = { propertySlug: string; checkIn: string; checkOut: string };
 
@@ -22,21 +23,21 @@ type Answer = { key: string; result?: OfferResult; failed?: boolean };
  * come from an older stay.
  */
 export function useCouponPreview(
-  client: ConvexReactClient | null,
+  client: ConvexReactClient,
   code: string | null,
   stay: CouponStay | null,
 ): { preview: CouponPreview; retry: () => void; /** For a refusal that only shows when booking; shares this hook's once-per-page count. */ reportRefusal: (code: string, problem: unknown) => void } {
-  const reportRefusal = useCouponRefusalReporter(client, "booking");
-  const key = client && code && stay ? JSON.stringify([code, stay.propertySlug, stay.checkIn, stay.checkOut]) : "";
+  const reportRefusal = useCouponRefusalReporter("booking");
+  const key = code && stay ? JSON.stringify([code, stay.propertySlug, stay.checkIn, stay.checkOut]) : "";
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!key || !client || !code || !stay) return;
+    if (!key || !code || !stay) return;
     let active = true;
     // A short pause so stepping through dates doesn't send a query per click.
     const timer = setTimeout(() => {
-      previewCoupon(client, { code, propertySlug: stay.propertySlug, checkIn: stay.checkIn, checkOut: stay.checkOut })
+      client.query(api.marketing.public.previewCoupon, { code, propertySlug: stay.propertySlug, checkIn: stay.checkIn, checkOut: stay.checkOut })
         .then((result) => {
           if (active) {
             setAnswer({ key, result });

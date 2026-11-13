@@ -7,14 +7,13 @@ import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { calculateDirectQuote } from "convex/shared/pricing";
-import { useConvexQuery } from "@/lib/react/convex";
+import { useQuery } from "convex/react";
 import { cn } from "@/lib/utils";
 import { currencyPrefix } from "@/lib/villas";
 
 export type OtaComparison = FunctionReturnType<typeof api.catalog.properties.getOtaComparison>;
 type OtaRate = NonNullable<OtaComparison>["rates"][number];
 
-// Hoisted: useConvexQuery refetches whenever the function reference changes.
 const otaComparisonQuery = api.catalog.properties.getOtaComparison;
 
 const PLATFORM_NAMES: Record<OtaRate["platform"], string> = {
@@ -25,7 +24,7 @@ const PLATFORM_NAMES: Record<OtaRate["platform"], string> = {
 };
 
 export function useOtaComparison(slug: string) {
-  return useConvexQuery<OtaComparison>(otaComparisonQuery, { slug }, null).data;
+  return useQuery(otaComparisonQuery, { slug });
 }
 
 /**

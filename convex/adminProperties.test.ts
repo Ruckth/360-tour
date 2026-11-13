@@ -150,7 +150,8 @@ describe('image uploads', () => {
 		return await t.run(async (ctx) => {
 			const storageId = await ctx.storage.store(new Blob(['image-bytes']));
 			// convex-test doesn't record these; patch them to stand in for a real upload.
-			await ctx.db.patch(storageId as never, { contentType, size } as never);
+			const patchStorage = ctx.db.patch as unknown as (id: typeof storageId, fields: { contentType: string; size: number }) => Promise<void>;
+			await patchStorage(storageId, { contentType, size });
 			return storageId;
 		});
 	}

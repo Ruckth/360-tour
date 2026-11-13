@@ -1,24 +1,22 @@
 "use client";
 
-import { OptionalConvexProvider } from "@/lib/react/convex";
+import { ConvexClientProvider } from "@/lib/react/convex";
 import type { ReactNode } from "react";
 import { AnalyticsConsent } from "@/components/global/AnalyticsConsent";
 import { MarketingCapture } from "@/components/global/MarketingCapture";
 
 export function Providers({
   children,
-  clerkEnabled = false,
   convexUrl,
 }: {
   children: ReactNode;
-  clerkEnabled?: boolean;
-  convexUrl?: string;
+  convexUrl: string;
 }) {
   return (
-    <OptionalConvexProvider convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
+    <ConvexClientProvider convexUrl={convexUrl}>
       {children}
       <AnalyticsConsent />
       <MarketingCapture />
-    </OptionalConvexProvider>
+    </ConvexClientProvider>
   );
 }

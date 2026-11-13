@@ -8,7 +8,7 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
 
 /**
  * Everything the checkout UI reads and writes. The admin page implements it with Convex
- * (convex-backend.ts); the dev preview with in-memory fixtures (fixture-backend.ts). The shapes
+ * (convex-backend.ts); the dev preview with canned view states (fixture-backend.ts). The shapes
  * are the Convex functions' own, so both stay in step with convex/pos/ and convex/pos/customers.ts.
  */
 

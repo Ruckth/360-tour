@@ -74,7 +74,7 @@ const BASE: Omit<HotelCalendarInput, "data"> = {
  * The original inline transform, copied verbatim from the pre-extraction AdminBookingsView, so the
  * extracted module can be proved identical rather than merely plausible.
  */
-function legacyEvents(input: HotelCalendarInput) {
+function legacyEvents(input: HotelCalendarInput): ReturnType<typeof buildHotelCalendarEvents> {
   const { data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel: label } = input;
   if (!data) return [];
   const names = new Map(data.properties.map((p) => [p._id as string, p.name]));
@@ -169,7 +169,7 @@ describe("buildHotelCalendarEvents", () => {
       { ...BASE, data, villa: "villa-a" },
       { ...BASE, data, checkInTime: "15:00", checkOutTime: "10:00" },
     ] as HotelCalendarInput[]) {
-      expect(shape(buildHotelCalendarEvents(opts))).toEqual(shape(legacyEvents(opts) as never));
+      expect(shape(buildHotelCalendarEvents(opts))).toEqual(shape(legacyEvents(opts)));
     }
   });
 

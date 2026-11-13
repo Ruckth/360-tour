@@ -12,17 +12,12 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('next-intl', () => { const translate = (key: string) => key; return { useLocale: () => 'en', useTranslations: () => translate }; });
 vi.mock('next/navigation', () => ({ usePathname: () => '/chat', useSearchParams: () => mocks.search, useRouter: () => mocks.router }));
-vi.mock('@/lib/react/convex', () => { const client = { mutation: mocks.mutation }; return { useOptionalConvex: () => client }; });
-vi.mock('@/components/chat/ChatContext', () => ({ useChatPageContext: () => null }));
-vi.mock('@/lib/react/convex-api', () => ({
-  touchChatSession: mocks.touch, closeChatSession: async () => undefined, listLiveProperties: async () => [],
-  identifyChatVisitor: async () => undefined, getNextChatSuggestions: async () => [], markChatSuggestionsShown: async () => undefined,
-  markChatSuggestionClicked: async () => undefined, createChatBrowserHandoff: async () => 'handoff',
-}));
-vi.mock('convex/react', () => ({ useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
   listener => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); },
   () => args === 'skip' ? undefined : getFunctionName(ref) === 'messaging/chat:getMessages' ? mocks.rows : mocks.session,
 ) }));
+vi.mock('@/components/chat/ChatContext', () => ({ useChatPageContext: () => null }));
+
 let root: Root | null, chat: ReturnType<typeof useChatSession>;
 function Harness({ initialDraft }: { initialDraft?: string }) {
   const value = useChatSession({ mode: 'page', initialDraft, contactEmail: 'test@example.com', whatsappNumber: '123' });

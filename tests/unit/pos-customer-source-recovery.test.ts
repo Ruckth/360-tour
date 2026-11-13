@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { parseCheckoutSource } from "@/components/checkout/checkout-source";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 const button = (name: string) => [...document.querySelectorAll("button")].find(el => el.textContent?.trim() === name)!;
@@ -45,7 +46,7 @@ afterEach(async () => {
 });
 
 it("keeps an invalid phone draft recoverable, then saves the corrected phone", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
   await click("Add customer");
@@ -67,7 +68,7 @@ it("keeps an invalid phone draft recoverable, then saves the corrected phone", a
 });
 
 it("allows creating a customer with no phone", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
   await click("Add customer");
@@ -80,7 +81,7 @@ it("allows creating a customer with no phone", async () => {
 });
 
 it.each(["order=aaaaaaaa", "order=bbbbbbbb", "order=fxmissing000001", "booking=bad!"])("offers New order recovery for %s", async (query) => {
-  await show(createFixtureBackend(), query);
+  await show(await createFixtureBackend(), query);
   expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/(order|id)/i);
   expect(button("New order").disabled).toBe(false);
   await click("New order");
@@ -90,7 +91,7 @@ it.each(["order=aaaaaaaa", "order=bbbbbbbb", "order=fxmissing000001", "booking=b
 });
 
 it("opens an existing order through Orders after a missing link", async () => {
-  await show(createFixtureBackend(), "order=aaaaaaaa");
+  await show(await createFixtureBackend(), "order=aaaaaaaa");
   await click("Orders");
   const row = [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Unpaid orders"] button')].find(el => el.textContent?.includes("Order #1042"))!;
   await act(async () => row.click());
@@ -100,7 +101,7 @@ it("opens an existing order through Orders after a missing link", async () => {
 });
 
 it("keeps a valid existing link usable", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const pending = backend.useActions().addItem({ item: { kind: "extra", name: "Valid linked item", price: 10000 } });
   await settle();
   const { orderId } = await pending;

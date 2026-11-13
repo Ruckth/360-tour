@@ -496,7 +496,7 @@ describe("settling guest messages", () => {
     return {
       ...session(id),
       latestMessage: {
-        _id: `${id}-message` as never,
+        _id: `${id}-message` as import("convex/_generated/dataModel").Id<"messages">,
         role: "user" as const,
         content: `Question from ${id}`,
         timestamp: 1,

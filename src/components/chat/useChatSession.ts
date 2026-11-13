@@ -1,17 +1,19 @@
 "use client";
+import type { Id } from 'convex/_generated/dataModel';
+import { getStoredGuestToken } from '@/components/chat/session/credentials';
 import { useLocale, useTranslations } from 'next-intl';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { useOptionalConvex } from '@/lib/react/convex';
+import { useConvex } from 'convex/react';
 import { captureForBooking } from '@/lib/marketing/capture';
 import { api } from 'convex/_generated/api';
 import { useChatPageContext } from './ChatContext';
 import type { ContactForm } from './ChatComposer';
-import type { ChatMessage as Message, ChatSuggestion } from './chat-types';
-import { closeChatSession, identifyChatVisitor, listLiveProperties, markChatSuggestionClicked } from '@/lib/react/convex-api';
+import type { ChatSuggestion } from './chat-types';
+
 import { getChatActionCard, resolveChatActionHint } from '@/lib/chat/action-card';
 import { localizeHref, stripLocalePrefix } from '@/i18n/routing';
-import { extractChatBookingContext, getBookingPromptKey, type ChatVillaRef } from '@/lib/chat/booking-intent';
+import { type ChatVillaRef } from '@/lib/chat/booking-intent';
 import { buildChatHref, CHAT_RETURN_TO_PARAM, getPathWithSearch, getSafeChatReturnTo } from '@/lib/chat/navigation';
 import { CHAT_HANDOFF_PARAM, stripChatHandoffParam } from '@/lib/chat/external-browser';
 import { useGuestSession } from './session/useGuestSession';
@@ -39,14 +41,13 @@ function persistDraft(draft: Draft | null) {
 export function useChatSession(props: ChatExperienceProps) {
   const { mode, propertySlug, propertyName, initialOpen = false, initialDraft = '' } = props;
   const t = useTranslations('Chat'), locale = useLocale(), router = useRouter(), pathname = usePathname(), searchParams = useSearchParams();
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const pageContext = useChatPageContext();
   const activePropertySlug = propertySlug ?? pageContext?.context.propertySlug;
   const activePropertyName = propertyName ?? pageContext?.context.propertyName;
   const [open, setOpen] = useState(mode === 'page');
   const [mounted, setMounted] = useState(false), [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState(initialDraft), [sending, setSending] = useState(false);
-  const [demoMessages, setDemoMessages] = useState<Message[]>([]);
   const [villas, setVillas] = useState<ChatVillaRef[]>();
   const [contactForm, setContactForm] = useState<ContactForm>({ email: '', preferredApp: 'whatsapp', contactHandle: '' });
   const [contactStatus, setContactStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -55,9 +56,9 @@ export function useChatSession(props: ChatExperienceProps) {
   const currentPath = getPathWithSearch(pathname, searchParams.toString());
   const claimedHandoff = useCallback(() => router.replace(stripChatHandoffParam(currentPath)), [router, currentPath]);
   const guest = useGuestSession(activePropertySlug, open && hydrated, searchParams.get(CHAT_HANDOFF_PARAM), claimedHandoff);
-  const transcript = useChatTranscript(convex ? guest.credentials : null);
-  const messages = convex ? transcript.messages : demoMessages;
-  const isTyping = sending || (convex ? transcript.isTyping : false);
+  const transcript = useChatTranscript(guest.credentials);
+  const messages = transcript.messages;
+  const isTyping = sending || transcript.isTyping;
   const latestExchange = useMemo(() => latestExchangeFromMessages(messages), [messages]);
   const { suggestions, visibleSuggestions } = useChatSuggestions(guest.credentials?.sessionId ?? null, activePropertySlug, latestExchange);
   const handoff = useChatHandoff(mode, hydrated, guest.ensureSession);
@@ -74,9 +75,9 @@ export function useChatSession(props: ChatExperienceProps) {
   }, [initialDraft]);
   useEffect(() => { if (hydrated) persistDraft(input ? { ...pending.current, text: input } : pending.current); }, [hydrated, input]);
   useEffect(() => {
-    if (!convex || !open || villas) return;
+    if (!open || villas) return;
     let active = true;
-    void listLiveProperties(convex).then(rows => { if (active) setVillas(rows.map(({ slug, name }) => ({ slug, name }))); }).catch(() => undefined);
+    void convex.query(api.catalog.properties.list, {}).then(rows => { if (active) setVillas(rows.map(({ slug, name }) => ({ slug, name }))); }).catch(() => undefined);
     return () => { active = false; };
   }, [convex, open, villas]);
   const latestAssistantIndex = messages.findLastIndex(message => message.role === 'assistant');
@@ -85,18 +86,18 @@ export function useChatSession(props: ChatExperienceProps) {
     latestAssistantMessage: message.content, activePropertySlug, villas, actionHint: message.action,
   })), [messages, activePropertySlug, villas]);
   const latestActionCard = messageActionCards[latestAssistantIndex];
-  const chatInputDisabled = !hydrated || isTyping || (!!convex && (!guest.ready || !guest.credentials || transcript.loading));
+  const chatInputDisabled = !hydrated || isTyping || (!guest.ready || !guest.credentials || transcript.loading);
   const chatReturnHref = getSafeChatReturnTo(searchParams.get(CHAT_RETURN_TO_PARAM)) ?? localizeHref('/', locale);
   const openChat = useCallback(() => { setMounted(true); setOpen(true); }, []);
   const closeChat = useCallback(() => {
     setOpen(false);
-    if (convex && guest.credentials) void closeChatSession(convex, { sessionId: guest.credentials.sessionId }).catch(() => undefined);
+    if (guest.credentials) void convex.mutation(api.messaging.chat.closeSession, { sessionId: guest.credentials.sessionId, guestToken: getStoredGuestToken(guest.credentials.sessionId)! }).catch(() => undefined);
     if (mode === 'page') router.replace(chatReturnHref);
   }, [convex, guest.credentials, mode, router, chatReturnHref]);
   const restartSession = guest.restartSession;
   const restartChat = useCallback(async () => {
     activeSubmission.current?.abort(); activeSubmission.current = null;
-    pending.current = null; persistDraft(null); setInput(''); setDemoMessages([]); setSending(false); setContactStatus('idle'); setOpen(true);
+    pending.current = null; persistDraft(null); setInput(''); setSending(false); setContactStatus('idle'); setOpen(true);
     await restartSession().catch(() => setContactStatus('error'));
   }, [restartSession]);
   useEffect(() => { if (initialOpen && hydrated) openChat(); }, [initialOpen, hydrated, openChat]);
@@ -122,12 +123,10 @@ export function useChatSession(props: ChatExperienceProps) {
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!contactForm.email.trim() && !contactForm.contactHandle.trim()) return;
-    if (!convex) { setContactStatus('error'); return; }
     setContactStatus('saving');
     try {
       const credentials = await guest.ensureSession(); if (!credentials) throw new Error('No session');
-      await identifyChatVisitor(convex, { sessionId: credentials.sessionId, email: contactForm.email || undefined,
-        phone: contactForm.preferredApp === 'whatsapp' ? contactForm.contactHandle || undefined : undefined, contactApp: contactForm.preferredApp, contactHandle: contactForm.contactHandle || undefined });
+      await convex.mutation(api.messaging.chat.identifyVisitor, { sessionId: credentials.sessionId, email: contactForm.email || undefined, phone: contactForm.preferredApp === 'whatsapp' ? contactForm.contactHandle || undefined : undefined, contactApp: contactForm.preferredApp, contactHandle: contactForm.contactHandle || undefined, guestToken: getStoredGuestToken(credentials.sessionId)! });
       if (activeSession.current === credentials.sessionId) setContactStatus('saved');
     } catch { setContactStatus('error'); }
   }
@@ -136,14 +135,8 @@ export function useChatSession(props: ChatExperienceProps) {
     if (!clean || chatInputDisabled || !!activeSubmission.current) return;
     const preset = transcript.aiPaused ? undefined : suggestions.find(item => item.text === clean);
     const actionHint = resolveChatActionHint({ latestUserMessage: clean, activePropertySlug, villas, clickedSuggestionId: preset?.id }) ?? "none";
-    if (!convex) {
-      const booking = extractChatBookingContext({ latestUserMessage: clean, guestMessages: messages.filter(item => item.role === 'user').map(item => item.content), latestAssistantMessage: '', activePropertySlug });
-      const reply = booking.hasBookingIntent || actionHint === 'booking' ? t(getBookingPromptKey(booking)) : t('noConvex');
-      setDemoMessages(items => [...items, { role: 'user', content: clean }, { role: 'assistant', content: reply, action: actionHint }]);
-      setInput(''); pending.current = null; persistDraft(null); return;
-    }
     const submission = new AbortController(); activeSubmission.current = submission; setSending(true);
-    let sentSession: string | undefined;
+    let sentSession: Id<"conversations"> | undefined;
     try {
       const credentials = await guest.ensureSession();
       if (submission.signal.aborted) return;
@@ -155,7 +148,7 @@ export function useChatSession(props: ChatExperienceProps) {
       await convex.mutation(api.messaging.chat.sendMessage, { ...credentials, clientMessageId, content: clean, propertySlug: activePropertySlug, locale, actionHint, marketing: captureForBooking() ?? {} });
       if (submission.signal.aborted || activeSession.current !== sentSession) return;
       pending.current = null; persistDraft(null); setInput('');
-      if (preset) void markChatSuggestionClicked(convex, { sessionId: sentSession, suggestion: { source: 'static', suggestionId: preset.id } }).catch(() => undefined);
+      if (preset) void convex.mutation(api.messaging.chatSuggestions.markClicked, { sessionId: sentSession, suggestion: { source: 'static', suggestionId: preset.id }, guestToken: getStoredGuestToken(sentSession)! }).catch(() => undefined);
     } catch (error) {
       if (!submission.signal.aborted && (!sentSession || activeSession.current === sentSession)) { setInput(clean); await guest.recoverInvalidSession(error).catch(() => undefined); }
     } finally { if (activeSubmission.current === submission) { activeSubmission.current = null; setSending(false); } }

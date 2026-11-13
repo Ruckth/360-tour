@@ -1,4 +1,5 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import { useRouter } from "next/navigation";
 import { ChevronsRight, ExternalLink, Globe2, Users } from "lucide-react";
@@ -6,7 +7,6 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useState } from "react";
 import {
   getChatVillaBackground,
-  getDemoChatProperties,
   getLiveChatProperties,
 } from "@/components/chat/chat-villa-data";
 import { PropertyImage } from "@/components/property/PropertyImage";
@@ -17,8 +17,8 @@ import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { BookingProperty } from "@/lib/booking/booking";
 import { resort } from "@/lib/data/resort-config";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
-import { useOptionalConvex } from "@/lib/react/convex";
-import { listLiveProperties } from "@/lib/react/convex-api";
+import { useConvex } from 'convex/react';
+
 
 export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
   const chatT = useTranslations("Chat");
@@ -27,27 +27,21 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const messages = usePublicMessages();
   const router = useRouter();
-  const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
-  const convex = useOptionalConvex();
-  const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
+  const convex = useConvex();
+  const [properties, setProperties] = useState<BookingProperty[]>([]);
 
   useEffect(() => {
-    if (!convex) {
-      setProperties(fallbackProperties);
-      return;
-    }
-
     const client = convex;
     let active = true;
 
     async function loadProperties() {
       try {
-        const rows = await listLiveProperties(client);
+        const rows = await client.query(api.catalog.properties.list, {});
         if (!active) return;
         const liveProperties = getLiveChatProperties(rows, messages, locale);
-        setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
+        setProperties(liveProperties);
       } catch {
-        if (active) setProperties(fallbackProperties);
+        if (active) setProperties([]);
       }
     }
 
@@ -55,7 +49,7 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale, messages]);
+  }, [convex, locale, messages]);
 
   const orderedProperties = useMemo(() => {
     if (!propertySlug) return properties;

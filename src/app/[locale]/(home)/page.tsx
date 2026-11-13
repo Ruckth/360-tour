@@ -52,7 +52,7 @@ export default async function HomePage() {
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const resort = getLocalizedResort(locale);
   const catalog = await getVillaCatalog(locale);
-  const reviews = await getFeaturedReviews(catalog, locale);
+  const reviews = await getFeaturedReviews();
   const villaItems = catalog.villas.map((property) => ({
     property,
     // Decorative bundled line; dropped once an admin rewrites the villa copy.
