@@ -1,15 +1,15 @@
-import { v } from "convex/values";
-import { internal } from "../_generated/api";
-import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { v } from 'convex/values';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 
 export const replyOutcomeValidator = v.union(
   v.literal("answered"),
   v.literal("awaiting_guest"),
   v.literal("needs_staff"),
 );
-export type ReplyOutcome = "answered" | "awaiting_guest" | "needs_staff";
 
+export type ReplyOutcome = "answered" | "awaiting_guest" | "needs_staff";
 
 export function inboxNeedsStaff(
   session: Doc<"conversations">,
@@ -54,7 +54,7 @@ export async function guestReceived(
     inboxSendError: undefined,
   });
   if (!needsStaff)
-    await ctx.scheduler.runAfter(60_000, internal.inboxLifecycle.expireAnswer, {
+    await ctx.scheduler.runAfter(60_000, internal.messaging.inboxLifecycle.expireAnswer, {
       sessionId,
       messageId,
     });

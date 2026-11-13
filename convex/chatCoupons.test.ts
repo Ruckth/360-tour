@@ -60,11 +60,11 @@ it.each(['expired', 'full', 'version', 'price', 'budget'] as const)('returns a n
 });
 it('shows unknown and weaker codes as refused or direct-price proposals', async () => {
   const { t, sessionId, versionId } = await setup();
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'coupon UNKNOWN' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'coupon UNKNOWN' });
   const missing = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'UNKNOWN' });
   expect(missing).toMatchObject({ total: 1700000, coupon: { status: 'invalid', problem: { code: 'not_found' } } });
   await t.run(ctx => ctx.db.patch(versionId, { benefit: { kind: 'percent', percent: 1000 } }));
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Use coupon GUEST20 instead' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'Use coupon GUEST20 instead' });
   const weaker = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   expect(weaker).toMatchObject({ total: 1700000, coupon: { status: 'coupon_worse', discount: 200000 } });
 });
@@ -109,8 +109,8 @@ it('messaging yes returns a new plain text summary after coupon expiry, with no 
 it('the last coupon slot cannot be held by a second reviewed quote', async () => {
   const { t, sessionId, versionId, couponId } = await setup();
   await t.run(ctx => ctx.db.patch(versionId, { usageLimit: 1 }));
-  const { sessionId: secondSessionId } = await t.mutation(api.chat.createSession, { channel: 'web' });
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId: secondSessionId, content: 'coupon GUEST20' });
+  const { sessionId: secondSessionId } = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId: secondSessionId, content: 'coupon GUEST20' });
   await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
   await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId: secondSessionId, ...stay, checkIn: '2027-01-20', checkOut: '2027-01-22', couponCode: 'GUEST20' });
   await t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId });
@@ -179,13 +179,13 @@ it('does not accept CODE as guest evidence from a coupon-code question', async (
 });
 it('rejects a withdrawn or replaced guest code instead of reusing historical evidence', async () => {
   const { t, sessionId } = await setup();
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
   await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
   await t.run(async ctx => {
     const couponId = await ctx.db.insert('coupons', { code: 'GUEST30', status: 'active', currentVersion: 1, used: 0, discountGranted: 0, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'staff@example.com' });
     await ctx.db.insert('couponVersions', { couponId, version: 1, benefit: { kind: 'percent', percent: 3000 }, scope: 'accommodation', createdAt: Date.now(), createdByEmail: 'staff@example.com' });
   });
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Please use coupon GUEST30 instead' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'Please use coupon GUEST30 instead' });
   await expect(t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' })).rejects.toThrow('supplied');
   expect(await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST30' })).toMatchObject({ total: 1400000, coupon: { code: 'GUEST30' } });
 });
@@ -193,7 +193,7 @@ it('rejects a withdrawn or replaced guest code instead of reusing historical evi
 it('replaces an outstanding coupon proposal after withdrawal before creating anything', async () => {
   const { t, sessionId } = await setup();
   const original = await t.mutation(internal.bookings.bookings.prepareChatBooking, { sessionId, ...stay, couponCode: 'GUEST20' });
-  await t.mutation(internal.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
+  await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'Remove the coupon' });
   const changed = await t.mutation(api.bookings.bookings.confirmProposal, { token: original.confirmToken });
   expect(changed).toMatchObject({ needsReview: true, quote: { total: 1700000 } });
   if (!changed.needsReview) throw new Error('Expected review');

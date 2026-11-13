@@ -3,7 +3,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
 import { createHarness } from '../testing/harness';
-import { LEASE_MS } from './model';
+import { LEASE_MS } from './pipeline';
 
 const siteUrl = 'https://resort.example';
 const recipient = '66912345678';

@@ -22,11 +22,11 @@ export function AdminSessionActions({
   onStatusChanged?: (status: AdminSessionStatus) => void;
 }) {
   const confirm = useConfirm();
-  const setSessionStatus = useMutation(api.adminChat.setSessionStatus);
-  const setAiPaused = useMutation(api.adminChat.setAiPaused);
-  const deleteArchivedSession = useMutation(api.adminChat.deleteArchivedSession);
-  const setStaffTask = useMutation(api.adminChat.setStaffTask);
-  const setKeepWithStaff = useMutation(api.adminChat.setKeepWithStaff);
+  const setSessionStatus = useMutation(api.messaging.adminChat.setSessionStatus);
+  const setAiPaused = useMutation(api.messaging.adminChat.setAiPaused);
+  const deleteArchivedSession = useMutation(api.messaging.adminChat.deleteArchivedSession);
+  const setStaffTask = useMutation(api.messaging.adminChat.setStaffTask);
+  const setKeepWithStaff = useMutation(api.messaging.adminChat.setKeepWithStaff);
   const [taskOpen, setTaskOpen] = useState(false);
   const [task, setTask] = useState("");
   const [pending, setPending] = useState(false);

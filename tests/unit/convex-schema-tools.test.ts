@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import ts from 'typescript';
@@ -89,7 +89,8 @@ function archive(ref: string) {
   const read = schemaSourceReader('.', ref);
   const { sources } = inspectSchema(read);
   const gate = read('convex/auth/model.ts');
-  for (const [path, source] of Object.entries({ ...sources, ...(gate ? { 'convex/auth/model.ts': gate } : {}), 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! })) {
+  const maintenance = read('convex/lib/maintenance.ts');
+  for (const [path, source] of Object.entries({ ...sources, ...(gate ? { 'convex/auth/model.ts': gate } : {}), ...(maintenance ? { 'convex/lib/maintenance.ts': maintenance } : {}), 'convex/crons.ts': read('convex/crons.ts')!, 'package.json': read('package.json')! })) {
     mkdirSync(dirname(join(dir, path)), { recursive: true }); writeFileSync(join(dir, path), source);
   }
   return dir;
@@ -103,6 +104,8 @@ it.each(['72a657f', 'f2482a0237e28a82c71b0557ea9422f61233845a', 'HEAD'])('preser
   expect(inspectSchema(schemaSourceReader(dir)).sources).toEqual(expected.sources);
   const gate = schemaSourceReader('.', ref)('convex/auth/model.ts');
   if (gate) expect(readFileSync(join(dir, 'convex/auth/model.ts'), 'utf8')).toBe(gate);
+  const maintenance = schemaSourceReader('.', ref)('convex/lib/maintenance.ts');
+  if (maintenance) expect(readFileSync(join(dir, 'convex/lib/maintenance.ts'), 'utf8')).toBe(maintenance);
 }, 30_000);
 
 it('prepares a functioning historical maintenance gate without importing current table or role models', () => {
@@ -165,3 +168,15 @@ it('rejects a changed table assembly source at the reviewed head before maintena
   const result = spawnSync(process.execPath, ['scripts/architecture-maintenance.mjs', '--old-ref', ref, '--dir', dir], { encoding: 'utf8' });
   expect(result.status).not.toBe(0); expect(result.stderr).toContain(source);
 }, 30_000);
+
+
+it.each(['changed', 'missing'])('rejects a %s extracted maintenance predicate before archive writes', mode => {
+  const ref = 'HEAD', dir = archive(ref);
+  const path = join(dir, 'convex/lib/maintenance.ts');
+  if (mode === 'changed') writeFileSync(path, readFileSync(path, 'utf8') + '\n// changed reviewed predicate source\n');
+  else rmSync(path);
+  const result = spawnSync(process.execPath, ['scripts/architecture-maintenance.mjs', '--old-ref', ref, '--dir', dir], { encoding: 'utf8' });
+  expect(result.status).not.toBe(0);
+  expect(result.stderr).toContain('maintenance predicate does not match');
+  expect(existsSync(join(dir, 'convex/maintenance/reset.ts'))).toBe(false);
+});

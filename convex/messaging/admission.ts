@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
-import { internalMutation } from './auth/model';
-import { consumeChatAdmission } from './lib/chatAdmission';
+import { internalMutation } from '../auth/model';
+import { consumeChatAdmission } from './chatAdmission';
 
 export const consumeChatLimit = internalMutation({
   args: { sessionId: v.id('conversations') },

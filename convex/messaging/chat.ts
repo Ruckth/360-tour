@@ -1,25 +1,21 @@
-import { createGuestToken, hashGuestToken, requireGuestToken } from './lib/guestToken';
-import { cleanCapture, marketingCaptureValidator } from './lib/marketingAttribution';
-import { internalMutation, internalQuery, type MutationCtx, publicMutation, guestMutation, guestQuery } from './auth/model';
 import { v } from 'convex/values';
-import { internal } from './_generated/api';
-import { recordGuest } from './messaging/model';
-import type { Doc } from './_generated/dataModel';
-import { answerAccepted, guestReceived, replyOutcomeValidator } from './lib/inboxLifecycle';
-import {
-	buildAdminChatMetadataPatch,
-	buildAdminSearchText,
-	getAdminChatSortAt,
-	patchSessionAfterMessages
-} from './lib/adminChatMetadata';
-import { assertValidEmail, normalizeEmail } from './lib/validation';
-import { PRESENCE_WRITE_THROTTLE_MS } from './lib/chatPresence';
-import { enforceRateLimit } from './lib/rateLimit';
-import { consumeChatAdmission } from './lib/chatAdmission';
-import { asksForStaff, queueStaffAlert } from './chatKnowledge';
-import { recordLead } from './leads';
+import { internal } from '../_generated/api';
+import type { Doc } from '../_generated/dataModel';
+import { guestMutation, guestQuery, internalMutation, internalQuery, type MutationCtx, publicMutation } from '../auth/model';
+import { PRESENCE_WRITE_THROTTLE_MS } from '../lib/chatPresence';
+import { cleanCapture, marketingCaptureValidator } from '../lib/marketingAttribution';
+import { assertValidEmail, normalizeEmail } from '../lib/validation';
+import { buildAdminChatMetadataPatch, buildAdminSearchText, getAdminChatSortAt, patchSessionAfterMessages } from './adminChatMetadata';
+import { consumeChatAdmission } from './chatAdmission';
+import { createGuestToken, hashGuestToken, requireGuestToken } from './guestToken';
+import { answerAccepted, guestReceived, replyOutcomeValidator } from './inboxState';
+import { recordLead } from './leadWriter';
+import { recordGuest } from './pipeline';
+import { enforceRateLimit } from './rateLimit';
+import { asksForStaff, queueStaffAlert } from './staffRequests';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
+
 const chatActionValidator = v.union(v.literal('booking'), v.literal('tour'), v.literal('none'));
 
 function createBrowserHandoffToken() {

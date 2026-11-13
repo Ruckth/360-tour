@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 /** Prepare a disposable OLD-schema source copy for a paused cutover. Never contacts a backend. */
+import ts from 'typescript';
 import { inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
@@ -22,7 +23,29 @@ const existingGate = reviewed('convex/auth/model.ts');
 let gateSource = existingGate;
 if (existingGate !== undefined) {
   if (!existsSync(gate) || readFileSync(gate, 'utf8') !== existingGate) throw new Error('The disposable auth seam does not match the reviewed revision');
-  if (!existingGate.includes('ARCH_RESET_PAUSED')) throw new Error('Review maintenance support in the selected auth seam');
+  {
+    // Messaging closure extracts this single backend predicate to break the
+    // auth -> messaging model -> auth cycle. Verify its real binding and the
+    // complete reviewed source before writing anything to the disposable copy.
+    const tree = ts.createSourceFile('model.ts', existingGate, ts.ScriptTarget.Latest, true);
+    const boundFlag = tree.statements.some(node => ts.isImportDeclaration(node)
+      && node.moduleSpecifier.text === '../lib/maintenance'
+      && !node.importClause?.isTypeOnly
+      && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)
+      && node.importClause.namedBindings.elements.some(entry => !entry.isTypeOnly
+        && entry.name.text === 'maintenancePaused' && (entry.propertyName?.text ?? entry.name.text) === 'maintenancePaused'));
+    if (!boundFlag && !existingGate.includes('ARCH_RESET_PAUSED')) throw new Error('Review maintenance support in the selected auth seam');
+    const flagPath = 'convex/lib/maintenance.ts';
+    const flagSource = boundFlag ? reviewed(flagPath) : undefined;
+    const print = source => ts.createPrinter({ removeComments: true }).printFile(ts.createSourceFile('flag.ts', source, ts.ScriptTarget.Latest, true));
+    if (boundFlag && (flagSource === undefined
+      || print(flagSource) !== print("export const maintenancePaused = () => process.env.ARCH_RESET_PAUSED === '1';"))) {
+      throw new Error('Review maintenance support in the selected auth seam');
+    }
+    if (boundFlag && (!existsSync(join(target, flagPath)) || readFileSync(join(target, flagPath), 'utf8') !== flagSource)) {
+      throw new Error(`The disposable maintenance predicate does not match the reviewed revision: ${flagPath}`);
+    }
+  }
 } else {
   if (existsSync(gate)) throw new Error('Unexpected auth seam in the disposable source copy');
   // This reviewed seam predates table-specific guest and role builders. Current

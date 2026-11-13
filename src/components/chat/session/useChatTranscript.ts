@@ -14,8 +14,8 @@ export function latestExchangeFromMessages(items: ChatMessage[]) {
 }
 /** The subscription is the transcript. Sends never append a synthetic connected reply. */
 export function useChatTranscript(credentials: GuestCredentials | null) {
-  const transcript = useQuery(api.chat.getMessages, credentials ?? 'skip');
-  const session = useQuery(api.chat.getSession, credentials ?? 'skip');
+  const transcript = useQuery(api.messaging.chat.getMessages, credentials ?? 'skip');
+  const session = useQuery(api.messaging.chat.getSession, credentials ?? 'skip');
   const messages = useMemo((): ChatMessage[] => (transcript ?? []).map(row => ({ id: row._id, role: row.role, content: row.content,
     ...(row.action ? { action: row.action } : {}), ...(session?.aiPaused && row.role === 'user' && row._id === transcript?.findLast(message => message.role === 'user')?._id ? { staffReplyNotice: true } : {}),
   })), [transcript, session?.aiPaused]);

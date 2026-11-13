@@ -1,6 +1,6 @@
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { maintenancePaused } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 import { STAFF_AVATAR_UPLOAD_TTL_MS } from './model';
 
 /** Staff and service photo uploads that were never attached (failed or abandoned saves). Attached photos have no row here. */

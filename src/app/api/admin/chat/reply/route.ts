@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   let claimed = false;
   let delivered = false;
   try {
-    const reply = await client.mutation(api.adminReply.claim, {
+    const reply = await client.mutation(api.messaging.adminReply.claim, {
       sessionId: sessionId as Id<"conversations">,
       requestId,
       content,
@@ -73,12 +73,12 @@ export async function POST(request: Request) {
       requestId,
     });
     delivered = true;
-    await client.mutation(api.adminReply.complete, { requestId });
+    await client.mutation(api.messaging.adminReply.complete, { requestId });
     return Response.json({ ok: true, channel: reply.channel });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to send reply";
     if (claimed) {
-      await client.mutation(api.adminReply.fail, { requestId, error: delivered ? 'Channel accepted the reply; transcript confirmation failed. Check before resending.' : message }).catch(() => null);
+      await client.mutation(api.messaging.adminReply.fail, { requestId, error: delivered ? 'Channel accepted the reply; transcript confirmation failed. Check before resending.' : message }).catch(() => null);
     }
     return Response.json(
       {

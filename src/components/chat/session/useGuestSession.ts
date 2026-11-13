@@ -28,7 +28,7 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
   const claimed = useRef<string | null>(null);
   const create = useCallback(async (signal: AbortSignal) => {
     if (!convex) return null;
-    const result = await convex.mutation(api.chat.createSession, { propertySlug, channel: 'web', visitorId: getOrCreateVisitorId(), ...getBrowserChatMetadata(), marketing: captureForBooking() });
+    const result = await convex.mutation(api.messaging.chat.createSession, { propertySlug, channel: 'web', visitorId: getOrCreateVisitorId(), ...getBrowserChatMetadata(), marketing: captureForBooking() });
     if (signal.aborted) return null;
     storeGuestToken(result.sessionId, result.guestToken);
     return result;
@@ -42,7 +42,7 @@ export function useGuestSession(propertySlug: string | undefined, open: boolean,
       let id = credentials?.sessionId ?? getStoredSessionId();
       if (handoffToken && claimed.current !== handoffToken) {
         claimed.current = handoffToken;
-        const handoff = await convex.mutation(api.chat.claimBrowserHandoff, { token: handoffToken });
+        const handoff = await convex.mutation(api.messaging.chat.claimBrowserHandoff, { token: handoffToken });
         if (scope.signal.aborted) return null;
         id = handoff?.sessionId ?? null;
         if (handoff) storeGuestToken(handoff.sessionId, handoff.guestToken);

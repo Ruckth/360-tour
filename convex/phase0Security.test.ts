@@ -6,12 +6,12 @@ import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { makeFunctionReference } from 'convex/server';
 import { api } from './_generated/api';
-import * as chat from './chat';
+import * as chat from "./messaging/chat";
 import * as concierge from './concierge/model';
 import * as chatEval from './chatEval';
 import { recordUnknownQuestion } from './concierge/knowledge';
 import { asAdmin, createHarness, fixedClock, guestSession } from './testing/harness';
-import { hashGuestToken } from './lib/guestToken';
+import { hashGuestToken } from './messaging/guestToken';
 
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
@@ -40,8 +40,8 @@ it('rejects assistant messages from the browser', async () => {
 	expect(recordUnknownQuestion.isInternal).toBe(true);
 	expect(concierge.getGuardrailReply).not.toHaveProperty('isPublic');
 	await expect(t.action(makeFunctionReference<'action'>('chatAi:generateReply'), {})).rejects.toThrow();
-	await expect(t.mutation(api.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as never)).rejects.toThrow();
-	expect(await t.query(api.chat.getMessages, guest)).toEqual([]);
+	await expect(t.mutation(api.messaging.chat.sendMessage, { ...forged, clientMessageId: crypto.randomUUID() } as never)).rejects.toThrow();
+	expect(await t.query(api.messaging.chat.getMessages, guest)).toEqual([]);
 });
 
 it('rejects chat calls without a valid guest token', async () => {
@@ -54,17 +54,17 @@ it('rejects chat calls without a valid guest token', async () => {
 	for (const guestToken of [undefined, 'wrong']) {
 		const args = { sessionId: guest.sessionId, guestToken };
 		const calls = [
-			() => t.mutation(api.chat.touchSession, args),
-			() => t.mutation(api.chat.closeSession, args),
-			() => t.mutation(api.chat.createBrowserHandoff, args),
-			() => t.mutation(api.chat.identifyVisitor, { ...args, name: 'Forged' }),
-			() => t.query(api.chat.getSession, args),
-			() => t.query(api.chat.isAiPaused, args),
-			() => t.query(api.chat.getMessages, args),
+			() => t.mutation(api.messaging.chat.touchSession, args),
+			() => t.mutation(api.messaging.chat.closeSession, args),
+			() => t.mutation(api.messaging.chat.createBrowserHandoff, args),
+			() => t.mutation(api.messaging.chat.identifyVisitor, { ...args, name: 'Forged' }),
+			() => t.query(api.messaging.chat.getSession, args),
+			() => t.query(api.messaging.chat.isAiPaused, args),
+			() => t.query(api.messaging.chat.getMessages, args),
 		];
 		for (const call of calls) await expect(call()).rejects.toThrow('INVALID_GUEST_TOKEN');
 	}
-	expect(await t.query(api.chat.getSession, guest)).not.toHaveProperty('guestTokenHash');
+	expect(await t.query(api.messaging.chat.getSession, guest)).not.toHaveProperty('guestTokenHash');
 });
 
 it('rejects respond for a session the caller does not own', async () => {
@@ -77,7 +77,7 @@ it('rejects respond for a session the caller does not own', async () => {
 			await expect(respondTest(t, { sessionId, guestToken, userMessage: 'hello' })).rejects.toThrow('INVALID_GUEST_TOKEN');
 		}
 	}
-	expect(await t.query(api.chat.getMessages, owner)).toEqual([]);
+	expect(await t.query(api.messaging.chat.getMessages, owner)).toEqual([]);
 	expect(await t.run(ctx => ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', `chat:${owner.sessionId}`)).unique())).toBeNull();
 });
 
@@ -104,16 +104,16 @@ it('rotates guest ownership on a single-use browser handoff', async () => {
 	const clock = fixedClock(vi);
 	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
-	const token = await t.mutation(api.chat.createBrowserHandoff, guest);
-	const claimed = await t.mutation(api.chat.claimBrowserHandoff, { token });
+	const token = await t.mutation(api.messaging.chat.createBrowserHandoff, guest);
+	const claimed = await t.mutation(api.messaging.chat.claimBrowserHandoff, { token });
 	expect(claimed?.sessionId).toBe(guest.sessionId);
 	expect(claimed?.guestToken).not.toBe(guest.guestToken);
-	await expect(t.query(api.chat.getSession, guest)).rejects.toThrow('INVALID_GUEST_TOKEN');
-	expect(await t.query(api.chat.getSession, claimed!)).toMatchObject({ _id: guest.sessionId });
-	expect(await t.mutation(api.chat.claimBrowserHandoff, { token })).toBeNull();
-	const expired = await t.mutation(api.chat.createBrowserHandoff, claimed!);
+	await expect(t.query(api.messaging.chat.getSession, guest)).rejects.toThrow('INVALID_GUEST_TOKEN');
+	expect(await t.query(api.messaging.chat.getSession, claimed!)).toMatchObject({ _id: guest.sessionId });
+	expect(await t.mutation(api.messaging.chat.claimBrowserHandoff, { token })).toBeNull();
+	const expired = await t.mutation(api.messaging.chat.createBrowserHandoff, claimed!);
 	clock.advance(5 * 60 * 1000);
-	expect(await t.mutation(api.chat.claimBrowserHandoff, { token: expired })).toBeNull();
+	expect(await t.mutation(api.messaging.chat.claimBrowserHandoff, { token: expired })).toBeNull();
 });
 
 
@@ -131,12 +131,12 @@ it('rejects suggestion tracking without a valid guest token', async () => {
 		{ ...guest, sessionId: socialId },
 		deleted,
 	]) {
-		await expect(t.query(api.chatSuggestions.nextForSession, { ...args, candidateSuggestionIds: ['availability'] })).rejects.toThrow('INVALID_GUEST_TOKEN');
-		await expect(t.mutation(api.chatSuggestions.markShown, { ...args, suggestions: [{ source: 'static', suggestionId: 'availability' }] })).rejects.toThrow('INVALID_GUEST_TOKEN');
-		await expect(t.mutation(api.chatSuggestions.markClicked, { ...args, suggestion: { source: 'static', suggestionId: 'availability' } })).rejects.toThrow('INVALID_GUEST_TOKEN');
+		await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...args, candidateSuggestionIds: ['availability'] })).rejects.toThrow('INVALID_GUEST_TOKEN');
+		await expect(t.mutation(api.messaging.chatSuggestions.markShown, { ...args, suggestions: [{ source: 'static', suggestionId: 'availability' }] })).rejects.toThrow('INVALID_GUEST_TOKEN');
+		await expect(t.mutation(api.messaging.chatSuggestions.markClicked, { ...args, suggestion: { source: 'static', suggestionId: 'availability' } })).rejects.toThrow('INVALID_GUEST_TOKEN');
 	}
 	expect(await t.run(ctx => ctx.db.query('chatStaticSuggestionInteractions').collect())).toEqual([]);
-	await expect(t.mutation(api.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId: 'availability' } })).resolves.toEqual({ clicked: true });
+	await expect(t.mutation(api.messaging.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId: 'availability' } })).resolves.toEqual({ clicked: true });
 });
 
 it('retires the public booking-flow and AI-pause server bridges', async () => {
@@ -146,20 +146,32 @@ it('retires the public booking-flow and AI-pause server bridges', async () => {
  }
 });
 
+it('retires the former root messaging endpoints', async () => {
+	const t = createHarness(convexTest);
+	for (const path of ['chat:getMessages', 'adminChat:getSessionDetail', 'chatSuggestions:nextForSession', 'leads:list']) {
+		await expect(t.query(makeFunctionReference<'query'>(path), {})).rejects.toThrow('Could not find module for:');
+	}
+	for (const path of ['adminReply:claim', 'inboxLifecycle:expireAnswer', 'chatAi:consumeChatLimit', 'chatKnowledge:alertStaffForHandoff']) {
+		await expect(t.mutation(makeFunctionReference<'mutation'>(path), {})).rejects.toThrow('Could not find module for:');
+	}
+	await expect(t.action(makeFunctionReference<'action'>('emails:sendStaffAlert'), {})).rejects.toThrow('there is no such export');
+	await expect(t.mutation(makeFunctionReference<'mutation'>('crons:cleanRateLimits'), {})).rejects.toThrow('there is no such export');
+});
+
 
 it('bounds suggestion tracking to known keys and five items per call', async () => {
 	const t = createHarness(convexTest);
 	const guest = await guestSession(t);
 	for (const suggestionId of ['invented-key', 'x'.repeat(10000)]) {
-		await expect(t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [suggestionId] } as never)).rejects.toThrow();
-		await expect(t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions: [{ source: 'static', suggestionId }] } as never)).rejects.toThrow();
-		await expect(t.mutation(api.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId } } as never)).rejects.toThrow();
+		await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [suggestionId] } as never)).rejects.toThrow();
+		await expect(t.mutation(api.messaging.chatSuggestions.markShown, { ...guest, suggestions: [{ source: 'static', suggestionId }] } as never)).rejects.toThrow();
+		await expect(t.mutation(api.messaging.chatSuggestions.markClicked, { ...guest, suggestion: { source: 'static', suggestionId } } as never)).rejects.toThrow();
 	}
 	const keys = ['availability', 'totalPrice', 'direct', 'tour', 'guests', 'contact'] as const;
-	await expect(t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [...keys] })).rejects.toThrow('At most 5');
-	await expect(t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions: keys.map(suggestionId => ({ source: 'static' as const, suggestionId })) })).rejects.toThrow('At most 5');
+	await expect(t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: [...keys] })).rejects.toThrow('At most 5');
+	await expect(t.mutation(api.messaging.chatSuggestions.markShown, { ...guest, suggestions: keys.map(suggestionId => ({ source: 'static' as const, suggestionId })) })).rejects.toThrow('At most 5');
 	expect(await t.run(ctx => ctx.db.query('chatStaticSuggestionInteractions').collect())).toEqual([]);
-	const suggestions = await t.query(api.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: keys.slice(0, 5), limit: 100 });
+	const suggestions = await t.query(api.messaging.chatSuggestions.nextForSession, { ...guest, candidateSuggestionIds: keys.slice(0, 5), limit: 100 });
 	expect(suggestions).toHaveLength(5);
-	expect(await t.mutation(api.chatSuggestions.markShown, { ...guest, suggestions })).toEqual({ updated: 5 });
+	expect(await t.mutation(api.messaging.chatSuggestions.markShown, { ...guest, suggestions })).toEqual({ updated: 5 });
 });

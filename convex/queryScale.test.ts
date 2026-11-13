@@ -328,8 +328,8 @@ describe('lead dedup', () => {
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 60; i++) await ctx.db.insert('leads', { email: 'fan@example.com', source: 'tour_completion', createdAt: i });
 		});
-		const first = await t.mutation(api.leads.save, { email: 'fan@example.com', source: 'chat', propertyId });
-		const again = await t.mutation(api.leads.save, { email: 'fan@example.com', source: 'chat', propertyId });
+		const first = await t.mutation(api.messaging.leads.save, { email: 'fan@example.com', source: 'chat', propertyId });
+		const again = await t.mutation(api.messaging.leads.save, { email: 'fan@example.com', source: 'chat', propertyId });
 		expect(again).toBe(first);
 		const chatLeads = (await t.run((ctx) => ctx.db.query('leads').collect())).filter((lead) => lead.source === 'chat');
 		expect(chatLeads).toHaveLength(1);

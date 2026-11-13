@@ -3,7 +3,8 @@ import { convexTest } from 'convex-test';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
 import { createHarness, guestSession } from '../testing/harness';
-import { LEASE_MS, withDurableTool } from './model';
+import { LEASE_MS } from './pipeline';
+import { withDurableTool } from './model';
 import { line } from './channels/line';
 import { adapters } from './channels';
 
@@ -85,7 +86,7 @@ it('serializes conversation turns and excludes newer queued questions from conte
   await t.mutation(internal.messaging.ingress.accept, { channel: 'line', events: [{ eventKey: 'evt-two', recipient: 'guest', eventType: 'message', messageText: 'Second question' }] });
   const second = (await t.run(ctx => ctx.db.query('channelEvents').take(10))).find(row => row.eventKey === 'evt-two')!;
   expect(await t.mutation(internal.messaging.worker.claim, { eventId: second._id, token: 'second' })).toBeNull();
-  const history = await t.query(internal.chat.getRecentMessages, { sessionId: event.sessionId!, limit: 10, throughMessageId: event.userMessageId });
+  const history = await t.query(internal.messaging.chat.getRecentMessages, { sessionId: event.sessionId!, limit: 10, throughMessageId: event.userMessageId });
   expect(history.map(row => row.content)).toEqual(['Which villa?']);
   await t.mutation(internal.messaging.worker.prepareDispatch, { eventId: event._id, claimToken: 'first', text: 'First answer', model: 'test' });
   await t.mutation(internal.messaging.worker.commitTurn, { eventId: event._id, claimToken: 'first' });
@@ -128,10 +129,10 @@ it('keeps uncertain or partially accepted WhatsApp sends for reconciliation', as
 it('deduplicates web sends before charging admission and rejects altered replay content', async () => {
   const t = createHarness(convexTest), guest = await guestSession(t);
   const args = { ...guest, clientMessageId: crypto.randomUUID(), content: 'Please help' };
-  const first = await t.mutation(api.chat.sendMessage, args);
-  expect(await t.mutation(api.chat.sendMessage, args)).toMatchObject({ ...first, duplicate: true });
-  await expect(t.mutation(api.chat.sendMessage, { ...args, content: 'Different' })).rejects.toThrow('different content');
-  expect(await t.query(api.chat.getMessages, guest)).toHaveLength(1);
+  const first = await t.mutation(api.messaging.chat.sendMessage, args);
+  expect(await t.mutation(api.messaging.chat.sendMessage, args)).toMatchObject({ ...first, duplicate: true });
+  await expect(t.mutation(api.messaging.chat.sendMessage, { ...args, content: 'Different' })).rejects.toThrow('different content');
+  expect(await t.query(api.messaging.chat.getMessages, guest)).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('channelEvents').take(10))).toHaveLength(1);
 });
 it('recovers a real committed booking without replaying the model or booking mutation', async () => {

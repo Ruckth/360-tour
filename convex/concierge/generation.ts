@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { type ActionCtx } from '../auth/model';
 import { mentionsCoupon, unverifiedCouponReply } from '../lib/chatCouponCopy';
 import { proposalIdentity } from '../lib/chatWriteGuard';
-import type { ReplyOutcome } from '../lib/inboxLifecycle';
+import type { ReplyOutcome } from '../messaging/model';
 import { isCardTool, replyCardFromTool, type ReplyCard } from '../lib/replyCards';
 import type { EffectiveSettings } from '../lib/siteSettings';
 import { detectReplyLocale } from "../lib/unknownReply";
@@ -204,7 +204,7 @@ export async function generateConciergeReply(
         factRevisions.push(...(evidence.facts ?? []).map(({ factId, revision }) => ({ factId, revision })));
       }
       if (trace.result.includes('Offer to connect the guest with the host.')) {
-        await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, { sessionId: args.sessionId, ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}), lastMessage: args.userMessage, replyToMessageId: args.replyToMessageId })
+        await ctx.runMutation(internal.messaging.staffHandoff.alertStaffForHandoff, { sessionId: args.sessionId, ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}), lastMessage: args.userMessage, replyToMessageId: args.replyToMessageId })
           .catch(error => console.error('Could not queue staff handoff alert:', error));
       }
     }
@@ -236,7 +236,7 @@ export async function generateConciergeReply(
   const finalModel = response.failed ? 'tool_fallback' : selectedModel;
   const outcome = response.outcome ?? conciergeReplyOutcome(response.content ?? '', finalModel).outcome;
   if (outcome === 'needs_staff') {
-    await ctx.runMutation(internal.chatKnowledge.alertStaffForHandoff, {
+    await ctx.runMutation(internal.messaging.staffHandoff.alertStaffForHandoff, {
       sessionId: args.sessionId,
       ...(args.durableTurn ? { durableTurn: args.durableTurn } : {}),
       lastMessage: args.userMessage,

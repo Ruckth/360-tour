@@ -10,7 +10,7 @@ import { requireMarketingPermission, requireEditableDraft } from './lib/marketin
 import { isIsoDate, nightsBetween, resortTodayIso } from './lib/dates';
 import { appendRecordHistory } from './settings/model';
 import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from './lib/marketingAttribution';
-import { enforceRateLimit, rateLimitReached } from './lib/rateLimit';
+import { enforceRateLimit, rateLimitReached } from './messaging/model';
 import { isMarketingLocale, localizeMarketingPath, validateMarketingSlug } from './lib/marketingSlugs';
 
 const publishStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('paused'), v.literal('archived'));

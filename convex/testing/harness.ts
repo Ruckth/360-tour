@@ -16,8 +16,8 @@ export const adminIdentity = { email: 'admin@example.com', tokenIdentifier: 'htt
 export function asAdmin(t: ReturnType<typeof createHarness>) {
 	return t.withIdentity(adminIdentity);
 }
-export function guestSession(t: ReturnType<typeof createHarness>, args: Omit<FunctionArgs<typeof api.chat.createSession>, 'channel'> = {}) {
-	return t.mutation(api.chat.createSession, { ...args, channel: 'web' });
+export function guestSession(t: ReturnType<typeof createHarness>, args: Omit<FunctionArgs<typeof api.messaging.chat.createSession>, 'channel'> = {}) {
+	return t.mutation(api.messaging.chat.createSession, { ...args, channel: 'web' });
 }
 export function fixedClock(clockTools: Pick<typeof vi, 'spyOn'>, now = Date.UTC(2026, 10, 12, 12)) {
 	const clock = clockTools.spyOn(Date, 'now').mockReturnValue(now);

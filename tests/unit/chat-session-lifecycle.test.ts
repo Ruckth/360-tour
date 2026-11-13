@@ -21,7 +21,7 @@ vi.mock('@/lib/react/convex-api', () => ({
 }));
 vi.mock('convex/react', () => ({ useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
   listener => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); },
-  () => args === 'skip' ? undefined : getFunctionName(ref) === 'chat:getMessages' ? mocks.rows : mocks.session,
+  () => args === 'skip' ? undefined : getFunctionName(ref) === 'messaging/chat:getMessages' ? mocks.rows : mocks.session,
 ) }));
 let root: Root | null, chat: ReturnType<typeof useChatSession>;
 function Harness({ initialDraft }: { initialDraft?: string }) {
@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.useFakeTimers(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks();
   mocks.rows = []; mocks.session = { aiPaused: false }; mocks.listeners.clear(); mocks.search.delete('handoff');
   mocks.touch.mockResolvedValue(undefined);
-  mocks.mutation.mockImplementation(async (ref: FunctionReference<'mutation'>) => getFunctionName(ref) === 'chat:createSession' ? { sessionId: 'session-one', guestToken: 'token-one' } : { eventId: 'event', userMessageId: 'message', duplicate: false });
+  mocks.mutation.mockImplementation(async (ref: FunctionReference<'mutation'>) => getFunctionName(ref) === 'messaging/chat:createSession' ? { sessionId: 'session-one', guestToken: 'token-one' } : { eventId: 'event', userMessageId: 'message', duplicate: false });
 });
 afterEach(async () => { await unmount(); vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); document.body.innerHTML = ''; });
 it('renders connected transcripts only from subscription updates and never stores a transcript cache', async () => {
@@ -57,9 +57,9 @@ it('retries an ambiguous admission with the same client message identifier and p
   mocks.mutation.mockRejectedValueOnce(new Error('connection dropped'));
   await act(async () => chat.sendMessage('Keep this draft'));
   expect(chat.input).toBe('Keep this draft'); expect(chat.messages).toEqual([]);
-  const first = mocks.mutation.mock.calls.find(([ref]) => getFunctionName(ref) === 'chat:sendMessage')![1];
+  const first = mocks.mutation.mock.calls.find(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage')![1];
   await act(async () => chat.sendMessage('Keep this draft'));
-  const calls = mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'chat:sendMessage');
+  const calls = mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage');
   expect(calls.at(-1)![1].clientMessageId).toBe(first.clientMessageId);
   expect(chat.input).toBe('');
 });
@@ -70,7 +70,7 @@ it('does not persist a session created after unmount', async () => {
 });
 it('keeps a service question as an editable draft without sending it on session creation', async () => {
   await mount('Can I book a massage?'); expect(chat.input).toBe('Can I book a massage?');
-  expect(mocks.mutation.mock.calls.some(([ref]) => getFunctionName(ref) === 'chat:sendMessage')).toBe(false);
+  expect(mocks.mutation.mock.calls.some(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage')).toBe(false);
 });
 it('does not consume a late handoff or navigate after unmount', async () => {
   mocks.search.set('handoff', 'one-time'); const late = deferred<null>(); mocks.mutation.mockReturnValueOnce(late.promise);
@@ -92,7 +92,7 @@ it('shares one slow session creation between restart and the open-session effect
   const late = deferred<{ sessionId: string; guestToken: string }>(); mocks.mutation.mockReturnValueOnce(late.promise);
   let restarting: Promise<void>;
   await act(async () => { restarting = chat.restartChat(); });
-  expect(mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'chat:createSession')).toHaveLength(2); // initial + restart
+  expect(mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:createSession')).toHaveLength(2); // initial + restart
   await act(async () => late.resolve({ sessionId: 'session-two', guestToken: 'token-two' })); await restarting!;
   expect(getStoredSessionId()).toBe('session-two'); expect(getStoredGuestToken('session-one')).toBeUndefined();
 });

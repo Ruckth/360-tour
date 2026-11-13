@@ -29,7 +29,7 @@ describe("static suggestion chips remain live", () => {
   it("returns ordered static suggestion keys for a session", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-suggestions");
-    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
+    const selected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
@@ -43,13 +43,13 @@ describe("static suggestion chips remain live", () => {
   it("does not return static suggestion keys that were already shown", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-repeat");
-    const firstSelected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
+    const firstSelected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
     });
-    await t.mutation(api.chatSuggestions.markShown, { guestToken: fixtureGuestToken, sessionId, suggestions: firstSelected });
-    const secondSelected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
+    await t.mutation(api.messaging.chatSuggestions.markShown, { guestToken: fixtureGuestToken, sessionId, suggestions: firstSelected });
+    const secondSelected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice", "direct"],
       limit: 2,
@@ -63,11 +63,11 @@ describe("static suggestion chips remain live", () => {
     const t = convexTest(schema, modules);
     const sessionId = await createWebSession(t, "visitor-static-click");
 
-    await t.mutation(api.chatSuggestions.markClicked, { guestToken: fixtureGuestToken,
+    await t.mutation(api.messaging.chatSuggestions.markClicked, { guestToken: fixtureGuestToken,
       sessionId,
       suggestion: { source: "static", suggestionId: "availability" },
     });
-    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
+    const selected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: ["availability", "totalPrice"],
       limit: 2,
@@ -89,11 +89,11 @@ describe("static suggestion chips remain live", () => {
     const sessionId = await createWebSession(t, "visitor-static-exhausted");
     const candidates: Array<"availability" | "totalPrice"> = ["availability", "totalPrice"];
 
-    await t.mutation(api.chatSuggestions.markShown, { guestToken: fixtureGuestToken,
+    await t.mutation(api.messaging.chatSuggestions.markShown, { guestToken: fixtureGuestToken,
       sessionId,
       suggestions: candidates.map((suggestionId) => ({ source: "static" as const, suggestionId })),
     });
-    const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
+    const selected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken: fixtureGuestToken,
       sessionId,
       candidateSuggestionIds: candidates,
       limit: 2,
@@ -106,23 +106,23 @@ describe("static suggestion chips remain live", () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
-      const { sessionId, guestToken } = await t.mutation(api.chat.createSession, {
+      const { sessionId, guestToken } = await t.mutation(api.messaging.chat.createSession, {
         channel: "web",
         visitorId: "visitor-public-assistant",
       });
-      const userMessageId = await t.mutation(internal.chat.acceptGuestMessage, {
+      const userMessageId = await t.mutation(internal.messaging.chat.acceptGuestMessage, {
         sessionId,
         content: "What's included when booking direct?",
       });
       expect(userMessageId).toBeTruthy();
 
-      await t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+      await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
         sessionId,
         content: "Direct booking includes host support and better pricing.",
       });
       await finishScheduledWork(t);
 
-      const selected = await t.query(api.chatSuggestions.nextForSession, { guestToken,
+      const selected = await t.query(api.messaging.chatSuggestions.nextForSession, { guestToken,
         sessionId,
         candidateSuggestionIds: ["availability", "totalPrice"],
         limit: 5,

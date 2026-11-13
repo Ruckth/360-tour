@@ -5,7 +5,7 @@ import { makeFunctionReference, type FunctionType } from 'convex/server';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
-import { hashGuestToken } from '../lib/guestToken';
+import { hashGuestToken } from '../messaging/guestToken';
 import { sha256 } from '../lib/displayTokens';
 import {
   publicQuery, publicMutation, publicAction,
@@ -107,8 +107,8 @@ it('preserves independent marketing access without granting staff authority', as
 
 it('enforces web-session guest tokens before reads and writes, including foreign and social credentials', async () => {
   const { t } = setup();
-  const guest = await t.mutation(api.chat.createSession, { channel: 'web' });
-  const other = await t.mutation(api.chat.createSession, { channel: 'web' });
+  const guest = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
+  const other = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
   const social = await t.run(ctx => ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now(), guestTokenHash: '' }));
   const tokenHash = await hashGuestToken(guest.guestToken);
   await t.run(ctx => ctx.db.patch(social, { guestTokenHash: tokenHash }));
@@ -141,7 +141,7 @@ it('resolves device tokens with the existing pending, active, revoked and invali
 
 it('runs maintenance before every public trust policy and handler, while internal functions stay usable', async () => {
   const { t } = setup();
-  const guest = await t.mutation(api.chat.createSession, { channel: 'web' });
+  const guest = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
   vi.stubEnv('ARCH_RESET_PAUSED', '1');
   for (const name of Object.keys(probes).filter(name => name !== 'missingReason')) {
     const kind = name.endsWith('Mutation') ? 'mutation' : name.endsWith('Action') ? 'action' : 'query';

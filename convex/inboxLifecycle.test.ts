@@ -4,7 +4,7 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
-import { sendFailed, staffNeeded } from "./lib/inboxLifecycle";
+import { sendFailed, staffNeeded } from './messaging/inboxState';
 
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => vi.stubEnv("ADMIN_EMAILS", "admin@example.com"));
@@ -15,15 +15,15 @@ async function setup() {
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
-  const { sessionId } = await t.mutation(api.chat.createSession, {
+  const { sessionId } = await t.mutation(api.messaging.chat.createSession, {
     channel: "web",
   });
-  const guestId = await t.mutation(internal.chat.acceptGuestMessage, {
+  const guestId = await t.mutation(internal.messaging.chat.acceptGuestMessage, {
     sessionId,
     content: "Does the suite have Wi-Fi?",
   });
   const detail = async () =>
-    (await admin.query(api.adminChat.getSessionDetail, { sessionId }))!.session;
+    (await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId }))!.session;
   return { t, admin, sessionId, guestId, detail };
 }
 describe("automatic responder lifecycle", () => {
@@ -37,21 +37,21 @@ describe("automatic responder lifecycle", () => {
     });
     const detail = await s.detail();
     expect(detail.latestGuestMessageId).toBe(s.guestId);
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: detail.latestGuestMessageId,
     });
     expect(await s.detail()).toMatchObject({ inboxState: "done", inboxReason: "no_reply_needed" });
   });
   it("rejects No reply needed when a new guest turn arrived after the action was chosen", async () => {
     const s = await setup();
-    const newer = await s.t.mutation(internal.chat.acceptGuestMessage, {
+    const newer = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,  content: "Can I bring a pet?",
     });
-    await expect(s.admin.mutation(api.adminChat.setSessionStatus, {
+    await expect(s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: s.guestId,
     })).rejects.toThrow("A new guest message arrived");
     expect(await s.detail()).toMatchObject({ latestGuestMessageId: newer, inboxState: "processing" });
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId, status: "resolved", expectedGuestMessageId: newer,
     });
     expect(await s.detail()).toMatchObject({ inboxState: "done", inboxReason: "no_reply_needed" });
@@ -64,7 +64,7 @@ describe("automatic responder lifecycle", () => {
         inboxState: "processing",
         needsReply: false,
       });
-      await s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+      await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
         sessionId: s.sessionId,
         replyToMessageId: s.guestId,
         content: "Yes, Wi-Fi is included.",
@@ -77,7 +77,7 @@ describe("automatic responder lifecycle", () => {
         resolutionSource: "ai",
         needsReply: false,
       });
-      await s.t.mutation(internal.chat.acceptGuestMessage, {
+      await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
         sessionId: s.sessionId,
         content: "What time is check-in?",
       });
@@ -90,7 +90,7 @@ describe("automatic responder lifecycle", () => {
   );
   it("keeps an AI handoff visible even when its acknowledgement is the last message", async () => {
     const s = await setup();
-    await s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+    await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
       sessionId: s.sessionId,
       replyToMessageId: s.guestId,
       content: "I will ask staff to confirm.",
@@ -102,7 +102,7 @@ describe("automatic responder lifecycle", () => {
       inboxHandoff: true,
       aiPaused: true,
     });
-    const queue = await s.admin.query(api.adminChat.listSessions, {
+    const queue = await s.admin.query(api.messaging.adminChat.listSessions, {
       status: "needs_reply",
       adminStatus: "open",
     });
@@ -110,30 +110,30 @@ describe("automatic responder lifecycle", () => {
   });
   it("resolves a staff answer once, releases takeover, and preserves a newer question", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "first",
       content: "Wi-Fi is included.",
       replyToMessageId: s.guestId,
     });
-    const newer = await s.t.mutation(internal.chat.acceptGuestMessage, {
+    const newer = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
       content: "Can you arrange a transfer?",
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "first" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "first" });
     expect(await s.detail()).toMatchObject({
       inboxState: "needs_staff",
       latestGuestMessageId: newer,
       needsReply: true,
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "second",
       content: "Yes, send your flight details.",
       replyToMessageId: newer,
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "second" });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "second" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "second" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "second" });
     expect(await s.detail()).toMatchObject({
       adminStatus: "resolved",
       inboxState: "done",
@@ -141,7 +141,7 @@ describe("automatic responder lifecycle", () => {
     });
     expect((await s.detail()).aiPaused).toBeUndefined();
     const transcript = await s.admin.query(
-      api.adminChat.listTranscriptMessages,
+      api.messaging.adminChat.listTranscriptMessages,
       {
         sessionId: s.sessionId,
         paginationOpts: { numItems: 10, cursor: null },
@@ -155,12 +155,12 @@ describe("automatic responder lifecycle", () => {
   });
   it("refuses a reply drafted against a guest turn that is no longer current", async () => {
     const s = await setup();
-    await s.t.mutation(internal.chat.acceptGuestMessage, {
+    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
       content: "Another question",
     });
     await expect(
-      s.admin.mutation(api.adminReply.claim, {
+      s.admin.mutation(api.messaging.adminReply.claim, {
         sessionId: s.sessionId,
         requestId: "stale",
         content: "Old answer",
@@ -170,12 +170,12 @@ describe("automatic responder lifecycle", () => {
   });
   it("keeps a failed send actionable and resolves only after a successful retry", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "fail",
       content: "Yes.",
     });
-    await s.admin.mutation(api.adminReply.fail, {
+    await s.admin.mutation(api.messaging.adminReply.fail, {
       requestId: "fail",
       error: "Channel unavailable",
     });
@@ -185,7 +185,7 @@ describe("automatic responder lifecycle", () => {
       inboxReason: "send_failed",
       inboxSendError: "Channel unavailable",
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "retry",
       content: "Yes.",
@@ -194,29 +194,29 @@ describe("automatic responder lifecycle", () => {
       inboxState: "processing",
       inboxReason: "sending",
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "retry" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "retry" });
     expect(await s.detail()).toMatchObject({ inboxState: "done" });
     expect((await s.detail()).inboxSendError).toBeUndefined();
   });
   it("does not resolve a promised follow-up until its explicit task is completed", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: "Check with housekeeping",
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "task-answer",
       content: "We found your charger.",
     });
-    await s.admin.mutation(api.adminReply.complete, {
+    await s.admin.mutation(api.messaging.adminReply.complete, {
       requestId: "task-answer",
     });
     expect(await s.detail()).toMatchObject({
       inboxState: "processing",
       staffTask: "Check with housekeeping",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: null,
     });
@@ -227,11 +227,11 @@ describe("automatic responder lifecycle", () => {
   });
   it("completing a task without answering the guest returns it to Needs you", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: "Check availability",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: null,
     });
@@ -242,22 +242,22 @@ describe("automatic responder lifecycle", () => {
   });
   it("keeps the next issue with staff only when explicitly pinned", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setKeepWithStaff, {
+    await s.admin.mutation(api.messaging.adminChat.setKeepWithStaff, {
       sessionId: s.sessionId,
       keep: true,
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "pinned",
       content: "Yes.",
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "pinned" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "pinned" });
     expect(await s.detail()).toMatchObject({
       inboxState: "done",
       aiPaused: true,
       keepWithStaff: true,
     });
-    await s.t.mutation(internal.chat.acceptGuestMessage, {
+    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
       content: "One more question.",
     });
@@ -268,11 +268,11 @@ describe("automatic responder lifecycle", () => {
   });
   it("does not let a late AI answer or a failed old send overwrite a newer turn", async () => {
     const s = await setup();
-    await s.t.mutation(internal.chat.acceptGuestMessage, {
+    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
       content: "New question",
     });
-    await s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+    await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
       sessionId: s.sessionId,
       replyToMessageId: s.guestId,
       content: "Old answer",
@@ -285,7 +285,7 @@ describe("automatic responder lifecycle", () => {
   });
   it("moves a crashed AI turn to Needs you and ignores the watchdog after success", async () => {
     const s = await setup();
-    await s.t.mutation(internal.inboxLifecycle.expireAnswer, {
+    await s.t.mutation(internal.messaging.inboxLifecycle.expireAnswer, {
       sessionId: s.sessionId,
       messageId: s.guestId,
     });
@@ -293,13 +293,13 @@ describe("automatic responder lifecycle", () => {
       inboxState: "needs_staff",
       inboxReason: "send_failed",
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "recovery",
       content: "Yes.",
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "recovery" });
-    await s.t.mutation(internal.inboxLifecycle.expireAnswer, {
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "recovery" });
+    await s.t.mutation(internal.messaging.inboxLifecycle.expireAnswer, {
       sessionId: s.sessionId,
       messageId: s.guestId,
     });
@@ -307,11 +307,11 @@ describe("automatic responder lifecycle", () => {
   });
   it("undo reopens as a deliberate follow-up and No reply needed completes it", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId,
       status: "resolved",
     });
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId,
       status: "open",
     });
@@ -319,7 +319,7 @@ describe("automatic responder lifecycle", () => {
       inboxState: "processing",
       staffTask: "Review conversation",
     });
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId,
       status: "resolved",
     });
@@ -330,12 +330,12 @@ describe("automatic responder lifecycle", () => {
   });
   it("ignores a delayed handoff and failure after staff has answered the current guest", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "answered",
       content: "Wi-Fi is included.",
     });
-    await s.admin.mutation(api.adminReply.complete, { requestId: "answered" });
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "answered" });
     await s.t.run(async (ctx) => {
       expect(await staffNeeded(ctx, s.sessionId, s.guestId)).toBe(false);
       await sendFailed(ctx, s.sessionId, s.guestId, "Old AI request failed");
@@ -348,7 +348,7 @@ describe("automatic responder lifecycle", () => {
   });
   it("ignores a delayed handoff from an older guest turn", async () => {
     const s = await setup();
-    const current = await s.t.mutation(internal.chat.acceptGuestMessage, {
+    const current = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
       sessionId: s.sessionId,
       content: "A different question",
     });
@@ -365,19 +365,19 @@ describe("automatic responder lifecycle", () => {
     "preserves intentional %s despite a late send failure or confirmation",
     async (status) => {
       const s = await setup();
-      await s.admin.mutation(api.adminReply.claim, {
+      await s.admin.mutation(api.messaging.adminReply.claim, {
         sessionId: s.sessionId,
         requestId: "manual",
         content: "Yes.",
       });
-      await s.admin.mutation(api.adminChat.setSessionStatus, {
+      await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
         sessionId: s.sessionId,
         status,
       });
       await s.t.run((ctx) =>
         sendFailed(ctx, s.sessionId, s.guestId, "Late failure", "manual"),
       );
-      await s.admin.mutation(api.adminReply.complete, { requestId: "manual" });
+      await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "manual" });
       expect(await s.detail()).toMatchObject({
         adminStatus: status,
         inboxState: "done",
@@ -386,20 +386,20 @@ describe("automatic responder lifecycle", () => {
   );
   it("prevents unpin or Resume AI from releasing a pending send or follow-up", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setKeepWithStaff, {
+    await s.admin.mutation(api.messaging.adminChat.setKeepWithStaff, {
       sessionId: s.sessionId,
       keep: true,
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "pending",
       content: "Yes.",
     });
-    await s.admin.mutation(api.adminChat.setKeepWithStaff, {
+    await s.admin.mutation(api.messaging.adminChat.setKeepWithStaff, {
       sessionId: s.sessionId,
       keep: false,
     });
-    await s.admin.mutation(api.adminChat.setAiPaused, {
+    await s.admin.mutation(api.messaging.adminChat.setAiPaused, {
       sessionId: s.sessionId,
       paused: true,
     });
@@ -409,17 +409,17 @@ describe("automatic responder lifecycle", () => {
       aiPaused: true,
     });
     await expect(
-      s.admin.mutation(api.adminChat.setAiPaused, {
+      s.admin.mutation(api.messaging.adminChat.setAiPaused, {
         sessionId: s.sessionId,
         paused: false,
       }),
     ).rejects.toThrow("Complete the follow-up");
-    await s.admin.mutation(api.adminReply.complete, { requestId: "pending" });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminReply.complete, { requestId: "pending" });
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: "Check transfer",
     });
-    await s.admin.mutation(api.adminChat.setAiPaused, {
+    await s.admin.mutation(api.messaging.adminChat.setAiPaused, {
       sessionId: s.sessionId,
       paused: true,
     });
@@ -429,7 +429,7 @@ describe("automatic responder lifecycle", () => {
       aiPaused: true,
     });
     await expect(
-      s.admin.mutation(api.adminChat.setAiPaused, {
+      s.admin.mutation(api.messaging.adminChat.setAiPaused, {
         sessionId: s.sessionId,
         paused: false,
       }),
@@ -440,21 +440,21 @@ describe("automatic responder lifecycle", () => {
     async (source) => {
       const s = await setup();
       if (source === "manual")
-        await s.admin.mutation(api.adminChat.setSessionStatus, {
+        await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
           sessionId: s.sessionId,
           status: "resolved",
         });
       else {
-        await s.admin.mutation(api.adminReply.claim, {
+        await s.admin.mutation(api.messaging.adminReply.claim, {
           sessionId: s.sessionId,
           requestId: "staff-first",
           content: "Yes.",
         });
-        await s.admin.mutation(api.adminReply.complete, {
+        await s.admin.mutation(api.messaging.adminReply.complete, {
           requestId: "staff-first",
         });
       }
-      await s.t.mutation(internal.chat.addAssistantMessageWithSuggestions, {
+      await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
         sessionId: s.sessionId,
         replyToMessageId: s.guestId,
         content: "I will ask staff.",
@@ -468,20 +468,20 @@ describe("automatic responder lifecycle", () => {
   );
   it("keeps a pending send In progress while a task is added and completed", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId,
       status: "resolved",
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "extra-reply",
       content: "One more detail.",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: "Arrange a transfer",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: null,
     });
@@ -490,27 +490,27 @@ describe("automatic responder lifecycle", () => {
       inboxReason: "sending",
       aiPaused: true,
     });
-    await s.admin.mutation(api.adminReply.complete, {
+    await s.admin.mutation(api.messaging.adminReply.complete, {
       requestId: "extra-reply",
     });
     expect(await s.detail()).toMatchObject({ inboxState: "done" });
   });
   it("does not hide a failed extra reply when its follow-up is completed", async () => {
     const s = await setup();
-    await s.admin.mutation(api.adminChat.setSessionStatus, {
+    await s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
       sessionId: s.sessionId,
       status: "resolved",
     });
-    await s.admin.mutation(api.adminReply.claim, {
+    await s.admin.mutation(api.messaging.adminReply.claim, {
       sessionId: s.sessionId,
       requestId: "extra-failure",
       content: "One more detail.",
     });
-    await s.admin.mutation(api.adminReply.fail, {
+    await s.admin.mutation(api.messaging.adminReply.fail, {
       requestId: "extra-failure",
       error: "Delivery not confirmed",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: "Check the channel",
     });
@@ -519,7 +519,7 @@ describe("automatic responder lifecycle", () => {
       inboxReason: "send_failed",
       inboxSendError: "Delivery not confirmed",
     });
-    await s.admin.mutation(api.adminChat.setStaffTask, {
+    await s.admin.mutation(api.messaging.adminChat.setStaffTask, {
       sessionId: s.sessionId,
       task: null,
     });
@@ -534,21 +534,21 @@ describe("automatic responder lifecycle", () => {
 
 it("preserves a pending staff send against a second tab's reply claim", async () => {
   const s = await setup();
-  await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'first-tab', content: 'First reply' });
-  await expect(s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'second-tab', content: 'Second reply' })).rejects.toThrow('A staff reply is pending');
-  await s.admin.mutation(api.adminReply.fail, { requestId: 'first-tab', error: 'Channel failed' });
+  await s.admin.mutation(api.messaging.adminReply.claim, { sessionId: s.sessionId, requestId: 'first-tab', content: 'First reply' });
+  await expect(s.admin.mutation(api.messaging.adminReply.claim, { sessionId: s.sessionId, requestId: 'second-tab', content: 'Second reply' })).rejects.toThrow('A staff reply is pending');
+  await s.admin.mutation(api.messaging.adminReply.fail, { requestId: 'first-tab', error: 'Channel failed' });
   expect(await s.detail()).toMatchObject({ inboxReason: 'send_failed', inboxSendError: 'Channel failed', needsReply: true });
   // Failure releases the send lock so staff can deliberately retry.
-  expect(await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'retry-tab', content: 'Retry reply' })).toMatchObject({ state: 'new' });
+  expect(await s.admin.mutation(api.messaging.adminReply.claim, { sessionId: s.sessionId, requestId: 'retry-tab', content: 'Retry reply' })).toMatchObject({ state: 'new' });
 });
 
 it("preserves pending extra reply failures against stale Reopen", async () => {
   const s = await setup();
-  await s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'resolved' });
-  await s.admin.mutation(api.adminReply.claim, { sessionId: s.sessionId, requestId: 'extra-pending', content: 'Extra detail' });
-  await expect(s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' })).rejects.toThrow('A staff reply is pending');
-  await s.admin.mutation(api.adminReply.fail, { requestId: 'extra-pending', error: 'Channel failed' });
+  await s.admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'resolved' });
+  await s.admin.mutation(api.messaging.adminReply.claim, { sessionId: s.sessionId, requestId: 'extra-pending', content: 'Extra detail' });
+  await expect(s.admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' })).rejects.toThrow('A staff reply is pending');
+  await s.admin.mutation(api.messaging.adminReply.fail, { requestId: 'extra-pending', error: 'Channel failed' });
   expect(await s.detail()).toMatchObject({ inboxReason: 'send_failed', inboxSendError: 'Channel failed', needsReply: true });
-  await s.admin.mutation(api.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' });
+  await s.admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' });
   expect(await s.detail()).toMatchObject({ inboxState: 'processing', staffTask: 'Review conversation' });
 });

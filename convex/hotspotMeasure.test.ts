@@ -15,7 +15,7 @@
  *    transcript reader deliberately reads no session document (so guest heartbeats cannot rerun
  *    it); we assert that by confirming its result is independent of a concurrent heartbeat.
  *
- * Evidence from the audit: one `chat.touchSession` OCC retry in 72h on the dev deployment. That is
+ * Evidence from the audit: one `messaging/chat.touchSession` OCC retry in 72h on the dev deployment. That is
  * far below the bar for a presence-table split, so the split stays deferred; this file measures the
  * cheaper no-op-write avoidance that was actually shipped.
  */
@@ -32,7 +32,7 @@ const modules = import.meta.glob("./**/*.ts");
 const guestTokens = new Map<Id<"conversations">, string>();
 
 async function newWebSession(t: ReturnType<typeof convexTest>, currentPath = "/") {
-  const guest = await t.mutation(api.chat.createSession, { channel: "web", currentPath });
+  const guest = await t.mutation(api.messaging.chat.createSession, { channel: "web", currentPath });
   guestTokens.set(guest.sessionId, guest.guestToken);
   return guest.sessionId;
 }
@@ -52,7 +52,7 @@ async function heartbeatWrote(
   args: Record<string, unknown>,
 ) {
   const before = await t.run((ctx) => ctx.db.get(sessionId));
-  await t.mutation(api.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, ...args });
+  await t.mutation(api.messaging.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, ...args });
   const after = await t.run((ctx) => ctx.db.get(sessionId));
   return before?.lastSeenAt !== after?.lastSeenAt ? after?.lastSeenAt ?? null : null;
 }
@@ -168,7 +168,7 @@ describe("chat.touchSession presence writes", () => {
     try {
       // Beat skipped at +30s.
       vi.setSystemTime(base + 30_000);
-      await t.mutation(api.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, currentPath: "/", isOpen: true });
+      await t.mutation(api.messaging.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, currentPath: "/", isOpen: true });
       const session = await t.run((ctx) => ctx.db.get(sessionId));
 
       // Worst case: a beat lands just inside the throttle and is skipped, so the next write is one
@@ -193,7 +193,7 @@ describe("admin readers do not rerun on a presence-only heartbeat", () => {
     const base = (await t.run((ctx) => ctx.db.get(sessionId)))?.lastSeenAt ?? 0;
     await giveMessage(t, sessionId, base);
 
-    const first = await admin.query(api.adminChat.listTranscriptMessages, {
+    const first = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -202,12 +202,12 @@ describe("admin readers do not rerun on a presence-only heartbeat", () => {
     try {
       vi.setSystemTime(base + PRESENCE_WRITE_THROTTLE_MS + 1);
       // A heartbeat that DOES write presence.
-      await t.mutation(api.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, currentPath: "/", isOpen: true });
+      await t.mutation(api.messaging.chat.touchSession, { guestToken: guestTokens.get(sessionId), sessionId, currentPath: "/", isOpen: true });
     } finally {
       vi.useRealTimers();
     }
 
-    const second = await admin.query(api.adminChat.listTranscriptMessages, {
+    const second = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -217,11 +217,11 @@ describe("admin readers do not rerun on a presence-only heartbeat", () => {
   it("getSession (public reader) exposes no presence field, so heartbeats are invisible to it", async () => {
     const t = convexTest(schema, modules);
     const sessionId = await newWebSession(t);
-    const session = await t.query(api.chat.getSession, { guestToken: guestTokens.get(sessionId), sessionId });
+    const session = await t.query(api.messaging.chat.getSession, { guestToken: guestTokens.get(sessionId), sessionId });
     // lastSeenAt is admin-only; the public view omits it, so a heartbeat write does not change
     // what this reader returns.
     expect(session).not.toHaveProperty("lastSeenAt");
     expect(session).toMatchObject({ channel: "web" });
-    expect(internal.chat.getSessionInternal).toBeDefined();
+    expect(internal.messaging.chat.getSessionInternal).toBeDefined();
   });
 });

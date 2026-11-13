@@ -1,7 +1,7 @@
 import { ConvexError, v, type Infer } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { maintenancePaused } from '../auth/model';
+import { maintenancePaused } from '../lib/maintenance';
 export const durableTurnValidator = v.object({ eventId: v.id('channelEvents'), claimToken: v.string() });
 export const durableToolValidator = v.object({ eventId: v.id('channelEvents'), claimToken: v.string(), key: v.string(), name: v.string() });
 export type DurableTool = Infer<typeof durableToolValidator>;

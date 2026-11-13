@@ -3,7 +3,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { internal } from '../_generated/api';
 import { createHarness } from '../testing/harness';
-import { chatLimiter, consumeChatAdmission } from '../lib/chatAdmission';
+import { chatLimiter, consumeChatAdmission } from './chatAdmission';
 import { HOUR } from '@convex-dev/rate-limiter';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-13T06:00:00Z')); });
@@ -40,7 +40,7 @@ it('keeps a recent unlinked staff reply in chronological context when the transc
   await t.run(ctx => ctx.db.insert('messages', { sessionId: first.sessionId!, role: 'assistant', content: 'Staff clarified the arrival time.', timestamp: Date.now() }));
   vi.setSystemTime(Date.now() + 1);
   const current = await queue(t, 'current');
-  const history = await t.query(internal.chat.getRecentMessages, { sessionId: first.sessionId!, throughMessageId: current.userMessageId, limit: 2 });
+  const history = await t.query(internal.messaging.chat.getRecentMessages, { sessionId: first.sessionId!, throughMessageId: current.userMessageId, limit: 2 });
   expect(history.map(row => row.content)).toEqual(['Staff clarified the arrival time.', 'Hello']);
 });
 
@@ -63,7 +63,7 @@ it.each(['session', 'global'] as const)('ends %s admission refusal without stick
   const session = await t.run(ctx => ctx.db.get(event.sessionId!));
   expect(session).toMatchObject({ inboxState: 'needs_staff', inboxReason: 'send_failed' });
   expect(session?.aiPaused).not.toBe(true);
-  await t.mutation(internal.inboxLifecycle.expireAnswer, { sessionId: event.sessionId!, messageId: event.userMessageId! });
+  await t.mutation(internal.messaging.inboxLifecycle.expireAnswer, { sessionId: event.sessionId!, messageId: event.userMessageId! });
   expect((await t.run(ctx => ctx.db.get(event.sessionId!)))?.aiPaused).not.toBe(true);
   expect(transport).not.toHaveBeenCalled();
   if (budget === 'global') {

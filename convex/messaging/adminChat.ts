@@ -1,22 +1,23 @@
-import { internalMutation, type MutationCtx, type QueryCtx, adminQuery, adminMutation } from './auth/model';
-import { internal } from './_generated/api';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import type { Doc, Id } from './_generated/dataModel';
-import {
-	getAdminChatMessageCount,
-	getAdminChatSortAt,
-	normalizeAdminSearchText
-} from './lib/adminChatMetadata';
-import { isChatSessionActive } from './lib/chatPresence';
-import { getChannelReplyWindow } from './lib/channelReplyWindow';
-import { assertNoPendingStaffSend, answerAccepted, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './lib/inboxLifecycle';
+import { internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import { adminMutation, adminQuery, internalMutation, type MutationCtx, type QueryCtx } from '../auth/model';
+import { isChatSessionActive } from '../lib/chatPresence';
+import { getAdminChatMessageCount, getAdminChatSortAt, normalizeAdminSearchText } from './adminChatMetadata';
+import { getChannelReplyWindow } from './channelReplyWindow';
+import { answerAccepted, assertNoPendingStaffSend, changeStaffOwnership, finishWithoutReply, inboxNeedsStaff, latestGuestId } from './inboxState';
 
 const PAGE_SIZE = 10;
+
 const SEARCH_SESSION_LIMIT = 50;
+
 const SEARCH_MESSAGE_LIMIT = 100;
+
 const FUZZY_SCAN_LIMIT = 200;
+
 const FILTER_SOURCE_PAGE_SIZE = 100;
+
 const DETAIL_CHANNEL_EVENT_LIMIT = 1;
 
 type FilterCursor = {
@@ -56,8 +57,11 @@ const channelFilterValidator = v.union(
 );
 
 type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply' | 'in_progress';
+
 type AdminStatusFilter = 'all' | 'open' | 'done' | 'resolved' | 'archived';
+
 type EmptyFilter = 'all' | 'empty' | 'non_empty';
+
 type ChannelFilter = 'all' | 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
 
 function parseSearchCursor(cursor: string | null) {
@@ -902,7 +906,7 @@ export const deleteSessionChildren = internalMutation({
 	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
 		if (!(await deleteSessionChildrenBatch(ctx, args.sessionId))) {
-			await ctx.scheduler.runAfter(0, internal.adminChat.deleteSessionChildren, args);
+			await ctx.scheduler.runAfter(0, internal.messaging.adminChat.deleteSessionChildren, args);
 		}
 		return null;
 	}
@@ -918,7 +922,7 @@ export const deleteArchivedSession = adminMutation({
 
 		await ctx.db.delete(args.sessionId);
 		if (!(await deleteSessionChildrenBatch(ctx, args.sessionId))) {
-			await ctx.scheduler.runAfter(0, internal.adminChat.deleteSessionChildren, args);
+			await ctx.scheduler.runAfter(0, internal.messaging.adminChat.deleteSessionChildren, args);
 		}
 		return null;
 	}

@@ -208,7 +208,7 @@ export async function saveLead(
   args: { propertySlug: string; email: string; source: "tour_completion" | "chat" | "booking_abandonment" },
 ) {
   return (await withConvexTimeout(
-    client.mutation(api.leads.save, args as never),
+    client.mutation(api.messaging.leads.save, args as never),
     "Saving lead",
   )) as string;
 }
@@ -232,7 +232,7 @@ export async function createChatSession(
   },
 ) {
   const result = await withConvexTimeout(
-    client.mutation(api.chat.createSession, args as never),
+    client.mutation(api.messaging.chat.createSession, args as never),
     "Creating chat session",
   );
   storeGuestToken(result.sessionId, result.guestToken);
@@ -256,7 +256,7 @@ export async function touchChatSession(
   },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.touchSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chat.touchSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Updating chat session",
   );
 }
@@ -266,7 +266,7 @@ export async function closeChatSession(
   args: { sessionId: string },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.closeSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chat.closeSession, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Closing chat session",
   );
 }
@@ -276,7 +276,7 @@ export async function createChatBrowserHandoff(
   args: { sessionId: string },
 ) {
   return (await withConvexTimeout(
-    client.mutation(api.chat.createBrowserHandoff, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chat.createBrowserHandoff, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Preparing browser handoff",
   )) as string;
 }
@@ -286,7 +286,7 @@ export async function claimChatBrowserHandoff(
   args: { token: string },
 ) {
   const result = await withConvexTimeout(
-    client.mutation(api.chat.claimBrowserHandoff, args as never),
+    client.mutation(api.messaging.chat.claimBrowserHandoff, args as never),
     "Restoring browser handoff",
   );
   if (!result) return null;
@@ -299,7 +299,7 @@ export async function getChatMessages(
   args: { sessionId: string; limit?: number },
 ) {
   return (await withConvexTimeout(
-    client.query(api.chat.getMessages, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.query(api.messaging.chat.getMessages, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Loading chat messages",
   )) as ChatTranscriptMessage[];
 }
@@ -316,7 +316,7 @@ export async function identifyChatVisitor(
   },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chat.identifyVisitor, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chat.identifyVisitor, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Saving chat contact",
   );
 }
@@ -331,7 +331,7 @@ export async function getNextChatSuggestions(
   // Keep ranking across the full chip list while bounding each public query to five keys.
   for (let offset = 0; offset < candidateIds.length && selected.length < limit; offset += 5) {
     const next = await withConvexTimeout(
-      client.query(api.chatSuggestions.nextForSession, {
+      client.query(api.messaging.chatSuggestions.nextForSession, {
         sessionId: args.sessionId,
         guestToken: getStoredGuestToken(args.sessionId),
         candidateSuggestionIds: candidateIds.slice(offset, offset + 5),
@@ -349,7 +349,7 @@ export async function markChatSuggestionsShown(
   args: { sessionId: string; suggestions: ChatSuggestionRef[] },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chatSuggestions.markShown, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chatSuggestions.markShown, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Marking suggested questions shown",
   );
 }
@@ -359,7 +359,7 @@ export async function markChatSuggestionClicked(
   args: { sessionId: string; suggestion: ChatSuggestionRef },
 ) {
   return await withConvexTimeout(
-    client.mutation(api.chatSuggestions.markClicked, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
+    client.mutation(api.messaging.chatSuggestions.markClicked, { ...args, guestToken: getStoredGuestToken(args.sessionId) } as never),
     "Marking suggested question clicked",
   );
 }

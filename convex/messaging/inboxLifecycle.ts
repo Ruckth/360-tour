@@ -1,6 +1,6 @@
-import { internalMutation } from "./_generated/server";
-import { v } from "convex/values";
-import { sendFailed } from "./lib/inboxLifecycle";
+import { v } from 'convex/values';
+import { internalMutation } from '../_generated/server';
+import { sendFailed } from './inboxState';
 
 /** A crashed/timed-out Web generation must not remain “AI is answering” forever. */
 export const expireAnswer = internalMutation({
