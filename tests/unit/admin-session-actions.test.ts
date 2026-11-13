@@ -45,7 +45,7 @@ const press = (el: Element) => act(async () => {
 const menuItems = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 const settleFocus = () => act(async () => new Promise(resolve => setTimeout(resolve, 20)));
 async function menu(label: string) {
-  await press(byLabel("More conversation actions"));
+  await press(byLabel("More chat actions"));
   const item = menuItems().find(el => el.textContent?.trim() === label);
   expect(item, label).toBeDefined();
   await press(item!);
@@ -88,12 +88,12 @@ it("shares direct and menu editing, initializes from the current task and cancel
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.querySelector("textarea")?.value).toBe("Draft stays here");
   expect(statusChanged).not.toHaveBeenCalled();
-  expect(document.activeElement).toBe(byLabel("More conversation actions"));
+  expect(document.activeElement).toBe(byLabel("More chat actions"));
 });
 
 it("guards blank saves independently of the disabled button and leaves the current task intact", async () => {
   await render(); await click(byLabel("Edit follow-up")); await type("   ");
-  expect(button("Save follow-up").disabled).toBe(true);
+  expect(button("Save").disabled).toBe(true);
   await submit();
   expect(mocks.mutation).not.toHaveBeenCalled();
   expect(document.body.textContent).toContain("Check housekeeping");
@@ -108,7 +108,7 @@ it("completes independently and starts Add empty after the current task is remov
   expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("adminChat:setStaffTask", { sessionId: "session-a", task: null });
   await render({ ...initial, staffTask: undefined });
   await settleFocus();
-  expect(document.activeElement).toBe(byLabel("More conversation actions"));
+  expect(document.activeElement).toBe(byLabel("More chat actions"));
   expect(byLabel("Edit follow-up")).toBeNull();
   expect(document.body.textContent).not.toContain("Follow-up:");
   await menu("Add follow-up"); expect(input().value).toBe("");
@@ -137,9 +137,9 @@ it("retains a failed edit for retry, blocks closing and double submission while 
 });
 
 it("shows No reply needed in the header, rare actions in ⋯, and retains the exact latest guest-message guard", async () => {
-  await render(); await press(byLabel("More conversation actions"));
+  await render(); await press(byLabel("More chat actions"));
   expect(menuItems().map(el => el.textContent)).toEqual([
-    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive conversation",
+    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive chat",
   ]);
   await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await click(button("No reply needed"));
@@ -159,7 +159,7 @@ it("keeps failed actions visible without firing success callbacks and preserves 
   await click(button("Reopen"));
   expect(document.querySelector('[role="alert"]')?.textContent).toBe("Could not reopen");
   expect(statusChanged).not.toHaveBeenCalled();
-  await menu("Delete conversation");
+  await menu("Delete chat");
   expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ destructive: true, confirmLabel: "Delete chat" }));
   expect(mocks.mutation).toHaveBeenLastCalledWith("adminChat:deleteArchivedSession", { sessionId: "session-a" });
   expect(deleted).toHaveBeenCalledOnce();

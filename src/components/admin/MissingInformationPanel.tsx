@@ -4,6 +4,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { MessageSquare, Plus, RotateCcw } from "lucide-react";
+import { MoreMenu } from "@/components/ui/more-menu";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -23,7 +24,7 @@ import {
   useSelection,
   useUndoNotice,
 } from "@/components/admin/admin-bulk";
-import { ChannelIcon, formatDateTime, truncate } from "@/components/admin/admin-chat-format";
+import { ChannelIcon, formatDateTime } from "@/components/admin/admin-chat-format";
 import {
   STRUCTURED_SOURCES,
   compatibleFacts,
@@ -42,6 +43,8 @@ type MissingInfoFilter = (typeof UNKNOWN_STATUSES)[number] | "all";
 /** How a report can be resolved from a dropdown: a structured source or an approved fact. */
 const STRUCTURED_PREFIX = "source:";
 const FACT_PREFIX = "fact:";
+/** The resolve dropdown's last option: write a new fact from the question instead. */
+const CREATE_FACT = "create";
 
 function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } {
   const label = UNKNOWN_STATUSES.filter((status) => group.counts[status] > 0)
@@ -56,9 +59,10 @@ function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } 
 }
 
 /**
- * Reports of information the concierge could not answer, grouped by identical question. Picking an
- * approved business fact or a structured source resolves the group at once, with Undo; staff can
- * also create a fact prefilled from the question. Groups can also be ignored and reopened.
+ * Reports of information the concierge could not answer, grouped by identical question. The one
+ * dropdown resolves: picking an approved business fact or a structured source resolves the group at
+ * once, with Undo, and its last option creates a fact prefilled from the question. Ignore and
+ * Reopen sit in each row's ⋯ (Reopen is the button on handled rows).
  */
 export function MissingInformationPanel({ properties }: { properties: readonly AdminFactProperty[] }) {
   const [status, setStatus] = useState<MissingInfoFilter>("new");
@@ -85,6 +89,9 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
   const [leftover, setLeftover] = useState<{ remaining: number; remainingIsLowerBound: boolean; rerun: () => void } | null>(null);
 
   const groups = result?.groups ?? [];
+  // Filtered to New, a row that is only new needs no "New" badge; mixed rows still say what's what.
+  const onlyNew = (group: AdminUnknownGroup) => status === "new" && group.counts.new === group.count;
+  const showStatus = !groups.every(onlyNew);
   const selection = useSelection(groups.map((group) => group.normalizedQuestion));
   const selectedGroups = groups.filter((group) => selection.isSelected(group.normalizedQuestion));
   const selectedNew = selectedGroups.filter((group) => group.counts.new > 0);
@@ -192,7 +199,13 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
     );
   }
 
-  /** Options for a group's resolve dropdown: compatible approved facts, then structured sources. */
+  function createFact(question: AdminUnknownGroup["latest"]) {
+    setFactTarget({
+      fromUnknown: { unknownQuestionId: question._id, question: question.userQuestion, propertyId: question.propertyId },
+    });
+  }
+
+  /** Options for a group's resolve dropdown: compatible approved facts, structured sources, then Create fact. */
   function resolveOptions(reportPropertyId: Id<"properties"> | undefined) {
     const usable = compatibleFacts(facts, reportPropertyId);
     return (
@@ -211,6 +224,10 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
             From {source.label}
           </SelectItem>
         ))}
+        <SelectItem value={CREATE_FACT}>
+          <Plus aria-hidden="true" className="h-4 w-4" />
+          Create fact…
+        </SelectItem>
       </SelectContent>
     );
   }
@@ -308,10 +325,11 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                   />
                 </th>
                 <th className={STACKED_TABLE.th}>Question</th>
-                <th className={STACKED_TABLE.th}>Context</th>
                 <th className={STACKED_TABLE.th}>Resolve</th>
-                <th className={STACKED_TABLE.th}>Status</th>
-                <th className={STACKED_TABLE.th}>Actions</th>
+                {showStatus ? <th className={STACKED_TABLE.th}>Status</th> : null}
+                <th className={cn(STACKED_TABLE.th, "w-14")}>
+                  <span className="sr-only">More</span>
+                </th>
               </tr>
             </thead>
             <tbody className={STACKED_TABLE.body}>
@@ -321,7 +339,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                 const hasNew = group.counts.new > 0;
                 const reportPropertyId = question.propertyId;
                 return (
-                  <tr key={key} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
+                  <tr key={key} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow, hasNew && "relative max-lg:pr-14")}>
                     <td className={STACKED_TABLE.cell}>
                       <SelectCheckbox
                         checked={selection.isSelected(key)}
@@ -347,6 +365,8 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                             <span className="sr-only">{sourceLabel(channel)}</span>
                           </span>
                         ))}
+                        {question.propertyName ? <span>{question.propertyName}</span> : null}
+                        {question.detectedTopic ? <span>{question.detectedTopic}</span> : null}
                         {question.sessionId ? (
                           <Link
                             href={`/admin/chats?session=${question.sessionId}`}
@@ -358,28 +378,16 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                         ) : null}
                       </p>
                     </td>
-                    <td
-                      data-label="Context"
-                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-muted-foreground lg:max-w-[220px]")}
-                    >
-                      <p>{question.propertyName ?? question.propertySlug ?? "General"}</p>
-                      <p className="mt-1 line-clamp-1 text-xs">
-                        {question.detectedTopic ?? "No topic"} · {truncate(question.pageUrl, 60) || "No page"}
-                      </p>
-                    </td>
-                    <td
-                      data-label="Resolve"
-                      className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "lg:min-w-[280px]")}
-                    >
+                    <td className={cn(STACKED_TABLE.cell, "lg:min-w-[280px]")}>
                       {hasNew ? (
                         // Picking is the decision: it resolves at once, and the toast offers Undo.
                         <Select
                           value=""
                           disabled={pendingAction !== ""}
-                          onValueChange={(next) => void resolve(group, next)}
+                          onValueChange={(next) => (next === CREATE_FACT ? createFact(question) : void resolve(group, next))}
                         >
                           <SelectTrigger
-                            className="h-9 w-full min-w-0 rounded-lg lg:min-w-[180px]"
+                            className="h-9 w-full min-w-0 rounded-lg border-primary/60 font-medium lg:min-w-[180px]"
                             aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
                           >
                             <SelectValue placeholder="Resolve with a fact…" />
@@ -395,53 +403,35 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                         </span>
                       )}
                     </td>
-                    <td className={STACKED_TABLE.cell}>
-                      <StatusBadge {...statusSummary(group)} className="whitespace-normal" />
-                    </td>
-                    <td className={STACKED_TABLE.cell}>
-                      <div className="flex flex-wrap items-center gap-2">
-                        {hasNew ? (
-                          <>
-                            <Button
-                              type="button"
-                              size="sm"
-                              onClick={() =>
-                                setFactTarget({
-                                  fromUnknown: {
-                                    unknownQuestionId: question._id,
-                                    question: question.userQuestion,
-                                    propertyId: reportPropertyId,
-                                  },
-                                })
-                              }
-                            >
-                              <Plus aria-hidden="true" className="h-4 w-4" />
-                              Create fact
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={pendingAction === `ignore:${key}`}
-                              onClick={() => void ignore([key])}
-                            >
-                              Ignore
-                            </Button>
-                          </>
-                        ) : null}
-                        {group.counts.new < group.count ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={pendingAction === `reopen:${key}`}
-                            onClick={() => void reopen([key])}
-                          >
-                            <RotateCcw aria-hidden="true" className="h-4 w-4" />
-                            Reopen
-                          </Button>
-                        ) : null}
-                      </div>
+                    {showStatus ? (
+                      <td className={STACKED_TABLE.cell}>
+                        {onlyNew(group) ? null : <StatusBadge {...statusSummary(group)} className="whitespace-normal" />}
+                      </td>
+                    ) : null}
+                    {/* On a phone the ⋯ sits in the card's top corner, beside the question. */}
+                    <td className={cn(STACKED_TABLE.cell, hasNew && "max-lg:absolute max-lg:top-2 max-lg:right-2")}>
+                      {/* Handled rows: Reopen is their one action. Rows with new reports: Ignore (and Reopen) in ⋯. */}
+                      {!hasNew ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={pendingAction === `reopen:${key}`}
+                          onClick={() => void reopen([key])}
+                        >
+                          <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                          Reopen
+                        </Button>
+                      ) : (
+                        <MoreMenu
+                          label={`More for "${question.userQuestion}"`}
+                          disabled={pendingAction !== ""}
+                          items={[
+                            { label: "Ignore", onSelect: () => void ignore([key]) },
+                            { label: "Reopen", hidden: group.counts.new === group.count, onSelect: () => void reopen([key]) },
+                          ]}
+                        />
+                      )}
                     </td>
                   </tr>
                 );

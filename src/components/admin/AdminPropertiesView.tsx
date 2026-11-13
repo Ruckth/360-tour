@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { ConfigurationHistoryRecords, HistoryDisclosure } from "./RecordHistoryPanel";
 import { StatusBadge } from "./StatusBadge";
 import { formatMoney } from "./labels";
 import { Field, PROPERTY_STATUS, SaveStatus, Thumb, useSaver, type PropertyStatus } from "./property-form";
@@ -107,6 +108,8 @@ export function AdminPropertiesView() {
           </ul>
         )}
       </section>
+      {/* Deleted villas have no page of their own, so their history lives here, not in Settings. */}
+      <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
       <NewVillaDialog open={creating} onClose={() => setCreating(false)} />
     </div>
   );

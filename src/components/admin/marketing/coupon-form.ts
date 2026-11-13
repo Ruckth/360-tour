@@ -1,4 +1,6 @@
 import { normalizeCouponCode } from "convex/lib/offers";
+import { formatMoney } from "@/components/admin/labels";
+import { parseDiscount } from "@/components/checkout/discount-input";
 import type { CouponDetail, CouponScope, CouponVersion, SaveCouponArgs } from "./types";
 
 // The coupon builder's form state, its validation, and how it maps to saveCoupon.
@@ -28,6 +30,48 @@ type CouponRules = Omit<SaveCouponArgs, "couponId" | "code" | "campaignId">;
 
 /** 1500 → "1,500", undefined → "": a stored whole number as form text. */
 export const wholeText = (value?: number) => (value === undefined ? "" : value.toLocaleString("en-US"));
+
+/**
+ * The coupon's one discount field, read like checkout's (checkout/discount-input.ts): a trailing "%"
+ * is a percent ("20%"), anything else baht ("500", "฿500", "1,500").
+ */
+export function discountFieldText(form: Pick<CouponForm, "kind" | "value">): string {
+  if (!form.value) return "";
+  return form.kind === "percent" ? `${form.value}%` : form.value;
+}
+
+/** What typing `text` in the discount field stores: the kind and the number's text, checked later by couponFormErrors. */
+export function discountFromText(text: string, current: CouponForm["kind"]): Pick<CouponForm, "kind" | "value"> {
+  const trimmed = text.trim();
+  if (!trimmed) return { kind: current, value: "" };
+  // Parsed by checkout's rules; the price cap doesn't apply to a coupon, so the line is unbounded.
+  const parsed = parseDiscount(trimmed, UNBOUNDED_LINE);
+  if (parsed?.ok) {
+    const { type, value } = parsed.discount;
+    return type === "percent" ? { kind: "percent", value: String(value) } : { kind: "fixed", value: Number.isInteger(value) ? wholeText(value) : String(value) };
+  }
+  // Not a discount yet ("abc", "150%"): kept as typed, so couponFormErrors can say what's wrong.
+  const percent = /^(.*?)\s*%$/.exec(trimmed);
+  return percent ? { kind: "percent", value: percent[1].trim() } : { kind: "fixed", value: trimmed.replace(/^฿\s*/, "") };
+}
+const UNBOUNDED_LINE = { unitPrice: 1_000_000_000, qty: 1 };
+
+/**
+ * "20% = ฿840–฿1,700 a night" for a percent coupon on villas, worked out with checkout's discount
+ * parser on each covered villa's nightly price. Null when there's no price to work it out on.
+ */
+export function discountEcho(form: Pick<CouponForm, "kind" | "value" | "scope" | "allVillas" | "villas">, villas: readonly { slug: string; pricePerNight: number; status: string }[]): string | null {
+  const value = parseWhole(form.value);
+  if (form.kind !== "percent" || !value || Number.isNaN(value) || value > 100 || form.scope === "services") return null;
+  const covered = villas.filter((villa) => (form.allVillas ? villa.status === "active" : form.villas.includes(villa.slug)));
+  const amounts = covered
+    .map((villa) => parseDiscount(`${value}%`, { unitPrice: villa.pricePerNight, qty: 1 }))
+    .flatMap((parsed) => (parsed?.ok ? [parsed.amount] : []));
+  if (!amounts.length) return null;
+  const low = Math.min(...amounts);
+  const high = Math.max(...amounts);
+  return `${value}% = ${formatMoney(low)}${high > low ? `–${formatMoney(high)}` : ""} a night`;
+}
 
 export const EMPTY_COUPON_FORM: CouponForm = {
   code: "",

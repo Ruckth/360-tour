@@ -1,0 +1,31 @@
+{
+  "task": "ignore-report",
+  "viewport": "ipad",
+  "taps": 1,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 20,
+    "controlsOnPage": 20,
+    "wordsOnScreen": 82,
+    "wordsOnPage": 82,
+    "wordsInnerText": 85
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Ignore",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "ignore-report-ipad-00-start.png"
+  ]
+}

@@ -5,6 +5,7 @@ import { makeFunctionReference, type PaginationOptions, type PaginationResult } 
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { personLabel } from "./person-label";
 
 export type HistoryEntry = Doc<"recordChanges">;
 // Explicit references until the parent runs local codegen; no untyped generated API cast.
@@ -234,7 +235,7 @@ export function RecordHistoryPanel({
           <li key={entry._id} className="space-y-2 py-3 first:pt-0">
             <p className="text-sm font-medium text-foreground">{KINDS[entry.kind] ?? "Record changed"}</p>
             <p className="break-words text-xs text-muted-foreground">
-              {entry.actor} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{new Date(entry.recordedAt).toLocaleString()}</time>
+              {personLabel(entry.actor)} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{new Date(entry.recordedAt).toLocaleString()}</time>
             </p>
             <p className="text-xs text-muted-foreground">
               Effective {new Date(entry.effectiveAt).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)

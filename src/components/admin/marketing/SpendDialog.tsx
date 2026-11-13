@@ -240,7 +240,7 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
           </Button>
           <Button type="submit" disabled={busy !== null}>
             {busy === "save" ? <Spinner label="Saving" className="text-current" /> : null}
-            {entry ? "Save changes" : "Add spend"}
+            {entry ? "Save" : "Add spend"}
           </Button>
         </DialogFooter>
       </form>

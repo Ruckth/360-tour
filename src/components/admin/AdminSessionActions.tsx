@@ -137,7 +137,7 @@ export function AdminSessionActions({
       )}
       <span ref={menuWrapper} className="contents">
         <MoreMenu
-          label="More conversation actions"
+          label="More chat actions"
           disabled={pending}
           className="size-9 text-muted-foreground"
           items={[
@@ -151,8 +151,8 @@ export function AdminSessionActions({
               label: session.keepWithStaff ? "Let AI handle the next issue" : "Keep the next issue with staff",
               onSelect: () => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff })),
             },
-            { label: "Archive conversation", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
-            { label: "Delete conversation", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
+            { label: "Archive chat", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
+            { label: "Delete chat", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
           ]}
         />
       </span>
@@ -183,7 +183,7 @@ export function AdminSessionActions({
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" disabled={pending} onClick={closeTask}>Cancel</Button>
-              <Button type="submit" disabled={pending || !task.trim()}>Save follow-up</Button>
+              <Button type="submit" disabled={pending || !task.trim()}>Save</Button>
             </div>
           </form>
         </DialogContent>

@@ -105,7 +105,7 @@ async function press(el: Element) {
   });
 }
 async function openMenu() {
-  await press(document.querySelector('[aria-label="More conversation actions"]')!);
+  await press(document.querySelector('[aria-label="More chat actions"]')!);
 }
 async function click(label: string) {
   const button = [...document.querySelectorAll<HTMLElement>('button, [role="menuitem"]')].find((candidate) => candidate.textContent?.trim() === label);
@@ -411,7 +411,7 @@ describe("inbox navigation", () => {
     mocks.mutation.mockReturnValueOnce(pending.promise);
     await render();
     await openMenu();
-    await click("Archive conversation");
+    await click("Archive chat");
     mocks.search = new URLSearchParams(
       navigation === "selection" ? "view=all&session=session-b" : "view=all&state=done",
     );
@@ -439,7 +439,7 @@ describe("inbox navigation", () => {
     };
     await render();
     await openMenu();
-    await click("Archive conversation");
+    await click("Archive chat");
     const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
     expect(destination).toContain("state=done");
     expect(destination.includes("session=session-b")).toBe(desktop);

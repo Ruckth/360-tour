@@ -9,6 +9,9 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
  *   - Create → Save & publish → QR card → Print on the coupon page: 8 taps and 2 typed fields,
  *     one confirm, no other page (was about 18 taps and 2 page switches through Links & QR).
  *   - At most one explanatory sentence in the coupon editor.
+ * Round 2 (docs/reviews/ux-audit/r2-admin.md): one Discount field like checkout's ("20% or 500")
+ * instead of the Percent / Fixed ฿ toggle (13 → 11 controls at the start); Print in the QR card's
+ * footer, on screen on a phone (was 1 scroll); "is live" is a status line without Dismiss.
  * Set UX_P8_SHOTS to a folder to keep screenshots.
  */
 
@@ -39,7 +42,9 @@ for (const [name, size] of Object.entries(SIZES)) {
   test(`new coupon starts with at most 130 words, 14 controls and 1 sentence (${name})`, async ({ page }) => {
     await open(page, size);
     const counts = await census(page);
-    expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
+    expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(11);
+    await expect(page.getByRole("radio", { name: "Percent" })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "20% or 500");
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
     // Dates, minimums and terms are folded away; a quote can't run before the first save.
@@ -67,7 +72,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     };
 
     await fill(page.getByRole("textbox", { name: "Code", exact: true }), "SPA20");
-    await fill(page.getByRole("textbox", { name: "Discount", exact: true }), "20");
+    await fill(page.getByRole("textbox", { name: "Discount", exact: true }), "20%");
     await tap(page.getByRole("radio", { name: /^Spa services/ }));
     await tap(visible(page, "Save & publish"));
     const confirm = page.getByRole("alertdialog");
@@ -76,6 +81,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     await tap(confirm.getByRole("button", { name: "Save & publish" }));
 
     await expect(page.getByRole("status").filter({ hasText: "SPA20 is live" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "SPA20" })).toBeVisible();
     // Test a quote appears once the rules are saved.
     await expect(page.getByRole("heading", { name: "Test a quote" })).toBeVisible();
@@ -90,6 +96,8 @@ for (const [name, size] of Object.entries(SIZES)) {
     await tap(dialog.getByRole("button", { name: "Publish the card" }));
     await expect(dialog.getByRole("heading", { name: "QR offer card" })).toBeVisible();
     if (SHOTS && name !== "ipad") await page.screenshot({ path: `${SHOTS}/after-qr-card-${name}.png` });
+    // Print sits in the dialog's footer: on screen without scrolling, phone included.
+    await expect(dialog.getByRole("button", { name: "Print" })).toBeInViewport({ ratio: 1 });
     await tap(dialog.getByRole("button", { name: "Print" }));
     await expect(page.locator("body")).toHaveAttribute("data-printed", "square");
 
@@ -107,7 +115,7 @@ for (const [name, size] of Object.entries(SIZES)) {
 test("a failed publish keeps the saved draft and says so once", async ({ page }) => {
   await open(page, SIZES.ipad, "?fail=publish");
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await visible(page, "Save & publish").click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
   await expect(page.getByRole("alert")).toHaveText(/Saved SPA20 as a draft, but it isn’t live\. The server didn’t answer\./);
@@ -120,7 +128,7 @@ test("a failed publish keeps the saved draft and says so once", async ({ page })
 test("a failed save publishes nothing", async ({ page }) => {
   await open(page, SIZES.ipad, "?fail=save");
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await visible(page, "Save & publish").click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
   await expect(page.getByRole("alert")).toContainText("The server didn’t answer.");
@@ -131,7 +139,7 @@ test("a failed save publishes nothing", async ({ page }) => {
 test("Save as draft skips the confirm and doesn't publish", async ({ page }) => {
   await open(page, SIZES.ipad);
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await page.getByRole("button", { name: "More save options" }).locator("visible=true").click();
   await page.getByRole("menuitem", { name: "Save as draft" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved SPA20 as a draft" })).toBeVisible();
@@ -142,7 +150,7 @@ test("Save as draft skips the confirm and doesn't publish", async ({ page }) => 
 test("an error under More rules opens it and focuses the field", async ({ page }) => {
   await open(page, SIZES.ipad);
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await page.getByText("More rules", { exact: true }).click();
   await page.getByLabel("Total uses").fill("0");
   await page.getByText("More rules", { exact: true }).click();
@@ -156,7 +164,7 @@ test("an error under More rules opens it and focuses the field", async ({ page }
 test("a failed link publish opens the card on its draft, with Publish", async ({ page }) => {
   await open(page, SIZES.ipad, "?fail=link-publish");
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await visible(page, "Save & publish").click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
   await visible(page, "QR card").click();
@@ -172,7 +180,7 @@ test("a failed link publish opens the card on its draft, with Publish", async ({
 test("with no campaigns, + New campaign makes one inside the QR card step", async ({ page }) => {
   await open(page, SIZES.ipad, "?campaigns=0");
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
   await visible(page, "Save & publish").click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
   await visible(page, "QR card").click();
@@ -188,4 +196,39 @@ test("with no campaigns, + New campaign makes one inside the QR card step", asyn
   await expect(dialog.getByRole("button", { name: "Print" })).toBeEnabled();
   const all = JSON.parse((await page.locator("body").getAttribute("data-calls"))!);
   expect(all.find((call: { name: string }) => call.name === "saveCampaign").args).toEqual({ name: "SPA20 print", source: "print", medium: "qr" });
+});
+
+test("the discount reads like checkout's: 20% is a percent with its nightly saving, 500 is baht", async ({ page }) => {
+  await open(page, SIZES.ipad);
+  const discount = page.getByRole("textbox", { name: "Discount", exact: true });
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("STAY20");
+  await discount.fill("20%");
+  // Accommodation, all villas: ฿4,200 and ฿8,500 a night.
+  await expect(page.getByText("20% = ฿840–฿1,700 a night")).toBeVisible();
+  await expect(page.getByText("20% off", { exact: true })).toBeVisible();
+  await page.getByRole("radio", { name: "Choose villas" }).click();
+  await page.getByRole("checkbox", { name: /Garden Villa/ }).check();
+  await expect(page.getByText("20% = ฿840 a night")).toBeVisible();
+  await discount.fill("150%");
+  await page.getByRole("textbox", { name: "Code", exact: true }).click();
+  await discount.fill("500");
+  await expect(page.getByText("฿500 off", { exact: true })).toBeVisible();
+  await expect(page.getByText(/a night$/)).toHaveCount(0);
+  await page.getByRole("button", { name: "More save options" }).locator("visible=true").click();
+  await page.getByRole("menuitem", { name: "Save as draft" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved STAY20 as a draft" })).toBeVisible();
+  const saved = JSON.parse((await page.locator("body").getAttribute("data-calls"))!).find((call: { name: string }) => call.name === "saveCoupon").args;
+  expect(saved.benefit).toEqual({ kind: "fixed", amount: 500 });
+  await expect(discount).toHaveValue("500");
+});
+
+test("a discount over 100% or with decimals says so on save", async ({ page }) => {
+  await open(page, SIZES.ipad);
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("BIG");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("150%");
+  await visible(page, "Save & publish").click();
+  await expect(page.getByText("A percentage can’t be over 100")).toBeVisible();
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("12.5%");
+  await expect(page.getByText("Use a whole number")).toBeVisible();
+  expect(await calls(page)).toEqual([]);
 });

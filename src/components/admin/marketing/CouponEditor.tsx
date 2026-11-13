@@ -15,15 +15,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "../ConfirmDialog";
+import { personLabel } from "../person-label";
 import { StatusBadge } from "../StatusBadge";
 import { Callout, ChoiceGroup, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice, type Notice } from "./MarketingBits";
 import { CouponLedger } from "./CouponLedger";
 import { CouponQrDialog, couponCardLink, type CouponQrActions } from "./CouponQrDialog";
 import { TestQuotePanel } from "./TestQuotePanel";
-import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
+import {
+  EMPTY_COUPON_FORM,
+  couponFormErrors,
+  couponFormFrom,
+  couponFormKey,
+  couponRulesFrom,
+  discountEcho,
+  discountFieldText,
+  discountFromText,
+  rulesChanged,
+  type CouponForm,
+  type CouponFormErrors,
+} from "./coupon-form";
 import {
   COUPON_STATE,
   LINK_STATUS,
@@ -199,6 +211,8 @@ function CouponBuilder({
   const { notice, show, clear } = useNotice();
   const baseline = detail ? couponFormFrom(detail) : EMPTY_COUPON_FORM;
   const [form, setForm] = useState<CouponForm>(baseline);
+  // The discount as typed ("20%" or "500"); the form keeps its kind and number.
+  const [discountText, setDiscountText] = useState(() => discountFieldText(baseline));
   const [moreOpen, setMoreOpen] = useState(() => usesMoreRules(baseline));
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -274,7 +288,9 @@ function CouponBuilder({
     }
     setSubmitted(false);
     // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
-    setForm(couponFormFrom({ code, campaignId, rules }));
+    const stored = couponFormFrom({ code, campaignId, rules });
+    setForm(stored);
+    setDiscountText(discountFieldText(stored));
     let saved: Notice = { tone: "success", text: detail ? (changedRules ? `Saved version ${result.version}` : "Saved") : `Saved ${code} as a draft` };
     if (intent === "publish") {
       try {
@@ -428,7 +444,7 @@ function CouponBuilder({
         >
           <fieldset disabled={disabled} className="grid min-w-0 gap-5 border border-border bg-card p-4">
             <legend className="sr-only">Coupon</legend>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,10rem)] sm:items-start">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)] sm:items-start">
               <div className="grid content-start gap-2">
                 <Label htmlFor={`${id}-code`}>Code</Label>
                 {codeLocked ? (
@@ -458,29 +474,22 @@ function CouponBuilder({
                 )}
               </div>
               <div className="grid content-start gap-2">
-                <span id={`${id}-kind`} className="text-sm font-medium leading-none text-foreground">
-                  Type
-                </span>
-                <ToggleGroup aria-labelledby={`${id}-kind`} value={form.kind} onValueChange={(value) => set("kind", value)} disabled={disabled}>
-                  <ToggleGroupItem value="percent" className="flex-1 sm:min-w-20">
-                    Percent
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="fixed" className="flex-1 sm:min-w-20">
-                    Fixed ฿
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </div>
-              <div className="grid content-start gap-2">
                 <Label htmlFor={`${id}-value`}>Discount</Label>
-                <NumberField
+                <Input
                   {...field("value")}
-                  prefix={form.kind === "fixed" ? "฿" : undefined}
-                  suffix={form.kind === "percent" ? "%" : undefined}
-                  value={form.value}
-                  onChange={(event) => set("value", event.target.value)}
-                  className="font-semibold"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="20% or 500"
+                  value={discountText}
+                  onChange={(event) => {
+                    setDiscountText(event.target.value);
+                    setForm((current) => ({ ...current, ...discountFromText(event.target.value, current.kind) }));
+                  }}
+                  className="font-semibold tabular-nums"
                 />
-                {err("value")}
+                {shown("value") ? err("value") : discountEcho(form, properties) ? (
+                  <FieldHint id={`${id}-value-hint`}>{discountEcho(form, properties)}</FieldHint>
+                ) : null}
               </div>
             </div>
 
@@ -782,7 +791,7 @@ function CouponBuilder({
                       </div>
                       <p className="text-xs text-muted-foreground">{couponRulesLine(version)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatStamp(version.createdAt)} · {version.createdByEmail}
+                        {formatStamp(version.createdAt)} · {personLabel(version.createdByEmail)}
                       </p>
                     </li>
                   ))}

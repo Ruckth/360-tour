@@ -264,27 +264,30 @@ export function QrCardBody({
               </Callout>
             ) : null}
 
-            {error ? (
-              <p role="alert" className="text-sm font-medium text-destructive">
-                {error}
-              </p>
-            ) : null}
-            <Button type="button" onClick={() => printQrCard(svg, format)} disabled={busy !== null || draft}>
-              <Printer aria-hidden className="size-4" />
-              Print
-            </Button>
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" variant="outline" onClick={() => void savePng()} disabled={busy !== null || draft}>
-                {busy === "png" ? <Spinner label="Making PNG" className="text-current" /> : <Download aria-hidden className="size-4" />}
-                PNG
-              </Button>
-              <Button type="button" variant="outline" onClick={saveSvg} disabled={busy !== null || draft}>
-                <Download aria-hidden className="size-4" />
-                SVG
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">PNG for posts, SVG for print shops</p>
           </div>
+        </div>
+      </div>
+      {/* Outside the scroller, so Print is on screen on a phone without scrolling past the card. */}
+      <div className="grid gap-2 border-t border-border bg-card px-5 py-3 sm:px-6" data-testid="qr-card-footer">
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="me-auto hidden text-xs text-muted-foreground sm:block">PNG for posts, SVG for print shops</p>
+          <Button type="button" variant="outline" title="For posts" onClick={() => void savePng()} disabled={busy !== null || draft} className="max-sm:flex-1">
+            {busy === "png" ? <Spinner label="Making PNG" className="text-current" /> : <Download aria-hidden className="size-4" />}
+            PNG
+          </Button>
+          <Button type="button" variant="outline" title="For print shops" onClick={saveSvg} disabled={busy !== null || draft} className="max-sm:flex-1">
+            <Download aria-hidden className="size-4" />
+            SVG
+          </Button>
+          <Button type="button" onClick={() => printQrCard(svg, format)} disabled={busy !== null || draft} className="max-sm:flex-[2] sm:min-w-32">
+            <Printer aria-hidden className="size-4" />
+            Print
+          </Button>
         </div>
       </div>
     </>

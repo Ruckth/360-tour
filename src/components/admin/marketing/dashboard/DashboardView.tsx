@@ -6,6 +6,7 @@ import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,7 +74,8 @@ export const initialRequest = (today: string): ReportRequest => {
   return range ? { ...DEFAULT_REQUEST(today), range } : DEFAULT_REQUEST(today);
 };
 
-const ATTRIBUTION_RULE = "last_touch_30d@1";
+/** The attribution rule (last_touch_30d@1) in words; the CSV export keeps the rule's id. */
+const ATTRIBUTION_WINDOW = "30 days";
 
 function RangePicker({ range, today, onChange }: { range: RangeChoice; today: string; onChange: (range: RangeChoice) => void }) {
   const [open, setOpen] = useState(false);
@@ -330,14 +332,24 @@ export function DashboardView({
       </div>
       <div className="col-span-2 flex flex-wrap gap-2 sm:ml-auto">
         <ViewOptions touch={touch} onTouch={setTouch} />
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" onClick={() => setDefinitions(true)}>
+        {/* On a phone, Definitions, Export CSV and Refresh wait in ⋯ so the figures come first. */}
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-9 sm:flex-none" onClick={() => setDefinitions(true)}>
           <BookOpen aria-hidden className="size-4" />
           Definitions
         </Button>
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-9 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />
           Export CSV
         </Button>
+        <MoreMenu
+          label="More dashboard actions"
+          className="size-10 border border-border sm:hidden"
+          items={[
+            { label: busy ? "Updating…" : "Refresh", disabled: busy, onSelect: onRetry },
+            { label: "Definitions", onSelect: () => setDefinitions(true) },
+            { label: "Export CSV", disabled: !p || firstRun, onSelect: () => setExporting(true) },
+          ]}
+        />
       </div>
     </div>
   );
@@ -362,9 +374,9 @@ export function DashboardView({
         ) : null}
         <span aria-hidden>·</span>
         <span>
-          {touch === "first" ? "First touch" : "Last touch"} ({ATTRIBUTION_RULE})
+          {touch === "first" ? "First touch" : "Last touch"} · {ATTRIBUTION_WINDOW}
         </span>
-        <button type="button" onClick={onRetry} disabled={busy} className="inline-flex items-center gap-1 rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 pointer-coarse:min-h-11">
+        <button type="button" onClick={onRetry} disabled={busy} className="inline-flex items-center gap-1 rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 max-sm:hidden pointer-coarse:min-h-11">
           <RotateCw aria-hidden className={cn("size-3.5", busy && "animate-spin")} />
           {busy ? "Updating" : "Refresh"}
         </button>

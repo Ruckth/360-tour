@@ -499,10 +499,10 @@ export function ChatsView() {
   const emptyList: { message: string; action?: ReactNode } =
     sessionsResult && !sessionsResult.isDone && sessions.length === 0
       ? {
-          message: "No matching conversations on this page.",
+          message: "No matching chats on this page.",
           action: (
             <Button type="button" size="sm" onClick={handleNextPage}>
-              Check older conversations
+              Check older chats
             </Button>
           ),
         }
@@ -540,7 +540,7 @@ export function ChatsView() {
             }
           : adminStatus !== "open"
             ? {
-                message: adminStatus === "done" ? "No completed conversations yet." : `No ${adminStatus} chats here.`,
+                message: adminStatus === "done" ? "No completed chats yet." : `No ${adminStatus} chats here.`,
                 action: (
                   <Button type="button" size="sm" onClick={() => setQueue("open")}>
                     Show open chats
@@ -557,7 +557,7 @@ export function ChatsView() {
                   ),
                 }
               : {
-                  message: "No chats yet. Guest conversations from every channel appear here.",
+                  message: "No chats yet. Guest chats from every channel appear here.",
                 };
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -619,7 +619,7 @@ export function ChatsView() {
             <div className="grid gap-3 p-4 pb-3">
               {/* Phones show the page title only; shortcuts are offered where there's a mouse and keyboard. */}
               <div className="flex items-center justify-between max-md:contents">
-                <h2 className="text-base font-semibold max-md:sr-only">Conversations</h2>
+                <h2 className="text-base font-semibold max-md:sr-only">Chats</h2>
                 <Button
                   type="button"
                   variant="ghost"
@@ -635,7 +635,7 @@ export function ChatsView() {
                 tabs={queueTabs}
                 value={queue}
                 onValueChange={setQueue}
-                label="Conversation queue"
+                label="Chat queue"
                 controls="admin-chat-list"
                 fill
               />
@@ -653,8 +653,8 @@ export function ChatsView() {
                       if (event.key === "Escape") event.currentTarget.blur();
                     }}
                     className="h-9 rounded-lg pl-9"
-                    placeholder="Search conversations"
-                    aria-label="Search conversations"
+                    placeholder="Search chats"
+                    aria-label="Search chats"
                     aria-keyshortcuts="/"
                   />
                 </div>
@@ -678,12 +678,12 @@ export function ChatsView() {
                   <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
                     <p className="text-sm font-semibold text-foreground">Filters</p>
                     <div className="space-y-2">
-                      <p className="admin-eyebrow">Conversation status</p>
+                      <p className="admin-eyebrow">Chat status</p>
                       <SegmentedTabs
                         tabs={adminStatusTabs}
                         value={adminStatus}
                         onValueChange={setAdminStatus}
-                        label="Conversation status"
+                        label="Chat status"
                         fill
                       />
                     </div>
@@ -929,8 +929,8 @@ export function ChatsView() {
             ) : (
               <div className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
                 {loadingSessions
-                  ? "Loading conversations…"
-                  : `${sessions.length} ${sessions.length === 1 ? "conversation" : "conversations"} in this view`}
+                  ? "Loading chats…"
+                  : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} in this view`}
               </div>
             )}
           </aside>

@@ -17,7 +17,7 @@ for (const { width, font } of [
     await expect(page.getByRole("alert")).toContainText("Message could not be delivered");
     await expect(page.getByText(/reply window.*(ends|closes)/i)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    for (const name of ["Edit follow-up", "Complete follow-up", "No reply needed", "More conversation actions"]) {
+    for (const name of ["Edit follow-up", "Complete follow-up", "No reply needed", "More chat actions"]) {
       const control = page.getByRole("button", { name, exact: true });
       await control.scrollIntoViewIfNeeded();
       const box = await control.boundingBox();
@@ -28,8 +28,8 @@ for (const { width, font } of [
       expect(box!.y + box!.height).toBeLessThanOrEqual(844.5);
       await control.click({ trial: true });
     }
-    await page.getByRole("button", { name: "More conversation actions" }).click();
-    const menu = page.getByRole("menu", { name: "More conversation actions" });
+    await page.getByRole("button", { name: "More chat actions" }).click();
+    const menu = page.getByRole("menu", { name: "More chat actions" });
     await expect(menu).toBeVisible();
     const menuBox = await menu.boundingBox();
     expect(menuBox!.x).toBeGreaterThanOrEqual(0);
@@ -58,11 +58,11 @@ test("direct task edit can be cancelled; Complete then Add starts empty without 
   await expect(page.getByText(initialTask, { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Complete follow-up", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit follow-up", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "More conversation actions" })).toBeFocused();
-  await page.getByRole("button", { name: "More conversation actions" }).click();
+  await expect(page.getByRole("button", { name: "More chat actions" })).toBeFocused();
+  await page.getByRole("button", { name: "More chat actions" }).click();
   await page.getByRole("menuitem", { name: "Add follow-up", exact: true }).click();
   await expect(input).toHaveValue("");
-  await expect(page.getByRole("button", { name: "Save follow-up" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await input.press("Escape");
   await expect(page.getByRole("textbox", { name: /reply/i })).toHaveValue("An unsent reply is retained.");
 });

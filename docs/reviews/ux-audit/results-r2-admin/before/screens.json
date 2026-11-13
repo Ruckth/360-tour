@@ -1,0 +1,222 @@
+{
+  "ipad · Team": {
+    "page": {
+      "controlsOnScreen": 23,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 49,
+      "wordsOnPage": 57,
+      "wordsInnerText": 97
+    },
+    "sentences": 0,
+    "selectsInPeople": 8,
+    "peopleControls": 11,
+    "discountLimitInView": true,
+    "emailsShownAsPeople": 5
+  },
+  "ipad · Business": {
+    "page": {
+      "controlsOnScreen": 25,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 44,
+      "wordsOnPage": 55,
+      "wordsInnerText": 223
+    },
+    "deletedVillaHistory": 1,
+    "saveLabel": "Save business profile"
+  },
+  "ipad · Missing information": {
+    "page": {
+      "controlsOnScreen": 20,
+      "controlsOnPage": 20,
+      "wordsOnScreen": 82,
+      "wordsOnPage": 82,
+      "wordsInnerText": 85
+    },
+    "sentences": 0,
+    "firstCard": {
+      "controls": 5,
+      "text": "Is breakfast included?Asked 2× Nov 14, 2026, 3:58 AM Website Open chat General Dining · /villas/tideglass Resolve with a fact… New Create fact Ignore",
+      "words": 24
+    },
+    "newBadges": 3,
+    "rawPaths": 3,
+    "contextLabels": 3
+  },
+  "ipad · New coupon": {
+    "page": {
+      "controlsOnScreen": 13,
+      "controlsOnPage": 13,
+      "wordsOnScreen": 52,
+      "wordsOnPage": 52,
+      "wordsInnerText": 57
+    },
+    "sentences": 0,
+    "typeToggle": 1
+  },
+  "ipad · Coupon published": {
+    "page": {
+      "controlsOnScreen": 14,
+      "controlsOnPage": 19,
+      "wordsOnScreen": 90,
+      "wordsOnPage": 169,
+      "wordsInnerText": 178
+    },
+    "sentences": 0,
+    "liveBannerDismiss": 1,
+    "liveStatusAfter5s": 0
+  },
+  "ipad · QR card": {
+    "printInView": true,
+    "dialog": {
+      "controlsOnScreen": 4,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 94,
+      "wordsOnPage": 94,
+      "wordsInnerText": 94
+    }
+  },
+  "ipad · Dashboard": {
+    "page": {
+      "controlsOnScreen": 19,
+      "controlsOnPage": 46,
+      "wordsOnScreen": 201,
+      "wordsOnPage": 709,
+      "wordsInnerText": 746
+    },
+    "controlsBeforeFirstNumber": 8,
+    "controlsBeforeFirstNumberNames": [
+      "Dates: Last 30 days, 8 Oct–6 Nov 2026",
+      "Property",
+      "Marketing",
+      "Finance",
+      "View options: Last touch",
+      "Definitions",
+      "Export CSV",
+      "Refresh"
+    ],
+    "rawRuleShown": 1,
+    "firstNumberInView": true
+  },
+  "ipad · New partner": {
+    "dialog": {
+      "controlsOnScreen": 7,
+      "controlsOnPage": 7,
+      "wordsOnScreen": 42,
+      "wordsOnPage": 42,
+      "wordsInnerText": 46
+    },
+    "sentences": 0,
+    "sentenceText": [],
+    "saveLabel": "Save partner"
+  },
+  "phone · Team": {
+    "page": {
+      "controlsOnScreen": 18,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 37,
+      "wordsOnPage": 57,
+      "wordsInnerText": 97
+    },
+    "sentences": 0,
+    "selectsInPeople": 8,
+    "peopleControls": 11,
+    "discountLimitInView": false,
+    "emailsShownAsPeople": 5
+  },
+  "phone · Business": {
+    "page": {
+      "controlsOnScreen": 14,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 28,
+      "wordsOnPage": 55,
+      "wordsInnerText": 223
+    },
+    "deletedVillaHistory": 1,
+    "saveLabel": "Save business profile"
+  },
+  "phone · Missing information": {
+    "page": {
+      "controlsOnScreen": 16,
+      "controlsOnPage": 19,
+      "wordsOnScreen": 66,
+      "wordsOnPage": 77,
+      "wordsInnerText": 80
+    },
+    "sentences": 0,
+    "firstCard": {
+      "controls": 5,
+      "text": "Is breakfast included?Asked 2× Nov 14, 2026, 3:58 AM Website Open chat General Dining · /villas/tideglass Resolve with a fact… New Create fact Ignore",
+      "words": 24
+    },
+    "newBadges": 3,
+    "rawPaths": 3,
+    "contextLabels": 3
+  },
+  "phone · New coupon": {
+    "page": {
+      "controlsOnScreen": 13,
+      "controlsOnPage": 13,
+      "wordsOnScreen": 42,
+      "wordsOnPage": 54,
+      "wordsInnerText": 59
+    },
+    "sentences": 0,
+    "typeToggle": 1
+  },
+  "phone · Coupon published": {
+    "page": {
+      "controlsOnScreen": 12,
+      "controlsOnPage": 19,
+      "wordsOnScreen": 43,
+      "wordsOnPage": 168,
+      "wordsInnerText": 179
+    },
+    "sentences": 0,
+    "liveBannerDismiss": 1,
+    "liveStatusAfter5s": 0
+  },
+  "phone · QR card": {
+    "printInView": false,
+    "dialog": {
+      "controlsOnScreen": 1,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 84,
+      "wordsOnPage": 94,
+      "wordsInnerText": 94
+    }
+  },
+  "phone · Dashboard": {
+    "page": {
+      "controlsOnScreen": 9,
+      "controlsOnPage": 39,
+      "wordsOnScreen": 124,
+      "wordsOnPage": 773,
+      "wordsInnerText": 820
+    },
+    "controlsBeforeFirstNumber": 8,
+    "controlsBeforeFirstNumberNames": [
+      "Dates: Last 30 days, 8 Oct–6 Nov 2026",
+      "Property",
+      "Marketing",
+      "Finance",
+      "View options: Last touch",
+      "Definitions",
+      "Export CSV",
+      "Refresh"
+    ],
+    "rawRuleShown": 1,
+    "firstNumberInView": true
+  },
+  "phone · New partner": {
+    "dialog": {
+      "controlsOnScreen": 7,
+      "controlsOnPage": 7,
+      "wordsOnScreen": 42,
+      "wordsOnPage": 42,
+      "wordsInnerText": 46
+    },
+    "sentences": 0,
+    "sentenceText": [],
+    "saveLabel": "Save partner"
+  }
+}

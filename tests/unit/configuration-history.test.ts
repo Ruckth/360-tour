@@ -102,7 +102,7 @@ it("renders readable selected changes, actor/effective time and cursor paginatio
   expect(document.body.textContent).toContain("Business name");
   expect(document.body.textContent).toContain("Earlier name");
   expect(document.body.textContent).toContain("Current name");
-  expect(document.body.textContent).toContain("admin@example.com");
+  expect(document.body.textContent).toContain("Admin · Recorded");
   expect(document.body.textContent).toContain("Bangkok");
   expect(document.body.textContent).toContain("History begins");
   expect(document.body.textContent).not.toContain("accessToken");
@@ -124,12 +124,12 @@ it("renders deleted time off as readable dates and allows discovering its histor
 it("disables applying history while a draft is dirty and retains that draft after a failed save", async () => {
   state.update.mockRejectedValue(new Error("Settings changed. Review the latest configuration and try again."));
   await render(createElement(AdminSettingsView));
-  expect(button("Save business profile").disabled).toBe(true);
+  expect(button("Save").disabled).toBe(true);
   await openHistory();
   await change("Unsaved draft");
-  expect(button("Save business profile").disabled).toBe(false);
+  expect(button("Save").disabled).toBe(false);
   expect(button(RESTORE).disabled).toBe(true);
-  await click("Save business profile");
+  await click("Save");
   expect(state.update).toHaveBeenCalledWith(
     expect.objectContaining({ expectedRevision: 4, business: expect.objectContaining({ businessName: "Unsaved draft" }) }),
   );
@@ -153,7 +153,7 @@ it("applies history with the live revision, prevents duplicate pending writes an
   expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restore settings to before this change?", description: expect.stringContaining("every settings tab") }));
   expect(state.restore).toHaveBeenCalledWith({ historyId: event._id, expectedRevision: 4, side: "before" });
   expect(button(RESTORE).disabled).toBe(true);
-  expect(button("Save business profile").disabled).toBe(true);
+  expect(button("Save").disabled).toBe(true);
   expect(input().disabled).toBe(true);
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(state.update).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ it("refreshes the edited fields from a successful restoration without overwritin
   expect(input().value).toBe("Restored name");
   expect(document.body.textContent).toContain("Saved");
   expect(button(RESTORE).disabled).toBe(false);
-  expect(button("Save business profile").disabled).toBe(true);
+  expect(button("Save").disabled).toBe(true);
 });
 it("does not restore when the confirm is cancelled", async () => {
   state.confirm.mockResolvedValue(false);
