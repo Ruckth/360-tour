@@ -2,12 +2,12 @@ import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import { adminMutation, internalMutation, type MutationCtx, publicAction } from '../../auth/model';
 import { blockBookingDates, releaseBookingDates } from '../private/availabilityWrites';
-import { assertBookingRevision } from '../../lib/bookingMoney';
+import { assertBookingRevision } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
-import { stayMoney } from '../../lib/stayMoney';
+import { stayMoney } from '../../shared/stayMoney';
 import { roundMoney } from '../../shared/orderMath';
 import { appendRecordHistory } from '../../settings/model';
-import { bookingHoldExpiresAt } from '../../lib/siteSettings';
+import { bookingHoldExpiresAt } from '../../shared/siteSettings';
 import { isDocumentedLiveRefund, recordStayPayment } from '../private/stays';
 
 const CHECKOUT_LIFETIME_SECONDS = 60 * 60;

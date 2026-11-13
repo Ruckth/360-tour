@@ -1,15 +1,16 @@
+import { manualReduction } from '../../shared/staffDiscount';
 import type { UserIdentity } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import { adminEmails } from '../../lib/adminEmails';
-import { resortTodayIso } from '../../lib/dates';
+import { resortTodayIso } from '../../shared/time';
 import { isOpenOrder, isSettledOrder } from '../../pos/model';
-import { lineCouponBase, roundMoney, type PricedLine } from '../../shared/orderMath';
-import { STAFF_INVITATION_TTL_MS, type CashierAction } from '../../lib/staffTypes';
+import { type PricedLine } from '../../shared/orderMath';
+import { STAFF_INVITATION_TTL_MS, type CashierAction } from '../../shared/staffTypes';
 import { cashierRules } from '../../settings/model';
-import { percentageOf, roundRatio } from '../../shared/money';
+import { percentageOf } from '../../shared/money';
 
 export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
 
@@ -70,13 +71,6 @@ export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capa
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {
   if (actor.role === 'cashier' && (await cashierRules(ctx))[action] !== 'cashier')
     throw new ConvexError({ code: 'NEEDS_APPROVAL', kind: action, message: 'Ask a manager to approve this action.' });
-}
-
-/** Baseline (at least the line price) × current quantity; the coupon is deliberately excluded. Whole satang throughout. */
-export function manualReduction(line: PricedLine & { catalogUnitPrice?: number }) {
-  const subtotalSatang = roundMoney(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty);
-  const reductionSatang = Math.max(0, subtotalSatang - lineCouponBase(line));
-  return { subtotalSatang, reductionSatang, percent: subtotalSatang ? roundRatio(BigInt(reductionSatang) * 10000n, subtotalSatang) : 0 };
 }
 
 export async function assertCashierDiscount(ctx: QueryCtx | MutationCtx, actor: StaffActor, line: PricedLine & { catalogUnitPrice?: number }) {

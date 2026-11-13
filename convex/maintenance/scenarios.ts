@@ -13,7 +13,7 @@ import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking
 
 import { insertOrder } from '../pos/model';
 import { createGuestToken, hashGuestToken } from '../messaging/model';
-import { DEFAULT_CASHIER_RULES } from '../lib/staffTypes';
+import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
 
 export type ScenarioName = 'empty' | 'demo-resort' | 'busy-weekend';
 const tables = Object.keys(schema.tables) as TableNames[];

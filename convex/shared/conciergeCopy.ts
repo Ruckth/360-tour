@@ -515,7 +515,7 @@ export function getUnknownFallbackResponse(message: string, locale?: string) {
 }
 
 
-import type { EffectiveSettings } from '../lib/siteSettings';
+import type { EffectiveSettings } from './siteSettings';
 
 export function replyLocale(message: string): 'en' | 'th' | 'ko' {
 	const locale = detectReplyLocale(message);

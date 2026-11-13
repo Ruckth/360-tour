@@ -1,9 +1,5 @@
-import { cardText, type ReplyCard, type ReplyCardAction, type ReplyCardItem } from '../../lib/replyCards';
-import type { LineQuickReplyItem } from '../../concierge/model';
-
-export function richCardsEnabled(channel: 'line' | 'whatsapp'): boolean {
-  return (process.env.MESSAGING_RICH_CARDS ?? '').split(',').map(value => value.trim()).includes(channel);
-}
+import { cardText, type ReplyCard, type ReplyCardAction, type ReplyCardItem } from './replyCards';
+import type { LineQuickReplyItem } from './conciergeCopy';
 
 /** Put capability URLs first so long model prose cannot clip them off a fallback. */
 export function richReplyFallback(text: string, card?: ReplyCard): string {

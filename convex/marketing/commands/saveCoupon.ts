@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { marketingMutation } from '../../auth/model';
-import { normalizeCouponCode } from '../../lib/offers';
+import { normalizeCouponCode } from '../../shared/offers';
 import { appendRecordHistory } from '../../settings/model';
 import { requireEditableDraft } from '../accessPolicy';
 import type { RuleFields } from '../catalogModel';

@@ -9,13 +9,9 @@ import {
   monthOf,
   monthBounds,
   stayMonths,
-} from "@/lib/booking/blocked-months";
-import {
-  dateToIso,
-  nightsBetweenIso,
-  rangeIntersectsDates,
-  todayIsoLocal,
-} from "@/lib/booking/dates";
+} from "convex/shared/calendar";
+import { dateToIso, nightsBetweenIso, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso } from 'convex/shared/time';
 
 /** One bounded calendar load shared by manual creation and editing, including historical stays. */
 export function useAdminBookingDates(
@@ -23,7 +19,7 @@ export function useAdminBookingDates(
   { checkIn, checkOut }: { checkIn: string; checkOut: string },
   excludeBookingId?: Id<"bookings">,
 ) {
-  const today = todayIsoLocal();
+  const today = resortTodayIso();
   const [visibleMonth, setVisibleMonth] = useState(
     monthOf(checkOut || checkIn || today),
   );

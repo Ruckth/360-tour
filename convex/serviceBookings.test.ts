@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import { createAppointmentRecord, localDateTimeUtc } from './services/model';
 import schema from './schema';
-import { proposalIdentity } from './lib/chatWriteGuard';
+import { proposalIdentity } from './shared/chatWriteGuard';
 
 const modules = import.meta.glob('./**/*.ts');
 const date = '2026-09-25';

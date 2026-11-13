@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { OfferResult } from "convex/lib/offers";
+import type { OfferResult } from "convex/shared/offers";
 import {
   bangkokToday,
   benefitLabel,

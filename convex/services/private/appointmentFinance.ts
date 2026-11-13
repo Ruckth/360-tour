@@ -1,10 +1,10 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { attemptKey, cleanReason, effectiveTime } from '../../lib/bookingMoney';
-import { MANUAL_PAYMENT_METHODS } from '../../lib/financeValidators';
+import { attemptKey, cleanReason, effectiveTime } from '../../shared/bookingMoney';
+import { MANUAL_PAYMENT_METHODS } from '../../shared/financeValidators';
 import { sourceLineLinks, assertNotOnOpenOrder } from '../../pos/model';
 import { lineNet, roundMoney } from '../../shared/orderMath';
-import { assertMoney } from '../../lib/stayMoney';
+import { assertMoney } from '../../shared/stayMoney';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
 

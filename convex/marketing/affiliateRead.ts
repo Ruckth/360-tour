@@ -1,6 +1,6 @@
 import type { Doc } from '../_generated/dataModel';
 import { type QueryCtx } from '../auth/model';
-import { withMarketingReasonPrivacy, withoutPartnerPersonalData } from '../lib/marketingPrivacy';
+import { withMarketingReasonPrivacy, withoutPartnerPersonalData } from '../shared/marketingPrivacy';
 import type { CreditRow } from '../shared/marketingAffiliateTypes';
 
 export const LIMIT = 200;

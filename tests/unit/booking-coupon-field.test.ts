@@ -3,7 +3,7 @@ import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { evaluateOffer, type CouponRules } from "convex/lib/offers";
+import { evaluateOffer, type CouponRules } from "convex/shared/offers";
 import messages from "../../messages/en.json";
 import { CouponField } from "@/components/booking/CouponField";
 import { couponPhase, type CouponPhase } from "@/lib/booking/coupon";

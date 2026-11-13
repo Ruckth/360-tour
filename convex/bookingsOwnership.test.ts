@@ -41,7 +41,7 @@ it('removes old ctx helper modules and lifted exports without compatibility impl
   }
   for (const endpoint of ['appendBookingHistory', 'writeBooking', 'bookingSnapshot']) {
     await expect(t.mutation(makeFunctionReference<'mutation'>(['lib/bookingMoney', endpoint].join(':')), {}))
-      .rejects.toThrow(`Expected a Convex function exported from module "lib/bookingMoney" as \`${endpoint}\`, but there is no such export.`);
+      .rejects.toThrow(`Could not find module for: "lib/bookingMoney"`);
   }
 });
 

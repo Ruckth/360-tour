@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { sha256 } from './lib/displayTokens';
+import { sha256 } from './shared/displayTokens';
 import schema from './schema';
 
 /**

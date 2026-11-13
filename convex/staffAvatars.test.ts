@@ -7,7 +7,7 @@ import { internalMutation } from './_generated/server';
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { STAFF_AVATAR_UPLOAD_TTL_MS } from './services/model';
-import { MAX_AVATAR_BYTES } from './lib/imageUploads';
+import { MAX_AVATAR_BYTES } from './shared/imageUploads';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

@@ -1,7 +1,7 @@
 // Pure booking correction rules/types; ctx/history implementations belong to bookings/model.
 import { ConvexError } from 'convex/values';
-import { resortTodayIso } from './dates';
-import { MAX_ORDER, roundMoney } from '../shared/orderMath';
+import { resortTodayIso } from './time';
+import { MAX_ORDER, roundMoney } from './orderMath';
 import type { Booking } from './stayMoney';
 
 export const STALE_BOOKING = 'This booking changed since you opened it. Review the latest details and try again.';

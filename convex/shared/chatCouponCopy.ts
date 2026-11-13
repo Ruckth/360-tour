@@ -1,4 +1,4 @@
-export { chatCouponSummary, unverifiedCouponReply } from '../concierge/copy';
+export { chatCouponSummary, unverifiedCouponReply } from './conciergeCopy';
 /** Deterministic coupon wording for tool replies; prices never come from model prose. */
 
 

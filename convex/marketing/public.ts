@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { publicMutation, publicQuery } from '../auth/model';
-import { resortTodayIso } from '../lib/dates';
-import { localizeMarketingPath } from '../lib/marketingSlugs';
-import { type OfferResult } from '../lib/offers';
+import { resortTodayIso } from '../shared/time';
+import { localizeMarketingPath } from '../shared/marketingSlugs';
+import { type OfferResult } from '../shared/offers';
 import { enforceRateLimit, rateLimitReached } from '../messaging/model';
 import { cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey } from '../shared/marketingAttribution';
 import type { ResolvedLink } from '../shared/marketingTypes';

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { recordAppointmentRefund } from '../private/appointmentFinance';
-import { refundMethod } from '../../lib/financeValidators';
+import { refundMethod } from '../../shared/financeValidators';
 import { loadAppointment } from '../private/administration';
 
 /** Records a refund given at the desk; no money moves through the app. */

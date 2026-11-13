@@ -1,8 +1,8 @@
 import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import type { BookingPatch, HistoryEntry } from '../../lib/bookingMoney';
-import { bookingRevision } from '../../lib/bookingMoney';
-import type { Booking } from '../../lib/stayMoney';
+import type { BookingPatch, HistoryEntry } from '../../shared/bookingMoney';
+import { bookingRevision } from '../../shared/bookingMoney';
+import type { Booking } from '../../shared/stayMoney';
 import { syncAffiliateCredit, syncCouponRedemption } from '../../marketing/model';
 import { appendRecordHistory } from '../../settings/model';
 

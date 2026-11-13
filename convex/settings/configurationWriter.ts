@@ -1,6 +1,6 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { BUSINESS_FIELDS, type EffectiveSettings } from '../lib/siteSettings';
+import { BUSINESS_FIELDS, type EffectiveSettings } from '../shared/siteSettings';
 import { appendRecordHistory } from './recordWriter';
 
 /** Allow lists, never a spread of a database row: tokens and future provider fields stay out. */

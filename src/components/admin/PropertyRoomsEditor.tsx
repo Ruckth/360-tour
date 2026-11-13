@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { slugify } from "convex/lib/slug";
+import { slugify } from "convex/shared/slug";
 import { ArrowDown, ArrowUp, MapPin, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";

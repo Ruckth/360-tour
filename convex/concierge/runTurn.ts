@@ -3,9 +3,9 @@ import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
 import { generateConciergeReply, withReplyOutcome, type ConciergeReply } from './generation';
-import { committedReply, proposalReply, toolFailureReply } from './copy';
+import { committedReply, proposalReply, toolFailureReply } from '../shared/conciergeCopy';
 import { presentStoredToolResult, storedProposalIsCurrent } from './tools/presentation';
-import { localizedGreetingReply, detectReplyLocale, parseLineLocaleFromPostback } from './copy';
+import { localizedGreetingReply, detectReplyLocale, parseLineLocaleFromPostback } from '../shared/conciergeCopy';
 
 export const load = internalQuery({
   args: { eventId: v.id('channelEvents'), claimToken: v.string() },

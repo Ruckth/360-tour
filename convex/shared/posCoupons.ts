@@ -3,7 +3,7 @@
 // appointment rows only; stays, rooms, extras and fees are never discounted, and an attached stay
 // keeps the price its own booking promotion gave it.
 import { v, type Infer } from 'convex/values';
-import { lineCouponBase, type LineKind, type PricedLine } from '../shared/orderMath';
+import { lineCouponBase, type LineKind, type PricedLine } from './orderMath';
 import { validateMarketingSlug } from './marketingSlugs';
 import { evaluateOffer, MAX_QUOTE_SUBTOTAL, normalizeCouponCode, type CouponProblem, type CouponRules } from './offers';
 

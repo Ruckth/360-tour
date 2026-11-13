@@ -1,9 +1,9 @@
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { resortTodayIso } from '../../lib/dates';
-import { guestCouponFromHistory } from '../../lib/guestCouponCode';
-import { evaluateOffer, normalizeCouponCode, type OfferResult } from '../../lib/offers';
+import { resortTodayIso } from '../../shared/time';
+import { guestCouponFromHistory } from '../../shared/guestCouponCode';
+import { evaluateOffer, normalizeCouponCode, type OfferResult } from '../../shared/offers';
 import { couponVersion } from '../../marketing/model';
 import { quoteBookableStay, type StayInput } from './bookingWrites';
 

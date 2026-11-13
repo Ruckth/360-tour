@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cardBrowseMessage, replyCardFromTool } from './lib/replyCards';
+import { cardBrowseMessage, replyCardFromTool } from './shared/replyCards';
 
 const options = { siteUrl: 'https://resort.example', locale: 'en' };
 const make = (name: string, result: unknown) => replyCardFromTool({ name, args: {}, result: JSON.stringify(result) }, options);

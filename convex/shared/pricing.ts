@@ -1,5 +1,4 @@
-import { percentageOf } from '../shared/money';
-import type { Doc } from '../_generated/dataModel';
+import { percentageOf } from './money';
 
 export type PriceQuote = {
 	pricePerNight: number;
@@ -12,9 +11,11 @@ export type PriceQuote = {
 };
 
 export function calculateDirectQuote(
-	property: Pick<Doc<'properties'>, 'pricePerNight' | 'directDiscountPercent' | 'currency'>,
+	property: { pricePerNight: number; directDiscountPercent: number; currency: string },
 	nights: number
 ): PriceQuote {
+	// Empty/reversed date input shows a zero-night quote in the browser.
+	nights = Math.max(0, nights);
 	const subtotal = property.pricePerNight * nights;
 	const discountPercent = property.directDiscountPercent;
 	const discountAmount = percentageOf(subtotal, discountPercent);

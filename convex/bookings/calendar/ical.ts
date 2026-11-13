@@ -5,11 +5,11 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { ActionCtx, MutationCtx } from '../../_generated/server';
 import { adminAction, adminMutation, adminQuery, internalAction, internalMutation, internalQuery } from '../../auth/model';
 import { maintenancePaused } from '../../lib/maintenance';
-import { resortTodayIso } from '../../lib/dates';
-import { assertSafeIcalUrl, blockedDatesFromIcal } from '../../lib/ical';
+import { resortTodayIso } from '../../shared/time';
+import { assertSafeIcalUrl, blockedDatesFromIcal } from '../../shared/ical';
 import { readBudget } from '../../lib/readBudget';
 import { nightRows } from '../private/stayOverlap';
-import { assertValidIsoDate } from '../../lib/validation';
+import { assertValidIsoDate } from '../../shared/validation';
 
 const DAY_MS = 86_400_000;
 

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
-import { slugify } from './lib/slug';
+import { slugify } from './shared/slug';
 
 const modules = import.meta.glob('./**/*.ts');
 

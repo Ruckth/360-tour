@@ -2,9 +2,9 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { maintenancePaused } from '../lib/maintenance';
-import { BOOKING_RULE_RANGES, bookingHoldExpiresAt } from '../lib/siteSettings';
+import { BOOKING_RULE_RANGES, bookingHoldExpiresAt } from '../shared/siteSettings';
 import { getEffectiveSettings } from '../settings/model';
-import { resortLocalParts } from '../shared/resortLocalParts';
+import { resortLocalParts } from '../shared/time';
 import { expireHold } from './private/maintenance';
 
 export const expireBookingHold = internalMutation({

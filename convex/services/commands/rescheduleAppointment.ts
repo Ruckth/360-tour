@@ -2,7 +2,8 @@ import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertFresh, cleanReason, recordAppointmentChange } from '../private/appointmentChanges';
 import { canCorrectAppointmentTime, movedWindow } from '../../shared/appointmentWindow';
-import { assertAppointmentStart, assertStaffFree, blocksTime, historicalWarnings } from '../private/serviceSlots';
+import { assertAppointmentStart, assertStaffFree, historicalWarnings } from '../private/serviceSlots';
+import { blocksTime } from '../../shared/schedule';
 import { loadAppointment } from '../private/administration';
 
 /**

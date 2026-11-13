@@ -1,6 +1,6 @@
 import { chatCouponValidator } from '../bookings/model';
 import { defineTable } from 'convex/server';
-import { inboxReasonValidator } from '../lib/inboxTypes';
+import { inboxReasonValidator } from '../shared/inboxTypes';
 import { v } from 'convex/values';
 import { marketingCaptureValidator } from '../shared/marketingAttribution';
 

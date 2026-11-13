@@ -1,4 +1,4 @@
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { describe, expect, it } from "vitest";
 import { properties } from "@/lib/data/properties";
 import { getPublicMessages } from "@/lib/i18n/messages-loader";
@@ -104,5 +104,5 @@ describe("villa catalog fallback", () => {
 
 it('quotes the static demo catalog at the same 15 percent rate as the seeded resort', () => {
   const villa = catalogEn(undefined).villas.find(villa => villa.slug === 'pool-villa')!;
-  expect(calculateBookingQuote({ pricePerNight: villa.pricePerNight, nights: 2, discountPercent: villa.directDiscountPercent, currency: villa.currency })).toMatchObject({ subtotal: 1700000, discountAmount: 255000, directTotal: 1445000 });
+  expect(calculateDirectQuote({ pricePerNight: villa.pricePerNight, directDiscountPercent: villa.directDiscountPercent, currency: villa.currency }, 2)).toMatchObject({ subtotal: 1700000, discountAmount: 255000, directTotal: 1445000 });
 });

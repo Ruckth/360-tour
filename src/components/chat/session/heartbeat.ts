@@ -5,7 +5,7 @@
  * guest's presence fresh while the chat is open.
  *
  * Presence semantics (kept consistent with the admin side — see
- * `convex/lib/chatPresence.ts`, `isChatSessionActive` + `ACTIVE_CHAT_WINDOW_MS`):
+ * `convex/shared/chatPresence.ts`, `isChatSessionActive` + `ACTIVE_CHAT_WINDOW_MS`):
  *
  *   - "online" means `lastSeenAt` is within the admin active window
  *     (ACTIVE_CHAT_WINDOW_MS = 90s) AND the session is open. While the tab is

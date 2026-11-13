@@ -2,7 +2,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { resortTodayIso } from "./lib/dates";
+import { resortTodayIso } from './shared/time';
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");

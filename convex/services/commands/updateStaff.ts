@@ -3,7 +3,8 @@ import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
 import { deleteUnreferencedPhoto } from '../private/photos';
 import { initializeWeeklyPattern, writeWeeklyPattern } from '../private/rosterHistory';
-import { APPOINTMENT_LOOKBACK, blocksTime, boundedIntegrityRows, staffBusyRanges } from '../private/serviceSlots';
+import { APPOINTMENT_LOOKBACK, boundedIntegrityRows, staffBusyRanges } from '../private/serviceSlots';
+import { blocksTime } from '../../shared/schedule';
 import { archiveStaffRecord, attachAvatarUpload, hour, logService, logStaff, required, rest, staffStatus, validateHours } from '../private/administration';
 
 export const updateStaff = adminMutation({

@@ -6,7 +6,7 @@ import { isOpenOrder } from './orderLinks';
 import { assertDiscount, assertOrderSize, assertPrice, assertPriceOverride, orderTotals, roundMoney } from '../../shared/orderMath';
 import { executeOrderRefund, refundState } from './orderRefunds';
 import { manualReduction, type StaffActor } from '../../auth/model';
-import { type ApprovalPayload } from '../../lib/staffTypes';
+import { type ApprovalPayload } from '../../shared/staffTypes';
 import { executeAddItem, executeAttach, executeOverrideLinePrice, executeUpdateLine, executeUpdateSourceLine, executeVoidOrder } from './lineCommands';
 import { ATTACHED_PRICE, FEE_FIXED, Line, Order, ReadCtx, appointmentLine, assertRoom, bookingLine, cleanText, isSourceRow, oneSource, orderCouponUnavailable, quoteOrderCoupon, sourceIssue } from './orderModel';
 import { linkableRow } from './paidLinkModel';

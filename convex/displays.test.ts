@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { PAIRING_TTL_MS } from './pos/private/displayModel';
-import { sha256 } from './lib/displayTokens';
+import { sha256 } from './shared/displayTokens';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

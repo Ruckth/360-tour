@@ -1,4 +1,4 @@
-import type { StaticSuggestionKey } from "convex/lib/chatSuggestions";
+import type { StaticSuggestionKey } from "convex/shared/chatSuggestions";
 
 export type ChatSuggestionId = StaticSuggestionKey;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CouponProblem } from "convex/lib/offers";
+import type { CouponProblem } from "convex/shared/offers";
 import { couponProblemMessage, couponProblemTitle } from "@/components/admin/marketing/marketing-format";
 
 describe("coupon problem copy", () => {

@@ -1,4 +1,4 @@
-import type { ReportData } from "convex/lib/marketingReport";
+import type { ReportData } from "convex/shared/marketingReport";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DashboardView, DEFAULT_REQUEST, type ReportRequest, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";

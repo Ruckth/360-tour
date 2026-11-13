@@ -8,7 +8,7 @@ import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
-import { changeSchedule } from '../../lib/serviceSchedule';
+import { changeSchedule } from '../../shared/serviceSchedule';
 import { assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { ATTACHED_PRICE, CURRENCY, FEE_FIXED, Line, LineFields, addItemArgs, appointmentLine, assertBaht, assertRoom, attachArgs, attachTo, bookingLine, cleanText, editableLine, editableOrder, isSourceRow, lineSnapshot, logOrder, oneSource, overrideLinePriceArgs, refreshOrder, sourceIssue, sourceRows, updateLineArgs, updateSourceLineArgs, voidOrderArgs } from './orderModel';
 

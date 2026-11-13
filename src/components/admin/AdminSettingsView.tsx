@@ -8,7 +8,7 @@ import {
   validateSettingsInput,
   type EffectiveSettings,
   type SettingsInput,
-} from "convex/lib/siteSettings";
+} from "convex/shared/siteSettings";
 import { format } from "date-fns";
 import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";

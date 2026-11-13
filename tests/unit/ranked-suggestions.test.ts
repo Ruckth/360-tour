@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeSuggestedQuestion,
   selectRankedSuggestedQuestions,
-} from "convex/lib/chatSuggestions";
+} from "convex/shared/chatSuggestions";
 
 const createdAt = 1_700_000_000_000;
 

@@ -3,7 +3,7 @@ import { staffMutation } from '../../auth/model';
 import { markBookingPaid } from '../../bookings/model';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
 import { recordAppointmentChange } from '../../services/model';
-import { effectiveTime } from '../../lib/bookingMoney';
+import { effectiveTime } from '../../shared/bookingMoney';
 import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../private/orderLifecycle';
 import { orderLines } from '../private/orderLines';

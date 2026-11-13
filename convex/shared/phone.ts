@@ -1,6 +1,6 @@
 import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 
-/** E.164 for recognizable contacts; undefined for ambiguous legacy text the host must check. */
+/** E.164 for recognizable contacts; undefined for ambiguous stored text the host must check. */
 export function normalizeGuestPhone(value: string): string | undefined {
   const trimmed = value.trim();
   const explicit = trimmed.startsWith("+") || trimmed.startsWith("00");

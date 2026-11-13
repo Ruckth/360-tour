@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery, staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
-import { stayMoney } from '../lib/stayMoney';
+import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
 import { orderLineLinks } from './private/lineLinks';
 import { orderPaymentRecord } from './private/orderLifecycle';
@@ -12,7 +12,7 @@ import { activeOrderFor, orderState, ordersForSource } from './private/orderLink
 import { isOpenOrder } from './private/orderLinks';
 import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from '../shared/orderMath';
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from './private/orderRefunds';
-import { type OrderPromotionView } from '../lib/posCoupons';
+import { type OrderPromotionView } from '../shared/posCoupons';
 import { canReadCheckoutOrder } from '../auth/model';
 import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';

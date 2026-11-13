@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { slugify } from "convex/lib/slug";
+import { slugify } from "convex/shared/slug";
 import { ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

@@ -5,7 +5,7 @@ import { getFunctionName, type FunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
-import { evaluateOffer, type CouponRules, type OfferResult } from "convex/lib/offers";
+import { evaluateOffer, type CouponRules, type OfferResult } from "convex/shared/offers";
 import messages from "../../messages/en.json";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { BookingPromotionLine } from "@/components/admin/BookingPromotion";

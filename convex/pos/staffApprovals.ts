@@ -5,7 +5,7 @@ import { authenticatedMutation, canReadCheckoutOrder, internalMutation, type Mut
 import { appendRecordHistory } from '../settings/model';
 import { cashierRules } from '../settings/model';
 import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './private/staffApprovalState';
-import { APPROVAL_TTL_MS, approvalPayload } from '../lib/staffTypes';
+import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 
 function cleanReason(reason: string) {

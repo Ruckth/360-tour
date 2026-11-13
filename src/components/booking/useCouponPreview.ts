@@ -1,7 +1,7 @@
 "use client";
 
 import type { ConvexReactClient } from "convex/react";
-import type { OfferResult } from "convex/lib/offers";
+import type { OfferResult } from "convex/shared/offers";
 import { useCallback, useEffect, useState } from "react";
 import { previewCoupon, useCouponRefusalReporter } from "@/lib/react/convex-api";
 

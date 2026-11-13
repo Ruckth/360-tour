@@ -5,7 +5,7 @@ import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.tes
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { internal } from './_generated/api';
 import schema from './schema';
-import { proposalIdentity } from './lib/chatWriteGuard';
+import { proposalIdentity } from './shared/chatWriteGuard';
 
 const modules = import.meta.glob('./**/*.ts');
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });

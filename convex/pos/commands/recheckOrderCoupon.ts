@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
-import { type PosCouponProblem } from '../../lib/posCoupons';
+import { type PosCouponProblem } from '../../shared/posCoupons';
 import { editableOrder, refreshOrder } from '../private/orderModel';
 
 /**

@@ -8,7 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { useNow } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import type { ApprovalPayload } from "convex/lib/staffTypes";
+import type { ApprovalPayload } from "convex/shared/staffTypes";
 import { useCheckoutBackend, type ApprovalRequest, type OrderId } from "./backend";
 import { checkoutErrorText } from "./refunds";
 import { approvalOutcome, approvalWhat, shownRequest } from "./staff-approvals";

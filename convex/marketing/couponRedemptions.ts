@@ -1,11 +1,11 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { type BookingPatch } from '../lib/bookingMoney';
-import { resortTodayIso } from '../lib/dates';
-import { evaluateOffer, type CouponProblem, type CouponRules } from '../lib/offers';
+import { type BookingPatch } from '../shared/bookingMoney';
+import { resortTodayIso } from '../shared/time';
+import { evaluateOffer, type CouponProblem, type CouponRules } from '../shared/offers';
 import { roundMoney } from '../shared/orderMath';
-import { stayMoney } from '../lib/stayMoney';
+import { stayMoney } from '../shared/stayMoney';
 
 export type HoldInput = { coupon: Doc<'coupons'>; couponVersion: number; discount: number; bookingId: Id<'bookings'> };
 

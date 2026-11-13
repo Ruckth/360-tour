@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
-import { BOOKING_RULE_DEFAULTS, type BookingRules } from './lib/siteSettings';
+import { BOOKING_RULE_DEFAULTS, type BookingRules } from './shared/siteSettings';
 
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 3, 5); // Noon in Bangkok.

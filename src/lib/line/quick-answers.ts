@@ -1,2 +1,2 @@
-export { buildLineQuickReplyItems, detectQuickAnswerLocale, localizedGreetingReply, localizedTimeoutFallbackReply, localizedUnknownFallbackReply, normalizeLineQuestion, normalizeQuickAnswerLocale, parseLineIntentFromPostback, parseLineLocaleFromPostback, questionFromLinePostback } from 'convex/concierge/copy';
-export type { LineIntent, LineQuickReplyItem, QuickAnswerLocale } from 'convex/concierge/copy';
+export { buildLineQuickReplyItems, detectQuickAnswerLocale, localizedGreetingReply, localizedTimeoutFallbackReply, localizedUnknownFallbackReply, normalizeLineQuestion, normalizeQuickAnswerLocale, parseLineIntentFromPostback, parseLineLocaleFromPostback, questionFromLinePostback } from 'convex/shared/conciergeCopy';
+export type { LineIntent, LineQuickReplyItem, QuickAnswerLocale } from 'convex/shared/conciergeCopy';

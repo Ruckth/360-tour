@@ -1,6 +1,6 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { nightsBetween, stayDates } from '../../lib/dates';
+import { nightsBetween, stayDates } from '../../shared/dates';
 import { readBudget } from '../../lib/readBudget';
 import { assertNoBookingOverlap, MAX_ROWS_PER_NIGHT, NIGHT_ROWS_ERROR, nightRows, STAY_BLOCKED_ERROR, STAY_TAKEN_ERROR } from './stayOverlap';
 

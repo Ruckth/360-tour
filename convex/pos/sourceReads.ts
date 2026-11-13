@@ -1,10 +1,10 @@
 import { ConvexError, v } from 'convex/values';
 import { staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
-import { bookingRevision } from '../lib/bookingMoney';
+import { bookingRevision } from '../shared/bookingMoney';
 import { openOrderCharging, type OrderSource } from './private/orderLinks';
 import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../shared/orderMath';
-import { resortLocalParts } from '../shared/resortLocalParts';
+import { resortLocalParts } from '../shared/time';
 import { canReadCheckoutOrder, requireCashierAction } from '../auth/model';
 import { ATTACH_SCAN, LINK_TARGET, appointmentAttachable, bookingCheckoutBlock, bookingClosed, bookingPayable } from './private/orderModel';
 import { appointmentLinkProblem, bookingLinkProblem } from './private/paidLinkModel';

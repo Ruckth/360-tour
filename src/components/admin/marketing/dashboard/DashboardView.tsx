@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import type { ReportBasis, ReportData, SpendDraft } from "convex/lib/marketingReport";
+import type { ReportBasis, ReportData, SpendDraft } from "convex/shared/marketingReport";
 import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";

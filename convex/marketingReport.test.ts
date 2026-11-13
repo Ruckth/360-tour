@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
-import { stayMoney } from './lib/stayMoney';
+import { stayMoney } from './shared/stayMoney';
 import { readMarketingReport } from './marketing/reportRead';
 import { ReadBudget } from './lib/readBudget';
 

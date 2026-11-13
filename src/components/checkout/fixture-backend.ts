@@ -1,6 +1,6 @@
 "use client";
 
-import { roundRatio } from "convex/shared/money";
+import { percentageOf } from "convex/shared/money";
 import type { Doc, Id, TableNames } from "convex/_generated/dataModel";
 import {
   MAX_QTY,
@@ -17,13 +17,13 @@ import {
   roundMoney,
 } from "convex/shared/orderMath";
 import { paymentDateInput } from "./payment-time";
-import { changeSchedule } from "convex/lib/serviceSchedule";
-import { effectiveTime } from "convex/lib/bookingMoney";
-import { normalizeCouponCode, type CouponRules } from "convex/lib/offers";
-import { evaluateOrderCoupon, posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
+import { changeSchedule } from "convex/shared/serviceSchedule";
+import { effectiveTime } from "convex/shared/bookingMoney";
+import { normalizeCouponCode, type CouponRules } from "convex/shared/offers";
+import { evaluateOrderCoupon, posCouponMessage, type PosCouponProblem } from "convex/shared/posCoupons";
 import { ConvexError } from "convex/values";
-import { DEFAULT_CASHIER_RULES, APPROVAL_TTL_MS, type ApprovalPayload, type CashierAction, type CashierRules } from "convex/lib/staffTypes";
-import { discountLimitSatang, manualReductionSatang } from "./staff-approvals";
+import { DEFAULT_CASHIER_RULES, APPROVAL_TTL_MS, type ApprovalPayload, type CashierAction, type CashierRules } from "convex/shared/staffTypes";
+import { manualReduction as manualReductionSatang } from 'convex/shared/staffDiscount';
 import { formatMoney } from "@/components/admin/labels";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import type { ApprovalRequest, Attachable, Catalog, CheckoutActions, CheckoutBackend, Customer, FinancialRows, FinancialStream, LineRefund, LinkCandidate, RestoreReview, OrderFilter, OrderRow, OrderView } from "./backend";
@@ -214,7 +214,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
   const cashierDiscount = (line: Line, kind: "discount" | "customPrice" = "discount") => {
     if (!cashier) return;
     const { subtotalSatang, reductionSatang } = manualReductionSatang(line);
-    const limitSatang = discountLimitSatang(subtotalSatang, rules.discountLimitPercent);
+    const limitSatang = percentageOf(subtotalSatang, rules.discountLimitPercent);
     if (reductionSatang > limitSatang) throw new ConvexError({ code: "NEEDS_APPROVAL", kind, message: "This manual discount needs manager approval.", subtotalSatang, reductionSatang, limitSatang, amount: reductionSatang, discountLimitPercent: rules.discountLimitPercent });
   };
   const requests: ApprovalRequest[] = [];
@@ -1065,9 +1065,9 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       const next: Line = payload.kind === "discount"
         ? { ...line, discount: payload.discount }
         : { ...line, priceOverride: payload.price === null ? undefined : { price: roundMoney(payload.price), note: payload.note, by: "", at: 0 } };
-      const { subtotalSatang, reductionSatang } = manualReductionSatang(next);
+      const { reductionSatang, percent } = manualReductionSatang(next);
       const after = orderTotals(lines.map((row) => (row._id === line._id ? next : row))).total;
-      return { totalBefore, totalAfter: after, amount: reductionSatang, percent: subtotalSatang ? roundRatio(BigInt(reductionSatang) * 10000n, subtotalSatang) : 0 };
+      return { totalBefore, totalAfter: after, amount: reductionSatang, percent };
     }
     if (payload.kind === "customPrice" && payload.action === "addCustomItem") {
       if (!isOpen(order)) throw new ConvexError("Only an unpaid order can be changed");

@@ -1,3 +1,4 @@
+import { resortMidnight } from '../../shared/time';
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
@@ -31,7 +32,7 @@ export const addDateBlocks = adminMutation({
 			}
 			const blockId = await ctx.db.insert('dateBlocks', { propertyId, start, end, reason, createdAt: Date.now() });
 			await writeDateBlockRows(ctx, (await ctx.db.get(blockId))!);
-			await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'created', effectiveAt: Date.parse(`${start}T00:00:00+07:00`), after: { propertyId, start, end, reason } });
+			await appendRecordHistory(ctx, { entityType: 'dateBlock', entityId: blockId, actor: admin.email, kind: 'created', effectiveAt: resortMidnight(start), after: { propertyId, start, end, reason } });
 			results.push({ propertyId, blockId, error: null });
 		}
 		return results;

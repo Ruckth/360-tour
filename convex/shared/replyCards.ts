@@ -1,5 +1,5 @@
 import { chatCouponSummary } from './chatCouponCopy';
-import { allowedImageUrl } from '../shared/imageUrls';
+import { allowedImageUrl } from './imageUrls';
 
 /** Presentation data comes only from successful tool results, never model prose. */
 export type ReplyCardAction =

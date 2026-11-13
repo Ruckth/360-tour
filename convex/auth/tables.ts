@@ -1,4 +1,4 @@
-import { staffRole } from '../lib/staffTypes';
+import { staffRole } from '../shared/staffTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 

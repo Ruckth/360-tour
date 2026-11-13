@@ -1,4 +1,4 @@
-import type { ReplyCard } from '../../lib/replyCards';
+import type { ReplyCard } from '../../shared/replyCards';
 import { allowedMessagingImageSource } from '../../shared/messagingImages';
 /** The dedicated media capability authorizes JPEG conversion; it never authenticates a webhook API. */
 export async function withMessagingImages(card: ReplyCard | undefined, siteUrl: string): Promise<ReplyCard | undefined> {

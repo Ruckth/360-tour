@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { LineDiscount } from "convex/shared/orderMath";
 import { assertCashierDiscount, type StaffActor } from 'convex/auth/private/staffAccess';
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { discountOverLimit } from "@/components/checkout/staff-approvals";
 
 const cashier = { role: "cashier", email: "mint@example.com", tokenIdentifier: "mint" } as StaffActor;

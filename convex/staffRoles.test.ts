@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { APPROVAL_TTL_MS, DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type ApprovalPayload, type CashierRules } from './lib/staffTypes';
+import { APPROVAL_TTL_MS, DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type ApprovalPayload, type CashierRules } from './shared/staffTypes';
 import schema from './schema';
 import { requireAdmin } from './auth/private/adminAuth';
 

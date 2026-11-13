@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { marketingMutation } from '../../auth/model';
-import { isMarketingLocale } from '../../lib/marketingSlugs';
+import { isMarketingLocale } from '../../shared/marketingSlugs';
 import { requireEditableDraft, requireMarketingPermission } from '../accessPolicy';
 import { auditFields, destination, getOrThrow, recordChanges, slugCheck, validateLinkDestination } from '../catalogModel';
 

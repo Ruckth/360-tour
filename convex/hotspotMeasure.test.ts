@@ -24,7 +24,7 @@ import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { ACTIVE_CHAT_WINDOW_MS, PRESENCE_WRITE_THROTTLE_MS, isChatSessionActive } from "./lib/chatPresence";
+import { ACTIVE_CHAT_WINDOW_MS, PRESENCE_WRITE_THROTTLE_MS, isChatSessionActive } from "./shared/chatPresence";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");

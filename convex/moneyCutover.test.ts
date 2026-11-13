@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { expect, it } from 'vitest';
-import { calculateDirectQuote } from './lib/pricing';
+import { calculateDirectQuote } from './shared/pricing';
 import { orderTotals, lineStaffDiscount } from './shared/orderMath';
 
 it('rounds a percentage discount identically for stays and orders', () => {

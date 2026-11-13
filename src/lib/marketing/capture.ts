@@ -1,5 +1,5 @@
 import { SESSION_IDLE_MS, type MarketingCapture } from 'convex/shared/marketingAttribution';
-import { validateMarketingSlug } from "convex/lib/marketingSlugs";
+import { validateMarketingSlug } from "convex/shared/marketingSlugs";
 
 /**
  * Release 3a: which of our links brought this visitor (client only), and the one measurement choice.

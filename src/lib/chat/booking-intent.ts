@@ -1,5 +1,5 @@
-import { guestCouponFromHistory } from "convex/lib/guestCouponCode";
-export { extractGuestCouponCode } from "convex/lib/guestCouponCode";
+import { guestCouponFromHistory } from "convex/shared/guestCouponCode";
+export { extractGuestCouponCode } from "convex/shared/guestCouponCode";
 import { properties } from "@/lib/data/properties";
 import { nightsBetweenIso } from "@/lib/booking/dates";
 

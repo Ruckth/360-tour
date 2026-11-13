@@ -1,5 +1,5 @@
 import type { Doc } from '../../_generated/dataModel';
-import type { ReplyCard } from '../../lib/replyCards';
+import type { ReplyCard } from '../../shared/replyCards';
 import { v } from 'convex/values';
 
 export const socialChannel = v.union(v.literal('line'), v.literal('facebook'), v.literal('instagram'), v.literal('whatsapp'));

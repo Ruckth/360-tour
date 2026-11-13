@@ -8,7 +8,7 @@ import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/
 import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { csvMeta, salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
 import { buildBreakdown, businessTotals, prepareReport } from "@/components/admin/marketing/dashboard/report-model";
-import type { ReportData, ReportSale } from "convex/lib/marketingReport";
+import type { ReportData, ReportSale } from "convex/shared/marketingReport";
 import { dashboardReport, FIXTURE_TODAY, firstRunReport, emptyRangeReport, PROPERTIES, untrackedReport } from "../browser/marketing-dashboard-data";
 
 // The spend dialog is another package's stub: record what the dashboard opens it with.

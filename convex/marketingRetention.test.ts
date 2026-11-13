@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { internal } from "./_generated/api";
 import { MARKETING_CLEANUP_BATCH_SIZE } from './marketing/maintenance';
 import { ATTRIBUTION_WINDOW_MS } from './shared/marketingAttribution';
-import { RAW_MARKETING_RETENTION_DAYS, RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
+import { RAW_MARKETING_RETENTION_DAYS, RAW_MARKETING_RETENTION_MS } from "./shared/marketingPolicy";
 import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => vi.useRealTimers());

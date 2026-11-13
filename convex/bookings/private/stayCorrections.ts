@@ -1,11 +1,11 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify } from '../../lib/bookingMoney';
+import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify } from '../../shared/bookingMoney';
 import { activeSourceLink, orderLineLinks } from '../../pos/model';
 import { isSettledOrder } from '../../pos/model';
 import { lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
-import { assertMoney, stayMoney } from '../../lib/stayMoney';
+import { assertMoney, stayMoney } from '../../shared/stayMoney';
 import { releaseBookingDates } from './availabilityWrites';
 import { writeBooking } from './money';
 import { queueCancellationEmail } from './stays';

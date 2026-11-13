@@ -2,9 +2,9 @@ import { bahtToSatang } from '../../shared/money';
 import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { writeBooking } from '../../bookings/model';
-import { demoCode } from '../../lib/codes';
+import { demoCode } from '../../shared/codes';
 import { appointmentLookupFields, localDateTimeUtc } from '../../services/model';
-import { resortLocalParts } from '../../shared/resortLocalParts';
+import { resortLocalParts } from '../../shared/time';
 
 /**
  * AI-EVAL test data: services, staff, approved business facts, and blocked dates

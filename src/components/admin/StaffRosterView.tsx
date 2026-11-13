@@ -1,5 +1,7 @@
 "use client";
 
+import { addDays } from 'convex/shared/dates';
+
 import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -77,11 +79,6 @@ const utcDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
 const monthDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 const fullDay = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
-
-function addDays(iso: string, days: number) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
 
 /** The Monday of the week containing `iso`. */
 function mondayOf(iso: string) {

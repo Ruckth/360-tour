@@ -2,7 +2,7 @@ import type { FunctionArgs } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from 'convex/shared/marketingTypes';
-import type { OfferResult } from "convex/lib/offers";
+import type { OfferResult } from "convex/shared/offers";
 
 // The views take data and callbacks as props; MarketingScreens wires them to Convex.
 

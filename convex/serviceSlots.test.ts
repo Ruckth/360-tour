@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import { localDateTimeUtc } from './services/model';
-import { resortLocalParts } from './shared/resortLocalParts';
+import { resortLocalParts } from './shared/time';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

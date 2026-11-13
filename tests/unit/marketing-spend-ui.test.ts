@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConvexError } from "convex/values";
 import type { Id } from "convex/_generated/dataModel";
-import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalSummary, type ReportSpend } from "convex/lib/marketingReport";
+import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalSummary, type ReportSpend } from "convex/shared/marketingReport";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CampaignSpendSection } from "@/components/admin/marketing/CampaignSpendSection";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";

@@ -5,7 +5,7 @@ import type { MutationCtx } from '../../_generated/server';
 import { recordStayPayment } from '../../bookings/model';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { STALE_APPOINTMENT, recordAppointmentChange } from '../../services/model';
-import { STALE_BOOKING, bookingRevision, cleanReason } from '../../lib/bookingMoney';
+import { STALE_BOOKING, bookingRevision, cleanReason } from '../../shared/bookingMoney';
 import { activeLineLink } from './lineLinks';
 import { formatReceiptNumber, orderTitle } from '../../shared/orderMath';
 import { assertLineHasNoPosRefunds } from './orderRefunds';

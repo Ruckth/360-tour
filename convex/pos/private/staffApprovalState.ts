@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { accessForIdentity } from '../../auth/model';
-import { resortTodayIso } from '../../lib/dates';
+import { resortTodayIso } from '../../shared/time';
 import { cashierRules } from '../../settings/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';

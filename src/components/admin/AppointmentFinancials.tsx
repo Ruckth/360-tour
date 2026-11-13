@@ -9,7 +9,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { MANUAL_PAYMENT_METHODS, REFUND_METHODS } from "convex/lib/financeValidators";
+import { MANUAL_PAYMENT_METHODS, REFUND_METHODS } from "convex/shared/financeValidators";
 import { Link } from "@/i18n/navigation";
 import { receiptPath } from "@/components/checkout/checkout-source";
 import { ChangeConfirmDialog } from "./ChangeConfirmDialog";
