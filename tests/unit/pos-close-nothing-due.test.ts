@@ -47,7 +47,7 @@ it("closes an order with nothing due in one tap, with no tenders", async () => {
   await act(async () => button("Close order · nothing due")!.click());
   await settle();
   expect(settleOrder).toHaveBeenCalledOnce();
-  expect(settleOrder.mock.calls[0][0]).toMatchObject({ orderId, expectedDue: 0, tenders: [] });
+  expect(settleOrder.mock.calls[0][0]).toMatchObject({ orderId, expectedDue: 0, tenders: [], notifyGuest: false });
   expect(settleOrder.mock.calls[0][0].idempotencyKey).toBeTruthy();
   expect(onPaid).toHaveBeenCalledWith(orderId);
 });

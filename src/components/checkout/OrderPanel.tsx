@@ -295,7 +295,7 @@ export function OrderPanel({
 /**
  * Closes an order with nothing left to pay (a deposit or coupon covers it) in one tap: settles it
  * with no tenders, one attempt key per try, so a retry after a lost answer closes it once. An order
- * with a stay keeps the payment step, which offers the guest's booking confirmation email.
+ * with a stay offers the guest's booking confirmation email right beside it (off, as on the pay step).
  */
 function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView; disabled: boolean; onPaid: (orderId: OrderId) => void; onReview: () => void }) {
   const actions = useCheckoutBackend().useActions();
@@ -303,9 +303,9 @@ function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const withStay = view.sources.some((source) => source.kind === "booking");
+  const [notifyGuest, setNotifyGuest] = useState(false);
   async function close() {
     if (pending) return;
-    if (withStay) return onReview();
     // The order changed since the last try: a new close is a new attempt.
     if (attempt.current && attempt.current.expectedRevision !== view.order.revision) attempt.current = null;
     attempt.current ??= {
@@ -315,6 +315,7 @@ function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView
       expectedRevision: view.order.revision,
       expectedCustomerRevision: view.customer && "revision" in view.customer ? view.customer.revision : undefined,
       tenders: [],
+      notifyGuest,
     };
     setPending(true);
     setError("");
@@ -329,16 +330,20 @@ function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView
   return (
     <>
       {error ? <p role="alert" className="mb-2 text-sm text-destructive">{error}</p> : null}
+      {withStay ? (
+        <label className="mb-2 flex min-h-11 items-center gap-2 text-sm">
+          <input type="checkbox" checked={notifyGuest} disabled={pending || Boolean(error)} onChange={(e) => setNotifyGuest(e.target.checked)} />
+          Send booking payment confirmation email
+        </label>
+      ) : null}
       <Button className="h-12 w-full rounded-xl" disabled={disabled || pending} onClick={() => void close()}>
         {pending ? <Spinner label="Closing order" className="text-current" /> : null}
         {error ? "Retry close" : "Close order · nothing due"}
       </Button>
       {/* Staff entering an earlier sale set when it happened on the payment step. */}
-      {withStay ? null : (
-        <Button variant="link" size="sm" className="mt-1 h-auto w-full p-0 text-xs text-muted-foreground" disabled={disabled || pending} onClick={onReview}>
-          Happened earlier? Set the date
-        </Button>
-      )}
+      <Button variant="link" size="sm" className="mt-1 h-auto w-full p-0 text-xs text-muted-foreground" disabled={disabled || pending} onClick={onReview}>
+        Happened earlier? Set the date
+      </Button>
     </>
   );
 }
