@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { deleteUnreferencedPhoto } from '../../lib/adminPhotos';
+import { deleteUnreferencedPhoto } from '../private/photos';
 import { attachServiceImage, logService, required, serviceStatus, validateService, validateStaffIds } from '../private/administration';
 
 export const updateService = adminMutation({

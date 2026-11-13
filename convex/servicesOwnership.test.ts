@@ -44,7 +44,7 @@ it('has no old ctx-helper modules or compatibility endpoints, independently of a
   const t = convexTest(schema, modules);
   for (const client of [t, t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' })]) {
     for (const [module, name] of Object.entries({ serviceCatalog: 'serviceQuery', serviceSlots: 'createAppointmentRecord', rosterHistory: 'writeWeeklyPattern',
-      appointmentChanges: 'recordAppointmentChange', appointmentFinance: 'recordAppointmentRefund' })) {
+      appointmentChanges: 'recordAppointmentChange', appointmentFinance: 'recordAppointmentRefund', adminPhotos: 'attachPhotoUpload' })) {
       await expect(client.mutation(makeFunctionReference<'mutation'>(`lib/${module}:${name}`), {})).rejects.toThrow(`Could not find module for: "lib/${module}"`);
     }
   }
