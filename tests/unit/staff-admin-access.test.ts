@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { adminAccessRedirect, adminNavFor, adminPageAllowed, adminTabBarFor } from "@/components/admin/admin-access";
-import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
+import { adminAccessRedirect, adminNavFor, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
+import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
 import { staffAccessFor, type ShellRole } from "./admin-shell-convex";
 
 const nav = (role: ShellRole, patch: Partial<ReturnType<typeof staffAccessFor>["capabilities"]> = {}) => {
@@ -37,7 +37,17 @@ describe("navigation by staff role", () => {
     expect(settingsLinks(nav("owner"))).toContain("Team");
     expect(searchAdminNav("cashier", items)).toEqual([]);
     expect(hrefs(nav("manager", { marketing: true }))).toContain("/admin/marketing/dashboard");
-    expect(adminTabBarFor(items).map((item) => item.href)).toEqual(["/admin/chats", "/admin/hotel", "/admin/staff/calendar"]);
+    expect(adminTabBarFor(items).map((item) => item.href)).toEqual(["/admin/chats", "/admin/hotel", "/admin/staff/calendar", "/admin/checkout"]);
+  });
+});
+
+describe("the till-only shell", () => {
+  it("is for cashiers whose only section is Checkout", () => {
+    expect(adminTillOnly(staffAccessFor("cashier"))).toBe(true);
+    const marketing = staffAccessFor("cashier");
+    expect(adminTillOnly({ ...marketing, capabilities: { ...marketing.capabilities, marketing: true } })).toBe(false);
+    for (const role of ["owner", "manager", null] as const) expect(adminTillOnly(staffAccessFor(role))).toBe(false);
+    expect(adminTillOnly(undefined)).toBe(false);
   });
 });
 
@@ -49,6 +59,13 @@ describe("redirects by staff role", () => {
     "sends a cashier from %s to checkout",
     (path) => expect(adminAccessRedirect(path, null, cashier)).toBe("/admin/checkout"),
   );
+
+  it("opens the till for a cashier on /admin, and keeps a manager's landing on Chats", () => {
+    const landing = adminRedirectPath("/admin")!;
+    expect(landing).toBe("/admin/chats");
+    expect(adminAccessRedirect(landing, null, cashier)).toBe("/admin/checkout");
+    expect(adminAccessRedirect(landing, null, manager)).toBeNull();
+  });
 
   it("keeps a cashier on checkout and its receipts", () => {
     expect(adminAccessRedirect("/admin/checkout", null, cashier)).toBeNull();

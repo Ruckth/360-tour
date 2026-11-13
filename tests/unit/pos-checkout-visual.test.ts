@@ -213,15 +213,18 @@ describe("checkout theme", () => {
         await open();
         const content = [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
         expect(content, name).toBeTruthy();
-        const overlay = content.previousElementSibling!;
-        expect(overlay.className).toContain("bg-background/80");
+        // For approvers (owner here) the order sheet is non-modal and stops under the header, so the
+        // header's Approvals stays usable: it has no overlay. Every other layer dims the page.
+        const overlay = name === "Order sheet" ? null : content.previousElementSibling!;
+        if (overlay) expect(overlay.className).toContain("bg-background/80");
+        else expect(content.className).toContain("h-[calc(100dvh-var(--admin-header,6dvh))]");
         expect(content.className).toContain("pointer-coarse:[&_button]:min-h-11");
         // No checkout-only palette, and nothing below <html> forces a theme.
         expect(document.querySelector(".checkout-theme")).toBeNull();
         expect(document.body.querySelector(".dark")).toBeNull();
         const html = theme === "dark" ? document.documentElement : null;
         expect(content.closest(".dark")).toBe(html);
-        expect(overlay.closest(".dark")).toBe(html);
+        if (overlay) expect(overlay.closest(".dark")).toBe(html);
       });
     }
   }

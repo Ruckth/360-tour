@@ -42,7 +42,17 @@ export function adminNavFor(access: Access | null | undefined, nav: readonly Adm
   });
 }
 
-/** The phone tab bar's sections: the daily ones this person has, else their first sections. */
+/**
+ * Whether this person gets the till alone: no navigation, Sign out in the header. That is a
+ * cashier whose only section is Checkout (cashiers don't open bookings, decision U1). A cashier
+ * who also has a Marketing grant keeps the navigation.
+ */
+export function adminTillOnly(access: Access | null | undefined): boolean {
+  if (access?.role !== "cashier") return false;
+  return adminNavFor(access).every((item) => item.href === CASHIER_HOME);
+}
+
+/** The phone tab bar's sections, besides Menu: the daily ones this person has, else their first sections. */
 export function adminTabBarFor(nav: readonly AdminNavItem[]): AdminNavItem[] {
   const daily = ADMIN_TAB_BAR.filter((item) => nav.some((allowed) => allowed.href === item.href));
   return daily.length ? daily : nav.slice(0, 3);
@@ -50,8 +60,9 @@ export function adminTabBarFor(nav: readonly AdminNavItem[]): AdminNavItem[] {
 
 /**
  * Where to send someone from a page their role doesn't open, or null to render it. Cashiers go to
- * checkout; a manager on Settings › Team goes to Settings. A manager without Marketing access
- * stays, so the Marketing gate can say why.
+ * checkout, which is also where `/admin` lands for them (the proxy sends it to Chats first). A
+ * manager on Settings › Team goes to Settings. A manager without Marketing access stays, so the
+ * Marketing gate can say why.
  */
 export function adminAccessRedirect(pathname: string, tab: string | null, access: Access | null | undefined): string | null {
   if (!restricted(access) || adminPageAllowed(pathname, tab, access.capabilities)) return null;

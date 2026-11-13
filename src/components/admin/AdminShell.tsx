@@ -1,18 +1,20 @@
 "use client";
 
-import { SignInButton, useUser } from "@clerk/nextjs";
+import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { Shield } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Component, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
-import { adminAccessRedirect, type StaffAccessView } from "@/components/admin/admin-access";
+import { adminAccessRedirect, adminTillOnly, type StaffAccessView } from "@/components/admin/admin-access";
 import { adminNavItem } from "@/components/admin/admin-routes";
 import { ROLE_LABELS, StaffAccessProvider, useStaffAccess } from "@/components/admin/staff-access";
+import type { CheckoutBackend } from "@/components/checkout/backend";
 import { CheckoutHeaderStaff } from "@/components/checkout/CheckoutHeaderStaff";
+import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -112,7 +114,6 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 /** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
   const access = useQuery(api.staffAccess.myAccess, {});
-  const [pendingCount, setPendingCount] = useState(0);
   if (access === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center">
@@ -122,29 +123,10 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
   }
   if (!access.role && access.pendingInvitation) return <ClaimInvitation access={access} />;
   return (
-    <StaffAccessProvider access={access} pendingApprovals={access.capabilities.approve ? pendingCount : 0}>
-      {access.capabilities.approve ? <QuietBoundary><PendingApprovalsCount onCount={setPendingCount} /></QuietBoundary> : null}
+    <StaffAccessProvider access={access}>
       <AdminFrame userEmail={userEmail}>{children}</AdminFrame>
     </StaffAccessProvider>
   );
-}
-
-/** Only feeds the badge count, so a failed approvals query never takes down the admin. */
-function PendingApprovalsCount({ onCount }: { onCount: (count: number) => void }) {
-  const count = useQuery(api.staffApprovals.pending, {})?.count ?? 0;
-  useEffect(() => onCount(count), [count, onCount]);
-  return null;
-}
-
-/** Renders nothing on error: the badge simply shows no count. */
-class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
-  state = { failed: false };
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
 }
 
 /** As Marketing invitations: the invited account activates its own access, explicitly. */
@@ -178,12 +160,18 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
   );
 }
 
-function AdminFrame({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+/**
+ * The admin's frame for the signed-in person: header, navigation and the page. Cashiers get the
+ * till alone, with Sign out in the header. Approvers get Approvals in the header on every page.
+ * `checkoutBackend` feeds the header's approvals (Convex; browser fixtures pass their own).
+ */
+export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend, children }: { userEmail?: string; checkoutBackend?: CheckoutBackend; children: ReactNode }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
   const router = useRouter();
   const access = useStaffAccess();
-  // A cashier on another admin page goes to checkout; a manager on Team goes to Settings.
+  const tillOnly = adminTillOnly(access);
+  // A cashier on another admin page (or on /admin) goes to checkout; a manager on Team goes to Settings.
   const redirect = adminAccessRedirect(pathname, tab, access);
   useEffect(() => {
     if (redirect) router.replace(redirect);
@@ -203,25 +191,33 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
       open={checkoutFlow ? checkoutOpen : open}
       onOpenChange={checkoutFlow ? setCheckoutOpen : setOpen}
       className={cn(
+        // --admin-header: the header's height, so the phone order sheet stops under it.
         // --admin-tab-bar: the phone tab bar's height, so bars pinned to the bottom sit above it.
-        "bg-background pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] [--admin-tab-bar:calc(3.8125rem+max(0.25rem,env(safe-area-inset-bottom)))] md:[--admin-tab-bar:0px]",
+        "bg-background pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] [--admin-header:calc(4rem+env(safe-area-inset-top))]",
+        tillOnly ? "[--admin-tab-bar:0px]" : "[--admin-tab-bar:calc(3.8125rem+max(0.25rem,env(safe-area-inset-bottom)))] md:[--admin-tab-bar:0px]",
         fitsViewport ? "h-dvh min-h-0 overflow-hidden" : "min-h-dvh",
       )}
     >
       {/* Navigation changes form with the window but never disappears: the sidebar from 1280px
-          (a drawer below, opened from Menu), an icon rail on iPads, a tab bar on phones. */}
-      <AdminSidebar userEmail={userEmail} />
-      <AdminRail />
+          (a drawer below, opened from Menu), an icon rail on iPads, a tab bar on phones. A
+          cashier has only the till, so they get none. */}
+      {tillOnly ? null : <AdminSidebar userEmail={userEmail} />}
+      {tillOnly ? null : <AdminRail />}
       <SidebarInset className="min-h-0 min-w-0">
-        <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 pt-[env(safe-area-inset-top)] sm:px-6">
-          <SidebarTrigger className="-ml-1 hidden xl:inline-flex" />
-          <div className="min-w-0 flex-1">
-            <p className="admin-eyebrow">Concierge operations</p>
-            <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
-              {adminNavItem(pathname)?.label ?? "Admin"}
-            </h1>
-          </div>
-          {checkoutFlow ? <CheckoutHeaderStaff /> : null}
+        <header className="flex h-[var(--admin-header)] shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 pt-[env(safe-area-inset-top)] sm:px-6">
+          {tillOnly ? null : <SidebarTrigger className="-ml-1 hidden xl:inline-flex" />}
+          <h1 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
+            {adminNavItem(pathname)?.label ?? "Admin"}
+          </h1>
+          {access.capabilities.approve || checkoutFlow ? <CheckoutHeaderStaff backend={checkoutBackend} /> : null}
+          {tillOnly ? (
+            <SignOutButton redirectUrl="/admin">
+              <Button variant="outline" className="shrink-0">
+                <LogOut aria-hidden className="size-4" />
+                Sign out
+              </Button>
+            </SignOutButton>
+          ) : null}
         </header>
         <ConfirmProvider>
           {redirect ? (
@@ -232,7 +228,7 @@ function AdminFrame({ userEmail, children }: { userEmail?: string; children: Rea
             children
           )}
         </ConfirmProvider>
-        <AdminTabBar />
+        {tillOnly ? null : <AdminTabBar />}
       </SidebarInset>
     </SidebarProvider>
   );

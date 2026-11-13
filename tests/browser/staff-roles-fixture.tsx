@@ -38,7 +38,6 @@ import "@/app.css";
  *   limit=N                      the cashier discount limit (10 by default)
  *   serverLimit=N                the limit the fixture server enforces, when it differs from the UI's
  *   stale=1                      Team: someone else saves the cashier rules first
- *   pending=N                    nav: approvals waiting, for the Checkout badge
  *   theme=dark                   dark app theme
  */
 const params = new URLSearchParams(location.search);
@@ -132,10 +131,7 @@ function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; rece
     <CheckoutBackendProvider backend={backend}>
       <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="" data-role={current.role ?? ""}>
         <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
-          <div className="min-w-0 flex-1">
-            <p className="admin-eyebrow">Concierge operations</p>
-            <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">Checkout</h1>
-          </div>
+          <h1 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-foreground">Checkout</h1>
           <CheckoutStaffControls />
         </header>
         {receiptId ? (
@@ -238,7 +234,7 @@ registerFixtureFunctions({
 
 function NavHarness() {
   return (
-    <StaffAccessProvider access={access} pendingApprovals={Number(params.get("pending") ?? 0)}>
+    <StaffAccessProvider access={access}>
       <SidebarProvider className="min-h-dvh bg-background" data-fixture-ready="">
         <AdminSidebar userEmail={access.email ?? undefined} />
         <AdminRail />

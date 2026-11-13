@@ -109,6 +109,38 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
   }
 }
 
+/** What a decision names: "15% discount" when the cashier typed a percent, else as approvalWhat. */
+export function approvalDecisionWhat(request: Pick<ApprovalView, "payload" | "amount">, lineName?: string) {
+  const { payload } = request;
+  if (payload.kind === "discount" && payload.discount.type === "percent") return `${formatPercent(payload.discount.value)}% discount`;
+  return approvalWhat(request, lineName);
+}
+
+/** "Order #1042" → "#1042". */
+export function orderRef(title: string) {
+  return title.replace(/^Order\s+/, "");
+}
+
+/** The result of approving or declining, as one line: "Approved 15% discount on #1042". */
+export function approvalResultText(status: ApprovalStatus, replayed: boolean, what: string, title: string) {
+  const ref = orderRef(title);
+  if (replayed) return `${what.charAt(0).toUpperCase()}${what.slice(1)} on ${ref} was already handled`;
+  switch (status) {
+    case "applied":
+      return `Approved ${what} on ${ref}`;
+    case "rejected":
+      return `Declined ${what} on ${ref}`;
+    case "stale":
+      return `${ref} changed, so the request no longer applies`;
+    case "expired":
+      return `The request on ${ref} expired`;
+    case "cancelled":
+      return `The request on ${ref} was cancelled`;
+    case "pending":
+      return `${ref} is still waiting`;
+  }
+}
+
 /** One line for a request's outcome on the order. */
 export function approvalOutcome(request: Pick<ApprovalView, "status" | "approverEmail">) {
   switch (request.status) {

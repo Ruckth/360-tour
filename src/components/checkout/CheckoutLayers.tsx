@@ -23,6 +23,18 @@ export function CheckoutDialogContent({ className, onEscapeKeyDown, ...props }: 
   return <DialogContent className={cn(className, TOUCH_TARGETS)} onEscapeKeyDown={escape(onEscapeKeyDown)} {...props} />;
 }
 
-export function CheckoutSheetContent({ className, onEscapeKeyDown, ...props }: ComponentProps<typeof SheetContent>) {
-  return <SheetContent className={cn(className, TOUCH_TARGETS)} onEscapeKeyDown={escape(onEscapeKeyDown)} {...props} />;
+export function CheckoutSheetContent({ className, onEscapeKeyDown, onInteractOutside, ...props }: ComponentProps<typeof SheetContent>) {
+  return (
+    <SheetContent
+      className={cn(className, TOUCH_TARGETS)}
+      onEscapeKeyDown={escape(onEscapeKeyDown)}
+      // Using the header's Approvals (button or panel) leaves an open checkout sheet as it is.
+      onInteractOutside={(event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (target?.closest("[data-approvals]")) event.preventDefault();
+        else onInteractOutside?.(event);
+      }}
+      {...props}
+    />
+  );
 }
