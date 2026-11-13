@@ -109,7 +109,7 @@ export function AdminPropertiesView() {
         )}
       </section>
       {/* Deleted villas have no page of their own, so their history lives here, not in Settings. */}
-      <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
+      <HistoryDisclosure hint="deleted villas"><ConfigurationHistoryRecords /></HistoryDisclosure>
       <NewVillaDialog open={creating} onClose={() => setCreating(false)} />
     </div>
   );

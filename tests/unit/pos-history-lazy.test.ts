@@ -53,14 +53,14 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   await toggle('History', true);
   expect(calls.useOrderHistory).toHaveBeenCalledOnce();
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
-  await toggle('Browse all financial history', true);
+  await toggle('History · all ledgers', true);
   expect(mounts).toHaveBeenCalledTimes(6);
   await click('Load older payment corrections');
   const rows = () => document.querySelectorAll('[aria-label="Payment corrections"] li');
   expect(rows()).toHaveLength(40);
-  await toggle('Browse all financial history', false); await toggle('History', false);
+  await toggle('History · all ledgers', false); await toggle('History', false);
   expect(unmounts).not.toHaveBeenCalled();
-  await toggle('Browse all financial history', true); await toggle('History', true);
+  await toggle('History · all ledgers', true); await toggle('History', true);
   expect(rows()).toHaveLength(40); expect(mounts).toHaveBeenCalledTimes(6);
   await click('Load older payment corrections'); await click('Load older payment corrections');
   expect(rows()).toHaveLength(61);
@@ -69,12 +69,12 @@ it('subscribes only on first expansion, retains all ledger cursors while closed,
   expect(unmounts).toHaveBeenCalledTimes(6);
   expect(document.querySelectorAll('details[open]')).toHaveLength(0);
   expect(hooks.map(h => calls[h].mock.calls.length)).toEqual(priorCalls);
-  await toggle('Browse all financial history', true);
+  await toggle('History · all ledgers', true);
   expect(rows()).toHaveLength(20); expect(document.body.textContent).toContain(second);
   expect(document.body.textContent).not.toContain(`${first} reason`);
   await show(backend, first);
   expect(rows()).toHaveLength(0);
-  await toggle('Browse all financial history', true);
+  await toggle('History · all ledgers', true);
   expect(rows()).toHaveLength(20);
 });
 

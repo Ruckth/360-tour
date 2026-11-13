@@ -1,12 +1,13 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+import { Disclosure } from "@/components/ui/disclosure";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatResortDateTime } from "@/lib/staff-bookings";
 import { MONEY_METHOD_LABELS, PAYMENT_ORIGIN_LABELS, staffLabel } from "./admin-bookings-shared";
 import { STATUS_LABELS, formatMoney } from "./labels";
 
@@ -53,7 +54,7 @@ function show(field: string, value: unknown, currency: string, villaName: (id: s
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (MONEY_FIELDS.has(field)) return formatMoney(value, currency);
-    if (TIME_FIELDS.has(field)) return formatResortDateTime(value);
+    if (TIME_FIELDS.has(field)) return staffDateTime(value);
     return String(value);
   }
   if (typeof value === "string") {
@@ -116,9 +117,7 @@ export function BookingHistory({
 
   return (
     // One closed section per record (rule 4).
-    <details aria-labelledby="booking-history" className="group text-sm">
-      <summary id="booking-history" className="min-h-9 cursor-pointer py-2 font-medium">History</summary>
-      <div className="grid gap-2 pb-2">
+    <Disclosure label="History" summaryId="booking-history" contentClassName="grid gap-2 pb-2">
       {children}
       {children ? <h4 className="admin-eyebrow pt-2">Changes</h4> : null}
       {status === "LoadingFirstPage" ? (
@@ -134,11 +133,11 @@ export function BookingHistory({
                 <p className="font-medium">
                   {KIND_LABELS[entry.kind] ?? entry.kind}
                   <span className="font-normal text-muted-foreground">
-                    {" "}· {formatResortDateTime(entry.recordedAt)} · {staffLabel(entry.actor)}
+                    {" "}· {staffDateTime(entry.recordedAt)} · {staffLabel(entry.actor)}
                   </span>
                 </p>
                 {Math.abs(entry.effectiveAt - entry.recordedAt) > 60_000 ? (
-                  <p className="text-xs text-muted-foreground">Effective {formatResortDateTime(entry.effectiveAt)}</p>
+                  <p className="text-xs text-muted-foreground">Effective {staffDateTime(entry.effectiveAt)}</p>
                 ) : null}
                 {entry.reason ? <p className="text-muted-foreground">Reason: {entry.reason}</p> : null}
                 {details.length ? (
@@ -162,7 +161,6 @@ export function BookingHistory({
           {status === "LoadingMore" ? "Loading history…" : "Load earlier history"}
         </Button>
       ) : null}
-      </div>
-    </details>
+    </Disclosure>
   );
 }

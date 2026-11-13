@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
 import {
   ArrowLeft,
@@ -611,9 +612,8 @@ export function AdminSessionDetail({
           </dl>
         </div>
         {/* Support and debugging only: closed by default. */}
-        <details className="mt-4 border-t border-border pt-4 text-xs">
-          <summary className="cursor-pointer font-medium text-muted-foreground">Technical</summary>
-          <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
+        <Disclosure label="More" hint="technical" className="mt-4 border-t border-border pt-2 text-xs">
+          <dl className="grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Visitor ID">{session.visitorId ?? "None"}</DetailRow>
             <DetailRow label="Session ID">{session._id}</DetailRow>
             {delivery ? (
@@ -640,7 +640,7 @@ export function AdminSessionDetail({
               </>
             ) : null}
           </dl>
-        </details>
+        </Disclosure>
       </SheetContent>
     </Sheet>
   );

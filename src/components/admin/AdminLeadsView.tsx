@@ -1,5 +1,6 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
@@ -196,7 +197,7 @@ export function AdminLeadsView() {
                     <td className="px-4 py-3 text-muted-foreground">
                       {lead.propertyId ? (propertyNames.get(lead.propertyId) ?? "—") : "—"}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{format(lead.createdAt, "d MMM yyyy, HH:mm")}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{staffDateTime(lead.createdAt)}</td>
                     <td className="px-2 py-2 text-right">
                       <Button
                         size="icon"

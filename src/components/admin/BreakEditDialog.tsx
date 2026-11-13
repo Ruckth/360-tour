@@ -9,7 +9,8 @@ import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { breakText, type BreakBlock } from "@/lib/schedule-changes";
-import { appointmentGuestLabel, WEEKDAYS_LONG, formatResortFullDate, formatResortTime, resortMidnight } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, WEEKDAYS_LONG, resortMidnight } from "@/lib/staff-bookings";
+import { staffDate, staffTime } from "@/lib/staff-time";
 
 type Scope = "day" | "weekly";
 
@@ -55,7 +56,7 @@ export function BreakEditDialog({
   return (
     <ChangeConfirmDialog
       title={`${remove ? "Remove" : "Change"} ${staffName}'s ${original.label.toLowerCase()}?`}
-      description={`${staffName} · ${formatResortFullDate(resortMidnight(shown.date))}`}
+      description={`${staffName} · ${staffDate(resortMidnight(shown.date), { weekday: true })}`}
       rows={[
         { label: "Break", before: breakText(original), after: next ? breakText(next) : "Removed" },
         { label: "Applies to", before: shown.override ? "This day's own plan" : scopeText("weekly"), after: scopeText(scope) },
@@ -66,13 +67,13 @@ export function BreakEditDialog({
           <p>Other shifts, breaks and notes stay as they are. The latest roster change can be undone in Roster.</p>
           {scope === "weekly" && preview?.previewThrough ? (
             <p>
-              Next four weeks, through {formatResortFullDate(resortMidnight(preview.previewThrough))}: {preview.affectedDates.length
-                ? `changes ${preview.affectedDates.map((date) => formatResortFullDate(resortMidnight(date))).join(", ")}.`
+              Next four weeks, through {staffDate(resortMidnight(preview.previewThrough), { weekday: true })}: {preview.affectedDates.length
+                ? `changes ${preview.affectedDates.map((date) => staffDate(resortMidnight(date), { weekday: true })).join(", ")}.`
                 : "all these dates keep their own plan."} The weekly default continues after that; dates with their own plan keep it.
             </p>
           ) : null}
           {scope === "weekly" && preview?.keptDates.length ? (
-            <p>These {weekday}s keep their own plan: {preview.keptDates.map((date) => formatResortFullDate(resortMidnight(date))).join(", ")}.</p>
+            <p>These {weekday}s keep their own plan: {preview.keptDates.map((date) => staffDate(resortMidnight(date), { weekday: true })).join(", ")}.</p>
           ) : null}
         </>
       }
@@ -130,7 +131,7 @@ export function BreakEditDialog({
           <ul className="list-disc ps-5">
             {conflicts.map((conflict) => (
               <li key={`${conflict.appointmentId}-${conflict.date}`}>
-                {appointmentGuestLabel(conflict)} · {conflict.serviceName} · {formatResortFullDate(conflict.start)}, {formatResortTime(conflict.start)}
+                {appointmentGuestLabel(conflict)} · {conflict.serviceName} · {staffDate(conflict.start, { weekday: true })}, {staffTime(conflict.start)}
               </li>
             ))}
           </ul>

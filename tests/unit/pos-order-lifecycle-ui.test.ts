@@ -151,19 +151,19 @@ it('pages financial ledgers beyond 20/50 and retries a failed continuation indep
   const backend: CheckoutBackend = { ...base, useCorrectionHistory: id => { const page = base.useCorrectionHistory(id); if (down) throw new Error('Network'); return { ...page, loadMore: n => { down = true; page.loadMore(n); } }; } };
   vi.spyOn(console, 'error').mockImplementation(() => {});
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   const section = () => document.querySelector('[aria-label="Payment corrections"]')!;
   expect(section().textContent).toContain('#61'); expect(section().textContent).not.toContain('Reason 1Recorded');
   await click('Load older payment corrections'); expect(section().textContent).toContain("Couldn't load");
   down = false;
   await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   expect(section().textContent).toContain("Couldn't load");
   await click('Try again');
   // Retry remount starts a new cursor, then can continue normally.
   backend.useCorrectionHistory = base.useCorrectionHistory;
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   for (let i = 0; i < 3; i++) await click('Load older payment corrections');
   expect(section().querySelectorAll('li')).toHaveLength(61); expect(section().textContent).toContain('#1'); expect(button('Load older payment corrections')).toBeUndefined();
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('No entries recorded');
@@ -184,7 +184,7 @@ it('shows appointment refunds with source, provenance and net snapshot while pag
   const refunds: Doc<'appointmentRefunds'>[] = [{ _id: 'appointment-refund' as Id<'appointmentRefunds'>, _creationTime: now, billId: saved, appointmentId: appt, amount: 50, currency: 'THB', method: 'transfer', reason: 'Partial service return', recordedBy: 'cashier@example.com', recordedAt: now, effectiveAt: now - 1000, idempotencyKey: 'fixture-appointment-refund', netBefore: 100, netAfter: 50 }];
   const backend = createFixtureBackend({ financialHistory: { audit: audits }, appointmentRefunds: refunds });
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   const ledger = document.querySelector('[aria-label="All appointment refunds"]')!;
   expect(ledger.textContent).toContain('Recorded · ฿50 · transfer'); expect(ledger.textContent).toContain('Partial service return'); expect(ledger.textContent).toContain(appt); expect(ledger.textContent).toContain('Net balance after this return: ฿100 → ฿50'); expect(ledger.textContent).toContain('cashier@example.com');
   for (let i = 0; i < 3; i++) await click('Load older receipt activity');
@@ -258,7 +258,7 @@ it('shows an actual receipt-attributed appointment return with net balance and k
   expect(current.refunds[0]).toMatchObject({ sourceType: 'appointment', appointmentId: appt, amount: 200 });
   expect(current.payments[0].amount).toBe(1600); expect(current.totals.total).toBe(1600);
   await show(backend, createElement(FinancialHistory, { orderId, view: current }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('Received on this receipt ฿1,600 · Net retained ฿1,400');
   const denied = expect(actions.voidUnreceivedOrder({ orderId, expectedCorrectionRevision: 0, idempotencyKey: 'refunded-reversal-denied', reason: 'Cannot reverse returned money' })).rejects.toThrow('refunded'); await tick(); await denied;
   await probe(backend, orderId); expect(current.order.state).toBe('paid'); expect(current.payments[0].amount).toBe(1600);

@@ -3,16 +3,13 @@
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { staffDateTime } from "@/lib/staff-time";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 import { HistoryDetails } from "./HistoryDetails";
 
-export const historyTime = (at: number) =>
-  new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Bangkok",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(at);
+/** When a history entry happened, as the admin shows every moment (staff-time.ts). */
+export const historyTime = (at: number) => staffDateTime(at);
 const labels: Record<string, string> = {
   line_added: "Item added",
   line_updated: "Item changed",

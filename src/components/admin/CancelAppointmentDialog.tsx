@@ -10,7 +10,8 @@ import { formatMoney } from "@/components/admin/labels";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { timeRange } from "@/lib/schedule-changes";
-import { appointmentGuestLabel, PAYMENT_LABELS, appointmentStatus, formatResortFullDate } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, PAYMENT_LABELS, appointmentStatus } from "@/lib/staff-bookings";
+import { staffDate } from "@/lib/staff-time";
 
 const REASON_MAX = 500;
 
@@ -47,7 +48,7 @@ export function CancelAppointmentDialog({
       description={`${staffName}'s time is freed for other bookings. The appointment, its payment state and history are kept. ${paymentConsequence(original)}`}
       rows={[
         same("Service", serviceName),
-        same("When", `${formatResortFullDate(original.start)}, ${timeRange(original.start, original.end)}`),
+        same("When", `${staffDate(original.start, { weekday: true })}, ${timeRange(original.start, original.end)}`),
         same("Staff", staffName),
         { label: "Status", before: appointmentStatus(original.status).label, after: appointmentStatus("cancelled").label },
         same("Payment", payment),

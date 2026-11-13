@@ -1,5 +1,6 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
@@ -9,7 +10,6 @@ import {
   type EffectiveSettings,
   type SettingsInput,
 } from "convex/lib/siteSettings";
-import { format } from "date-fns";
 import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
@@ -398,7 +398,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
       </form>
       {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
       <div className="mt-4">
-        <HistoryDisclosure label="Settings history">
+        <HistoryDisclosure>
           {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or undo your changes first.</p> : null}
           <RecordHistoryPanel
             entityType="settings"
@@ -535,5 +535,5 @@ function channelHealthMeta(
 }
 
 function formatTime(timestamp: number) {
-  return format(timestamp, "d MMM yyyy, HH:mm");
+  return staffDateTime(timestamp);
 }

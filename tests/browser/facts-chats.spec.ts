@@ -63,7 +63,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const taps = recorder();
       await taps.tap(page.getByRole("combobox", { name: 'Resolve "Is breakfast included?" with a fact or source' }));
       await taps.tap(page.getByRole("option", { name: "Breakfast is included" }));
-      const toast = page.getByTestId("undo-toast");
+      const toast = page.getByTestId("toast");
       await expect(toast).toContainText("Resolved 2 reports with “Breakfast is included”");
       expect(taps.taps).toBe(2);
       expect(await fixtureCalls(page)).toEqual([
@@ -82,7 +82,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
         "adminReopenUnknownGroups",
         { unknownQuestionIds: ["unknown-1", "unknown-2"] },
       ]);
-      await expect(toast).toHaveCount(0);
+      await expect(toast.getByRole("button", { name: "Undo" })).toHaveCount(0);
     });
 
     test("a report card: resolve with a fact, Create fact in one tap, Ignore in ⋯", async ({ page }) => {
@@ -114,7 +114,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const dog = page.locator("tbody tr").filter({ hasText: "Can I bring my dog?" });
       await dog.getByRole("button", { name: 'More for "Can I bring my dog?"' }).click();
       await page.getByRole("menuitem", { name: "Ignore" }).click();
-      await expect(page.getByTestId("undo-toast")).toContainText("Ignored 1 report");
+      await expect(page.getByTestId("toast")).toContainText("Ignored 1 report");
       expect((await fixtureCalls(page)).at(-1)).toEqual(["adminIgnoreUnknownGroups", { normalizedQuestions: ["can i bring my dog"] }]);
       await shot(page, `after-${size}-missing-r2`);
     });
@@ -148,7 +148,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       if (size === "desktop") await expect(list.getByRole("status")).toHaveText("No reply needed · Anna Müller");
     });
 
-    test("contact details sit in the chat header; IDs sit under a closed Technical section (2 → 0 taps)", async ({ page }) => {
+    test("contact details sit in the chat header; IDs sit under a closed More · technical section (2 → 0 taps)", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
       if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();
       const contact = page.getByRole("group", { name: "Contact" }).or(page.locator('address[aria-label="Contact"]'));
@@ -166,14 +166,14 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expectAtMostSentences(pane, 1);
       await shot(page, `after-${size}-chat`);
 
-      // Debug fields: in Chat details, under Technical, closed until asked for.
+      // Debug fields: in Chat details, under More · technical, closed until asked for.
       await page.getByRole("button", { name: "Chat details" }).click();
       const sheet = page.getByRole("dialog", { name: "Chat details" });
-      const technical = sheet.locator("details", { has: page.getByText("Technical", { exact: true }) });
+      const technical = sheet.locator("details", { has: page.locator("summary", { hasText: "More · technical" }) });
       await expect(technical).not.toHaveAttribute("open", "");
       await expect(sheet.getByText("chat-anna")).toBeHidden();
       await expect(sheet.getByText("visitor_8f2c41d0")).toBeHidden();
-      await technical.getByText("Technical", { exact: true }).click();
+      await technical.locator("summary").click();
       await expect(sheet.getByText("chat-anna")).toBeVisible();
       await expect(sheet.getByText("Europe/Berlin")).toBeVisible();
       await expectAtMostSentences(sheet, 1);

@@ -3,8 +3,10 @@
 import { usePaginatedQuery } from "convex/react";
 import { makeFunctionReference, type PaginationOptions, type PaginationResult } from "convex/server";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
+import { staffDateTime } from "@/lib/staff-time";
 import { personLabel } from "./person-label";
 
 export type HistoryEntry = Doc<"recordChanges">;
@@ -168,7 +170,7 @@ function display(value: unknown, field: string): string {
   }
   if (field === "weekday" && typeof value === "number") return DAYS[value] ?? "Unknown weekday";
   if ((field === "start" || field === "end") && typeof value === "number")
-    return `${new Date(value).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)`;
+    return `${staffDateTime(value)} (Bangkok)`;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) {
     if (!value.length) return "None";
@@ -235,10 +237,10 @@ export function RecordHistoryPanel({
           <li key={entry._id} className="space-y-2 py-3 first:pt-0">
             <p className="text-sm font-medium text-foreground">{KINDS[entry.kind] ?? "Record changed"}</p>
             <p className="break-words text-xs text-muted-foreground">
-              {personLabel(entry.actor)} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{new Date(entry.recordedAt).toLocaleString()}</time>
+              {personLabel(entry.actor)} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{staffDateTime(entry.recordedAt)}</time>
             </p>
             <p className="text-xs text-muted-foreground">
-              Effective {new Date(entry.effectiveAt).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)
+              Effective {staffDateTime(entry.effectiveAt)} (Bangkok)
             </p>
             {entry.reason ? <p className="break-words text-sm text-muted-foreground">{entry.reason}</p> : null}
             <dl className="grid gap-2 text-sm">
@@ -270,15 +272,11 @@ export function RecordHistoryPanel({
 }
 
 /** Closed history sections do not subscribe to their nested pages. */
-export function HistoryDisclosure({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+export function HistoryDisclosure({ label = "History", hint, children }: { label?: string; hint?: string; children: ReactNode }) {
   return (
-    <details className="border-t border-border py-2" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="cursor-pointer break-words rounded-sm text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {label}
-      </summary>
-      {open ? <div className="mt-3 space-y-3">{children}</div> : null}
-    </details>
+    <Disclosure label={label} hint={hint} lazy="while-open" className="border-t border-border" contentClassName="space-y-3">
+      {children}
+    </Disclosure>
   );
 }
 

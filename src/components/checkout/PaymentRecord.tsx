@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { REASON_CHIPS } from "@/components/ui/reason-chips";
@@ -292,11 +292,8 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
           </div>
         ) : null}
         <ReasonField value={reason} onChange={setReason} chips={reasonChips} disabled={locked} id="payment-correction-reason" />
-        <details className="group/more rounded-lg border border-border" open={!chips || undefined}>
-          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/more:rotate-90" />More
-          </summary>
-          <div className="grid gap-3 px-3 pb-3">
+        <Disclosure label="More" open={!chips} className="border-t border-border" contentClassName="pb-0">
+          <div className="grid gap-3 pb-3">
             <div className="grid gap-1.5">
               <Label htmlFor="correction-effective">Received at · Bangkok time</Label>
               <Input id="correction-effective" type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -330,7 +327,7 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
               <PayerChoice selected={payer} onSelect={setPayer} />
             </InlineErrorBoundary>
           </div>
-        </details>
+        </Disclosure>
       </fieldset>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {attempted && !saving ? <p className="text-xs text-muted-foreground">Retry sends this same correction; close to start over.</p> : null}

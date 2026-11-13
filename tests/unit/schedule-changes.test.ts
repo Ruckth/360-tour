@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
 import { breakFromDrag, moveProposal, scheduleRows, turnaroundFromTail } from "@/lib/schedule-changes";
 import { resortDateTime } from "@/lib/staff-bookings";
@@ -7,6 +7,10 @@ const mali = "staff-mali" as Id<"staff">;
 const nok = "staff-nok" as Id<"staff">;
 const at = (time: string, date = "2026-10-01") => resortDateTime(date, time);
 const appointment = { start: at("10:00"), end: at("11:00"), blockedUntil: at("11:15"), staffId: mali };
+
+// Shown dates add the year outside the current one; pin "now" to the fixtures' year.
+beforeAll(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(at("09:00", "2026-09-20")); });
+afterAll(() => { vi.useRealTimers(); });
 
 describe("moveProposal", () => {
   it("ignores a drop where the appointment already is", () => {
@@ -45,10 +49,10 @@ describe("scheduleRows", () => {
   it("shows date, time, staff and occupied-until in resort time", () => {
     const rows = scheduleRows({ ...appointment, staffName: "Mali" }, { start: at("14:00", "2026-10-02"), end: at("15:00", "2026-10-02"), blockedUntil: at("15:15", "2026-10-02"), staffName: "Nok" });
     expect(rows).toEqual([
-      { label: "Date", before: "Thu, Oct 1, 2026", after: "Fri, Oct 2, 2026" },
-      { label: "Service time", before: "10:00 AM – 11:00 AM", after: "2:00 PM – 3:00 PM" },
+      { label: "Date", before: "Thu 1 Oct", after: "Fri 2 Oct" },
+      { label: "Service time", before: "10:00 – 11:00", after: "14:00 – 15:00" },
       { label: "Staff", before: "Mali", after: "Nok" },
-      { label: "Occupied until", before: "11:15 AM (15 min turnaround)", after: "3:15 PM (15 min turnaround)" },
+      { label: "Occupied until", before: "11:15 (15 min turnaround)", after: "15:15 (15 min turnaround)" },
     ]);
   });
 });
@@ -56,5 +60,5 @@ describe("scheduleRows", () => {
 it("shows the following date when cleanup crosses midnight", () => {
   const before = { start: at("22:45"), end: at("23:45"), blockedUntil: at("00:15", "2026-10-02"), staffName: "Mali" };
   const row = scheduleRows(before, before).find((r) => r.label === "Occupied until");
-  expect(row?.before).toBe("Fri, Oct 2, 2026, 12:15 AM (30 min turnaround)");
+  expect(row?.before).toBe("Fri 2 Oct, 00:15 (30 min turnaround)");
 });

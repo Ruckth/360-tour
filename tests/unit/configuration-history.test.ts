@@ -63,10 +63,10 @@ const render = (node: ReactNode) => act(async () => root.render(node));
 const button = (text: string) => [...document.querySelectorAll("button")].find((node) => node.textContent?.trim() === text)!;
 const click = (text: string) => act(async () => button(text).click());
 const RESTORE = "Restore settings to before this";
-/** Settings history is one closed section; open it. */
+/** Settings history is one closed History section; open it. */
 const openHistory = () =>
   act(async () => {
-    const details = [...document.querySelectorAll("details")].find((node) => node.querySelector("summary")?.textContent === "Settings history")!;
+    const details = [...document.querySelectorAll("details")].find((node) => node.querySelector("summary")?.textContent === "History")!;
     details.open = true;
     details.dispatchEvent(new Event("toggle"));
   });
@@ -118,7 +118,7 @@ it("renders deleted time off as readable dates and allows discovering its histor
   expect(state.pageCalls).toHaveBeenCalledWith("recordHistory:list", { entityType: "timeOff", entityId: undefined });
   expect(document.body.textContent).toContain("Removed");
   expect(document.body.textContent).toContain("Sick leave");
-  expect(document.body.textContent).toContain("31/10/2026, 09:00:00 (Bangkok)");
+  expect(document.body.textContent).toMatch(/31 Oct( 2026)?, 09:00 \(Bangkok\)/);
   expect(document.body.textContent).not.toContain(String(start));
 });
 it("disables applying history while a draft is dirty and retains that draft after a failed save", async () => {

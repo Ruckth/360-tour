@@ -104,7 +104,7 @@ for (const vp of Object.keys(VIEWPORTS) as ViewportName[]) {
       await rec.begin();
       await rec.tap(page.getByRole("combobox", { name: 'Resolve "Is breakfast included?" with a fact or source' }), "Resolve (open)");
       await rec.tap(page.getByRole("option", { name: "Breakfast is included" }), "Breakfast is included", { decision: true });
-      await expect(page.getByTestId("undo-toast")).toBeVisible();
+      await expect(page.getByTestId("toast")).toBeVisible();
       rec.save();
     });
 
@@ -134,7 +134,7 @@ for (const vp of Object.keys(VIEWPORTS) as ViewportName[]) {
         await rec.tap(row.getByRole("button", { name: /^More for/ }), "⋯");
         await rec.tap(page.getByRole("menuitem", { name: "Ignore" }), "Ignore", { decision: true });
       }
-      await expect(page.getByTestId("undo-toast")).toContainText("Ignored");
+      await expect(page.getByTestId("toast")).toContainText("Ignored");
       rec.save();
     });
 

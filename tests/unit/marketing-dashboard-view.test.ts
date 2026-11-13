@@ -148,7 +148,7 @@ describe("dashboard view", () => {
 
   it("renders the tiles, context line and breakdown from the fixture", () => {
     render(ready());
-    expect(text()).toContain("As of 7 Nov 2026, 06:00");
+    expect(text()).toMatch(/As of 7 Nov( 2026)?, 06:00/);
     expect(text()).toContain("Asia/Bangkok · THB");
     expect(text()).toContain("Last touch · 30 days");
     expect(text()).not.toContain("last_touch_30d@1");
@@ -407,7 +407,7 @@ describe("dashboard view", () => {
   it("keeps the figures on screen when a refresh fails", () => {
     render({ status: "ready", report: dashboardReport(), refreshError: "Server timed out." });
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t update the figures");
-    expect(text()).toContain("Server timed out. These are the figures as of 7 Nov 2026, 06:00.");
+    expect(text()).toMatch(/Server timed out\. These are the figures as of 7 Nov( 2026)?, 06:00\./);
     expect(text()).toContain("฿1,515,900");
     click(buttons("Try again")[0]);
     expect(calls.retry).toBe(1);

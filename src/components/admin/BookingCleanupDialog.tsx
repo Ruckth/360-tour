@@ -1,9 +1,9 @@
 "use client";
 
+import { staffDate } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { format } from "date-fns";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -147,7 +147,7 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
                     </span>
                     <span className="block text-xs text-muted-foreground">
                       {villaName(b.propertyId)} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)} · created{" "}
-                      {format(new Date(b.createdAt), "d MMM yyyy")}
+                      {staffDate(b.createdAt)}
                     </span>
                   </span>
                 </label>

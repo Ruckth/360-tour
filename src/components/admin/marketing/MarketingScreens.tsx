@@ -24,7 +24,7 @@ const couponPath = (couponId: Id<"coupons"> | "new") => `${adminMarketingPath("c
 /** Closed until opened, so an editor doesn't subscribe to history nobody reads. */
 function History({ entityType, entityId, title }: { entityType: string; entityId: string; title: string }) {
   return (
-    <HistoryDisclosure label={title}>
+    <HistoryDisclosure>
       <RecordHistoryPanel entityType={entityType} entityId={entityId} title={title} />
     </HistoryDisclosure>
   );

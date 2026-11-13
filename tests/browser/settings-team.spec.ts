@@ -148,7 +148,7 @@ test.describe("Settings panels", () => {
       await expectAtMostSentences(panel, 1);
       const save = panel.getByRole("button", { name: "Save", exact: true });
       // Deleted villa history lives on Properties, not under every Settings tab.
-      await expect(page.getByText("Deleted villa history")).toHaveCount(0);
+      await expect(page.getByText("deleted villas")).toHaveCount(0);
       await expect(save).toBeDisabled();
       const field = panel.locator("input:not([type=hidden]), textarea").first();
       const value = await field.inputValue();
@@ -156,7 +156,7 @@ test.describe("Settings panels", () => {
       await expect(save).toBeEnabled();
       await field.fill(value);
       await expect(save).toBeDisabled();
-      const history = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^Settings history$/ }) });
+      const history = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^History$/ }) });
       await expect(history).toHaveCount(1);
       await expect(history).not.toHaveAttribute("open", /.*/);
     });

@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode } from "convex/lib/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "lucide-react";
@@ -548,17 +549,14 @@ function CouponBuilder({
               </fieldset>
             ) : null}
 
-            <details
+            <Disclosure
+              label="More"
+              hint="campaign, dates, limits, terms"
               open={moreOpen}
-              onToggle={(event) => setMoreOpen(event.currentTarget.open)}
-              className="group border-t border-border pt-4"
+              onOpenChange={setMoreOpen}
+              className="border-t border-border pt-2"
+              contentClassName="mt-2 grid gap-6"
             >
-              <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-semibold text-foreground [&::-webkit-details-marker]:hidden">
-                <span aria-hidden className="text-muted-foreground transition group-open:rotate-90">›</span>
-                <span>More rules</span>
-                <span className="font-normal text-muted-foreground">Campaign, dates, limits, terms</span>
-              </summary>
-              <div className="mt-4 grid gap-6">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="grid content-start gap-2">
                     <Label htmlFor={`${id}-campaign`}>Campaign</Label>
@@ -677,8 +675,7 @@ function CouponBuilder({
                   />
                   <FieldHint>Shown at checkout, on the QR card and receipts · empty uses the placeholder</FieldHint>
                 </Group>
-              </div>
-            </details>
+            </Disclosure>
           </fieldset>
         </form>
 
@@ -821,7 +818,7 @@ function CouponBuilder({
         </aside>
       </div>
 
-      <div className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
+      <div data-admin-bottom-bar="sm" className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
           <span className="block truncate font-mono text-sm font-semibold text-foreground">{code || "New coupon"}</span>
           {saveHint ? <span aria-hidden>{saveHint}</span> : null}

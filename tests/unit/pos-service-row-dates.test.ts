@@ -28,10 +28,10 @@ describe("optional service date and time", () => {
 
   it("labels unset parts as unset, never as now", () => {
     expect(scheduleLabel({}, NOW)).toBe("Not scheduled");
-    expect(scheduleLabel({ date: "2026-11-12" }, NOW)).toBe("Thu, Nov 12 · time not set");
+    expect(scheduleLabel({ date: "2026-11-12" }, NOW)).toBe("Thu 12 Nov · time not set");
     expect(scheduleLabel({ date: "2026-10-28" }, NOW)).toBe("Today · time not set");
     expect(scheduleLabel({ time: "14:30" }, NOW)).toBe("14:30 · date not set");
-    expect(scheduleLabel({ date: "2027-01-05", time: "09:00" }, NOW)).toBe("Tue, Jan 5, 2027, 09:00");
+    expect(scheduleLabel({ date: "2027-01-05", time: "09:00" }, NOW)).toBe("Tue 5 Jan 2027, 09:00");
     // Legacy rows keep their own label.
     expect(scheduleLabel(undefined, NOW)).toBeNull();
     expect(receiptSchedule(undefined)).toBeNull();
@@ -48,8 +48,8 @@ describe("optional service date and time", () => {
 
   it("labels legacy rows with their date unless they are today", () => {
     expect(serviceStartLabel(at("2026-10-28", "14:30"), NOW)).toBe("14:30");
-    expect(serviceStartLabel(at("2026-10-26", "14:30"), NOW)).toBe("Mon, Oct 26, 14:30");
-    expect(serviceStartLabel(at("2025-12-31", "14:30"), NOW)).toBe("Wed, Dec 31, 2025, 14:30");
+    expect(serviceStartLabel(at("2026-10-26", "14:30"), NOW)).toBe("Mon 26 Oct, 14:30");
+    expect(serviceStartLabel(at("2025-12-31", "14:30"), NOW)).toBe("Wed 31 Dec 2025, 14:30");
   });
 });
 
@@ -153,12 +153,12 @@ describe("a service row's optional date and time at checkout", () => {
 
     await pickDate("2026-10-30");
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceDate: "2026-10-30" }));
-    expect(subtitle("Thai massage 60")).toContain("Fri, Oct 30, 14:30");
+    expect(subtitle("Thai massage 60")).toContain("Fri 30 Oct, 14:30");
 
     await click(buttonNamed("Clear service time"));
     await settle();
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceTime: null }));
-    expect(subtitle("Thai massage 60")).toContain("Fri, Oct 30 · time not set");
+    expect(subtitle("Thai massage 60")).toContain("Fri 30 Oct · time not set");
     expect(timeInput().value).toBe("");
 
     await click(dateButton());
@@ -177,6 +177,6 @@ describe("a service row's optional date and time at checkout", () => {
     await pickDate("2026-10-27");
     expect(updateLine).toHaveBeenLastCalledWith({ lineId: expect.any(String), serviceDate: "2026-10-27" });
     expect(timeInput().value).toBe("");
-    expect(subtitle("Thai massage 60")).toContain("Tue, Oct 27 · time not set");
+    expect(subtitle("Thai massage 60")).toContain("Tue 27 Oct · time not set");
   });
 });

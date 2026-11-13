@@ -49,12 +49,12 @@ import {
   appointmentStatus,
   appointmentStatusColor,
   displayStatus,
-  formatResortTime,
   resortIsoDate,
   resortMidnight,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
+import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
@@ -79,7 +79,7 @@ const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
 /** listSchedule's limit. */
 const MAX_SCHEDULE_DAYS = 14;
 // Stable reference: the calendar rebuilds its settings when this object changes.
-const CALENDAR_I18N = { viewNames: { resource: "Day" } };
+const CALENDAR_I18N = { viewNames: { resource: "Day" }, formats: STAFF_CALENDAR_FORMATS };
 
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
@@ -374,7 +374,7 @@ function StaffCalendar() {
           </span>
           {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className="truncate text-xs text-muted-foreground">
-            {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
+            {staffTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>

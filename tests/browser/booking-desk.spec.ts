@@ -66,7 +66,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
       expect(await controls(page, dialog)).toBeLessThanOrEqual(9);
       await t.tap(page.getByRole("button", { name: "Record ฿8,500" }), "Record ฿8,500");
-      await expect(page.getByRole("status")).toContainText("Maya Lin: Payment recorded.");
+      await expect(page.getByTestId("toast")).toContainText("Maya Lin: Payment recorded.");
       expect(t.summary()).toMatchObject({ taps: 4, typed: 0, scrolls: 0 });
       const [payment] = (await calls(page)).filter((call) => call.name === "recordPayment");
       expect(payment.args).toMatchObject({ bookingId: "fxbkg000003", expectedRevision: 1, expectedAmount: 8500, method: "cash" });
@@ -181,7 +181,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await t.tap(dialog.getByRole("button", { name: "15:00", exact: true }), "15:00");
       await t.tap(dialog.getByRole("button", { name: "Book Hot stone 60 · 15:00" }), "Book");
       await expect(dialog).toHaveCount(0);
-      await expect(page.getByRole("status")).toContainText("Maya Lin: spa booked");
+      await expect(page.getByTestId("toast")).toContainText("Maya Lin: spa booked");
       expect(t.summary()).toMatchObject({ taps: 5, typed: 0, scrolls: 0 });
       const created = (await calls(page)).find((call) => call.name === "createAppointment")!.args;
       expect(created).toMatchObject({ bookingId: "fxbkg000003", guestName: "Maya Lin", guestPhone: "+66 81 234 5678", serviceId: "fxsvc000005" });
