@@ -40,6 +40,7 @@ import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingOrders } from "./BookingOrders";
 import { DisabledReason } from "./DisabledReason";
 import { StatusBadge } from "./StatusBadge";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { formatMoney, sourceLabel } from "./labels";
 import {
   balanceText,
@@ -54,6 +55,7 @@ import {
   type AdminProperty,
 } from "./admin-bookings-shared";
 
+const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
@@ -221,6 +223,53 @@ function BookingDetails({
 
       <BookingFinancials booking={booking} initialAction={paymentShortcut} />
 
+      <div className="flex flex-wrap items-center gap-2">
+        {editable && booking.status === "pending" ? (
+          <Button
+            onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), booking.notifyByDefault && booking.guestEmail ? "Confirmed. The guest is emailed." : "Confirmed.")}
+            disabled={pending !== null}
+          >
+            {pending === "confirm" ? <Spinner className="text-current" /> : null}
+            Confirm
+          </Button>
+        ) : null}
+        {editable ? (
+          <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+            <Button variant="outline" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
+              Edit
+            </Button>
+          </DisabledReason>
+        ) : null}
+        {cancelled ? (
+          <Button variant="outline" onClick={() => setDialog("reopen")} disabled={pending !== null}>
+            Reopen
+          </Button>
+        ) : null}
+        {pending === "resend" || pending === "delete" || pending === "copy" ? <Spinner label="Working" /> : null}
+        <MoreMenu
+          label="More booking actions"
+          disabled={pending !== null}
+          items={[
+            { label: "Copy pay link", onSelect: () => void copyPayLink(), hidden: !booking.accessToken },
+            {
+              label: "Resend emails",
+              onSelect: () => void act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued."),
+              hidden: booking.status !== "confirmed",
+            },
+            { label: "Cancel stay", onSelect: () => setDialog("cancel"), destructive: true, hidden: !editable, disabled: booking.checkoutLive },
+            { label: "Delete booking", onSelect: () => void remove(), destructive: true, hidden: !deletable },
+          ]}
+        />
+      </div>
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
+      {editable && booking.status === "pending" && booking.historical && booking.guestEmail ? (
+        <p className="text-xs text-muted-foreground">
+          {booking.notifyByDefault ? "Confirming emails the guest." : "Confirming this past stay won’t email the guest."}
+        </p>
+      ) : null}
+      {!editable ? <p className="text-xs text-muted-foreground">Reopen a cancelled booking to change it.</p> : null}
+
       <dl className="divide-y divide-border border-y border-border">
         <Detail label="Villa">
           {booking.propertyName}
@@ -232,13 +281,6 @@ function BookingDetails({
             {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {booking.guests}{" "}
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
-        </Detail>
-        <Detail label="Orders">
-          <BookingOrders
-            source={{ bookingId: booking._id }}
-            currency={booking.currency}
-            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
-          />
         </Detail>
         <Detail label="Phone">{booking.guestPhone}</Detail>
         <Detail label="Email">
@@ -263,6 +305,13 @@ function BookingDetails({
           </Detail>
         ) : null}
       </dl>
+
+      <BookingOrders
+        source={{ bookingId: booking._id }}
+        currency={booking.currency}
+        closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
+        history
+      />
 
       <div className="grid gap-2">
         <Label htmlFor="booking-notes">Notes (staff only)</Label>
@@ -299,67 +348,6 @@ function BookingDetails({
           </Button>
         ) : null}
       </div>
-
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
-
-      <div className="flex flex-wrap gap-2">
-        {editable && booking.status === "pending" ? (
-          <Button
-            onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), booking.notifyByDefault && booking.guestEmail ? "Confirmed. The guest is emailed." : "Confirmed.")}
-            disabled={pending !== null}
-          >
-            {pending === "confirm" ? <Spinner className="text-current" /> : null}
-            Confirm
-          </Button>
-        ) : null}
-        {editable ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button variant="outline" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
-              Edit
-            </Button>
-          </DisabledReason>
-        ) : null}
-        {booking.accessToken ? (
-          <Button variant="outline" onClick={copyPayLink} disabled={pending !== null}>
-            Copy pay link
-          </Button>
-        ) : null}
-        {booking.status === "confirmed" ? (
-          <Button
-            variant="outline"
-            onClick={() => act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued.")}
-            disabled={pending !== null}
-          >
-            {pending === "resend" ? <Spinner className="text-current" /> : null}
-            Resend emails
-          </Button>
-        ) : null}
-        {editable ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button variant="outline" onClick={() => setDialog("cancel")} disabled={pending !== null || booking.checkoutLive}>
-              Cancel booking
-            </Button>
-          </DisabledReason>
-        ) : null}
-        {cancelled ? (
-          <Button variant="outline" onClick={() => setDialog("reopen")} disabled={pending !== null}>
-            Reopen
-          </Button>
-        ) : null}
-        {deletable ? (
-          <Button variant="ghost" className="text-destructive" onClick={remove} disabled={pending !== null}>
-            {pending === "delete" ? <Spinner className="text-current" /> : null}
-            Delete
-          </Button>
-        ) : null}
-      </div>
-      {editable && booking.status === "pending" && booking.historical && booking.guestEmail ? (
-        <p className="text-xs text-muted-foreground">
-          {booking.notifyByDefault ? "Confirming emails the guest." : "Confirming this past stay won’t email the guest."}
-        </p>
-      ) : null}
-      {!editable ? <p className="text-xs text-muted-foreground">Cancelled bookings are read-only. Reopen one to change it.</p> : null}
 
       <BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName} />
 

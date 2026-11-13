@@ -3,6 +3,8 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
+import type { FunctionReturnType } from "convex/server";
+import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -10,49 +12,64 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { StatusBadge } from "./StatusBadge";
 import { DisabledReason } from "./DisabledReason";
-import type { BookingSheetAction } from "./BookingSheet";
 import { formatMoney } from "./labels";
+import { useStayCheckout, useStaySpa } from "./stay-spa";
 import {
   canEditBooking,
   cancelConfirmOptions,
   displayDate,
   hotelStatus,
   payLink,
-  paymentText,
+  serverTodayIso,
   statusKey,
 } from "./admin-bookings-shared";
 
 export type QuickTarget = { booking: AdminBooking; rect: { left: number; top: number; width: number; height: number } };
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
+
+/** Each popover button finishes its job: its own dialog, checkout, or the new appointment. */
+export type QuickAction =
+  | { kind: "pay"; booking: BookingDetail }
+  | { kind: "cancel"; booking: BookingDetail }
+  | { kind: "bookSpa"; booking: AdminBooking };
+
+const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 
 /**
- * Compact popover on a calendar booking chip: the common one-click actions without opening the full sheet.
- * Results are reported through `onNotice` because the popover closes before the action runs.
+ * Popover on a calendar booking chip. Checkout takes the stay's balance with its unpaid spa;
+ * Book spa, Record payment and Cancel open their own dialogs. Results are reported through
+ * `onNotice` because the popover closes before the action runs.
  */
 export function BookingQuickActions({
   target,
   villaName,
   onClose,
   onOpenDetails,
+  onAction,
   onNotice,
 }: {
   target: QuickTarget;
   villaName: string;
   onClose: () => void;
-  onOpenDetails: (initialAction?: BookingSheetAction) => void;
+  onOpenDetails: () => void;
+  onAction: (action: QuickAction) => void;
   onNotice: (notice: { text: string; error?: boolean }) => void;
 }) {
   const { booking, rect } = target;
   const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
   const updateBooking = useMutation(api.adminBookings.updateBooking);
   const confirm = useConfirm();
-  const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);
-  const isPaid = booking.paymentStatus === "paid";
-  const canPay = detail
-    ? editable && detail.money.owed > 0 && !detail.money.legacyRefund && detail.paymentStatus !== "failed"
-    : editable && !isPaid;
+  const spa = useStaySpa(editable ? booking : null);
+  const openCheckout = useStayCheckout();
+  const [opening, setOpening] = useState(false);
+  const [problems, setProblems] = useState<string[]>([]);
+  const status = hotelStatus(statusKey(booking));
   const checkoutLive = Boolean(detail?.checkoutLive);
-  const checkoutReason = checkoutLive && "Wait for the guest's Stripe checkout to finish or expire.";
+  const owed = detail && editable && !detail.money.legacyRefund && detail.paymentStatus !== "failed" ? detail.money.owed : 0;
+  const canPay = owed > 0;
+  const due = owed + (spa?.total ?? 0);
+  const canBookSpa = editable && booking.checkOut >= serverTodayIso();
 
   async function run(work: () => Promise<unknown>, done: string) {
     onClose();
@@ -64,12 +81,26 @@ export function BookingQuickActions({
     }
   }
 
-  /** Paid stays are cancelled from the sheet, which asks whether to keep the payment or record a refund. */
+  async function checkout() {
+    if (!spa || opening) return;
+    setOpening(true);
+    setProblems([]);
+    try {
+      const found = await openCheckout(booking._id, spa.appointments);
+      if (found.length) setProblems(found);
+    } catch (err) {
+      setProblems([errorText(err, "Couldn't open checkout for this stay.")]);
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  /** A stay holding money opens the cancel dialog, which asks whether to keep it or record a refund. */
   async function cancel() {
     if (!detail || checkoutLive) return;
     onClose();
     if (detail.money.net > 0) {
-      onOpenDetails("cancel");
+      onAction({ kind: "cancel", booking: detail });
       return;
     }
     if (!(await confirm(cancelConfirmOptions(detail)))) return;
@@ -80,22 +111,19 @@ export function BookingQuickActions({
   }
 
   return (
-    <Popover open onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Popover open onOpenChange={(open) => (open || opening ? undefined : onClose())}>
       <PopoverAnchor asChild>
         <span aria-hidden className="pointer-events-none fixed" style={rect} />
       </PopoverAnchor>
       <PopoverContent align="start" className="grid w-80 gap-3 p-3" aria-label={`Booking for ${booking.guestName}`}>
         <div>
-          <p className="font-semibold text-foreground">{booking.guestName}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+            {booking.guestName}
             <StatusBadge {...status} />
-            {paymentText(booking)}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            {villaName} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {formatMoney(booking.total, booking.currency)}
+            {villaName} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)} · {booking.nights}{" "}
+            {booking.nights === 1 ? "night" : "nights"}
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -109,15 +137,35 @@ export function BookingQuickActions({
               Confirm
             </Button>
           ) : null}
-          {canPay ? (
-            <DisabledReason reason={checkoutReason}>
+          {editable && (due > 0 || detail === undefined || spa === undefined) ? (
+            <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
+              <Button size="sm" disabled={!detail || !spa || checkoutLive || opening} onClick={() => void checkout()}>
+                {opening || !detail || !spa ? <Spinner className="text-current" /> : null}
+                {detail && spa ? `Checkout ${formatMoney(due, booking.currency)}` : "Checkout"}
+              </Button>
+            </DisabledReason>
+          ) : null}
+          {canBookSpa ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                onClose();
+                onAction({ kind: "bookSpa", booking });
+              }}
+            >
+              Book spa
+            </Button>
+          ) : null}
+          {canPay && detail ? (
+            <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
               <Button
                 size="sm"
-                variant="secondary"
+                variant="outline"
                 disabled={checkoutLive}
                 onClick={() => {
                   onClose();
-                  onOpenDetails("pay");
+                  onAction({ kind: "pay", booking: detail });
                 }}
               >
                 Record payment
@@ -134,10 +182,10 @@ export function BookingQuickActions({
             </Button>
           ) : null}
           {editable ? (
-            <DisabledReason reason={checkoutReason}>
-              <Button size="sm" variant="outline" onClick={cancel} disabled={!detail || checkoutLive}>
+            <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={cancel} disabled={!detail || checkoutLive}>
                 {detail ? null : <Spinner className="text-current" />}
-                Cancel booking
+                Cancel stay
               </Button>
             </DisabledReason>
           ) : null}
@@ -152,6 +200,14 @@ export function BookingQuickActions({
             Details
           </Button>
         </div>
+        {problems.length ? (
+          <div role="alert" className="grid gap-1 text-sm text-destructive">
+            {problems.map((problem) => <p key={problem}>{problem}</p>)}
+            <Button size="sm" variant="outline" className="justify-self-start" onClick={() => { onClose(); onOpenDetails(); }}>
+              Open the stay
+            </Button>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

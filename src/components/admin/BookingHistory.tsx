@@ -111,12 +111,14 @@ export function BookingHistory({
   const { results, status, loadMore } = usePaginatedQuery(api.adminBookings.bookingHistory, { bookingId }, { initialNumItems: PAGE });
 
   return (
-    <section aria-labelledby="booking-history" className="grid gap-2">
-      <h3 id="booking-history" className="admin-eyebrow">History</h3>
+    // One closed section per record (rule 4).
+    <details aria-labelledby="booking-history" className="group text-sm">
+      <summary id="booking-history" className="min-h-9 cursor-pointer py-2 font-medium">History</summary>
+      <div className="grid gap-2 pb-2">
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-12" aria-label="Loading history" />
       ) : results.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No changes recorded yet. Changes made before booking history was added were not recorded.</p>
+        <p className="text-sm text-muted-foreground">No changes recorded since booking history began.</p>
       ) : (
         <ol className="grid gap-3">
           {results.map((entry) => {
@@ -154,6 +156,7 @@ export function BookingHistory({
           {status === "LoadingMore" ? "Loading history…" : "Load earlier history"}
         </Button>
       ) : null}
-    </section>
+      </div>
+    </details>
   );
 }
