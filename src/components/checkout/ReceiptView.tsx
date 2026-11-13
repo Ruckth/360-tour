@@ -1,32 +1,32 @@
 "use client";
 
-import { Ban, ChevronLeft, Copy, Plus, Printer, Share2 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Check, Plus, Printer, Share2, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
-import { OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
+import { OrderApprovalStatus } from "./ApprovalRequest";
 import { useCheckoutBackend, type OrderId } from "./backend";
-import { needsApproval } from "./staff-approvals";
 import { RefundForm } from "./RefundForm";
-import { checkoutErrorText, hasLineRefunds, refundElsewhere, refundedSatang, satangMoney } from "./refunds";
+import { hasLineRefunds, refundElsewhere, refundedSatang, satangMoney } from "./refunds";
 import { TONES } from "@/components/admin/status-tones";
 import type { Id } from "convex/_generated/dataModel";
-import { PaymentRecord } from "./PaymentRecord";
-import { OrderHistory } from "./OrderHistory";
+import { CorrectPayment, LinkedRefunds, VoidPanel } from "./PaymentRecord";
+import { ReceiptHistory } from "./FinancialHistory";
 import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
-import { AfterPayment } from "./AfterPayment";
+import { LineLink, linkTarget, useCanLink } from "./AfterPayment";
 
 type Paper = "58" | "80";
+/** Paper width is a per-device setting: each till has one printer. */
+export const RECEIPT_PAPER_KEY = "pos-receipt-paper";
+type Task = "correct" | "void";
 
 const PX_PER_MM = 96 / 25.4;
 /** Extra paper after the receipt, so rounding never spills it onto a second page. */
@@ -71,20 +71,32 @@ const noSubscription = () => () => undefined;
 const useCanShare = () =>
   useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
 
-/** Receipt after payment: thermal print (58/80mm), share (where the device can) or copy, and void with a reason. */
+/**
+ * Receipt after payment. The toolbar is Print · Share · New sale; the paper width (remembered on
+ * this device), Correct payment and Void… sit in ⋯. Refund and Link sit on the receipt lines, and
+ * one closed History holds every ledger. The printed receipt never changes.
+ */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
   const view = backend.useOrder(orderId);
   const business = backend.useBusinessName() ?? "";
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
+  const canLink = useCanLink();
   const approvals = backend.useOrderApprovals(view ? view.order._id : null);
-  const [paper, setPaper] = useState<Paper>("80");
+  const [storedPaper, setStoredPaper] = useStoredState(RECEIPT_PAPER_KEY, "80");
+  const paper: Paper = storedPaper === "58" ? "58" : "80";
   const [notice, setNotice] = useState("");
   const canShare = useCanShare();
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
   const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
+  // What a finished refund or request said, under its line.
+  const [lineNotes, setLineNotes] = useState<Record<string, string>>({});
+  // Correct payment or Void…, opened from ⋯; the toolbar's Close ends it.
+  const [task, setTask] = useState<Task | null>(null);
+  const [taskBusy, setTaskBusy] = useState(false);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLElement>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
@@ -105,6 +117,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     window.addEventListener("beforeprint", beforePrint);
     return () => window.removeEventListener("beforeprint", beforePrint);
   }, [measure]);
+  // Another order: nothing from the last one stays open.
+  useEffect(() => { setTask(null); setRefunding(null); setLineNotes({}); setNotice(""); }, [orderId]);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   // Cashiers open today's receipts only; older ones come back as missing.
@@ -133,35 +147,69 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const waiting = approvals?.some((r) => r.status === "pending") ?? false;
   // A cashier who must ask can't send a second request while one waits.
   const refundLocked = cashier && access.cashierRules.refund === "manager" && waiting;
+  const refundsRecorded = hasLineRefunds(view);
+  const shownTask = paid ? task : null;
 
-  /** Closes the form. Cancel returns focus to the line's Refund; a finished refund or request focuses the notice. */
+  /** Focus the notice once it renders, or the ⋯ / a fallback control. */
+  function focusAfter(target: HTMLElement | null | undefined) {
+    (target ?? toolbarRef.current?.querySelector<HTMLElement>('[aria-label="More receipt actions"]'))?.focus();
+  }
+
+  function say(message: string) {
+    flushSync(() => setNotice(message));
+    noticeRef.current?.focus();
+  }
+
+  /** Closes the form. Cancel returns focus to the line's Refund; a finished refund or request shows, focused, under its line. */
   function closeRefund(lineId: Id<"billLines">, message?: string) {
     flushSync(() => {
       setRefunding(null);
+      if (message) setLineNotes((notes) => ({ ...notes, [lineId]: message }));
+    });
+    const note = document.querySelector<HTMLElement>(`[data-line-note="${lineId}"]`);
+    const trigger = document.querySelector<HTMLElement>(`[data-refund-trigger="${lineId}"]`);
+    (message ? note ?? trigger : trigger)?.focus();
+  }
+
+  function openTask(next: Task) {
+    setNotice("");
+    setTask(next);
+  }
+
+  function closeTask(message?: string) {
+    // The toolbar's Close waits for a running write; a finished one closes with its result.
+    if (taskBusy && !message) return;
+    flushSync(() => {
+      setTask(null);
+      setTaskBusy(false);
       if (message) setNotice(message);
     });
-    const trigger = document.querySelector<HTMLElement>(`[data-refund-trigger="${lineId}"]`);
-    (trigger && !message ? trigger : noticeRef.current ?? trigger)?.focus();
+    focusAfter(message ? noticeRef.current : null);
   }
 
-  // Share only opens the system sheet; copying is the Copy button's job, so neither outcome claims the other.
+  function choosePaper(next: Paper) {
+    setStoredPaper(next);
+    say(`Prints on ${next} mm paper · remembered on this device`);
+  }
+
+  // Share opens the system sheet where there is one; anywhere else (or if it fails) it copies.
   async function share() {
     setNotice("");
-    try {
-      await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text: receiptText(view!, business) });
-    } catch (err) {
-      // Closing the share sheet is not a failure, and nothing was copied.
-      if ((err as Error).name !== "AbortError") setNotice("Couldn't share. Use Copy to copy the receipt instead.");
+    const text = receiptText(view!, business);
+    if (canShare) {
+      try {
+        await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text });
+        return;
+      } catch (err) {
+        // Closing the share sheet is not a failure, and nothing is copied.
+        if ((err as Error).name === "AbortError") return;
+      }
     }
-  }
-
-  async function copy() {
-    setNotice("");
     try {
-      await navigator.clipboard.writeText(receiptText(view!, business));
+      await navigator.clipboard.writeText(text);
       setNotice("Receipt copied.");
     } catch {
-      setNotice("Couldn't copy on this device.");
+      setNotice(canShare ? "Couldn't share or copy on this device." : "Couldn't copy on this device.");
     }
   }
 
@@ -170,6 +218,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
 
   return (
     <div
+      data-testid="receipt-view"
       className={cn(
         "grid min-w-0 flex-1 content-start gap-x-8 gap-y-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-5xl",
         TOUCH_TARGETS,
@@ -177,17 +226,10 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     >
       <style>{printCss(paper, pageLengthMm)}</style>
 
-      {/* Where you are, what this receipt is, and the next step, before anything else. */}
+      {/* What this receipt is, and the toolbar, before anything else. */}
       <header className="flex flex-wrap items-end justify-between gap-3 lg:col-span-2 print:hidden">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={onNewSale}
-            className="-ml-1 inline-flex min-h-7 items-center gap-1 rounded px-1 text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ChevronLeft aria-hidden className="size-4" /> Checkout
-          </button>
-          <h2 className="mt-1 flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
+          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
             Receipt {receiptNumber}
             {paid && view.fullyRefunded ? (
               <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
@@ -195,49 +237,35 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith.toLowerCase()}` : ""}`}
+            {!isVoid && view.paymentRecord.tendersAmended ? " · corrected" : ""}
           </p>
+          {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="mt-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{notice}</p> : null}
         </div>
-        <Button onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+        <div ref={toolbarRef} role="toolbar" aria-label="Receipt actions" className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <Button variant="outline" className="px-3 sm:px-4" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
+          <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
+          <Button variant="outline" className="px-3 sm:px-4" onClick={() => void share()}><Share2 aria-hidden className="size-4" /> Share</Button>
+          <Button className="px-3 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+          {shownTask ? (
+            <Button variant="ghost" disabled={taskBusy} onClick={() => closeTask()} aria-label={`Close ${shownTask === "correct" ? "Correct payment" : "Void"}`}>
+              <X aria-hidden className="size-4" /> Close
+            </Button>
+          ) : (
+            <MoreMenu
+              label="More receipt actions"
+              items={[
+                { label: paper === "58" ? "Use 80 mm paper" : "Use 58 mm paper", onSelect: () => choosePaper(paper === "58" ? "80" : "58") },
+                { label: "Correct payment", onSelect: () => openTask("correct"), hidden: !paid },
+                // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
+                { label: refundsRecorded ? "Void… · not after a refund" : "Void…", onSelect: () => openTask("void"), destructive: true, disabled: refundsRecorded, hidden: !paid },
+              ]}
+            />
+          )}
+        </div>
       </header>
 
       <div className="grid min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6">
-        <div className="flex w-full flex-wrap items-center gap-2 print:hidden">
-          {/* A setting, so its selected state stays quieter than New sale. */}
-          <ToggleGroup value={paper} onValueChange={setPaper} aria-label="Paper width">
-            <ToggleGroupItem value="58" className={QUIET_SELECTED}>58 mm</ToggleGroupItem>
-            <ToggleGroupItem value="80" className={QUIET_SELECTED}>80 mm</ToggleGroupItem>
-          </ToggleGroup>
-          <Button variant="outline" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
-          {canShare ? <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button> : null}
-          <Button variant="ghost" onClick={copy} aria-label="Copy receipt"><Copy aria-hidden className="size-4" /> Copy</Button>
-        </div>
-        {isVoid ? (
-          <div className="grid gap-1 text-xs text-muted-foreground print:hidden" data-testid="receipt-void-status"><p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>{view.paymentRecord.voidUnreceived ? <p>Voided as a mistaken entry: no money was received. No refund was sent.</p> : null}</div>
-        ) : hasLineRefunds(view) ? (
-          // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
-          <div className="flex items-center gap-2 print:hidden">
-            <Button variant="outline" disabled className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
-            <InfoTip label="Why void is off">A receipt with refunds can’t be voided.</InfoTip>
-          </div>
-        ) : (
-          <div className="print:hidden">
-            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={waiting} />
-          </div>
-        )}
-        {/* The browser sets the page size; the printer's driver decides what reaches the paper. */}
-        <p id="receipt-print-help" className="w-full text-xs text-muted-foreground print:hidden">Prints {paper} mm wide, as long as the receipt.</p>
-        <details className="w-full text-xs text-muted-foreground print:hidden">
-          <summary className="w-fit cursor-pointer rounded font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:py-3">
-            Printing tips
-          </summary>
-          <p className="mt-1">
-            In the print dialog, choose the receipt printer, margins None and scale 100%.
-            If it still prints on another paper size, select the {paper} mm roll in the printer&apos;s own settings.
-          </p>
-        </details>
-        {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="w-full rounded text-sm text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring print:hidden">{notice}</p> : null}
-
-        <article ref={receiptRef} className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
+        <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
               Void · {order.voidReason}
@@ -257,6 +285,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
               const lineRefunded = truncated ? 0 : line.refundedAmountSatang ?? 0;
               const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
               const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
+              const showRefund = refundable;
+              const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
+              const note = lineNotes[line._id];
               return (
               <li key={line._id}>
                 <div className="flex justify-between gap-2">
@@ -293,30 +324,38 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                     <span className="tabular-nums">{satangMoney(-lineRefunded, line.currency)}</span>
                   </div>
                 ) : null}
+                {note ? (
+                  <p data-screen-only="" data-line-note={line._id} tabIndex={-1} role="status" className="mt-1 flex items-start gap-1.5 rounded font-sans text-xs font-medium text-emerald-800 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-300 print:hidden">
+                    <Check aria-hidden className="mt-px size-3.5 shrink-0" /> {note}
+                  </p>
+                ) : null}
                 {/* An open form stays until closed, even if this line was just refunded in full. */}
                 {paid && refunding === line._id ? (
                   <RefundForm view={view} line={line} waiting={waiting} onCancel={() => closeRefund(line._id)} onDone={(message) => closeRefund(line._id, message)} />
-                ) : refundable ? (
-                  <div data-screen-only="" className="flex justify-end print:hidden">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      data-refund-trigger={line._id}
-                      aria-label={`Refund ${line.name}`}
-                      disabled={refundLocked || refunding !== null}
-                      onClick={() => setRefunding(line._id)}
-                      className="h-8 px-3 font-sans text-xs"
-                    >
-                      Refund
-                    </Button>
+                ) : showRefund || linkable ? (
+                  <div data-screen-only="" className="mt-1 flex flex-wrap items-center justify-end gap-2 font-sans print:hidden">
+                    {showRefund ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-refund-trigger={line._id}
+                        aria-label={`Refund ${line.name}`}
+                        disabled={refundLocked || refunding !== null}
+                        onClick={() => { setNotice(""); setRefunding(line._id); }}
+                        className="h-8 px-3 font-sans text-xs"
+                      >
+                        Refund
+                      </Button>
+                    ) : null}
+                    {linkable ? <LineLink view={view} line={line} /> : null}
                   </div>
                 ) : null}
               </li>
               );
             })}
           </ul>
-          {truncated ? <p data-screen-only="" className="mt-2 font-sans text-xs text-muted-foreground print:hidden">Too many refunds to total here. See financial history.</p> : null}
+          {truncated ? <p data-screen-only="" className="mt-2 font-sans text-xs text-muted-foreground print:hidden">Too many refunds to total here. See History.</p> : null}
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
             {totals.coupon ? (
@@ -350,89 +389,29 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         </article>
       </div>
 
-      <div className="grid min-w-0 content-start gap-5 print:hidden">
-        <OrderApprovalStatus requests={approvals} lines={lines} className="max-w-md" />
-        <AfterPayment view={view} />
-        <PaymentRecord view={view} />
-        <OrderHistory orderId={orderId} />
-
+      <div
+        data-testid="receipt-side"
+        className="grid min-w-0 max-w-md content-start gap-4 print:hidden"
+        onKeyDown={(event: KeyboardEvent) => {
+          if (event.key === "Escape" && shownTask && !taskBusy && (event.target as HTMLElement).closest('[data-testid="correct-payment"],[data-testid="void-panel"]')) {
+            event.stopPropagation();
+            closeTask();
+          }
+        }}
+      >
+        {isVoid ? (
+          <div className="grid gap-1 text-sm text-muted-foreground" data-testid="receipt-void-status">
+            <p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""} · order and receipt numbers stay on record</p>
+            {view.paymentRecord.voidUnreceived ? <p>Entered by mistake · no money was received, no refund sent</p> : null}
+          </div>
+        ) : null}
+        <OrderApprovalStatus requests={approvals} lines={lines} decide />
+        {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
+        {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
+        <LinkedRefunds view={view} />
+        {/* Cashiers work the till: the paged ledgers are for managers and owners. */}
+        {cashier ? null : <ReceiptHistory view={view} />}
       </div>
     </div>
-  );
-}
-
-const QUIET_SELECTED =
-  "data-[state=on]:bg-card data-[state=on]:text-foreground data-[state=on]:shadow-sm data-[state=on]:ring-1 data-[state=on]:ring-border data-[state=on]:focus-visible:ring-2 data-[state=on]:focus-visible:ring-ring";
-
-/** The Void… button and its dialog; the button is the trigger, so Cancel puts focus back on it. */
-function VoidDialog({ orderId, receipt, hasAttached, waiting }: { orderId: OrderId; receipt: string; hasAttached: boolean; waiting: boolean }) {
-  const actions = useCheckoutBackend().useActions();
-  const access = useStaffAccess();
-  const send = useSendApproval();
-  // A cashier whose rules keep voids for managers sends the void as a request, with its reason.
-  const [refused, setRefused] = useState(false);
-  const ask = access.role === "cashier" && (refused || access.cashierRules.voidPaidSale === "manager");
-  const [open, setOpen] = useState(false);
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const lock = useRef(false);
-
-  async function submit() {
-    if (lock.current) return;
-    lock.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      if (ask) {
-        const failed = await send(orderId, { kind: "voidPaidSale" }, reason);
-        if (failed) setError(failed);
-        else setOpen(false);
-        return;
-      }
-      await actions.voidOrder({ orderId, reason });
-      setOpen(false);
-    } catch (err) {
-      if (access.role === "cashier" && needsApproval(err)) {
-        setRefused(true);
-        setError("This needs a manager. Send it as a request.");
-      } else setError(checkoutErrorText(err, "Couldn't void the receipt."));
-    } finally {
-      lock.current = false;
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={next => { if (!saving) setOpen(next); }}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
-      </DialogTrigger>
-      <DialogContent className={cn("max-w-md", TOUCH_TARGETS)}>
-        <DialogHeader>
-          <DialogTitle>{ask ? `Ask a manager to void ${receipt}?` : `Void receipt ${receipt}?`}</DialogTitle>
-          <DialogDescription asChild>
-            <ul className="grid list-disc gap-1 pl-5">
-              <li>The order and receipt stay on record, marked void, with their numbers.</li>
-              <li>No refund is sent or recorded here.</li>
-              {hasAttached ? <li>Its bookings and appointments stay marked paid. Record a refund on them if needed.</li> : null}
-              <li>No money received at all? Use “No money was received” on the receipt instead.</li>
-            </ul>
-          </DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-2">
-          <Label htmlFor="void-reason">Reason</Label>
-          <Textarea disabled={saving} id="void-reason" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Charged the wrong guest" autoFocus />
-        </div>
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        <DialogFooter>
-          <Button variant="outline" disabled={saving} onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="destructive" disabled={!reason.trim() || saving || (ask && waiting)} onClick={submit}>
-            {saving ? <Spinner className="text-current" /> : null}
-            {ask ? "Send request" : "Void receipt"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }

@@ -143,23 +143,35 @@ export function HistoryValues({
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
     <HistoryDetails orderId={orderId} title="Order history">
-      <InlineErrorBoundary
-        resetKey={orderId}
-        message="Couldn't load order history. Retry to continue."
-      >
-        <HistoryPage orderId={orderId} />
-      </InlineErrorBoundary>
+      <OrderHistoryList orderId={orderId} />
     </HistoryDetails>
   );
 }
-function HistoryPage({ orderId }: { orderId: OrderId }) {
+
+/**
+ * The paged item changes on their own, for a tab inside another history (the receipt's Items).
+ * `intro` false leaves out the explanation, where the surrounding history states it.
+ */
+export function OrderHistoryList({ orderId, intro = true }: { orderId: OrderId; intro?: boolean }) {
+  return (
+    <InlineErrorBoundary
+      resetKey={orderId}
+      message="Couldn't load order history. Retry to continue."
+    >
+      <HistoryPage orderId={orderId} intro={intro} />
+    </InlineErrorBoundary>
+  );
+}
+function HistoryPage({ orderId, intro }: { orderId: OrderId; intro: boolean }) {
   const page = useCheckoutBackend().useOrderHistory(orderId);
   return (
     <section aria-label="Order history" className="grid gap-3 pb-3">
-      <p className="text-xs text-muted-foreground">
-        Newly recorded item changes, including removed contents. Earlier changes
-        may not have been recorded. All times are Bangkok time.
-      </p>
+      {intro ? (
+        <p className="text-xs text-muted-foreground">
+          Newly recorded item changes, including removed contents. Earlier changes
+          may not have been recorded. All times are Bangkok time.
+        </p>
+      ) : null}
       {page.status === "LoadingFirstPage" ? (
         <Spinner label="Loading order history" />
       ) : null}

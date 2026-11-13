@@ -63,7 +63,7 @@ it("prints the receipt, its share text and the void note in Bangkok time", async
   vi.setSystemTime(new Date("2026-11-01T22:45:00Z"));
   await run(actions.voidOrder({ orderId, reason: "Wrong guest" }));
   await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
-  expect(document.body.textContent).toContain(" on 2 Nov, 05:45. The order and receipt numbers stay on record.");
+  expect(document.body.textContent).toContain(" on 2 Nov, 05:45 · order and receipt numbers stay on record");
 });
 
 it("lists today's orders by the Bangkok day, with the date on other days", () => {

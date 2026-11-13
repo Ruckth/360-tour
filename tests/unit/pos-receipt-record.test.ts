@@ -7,10 +7,15 @@ import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type Order
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { historyTime } from "@/components/checkout/OrderHistory";
+import { StaffAccessProvider } from "@/components/admin/staff-access";
+import type { StaffAccessView } from "@/components/admin/admin-access";
+import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { pickReceiptAction, receiptActions } from "./receipt-menu";
 
 /*
- * K1: the receipt screen's hierarchy. New sale and Void… sit above the receipt; one Payment record
- * and corrections area states the current record; one lazily loaded history holds every ledger.
+ * P4: the receipt screen's hierarchy. Print · Share · New sale and ⋯ (paper, Correct payment, Void…)
+ * sit above the receipt; one closed History, with Items · Payments · Refunds, holds every ledger
+ * and the current payment record, and loads only when opened.
  */
 
 let root: Root;
@@ -36,10 +41,16 @@ function Probe({ backend, orderId }: { backend: CheckoutBackend; orderId: OrderI
 const probe = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(Probe, { backend, orderId }))));
 const receipt = (backend: CheckoutBackend, orderId: OrderId, onNewSale = () => {}) =>
   act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale, onOpenOrder: () => {} }))));
-const record = () => document.querySelector<HTMLElement>('[aria-label="Payment record and corrections"]')!;
+const record = () => document.querySelector<HTMLElement>('[aria-label="Payment record"]')!;
 const paper = () => document.querySelector<HTMLElement>(".pos-receipt")!;
 /** A fact in the visible record, by its label. */
 const fact = (label: string) => [...record().querySelectorAll("dt")].find(dt => dt.textContent === label)?.nextElementSibling?.textContent;
+const tab = (name: string) => act(async () => { [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent === name)!.click(); });
+const openMore = () => act(async () => {
+  const details = document.querySelector<HTMLDetailsElement>('[data-testid="correct-payment"] details')!;
+  details.open = true;
+  details.dispatchEvent(new Event("toggle"));
+});
 const toggle = (title: string, open = true) => act(async () => {
   const details = [...document.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent === title)!;
   expect(details, title).toBeTruthy();
@@ -61,24 +72,26 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-it("puts New sale and Void… above the receipt, outside what prints", async () => {
+it("puts Print · Share · New sale and ⋯ above the receipt, outside what prints", async () => {
   const { backend, actions, orderId } = await paidSale();
   const onNewSale = vi.fn();
   await receipt(backend, orderId, onNewSale);
-  for (const label of ["New sale", "Void…"]) {
-    const control = button(label)!;
-    expect(control, label).toBeTruthy();
-    // Before the receipt in reading and tab order, so it is reached without scrolling past the record.
-    expect(paper().compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING, `${label} precedes the receipt`).toBeTruthy();
+  const toolbar = document.querySelector<HTMLElement>('[role="toolbar"][aria-label="Receipt actions"]')!;
+  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["Print", "Share", "New sale", "More receipt actions"]);
+  for (const control of toolbar.querySelectorAll("button")) {
+    // Before the receipt in reading and tab order, so it is reached without scrolling past it.
+    expect(paper().compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     expect(control.closest(".pos-receipt")).toBeNull();
-    expect(control.closest(".print\\:hidden"), `${label} is hidden when printing`).toBeTruthy();
+    expect(control.closest(".print\\:hidden"), "hidden when printing").toBeTruthy();
   }
+  for (const gone of ["Checkout", "Copy", "58 mm", "80 mm", "Void…", "Correct payment recording", "No money was received…"]) expect(button(gone), gone).toBeUndefined();
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper", "Correct payment", "Void…"]);
   await click("New sale");
   expect(onNewSale).toHaveBeenCalledOnce();
 
   await run(actions.voidOrder({ orderId, reason: "Charged the wrong guest" }));
   await receipt(backend, orderId, onNewSale);
-  expect(button("Void…")).toBeUndefined();
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper"]);
   expect(button("New sale")).toBeTruthy();
 });
 
@@ -92,8 +105,8 @@ it("keeps void and refund meaning visible outside any collapsed disclosure", asy
 
   const voided = document.querySelector<HTMLElement>('[data-testid="receipt-void-status"]')!;
   expect(voided.textContent).toContain("Voided by preview@example.com on");
-  expect(voided.textContent).toContain("The order and receipt numbers stay on record.");
-  expect(voided.textContent).not.toContain("No refund was sent");
+  expect(voided.textContent).toContain("order and receipt numbers stay on record");
+  expect(voided.textContent).not.toContain("Entered by mistake");
   expect(voided.closest("details")).toBeNull();
   expect(paper().textContent).toContain("Void · Charged the wrong guest");
 
@@ -101,7 +114,6 @@ it("keeps void and refund meaning visible outside any collapsed disclosure", asy
   expect(refunds.closest("details")).toBeNull();
   expect(refunds.textContent).toContain("Recorded · ฿50 · transfer");
   expect(refunds.textContent).toContain("Returned overpayment");
-  expect(refunds.textContent).toContain("does not send refunds");
 });
 
 it("states a mistaken-entry void visibly, without calling the entry money received", async () => {
@@ -109,17 +121,18 @@ it("states a mistaken-entry void visibly, without calling the entry money receiv
   await run(actions.voidUnreceivedOrder({ orderId, idempotencyKey: "record-unreceived-01", expectedCorrectionRevision: 0, reason: "Bank transfer never arrived" }));
   await receipt(backend, orderId);
   const voided = document.querySelector<HTMLElement>('[data-testid="receipt-void-status"]')!;
-  expect(voided.textContent).toContain("Voided as a mistaken entry: no money was received. No refund was sent.");
+  expect(voided.textContent).toContain("Entered by mistake · no money was received, no refund sent");
   expect(voided.closest("details")).toBeNull();
+  await toggle("History"); await tab("Payments");
   expect(fact("Money received")).toBeUndefined();
   expect(fact("Entered as received")).toContain("Bangkok");
   expect(fact("Corrections")).toBe("1");
-  expect(button("Correct payment recording")).toBeUndefined();
+  expect((await receiptActions()).map(i => i.label)).not.toContain("Correct payment");
 });
 
-it("has one history, loaded only when opened, and no inline copies of its ledgers", async () => {
+it("has one closed History, and each tab's ledgers load only when first shown", async () => {
   const { backend: base, orderId } = await paidSale();
-  const hooks = ["useOrderHistory", "useCorrectionHistory", "useAuditHistory", "useBookingRefundHistory", "useAppointmentRefundHistory"] as const;
+  const hooks = ["useOrderHistory", "useCorrectionHistory", "useAuditHistory", "useBookingRefundHistory", "useAppointmentRefundHistory", "useBillRefundHistory"] as const;
   const mounted = vi.fn();
   const backend: CheckoutBackend = { ...base };
   for (const hook of hooks) {
@@ -132,16 +145,22 @@ it("has one history, loaded only when opened, and no inline copies of its ledger
   }
   await receipt(backend, orderId);
   expect(mounted).not.toHaveBeenCalled();
-  // Printing tips, the one financial history, and item history: nothing else is collapsed or repeated.
-  expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["Printing tips", "Browse all financial history", "Order history"]);
-  expect(document.body.textContent).not.toContain("Receipt activity");
-  expect(document.querySelector('[aria-label="Payment amendments"]')).toBeNull();
+  // One closed section, nothing else collapsed or repeated.
+  expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["History"]);
+  expect(document.querySelector('[aria-label="Payment record"]')).toBeNull();
 
-  await toggle("Browse all financial history");
-  expect(mounted.mock.calls.map(c => c[0]).sort()).toEqual(hooks.slice(1).toSorted());
-  await toggle("Order history");
-  expect(mounted).toHaveBeenCalledWith("useOrderHistory");
-  expect(mounted).toHaveBeenCalledTimes(5);
+  await toggle("History");
+  expect([...document.querySelectorAll('[role="tab"]')].map(t => t.textContent)).toEqual(["Items", "Payments", "Refunds"]);
+  expect(mounted.mock.calls.map(c => c[0]).sort()).toEqual(["useAuditHistory", "useOrderHistory"]);
+  await tab("Payments");
+  expect(mounted).toHaveBeenLastCalledWith("useCorrectionHistory");
+  await tab("Refunds");
+  expect(mounted).toHaveBeenLastCalledWith("useBillRefundHistory");
+  // A plain sale paid for no stay or appointment: their ledgers don't load.
+  expect(mounted).toHaveBeenCalledTimes(4);
+  // Visited tabs stay mounted.
+  await tab("Items"); await tab("Payments");
+  expect(mounted).toHaveBeenCalledTimes(4);
 });
 
 it("updates the current record, its count and the open history together; the issued receipt stays the same", async () => {
@@ -149,38 +168,36 @@ it("updates the current record, its count and the open history together; the iss
   const amend = vi.spyOn(actions, "amendOrderPayment");
   await receipt(backend, orderId);
   const issued = paper().textContent;
+  await toggle("History"); await tab("Payments");
   expect(fact("Money received")).toBe(`${historyTime(Date.parse("2026-10-01T03:00:00Z"))} · Bangkok`);
   expect(fact("Payments")).toBe("As on the receipt");
   expect(fact("Corrections")).toBe("None");
-  await toggle("Browse all financial history");
   const ledger = () => document.querySelector<HTMLElement>('[aria-label="Payment corrections"]')!;
   expect(ledger().textContent).toContain("No entries recorded");
 
   // Close without saving changes nothing.
-  await click("Correct payment recording");
+  await pickReceiptAction("Correct payment"); await openMore();
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Abandoned edit");
-  await click("Close correction");
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close Correct payment"]')!.click());
   expect(amend).not.toHaveBeenCalled();
   expect(fact("Corrections")).toBe("None");
 
-  await click("Correct payment recording");
+  await pickReceiptAction("Correct payment"); await openMore();
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Guest paid on the 3rd");
-  await click("Save recording correction"); await tick();
+  await click("Save correction"); await tick();
   const corrected = historyTime(Date.parse("2026-10-03T01:45:00Z"));
   expect(fact("Money received")).toBe(`${corrected} · Bangkok`);
   expect(fact("Corrections")).toBe("1");
-  expect(document.querySelector('[data-testid="latest-correction"]')!.textContent).toContain("#1 · Guest paid on the 3rd");
   expect(ledger().textContent).toContain(`Received date: ${historyTime(Date.parse("2026-10-01T03:00:00Z"))} → ${corrected}`);
   expect(paper().textContent).toBe(issued);
 
   // A second correction to the method: the record lists the corrected payment and the open ledger gains #2.
-  await click("Correct payment recording");
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Corrected payment 1 method"]')!.click());
-  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(el => el.textContent?.includes("Bank transfer"))!.click());
-  await input("#payment-correction-reason", "It was a transfer");
-  await click("Save recording correction"); await tick();
+  await pickReceiptAction("Correct payment");
+  await click("Transfer");
+  await click("Wrong method picked");
+  await click("Save · Transfer ฿100"); await tick();
   expect(amend.mock.calls[1][0]).toMatchObject({ expectedCorrectionRevision: 1, tenders: [{ method: "transfer", amount: 100 }] });
   expect(fact("Payments")).toBe("Bank transfer · ฿100 · corrected");
   expect(fact("Corrections")).toBe("2");
@@ -190,17 +207,63 @@ it("updates the current record, its count and the open history together; the iss
   expect(paper().textContent).toContain("Card");
 });
 
-it("keeps line refunds separate from the payment correction count and history", async () => {
+it("keeps line refunds separate from the payment correction count and history, and turns Void… off", async () => {
   const { backend, actions, orderId } = await paidSale();
   await run(actions.refundLine({
     orderId, lineId: current.lines[0]._id, amount: 2500, currency: "THB", method: "card",
     reason: "Returned part of the sale", idempotencyKey: "record-line-refund-01",
   }));
   await receipt(backend, orderId);
+  expect(await receiptActions()).toContainEqual({ label: "Void… · not after a refund", disabled: true });
+  await toggle("History"); await tab("Payments");
   expect(fact("Corrections")).toBe("None");
-  expect(button("No money was received…")).toBeUndefined();
-  expect(button("Void…")?.disabled).toBe(true);
-  await toggle("Browse all financial history");
   expect(document.querySelector('[aria-label="Payment corrections"]')!.textContent).toContain("No entries recorded");
-  expect(document.querySelector('[aria-label="All line refunds"]')!.textContent).toContain("Returned part of the sale");
+  await tab("Refunds");
+  expect(document.querySelector('[aria-label="Line refunds"]')!.textContent).toContain("Returned part of the sale");
+});
+
+it("records a one-line refund with no typing, and a retry after a lost answer reuses the form's key", async () => {
+  const { backend, actions, orderId } = await paidSale();
+  const refund = vi.spyOn(actions, "refundLine").mockRejectedValueOnce(new Error("Connection lost"));
+  await receipt(backend, orderId);
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
+  expect(button("All ฿100")?.getAttribute("aria-pressed")).toBe("true");
+  expect(button("Record refund ฿100")?.disabled).toBe(true);
+  await click("Charged by mistake");
+  await click("Record refund ฿100"); await tick();
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
+  await click("Record refund ฿100"); await tick();
+  expect(refund).toHaveBeenCalledTimes(2);
+  expect(refund.mock.calls[1][0]).toEqual(refund.mock.calls[0][0]);
+  expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10_000, method: "card", reason: "Charged by mistake" });
+  expect(document.querySelector("[data-line-note]")?.textContent?.trim()).toBe("Refunded ฿100 · Charged by mistake");
+});
+
+it("Half refunds half of what is left; a new form is a new key", async () => {
+  const { backend, actions, orderId } = await paidSale();
+  const refund = vi.spyOn(actions, "refundLine");
+  await receipt(backend, orderId);
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
+  await click("Half ฿50");
+  await click("Guest complaint");
+  await click("Record refund ฿50"); await tick();
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
+  expect(button("All ฿50")?.getAttribute("aria-pressed")).toBe("true");
+  await click("Shortened treatment");
+  await click("Record refund ฿50"); await tick();
+  expect(refund.mock.calls.map(c => c[0].amount)).toEqual([5_000, 5_000]);
+  expect(refund.mock.calls[1][0].idempotencyKey).not.toBe(refund.mock.calls[0][0].idempotencyKey);
+});
+
+it("shows cashiers no History; Correct payment and Void… stay, as requests", async () => {
+  const { backend, orderId } = await paidSale();
+  const cashier: StaffAccessView = {
+    email: "mint@example.com", role: "cashier", pendingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+    capabilities: { checkout: true, approve: false, operations: false, manageTeam: false, settings: false, bookings: false, services: false, customers: false, orders: false, chats: false, properties: false, roster: false, reports: false, marketing: false },
+  };
+  await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));
+  expect(document.querySelector('[data-testid="receipt-history"]')).toBeNull();
+  expect(document.querySelector("summary")).toBeNull();
+  expect(button("Link appointment")).toBeUndefined();
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper", "Correct payment", "Void…"]);
 });

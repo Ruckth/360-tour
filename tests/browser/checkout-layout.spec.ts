@@ -333,7 +333,11 @@ test.describe("receipt print page size (PM-01)", () => {
       await page.getByRole("button", { name: /^Confirm cash/ }).click();
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();
-      await page.getByRole("radio", { name: `${paper} mm` }).click();
+      // Paper width is a per-device setting in ⋯; 80 mm until changed.
+      if (paper === 58) {
+        await page.getByRole("button", { name: "More receipt actions" }).click();
+        await page.getByRole("menuitem", { name: "Use 58 mm paper" }).click();
+      }
 
       // CSSOM: a parsed @page rule keeps a page size of the selected width.
       const size = await page.evaluate(() => {
@@ -379,29 +383,27 @@ test.describe("receipt and orders hierarchy (K1, K8)", () => {
     await open(page, { width: 390, height: 844 }, "?scenario=history");
     await setRootFont(page, ENLARGED);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-    for (const name of ["New sale", "Print", "Copy receipt", "Void…"]) {
+    for (const name of ["Print", "Share", "New sale", "More receipt actions"]) {
       await expectReachable(page, page.getByRole("button", { name, exact: true }), name);
-    }
-    for (const paper of ["58 mm", "80 mm"]) {
-      await expectReachable(page, page.getByRole("radio", { name: paper, exact: true }), paper);
     }
   });
 
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
-    test(`${viewport.width}x${viewport.height}: New sale and Void… are on screen above the receipt without scrolling`, async ({ page }) => {
+    test(`${viewport.width}x${viewport.height}: New sale and ⋯ (Correct payment, Void…) are on screen above the receipt without scrolling`, async ({ page }) => {
       await open(page, viewport, "?scenario=history");
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();
-      const [newSale, voidButton, paper] = await boxesOf([page.getByRole("button", { name: "New sale", exact: true }), page.getByRole("button", { name: "Void…", exact: true }), receipt]);
-      for (const [label, box] of [["New sale", newSale], ["Void…", voidButton]] as const) {
+      const [newSale, moreButton, paper] = await boxesOf([page.getByRole("button", { name: "New sale", exact: true }), page.getByRole("button", { name: "More receipt actions", exact: true }), receipt]);
+      for (const [label, box] of [["New sale", newSale], ["⋯", moreButton]] as const) {
         expect.soft(box.y, `${label} top`).toBeGreaterThanOrEqual(0);
         expect.soft(box.y + box.height, `${label} bottom, unscrolled`).toBeLessThanOrEqual(viewport.height);
         expect.soft(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 0.5);
         expect.soft(box.y + box.height, `${label} above the receipt`).toBeLessThanOrEqual(paper.y);
       }
       expect.soft(await page.evaluate(() => document.documentElement.scrollWidth), "no horizontal page overflow").toBeLessThanOrEqual(viewport.width);
-      // The current record is visible; only the paged history is collapsed.
-      await expect(page.getByRole("region", { name: "Payment record and corrections" }).getByText("Corrections", { exact: true })).toBeVisible();
+      // One closed History holds the record and its ledgers; the header says when it was corrected.
+      await expect(page.getByText(/· corrected$/)).toBeVisible();
+      await expect(page.getByTestId("receipt-history")).not.toHaveAttribute("open");
       await expect(page.getByRole("region", { name: "Payment corrections" })).toHaveCount(0);
       await shot(page, `receipt-toolbar-${viewport.width}`);
     });

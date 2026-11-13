@@ -5,10 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { receiptText } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
-import { ReceiptView } from "@/components/checkout/ReceiptView";
+import { RECEIPT_PAPER_KEY, ReceiptView } from "@/components/checkout/ReceiptView";
 import type { Id } from "convex/_generated/dataModel";
+import { pickReceiptAction } from "./receipt-menu";
 
-/** K7: Share only where the device has a share sheet, Copy always; K5: one "Paid in advance" term. */
+/** P4: Share shares where the device can and copies everywhere else; paper width lives in ⋯. K5: one "Paid in advance" term. */
 
 vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
@@ -48,14 +49,12 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-describe("receipt share and copy", () => {
-  it("offers only Copy without a share sheet, and copies the receipt text", async () => {
+describe("receipt share and print", () => {
+  it("always offers Share; without a share sheet it copies the receipt text", async () => {
     Reflect.deleteProperty(navigator, "share");
     await paidReceipt();
-    expect(button("Share")).toBeUndefined();
-    const copy = button("Copy receipt")!;
-    expect(copy.textContent).toContain("Copy");
-    await act(async () => copy.click());
+    expect(button("Copy receipt")).toBeUndefined();
+    await act(async () => button("Share")!.click());
     expect(writeText).toHaveBeenCalledOnce();
     expect(writeText.mock.calls[0][0]).toContain("Massage");
     expect(status()).toBe("Receipt copied.");
@@ -65,40 +64,42 @@ describe("receipt share and copy", () => {
     const share = vi.fn().mockRejectedValueOnce(Object.assign(new Error("cancelled"), { name: "AbortError" })).mockResolvedValueOnce(undefined);
     Object.defineProperty(navigator, "share", { configurable: true, value: share });
     await paidReceipt();
-    expect(button("Copy receipt")).toBeTruthy();
     await act(async () => button("Share")!.click());
     expect(share).toHaveBeenCalledOnce();
     expect(writeText).not.toHaveBeenCalled();
     expect(status()).toBe("");
-    // A copy earlier is not reported again after a cancelled share.
-    await act(async () => button("Copy receipt")!.click());
-    expect(status()).toBe("Receipt copied.");
-    share.mockRejectedValueOnce(Object.assign(new Error("cancelled"), { name: "AbortError" }));
     await act(async () => button("Share")!.click());
+    expect(share).toHaveBeenCalledTimes(2);
+    expect(writeText).not.toHaveBeenCalled();
     expect(status()).toBe("");
-    expect(writeText).toHaveBeenCalledOnce();
   });
 
-  it("points a failed share to Copy instead of claiming a copy", async () => {
+  it("copies instead when the share sheet fails", async () => {
     Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn().mockRejectedValue(new Error("NotAllowedError")) });
     await paidReceipt();
     await act(async () => button("Share")!.click());
-    expect(writeText).not.toHaveBeenCalled();
-    expect(status()).toBe("Couldn't share. Use Copy to copy the receipt instead.");
+    expect(writeText).toHaveBeenCalledOnce();
+    expect(status()).toBe("Receipt copied.");
   });
 
-  it("describes Print with a short hint for the chosen paper width, with tips on request", async () => {
+  it("keeps the paper width in ⋯, remembered on this device, and describes Print for it", async () => {
+    window.localStorage.removeItem(RECEIPT_PAPER_KEY);
     await paidReceipt();
     const print = button("Print")!;
-    const hint = document.getElementById(print.getAttribute("aria-describedby")!)!;
-    expect(hint.textContent).toBe("Prints 80 mm wide, as long as the receipt.");
-    const tips = document.querySelector("details")!;
-    expect(tips.open).toBe(false);
-    expect(tips.querySelector("summary")!.textContent).toBe("Printing tips");
-    expect(tips.textContent).toContain("select the 80 mm roll");
-    await act(async () => [...document.querySelectorAll("button")].find((el) => el.textContent === "58 mm")!.click());
-    expect(hint.textContent).toBe("Prints 58 mm wide, as long as the receipt.");
-    expect(tips.textContent).toContain("select the 58 mm roll");
+    const hint = () => document.getElementById(print.getAttribute("aria-describedby")!)!;
+    expect(hint().textContent).toBe("Prints 80 mm wide, as long as the receipt.");
+    expect(hint().className).toContain("sr-only");
+    expect(document.querySelector("details summary")?.textContent).not.toBe("Printing tips");
+    await pickReceiptAction("Use 58 mm paper");
+    expect(hint().textContent).toBe("Prints 58 mm wide, as long as the receipt.");
+    expect(window.localStorage.getItem(RECEIPT_PAPER_KEY)).toBe("58");
+    expect(status()).toBe("Prints on 58 mm paper · remembered on this device");
+    // The next receipt on this device starts at 58 mm.
+    await act(async () => root.unmount());
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await paidReceipt();
+    expect(document.getElementById(button("Print")!.getAttribute("aria-describedby")!)!.textContent).toBe("Prints 58 mm wide, as long as the receipt.");
+    window.localStorage.removeItem(RECEIPT_PAPER_KEY);
   });
 });
 

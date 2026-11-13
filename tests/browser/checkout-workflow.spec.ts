@@ -54,7 +54,9 @@ test('fee rows state service was not given and cannot change quantity or price',
 test('receipt pages older financial amendments while preserving the original tender', async ({ page }) => {
   await open(page, '?scenario=history');
   await expect(page.locator('.pos-receipt')).toContainText('Card');
-  await page.getByText('Browse all financial history', { exact: true }).click();
+  const history = page.getByTestId('receipt-history');
+  await history.getByText('History', { exact: true }).click();
+  await history.getByRole('tab', { name: 'Payments' }).click();
   const ledger = page.getByRole('region', { name: 'Payment corrections', exact: true });
   await expect(ledger.locator('li')).toHaveCount(20);
   await ledger.getByRole('button', { name: 'Load older payment corrections' }).click();
@@ -85,16 +87,17 @@ test('a paid unscheduled service is linked to its appointment from the receipt, 
   // What prints: screen-only controls (a line's Refund, which a linked row loses) are left out.
   const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
   const issued = await printed();
-  const after = page.getByRole('region', { name: 'After payment', exact: true });
-  await expect(after).toContainText('1 to link to an appointment');
-  await after.getByRole('button', { name: 'Link appointment' }).click();
+  // Link sits on the receipt line; the only matching appointment opens straight on its review.
+  await receipt.getByRole('button', { name: 'Link appointment' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByTestId('link-candidate').filter({ hasText: 'SVC-0002' }).getByRole('button', { name: 'Review' }).click();
   await expect(dialog.getByTestId('link-review')).toContainText('No new payment is taken');
   await expect(dialog.getByRole('button', { name: 'Confirm link' })).toBeDisabled();
-  await dialog.getByLabel('Reason (required)').fill('Guest booked the prepaid massage');
+  await dialog.getByRole('textbox', { name: 'Reason' }).fill('Guest booked the prepaid massage');
   await dialog.getByRole('button', { name: 'Confirm link' }).click();
-  await expect(after).toContainText('Linked · SVC-0002');
-  await expect(page.getByText('Row linked after payment · #1')).toBeVisible();
+  await expect(receipt.getByTestId('line-link')).toHaveText('Linked · SVC-0002');
+  const history = page.getByTestId('receipt-history');
+  await history.getByText('History', { exact: true }).click();
+  await history.getByRole('tab', { name: 'Payments' }).click();
+  await expect(history.getByText('Row linked after payment · #1', { exact: true })).toBeVisible();
   expect(await printed()).toBe(issued);
 });
