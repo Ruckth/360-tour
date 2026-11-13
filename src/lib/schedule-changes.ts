@@ -1,7 +1,7 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/lib/appointmentWindow";
+import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/shared/appointmentWindow";
 import type { RosterBreak } from 'convex/shared/serviceScheduleTypes';
 import { formatResortFullDate, formatResortTime, resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
 

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { recordRebooked } from '../private/appointmentChanges';
-import { canBookAgain } from '../../lib/appointmentWindow';
+import { canBookAgain } from '../../shared/appointmentWindow';
 import { createAppointmentRecord } from '../private/serviceSlots';
 
 export const createAppointment = adminMutation({

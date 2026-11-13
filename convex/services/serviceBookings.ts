@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { cancelAppointmentRecord } from './private/appointmentChanges';
-import { appointmentRevision } from '../lib/appointmentWindow';
+import { appointmentRevision } from '../shared/appointmentWindow';
 import { bookingsByPhone } from '../bookings/model';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../lib/chatWriteGuard';

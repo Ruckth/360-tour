@@ -83,7 +83,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_adminEmails from "../lib/adminEmails.js";
 import type * as lib_affiliateTypes from "../lib/affiliateTypes.js";
-import type * as lib_appointmentWindow from "../lib/appointmentWindow.js";
+import type * as lib_appointmentWindow from "../shared/appointmentWindow.js";
 import type * as lib_bookingMoney from "../lib/bookingMoney.js";
 import type * as lib_chatCouponCopy from "../lib/chatCouponCopy.js";
 import type * as lib_chatPresence from "../lib/chatPresence.js";

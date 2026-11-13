@@ -4,7 +4,7 @@ import { parseMoneyInput } from '@/lib/money-input';
 
 import { useRef, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
-import { appointmentRevision } from "convex/lib/appointmentWindow";
+import { appointmentRevision } from "convex/shared/appointmentWindow";
 import { CheckoutBackendProvider, newAttemptKey, useCheckoutBackend, type CheckoutActions, type OrderId } from "@/components/checkout/backend";
 import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
 import { orderPath, receiptPath } from "@/components/checkout/checkout-source";

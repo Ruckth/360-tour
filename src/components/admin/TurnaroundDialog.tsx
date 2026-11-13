@@ -9,7 +9,7 @@ import {
   turnaroundMinutes,
   turnaroundProblem,
   withTurnaround,
-} from "convex/lib/appointmentWindow";
+} from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";

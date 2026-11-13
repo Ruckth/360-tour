@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { STALE_APPOINTMENT, boundedIntegrityRows, createAppointmentRecord, localDateTimeUtc } from './services/model';
-import { canCorrectAppointmentTime, canReschedule } from './lib/appointmentWindow';
+import { canCorrectAppointmentTime, canReschedule } from './shared/appointmentWindow';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
