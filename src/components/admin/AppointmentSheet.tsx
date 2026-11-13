@@ -10,11 +10,11 @@ import {
   canCorrectAppointmentTime,
   turnaroundMinutes,
 } from "convex/lib/appointmentWindow";
-import { CalendarClock, Hourglass, Pencil, Repeat } from "lucide-react";
+import { Repeat } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
 import { AppointmentFeeAction } from "@/components/admin/AppointmentFeeAction";
-import { AppointmentFinancials } from "@/components/admin/AppointmentFinancials";
+import { AppointmentFinancials, AppointmentMoneyBlock } from "@/components/admin/AppointmentFinancials";
 import { AppointmentHistory } from "@/components/admin/AppointmentHistory";
 import { BookingOrders } from "@/components/admin/BookingOrders";
 import { CancelAppointmentDialog } from "@/components/admin/CancelAppointmentDialog";
@@ -26,6 +26,7 @@ import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -124,6 +125,10 @@ export function AppointmentSheet({
   const actions = appointment
     ? NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now)
     : [];
+  // One next step on screen; the other moves and corrections are in ⋯.
+  const next: StatusAction | "book_again" | null = appointment
+    ? actions.find((action) => action !== "no_show") ?? (canBookAgain(appointment) ? "book_again" : null)
+    : null;
   const status = appointment ? appointmentStatus(displayStatus(appointment)) : null;
   const turnaround = appointment ? turnaroundMinutes(appointment) : 0;
 
@@ -159,6 +164,30 @@ export function AppointmentSheet({
               />
             ) : (
               <>
+                <AppointmentMoneyBlock appointment={appointment} disabled={feePending || pending !== null} />
+                <div className="flex flex-wrap items-center gap-2">
+                  {next ? (
+                    <Button onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
+                      {pending === next ? <Spinner className="text-current" /> : null}
+                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
+                    </Button>
+                  ) : null}
+                  <MoreMenu
+                    label="More appointment actions"
+                    disabled={feePending || pending !== null}
+                    items={[
+                      ...actions.filter((action) => action !== next).map((action) => ({ label: ACTION_LABELS[action], onSelect: () => void run(action) })),
+                      { label: "Correct date / time", onSelect: () => setDialog("reschedule"), hidden: !canCorrectAppointmentTime(appointment, now) },
+                      { label: "Turnaround", onSelect: () => setDialog("turnaround"), hidden: !canEditTurnaround(appointment) },
+                      { label: "Book again", onSelect: () => onBookAgain(appointment), hidden: !canBookAgain(appointment) || next === "book_again", disabled: services.length === 0 },
+                      { label: "Edit details", onSelect: () => setEditing(true) },
+                      { label: "Correct status", onSelect: () => setDialog("correct") },
+                      { label: "Cancel appointment", onSelect: () => setDialog("cancel"), destructive: true, hidden: !CANCELLABLE.includes(appointment.status) },
+                    ]}
+                  />
+                </div>
+                {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+                {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
                 <dl className="divide-y divide-border border-y border-border">
                   <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
                   <Detail label="Staff">
@@ -173,23 +202,13 @@ export function AppointmentSheet({
                   </Detail>
                   <Detail label="When">
                     {formatResortDate(appointment.start)}, {timeRange(appointment.start, appointment.end)}
+                    <span className="block text-muted-foreground">
+                      {turnaround ? `Turnaround to ${endTime(appointment.start, appointment.blockedUntil)}` : "No turnaround"}
+                    </span>
                   </Detail>
-                  <Detail label="Occupied">
-                    Service {timeRange(appointment.start, appointment.end)}
-                    {turnaround ? ` · Turnaround ${timeRange(appointment.end, appointment.blockedUntil)}` : " · No turnaround"}
-                    {" · "}Available again {endTime(appointment.start, appointment.blockedUntil)}
-                  </Detail>
-                  <Detail label="Price">{formatMoney(appointment.price, appointment.currency)}</Detail>
                   <Detail label="Payment">
-                    {PAYMENT_LABELS[appointment.paymentStatus]}
+                    {formatMoney(appointment.price, appointment.currency)} · {PAYMENT_LABELS[appointment.paymentStatus]}
                     {appointment.paymentStatus === "refunded" && appointment.refundedAt ? ` · ${formatResortDate(appointment.refundedAt)}` : appointment.paymentStatus === "paid" && appointment.paidAt ? ` · ${formatResortDateTime(appointment.paidAt)}` : ""}
-                  </Detail>
-                  <Detail label="Orders">
-                    <BookingOrders
-                      source={{ appointmentId: appointment._id }}
-                      currency={appointment.currency}
-                      closed={appointment.status === "cancelled" || appointment.status === "no_show" || appointment.paymentStatus === "refunded"}
-                    />
                   </Detail>
                   {appointment.cancelledAt ? (
                     <Detail label="Cancelled">
@@ -205,56 +224,21 @@ export function AppointmentSheet({
                   <Detail label="Notes">
                     <span className="whitespace-pre-wrap">{appointment.notes ?? "—"}</span>
                   </Detail>
-                  <Detail label="Villa stay">{appointment.bookingId ? "Linked to a villa booking" : "—"}</Detail>
+                  <Detail label="Villa stay">{appointment.bookingId ? "On a villa stay" : "—"}</Detail>
                   {appointment.rebookedFromId ? <Detail label="Booked again">{originalReference === undefined ? "Loading original reference…" : originalReference ? `From ${originalReference}` : "Original appointment unavailable"}</Detail> : null}
                   <Detail label="Source">
                     <Badge variant="outline">{sourceLabel(appointment.source)}</Badge>
                   </Detail>
                 </dl>
-                {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-                <div className="flex flex-wrap gap-2">
-                  {actions.map((action) => (
-                    <Button
-                      key={action}
-                      variant={action === "no_show" ? "outline" : "default"}
-                      onClick={() => run(action)}
-                      disabled={feePending || pending !== null}
-                    >
-                      {pending === action ? <Spinner className="text-current" /> : null}
-                      {ACTION_LABELS[action]}
-                    </Button>
-                  ))}
-                  {canCorrectAppointmentTime(appointment, now) ? (
-                    <Button variant="outline" onClick={() => setDialog("reschedule")} disabled={feePending || pending !== null}>
-                      <CalendarClock aria-hidden className="size-4" />
-                      Correct date / time
-                    </Button>
-                  ) : null}
-                  {canEditTurnaround(appointment) ? (
-                    <Button variant="outline" onClick={() => setDialog("turnaround")} disabled={feePending || pending !== null}>
-                      <Hourglass aria-hidden className="size-4" />
-                      Turnaround
-                    </Button>
-                  ) : null}
-                  {canBookAgain(appointment) ? (
-                    <Button variant="outline" onClick={() => onBookAgain(appointment)} disabled={feePending || pending !== null || services.length === 0}>
-                      <Repeat aria-hidden className="size-4" />
-                      Book again
-                    </Button>
-                  ) : null}
-                  <Button variant="ghost" onClick={() => setEditing(true)} disabled={feePending || pending !== null}>
-                    <Pencil aria-hidden className="size-4" />
-                    Edit details
-                  </Button>
-                  <Button variant="outline" onClick={() => setDialog("correct")} disabled={feePending || pending !== null}>Correct status</Button>
-                  {CANCELLABLE.includes(appointment.status) ? (
-                    <Button variant="outline" className="text-destructive" onClick={() => setDialog("cancel")} disabled={feePending || pending !== null}>
-                      Cancel appointment
-                    </Button>
-                  ) : null}
-                </div>
-                {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
-                <AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} />
+                <BookingOrders
+                  source={{ appointmentId: appointment._id }}
+                  currency={appointment.currency}
+                  closed={appointment.status === "cancelled" || appointment.status === "no_show" || appointment.paymentStatus === "refunded"}
+                  history
+                />
+                {appointment.status === "no_show" || appointment.status === "cancelled" ? (
+                  <AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} />
+                ) : null}
                 <AppointmentFinancials key={appointment._id} appointment={appointment} />
                 <AppointmentHistory
                   appointmentId={appointment._id}

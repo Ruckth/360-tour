@@ -42,15 +42,21 @@ import {
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
 
-/** Where the new appointment dialog starts; `rebook` copies a cancelled or no-show appointment's guest and service. */
+/**
+ * Where the new appointment dialog starts; `rebook` copies a cancelled or no-show appointment's
+ * guest and service, and `stay` books for a villa guest (their details and the stay's bookingId).
+ */
 export type AppointmentDraft = {
   date: string;
   staffId?: Id<"staff">;
   start?: number;
   rebook?: Doc<"serviceAppointments">;
+  stay?: { bookingId: Id<"bookings">; guestName: string; guestPhone: string; guestEmail?: string; villaName: string };
 };
 
 const LAST_SERVICE_KEY = "admin.staff.lastServiceId";
+/** Up to this many services show as one-tap chips; more get the searchable picker. */
+const SERVICE_CHIPS = 6;
 const DAY_PARTS = [
   { label: "Morning", before: "12:00" },
   { label: "Afternoon", before: "17:00" },
@@ -91,22 +97,17 @@ export function NewAppointmentDialog({
   onCreated: (id: Id<"serviceAppointments">, start: number) => void;
 }) {
   const createAppointment = useMutation(api.adminServices.createAppointment);
-  const { rebook } = draft;
+  const { rebook, stay } = draft;
   const allServices = useQuery(api.adminServices.listServices, { includeArchived: true });
   const allStaff = useQuery(api.adminServices.listStaff, { includeArchived: true });
   const services = allServices ?? initialServices;
   const staff = allStaff ?? initialStaff;
-  const [serviceId, setServiceId] = useState<Id<"services"> | undefined>(() => {
-    // The rebooked or last used service, as long as the staff member picked on the calendar performs it.
-    const fits = (s: Service) =>
-      !draft.staffId || s.staffIds.includes(draft.staffId);
-    const wanted = rebook?.serviceId ?? readLastService();
-    return (
-      services.find((s) => s._id === wanted && fits(s)) ??
-      services.find(fits) ??
-      services[0]
-    )?._id;
-  });
+  const [wanted] = useState(() => rebook?.serviceId ?? readLastService());
+  const [pickedServiceId, setServiceId] = useState<Id<"services"> | undefined>();
+  // The picked service, else the rebooked or last used one (once services load), as long as the
+  // staff member picked on the calendar performs it.
+  const fits = (s: Service) => !draft.staffId || s.staffIds.includes(draft.staffId);
+  const serviceId = pickedServiceId ?? (services.find((s) => s._id === wanted && fits(s)) ?? services.find(fits) ?? services[0])?._id;
   const service = services.find((s) => s._id === serviceId);
   const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
   const [date, setDate] = useState(draft.date);
@@ -120,6 +121,7 @@ export function NewAppointmentDialog({
   const qualified = staff.filter(person => historicalDate || (person.status === "active" && service?.staffIds.includes(person._id)));
   const staffId = qualified.some(person => person._id === staffChoice) ? staffChoice as Id<"staff"> : undefined;
   const [historicalReason, setHistoricalReason] = useState("");
+  const pickable = services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s);
 
   const slots = useQuery(
     api.adminServices.findOpenSlots,
@@ -161,9 +163,9 @@ export function NewAppointmentDialog({
         historicalReason: historicalReason.trim() || undefined,
         // Book exactly who the preview showed.
         staffId: assignedId,
-        guestName: text("guestName"),
-        guestPhone: text("guestPhone"),
-        guestEmail: text("guestEmail") || undefined,
+        ...(stay
+          ? { guestName: stay.guestName, guestPhone: stay.guestPhone, guestEmail: stay.guestEmail, bookingId: stay.bookingId }
+          : { guestName: text("guestName"), guestPhone: text("guestPhone"), guestEmail: text("guestEmail") || undefined }),
         ...(rebook ? { rebookedFromId: rebook._id } : {}),
       });
       rememberService(serviceId);
@@ -189,14 +191,14 @@ export function NewAppointmentDialog({
       >
         <DialogHeader>
           <DialogTitle>
-            {rebook
+            {stay ? "Book spa" : rebook
               ? rebook.guestName
                 ? `Book ${rebook.guestName} again`
                 : "Book again"
               : "New appointment"}
           </DialogTitle>
           <DialogDescription>
-            {rebook
+            {stay ? `For ${stay.guestName} · ${stay.villaName}` : rebook
               ? `A new appointment linked to ${rebook.confirmationCode}, which stays as it was. Only open times are shown.`
               : "Record a service at its actual date and time. Current and future availability is checked before saving."}
           </DialogDescription>
@@ -206,11 +208,33 @@ export function NewAppointmentDialog({
             <fieldset disabled={saving} className="grid min-w-0 gap-4">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-2 sm:col-span-2">
+                  {pickable.length <= SERVICE_CHIPS ? (
+                    <fieldset className="grid gap-2">
+                      <legend className="text-sm font-medium">Service</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {pickable.map((s) => (
+                          <Button
+                            key={s._id}
+                            type="button"
+                            variant={s._id === serviceId ? "default" : "outline"}
+                            aria-pressed={s._id === serviceId}
+                            onClick={() => {
+                              setServiceId(s._id);
+                              setStart(null);
+                            }}
+                          >
+                            {s.name} · {formatMoney(s.price, s.currency)}
+                          </Button>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ) : (
+                    <>
                   <Label id="na-service-label" htmlFor="na-service">Service</Label>
                   <ServicePicker
                     id="na-service"
                     labelId="na-service-label"
-                    services={services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s)}
+                    services={pickable}
                     value={serviceId}
                     disabled={saving}
                     onChange={(value) => {
@@ -218,6 +242,8 @@ export function NewAppointmentDialog({
                       setStart(null);
                     }}
                   />
+                    </>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="na-date">Date</Label>
@@ -347,6 +373,7 @@ export function NewAppointmentDialog({
               {review?.problem ? <p role="alert" className="text-sm text-destructive">{review.problem}</p> : null}
               {review?.warnings.map(warning => <p key={warning} className="text-sm text-muted-foreground">{warning}</p>)}
               {review?.needsReason ? <div className="grid gap-2"><Label htmlFor="na-reason">Reason for the historical overlap</Label><Input id="na-reason" required maxLength={500} value={historicalReason} onChange={event => setHistoricalReason(event.target.value)} /></div> : null}
+{stay ? null : (<>
               <div className="grid gap-2">
                 <Label htmlFor="na-name">Guest name (optional)</Label>
                 <Input
@@ -382,6 +409,7 @@ export function NewAppointmentDialog({
                 Leave guest details blank to reserve the time. You can add them
                 later.
               </p>
+</>)}
               {error ? (
                 <p role="alert" className="text-sm text-destructive">
                   {error}
@@ -402,7 +430,7 @@ export function NewAppointmentDialog({
             </Button>
             <Button type="submit" disabled={saving || !selectedSlot || review === undefined || Boolean(review.problem) || Boolean(review.needsReason && !historicalReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
-              {rebook ? "Book again" : "Book appointment"}
+              {rebook ? "Book again" : stay && service && selectedSlot ? `Book ${service.name} · ${formatResortTime(selectedSlot.start)}` : "Book appointment"}
             </Button>
           </DialogFooter>
         </form>

@@ -189,7 +189,8 @@ describe("new booking", () => {
     await click(document.getElementById("nb-notify"));
     await submit();
     expect(button("Create booking")?.disabled).toBe(true);
-    expect(button("Close")?.disabled).toBe(true);
+    // No way out while saving: the corner ✕ is hidden (there is no footer Close).
+    expect(button("Close")).toBeUndefined();
     await submit();
     expect(mutations.createBooking).toHaveBeenCalledTimes(1);
     await act(async () => fail(new Error("[CONVEX M(adminBookings:createBooking)] Uncaught Error: These dates are no longer available.\n at x")));

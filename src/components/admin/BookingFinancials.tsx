@@ -14,7 +14,9 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { receiptPath } from "@/components/checkout/checkout-source";
-import { formatResortDateTime } from "@/lib/staff-bookings";
+import { Spinner } from "@/components/ui/spinner";
+import { errorText, formatResortDateTime } from "@/lib/staff-bookings";
+import { useStayCheckout, useStaySpa } from "./stay-spa";
 import { cn } from "@/lib/utils";
 import { BookingPromotionLine } from "./BookingPromotion";
 import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
@@ -35,6 +37,7 @@ import {
 
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
 type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
+const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 type Payment = Financials["payments"][number];
 
 type Dialog =
@@ -73,33 +76,75 @@ function LoadedBookingFinancials({ booking, data, initialAction }: { booking: Bo
     setDialog(null);
     if (done) setNotice(done);
   };
+  const chargeable = !cancelled && !money.legacyRefund && booking.paymentStatus !== "failed";
+  const spa = useStaySpa(chargeable ? booking : null);
+  const spaTotal = spa?.total ?? 0;
+  const due = chargeable ? money.owed + spaTotal : 0;
+  const openCheckout = useStayCheckout();
+  const [opening, setOpening] = useState(false);
+  const [problems, setProblems] = useState<string[]>([]);
+  const headline = cancelled
+    ? { label: money.net > 0 ? "Kept" : "Settled", amount: money.net }
+    : due > 0
+      ? { label: "Balance due", amount: due }
+      : money.credit > 0
+        ? { label: "Credit", amount: money.credit }
+        : { label: "Paid in full", amount: money.net };
+
+  async function takePayment() {
+    if (!spa || opening) return;
+    setOpening(true);
+    setProblems([]);
+    try {
+      setProblems(await openCheckout(booking._id, spa.appointments));
+    } catch (err) {
+      setProblems([errorText(err, "Couldn't open checkout for this stay.")]);
+    } finally {
+      setOpening(false);
+    }
+  }
 
   return (
     <section aria-labelledby="booking-payments" className="grid gap-3">
-      <h3 id="booking-payments" className="admin-eyebrow">Stay payment</h3>
-      <dl aria-label="Stay payment summary" className="grid grid-cols-3 gap-3 text-sm">
-        <div><dt className="text-muted-foreground">Total</dt><dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(money.total, money.currency)}</dd></div>
-        <div><dt className="text-muted-foreground">Paid</dt><dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(money.net, money.currency)}</dd></div>
-        <div>
-          <dt className="text-muted-foreground">{cancelled ? (money.net > 0 ? "Kept" : "Settled") : money.owed > 0 ? "Due" : money.credit > 0 ? "Credit" : "Settled"}</dt>
-          <dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(cancelled ? money.net : money.owed > 0 ? money.owed : money.credit, money.currency)}</dd>
+      <div className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
+        <div data-sentence-budget="ignore">
+          <h3 id="booking-payments" className="text-sm font-medium text-muted-foreground">{headline.label}</h3>
+          <p className="font-serif text-3xl font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
+          {spaTotal > 0 && due > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Stay {formatMoney(money.owed, money.currency)} · Spa {formatMoney(spaTotal, money.currency)}
+            </p>
+          ) : null}
+          {money.refunded > 0 ? <p className="text-xs text-muted-foreground">Refunded {formatMoney(money.refunded, money.currency)}</p> : null}
         </div>
-      </dl>
-      {money.refunded > 0 ? <p className="text-sm">Refunded {formatMoney(money.refunded, money.currency)}</p> : null}
-      {booking.checkoutLive ? <p className="text-xs text-muted-foreground">Guest has a Stripe checkout open. Wait for it to finish or expire before recording another payment.</p> : null}
-      {booking.paymentStatus === "failed" ? <p className="text-sm text-destructive">Payment failed.</p> : null}
-      <div className="flex flex-wrap gap-2">
-        {canPay ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button size="sm" variant="secondary" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
-              Record payment
+        {booking.paymentStatus === "failed" ? <p className="text-sm text-destructive">Payment failed.</p> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {due > 0 ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <Button disabled={booking.checkoutLive || !spa || opening} onClick={() => void takePayment()}>
+                {opening ? <Spinner className="text-current" /> : null}
+                Take payment
+              </Button>
+            </DisabledReason>
+          ) : null}
+          {canPay ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <Button variant="link" className="min-h-10 px-1" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+                Already paid…
+              </Button>
+            </DisabledReason>
+          ) : null}
+          {money.refundable > 0 ? (
+            <Button variant="outline" onClick={() => setDialog({ kind: "refund" })}>
+              Record refund
             </Button>
-          </DisabledReason>
-        ) : null}
-        {money.refundable > 0 ? (
-          <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund" })}>
-            Record refund
-          </Button>
+          ) : null}
+        </div>
+        {booking.checkoutLive ? <p className="text-xs text-muted-foreground">{CHECKOUT_LIVE}</p> : null}
+        {problems.length ? (
+          <div role="alert" className="grid gap-1 text-sm text-destructive">
+            {problems.map((problem) => <p key={problem}>{problem}</p>)}
+          </div>
         ) : null}
       </div>
       <details className="text-sm">
@@ -275,7 +320,8 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
   </ChangeConfirmDialog>;
 }
 
-function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
+/** Records money the guest already paid at the desk; one attempt key and the reviewed revision per open. */
+export function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
   const recordPayment = useMutation(api.adminBookings.recordPayment);
   const [reviewed] = useState(() => ({ revision: booking.revision, owed, key: newAttemptKey("pay") }));
   const [method, setMethod] = useState<DeskPaymentMethod>("cash");

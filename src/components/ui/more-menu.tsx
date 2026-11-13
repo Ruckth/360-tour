@@ -2,6 +2,7 @@
 
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal } from "lucide-react";
+import { useCallback, useState } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +30,10 @@ const itemClass =
 
 /** The "⋯ More" overflow menu for rare actions. Renders nothing when every item is hidden. */
 export function MoreMenu({ items, label = "More actions", disabled = false, align = "end", className }: MoreMenuProps) {
+  // Inside a dialog or sheet the menu renders in it, so the dialog's focus trap and outside-click
+  // handling treat it as part of the dialog.
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  const triggerRef = useCallback((el: HTMLElement | null) => setContainer(el?.closest<HTMLElement>('[role="dialog"]') ?? null), []);
   const visible = items.filter((item) => !item.hidden);
   if (visible.length === 0) return null;
   const regular = visible.filter((item) => !item.destructive);
@@ -51,13 +56,14 @@ export function MoreMenu({ items, label = "More actions", disabled = false, alig
   return (
     <Menu.Root>
       <Menu.Trigger
+        ref={triggerRef}
         aria-label={label}
         disabled={disabled}
         className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "size-11", className)}
       >
         <MoreHorizontal aria-hidden="true" className="size-5" />
       </Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Portal container={container ?? undefined}>
         <Menu.Positioner className="z-50 outline-none" align={align} sideOffset={6}>
           <Menu.Popup
             aria-label={label}

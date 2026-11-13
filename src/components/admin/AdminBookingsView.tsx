@@ -29,11 +29,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
-import { errorText } from "@/lib/staff-bookings";
+import { errorText, formatResortDateTime } from "@/lib/staff-bookings";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
-import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
+import { BookingQuickActions, type QuickAction, type QuickTarget } from "./BookingQuickActions";
+import { RecordPaymentDialog } from "./BookingFinancials";
+import { CancelStayDialog } from "./BookingCorrectionDialogs";
+import { NewAppointmentDialog, type AppointmentDraft } from "./NewAppointmentDialog";
+import { DeskCheckoutProvider } from "./stay-spa";
+import { TodayStrip } from "./TodayStrip";
+import type { CheckoutBackend } from "@/components/checkout/backend";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { BookingSheet, useBookingEditQuote, type BookingSheetAction } from "./BookingSheet";
 import { bookingEditPrice, reviewedPrice } from "./booking-edit-price";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
@@ -49,6 +56,7 @@ import {
   hotelStatus,
   hotelStatusColor,
   notifyDefault,
+  serverTodayIso,
   statusKey,
   stayConflicts,
   type AdminProperty,
@@ -99,7 +107,18 @@ function isUnchanged({ booking, propertyId, checkIn, checkOut }: Move) {
   return propertyId === booking.propertyId && checkIn === booking.checkIn && checkOut === booking.checkOut;
 }
 
-export function AdminBookingsView() {
+/** The hotel calendar. Checkout opens orders on Convex, or on `checkoutBackend` (browser fixtures). */
+export function AdminBookingsView({ checkoutBackend }: { checkoutBackend?: CheckoutBackend } = {}) {
+  return checkoutBackend ? (
+    <DeskCheckoutProvider backend={checkoutBackend}>
+      <HotelBookings />
+    </DeskCheckoutProvider>
+  ) : (
+    <HotelBookings />
+  );
+}
+
+function HotelBookings() {
   const [range, setRange] = useState(initialRange);
   const [storedView, setView] = useStoredState("admin.hotel.view", "month");
   const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
@@ -113,6 +132,8 @@ export function AdminBookingsView() {
   const [cleaningUp, setCleaningUp] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
   const [moving, setMoving] = useState<Move | null>(null);
+  const [stayDialog, setStayDialog] = useState<Extract<QuickAction, { kind: "pay" | "cancel" }> | null>(null);
+  const [spaDraft, setSpaDraft] = useState<AppointmentDraft | null>(null);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
   const profile = useQuery(api.settings.publicProfile, {});
@@ -176,6 +197,29 @@ export function AdminBookingsView() {
     return (active.find((p) => data && !stayConflicts(data, p._id, checkIn, checkOut)) ?? active[0])?._id;
   }
 
+  function quickAction(action: QuickAction) {
+    if (action.kind !== "bookSpa") {
+      setStayDialog(action);
+      return;
+    }
+    const { booking } = action;
+    // Today while the guest is staying, else the first day of the stay.
+    const resortToday = serverTodayIso();
+    const date = booking.checkIn > resortToday ? booking.checkIn : resortToday;
+    setSpaDraft({
+      date,
+      stay: {
+        bookingId: booking._id, guestName: booking.guestName, guestPhone: booking.guestPhone,
+        guestEmail: booking.guestEmail, villaName: villaName(booking.propertyId),
+      },
+    });
+  }
+
+  function openQuick(booking: AdminBooking, element: Element) {
+    const { left, top, width, height } = element.getBoundingClientRect();
+    setQuick({ booking, rect: { left, top, width, height } });
+  }
+
   function openNew(checkIn: string, checkOut: string, propertyId?: string) {
     setQuick(null);
     setCreating({ propertyId: propertyId ?? villaFor(checkIn, checkOut), checkIn, checkOut });
@@ -183,7 +227,8 @@ export function AdminBookingsView() {
 
   return (
     // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
-    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
+      <TodayStrip villaName={villaName} onOpen={openQuick} />
       <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
@@ -231,8 +276,7 @@ export function AdminBookingsView() {
             if (eventData?.kind === "booking") {
               const chip =
                 (event.target as HTMLElement).closest("[data-slot=event-calendar-event]") ?? (event.currentTarget as HTMLElement);
-              const { left, top, width, height } = chip.getBoundingClientRect();
-              setQuick({ booking: eventData.booking, rect: { left, top, width, height } });
+              openQuick(eventData.booking, chip);
             } else if (eventData?.kind === "hostBlock") setBlockTarget({ kind: "host", block: eventData.block });
             else if (eventData?.kind === "otaBlock") setBlockTarget({ ...eventData, kind: "ota" });
           }}
@@ -265,32 +309,26 @@ export function AdminBookingsView() {
               Show cancelled
             </Button>
             {data === undefined ? <Spinner label="Loading bookings" /> : null}
-            <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
-              <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>
-                OTA calendars
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setManagingRates(true)} disabled={!data}>
-                OTA rates
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setCleaningUp(true)} disabled={!data}>
-                Clean up
-              </Button>
+            <div className="flex w-full items-center gap-2 sm:ms-auto sm:w-auto">
               <Button
                 size="sm"
-                variant="outline"
-                onClick={() => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined })}
-                disabled={!data}
-              >
-                Block dates
-              </Button>
-              <Button
-                size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
                 disabled={!data}
               >
                 <PlusIcon aria-hidden="true" className="size-4" />
                 New booking
               </Button>
+              <MoreMenu
+                label="More calendar tools"
+                disabled={!data}
+                items={[
+                  { label: "Block dates", onSelect: () => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined }) },
+                  { label: "OTA calendars", onSelect: () => setManagingCalendars(true) },
+                  { label: "OTA rates", onSelect: () => setManagingRates(true) },
+                  { label: "Clean up old bookings", onSelect: () => setCleaningUp(true) },
+                ]}
+              />
             </div>
           </AdminCalendarHeader>
           {data && data.properties.length === 0 ? (
@@ -329,8 +367,34 @@ export function AdminBookingsView() {
           target={quick}
           villaName={villaName(quick.booking.propertyId)}
           onClose={() => setQuick(null)}
-          onOpenDetails={(initialAction) => openDetails(quick.booking._id, initialAction)}
+          onOpenDetails={() => openDetails(quick.booking._id)}
+          onAction={quickAction}
           onNotice={setNotice}
+        />
+      ) : null}
+      {stayDialog?.kind === "pay" ? (
+        <RecordPaymentDialog
+          booking={stayDialog.booking}
+          owed={stayDialog.booking.money.owed}
+          onClose={(done) => {
+            const name = stayDialog.booking.guestName;
+            setStayDialog(null);
+            if (done) setNotice({ text: `${name}: ${done}` });
+          }}
+        />
+      ) : null}
+      {stayDialog?.kind === "cancel" ? <CancelStayDialog booking={stayDialog.booking} onClose={() => setStayDialog(null)} /> : null}
+      {spaDraft ? (
+        <NewAppointmentDialog
+          draft={spaDraft}
+          services={[]}
+          staff={[]}
+          onClose={() => setSpaDraft(null)}
+          onCreated={(_id, start) => {
+            const name = spaDraft.stay?.guestName ?? "Guest";
+            setSpaDraft(null);
+            setNotice({ text: `${name}: spa booked for ${formatResortDateTime(start)}, on the stay's balance.` });
+          }}
         />
       ) : null}
       {data && blockTarget ? (
