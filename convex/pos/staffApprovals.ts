@@ -1,9 +1,8 @@
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { authenticatedMutation, internalMutation, type MutationCtx, staffMutation, staffQuery } from '../auth/model';
+import { authenticatedMutation, canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
-import { canReadCheckoutOrder, requireCashierAction } from '../lib/staffAccess';
 import { cashierRules } from '../settings/model';
 import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from '../lib/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../lib/staffTypes';

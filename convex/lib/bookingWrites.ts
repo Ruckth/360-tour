@@ -5,7 +5,7 @@ import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
 import { couponUnavailable, couponVersion, holdCouponRedemption } from '../marketing/model';
 import { getEffectiveSettings } from '../settings/model';
-import { resortLocalParts } from './serviceSlots';
+import { resortLocalParts } from '../shared/resortLocalParts';
 import { blockBookingDates } from './availabilityWrites';
 import { internal } from '../_generated/api';
 import type { MutationCtx, QueryCtx } from '../_generated/server';

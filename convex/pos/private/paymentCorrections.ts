@@ -12,7 +12,7 @@ import { resortTodayIso } from '../../lib/dates';
 import { orderLineLinks } from '../../lib/lineLinks';
 import { assertTenders, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
 import { assertNoPosRefunds } from '../../lib/orderRefunds';
-import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../lib/staffAccess';
+import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { orderStayPayment, stayPaymentReversalPatch } from '../../lib/stayCorrections';
 import { assertCustomerCanLink, assertCustomerReviewed } from './customerModel';
 import { Line, MISSING_PAYMENT_EVIDENCE, Order, amendOrderPaymentArgs, assertCorrectionRevision, cleanTender, correctionReplay, sourceRows, voidUnreceivedOrderArgs } from './orderModel';

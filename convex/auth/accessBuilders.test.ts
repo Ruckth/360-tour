@@ -39,7 +39,7 @@ const probes = {
   marketingMutation: marketingMutation({ permission: 'publish', args: {}, handler: ctx => ctx.marketing.role }),
 };
 function setup() {
-  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../accessProbes.ts': async () => probes });
+  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../auth/users.ts': () => import('./users'), '../auth/staffAccess.ts': () => import('./staffAccess'), '../accessProbes.ts': async () => probes });
   const signed = (role: string) => t.withIdentity({ email: `${role}@example.com`, tokenIdentifier: `issuer|${role}` });
   return { t, signed };
 }
@@ -68,9 +68,9 @@ it('admits signed-in nonstaff to authenticated builders and derives action ident
     await expect(invoke(t, kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).rejects.toThrow('Not authenticated');
     expect(await invoke(signed('visitor'), kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).toBe('issuer|visitor');
   }
-  await signed('visitor').mutation(api.users.store, {});
-  expect(await signed('visitor').query(api.users.current, {})).toMatchObject({ tokenIdentifier: 'issuer|visitor' });
-  expect(await t.query(api.users.current, {})).toBeNull();
+  await signed('visitor').mutation(api.auth.users.store, {});
+  expect(await signed('visitor').query(api.auth.users.current, {})).toMatchObject({ tokenIdentifier: 'issuer|visitor' });
+  expect(await t.query(api.auth.users.current, {})).toBeNull();
 });
 
 it('uses authoritative staff and operations policies for all three function kinds, including action grant revocation', async () => {
@@ -148,7 +148,7 @@ it('runs maintenance before every public trust policy and handler, while interna
     const args = name.startsWith('guest') ? guest : name.startsWith('device') ? { token: 'invalid' } : {};
     await expect(invoke(t, kind, (name), args)).rejects.toThrow('MAINTENANCE');
   }
-  expect(await t.query(internal.staffAccess.currentInternal, {})).toMatchObject({ role: null });
+  expect(await t.query(internal.auth.staffAccess.currentInternal, {})).toMatchObject({ role: null });
   for (const path of ['/stripe/webhook', '/line/webhook', '/facebook/webhook', '/instagram/webhook', '/whatsapp/webhook']) {
     expect((await t.fetch(path, { method: 'POST', body: '{}' })).status).toBe(503);
   }
@@ -167,4 +167,19 @@ it('preserves public booking record capabilities without granting nonstaff fallb
   await expect(signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId })).rejects.toThrow('Not authorized');
   expect(await signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
   expect(await signed('owner').query(api.bookings.bookings.getById, { id: first.bookingId })).toMatchObject({ total: 200000 });
+});
+
+// Exercise the real action -> internal query identity hop after the path cutover.
+it('preserves actor email spelling and tokenIdentifier across relocated action authorization', async () => {
+  const { t } = setup();
+  const owner = t.withIdentity({ email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner' });
+  expect(await owner.action(ref<'action'>('adminAction'), {})).toBe('Owner@Example.com');
+  await t.run(ctx => ctx.db.insert('staffGrants', {
+    email: 'manager@example.com', tokenIdentifier: 'issuer-a|manager', role: 'manager',
+    createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'owner@example.com',
+  }));
+  const manager = t.withIdentity({ email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-a|manager' });
+  const otherIssuer = t.withIdentity({ email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-b|manager' });
+  expect(await manager.action(ref<'action'>('adminAction'), {})).toBe('Manager@Example.com');
+  await expect(otherIssuer.action(ref<'action'>('adminAction'), {})).rejects.toThrow('Not authorized');
 });

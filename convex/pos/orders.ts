@@ -12,7 +12,7 @@ import { activeOrderFor, isOpenOrder, orderState, ordersForSource } from '../lib
 import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from '../lib/orderMath';
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from '../lib/orderRefunds';
 import { type OrderPromotionView } from '../lib/posCoupons';
-import { canReadCheckoutOrder } from '../lib/staffAccess';
+import { canReadCheckoutOrder } from '../auth/model';
 import { MAX_STAY_ROWS } from '../lib/stayCorrections';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';

@@ -5,7 +5,7 @@ import type { ApprovalPayload, CashierRules } from "convex/lib/staffTypes";
 
 /**
  * Cashier limits and manager approvals as checkout shows them. The server decides
- * (convex/lib/staffAccess.ts, convex/pos/staffApprovals.ts); these mirror its arithmetic so the hint a
+ * (convex/auth/private/staffAccess.ts, convex/pos/staffApprovals.ts); these mirror its arithmetic so the hint a
  * cashier sees while typing agrees with what the server will refuse.
  */
 
@@ -34,7 +34,7 @@ type BaselineLine = PricedLine & { catalogUnitPrice?: number };
 
 /**
  * A line's manual reduction against its baseline, in whole satang, exactly as manualReduction in
- * convex/lib/staffAccess.ts: the baseline is max(catalog price, line price) × quantity, and the
+ * convex/auth/private/staffAccess.ts: the baseline is max(catalog price, line price) × quantity, and the
  * coupon is left out.
  */
 export function manualReductionSatang(line: BaselineLine) {

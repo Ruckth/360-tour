@@ -1,6 +1,5 @@
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import { requireStaff } from './staffAccess';
-
 
 /** Desk/operations access; marketing keeps its own permission checks. */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {
@@ -9,6 +8,7 @@ export async function requireAdmin(ctx: QueryCtx | MutationCtx | ActionCtx): Pro
  const identity = await ctx.auth.getUserIdentity();
  return { email: identity?.email ?? access.email };
 }
+
 export async function requireOwner(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {
  return await requireStaff(ctx, 'manageTeam');
 }

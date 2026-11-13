@@ -1,4 +1,4 @@
-import { authenticatedMutation, publicQuery } from './auth/model';
+import { authenticatedMutation, publicQuery } from '../auth/model';
 
 export const store = authenticatedMutation({
 	args: {},

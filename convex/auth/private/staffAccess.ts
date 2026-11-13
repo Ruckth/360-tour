@@ -1,15 +1,15 @@
 import type { UserIdentity } from 'convex/server';
 import { ConvexError } from 'convex/values';
-import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
-import { cashierRules } from '../settings/model';
-import { percentageOf, roundRatio } from '../shared/money';
-import { adminEmails } from './adminEmails';
-import { resortTodayIso } from './dates';
-import { isOpenOrder, isSettledOrder } from './orderLinks';
-import { lineCouponBase, roundMoney, type PricedLine } from './orderMath';
-import { STAFF_INVITATION_TTL_MS, type CashierAction } from './staffTypes';
+import { internal } from '../../_generated/api';
+import type { Doc } from '../../_generated/dataModel';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
+import { adminEmails } from '../../lib/adminEmails';
+import { resortTodayIso } from '../../lib/dates';
+import { isOpenOrder, isSettledOrder } from '../../lib/orderLinks';
+import { lineCouponBase, roundMoney, type PricedLine } from '../../lib/orderMath';
+import { STAFF_INVITATION_TTL_MS, type CashierAction } from '../../lib/staffTypes';
+import { cashierRules } from '../../settings/model';
+import { percentageOf, roundRatio } from '../../shared/money';
 
 export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
 
@@ -56,7 +56,7 @@ export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: P
 }
 
 export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<StaffAccess> {
-  if (!('db' in ctx)) return await ctx.runQuery(internal.staffAccess.currentInternal, {});
+  if (!('db' in ctx)) return await ctx.runQuery(internal.auth.staffAccess.currentInternal, {});
   return await accessForIdentity(ctx, await ctx.auth.getUserIdentity());
 }
 

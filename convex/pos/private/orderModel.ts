@@ -12,8 +12,8 @@ import { insertOrder, isOpenOrder, linkedOpenOrder, openOrderCharging, ordersFor
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
-import { resortLocalParts } from '../../lib/serviceSlots';
-import { assertCashierDiscount, type StaffActor } from '../../lib/staffAccess';
+import { resortLocalParts } from '../../shared/resortLocalParts';
+import { assertCashierDiscount, type StaffActor } from '../../auth/model';
 import { lineDiscountValidator } from '../../lib/staffTypes';
 
 /**

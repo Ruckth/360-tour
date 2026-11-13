@@ -6,7 +6,7 @@ import { orderPaymentRecord } from '../lib/orderLifecycle';
 import { isSettledOrder } from '../lib/orderLinks';
 import { orderTitle, roundMoney } from '../lib/orderMath';
 import { ReadBudget, ReadBudgetExceeded } from '../lib/readBudget';
-import { resortLocalParts } from '../lib/serviceSlots';
+import { resortLocalParts } from '../shared/resortLocalParts';
 import { stayMoney } from '../lib/stayMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from '../shared/marketingAttribution';
 

@@ -26,8 +26,8 @@ async function setup() {
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {
-    await owner.mutation(api.staffAccess.setGrant, { email, role });
-    await client.mutation(api.staffAccess.claimInvite, {});
+    await owner.mutation(api.auth.staffAccess.setGrant, { email, role });
+    await client.mutation(api.auth.staffAccess.claimInvite, {});
   }
   const serviceId = await t.run(ctx => ctx.db.insert('services', {
     slug: 'refund-spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
@@ -415,7 +415,7 @@ describe('POS refund staff approvals', () => {
     if (change === 'refund') await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'other-refund-attempt'));
     if (change === 'line') await s.t.run(ctx => ctx.db.patch(lineId, { couponDiscount: 100 }));
     if (change === 'order') await s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-attempt', reason: 'Correct date', effectiveAt: now - day });
-    if (change === 'requester') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
+    if (change === 'requester') await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
     expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'stale', replayed: false });
     expect(await s.records(orderId)).toHaveLength(change === 'refund' ? 1 : 0);
   });
@@ -438,9 +438,9 @@ describe('POS refund staff approvals', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const request = await s.request(s.args(orderId, lineId));
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
     await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('own request');
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'manager@example.com', role: null });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: null });
     await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('Not authorized');
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS);
     expect(await s.owner.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'expired', replayed: false });

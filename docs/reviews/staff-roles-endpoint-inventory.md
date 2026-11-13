@@ -1,5 +1,7 @@
 # Optional POS staff roles: backend contract and endpoint inventory
 
+> Historical record of the staff-role implementation before the architecture moves. Paths below describe that revision. See the [current access inventory](../architecture/phase3a-access-inventory.md) and [Auth ownership record](../architecture/phase3b-auth-implementation.md) for current endpoints and permission helpers.
+
 Implemented on `feat/staff-roles-backend`, with audit fixes on `feat/staff-roles-backend-fixes`, based on the local staff-roles branch (base `d67ba9f`). Backend only; no deployment, migration, seed or live data edit is part of this work.
 
 ## Roles and permission model

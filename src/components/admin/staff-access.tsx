@@ -6,7 +6,7 @@ import { ADMIN_NAV } from "./admin-routes";
 import { adminNavFor, type StaffAccessView } from "./admin-access";
 
 /**
- * The signed-in person's staffAccess.myAccess, loaded once by the admin shell. Without a provider
+ * The signed-in person's auth/staffAccess.myAccess, loaded once by the admin shell. Without a provider
  * (isolated fixtures and older tests) it reads as an owner, which is the admin as it was before
  * staff roles. The server checks every call either way; this only shapes the UI.
  */
