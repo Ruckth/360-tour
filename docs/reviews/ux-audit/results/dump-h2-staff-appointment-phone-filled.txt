@@ -1,0 +1,10 @@
+button "Y Yoga 03" @168
+button "Nov 27, 2027" @246
+button "Next day" @360
+button "Change" @466
+input "" @522
+input "" @600
+input "" @674
+button "Cancel" @780
+button "Book appointment" @732
+button "Close" @25

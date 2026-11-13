@@ -1,0 +1,68 @@
+{
+  "task": "e2-refund-one-line-cashier-asks",
+  "viewport": "ipad",
+  "taps": 4,
+  "fields": 1,
+  "keys": 1,
+  "decisions": 2,
+  "scrolls": 1,
+  "start": {
+    "controlsOnScreen": 14,
+    "controlsOnPage": 16,
+    "wordsOnScreen": 148,
+    "wordsOnPage": 151,
+    "wordsInnerText": 151
+  },
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Refund Foot spa 45",
+      "scrolled": false,
+      "decision": true,
+      "choices": 14
+    },
+    {
+      "kind": "type",
+      "label": "Reason",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Send request",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approvals",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approve",
+      "scrolled": false,
+      "decision": true,
+      "choices": 4
+    },
+    {
+      "kind": "key",
+      "label": "Manager: close Approvals",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Cashier steps: 3; manager steps: 3."
+  ],
+  "shots": [
+    "e2-refund-one-line-cashier-asks-ipad-00-start.png",
+    "e2-refund-one-line-cashier-asks-ipad-01-waiting.png"
+  ]
+}

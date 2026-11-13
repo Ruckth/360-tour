@@ -1,0 +1,111 @@
+{
+  "task": "c-discount-over-limit-approval",
+  "viewport": "ipad",
+  "taps": 6,
+  "fields": 2,
+  "keys": 1,
+  "decisions": 2,
+  "scrolls": 1,
+  "start": {
+    "controlsOnScreen": 32,
+    "controlsOnPage": 32,
+    "wordsOnScreen": 103,
+    "wordsOnPage": 103,
+    "wordsInnerText": 124
+  },
+  "checkpoints": [
+    {
+      "label": "row-open",
+      "controlsOnScreen": 38,
+      "controlsOnPage": 45,
+      "wordsOnScreen": 112,
+      "wordsOnPage": 123,
+      "wordsInnerText": 144
+    },
+    {
+      "label": "approvals",
+      "controlsOnScreen": 4,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 23,
+      "wordsOnPage": 23,
+      "wordsInnerText": 31
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Open the Thai massage row",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "% instead of ฿",
+      "scrolled": true,
+      "decision": true,
+      "choices": 38
+    },
+    {
+      "kind": "type",
+      "label": "Discount 15",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Ask manager",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Reason",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Send request",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approvals",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approve",
+      "scrolled": false,
+      "decision": true,
+      "choices": 4
+    },
+    {
+      "kind": "key",
+      "label": "Manager: close Approvals",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Cashier steps: 6. Manager steps follow (same till, window.fixture.setRole).",
+    "Manager steps: 3."
+  ],
+  "shots": [
+    "c-discount-over-limit-approval-ipad-00-start.png",
+    "c-discount-over-limit-approval-ipad-01-row-open.png",
+    "c-discount-over-limit-approval-ipad-02-over-limit.png",
+    "c-discount-over-limit-approval-ipad-03-waiting.png",
+    "c-discount-over-limit-approval-ipad-04-approvals.png",
+    "c-discount-over-limit-approval-ipad-05-approved.png"
+  ]
+}

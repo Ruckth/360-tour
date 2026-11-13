@@ -1,0 +1,4 @@
+input "Find the appointment" @634
+button "Review" @699
+button "Cancel" @780
+button "Close" @531

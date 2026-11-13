@@ -1,0 +1,61 @@
+{
+  "task": "h1-staff-villa-booking",
+  "viewport": "ipad",
+  "taps": 3,
+  "fields": 2,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 1,
+  "start": {
+    "controlsOnScreen": 11,
+    "controlsOnPage": 15,
+    "wordsOnScreen": 73,
+    "wordsOnPage": 97,
+    "wordsInnerText": 99
+  },
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Villa (open)",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Garden Villa",
+      "scrolled": false,
+      "decision": true,
+      "choices": 3
+    },
+    {
+      "kind": "type",
+      "label": "Phone",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Guest name",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Create booking",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Dialog opened by the fixture with check-in/out prefilled; reaching it in the app is at least 1 more tap (or a calendar drag)."
+  ],
+  "shots": [
+    "h1-staff-villa-booking-ipad-00-start.png",
+    "h1-staff-villa-booking-ipad-01-filled.png"
+  ]
+}

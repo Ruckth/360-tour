@@ -1,0 +1,64 @@
+{
+  "task": "i-invite-cashier-and-limit",
+  "viewport": "ipad",
+  "taps": 3,
+  "fields": 2,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 1,
+  "start": {
+    "controlsOnScreen": 24,
+    "controlsOnPage": 26,
+    "wordsOnScreen": 50,
+    "wordsOnPage": 58,
+    "wordsInnerText": 86
+  },
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Invite",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Email",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Send invite",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Discount without approval",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Save rules",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Starts on Settings › Team; reaching it is Settings in the nav + the Team tab (2 taps).",
+    "Invite role default: cashier"
+  ],
+  "shots": [
+    "i-invite-cashier-and-limit-ipad-00-start.png",
+    "i-invite-cashier-and-limit-ipad-01-invite-form.png",
+    "i-invite-cashier-and-limit-ipad-02-invited.png",
+    "i-invite-cashier-and-limit-ipad-03-saved.png"
+  ]
+}

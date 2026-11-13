@@ -1,0 +1,1048 @@
+{
+  "ipad · Checkout · new sale": {
+    "page": {
+      "controlsOnScreen": 32,
+      "controlsOnPage": 32,
+      "wordsOnScreen": 103,
+      "wordsOnPage": 103,
+      "wordsInnerText": 124
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 2,
+        "words": 2,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10
+      }
+    ]
+  },
+  "ipad · Checkout · line open": {
+    "page": {
+      "controlsOnScreen": 38,
+      "controlsOnPage": 45,
+      "wordsOnScreen": 112,
+      "wordsOnPage": 123,
+      "wordsInnerText": 144
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 7,
+        "wordsOnScreen": 19
+      },
+      {
+        "name": "OrderPanel · line editor",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 7,
+        "wordsOnScreen": 19
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 2,
+        "words": 2,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 2
+      }
+    ]
+  },
+  "ipad · Checkout · cash": {
+    "page": {
+      "controlsOnScreen": 31,
+      "controlsOnPage": 31,
+      "wordsOnScreen": 93,
+      "wordsOnPage": 93,
+      "wordsInnerText": 114
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49
+      },
+      {
+        "name": "PayPanel · cash",
+        "file": "src/components/checkout/PayPanel.tsx",
+        "controls": 9,
+        "words": 25,
+        "controlsOnScreen": 9,
+        "wordsOnScreen": 25
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9
+      }
+    ]
+  },
+  "ipad · Receipt (paid, 2 lines)": {
+    "page": {
+      "controlsOnScreen": 14,
+      "controlsOnPage": 18,
+      "wordsOnScreen": 145,
+      "wordsOnPage": 154,
+      "wordsInnerText": 154
+    },
+    "components": [
+      {
+        "name": "ReceiptView · print toolbar",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 6,
+        "words": 13,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 13
+      },
+      {
+        "name": "PaymentRecord",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 4,
+        "words": 52,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 46
+      },
+      {
+        "name": "History disclosures + Void",
+        "file": "FinancialHistory.tsx, OrderHistory.tsx, ReceiptView.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx + RefundForm.tsx",
+        "controls": 2,
+        "words": 38,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 38
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 2,
+        "words": 34,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 34
+      },
+      {
+        "name": "ReceiptView · header",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 2,
+        "words": 11,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 11
+      }
+    ]
+  },
+  "ipad · Receipt · correcting payment": {
+    "page": {
+      "controlsOnScreen": 13,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 139,
+      "wordsOnPage": 178,
+      "wordsInnerText": 184
+    },
+    "components": [
+      {
+        "name": "PaymentRecord · correction form",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 11,
+        "words": 50,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 26
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 1,
+        "words": 30,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 30
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 1,
+        "words": 23,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 23
+      }
+    ]
+  },
+  "ipad · Settings › Team": {
+    "page": {
+      "controlsOnScreen": 24,
+      "controlsOnPage": 26,
+      "wordsOnScreen": 50,
+      "wordsOnPage": 58,
+      "wordsInnerText": 86
+    },
+    "components": [
+      {
+        "name": "TeamSettings · People",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 12,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 30
+      },
+      {
+        "name": "TeamSettings · Cashier rules",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 7,
+        "words": 17,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 12
+      },
+      {
+        "name": "Settings tabs",
+        "file": "src/components/admin/AdminSettingsView.tsx",
+        "controls": 6,
+        "words": 8,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 8
+      }
+    ]
+  },
+  "ipad · New booking": {
+    "page": {
+      "controlsOnScreen": 11,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 73,
+      "wordsOnPage": 97,
+      "wordsInnerText": 99
+    },
+    "components": [
+      {
+        "name": "Row · Block these dates instead",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Row · Phone",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 2,
+        "words": 1,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 1
+      },
+      {
+        "name": "Row · Coupon code (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 20,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · label",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 19,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 19
+      },
+      {
+        "name": "Row · Custom price",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10
+      },
+      {
+        "name": "Row · Check in",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5
+      },
+      {
+        "name": "Row · Check out",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5
+      },
+      {
+        "name": "Row · Villa",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Guest name",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Guests",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 1,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 1
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 0,
+        "words": 9,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 9
+      }
+    ]
+  },
+  "ipad · New appointment": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 78,
+      "wordsOnPage": 78,
+      "wordsInnerText": 79
+    },
+    "components": [
+      {
+        "name": "Row · Cancel",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 2,
+        "words": 3,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Time",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 17,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 17
+      },
+      {
+        "name": "Row · Staff",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 9,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 9
+      },
+      {
+        "name": "Row · Date",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4
+      },
+      {
+        "name": "Row · Service",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Guest name (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Phone (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · p (2)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 13,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 13
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 3,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3
+      }
+    ]
+  },
+  "ipad · New coupon": {
+    "page": {
+      "controlsOnScreen": 16,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 197,
+      "wordsOnPage": 332,
+      "wordsInnerText": 350
+    },
+    "components": [
+      {
+        "name": "Section · Test a quote",
+        "file": "src/components/admin/marketing/CouponEditor.tsx + TestQuotePanel.tsx",
+        "controls": 5,
+        "words": 52,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 47
+      },
+      {
+        "name": "Section · Scope",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 5,
+        "words": 30,
+        "controlsOnScreen": 5,
+        "wordsOnScreen": 30
+      },
+      {
+        "name": "Section · Dates",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 58,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Minimums and limits",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 45,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Benefit",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 19,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 19
+      },
+      {
+        "name": "Section · Code",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 61,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 61
+      },
+      {
+        "name": "Section · Customer terms",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 27,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Summary",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 0,
+        "words": 18,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 18
+      }
+    ]
+  },
+  "phone · Checkout · new sale": {
+    "page": {
+      "controlsOnScreen": 11,
+      "controlsOnPage": 11,
+      "wordsOnScreen": 41,
+      "wordsOnPage": 41,
+      "wordsInnerText": 137
+    },
+    "components": [
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 3,
+        "words": 2,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10
+      }
+    ]
+  },
+  "phone · Checkout · line open": {
+    "page": {
+      "controlsOnScreen": 22,
+      "controlsOnPage": 24,
+      "wordsOnScreen": 57,
+      "wordsOnPage": 61,
+      "wordsInnerText": 157
+    },
+    "components": [
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 26
+      },
+      {
+        "name": "OrderPanel · line editor",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 26
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 3,
+        "words": 2,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 2
+      }
+    ]
+  },
+  "phone · Checkout · cash": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 31,
+      "wordsOnPage": 31,
+      "wordsInnerText": 127
+    },
+    "components": [
+      {
+        "name": "PayPanel · cash",
+        "file": "src/components/checkout/PayPanel.tsx",
+        "controls": 9,
+        "words": 25,
+        "controlsOnScreen": 9,
+        "wordsOnScreen": 25
+      }
+    ]
+  },
+  "phone · Receipt (paid, 2 lines)": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 18,
+      "wordsOnScreen": 83,
+      "wordsOnPage": 154,
+      "wordsInnerText": 154
+    },
+    "components": [
+      {
+        "name": "ReceiptView · print toolbar",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 6,
+        "words": 13,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 13
+      },
+      {
+        "name": "PaymentRecord",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 4,
+        "words": 52,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "History disclosures + Void",
+        "file": "FinancialHistory.tsx, OrderHistory.tsx, ReceiptView.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx + RefundForm.tsx",
+        "controls": 2,
+        "words": 38,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 38
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 2,
+        "words": 34,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 18
+      },
+      {
+        "name": "ReceiptView · header",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 2,
+        "words": 11,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 11
+      }
+    ]
+  },
+  "phone · Receipt · correcting payment": {
+    "page": {
+      "controlsOnScreen": 6,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 93,
+      "wordsOnPage": 178,
+      "wordsInnerText": 184
+    },
+    "components": [
+      {
+        "name": "PaymentRecord · correction form",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 11,
+        "words": 50,
+        "controlsOnScreen": 5,
+        "wordsOnScreen": 36
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 1,
+        "words": 30,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 1,
+        "words": 23,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 21
+      }
+    ]
+  },
+  "phone · Settings › Team": {
+    "page": {
+      "controlsOnScreen": 19,
+      "controlsOnPage": 26,
+      "wordsOnScreen": 42,
+      "wordsOnPage": 58,
+      "wordsInnerText": 86
+    },
+    "components": [
+      {
+        "name": "TeamSettings · People",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 12,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 30
+      },
+      {
+        "name": "TeamSettings · Cashier rules",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 7,
+        "words": 17,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 6
+      },
+      {
+        "name": "Settings tabs",
+        "file": "src/components/admin/AdminSettingsView.tsx",
+        "controls": 6,
+        "words": 8,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 6
+      }
+    ]
+  },
+  "phone · New booking": {
+    "page": {
+      "controlsOnScreen": 12,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 73,
+      "wordsOnPage": 97,
+      "wordsInnerText": 99
+    },
+    "components": [
+      {
+        "name": "Row · Block these dates instead",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Row · Phone",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 2,
+        "words": 1,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 1
+      },
+      {
+        "name": "Row · Coupon code (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 20,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · label",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 19,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 19
+      },
+      {
+        "name": "Row · Custom price",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10
+      },
+      {
+        "name": "Row · Check in",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5
+      },
+      {
+        "name": "Row · Check out",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5
+      },
+      {
+        "name": "Row · Villa",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Guest name",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Guests",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 1,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 1
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 0,
+        "words": 9,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 9
+      }
+    ]
+  },
+  "phone · New appointment": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 65,
+      "wordsOnPage": 78,
+      "wordsInnerText": 79
+    },
+    "components": [
+      {
+        "name": "Row · Cancel",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 2,
+        "words": 3,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Time",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 17,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 17
+      },
+      {
+        "name": "Row · Staff",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 9,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 9
+      },
+      {
+        "name": "Row · Date",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4
+      },
+      {
+        "name": "Row · Service",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Guest name (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3
+      },
+      {
+        "name": "Row · Phone (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2
+      },
+      {
+        "name": "Row · p (2)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 13,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 3,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3
+      }
+    ]
+  },
+  "phone · New coupon": {
+    "page": {
+      "controlsOnScreen": 8,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 94,
+      "wordsOnPage": 330,
+      "wordsInnerText": 352
+    },
+    "components": [
+      {
+        "name": "Section · Test a quote",
+        "file": "src/components/admin/marketing/CouponEditor.tsx + TestQuotePanel.tsx",
+        "controls": 5,
+        "words": 52,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Scope",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 5,
+        "words": 30,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Dates",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 58,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Minimums and limits",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 45,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Benefit",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 19,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 13
+      },
+      {
+        "name": "Section · Code",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 61,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 61
+      },
+      {
+        "name": "Section · Customer terms",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 27,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      },
+      {
+        "name": "Section · Summary",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 0,
+        "words": 18,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "task": "d-print-receipt",
+  "viewport": "ipad",
+  "taps": 1,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 14,
+    "controlsOnPage": 15,
+    "wordsOnScreen": 133,
+    "wordsOnPage": 134,
+    "wordsInnerText": 134
+  },
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Print",
+      "scrolled": false,
+      "decision": true,
+      "choices": 14
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "d-print-receipt-ipad-00-start.png"
+  ]
+}

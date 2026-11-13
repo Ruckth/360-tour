@@ -1,0 +1,15 @@
+button "Tideglass Pool Residence" @148
+button "Nov 27, 2027" @232
+button "Nov 30, 2027" @316
+button[combobox] "Country: Thailand" @402
+input "" @402
+input "" @480
+input "" @558
+input "" @558
+input "" @616
+input "" @737
+input "" @838
+button "Block these dates instead" @1030
+button "Close" @982
+button "Create booking" @934
+button "Close" @25
