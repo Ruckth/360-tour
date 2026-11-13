@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { accessForIdentity } from './staffAccess';
+import { accessForIdentity } from '../auth/model';
 import { cashierRules } from '../settings/model';
 import { orderLines } from './orderLines';
 import { orderLineLinks } from './lineLinks';

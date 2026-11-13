@@ -5,7 +5,7 @@ import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type
 import { isOpenOrder } from '../../lib/orderLinks';
 import { assertPrice } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
-import { resortLocalParts } from '../../lib/serviceSlots';
+import { resortLocalParts } from '../../shared/resortLocalParts';
 import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
 
 // ---------------------------------------------------------------------------------------------

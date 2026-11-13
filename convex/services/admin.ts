@@ -4,7 +4,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
 import { appointmentHistory } from '../lib/appointmentChanges';
 import { appointmentFinancials } from '../lib/appointmentFinance';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, blocksTime, boundedIntegrityRows, historicalWarnings, localDateTimeUtc, localDayRange, findOpenSlots as openSlots, planWorking, resortLocalParts, scheduleDays, staffBusyRanges } from '../lib/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, blocksTime, boundedIntegrityRows, historicalWarnings, localDateTimeUtc, localDayRange, findOpenSlots as openSlots, planWorking, scheduleDays, staffBusyRanges } from '../lib/serviceSlots';
+import { resortLocalParts } from '../shared/resortLocalParts';
 import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './model';
 
 export const listStaff = adminQuery({

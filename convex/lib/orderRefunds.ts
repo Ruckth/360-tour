@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { MAX_ORDER_REFUNDS, lineNet } from './orderMath';
 import { activeLineLink } from './lineLinks';
-import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from './staffAccess';
+import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../auth/model';
 import { resortTodayIso } from './dates';
 import { appendRecordHistory } from '../settings/model';
 import { syncAffiliateCredit } from '../marketing/model';

@@ -3,7 +3,8 @@ import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { writeBooking } from '../lib/bookingMoney';
 import { demoCode } from '../lib/codes';
-import { appointmentLookupFields, localDateTimeUtc, resortLocalParts } from '../lib/serviceSlots';
+import { appointmentLookupFields, localDateTimeUtc } from '../lib/serviceSlots';
+import { resortLocalParts } from '../shared/resortLocalParts';
 
 /**
  * AI-EVAL test data: services, staff, approved business facts, and blocked dates

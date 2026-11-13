@@ -23,7 +23,7 @@ import { adminMarketingPath } from "./admin-routes";
 import { ROLE_LABELS } from "./staff-access";
 import { TONES } from "./status-tones";
 
-type Person = FunctionReturnType<typeof api.staffAccess.listPeople>[number];
+type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
 type Permission = CashierRules["voidPaidSale"];
 type RuleKey = "refund" | "voidPaidSale" | "customPrice" | "paymentFix";
@@ -41,7 +41,7 @@ const SELECT = "h-10 min-w-0 rounded-lg border border-input bg-background px-3 t
 
 /** Settings › Team: who has access and their role, plus what cashiers may do without a manager. */
 export function TeamSettings() {
-  const people = useQuery(api.staffAccess.listPeople, {});
+  const people = useQuery(api.auth.staffAccess.listPeople, {});
   return (
     <>
       <PeoplePanel people={people} />
@@ -66,8 +66,8 @@ function Section({ title, tip, action, children, label }: { title: string; tip: 
 }
 
 function PeoplePanel({ people }: { people: Person[] | undefined }) {
-  const setGrant = useMutation(api.staffAccess.setGrant);
-  const updateInvitation = useMutation(api.staffAccess.updateInvitation);
+  const setGrant = useMutation(api.auth.staffAccess.setGrant);
+  const updateInvitation = useMutation(api.auth.staffAccess.updateInvitation);
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);

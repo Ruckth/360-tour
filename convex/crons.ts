@@ -6,7 +6,7 @@ import { type MutationCtx, internalMutation } from './_generated/server';
 import { releaseBookingDates } from './lib/availabilityWrites';
 import { writeBooking } from './lib/bookingMoney';
 import { maintenancePaused } from './lib/maintenance';
-import { resortLocalParts } from './lib/serviceSlots';
+import { resortLocalParts } from './shared/resortLocalParts';
 import { BOOKING_RULE_RANGES, bookingHoldExpiresAt } from './lib/siteSettings';
 import { getEffectiveSettings } from './settings/model';
 

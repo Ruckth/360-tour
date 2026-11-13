@@ -22,7 +22,7 @@ export function shellConvex(state: { role: ShellRole; pending?: number }) {
     useQuery: (ref: FunctionReference<'query'>, args: unknown) => {
       if (args === 'skip') return undefined;
       const name = getFunctionName(ref);
-      if (name === 'staffAccess:myAccess') return staffAccessFor(state.role);
+      if (name === 'auth/staffAccess:myAccess') return staffAccessFor(state.role);
       if (name === 'pos/staffApprovals:pending') return { count: state.pending ?? 0, list: [] };
       return { businessName: 'Audit resort' };
     },

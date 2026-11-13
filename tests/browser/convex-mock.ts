@@ -3,7 +3,7 @@ import { getFunctionName } from "convex/server";
 import { useSyncExternalStore } from "react";
 
 /*
- * A fixture can answer named functions itself (staffAccess:listPeople, ...) from its own in-memory
+ * A fixture can answer named functions itself (auth/staffAccess:listPeople, ...) from its own in-memory
  * store; its mutations then re-render every query. Functions it doesn't register keep the
  * defaults below.
  */

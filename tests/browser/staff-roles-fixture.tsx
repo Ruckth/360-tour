@@ -195,7 +195,7 @@ const team = {
 };
 registerFixtureFunctions({
   queries: {
-    "staffAccess:listPeople": () => team.people,
+    "auth/staffAccess:listPeople": () => team.people,
     "settings/cashierRules:getCashierRules": () => team.rules,
     "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
     "settings/settings:setupChecklist": () => undefined,
@@ -203,7 +203,7 @@ registerFixtureFunctions({
     "settings/settings:serverConfig": () => undefined,
   },
   mutations: {
-    "staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
+    "auth/staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
       const current = team.people.find((person) => person.email === email);
       if (next === null) {
         team.people = team.people.filter((person) => person.email !== email || person.marketingGrant).map((person) => (person.email === email ? { ...person, role: null, staffGrant: null } : person));
@@ -215,7 +215,7 @@ registerFixtureFunctions({
         : [...team.people, { email, role: next, staffGrant: grant, marketingGrant: null }].sort((a, b) => a.email.localeCompare(b.email));
       return grant.id;
     },
-    "staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
+    "auth/staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
       const expiresAt = action === "resend" ? Date.now() + 14 * DAY : Date.now();
       team.people = team.people.map((person) => (person.staffGrant?.id === grantId ? { ...person, staffGrant: { ...person.staffGrant, expiresAt, expired: action === "expire" } } : person));
       return { expiresAt };

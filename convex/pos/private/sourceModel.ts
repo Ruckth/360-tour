@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { activeOrderFor, insertOrder, linkedOpenOrder, openOrderCharging, type OrderSource } from '../../lib/orderLinks';
-import { type StaffActor } from '../../lib/staffAccess';
+import { type StaffActor } from '../../auth/model';
 import { ATTACH_SCAN, PAYABLE_LOOKUP_SCAN, ReadCtx, appointmentAttachable, attachTo, bookingClosedReason, bookingPayable, editableOrder, lastPaidOrder } from './orderModel';
 
 /** Contacts searched by both the results and their completeness indicator. */

@@ -9,7 +9,7 @@ import { STALE_BOOKING, bookingRevision, cleanReason } from '../../lib/bookingMo
 import { activeLineLink } from '../../lib/lineLinks';
 import { formatReceiptNumber, orderTitle } from '../../lib/orderMath';
 import { assertLineHasNoPosRefunds } from '../../lib/orderRefunds';
-import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../lib/staffAccess';
+import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { assertCorrectionRevision, correctionReplay, linkPaidLineArgs, oneSource, unlinkPaidLineArgs } from './orderModel';
 import { appointmentLinkProblem, bookingLinkProblem, linkReversal, linkableRow } from './paidLinkModel';
 

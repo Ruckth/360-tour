@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { type QueryCtx, staffQuery } from '../auth/model';
 import { orderRefundView } from '../lib/orderRefunds';
-import { canReadCheckoutOrder, requireStaff } from '../lib/staffAccess';
+import { canReadCheckoutOrder, requireStaff } from '../auth/model';
 
 const args = { orderId: v.id('orders'), paginationOpts: paginationOptsValidator };
 

@@ -6,7 +6,7 @@ import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { APPROVAL_TTL_MS, DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS, type ApprovalPayload, type CashierRules } from './lib/staffTypes';
 import schema from './schema';
-import { requireAdmin } from './lib/adminAuth';
+import { requireAdmin } from './auth/private/adminAuth';
 
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-12T03:00:00Z');
@@ -24,8 +24,8 @@ async function setup() {
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {
-    await owner.mutation(api.staffAccess.setGrant, { email, role });
-    await client.mutation(api.staffAccess.claimInvite, {});
+    await owner.mutation(api.auth.staffAccess.setGrant, { email, role });
+    await client.mutation(api.auth.staffAccess.claimInvite, {});
   }
   const serviceId = await t.run(ctx => ctx.db.insert('services', {
     slug: 'staff-test', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
@@ -76,24 +76,24 @@ describe('staff permissions and invitations', () => {
   it('keeps allowlisted owners unchanged without grants, even with a corrupt cashier grant', async () => {
     const t = convexTest(schema, modules);
     const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
-    expect(await owner.query(api.staffAccess.myAccess, {})).toMatchObject({ role: 'owner', cashierRules: DEFAULT_CASHIER_RULES,
+    expect(await owner.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'owner', cashierRules: DEFAULT_CASHIER_RULES,
       capabilities: { checkout: true, approve: true, settings: true, manageTeam: true, bookings: true, marketing: true } });
     await owner.mutation(api.settings.settings.update, { business: { businessName: 'Still owner' } });
     await t.run(ctx => ctx.db.insert('staffGrants', { email: 'owner@example.com', tokenIdentifier: 'owner', role: 'cashier', createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
-    expect((await owner.query(api.staffAccess.myAccess, {})).role).toBe('owner');
-    await expect(owner.mutation(api.staffAccess.setGrant, { email: 'OWNER@example.com', role: 'cashier' })).rejects.toThrow('cannot be downgraded');
+    expect((await owner.query(api.auth.staffAccess.myAccess, {})).role).toBe('owner');
+    await expect(owner.mutation(api.auth.staffAccess.setGrant, { email: 'OWNER@example.com', role: 'cashier' })).rejects.toThrow('cannot be downgraded');
     await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Owner charge', price: 100000 } });
   });
 
   it('gives managers operations, but no settings writes, Team or implicit marketing access', async () => {
     const s = await setup();
-    expect(await s.manager.query(api.staffAccess.myAccess, {})).toMatchObject({ role: 'manager', capabilities: { checkout: true, approve: true, manageTeam: false, settings: false, bookings: true, marketing: false } });
+    expect(await s.manager.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'manager', capabilities: { checkout: true, approve: true, manageTeam: false, settings: false, bookings: true, marketing: false } });
     await expect(s.manager.query(api.settings.settings.get, {})).resolves.toBeTruthy();
     await expect(s.manager.query(api.services.admin.listServices, {})).resolves.toHaveLength(1);
     await expect(s.manager.mutation(api.settings.settings.update, { business: { businessName: 'Denied' } })).rejects.toThrow('Not authorized');
     await expect(s.manager.mutation(api.settings.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
-    await expect(s.manager.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
-    await expect(s.manager.mutation(api.staffAccess.setGrant, { email: 'next@example.com', role: 'manager' })).rejects.toThrow('Not authorized');
+    await expect(s.manager.query(api.auth.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
+    await expect(s.manager.mutation(api.auth.staffAccess.setGrant, { email: 'next@example.com', role: 'manager' })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.marketing.access.listGrants, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.settings.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     expect(await s.manager.action(ctx => requireAdmin(ctx))).toEqual({ email: 'manager@example.com' });
@@ -105,7 +105,7 @@ describe('staff permissions and invitations', () => {
     const customerId = await s.owner.mutation(api.pos.customers.createCustomer, { name: 'Alice', notes: 'Private guest details', email: 'alice@example.com' });
     await expect(s.cashier.query(api.settings.settings.get, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.services.admin.listServices, {})).rejects.toThrow('Not authorized');
-    await expect(s.cashier.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
+    await expect(s.cashier.query(api.auth.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.pos.customers.getCustomer, { customerId })).rejects.toThrow('Not authorized');
     await expect(s.cashier.mutation(api.pos.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Changed' })).rejects.toThrow('Not authorized');
@@ -122,36 +122,36 @@ describe('staff permissions and invitations', () => {
     const s = await setup();
     const client = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'issuer|invite' });
     const impostor = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'different-issuer|invite' });
-    const grantId = await s.owner.mutation(api.staffAccess.setGrant, { email: ' INVITE@example.com ', role: 'cashier' });
-    expect((await client.query(api.staffAccess.myAccess, {})).pendingInvitation).toMatchObject({ role: 'cashier', expiresAt: now + STAFF_INVITATION_TTL_MS });
-    expect((await client.query(api.staffAccess.myAccess, {})).role).toBeNull();
+    const grantId = await s.owner.mutation(api.auth.staffAccess.setGrant, { email: ' INVITE@example.com ', role: 'cashier' });
+    expect((await client.query(api.auth.staffAccess.myAccess, {})).pendingInvitation).toMatchObject({ role: 'cashier', expiresAt: now + STAFF_INVITATION_TTL_MS });
+    expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();
     vi.mocked(Date.now).mockReturnValue(now + STAFF_INVITATION_TTL_MS);
-    await expect(client.mutation(api.staffAccess.claimInvite, {})).rejects.toThrow('Invitation expired');
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'invite@example.com', role: 'manager' });
-    await expect(client.mutation(api.staffAccess.claimInvite, {})).rejects.toThrow('Invitation expired');
-    await s.owner.mutation(api.staffAccess.updateInvitation, { grantId: grantId!, action: 'resend' });
-    await client.mutation(api.staffAccess.claimInvite, {});
-    await client.mutation(api.staffAccess.claimInvite, {});
-    expect((await client.query(api.staffAccess.myAccess, {})).role).toBe('manager');
-    expect((await impostor.query(api.staffAccess.myAccess, {})).role).toBeNull();
-    await expect(impostor.mutation(api.staffAccess.claimInvite, {})).rejects.toThrow('No unclaimed');
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'invite@example.com', role: 'cashier' });
-    expect((await client.query(api.staffAccess.myAccess, {})).role).toBe('cashier');
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'invite@example.com', role: null });
-    expect((await client.query(api.staffAccess.myAccess, {})).role).toBeNull();
+    await expect(client.mutation(api.auth.staffAccess.claimInvite, {})).rejects.toThrow('Invitation expired');
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'invite@example.com', role: 'manager' });
+    await expect(client.mutation(api.auth.staffAccess.claimInvite, {})).rejects.toThrow('Invitation expired');
+    await s.owner.mutation(api.auth.staffAccess.updateInvitation, { grantId: grantId!, action: 'resend' });
+    await client.mutation(api.auth.staffAccess.claimInvite, {});
+    await client.mutation(api.auth.staffAccess.claimInvite, {});
+    expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBe('manager');
+    expect((await impostor.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();
+    await expect(impostor.mutation(api.auth.staffAccess.claimInvite, {})).rejects.toThrow('No unclaimed');
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'invite@example.com', role: 'cashier' });
+    expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBe('cashier');
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'invite@example.com', role: null });
+    expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();
   });
 
   it('expires invites and combines independent staff/marketing grants without granting marketing by role', async () => {
     const s = await setup();
-    const id = await s.owner.mutation(api.staffAccess.setGrant, { email: 'invite@example.com', role: 'cashier' });
-    await s.owner.mutation(api.staffAccess.updateInvitation, { grantId: id!, action: 'expire' });
+    const id = await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'invite@example.com', role: 'cashier' });
+    await s.owner.mutation(api.auth.staffAccess.updateInvitation, { grantId: id!, action: 'expire' });
     await s.owner.mutation(api.marketing.access.setGrant, { email: 'cashier@example.com', role: 'viewer' });
     await s.cashier.mutation(api.marketing.access.claimInvite, {});
-    const people = await s.owner.query(api.staffAccess.listPeople, {});
+    const people = await s.owner.query(api.auth.staffAccess.listPeople, {});
     expect(people.find(p => p.email === 'owner@example.com')).toMatchObject({ role: 'owner' });
     expect(people.find(p => p.email === 'cashier@example.com')).toMatchObject({ role: 'cashier', staffGrant: { role: 'cashier', claimed: true }, marketingGrant: { role: 'viewer', claimed: true } });
     expect(people.find(p => p.email === 'invite@example.com')).toMatchObject({ staffGrant: { expired: true } });
-    expect((await s.cashier.query(api.staffAccess.myAccess, {})).capabilities.marketing).toBe(true);
+    expect((await s.cashier.query(api.auth.staffAccess.myAccess, {})).capabilities.marketing).toBe(true);
   });
 
   it('validates rule limits and optimistic revisions', async () => {
@@ -290,12 +290,12 @@ describe('atomic manager approvals', () => {
     if (change === 'couponCatalog' || change === 'couponRestored') await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'paused' });
     if (change === 'couponRestored') await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     if (change === 'rules') await s.rules({ discountLimitPercent: 2000 });
-    if (change === 'role' || change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
-    if (change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
-    if (change === 'revoke' || change === 'regrant') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
+    if (change === 'role' || change === 'roleRestored') await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
+    if (change === 'roleRestored') await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
+    if (change === 'revoke' || change === 'regrant') await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: null });
     if (change === 'regrant') {
-      await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
-      await s.cashier.mutation(api.staffAccess.claimInvite, {});
+      await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
+      await s.cashier.mutation(api.auth.staffAccess.claimInvite, {});
     }
     expect(await s.manager.query(api.pos.staffApprovals.pending, {})).toEqual({ count: 0, list: [] });
     const before = (await s.owner.query(api.pos.orders.getOrder, { orderId }))!.totals.total;
@@ -350,9 +350,9 @@ describe('atomic manager approvals', () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
     const { requestId } = await s.discountRequest(orderId, lineId);
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
     await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId })).rejects.toThrow('own request');
-    await s.owner.mutation(api.staffAccess.setGrant, { email: 'manager@example.com', role: null });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: null });
     await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).rejects.toThrow('Not authorized');
     expect((await s.view(orderId)).totals.total).toBe(100000);
   });
@@ -590,7 +590,7 @@ describe('staff-role audit regressions', () => {
     const s = await setup();
     expect(DEFAULT_CASHIER_RULES.refund).toBe('manager');
     const updated = await s.rules({ refund: 'cashier' });
-    for (const client of [s.owner, s.manager, s.cashier]) expect((await client.query(api.staffAccess.myAccess, {})).cashierRules).toEqual(updated);
+    for (const client of [s.owner, s.manager, s.cashier]) expect((await client.query(api.auth.staffAccess.myAccess, {})).cashierRules).toEqual(updated);
     const { revision, refund, ...rules } = updated;
     expect(refund).toBe('cashier');
     expect((await s.owner.mutation(api.settings.cashierRules.updateCashierRules, { ...rules, expectedRevision: revision })).refund).toBe('cashier');

@@ -9,7 +9,7 @@ import { orderLines } from '../../lib/orderLines';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../lib/orderMath';
 import { assertNoPosRefunds } from '../../lib/orderRefunds';
 import { changeSchedule } from '../../lib/serviceSchedule';
-import { assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../lib/staffAccess';
+import { assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { ATTACHED_PRICE, CURRENCY, FEE_FIXED, Line, LineFields, addItemArgs, appointmentLine, assertBaht, assertRoom, attachArgs, attachTo, bookingLine, cleanText, editableLine, editableOrder, isSourceRow, lineSnapshot, logOrder, oneSource, overrideLinePriceArgs, refreshOrder, sourceIssue, sourceRows, updateLineArgs, updateSourceLineArgs, voidOrderArgs } from './orderModel';
 
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */

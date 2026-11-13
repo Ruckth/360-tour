@@ -1,16 +1,15 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { demoCode } from './codes';
-import { RESORT_OFFSET_MS } from './dates';
-import { ensureLinkedOrder } from './orderLinks';
-import { assertValidIsoDate, assertValidEmail } from './validation';
-import { requireAdmin } from './adminAuth';
-import { patternForDate, patternsForRange } from './rosterHistory';
+import { requireAdmin } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
+import { RESORT_OFFSET, resortLocalParts } from '../shared/resortLocalParts';
+import { demoCode } from './codes';
+import { ensureLinkedOrder } from './orderLinks';
+import { patternForDate, patternsForRange } from './rosterHistory';
+import { assertValidEmail, assertValidIsoDate } from './validation';
+
 
 const MINUTE = 60_000;
-// Fixed UTC+7 arithmetic; see RESORT_OFFSET_MS.
-const RESORT_OFFSET = RESORT_OFFSET_MS;
 const DAY = 24 * 60 * MINUTE;
 export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
 export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
@@ -40,16 +39,6 @@ export function localDateTimeUtc(date: string, time: string): number {
 	const [year, month, day] = date.split('-').map(Number);
 	const [hour, minute] = time.split(':').map(Number);
 	return Date.UTC(year, month - 1, day, hour, minute) - RESORT_OFFSET;
-}
-
-export function resortLocalParts(instant: number): { date: string; time: string; weekday: number } {
-	const local = new Date(instant + RESORT_OFFSET);
-	const pad = (n: number) => String(n).padStart(2, '0');
-	return {
-		date: local.toISOString().slice(0, 10),
-		time: `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}`,
-		weekday: local.getUTCDay()
-	};
 }
 
 export function nextLocalDate(date: string): string {

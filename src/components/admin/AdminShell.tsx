@@ -111,7 +111,7 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 
 /** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
-  const access = useQuery(api.staffAccess.myAccess, {});
+  const access = useQuery(api.auth.staffAccess.myAccess, {});
   const [pendingCount, setPendingCount] = useState(0);
   if (access === undefined) {
     return (
@@ -149,7 +149,7 @@ class QuietBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 /** As Marketing invitations: the invited account activates its own access, explicitly. */
 function ClaimInvitation({ access }: { access: StaffAccessView }) {
-  const claim = useMutation(api.staffAccess.claimInvite);
+  const claim = useMutation(api.auth.staffAccess.claimInvite);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState("");
   const role = access.pendingInvitation ? ROLE_LABELS[access.pendingInvitation.role] : "";

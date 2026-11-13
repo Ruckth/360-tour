@@ -5,7 +5,8 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminMutation, adminQuery, internalMutation } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
 import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from '../lib/rosterHistory';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, resortLocalParts, weekdayOf, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, weekdayOf, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
+import { resortLocalParts } from '../shared/resortLocalParts';
 import { assertValidIsoDate } from '../lib/validation';
 import { RosterConflict, STALE_ROSTER } from './model';
 

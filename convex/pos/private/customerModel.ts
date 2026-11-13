@@ -3,7 +3,7 @@ import { customerPhoneError } from '../../../src/lib/booking/phone';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { type MutationCtx } from '../../auth/model';
-import { requireAdmin } from '../../lib/adminAuth';
+import { requireAdmin } from '../../auth/model';
 import { appendRecordHistory } from '../../settings/model';
 import { assertValidEmail } from '../../lib/validation';
 

@@ -2,8 +2,8 @@ import type { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, adminSettingsTab, type AdminNavItem } from "./admin-routes";
 
-/** staffAccess.myAccess: the signed-in person's role, capabilities and the cashier rules. */
-export type StaffAccessView = FunctionReturnType<typeof api.staffAccess.myAccess>;
+/** auth/staffAccess.myAccess: the signed-in person's role, capabilities and the cashier rules. */
+export type StaffAccessView = FunctionReturnType<typeof api.auth.staffAccess.myAccess>;
 export type StaffCapabilities = StaffAccessView["capabilities"];
 type Access = Pick<StaffAccessView, "role" | "capabilities">;
 

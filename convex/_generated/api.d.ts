@@ -10,7 +10,11 @@
 
 import type * as aiEval from "../aiEval.js";
 import type * as auth_model from "../auth/model.js";
+import type * as auth_private_adminAuth from "../auth/private/adminAuth.js";
+import type * as auth_private_staffAccess from "../auth/private/staffAccess.js";
+import type * as auth_staffAccess from "../auth/staffAccess.js";
 import type * as auth_tables from "../auth/tables.js";
+import type * as auth_users from "../auth/users.js";
 import type * as bookings_admin from "../bookings/admin.js";
 import type * as bookings_bookings from "../bookings/bookings.js";
 import type * as bookings_calendar_addDateBlock from "../bookings/calendar/addDateBlock.js";
@@ -68,7 +72,6 @@ import type * as concierge_turn from "../concierge/turn.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
 import type * as http from "../http.js";
-import type * as lib_adminAuth from "../lib/adminAuth.js";
 import type * as lib_adminEmails from "../lib/adminEmails.js";
 import type * as lib_adminPhotos from "../lib/adminPhotos.js";
 import type * as lib_affiliateTypes from "../lib/affiliateTypes.js";
@@ -117,7 +120,6 @@ import type * as lib_serviceSchedule from "../lib/serviceSchedule.js";
 import type * as lib_serviceSlots from "../lib/serviceSlots.js";
 import type * as lib_siteSettings from "../lib/siteSettings.js";
 import type * as lib_slug from "../lib/slug.js";
-import type * as lib_staffAccess from "../lib/staffAccess.js";
 import type * as lib_staffApprovalState from "../lib/staffApprovalState.js";
 import type * as lib_staffTypes from "../lib/staffTypes.js";
 import type * as lib_stayCorrections from "../lib/stayCorrections.js";
@@ -285,10 +287,9 @@ import type * as shared_marketingAttribution from "../shared/marketingAttributio
 import type * as shared_marketingTypes from "../shared/marketingTypes.js";
 import type * as shared_messagingImages from "../shared/messagingImages.js";
 import type * as shared_money from "../shared/money.js";
+import type * as shared_resortLocalParts from "../shared/resortLocalParts.js";
 import type * as shared_validation from "../shared/validation.js";
-import type * as staffAccess from "../staffAccess.js";
 import type * as testing_harness from "../testing/harness.js";
-import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -299,7 +300,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   aiEval: typeof aiEval;
   "auth/model": typeof auth_model;
+  "auth/private/adminAuth": typeof auth_private_adminAuth;
+  "auth/private/staffAccess": typeof auth_private_staffAccess;
+  "auth/staffAccess": typeof auth_staffAccess;
   "auth/tables": typeof auth_tables;
+  "auth/users": typeof auth_users;
   "bookings/admin": typeof bookings_admin;
   "bookings/bookings": typeof bookings_bookings;
   "bookings/calendar/addDateBlock": typeof bookings_calendar_addDateBlock;
@@ -357,7 +362,6 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   emails: typeof emails;
   http: typeof http;
-  "lib/adminAuth": typeof lib_adminAuth;
   "lib/adminEmails": typeof lib_adminEmails;
   "lib/adminPhotos": typeof lib_adminPhotos;
   "lib/affiliateTypes": typeof lib_affiliateTypes;
@@ -406,7 +410,6 @@ declare const fullApi: ApiFromModules<{
   "lib/serviceSlots": typeof lib_serviceSlots;
   "lib/siteSettings": typeof lib_siteSettings;
   "lib/slug": typeof lib_slug;
-  "lib/staffAccess": typeof lib_staffAccess;
   "lib/staffApprovalState": typeof lib_staffApprovalState;
   "lib/staffTypes": typeof lib_staffTypes;
   "lib/stayCorrections": typeof lib_stayCorrections;
@@ -574,10 +577,9 @@ declare const fullApi: ApiFromModules<{
   "shared/marketingTypes": typeof shared_marketingTypes;
   "shared/messagingImages": typeof shared_messagingImages;
   "shared/money": typeof shared_money;
+  "shared/resortLocalParts": typeof shared_resortLocalParts;
   "shared/validation": typeof shared_validation;
-  staffAccess: typeof staffAccess;
   "testing/harness": typeof testing_harness;
-  users: typeof users;
 }>;
 
 /**

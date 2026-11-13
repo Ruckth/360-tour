@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminQuery, internalMutation, internalQuery, publicMutation, publicQuery } from '../auth/model';
-import { requireAdmin } from '../lib/adminAuth';
+import { requireAdmin } from '../auth/model';
 import { releaseBookingDates } from '../lib/availabilityWrites';
 import { stayMoney } from '../lib/stayMoney';
 import { writeBooking } from '../lib/bookingMoney';
