@@ -17,7 +17,7 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("@/components/admin/BookingSheet", () => ({ BookingSheet: (props: unknown) => { mocked.bookingSheet(props); return null; } }));
 vi.mock("@/components/admin/marketing/dashboard/DashboardView", () => ({
-  DEFAULT_REQUEST: (today: string) => ({ basis: "cohort", range: { preset: "custom", from: today, to: today } }),
+  initialRequest: (today: string) => ({ basis: "cohort", range: { preset: "custom", from: today, to: today } }),
   DashboardView: (props: DashboardViewProps) => { mocked.view = props; return createElement("p", null, "Report"); },
 }));
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
