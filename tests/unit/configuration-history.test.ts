@@ -18,7 +18,9 @@ const state = vi.hoisted(() => ({
   update: vi.fn(),
   restore: vi.fn(),
   pageCalls: vi.fn(),
+  confirm: vi.fn(),
 }));
+vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => state.confirm }));
 vi.mock("convex/react", () => ({
   useQuery: (ref: FunctionReference<"query">) => (getFunctionName(ref) === "settings:get" ? state.settings : undefined),
   useMutation: (ref: FunctionReference<"mutation">) => (getFunctionName(ref) === "settings:restore" ? state.restore : state.update),
@@ -60,6 +62,14 @@ let root: Root;
 const render = (node: ReactNode) => act(async () => root.render(node));
 const button = (text: string) => [...document.querySelectorAll("button")].find((node) => node.textContent?.trim() === text)!;
 const click = (text: string) => act(async () => button(text).click());
+const RESTORE = "Restore settings to before this";
+/** Settings history is one closed section; open it. */
+const openHistory = () =>
+  act(async () => {
+    const details = [...document.querySelectorAll("details")].find((node) => node.querySelector("summary")?.textContent === "Settings history")!;
+    details.open = true;
+    details.dispatchEvent(new Event("toggle"));
+  });
 const input = () => document.querySelector<HTMLInputElement>("#settings-business-businessName")!;
 const change = (value: string) =>
   act(async () => {
@@ -77,6 +87,7 @@ beforeEach(() => {
   state.update.mockReset().mockResolvedValue(null);
   state.restore.mockReset();
   state.pageCalls.mockReset();
+  state.confirm.mockReset().mockResolvedValue(true);
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {
@@ -113,15 +124,18 @@ it("renders deleted time off as readable dates and allows discovering its histor
 it("disables applying history while a draft is dirty and retains that draft after a failed save", async () => {
   state.update.mockRejectedValue(new Error("Settings changed. Review the latest configuration and try again."));
   await render(createElement(AdminSettingsView));
+  expect(button("Save business profile").disabled).toBe(true);
+  await openHistory();
   await change("Unsaved draft");
-  expect(button("Apply before this change").disabled).toBe(true);
+  expect(button("Save business profile").disabled).toBe(false);
+  expect(button(RESTORE).disabled).toBe(true);
   await click("Save business profile");
   expect(state.update).toHaveBeenCalledWith(
     expect.objectContaining({ expectedRevision: 4, business: expect.objectContaining({ businessName: "Unsaved draft" }) }),
   );
   expect(input().value).toBe("Unsaved draft");
   expect(document.body.textContent).toContain("Settings changed");
-  expect(button("Apply before this change").disabled).toBe(true);
+  expect(button(RESTORE).disabled).toBe(true);
 });
 it("applies history with the live revision, prevents duplicate pending writes and reports a rejected restore", async () => {
   let reject!: (error: Error) => void;
@@ -132,9 +146,13 @@ it("applies history with the live revision, prevents duplicate pending writes an
       }),
   );
   await render(createElement(AdminSettingsView));
-  await click("Apply before this change");
+  expect(document.body.textContent).not.toContain(RESTORE);
+  await openHistory();
+  await click(RESTORE);
+  // The confirm says the whole snapshot comes back, not just this tab.
+  expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restore settings to before this change?", description: expect.stringContaining("every settings tab") }));
   expect(state.restore).toHaveBeenCalledWith({ historyId: event._id, expectedRevision: 4, side: "before" });
-  expect(button("Apply before this change").disabled).toBe(true);
+  expect(button(RESTORE).disabled).toBe(true);
   expect(button("Save business profile").disabled).toBe(true);
   expect(input().disabled).toBe(true);
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
@@ -152,10 +170,19 @@ it("refreshes the edited fields from a successful restoration without overwritin
     revision: 5,
   });
   await render(createElement(AdminSettingsView));
-  await click("Apply after this change");
+  await openHistory();
+  await click(RESTORE);
   expect(input().value).toBe("Restored name");
   expect(document.body.textContent).toContain("Saved");
-  expect(button("Apply before this change").disabled).toBe(false);
+  expect(button(RESTORE).disabled).toBe(false);
+  expect(button("Save business profile").disabled).toBe(true);
+});
+it("does not restore when the confirm is cancelled", async () => {
+  state.confirm.mockResolvedValue(false);
+  await render(createElement(AdminSettingsView));
+  await openHistory();
+  await click(RESTORE);
+  expect(state.restore).not.toHaveBeenCalled();
 });
 it("discovers a deleted room and only subscribes to its history when the disclosure opens", async () => {
   state.records = [{ _id: "idx", entityType: "room", entityId: "room1", name: "Removed pool", slug: "pool", deleted: true }];
