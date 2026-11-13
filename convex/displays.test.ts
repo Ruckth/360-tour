@@ -5,7 +5,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { PAIRING_TTL_MS } from './pos/model';
+import { PAIRING_TTL_MS } from './pos/private/displayModel';
 import { sha256 } from './lib/displayTokens';
 import schema from './schema';
 

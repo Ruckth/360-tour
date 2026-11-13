@@ -11,7 +11,7 @@ import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking
 
 
 
-import { insertOrder } from '../lib/orderLinks';
+import { insertOrder } from '../pos/model';
 import { createGuestToken, hashGuestToken } from '../messaging/model';
 import { DEFAULT_CASHIER_RULES } from '../lib/staffTypes';
 

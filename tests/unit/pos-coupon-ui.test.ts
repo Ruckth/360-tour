@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import type { Id } from "convex/_generated/dataModel";
-import type { DisplayOrderState } from "convex/lib/displayView";
+import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { NextIntlClientProvider } from "next-intl";
 import { act, createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";

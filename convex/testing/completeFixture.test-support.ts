@@ -1,7 +1,7 @@
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import type { WithoutSystemFields } from 'convex/server';
-import { nextCounter } from '../lib/orderLinks';
+import { nextCounter } from '../pos/model';
 
 type Tables = 'bookings' | 'appointments' | 'orders' | 'orderLines';
 type Defaults<T extends Tables> = T extends 'bookings' ? 'amountPaid' | 'amountRefunded' | 'guestPhoneDigits'

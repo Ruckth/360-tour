@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { staffMutation } from '../../auth/model';
 import { normalizeCouponCode } from '../../lib/offers';
-import { orderLines } from '../../lib/orderLines';
+import { orderLines } from '../private/orderLines';
 import { editableOrder, logOrder, orderCouponUnavailable, quoteOrderCoupon, refreshOrder, writeCouponShares } from '../private/orderModel';
 
 /**

@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { DisplayDriver } from "convex/pos/model";
+import type { DisplayDriver } from 'convex/shared/displayTypes';
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";

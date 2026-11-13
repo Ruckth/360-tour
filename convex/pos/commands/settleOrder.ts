@@ -5,12 +5,13 @@ import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/m
 import { recordAppointmentChange } from '../../services/model';
 import { effectiveTime } from '../../lib/bookingMoney';
 import { consumeOrderCoupon } from '../../marketing/model';
-import { DISCARDED_ORDER } from '../../lib/orderLifecycle';
-import { orderLines } from '../../lib/orderLines';
-import { RECEIPT_COUNTER, isOpenOrder, nextCounter } from '../../lib/orderLinks';
+import { DISCARDED_ORDER } from '../private/orderLifecycle';
+import { orderLines } from '../private/orderLines';
+import { RECEIPT_COUNTER, nextCounter } from '../private/orderLinks';
+import { isOpenOrder } from '../private/orderLinks';
 import { assertTenders, lineNet, orderTotals, roundMoney } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
-import { assertNoPendingApprovals } from '../../lib/staffApprovalState';
+import { assertNoPendingApprovals } from '../private/staffApprovalState';
 import { CUSTOMER_POS_INTEGRATION_ENABLED, assertCustomerReviewed } from '../private/customerModel';
 import { ATTACHED_PRICE, isSourceRow, orderCouponUnavailable, quoteOrderCoupon, sourceIssue, tenderValidator } from '../private/orderModel';
 

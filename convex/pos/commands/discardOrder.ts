@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../lib/bookingMoney';
-import { orderLines } from '../../lib/orderLines';
+import { orderLines } from '../private/orderLines';
 import { lifecycleArgs, lineSnapshot, logOrder } from '../private/orderModel';
 
 /**

@@ -6,9 +6,10 @@ import { attemptKey } from '../../lib/bookingMoney';
 import { couponVersion } from '../../marketing/model';
 import { resortTodayIso } from '../../lib/dates';
 import { correctedTender } from '../../lib/financeValidators';
-import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from '../../lib/orderLifecycle';
-import { MAX_LINES, orderLines } from '../../lib/orderLines';
-import { insertOrder, isOpenOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from '../../lib/orderLinks';
+import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from './orderLifecycle';
+import { MAX_LINES, orderLines } from './orderLines';
+import { insertOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from './orderLinks';
+import { isOpenOrder } from './orderLinks';
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
@@ -23,8 +24,8 @@ import { lineDiscountValidator } from '../../lib/staffTypes';
  * charged bookings and appointments are written together, or not at all.
  *
  * Orders live in the `orders` table (and their rows in `orderLines`) so ids, payments and audit
- * history from before orders had numbers stay valid. See lib/orderLinks.ts for how orders relate
- * to bookings and appointments, and customers.ts for the optional customer link.
+ * history from before orders had numbers stay valid. See convex/pos/private/orderLinks.ts for how orders relate
+ * to bookings and appointments, and convex/pos/customers.ts for the optional customer link.
  */
 
 export const FREQUENT_SCAN = 300;

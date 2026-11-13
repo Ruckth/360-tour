@@ -4,7 +4,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { nightsBetween, resortTodayIso } from '../../lib/dates';
 import { evaluateOffer, normalizeCouponCode } from '../../lib/offers';
-import { ensureLinkedOrder } from '../../lib/orderLinks';
+import { ensureLinkedOrder } from '../../pos/model';
 import { calculateDirectQuote } from '../../lib/pricing';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../../lib/validation';
 import { captureAffiliateSnapshot, couponUnavailable, couponVersion, holdCouponRedemption, resolveMarketingAttribution, syncAffiliateCredit } from '../../marketing/model';

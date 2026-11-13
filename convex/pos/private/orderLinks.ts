@@ -1,7 +1,8 @@
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { orderTitle } from './orderMath';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { orderTitle } from '../../lib/orderMath';
+
 import { sourceLineLinks } from './lineLinks';
 
 /**
@@ -13,20 +14,12 @@ import { sourceLineLinks } from './lineLinks';
  *   so an order can carry a stay plus its appointments and extras. A source is charged on at
  *   most one open order at a time.
  * - Paid and void orders are history and never change. A paid service or room row can still be
- *   applied to its appointment or stay later through a orderLineLinks row (lib/lineLinks.ts).
+ *   applied to its appointment or stay later through a orderLineLinks row (convex/pos/private/lineLinks.ts).
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 export type OrderSource = { bookingId: Id<'bookings'> } | { appointmentId: Id<'appointments'> };
-
-export const isOpenOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'draft';
-
-/**
- * Paid or void: an order that was settled and is history. Use this, not `!isOpenOrder`, wherever
- * "an order that took money" is meant: a discarded order is neither open nor settled.
- */
-export const isSettledOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'paid' || order.status === 'void';
-
 
 export function orderState(order: Pick<Doc<'orders'>, 'status'>): 'unpaid' | 'paid' | 'void' | 'discarded' {
 	return isOpenOrder(order) ? 'unpaid' : order.status === 'paid' ? 'paid' : order.status === 'discarded' ? 'discarded' : 'void';
@@ -36,6 +29,7 @@ const SOURCE_SCAN = 20;
 
 /** Running numbers in orderCounters: "order" and "receipt". */
 export const ORDER_COUNTER = 'order';
+
 export const RECEIPT_COUNTER = 'receipt';
 
 /** Next number for the key, written in the caller's transaction so two orders can't share one. */
@@ -61,7 +55,6 @@ function linkedWithStatus(ctx: ReadCtx, source: OrderSource, status: Doc<'orders
 
 /** A source charged on more rows than this (paid history included) is refused rather than half-checked. */
 const MAX_SOURCE_LINES = 500;
-
 
 export async function openOrderCharging(ctx: ReadCtx, source: OrderSource, exceptOrderId?: Id<'orders'>) {
 	const seen = new Set<Id<'orders'>>();
@@ -100,7 +93,7 @@ export async function ordersForSource(ctx: ReadCtx, source: OrderSource, limit =
 		const order = await ctx.db.get(line.orderId);
 		if (order) found.set(order._id, order);
 	}
-	// A paid row linked to the source later (lib/lineLinks.ts), including links since undone.
+	// A paid row linked to the source later (convex/pos/private/lineLinks.ts), including links since undone.
 	for (const link of await sourceLineLinks(ctx, source, undefined, SOURCE_SCAN)) {
 		if (found.has(link.orderId)) continue;
 		const order = await ctx.db.get(link.orderId);
@@ -170,3 +163,11 @@ export async function assertNotOnOpenOrder(ctx: ReadCtx, source: OrderSource, wh
 		throw new ConvexError(`${what} is on ${orderTitle(order.orderNumber)}, which is still open. Take the payment on that order, or remove it from the order first.`);
 	}
 }
+
+export const isOpenOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'draft';
+
+/**
+ * Paid or void: an order that was settled and is history. Use this, not `!isOpenOrder`, wherever
+ * "an order that took money" is meant: a discarded order is neither open nor settled.
+ */
+export const isSettledOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'paid' || order.status === 'void';

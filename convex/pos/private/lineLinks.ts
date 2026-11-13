@@ -1,14 +1,15 @@
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
 /**
  * Reads of orderLineLinks: a paid service or room row applied later to the appointment or stay it
- * paid for (pos.linkPaidLine, schema `orderLineLinks`). Every reader that asks "which order took
+ * paid for (convex/pos/commands/linkPaidLine.ts, schema `orderLineLinks`). Every reader that asks "which order took
  * money for this source" (order lists for a booking, refunds by receipt, corrections and voids)
  * includes these links, not only rows that charged the source at checkout.
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 type Source = { bookingId: Id<'bookings'> } | { appointmentId: Id<'appointments'> };
 
 /** At most 100 active links (one per order row), plus a bounded page of undone links. */

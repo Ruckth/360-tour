@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
 import { bookingRevision } from '../lib/bookingMoney';
-import { openOrderCharging, type OrderSource } from '../lib/orderLinks';
+import { openOrderCharging, type OrderSource } from './private/orderLinks';
 import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../lib/orderMath';
 import { resortLocalParts } from '../shared/resortLocalParts';
 import { canReadCheckoutOrder, requireCashierAction } from '../auth/model';

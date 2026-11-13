@@ -499,7 +499,7 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
     const blocking = conflicts.filter(c => c.blocking).length;
     return { discarded: discardedInfo(o)!, revision: o.revision, conflicts, blocking, rowsLeft: lines.length - blocking };
   };
-  /** As convex/lib/orderRefunds.ts: typed refusals in satang. */
+  /** As convex/pos/private/orderRefunds.ts: typed refusals in satang. */
   const refundFail = (code: string, message: string, extra: Record<string, unknown> = {}): never => { throw new ConvexError({ code, message, ...extra }); };
   const posRefundsOf = (orderId: Id<"orders">) => state.posRefunds.filter((r) => r.orderId === orderId);
   const refundedOn = (lineId: Id<"orderLines">) => state.posRefunds.filter((r) => r.lineId === lineId).reduce((n, r) => n + r.amount, 0);

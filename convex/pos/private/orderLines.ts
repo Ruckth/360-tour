@@ -1,7 +1,7 @@
-import type { Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
-/** An order holds at most this many rows (pos.ts refuses more), so one bounded read gets them all. */
+/** An order holds at most this many rows (convex/pos/private/orderModel.ts refuses more), so one bounded read gets them all. */
 export const MAX_LINES = 100;
 
 /** An order's rows, oldest first. */

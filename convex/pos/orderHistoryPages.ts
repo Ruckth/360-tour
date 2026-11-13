@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { type QueryCtx, canReadCheckoutOrder, requireStaff, staffQuery } from '../auth/model';
-import { orderRefundView } from '../lib/orderRefunds';
+import { orderRefundView } from './private/orderRefunds';
 
 const args = { orderId: v.id('orders'), paginationOpts: paginationOptsValidator };
 

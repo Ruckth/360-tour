@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertBookingRevision, attemptKey, cleanReason } from '../../lib/bookingMoney';
 import { manualPaymentMethod } from '../../lib/financeValidators';
-import { assertNotOnOpenOrder } from '../../lib/orderLinks';
+import { assertNotOnOpenOrder } from '../../pos/model';
 import { loadBooking, recordStayPayment } from '../private/stays';
 
 /**
