@@ -1,19 +1,23 @@
 "use client";
 
 import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoreMenu } from "@/components/ui/more-menu";
+import { REASON_CHIPS } from "@/components/ui/reason-chips";
+import { ReasonField } from "@/components/ui/reason-field";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isTimeValue } from "@/lib/dates/values";
 import {
+  errorText,
   formatResortDate,
   formatResortFullDate,
   resortIsoDate,
@@ -23,16 +27,18 @@ import {
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import type { ApprovalPayload } from "convex/lib/staffTypes";
-import { ApprovalRequestForm, OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
-import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
+import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
+import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
+import { discountText, parseDiscount } from "./discount-input";
 import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
+import { DiscardOrderDialog } from "./OrderLifecycle";
 import { PayPanel } from "./PayPanel";
-import { discountOverLimit, formatPercent, needsApproval } from "./staff-approvals";
+import { discountOverLimit, formatPercent, needsApproval, shownRequest } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
 
 /** A request the cashier is about to send: what it is, its exact payload, and a reason to start from. */
@@ -88,7 +94,8 @@ export function OrderPanel({
 }) {
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
-  const [confirmClear, setConfirmClear] = useState(false);
+  const access = useStaffAccess();
+  const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
   const [couponOpen, setCouponOpen] = useState(false);
@@ -104,6 +111,9 @@ export function OrderPanel({
   // settleOrder refuses an order with a request still waiting for a manager, whoever pays.
   const approvals = backend.useOrderApprovals(orderId ?? null);
   const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
+  // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
+  const shown = shownRequest(approvals, now);
+  const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
   const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
   const staffDiscount = round2(totals.discount - totals.coupon);
 
@@ -114,13 +124,13 @@ export function OrderPanel({
   }
 
   async function clear() {
-    setConfirmClear(false);
+    setConfirm(null);
     if (orderId) await run(() => actions.clearOrder({ orderId }));
   }
 
   if (view?.order.state === "discarded") return <div className="grid gap-4 overflow-y-auto p-5">
     <h2 className="font-serif text-2xl">{title} · Discarded</h2>
-    <p className="text-sm">Read only. Restore from Orders → Discarded before editing or payment. Contents, customer, source links and history are kept; bookings are not cancelled.</p>
+    <p className="text-sm">Read only. Restore it from Orders › Discarded to edit or take payment.</p>
     <ul className="grid gap-3">{lines.map(line => <li key={line._id}><p className="font-medium">{line.name} · {formatMoney(line.net)}</p><p className="text-xs text-muted-foreground">{line.detail} · Quantity {line.qty}</p></li>)}</ul>
     <OrderHistory orderId={view.order._id} /><FinancialHistory orderId={view.order._id} view={view} />
     {onClose ? <Button variant="outline" onClick={onClose}>Close order</Button> : null}
@@ -156,24 +166,32 @@ export function OrderPanel({
             <Button variant="outline" className="h-auto min-h-10 max-w-full rounded-xl whitespace-normal" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
               <Save aria-hidden className="size-3.5" /> Save &amp; close
             </Button>
-            {/* A local dialog rather than useConfirm: on phones it nests in the order sheet, which a
-                dialog from outside would dismiss, and it gets the touch sizes. */}
-            <Dialog open={confirmClear} onOpenChange={setConfirmClear}>
-              <DialogTrigger asChild>
-                <Button size="icon" variant="outline" className="size-9 rounded-xl" disabled={!orderId || !itemCount} aria-label="Clear order">
-                  <Trash2 aria-hidden className="size-4" />
-                </Button>
-              </DialogTrigger>
+            <MoreMenu
+              label="More order actions"
+              className="size-9 rounded-xl"
+              disabled={!orderId || !itemCount}
+              items={[
+                { label: "Clear order", onSelect: () => setConfirm("clear") },
+                // Cashiers can't list orders, so they couldn't restore one they discard.
+                { label: "Discard order…", destructive: true, hidden: !access.capabilities.orders, onSelect: () => setConfirm("discard") },
+              ]}
+            />
+            {/* Local dialogs rather than useConfirm: on phones they nest in the order sheet, which a
+                dialog from outside would dismiss, and they get the touch sizes. */}
+            <Dialog open={confirm === "clear"} onOpenChange={(open) => setConfirm(open ? "clear" : null)}>
               <CheckoutDialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Clear this order?</DialogTitle>
                   <DialogDescription>Removes every item. The order keeps its number, customer and booking; price changes stay in the audit log.</DialogDescription>
                 </DialogHeader>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setConfirmClear(false)}>Cancel</Button>
+                  <Button variant="outline" onClick={() => setConfirm(null)}>Cancel</Button>
                   <Button variant="destructive" onClick={clear}>Clear order</Button>
                 </DialogFooter>
               </CheckoutDialogContent>
+            </Dialog>
+            <Dialog open={confirm === "discard"} onOpenChange={(open) => { if (!open) setConfirm(null); }}>
+              {confirm === "discard" && view ? <DiscardOrderDialog view={view} onClose={() => setConfirm(null)} /> : null}
             </Dialog>
           </>
         )}
@@ -207,6 +225,8 @@ export function OrderPanel({
                     run={run}
                     now={now}
                     waiting={waiting}
+                    request={shownLine === line._id ? shown : null}
+                    onSent={() => setExpanded(null)}
                   />
                 ))}
               </ul>
@@ -244,11 +264,11 @@ export function OrderPanel({
             {couponBlocked ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
-            <OrderApprovalStatus requests={approvals} className="mb-2" />
+            {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} decide={false} className="mb-2" /> : null}
             {waiting ? (
               <Button className="h-12 w-full rounded-xl" disabled data-testid="waiting-for-approval">Waiting for approval</Button>
             ) : lines.length && totals.due === 0 ? (
-              <Button className="h-12 w-full rounded-xl" disabled={cannotPay} onClick={() => setPaying("none")}>Close order (nothing due)</Button>
+              <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
             ) : (
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
               <>
@@ -284,6 +304,51 @@ export function OrderPanel({
   );
 }
 
+/**
+ * Closes an order with nothing left to pay (a deposit or coupon covers it) in one tap: settles it
+ * with no tenders, one attempt key per try, so a retry after a lost answer closes it once. An order
+ * with a stay keeps the payment step, which offers the guest's booking confirmation email.
+ */
+function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView; disabled: boolean; onPaid: (orderId: OrderId) => void; onReview: () => void }) {
+  const actions = useCheckoutBackend().useActions();
+  const attempt = useRef<Parameters<CheckoutActions["settleOrder"]>[0] | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const withStay = view.sources.some((source) => source.kind === "booking");
+  async function close() {
+    if (pending) return;
+    if (withStay) return onReview();
+    // The order changed since the last try: a new close is a new attempt.
+    if (attempt.current && attempt.current.expectedRevision !== view.order.revision) attempt.current = null;
+    attempt.current ??= {
+      orderId: view.order._id,
+      idempotencyKey: newAttemptKey(),
+      expectedDue: view.totals.due,
+      expectedRevision: view.order.revision,
+      expectedCustomerRevision: view.customer && "revision" in view.customer ? view.customer.revision : undefined,
+      tenders: [],
+    };
+    setPending(true);
+    setError("");
+    try {
+      await actions.settleOrder(attempt.current);
+      onPaid(attempt.current.orderId);
+    } catch (err) {
+      setError(errorText(err, "The order didn't close. Try again."));
+      setPending(false);
+    }
+  }
+  return (
+    <>
+      {error ? <p role="alert" className="mb-2 text-sm text-destructive">{error}</p> : null}
+      <Button className="h-12 w-full rounded-xl" disabled={disabled || pending} onClick={() => void close()}>
+        {pending ? <Spinner label="Closing order" className="text-current" /> : null}
+        {error ? "Retry close" : "Close order · nothing due"}
+      </Button>
+    </>
+  );
+}
+
 /** A typed amount that is a number: "" and a lone "." are not. */
 const isAmount = (text: string) => text !== "" && Number.isFinite(Number(text));
 
@@ -307,7 +372,13 @@ function lineSubtitle(line: OrderLine, now: number) {
   return parts.filter(Boolean).join(" · ");
 }
 
-function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number; waiting: boolean }) {
+function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, request, onSent }: {
+  line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number; waiting: boolean;
+  /** This line's request: waiting for a manager, or its recent outcome. */
+  request: ApprovalRequest | null;
+  /** A discount request was sent from the editor; it closes, and the request shows in its place. */
+  onSent: () => void;
+}) {
   const actions = useCheckoutBackend().useActions();
   const send = useSendApproval();
   const cashier = useStaffAccess().role === "cashier";
@@ -378,7 +449,8 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { li
           }}
         />
       ) : null}
-      {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} waiting={waiting} /> : null}
+      {request ? <ApprovalInline key={request._id} request={request} lineName={line.name} decide={false} className="mx-3 mb-3" /> : null}
+      {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} waiting={waiting} onSent={onSent} /> : null}
     </li>
   );
 }
@@ -474,14 +546,27 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog: Catalog | undefined; run: Run; waiting: boolean }) {
+/**
+ * The nearest scrolling box around `el`, scrolled so `el` shows: whole if it fits, else its top
+ * (or its bottom, where the action is) at the box's edge.
+ */
+function reveal(el: HTMLElement, oversized: "top" | "bottom" = "top") {
+  let box = el.parentElement;
+  while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  if (r.height > b.height) box.scrollTop += oversized === "top" ? r.top - b.top : r.bottom - b.bottom;
+  else if (r.top < b.top) box.scrollTop += r.top - b.top;
+  else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+}
+
+function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; catalog: Catalog | undefined; run: Run; waiting: boolean; onSent: () => void }) {
   const actions = useCheckoutBackend().useActions();
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
   const send = useSendApproval();
   const [ask, setAsk] = useState<Ask | null>(null);
-  const [discountType, setDiscountType] = useState<"amount" | "percent">(line.discount?.type ?? "amount");
-  const [discountValue, setDiscountValue] = useState(line.discount ? String(line.discount.value) : "");
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
@@ -490,11 +575,6 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
 
   const when = serviceScheduleValue(line);
-  // A cashier's limit, worked out as the server will (owners and managers have none).
-  const typed = isAmount(discountValue) ? { type: discountType, value: Number(discountValue) } : null;
-  // The discount already on the line (e.g. a manager approved it) is not a new request.
-  const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
-  const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
   const priceNeedsManager = cashier && access.cashierRules.customPrice === "manager";
 
   /** Runs a write; a cashier refused with NEEDS_APPROVAL gets the request form instead of an error. */
@@ -503,18 +583,10 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
       return await write();
     } catch (err) {
       if (!cashier || !needsApproval(err)) throw err;
-      const amount = needsApproval(err)?.amount;
-      setAsk(request.payload.kind === "discount" && amount !== undefined ? { ...request, what: `${formatMoney(amount)} discount` } : request);
+      setAsk(request);
       return null;
     }
   });
-
-  async function applyDiscount() {
-    if (!typed) return;
-    const request: Ask = { what: over ? `${formatMoney(over.amount)} discount` : "discount", payload: { kind: "discount", lineId, discount: typed } };
-    if (over) setAsk(request);
-    else await orAsk(() => actions.updateLine({ lineId, discount: typed }), request);
-  }
 
   async function applyPrice() {
     const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: Number(price), note: note.trim() }, reason: note.trim() };
@@ -535,10 +607,18 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
     setNote(line.priceOverride?.note ?? "");
     setPriceOpen(true);
   }
+  // Opening a row brings its editor into the rows' view, so the discount is on screen.
+  const editor = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const row = editor.current?.closest("li");
+    if (row) reveal(row);
+  }, []);
   const unchangedPrice = line.priceOverride !== undefined && Number(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
 
   return (
-    <div className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
+    <div ref={editor} className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
+      {/* The discount first: it is what a cashier opens a row for most often. */}
+      {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={onSent} />}
       {line.kind === "service" ? (
         <>
           <Field label="Therapist">
@@ -577,38 +657,6 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
         <p className="text-xs text-muted-foreground">A stay is charged at its booked price. To change it, edit the booking, then update the row here.</p>
       ) : (
         <>
-          <Field
-            label={
-              <>
-                Discount
-                {cashier ? (
-                  <InfoTip label="About the discount limit">Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without a manager. Coupons don&apos;t count.</InfoTip>
-                ) : null}
-              </>
-            }
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <ToggleGroup value={discountType} onValueChange={setDiscountType} aria-label="Discount type" className="p-0.5">
-                <ToggleGroupItem value="amount" className="px-2.5 py-1.5">฿</ToggleGroupItem>
-                <ToggleGroupItem value="percent" className="px-2.5 py-1.5">%</ToggleGroupItem>
-              </ToggleGroup>
-              <Input inputMode="decimal" aria-label="Discount" className="h-9 w-24" value={discountValue} onChange={(e) => setDiscountValue(amountInput(e.target.value))} placeholder="0" />
-              <Button size="sm" variant="outline" disabled={!typed || (Boolean(over) && waiting)} onClick={() => void applyDiscount()}>
-                {over ? "Ask manager" : "Apply"}
-              </Button>
-              {line.discount ? (
-                <Button size="sm" variant="ghost" onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) setDiscountValue(""); }}>
-                  Remove
-                </Button>
-              ) : null}
-            </div>
-            {over ? (
-              <p className="text-xs text-amber-800 dark:text-amber-300" data-testid="discount-limit-hint">
-                {formatMoney(over.amount)} is over your {formatPercent(over.limitPercent)}% limit.
-              </p>
-            ) : null}
-          </Field>
-
           <Field label="Price">
             {line.priceOverride && !priceOpen ? (
               <div className="flex items-start justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs dark:bg-amber-400/10">
@@ -665,6 +713,124 @@ function LineEditor({ line, catalog, run, waiting }: { line: OrderLine; catalog:
       <Button size="sm" variant="ghost" className="justify-self-start text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
       </Button>
+    </div>
+  );
+}
+
+/**
+ * One field for a line discount: "15%" or "150", echoed as "15% = ฿180" before anything is sent.
+ * Within the cashier's limit it applies; over it, a reason (quick chips or typed) and "Send 15%
+ * (฿180) to manager" appear right under it, and nothing on the order changes until a manager
+ * approves. The server's NEEDS_APPROVAL opens the same request.
+ */
+function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: Run; waiting: boolean; onSent: () => void }) {
+  const actions = useCheckoutBackend().useActions();
+  const access = useStaffAccess();
+  const cashier = access.role === "cashier";
+  const send = useSendApproval();
+  const id = useId();
+  const [text, setText] = useState(discountText(line.discount));
+  // The server asked for a manager although the limit here allowed it (its rules are newer).
+  const [serverAsk, setServerAsk] = useState(false);
+  const [reason, setReason] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const lineId = line._id;
+
+  const parsed = parseDiscount(text, line);
+  const typed = parsed?.ok ? parsed.discount : null;
+  // The discount already on the line (e.g. a manager approved it) is not a new request.
+  const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
+  // A cashier's limit, worked out as the server will (owners and managers have none).
+  const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
+  const asking = Boolean(parsed?.ok && !applied && (over || serverAsk));
+
+  // The reason and Send appear under the field; keep them (and the field, if it fits) on screen.
+  useEffect(() => {
+    if (asking && root.current) reveal(root.current, "bottom");
+  }, [asking]);
+
+  function change(next: string) {
+    setText(next);
+    setServerAsk(false);
+    setError("");
+  }
+
+  async function apply() {
+    if (!typed || applied || asking) return;
+    await run(async () => {
+      try {
+        return await actions.updateLine({ lineId, discount: typed });
+      } catch (err) {
+        if (!cashier || !needsApproval(err)) throw err;
+        setServerAsk(true);
+        return null;
+      }
+    });
+  }
+
+  async function sendRequest() {
+    if (!typed || !reason.trim() || lock.current) return;
+    lock.current = true;
+    setSending(true);
+    setError("");
+    const failed = await send(line.billId, { kind: "discount", lineId, discount: typed }, reason.trim());
+    lock.current = false;
+    setSending(false);
+    if (failed) setError(failed);
+    else onSent();
+  }
+
+  const status = parsed ? (parsed.ok ? parsed.echo : parsed.error) : "";
+  return (
+    <div ref={root} className="grid gap-1.5">
+      <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <Label htmlFor={`${id}-discount`} className="text-xs font-medium text-muted-foreground">Discount</Label>
+        {cashier ? (
+          <InfoTip label="About the discount limit">Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without a manager. Coupons don&apos;t count.</InfoTip>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          id={`${id}-discount`}
+          aria-label="Discount"
+          className="h-9 w-32"
+          value={text}
+          autoComplete="off"
+          enterKeyHint="done"
+          placeholder="15% or 150"
+          disabled={waiting || sending}
+          onChange={(e) => change(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}
+        />
+        {/* Shown once there is a new discount to apply; over the limit, Send takes its place. */}
+        {parsed?.ok && !applied && !asking ? (
+          <Button size="sm" variant="outline" disabled={waiting} onClick={() => void apply()}>
+            Apply {parsed.what}
+          </Button>
+        ) : null}
+        {line.discount ? (
+          <Button size="sm" variant="ghost" disabled={waiting || sending} onClick={async () => { if (await run(() => actions.updateLine({ lineId, discount: null }))) change(""); }}>
+            Remove
+          </Button>
+        ) : null}
+      </div>
+      <p aria-live="polite" data-testid="discount-echo" className={cn("text-xs tabular-nums", parsed && !parsed.ok ? "text-destructive" : "text-muted-foreground")}>
+        {status}
+        {over ? <span data-testid="discount-limit-hint" className="text-amber-800 dark:text-amber-300"> · Over your {formatPercent(over.limitPercent)}% limit</span> : null}
+      </p>
+      {asking && parsed?.ok ? (
+        <div role="group" aria-label="Ask a manager" className="grid gap-2">
+          <ReasonField compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
+          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+          <Button className="h-auto min-h-10 w-full whitespace-normal" disabled={!reason.trim() || sending} onClick={() => void sendRequest()}>
+            {sending ? <Spinner label="Sending" className="text-current" /> : null}
+            Send {parsed.what} to manager
+          </Button>
+        </div>
+      ) : null}
     </div>
   );
 }

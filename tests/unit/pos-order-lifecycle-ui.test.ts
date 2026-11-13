@@ -6,7 +6,8 @@ import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type Order
 import { createFixtureBackend } from '@/components/checkout/fixture-backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
 import { OrdersBrowser } from '@/components/checkout/OrderStrip';
-import { OrderLifecycle } from '@/components/checkout/OrderLifecycle';
+import { DiscardOrderDialog, OrderLifecycle } from '@/components/checkout/OrderLifecycle';
+import { Dialog } from '@/components/ui/dialog';
 import { AppointmentFeeControls } from '@/components/admin/AppointmentFeeAction';
 import { FinancialHistory } from '@/components/checkout/FinancialHistory';
 import type { Doc, Id } from 'convex/_generated/dataModel';
@@ -19,12 +20,12 @@ const appt = 'fxappt000002' as Id<'serviceAppointments'>;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
 const button = (text: string) => buttons().find(b => b.textContent?.trim() === text)!;
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text).click(); });
-/** Row Discard, then Discard in its confirm. */
-const discardRow = async () => {
-  await click('Discard');
+/** Discard in the open confirm. */
+const confirmDiscard = async () => {
   const confirm = document.querySelector('[role="alertdialog"]')!;
   expect(confirm, 'discard confirm').toBeTruthy();
-  await act(async () => [...confirm.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === 'Discard')!.click());
+  expect(confirm.textContent).toContain('Discard order #1042?');
+  await act(async () => [...confirm.querySelectorAll<HTMLButtonElement>('button')].find(b => /^(Discard|Retry discard)$/.test(b.textContent?.trim() ?? ''))!.click());
 };
 const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 async function run<T>(promise: Promise<T>) { await tick(); return await promise; }
@@ -46,19 +47,17 @@ const expandHistory = async (title: string) => act(async () => {
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.useFakeTimers(); root = createRoot(document.body.appendChild(document.createElement('div'))); });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it('directly discards the selected order, guards pending dismissal, and reopens retained rows read only', async () => {
+it('discards the open order from its ⋯ after a confirm naming it, and reopens retained rows read only', async () => {
   const backend = createFixtureBackend();
   await show(backend, createElement(Harness, { id: saved }));
-  await click('Orders'); await discardRow();
-  const dialog = document.querySelector('[role="dialog"]')!;
-  await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-  expect(document.querySelector('[role="dialog"]')).toBeTruthy();
-  expect(button('Back to orders').disabled).toBe(true);
+  const more = document.querySelector<HTMLButtonElement>('aside [aria-label="More order actions"]')!;
+  await act(async () => { more.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })); more.click(); });
   await tick();
-  expect(document.body.textContent).toContain('bookings are not cancelled');
-  await click('Back to orders'); await click('Discarded');
-  const row = document.querySelector<HTMLButtonElement>('[aria-current="true"]')!;
-  await act(async () => row.click());
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(el => el.textContent === 'Discard order…')!;
+  expect(item, 'Discard order… item').toBeTruthy();
+  await act(async () => item.click());
+  await confirmDiscard(); await tick();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   expect(document.body.textContent).toContain('Read only');
   expect(document.body.textContent).toContain('Foot spa 45'); expect(document.body.textContent).toContain('Coconut water');
   expect(button('Cash')).toBeUndefined(); expect(button('Add booking').disabled).toBe(true);
@@ -67,14 +66,16 @@ it('directly discards the selected order, guards pending dismissal, and reopens 
   await probe(backend); expect(current.order.customerId).toBe('fxcust000002'); expect(current.lines).toHaveLength(2);
   const denied = expect(backend.useActions().addItem({ orderId: saved, item: { kind: 'extra', name: 'Refused', price: 1 } })).rejects.toThrow('discarded'); await tick(); await denied;
 });
-it('retries a lost discard response with the identical key and revision after it leaves Unpaid', async () => {
+it('retries a lost discard response with the identical key and revision', async () => {
   const backend = createFixtureBackend(); const actions = backend.useActions(), original = actions.discardOrder;
   const discard = vi.spyOn(actions, 'discardOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Response lost'); });
-  await show(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }));
-  await discardRow(); await tick();
-  expect(document.body.textContent).toContain('Response lost'); await click('Retry discard'); await tick();
+  await probe(backend); const view = current; const onClose = vi.fn();
+  await show(backend, createElement(Dialog, { open: true }, createElement(DiscardOrderDialog, { view, onClose })));
+  await confirmDiscard(); await tick();
+  expect(document.body.textContent).toContain('Response lost'); expect(onClose).not.toHaveBeenCalled();
+  await confirmDiscard(); await tick();
   expect(discard).toHaveBeenCalledTimes(2); expect(discard.mock.calls[1][0]).toEqual(discard.mock.calls[0][0]);
-  expect(document.body.textContent).toContain('discarded. Contents');
+  expect(onClose).toHaveBeenCalledOnce();
   await probe(backend); expect(current.order.revision).toBe(3);
 });
 it('reviews source conflicts and explicitly restores without competing rows, preserving removal history and links', async () => {
@@ -85,7 +86,7 @@ it('reviews source conflicts and explicitly restores without competing rows, pre
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt })); expect(other.orderId).not.toBe(orderId);
   const onOpen = vi.fn();
-  await show(backend, createElement(OrderLifecycle, { orderId, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen }));
+  await show(backend, createElement(OrderLifecycle, { orderId, onDone: vi.fn(), onPending: vi.fn(), onOpen }));
   expect(document.body.textContent).toContain('is now on Order');
   await click('Restore without 1 conflicting row'); await tick();
   await click('Open restored order'); expect(onOpen).toHaveBeenCalledWith(orderId);
@@ -99,7 +100,7 @@ it('refuses an all-conflict restore and restores a source paid elsewhere as a re
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt })); await probe(backend, orderId);
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-paid-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt }));
-  await show(backend, createElement(OrderLifecycle, { orderId, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
+  await show(backend, createElement(OrderLifecycle, { orderId, onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
   expect(document.body.textContent).toContain('Every row conflicts'); expect(button('Restore without 1 conflicting row').disabled).toBe(true);
   await probe(backend, other.orderId);
   await run(actions.settleOrder({ orderId: other.orderId, expectedRevision: current.order.revision, expectedDue: 1600, idempotencyKey: 'paid-other-source', tenders: [{ method: 'card', amount: 1600 }] }));
@@ -172,7 +173,7 @@ it('retries a lost restore response with the identical revision and explicit row
   await run(actions.discardOrder({ orderId: saved, expectedRevision: 2, idempotencyKey: 'restore-retry-discard' }));
   const original = actions.restoreOrder;
   const restore = vi.spyOn(actions, 'restoreOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Restore response lost'); });
-  await show(backend, createElement(OrderLifecycle, { orderId: saved, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
+  await show(backend, createElement(OrderLifecycle, { orderId: saved, onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
   await click('Restore order'); await tick(); await click('Retry restore'); await tick();
   expect(restore.mock.calls[1][0]).toEqual(restore.mock.calls[0][0]); expect(document.body.textContent).toContain('restored. Review');
   await probe(backend); expect(current.order.revision).toBe(4); expect(current.lines).toHaveLength(2);

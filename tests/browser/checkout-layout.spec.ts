@@ -140,7 +140,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
       const width = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
       expect.soft(width.scroll, "sheet has no horizontal overflow").toBeLessThanOrEqual(width.client + 1);
 
-      for (const label of ["Close order", "Save & close", "Clear order"]) {
+      for (const label of ["Close order", "Save & close", "More order actions"]) {
         await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
       }
 
@@ -407,22 +407,24 @@ test.describe("receipt and orders hierarchy (K1, K8)", () => {
     });
   }
 
-  test("390x844, normal and enlarged text: Discard sits beside its row with a 44px target", async ({ page }) => {
-    await open(page, { width: 390, height: 844 }, "?lines=1");
+  test("390x844, normal and enlarged text: Restore… sits beside its row with a 44px target", async ({ page }) => {
+    await open(page, { width: 390, height: 844 }, "?scenario=source-conflict");
     await page.getByRole("button", { name: "Orders", exact: true }).click();
     const dialog = page.getByRole("dialog");
-    const item = dialog.locator("li").filter({ has: page.locator('[aria-current="true"]') });
-    const discard = item.getByRole("button", { name: /^Discard Order/ });
+    await dialog.getByRole("radio", { name: "Discarded", exact: true }).click();
+    const item = dialog.locator("li").filter({ has: page.getByRole("button", { name: /^Restore Order/ }) }).first();
+    const restore = item.getByRole("button", { name: /^Restore Order/ });
+    const open_ = item.locator("button").first();
     for (const size of ["16px", ENLARGED]) {
       await setRootFont(page, size);
-      const [rowBox, discardBox, dialogBox] = await boxesOf([item.locator('[aria-current="true"]'), discard, dialog]);
-      expect.soft(discardBox.height, `Discard height at ${size}`).toBeGreaterThanOrEqual(44);
-      expect.soft(discardBox.x, `Discard is beside the row at ${size}`).toBeGreaterThanOrEqual(rowBox.x + rowBox.width - 0.5);
-      expect.soft(discardBox.y + discardBox.height / 2, `Discard centred on its row at ${size}`).toBeGreaterThan(rowBox.y);
-      expect.soft(discardBox.y + discardBox.height / 2).toBeLessThan(rowBox.y + rowBox.height);
-      expect.soft(discardBox.x + discardBox.width, `Discard inside the dialog at ${size}`).toBeLessThanOrEqual(dialogBox.x + dialogBox.width + 0.5);
-      const overflow = await discard.evaluate((el) => el.scrollWidth - el.clientWidth);
-      expect.soft(overflow, `Discard label fits at ${size}`).toBeLessThanOrEqual(1);
+      const [rowBox, restoreBox, dialogBox] = await boxesOf([open_, restore, dialog]);
+      expect.soft(restoreBox.height, `Restore height at ${size}`).toBeGreaterThanOrEqual(44);
+      expect.soft(restoreBox.x, `Restore is beside the row at ${size}`).toBeGreaterThanOrEqual(rowBox.x + rowBox.width - 0.5);
+      expect.soft(restoreBox.y + restoreBox.height / 2, `Restore centred on its row at ${size}`).toBeGreaterThan(rowBox.y);
+      expect.soft(restoreBox.y + restoreBox.height / 2).toBeLessThan(rowBox.y + rowBox.height);
+      expect.soft(restoreBox.x + restoreBox.width, `Restore inside the dialog at ${size}`).toBeLessThanOrEqual(dialogBox.x + dialogBox.width + 0.5);
+      const overflow = await restore.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect.soft(overflow, `Restore label fits at ${size}`).toBeLessThanOrEqual(1);
       await shot(page, `orders-row-actions-${size}`);
     }
   });

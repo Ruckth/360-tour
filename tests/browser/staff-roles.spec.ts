@@ -10,7 +10,7 @@ const orderPanel = (page: Page) => page.getByRole("complementary", { name: "Orde
 test.describe("cashier checkout", () => {
   test.use({ viewport: { width: 1360, height: 950 } });
 
-  test("an over-limit discount becomes Ask manager, then waits and blocks payment", async ({ page }) => {
+  test("an over-limit discount asks a manager in place, then waits and blocks payment", async ({ page }) => {
     await open(page, "?role=cashier&scenario=spa");
     await expect(page.getByTestId("cashier-badge")).toHaveText("Cashier");
     const order = orderPanel(page);
@@ -22,23 +22,32 @@ test.describe("cashier checkout", () => {
     await page.keyboard.press("Escape");
 
     const discount = order.getByRole("textbox", { name: "Discount" });
+    const echo = order.getByTestId("discount-echo");
+    const ask = order.getByRole("group", { name: "Ask a manager" });
     // Exactly 10% of ฿1,200 is allowed; one satang more needs a manager.
     await discount.fill("120");
-    await expect(order.getByRole("button", { name: "Apply", exact: true })).toBeEnabled();
+    await expect(echo).toHaveText("฿120 = 10%");
+    await expect(order.getByRole("button", { name: "Apply ฿120 (10%)" })).toBeEnabled();
     await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
+    await expect(ask).toHaveCount(0);
     await discount.fill("120.01");
-    await expect(order.getByTestId("discount-limit-hint")).toHaveText("฿120.01 is over your 10% limit.");
-    await order.getByRole("radio", { name: "%" }).click();
-    await discount.fill("10");
-    await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
-    await discount.fill("15");
-    await expect(order.getByTestId("discount-limit-hint")).toHaveText("฿180 is over your 10% limit.");
+    await expect(echo).toHaveText("฿120.01 = 10% · Over your 10% limit");
+    await expect(ask.getByRole("button", { name: "Send ฿120.01 (10%) to manager" })).toBeVisible();
+    await discount.fill("10%");
+    await expect(echo).toHaveText("10% = ฿120");
+    await expect(ask).toHaveCount(0);
+    await discount.fill("15%%");
+    await expect(echo).toHaveText("Type 15% or 150");
+    await expect(order.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
+    await discount.fill("15 %");
+    await expect(echo).toHaveText("15% = ฿180 · Over your 10% limit");
 
-    await order.getByRole("button", { name: "Ask manager", exact: true }).click();
-    const form = order.getByRole("group", { name: "Ask a manager · ฿180 discount" });
-    await expect(form.getByRole("button", { name: "Send request" })).toBeDisabled();
-    await form.getByRole("textbox", { name: "Reason" }).fill("Guest waited 40 minutes");
-    await form.getByRole("button", { name: "Send request" }).click();
+    // The reason is required; a chip fills it and stays editable.
+    const send = ask.getByRole("button", { name: "Send 15% (฿180) to manager" });
+    await expect(send).toBeDisabled();
+    await ask.getByRole("button", { name: "Guest complaint" }).click();
+    await ask.getByRole("textbox", { name: "Reason" }).fill("Guest waited 40 minutes");
+    await send.click();
 
     await expect(order.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager · ฿180 discount");
     await expect(order.getByTestId("waiting-for-approval")).toBeDisabled();
@@ -55,23 +64,23 @@ test.describe("cashier checkout", () => {
     await open(page, "?role=cashier&scenario=discounted&serverLimit=100");
     const order = orderPanel(page);
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
-    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveValue("15");
+    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveValue("15%");
     await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
-    await expect(order.getByRole("button", { name: "Ask manager", exact: true })).toHaveCount(0);
+    await expect(order.getByRole("group", { name: "Ask a manager" })).toHaveCount(0);
     // Changing it is a new request again.
-    await order.getByRole("textbox", { name: "Discount" }).fill("16");
-    await expect(order.getByTestId("discount-limit-hint")).toHaveText("฿192 is over your 10% limit.");
+    await order.getByRole("textbox", { name: "Discount" }).fill("16%");
+    await expect(order.getByTestId("discount-echo")).toHaveText("16% = ฿192 · Over your 10% limit");
   });
 
-  test("the server's NEEDS_APPROVAL opens the same request form", async ({ page }) => {
+  test("the server's NEEDS_APPROVAL opens the same request in place", async ({ page }) => {
     // The UI thinks 10%; the server enforces 5%.
     await open(page, "?role=cashier&scenario=spa&serverLimit=5");
     const order = orderPanel(page);
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
     await order.getByRole("textbox", { name: "Discount" }).fill("80");
-    await order.getByRole("button", { name: "Apply", exact: true }).click();
-    const form = order.getByRole("group", { name: "Ask a manager · ฿80 discount" });
-    await expect(form).toBeVisible();
+    await order.getByRole("button", { name: "Apply ฿80 (6.67%)" }).click();
+    const ask = order.getByRole("group", { name: "Ask a manager" });
+    await expect(ask.getByRole("button", { name: "Send ฿80 (6.67%) to manager" })).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 
@@ -143,6 +152,7 @@ test.describe("manager approvals", () => {
     await expect(order.locator('[data-approval-status="applied"]')).toHaveText("Approved by Ploy");
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
     await order.getByRole("textbox", { name: "Discount" }).fill("50");
+    await expect(order.getByRole("button", { name: "Apply ฿50 (4.17%)" })).toBeEnabled();
     await expect(order.getByRole("button", { name: "About the discount limit" })).toHaveCount(0);
     await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
   });

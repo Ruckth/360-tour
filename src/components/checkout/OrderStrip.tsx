@@ -6,7 +6,7 @@ import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type Rea
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -218,7 +218,6 @@ function CustomerPicker({
   const [linking, setLinking] = useState(false);
   const [error, setError] = useState("");
   const [profileId, setProfileId] = useState<CustomerId | null>(null);
-  const [archived, setArchived] = useState(false);
   const deferred = useDeferredValue(query);
   const typed = query.trim();
   const current = view?.customer ?? null;
@@ -250,9 +249,7 @@ function CustomerPicker({
     <>
       <DialogHeader>
         <DialogTitle>Customer</DialogTitle>
-        <DialogDescription>
-          Who pays for this order. Optional, and separate from the booking&apos;s guest. Find a customer by name, phone or email, or add a new one.
-        </DialogDescription>
+        <DialogDescription>Who pays for this order, separate from the booking&apos;s guest.</DialogDescription>
       </DialogHeader>
       {current ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-3">
@@ -276,14 +273,12 @@ function CustomerPicker({
       ) : null}
       <div className="relative">
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search customers" aria-label="Search customers" className="pl-9" autoFocus />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, phone or email" aria-label="Search customers" className="pl-9" autoFocus />
       </div>
-      {cashier ? null : <Button variant="ghost" className="justify-self-start" onClick={() => setArchived(!archived)}>{archived ? "Show active customers" : "Show archived customers"}</Button>}
-      {archived ? <p className="text-sm text-muted-foreground">Archived profiles stay linked to existing orders. Open a profile to restore it.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {/* A failed search stays in this dialog with a retry; the order on screen is untouched. */}
-      <InlineErrorBoundary resetKey={`${deferred.trim()}:${archived}`} message={SEARCH_FAILED}>
-        <CustomerResults query={deferred} archived={archived} currentId={current?._id} disabled={linking} onPick={pick} onOpen={cashier ? undefined : setProfileId} />
+      <InlineErrorBoundary resetKey={deferred.trim()} message={SEARCH_FAILED}>
+        <CustomerResults query={deferred} currentId={current?._id} disabled={linking} onPick={pick} />
       </InlineErrorBoundary>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => setForm(fromQuery())}>
@@ -299,26 +294,26 @@ function CustomerPicker({
   );
 }
 
-function CustomerResults({ query, archived, currentId, disabled, onPick, onOpen }: { query: string; archived: boolean; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpen?: (id: CustomerId) => void }) {
-  const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, archived);
+/** Active customers only; tapping one links them. Archived profiles stay linked to their orders. */
+function CustomerResults({ query, currentId, disabled, onPick }: { query: string; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void }) {
+  const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, false);
   const typed = query.trim();
   return (
     <><ul className="grid max-h-72 gap-1 overflow-y-auto" aria-label="Customers">
       {status === "LoadingFirstPage" ? <li className="px-3 py-2"><Spinner label="Searching" /></li> : null}
       {results.map((customer) => (
-        <li key={customer._id} className="flex items-center gap-2">
+        <li key={customer._id}>
           <button
             type="button"
-            disabled={disabled || archived || Boolean(customer.mergedInto) || customer._id === currentId}
+            disabled={disabled || Boolean(customer.mergedInto) || customer._id === currentId}
             onClick={() => onPick(customer._id)}
             className="w-full rounded-lg px-3 py-2 text-left hover:bg-muted disabled:opacity-60"
           >
             <CustomerLabel customer={customer} />
           </button>
-          {onOpen ? <Button variant="outline" size="sm" disabled={disabled} onClick={() => onOpen(customer._id)} aria-label={`View or edit ${customer.name}`}>Details</Button> : null}
         </li>
       ))}
-      {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : onOpen ? `No ${archived ? "archived" : "active"} customers.` : "Type a name, phone or email."}</li> : null}
+      {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : "Type a name, phone or email."}</li> : null}
     </ul>
     {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}</>
   );
@@ -562,24 +557,24 @@ export function OrderLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) 
 }
 
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
-  { value: "unpaid", label: "Unpaid", empty: "No unpaid orders. Save & close keeps an order here until it is paid." },
+  { value: "unpaid", label: "Unpaid", empty: "No unpaid orders." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
-  { value: "discarded", label: "Discarded", empty: "No discarded orders. Discarding keeps contents and history; bookings are not cancelled." },
+  { value: "discarded", label: "Discarded", empty: "No discarded orders." },
   { value: "void", label: "Voided", empty: "No voided orders." },
 ];
 
 export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onPending?: (pending: boolean) => void }) {
   const [filter, setFilter] = useState<OrderFilter>("unpaid");
-  const [action, setAction] = useState<{ id: OrderId; mode: "discard" | "restore" } | null>(null);
+  const [restoring, setRestoring] = useState<OrderId | null>(null);
   return (
     <div className="grid gap-3">
-      {action ? <InlineErrorBoundary resetKey={action.id} message="Couldn't review this order. Try again."><OrderLifecycle key={`${action.id}:${action.mode}`} orderId={action.id} mode={action.mode} onPending={onPending} onDone={() => setAction(null)} onOpen={onOpen} /></InlineErrorBoundary> : <>
+      {restoring ? <InlineErrorBoundary resetKey={restoring} message="Couldn't review this order. Try again."><OrderLifecycle key={restoring} orderId={restoring} onPending={onPending} onDone={() => setRestoring(null)} onOpen={onOpen} /></InlineErrorBoundary> : <>
       <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
-      {filter === "unpaid" || filter === "discarded" ? <p className="text-xs text-muted-foreground">{filter === "unpaid" ? "Discard keeps the order and its history. Bookings are not cancelled." : "Restore… checks for rows now on another order first."}</p> : null}
+      {filter === "discarded" ? <p className="text-xs text-muted-foreground">Restore… checks for rows now on another order first.</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
-        <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onAction={(id, mode) => setAction({ id, mode })} />
+        <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onRestore={setRestoring} />
       </InlineErrorBoundary>
       </>}
     </div>
@@ -588,21 +583,15 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
 
 const PAGE = 20;
 
-/** "Order #1042" → "Discard order #1042?" */
-export function discardQuestion(title: string) {
-  return `Discard ${title.replace(/^Order\b/, "order")}?`;
-}
-
-function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onAction: (id: OrderId, mode: "discard" | "restore") => void }) {
+function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onRestore: (id: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
-  const [confirming, setConfirming] = useState<{ id: OrderId; title: string } | null>(null);
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
     <div className="grid gap-2">
       <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
-          // Open and Discard/Restore… are sibling buttons on one row, never one inside the other.
+          // Open and Restore… are sibling buttons on one row, never one inside the other. Discard is in the open order's ⋯.
           <li key={row._id} className="flex items-center gap-2">
             <button
               type="button"
@@ -638,34 +627,14 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
             </button>
-            {/* Discard asks first, naming the order; Restore… opens the conflict review. */}
-            {row.state === "unpaid" || row.state === "discarded" ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-auto min-h-11 max-w-28 shrink-0 whitespace-normal"
-                aria-label={`${row.state === "unpaid" ? "Discard" : "Restore"} ${row.title}`}
-                onClick={() => row.state === "unpaid" ? setConfirming({ id: row._id, title: row.title }) : onAction(row._id, "restore")}
-              >
-                {row.state === "unpaid" ? "Discard" : "Restore…"}
+            {row.state === "discarded" ? (
+              <Button variant="outline" size="sm" className="h-auto min-h-11 max-w-28 shrink-0 whitespace-normal" aria-label={`Restore ${row.title}`} onClick={() => onRestore(row._id)}>
+                Restore…
               </Button>
             ) : null}
           </li>
         ))}
       </ul>
-      {/* A local dialog rather than useConfirm: it nests in the Orders dialog, which one from outside would dismiss. */}
-      <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
-        <CheckoutDialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{confirming ? discardQuestion(confirming.title) : ""}</DialogTitle>
-            <DialogDescription>Its contents and history are kept, and you can restore it from Discarded.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)}>Keep</Button>
-            <Button variant="destructive" onClick={() => { if (!confirming) return; const { id } = confirming; setConfirming(null); onAction(id, "discard"); }}>Discard</Button>
-          </DialogFooter>
-        </CheckoutDialogContent>
-      </Dialog>
       {status === "CanLoadMore" || status === "LoadingMore" ? (
         <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE)}>
           {status === "LoadingMore" ? <Spinner label="Loading more orders" className="text-current" /> : null}
