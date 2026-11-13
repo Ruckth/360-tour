@@ -72,8 +72,8 @@ describe("cash wording", () => {
   });
 
   it("says the money on the button", () => {
-    expect(cashConfirmLabel(1200, 1200)).toEqual({ ready: true, text: "Confirm cash ฿1,200 · no change" });
-    expect(cashConfirmLabel(1200, 1500)).toEqual({ ready: true, text: "Confirm cash ฿1,500 · change ฿300" });
+    expect(cashConfirmLabel(1200, 1200)).toEqual({ ready: true, text: "Confirm ฿1,200 cash · no change" });
+    expect(cashConfirmLabel(1200, 1500)).toEqual({ ready: true, text: "Confirm ฿1,500 cash · change ฿300" });
     expect(cashConfirmLabel(1200, 1000)).toEqual({ ready: false, text: "Short ฿200" });
   });
 });
@@ -83,17 +83,17 @@ describe("pay panel", () => {
     const { actions, onPaid } = await openPanel("cash");
     const settle = vi.spyOn(actions, "settleOrder");
     expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("1200");
-    expect(confirmText()).toBe("Confirm cash ฿1,200 · no change");
+    expect(confirmText()).toBe("Confirm ฿1,200 cash · no change");
     await click("฿1,500");
-    expect(confirmText()).toBe("Confirm cash ฿1,500 · change ฿300");
+    expect(confirmText()).toBe("Confirm ฿1,500 cash · change ฿300");
     expect(button("฿1,500")?.getAttribute("aria-pressed")).toBe("true");
     await click("฿2,000");
-    expect(confirmText()).toBe("Confirm cash ฿2,000 · change ฿800");
+    expect(confirmText()).toBe("Confirm ฿2,000 cash · change ฿800");
     await input("#cash-received", "1100");
     expect(confirmText()).toBe("Short ฿100");
     expect(button("Short ฿100")?.disabled).toBe(true);
     await click("฿1,500");
-    await click("Confirm cash ฿1,500 · change ฿300"); await tick();
+    await click("Confirm ฿1,500 cash · change ฿300"); await tick();
     expect(settle).toHaveBeenCalledOnce();
     expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 1200, tenders: [{ method: "cash", amount: 1200, received: 1500 }] });
     expect(onPaid).toHaveBeenCalledOnce();
@@ -102,7 +102,7 @@ describe("pay panel", () => {
   it("retries a cash payment with the same attempt key", async () => {
     const { actions, onPaid } = await openPanel("cash");
     const settle = loseFirstAnswer(actions);
-    await click("Confirm cash ฿1,200 · no change"); await tick();
+    await click("Confirm ฿1,200 cash · no change"); await tick();
     expect(document.body.textContent).toContain("Response lost");
     // The attempt is frozen: no other amount, and switching or retrying can't change it silently.
     expect(document.querySelector<HTMLInputElement>("#cash-received")?.closest("fieldset")?.disabled).toBe(true);
@@ -117,7 +117,7 @@ describe("pay panel", () => {
   it("retries a card payment with the same attempt key", async () => {
     const { actions } = await openPanel("card");
     const settle = loseFirstAnswer(actions);
-    await click("Confirm card ฿1,200"); await tick();
+    await click("Confirm ฿1,200 card"); await tick();
     await click("Retry payment"); await tick();
     expect(settle.mock.calls[1][0]).toEqual(settle.mock.calls[0][0]);
     await expect(settle.mock.results[1].value).resolves.toMatchObject({ replayed: true });
@@ -157,14 +157,14 @@ describe("pay panel", () => {
     await click("Card");
     expect(button("Card")?.getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelector("#cash-received")).toBeNull();
-    await click("Confirm card ฿1,200"); await tick();
+    await click("Confirm ฿1,200 card"); await tick();
     expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "card", amount: 1200 }] });
     expect(onBack).not.toHaveBeenCalled();
   });
 
   it("leaves on the active tender and on Escape from inside the panel", async () => {
     const { onBack } = await openPanel("promptpay");
-    await click("PromptPay QR");
+    await click("PromptPay");
     expect(onBack).toHaveBeenCalledOnce();
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     await act(async () => { document.activeElement!.dispatchEvent(escape); });
@@ -176,7 +176,7 @@ describe("pay panel", () => {
     const { actions, onBack } = await openPanel("cash");
     let release = () => {};
     vi.spyOn(actions, "settleOrder").mockImplementationOnce(() => new Promise((_, reject) => { release = () => reject(new Error("Response lost")); }));
-    await click("Confirm cash ฿1,200 · no change");
+    await click("Confirm ฿1,200 cash · no change");
     expect(button("Card")?.disabled).toBe(true);
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     await act(async () => { document.body.dispatchEvent(escape); });

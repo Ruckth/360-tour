@@ -14,12 +14,12 @@ export type RefundMethod = FunctionArgs<typeof api.pos.refundLine>["method"];
 /** The methods staff pick from, in the till's order. */
 export const REFUND_METHODS: { value: RefundMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
-  { value: "promptpay", label: "PromptPay QR" },
+  { value: "promptpay", label: "PromptPay" },
   { value: "card", label: "Card" },
-  { value: "transfer", label: "Bank transfer" },
+  { value: "transfer", label: "Transfer" },
   { value: "other", label: "Other" },
 ];
-const METHOD_NAMES: Record<RefundMethod, string> = { cash: "Cash", promptpay: "PromptPay QR", card: "Card", transfer: "Bank transfer", stripe: "Stripe", other: "Other", unrecorded: "Not recorded" };
+const METHOD_NAMES: Record<RefundMethod, string> = { cash: "Cash", promptpay: "PromptPay", card: "Card", transfer: "Transfer", stripe: "Stripe", other: "Other", unrecorded: "Not recorded" };
 export const refundMethodName = (method: string) => METHOD_NAMES[method as RefundMethod] ?? method;
 
 /** "฿250", "฿99.50" from satang. */

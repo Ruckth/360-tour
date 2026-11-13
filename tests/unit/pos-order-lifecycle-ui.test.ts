@@ -61,7 +61,7 @@ it('discards the open order from its ⋯ after a confirm naming it, and reopens 
   expect(document.body.textContent).toContain('Read only');
   expect(document.body.textContent).toContain('Foot spa 45'); expect(document.body.textContent).toContain('Coconut water');
   expect(button('Cash')).toBeUndefined(); expect(button('Add booking').disabled).toBe(true);
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain('Order discarded');
   await probe(backend); expect(current.order.customerId).toBe('fxcust000002'); expect(current.lines).toHaveLength(2);
   const denied = expect(backend.useActions().addItem({ orderId: saved, item: { kind: 'extra', name: 'Refused', price: 1 } })).rejects.toThrow('discarded'); await tick(); await denied;

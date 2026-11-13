@@ -114,6 +114,8 @@ describe("a service row's optional date and time at checkout", () => {
     const { backend, actions, updateLine } = recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
     updateLine.mockRejectedValueOnce(new Error("Connection lost"));
     type(timeInput(), "14:30");
     await settle();
@@ -133,6 +135,8 @@ describe("a service row's optional date and time at checkout", () => {
     const { backend, actions, updateLine } = recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
     expect(subtitle("Thai massage 60")).toContain("Not scheduled");
     expect(panel().textContent).toContain("Date (optional)");
     expect(panel().textContent).toContain("Time (optional)");
@@ -168,6 +172,8 @@ describe("a service row's optional date and time at checkout", () => {
     const { backend, actions, updateLine } = recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
     await pickDate("2026-10-27");
     expect(updateLine).toHaveBeenLastCalledWith({ lineId: expect.any(String), serviceDate: "2026-10-27" });
     expect(timeInput().value).toBe("");

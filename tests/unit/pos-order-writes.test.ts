@@ -219,7 +219,7 @@ describe("checkout order screen", () => {
 
     // 12 × 1,200 plus the stay's 26,000 still owed.
     await act(async () => button("Card").click());
-    await act(async () => button("Confirm card ฿40,400").click());
+    await act(async () => button("Confirm ฿40,400 card").click());
     await settle();
 
     // Extras after payment go on the stay's own Order #1041, which shows the stay.
@@ -280,7 +280,7 @@ describe("checkout order screen", () => {
     // Explicitly reviewing the updated order starts a new, valid payment attempt.
     await act(async () => button("Review updated order").click());
     await act(async () => button("Card").click());
-    await act(async () => button(`Confirm card ฿${change === "total" ? "1,050" : "1,000"}`).click());
+    await act(async () => button(`Confirm ฿${change === "total" ? "1,050" : "1,000"} card`).click());
     await settle();
     expect(settleOrder).toHaveBeenCalledOnce();
     expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: change === "total" ? 1050 : 1000, expectedRevision: 2 }));
@@ -312,7 +312,7 @@ describe("checkout order screen", () => {
     expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10000000");
     // No note chip above the till's limit.
     expect(document.querySelector('[aria-label="Notes handed over"]')).toBeNull();
-    expect(button("Confirm cash ฿10,000,000 · no change").disabled).toBe(false);
+    expect(button("Confirm ฿10,000,000 cash · no change").disabled).toBe(false);
   });
 
   it("shows no struck-out list price on an undiscounted row with satang (K6-02)", async () => {

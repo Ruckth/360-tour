@@ -195,9 +195,8 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   );
 }
 
-/** What the link changes and what it leaves alone, before it is confirmed. */
+/** What the link changes, before it is confirmed. (The receipt, its tenders and total never change; no new payment is taken.) */
 function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chosen: LinkCandidate }) {
-  const receipt = formatReceiptNumber(view.order.receiptNumber ?? 0);
   const planned = line.schedule?.date;
   const after = Math.max(chosen.owed - line.net, 0);
   return (
@@ -214,7 +213,6 @@ function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chos
       ) : (
         <p>Stay: owes {formatMoney(chosen.owed)} → {after ? `still owes ${formatMoney(after)}` : "paid"} · adds a checkout payment of {formatMoney(line.net)} from {view.order.title}</p>
       )}
-      <p className="text-muted-foreground">Not changed: receipt {receipt}, its tenders and total. No new payment is taken.</p>
     </div>
   );
 }

@@ -60,7 +60,8 @@ it("pays an unscheduled service, links it from its receipt line to the guest's a
 
   await click("Link appointment");
   // The only appointment that fits opens straight on its review.
-  expect(document.querySelector('[data-testid="link-review"]')?.textContent).toContain("Not changed: receipt R-000142");
+  expect(document.querySelector('[data-testid="link-review"]')?.textContent).toContain("SVC-0002");
+  expect(document.querySelector('[data-testid="link-review"]')?.textContent).not.toContain("Not changed");
   // Back lists every candidate; another guest's other service can't take it.
   await click("Back");
   const candidates = () => [...document.querySelectorAll('[data-testid="link-candidate"]')].map((el) => el.textContent ?? "");

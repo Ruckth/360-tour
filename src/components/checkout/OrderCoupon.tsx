@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type Componen
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -96,11 +97,12 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <CouponChip code={promotion.code} />
           <span className="text-sm font-medium tabular-nums">Saves {formatMoney(promotion.discount)}</span>
+          {/* The terms are there when asked for; the saving is what the till needs. */}
+          {promotion.terms ? <InfoTip label={`Terms of ${promotion.code}`}>{promotion.terms}</InfoTip> : null}
           <Button size="sm" variant="ghost" className="ml-auto h-7 px-2 text-xs" disabled={busy} onClick={remove} aria-label={`Remove coupon ${promotion.code}`}>
             Remove
           </Button>
         </div>
-        {promotion.terms ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{promotion.terms}</p> : null}
       </div>
     );
   }

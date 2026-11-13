@@ -1,13 +1,12 @@
 "use client";
 
-import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
@@ -66,6 +65,23 @@ export function serviceStartLabel(startAt: number, now: number) {
 }
 
 /**
+ * Whether the order can be paid now: it has rows, none whose booking changed, no coupon that stopped
+ * fitting and no request waiting for a manager (settleOrder refuses all of these, whoever pays).
+ */
+export function usePayState(view: OrderView | null | undefined) {
+  const now = useNow();
+  const lines = view?.lines ?? [];
+  // Rows whose booking or appointment changed must be updated (or removed) before payment.
+  const stale = lines.filter((line) => line.sourceIssue).length;
+  // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
+  const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
+  const approvals = useCheckoutBackend().useOrderApprovals(view?.order._id ?? null);
+  const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
+  const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
+  return { now, stale, couponBlocked, approvals, waiting, cannotPay };
+}
+
+/**
  * The order: a compact list of rows with small photos (tap to edit inline; rooms and extras step
  * their quantity in the row), totals with the VAT included, and the tender buttons in the fixed
  * footer. Paying swaps the rows for the payment panel. Used beside the catalog on wide screens
@@ -79,6 +95,7 @@ export function OrderPanel({
   busy = false,
   onPaid,
   onClose,
+  initialPay,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -88,30 +105,25 @@ export function OrderPanel({
   busy?: boolean;
   onPaid: (orderId: OrderId) => void;
   onClose?: () => void;
+  /** Open on this tender's panel instead of the rows (the phone's "Cash ฿X"). */
+  initialPay?: TenderMethod;
 }) {
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
   const access = useStaffAccess();
   const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(null);
   const [couponOpen, setCouponOpen] = useState(false);
-  const now = useNow();
   const lines = view?.lines ?? [];
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
-  // Rows whose booking or appointment changed must be updated (or removed) before payment.
-  const stale = lines.filter((line) => line.sourceIssue).length;
-  // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
-  const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
-  // settleOrder refuses an order with a request still waiting for a manager, whoever pays.
-  const approvals = backend.useOrderApprovals(orderId ?? null);
-  const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
+  const { now, stale, couponBlocked, approvals, waiting, cannotPay } = usePayState(view);
+  // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
+  const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !cannotPay && totals.due > 0 ? initialPay : null));
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
   const shown = shownRequest(approvals, now);
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
-  const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
   const staffDiscount = round2(totals.discount - totals.coupon);
 
   async function clear() {
@@ -138,7 +150,7 @@ export function OrderPanel({
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-base" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? `${formatMoney(totals.due)} due` : title}</h2>
+            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-base" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? `Balance due ${formatMoney(totals.due)}` : title}</h2>
             <p className="truncate text-sm text-muted-foreground">
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
@@ -239,10 +251,10 @@ export function OrderPanel({
               <TotalRow label="VAT 7% included" value={formatMoney(totals.vat)} muted />
               {totals.deposit ? <TotalRow label="Paid in advance" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
-            <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-3 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
-              <span className="font-serif text-2xl font-semibold">Due</span>
-              {/* Never wider than the panel: shrinks with it, and wraps under "Due" if it must. */}
-              <span className="ml-auto min-w-0 text-right font-serif text-[min(2.25rem,13cqi)] leading-none font-semibold lining-nums tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,13cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
+            <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-2 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
+              <span className="font-serif text-[min(1.5rem,6cqi)] font-semibold whitespace-nowrap">Balance due</span>
+              {/* Never wider than the panel: shrinks with it, and wraps under "Balance due" if it must. */}
+              <span className="ml-auto min-w-0 text-right font-serif text-[min(2.25rem,10cqi)] leading-none font-semibold lining-nums tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,10cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
             </div>
             {stale ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
@@ -253,9 +265,8 @@ export function OrderPanel({
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
             {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
-            {waiting ? (
-              <Button className="h-12 w-full rounded-xl" disabled data-testid="waiting-for-approval">Waiting for approval</Button>
-            ) : lines.length && totals.due === 0 ? (
+            {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
+            {lines.length && totals.due === 0 ? (
               <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
             ) : (
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
@@ -360,13 +371,17 @@ function TotalRow({ label, value, muted }: { label: string; value: string; muted
   );
 }
 
+/** A service row's therapist and planned time: "Any therapist · Not scheduled", "Mint · Today, 14:00". */
+function scheduleSummary(line: OrderLine, now: number) {
+  const parts = [line.staffName ?? "Any therapist"];
+  // Legacy rows (no schedule) keep their own meaning: a start, or "Now".
+  if (line.kind === "service") parts.push(scheduleLabel(line.schedule, now) ?? (line.startAt ? serviceStartLabel(line.startAt, now) : "Now"));
+  return parts.join(" · ");
+}
+
 function lineSubtitle(line: OrderLine, now: number) {
   const parts = [line.detail];
-  if (line.kind === "service" || line.kind === "appointment") {
-    parts.push(line.staffName ?? "Any therapist");
-    // Legacy rows (no schedule) keep their own meaning: a start, or "Now".
-    if (line.kind === "service") parts.push(scheduleLabel(line.schedule, now) ?? (line.startAt ? serviceStartLabel(line.startAt, now) : "Now"));
-  }
+  if (line.kind === "service" || line.kind === "appointment") parts.push(scheduleSummary(line, now));
   if (MERGES_QTY[line.kind] && line.qty > 1) parts.push(`${formatMoney(line.priceOverride?.price ?? line.unitPrice)} each`);
   return parts.filter(Boolean).join(" · ");
 }
@@ -560,6 +575,66 @@ function reveal(el: HTMLElement, oversized: "top" | "bottom" = "top") {
   else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
 }
 
+/**
+ * A service row's therapist, date and time, folded into one "Schedule" row that opens on tap: most
+ * sales leave them as they are, so the discount and price stay in view. Each part saves on its own.
+ */
+function ScheduleRow({ line, eligible, catalogLoaded, run }: { line: OrderLine; eligible: Catalog["staff"]; catalogLoaded: boolean; run: Run }) {
+  const actions = useCheckoutBackend().useActions();
+  const now = useNow();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  const lineId = line._id;
+  const when = serviceScheduleValue(line);
+  return (
+    <div className="grid gap-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={`${id}-schedule`}
+        onClick={() => setOpen(!open)}
+        className="-mx-2 flex min-h-10 items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span className="text-xs font-medium text-muted-foreground">Schedule</span>
+        <span className="min-w-0 flex-1 truncate">{scheduleSummary(line, now)}</span>
+        <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-90")} />
+      </button>
+      {open ? (
+        <div id={`${id}-schedule`} className="grid gap-4">
+          <Field label="Therapist">
+            <div className="flex flex-wrap gap-1.5">
+              <Chip on={!line.staffId} onClick={() => run(() => actions.updateLine({ lineId, staffId: null }))}>Any</Chip>
+              {eligible.map((person) => (
+                <Chip key={person._id} on={line.staffId === person._id} onClick={() => run(() => actions.updateLine({ lineId, staffId: person._id }))}>
+                  {person.name}
+                </Chip>
+              ))}
+            </div>
+            {catalogLoaded && !eligible.length ? <p className="text-xs text-muted-foreground">No one is set up for this service yet.</p> : null}
+          </Field>
+          {/* Each part is optional and saved on its own; a blank part stays unset, never "now". */}
+          <div className="flex flex-wrap gap-3">
+            <Field label="Date (optional)">
+              <DatePicker
+                aria-label="Service date"
+                size="sm"
+                className="h-9 w-40 text-sm"
+                placeholder="No date"
+                clearable
+                value={when.date}
+                onValueChange={(date) => { if (date !== when.date) void run(() => actions.updateLine({ lineId, serviceDate: date || null })); }}
+              />
+            </Field>
+            <Field label="Time (optional)">
+              <ServiceTimeInput value={when.time} onCommit={(time) => run(() => actions.updateLine({ lineId, serviceTime: time || null }))} />
+            </Field>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; catalog: Catalog | undefined; run: Run; waiting: boolean; onSent: () => void }) {
   const actions = useCheckoutBackend().useActions();
   const access = useStaffAccess();
@@ -573,7 +648,6 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
 
-  const when = serviceScheduleValue(line);
   const priceNeedsManager = cashier && access.cashierRules.customPrice === "manager";
 
   /** Runs a write; a cashier refused with NEEDS_APPROVAL gets the request form instead of an error. */
@@ -619,36 +693,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
       {/* The discount first: it is what a cashier opens a row for most often. */}
       {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={onSent} />}
       {line.kind === "service" ? (
-        <>
-          <Field label="Therapist">
-            <div className="flex flex-wrap gap-1.5">
-              <Chip on={!line.staffId} onClick={() => run(() => actions.updateLine({ lineId, staffId: null }))}>Any</Chip>
-              {eligible.map((person) => (
-                <Chip key={person._id} on={line.staffId === person._id} onClick={() => run(() => actions.updateLine({ lineId, staffId: person._id }))}>
-                  {person.name}
-                </Chip>
-              ))}
-            </div>
-            {catalog && !eligible.length ? <p className="text-xs text-muted-foreground">No one is set up for this service yet.</p> : null}
-          </Field>
-          {/* Each part is optional and saved on its own; a blank part stays unset, never "now". */}
-          <div className="flex flex-wrap gap-3">
-            <Field label="Date (optional)">
-              <DatePicker
-                aria-label="Service date"
-                size="sm"
-                className="h-9 w-40 text-sm"
-                placeholder="No date"
-                clearable
-                value={when.date}
-                onValueChange={(date) => { if (date !== when.date) void run(() => actions.updateLine({ lineId, serviceDate: date || null })); }}
-              />
-            </Field>
-            <Field label="Time (optional)">
-              <ServiceTimeInput value={when.time} onCommit={(time) => run(() => actions.updateLine({ lineId, serviceTime: time || null }))} />
-            </Field>
-          </div>
-        </>
+        <ScheduleRow line={line} eligible={eligible} catalogLoaded={Boolean(catalog)} run={run} />
       ) : null}
 
       {line.kind === "booking" ? (
@@ -787,8 +832,11 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
     <div ref={root} className="grid gap-1.5">
       <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
         <Label htmlFor={`${id}-discount`} className="text-xs font-medium text-muted-foreground">Discount</Label>
+        {/* A cashier's limit in plain sight, so learning it costs no tap. */}
         {cashier ? (
-          <InfoTip label="About the discount limit">Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without a manager. Coupons don&apos;t count.</InfoTip>
+          <span id={`${id}-limit`} data-testid="discount-limit" className="font-normal">
+            · up to {formatPercent(access.cashierRules.discountLimitPercent)}%<span className="sr-only"> without a manager; coupons don&apos;t count</span>
+          </span>
         ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -800,7 +848,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           autoComplete="off"
           enterKeyHint="done"
           placeholder="15% or 150"
-          aria-describedby={`${id}-echo`}
+          aria-describedby={cashier ? `${id}-limit ${id}-echo` : `${id}-echo`}
           aria-invalid={parsed && !parsed.ok ? true : undefined}
           disabled={sending}
           onChange={(e) => change(e.target.value)}

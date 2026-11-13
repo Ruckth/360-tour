@@ -68,7 +68,11 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       }
       await expect(page.getByRole("button", { name: "Save & close" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Orders", exact: true })).toBeInViewport();
-      await page.getByRole("button", { name: "New order", exact: true }).click();
+      // On a phone, New order sits in the header's ⋯.
+      if (size === "phone") {
+        await page.getByRole("button", { name: "More checkout actions" }).click();
+        await page.getByRole("menuitem", { name: "New order" }).click();
+      } else await page.getByRole("button", { name: "New order", exact: true }).click();
       await expect(orderTitle(page, size)).toHaveText("New order");
       // The order left behind is still open, at the top of Orders.
       await page.getByRole("button", { name: "Orders", exact: true }).click();

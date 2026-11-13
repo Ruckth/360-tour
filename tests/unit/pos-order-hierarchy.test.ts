@@ -45,7 +45,7 @@ async function openMenuItem(label: string) {
   await tick();
   await press([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(el => el.textContent === label));
 }
-const historyDetails = (scope: ParentNode) => [...scope.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent === "Order history");
+const historyDetails = (scope: ParentNode) => [...scope.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent === "History");
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.useFakeTimers();
@@ -84,8 +84,9 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   const massage = read.view!.lines[0];
   const listPrice = massage.unitPrice;
 
-  // Therapist: Any or a named person.
+  // Therapist: Any or a named person, behind the editor's Schedule row.
   await press(row(massage.name)!.querySelector("button"));
+  await press([...row(massage.name)!.querySelectorAll("button")].find(b => b.textContent?.startsWith("Schedule")));
   const chips = () => [...row(massage.name)!.querySelectorAll<HTMLButtonElement>("button[aria-pressed]")];
   const person = chips().find(c => !["Any", "Now"].includes(c.textContent!))!;
   const personName = person.textContent!;

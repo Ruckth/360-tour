@@ -142,7 +142,7 @@ export function HistoryValues({
 
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
-    <HistoryDetails orderId={orderId} title="Order history">
+    <HistoryDetails orderId={orderId} title="History">
       <OrderHistoryList orderId={orderId} />
     </HistoryDetails>
   );

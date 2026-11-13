@@ -38,7 +38,7 @@ test('restore reviews competing sources and removes only explicitly selected con
   const order = page.getByRole('complementary', { name: 'Order', exact: true });
   await expect(order.getByRole('button', { name: /^Retained tea/ })).toBeVisible();
   await expect(order.getByRole('button', { name: /^Thai massage 90/ })).toHaveCount(0);
-  await order.getByText('Order history', { exact: true }).click();
+  await order.getByText('History', { exact: true }).click();
   await expect(order.getByText(/Taken off when restoring/)).toBeVisible();
 });
 test('fee rows state service was not given and cannot change quantity or price', async ({ page }) => {
@@ -69,14 +69,17 @@ test('a service row takes an optional date and time, each cleared on its own, an
   await open(page, '?scenario=unscheduled');
   const order = page.getByRole('complementary', { name: 'Order', exact: true });
   await order.getByRole('button', { name: /^Thai massage 90/ }).click();
+  // Therapist, date and time fold into one Schedule row.
+  await order.getByRole('button', { name: /^Schedule/ }).click();
   await expect(order.getByText('Date (optional)', { exact: true })).toBeVisible();
   await expect(order.getByText('Time (optional)', { exact: true })).toBeVisible();
   await expect(order.getByRole('button', { name: 'Now', exact: true })).toHaveCount(0);
-  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  const schedule = order.getByRole('button', { name: /^Schedule/ });
+  await expect(schedule).toContainText('Any therapist · Not scheduled');
   await order.getByLabel('Service time').fill('15:45');
-  await expect(order.getByText(/15:45 · date not set/)).toBeVisible();
+  await expect(schedule).toContainText('15:45 · date not set');
   await order.getByRole('button', { name: 'Clear service time' }).click();
-  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  await expect(schedule).toContainText('Not scheduled');
   await expect(order.getByLabel('Service time')).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
 });
@@ -90,7 +93,7 @@ test('a paid unscheduled service is linked to its appointment from the receipt, 
   // Link sits on the receipt line; the only matching appointment opens straight on its review.
   await receipt.getByRole('button', { name: 'Link appointment' }).click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByTestId('link-review')).toContainText('No new payment is taken');
+  await expect(dialog.getByTestId('link-review')).toContainText('Appointment: unpaid ฿1,600 → paid ฿1,600 by Order #1043');
   await expect(dialog.getByRole('button', { name: 'Confirm link' })).toBeDisabled();
   await dialog.getByRole('textbox', { name: 'Reason' }).fill('Guest booked the prepaid massage');
   await dialog.getByRole('button', { name: 'Confirm link' }).click();

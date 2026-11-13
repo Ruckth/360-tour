@@ -73,7 +73,8 @@ const useCanShare = () =>
 
 /**
  * Receipt after payment. The toolbar is Print · Share · New sale; the paper width (remembered on
- * this device), Correct payment and Void… sit in ⋯. Refund and Link sit on the receipt lines, and
+ * this device), Correct payment and Void… sit in ⋯, and while one of those is open the toolbar is
+ * just its Close (History steps aside too). Refund and Link sit on the receipt lines, and
  * one closed History holds every ledger. The printed receipt never changes.
  */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
@@ -242,10 +243,15 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="mt-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{notice}</p> : null}
         </div>
         <div ref={toolbarRef} role="toolbar" aria-label="Receipt actions" className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          <Button variant="outline" className="px-3 sm:px-4" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
-          <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
-          <Button variant="outline" className="px-3 sm:px-4" onClick={() => void share()}><Share2 aria-hidden className="size-4" /> Share</Button>
-          <Button className="px-3 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+          {/* While Correct payment or Void… is open, the toolbar is only its Close. */}
+          {shownTask ? null : (
+            <>
+              <Button variant="outline" className="px-3 sm:px-4" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
+              <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
+              <Button variant="outline" className="px-3 sm:px-4" onClick={() => void share()}><Share2 aria-hidden className="size-4" /> Share</Button>
+              <Button className="px-3 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+            </>
+          )}
           {shownTask ? (
             <Button variant="ghost" disabled={taskBusy} onClick={() => closeTask()} aria-label={`Close ${shownTask === "correct" ? "Correct payment" : "Void"}`}>
               <X aria-hidden className="size-4" /> Close
@@ -410,7 +416,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
         <LinkedRefunds view={view} />
         {/* Cashiers work the till: the paged ledgers are for managers and owners. */}
-        {cashier ? null : <ReceiptHistory view={view} />}
+        {/* Out of sight while a task is open, but kept mounted: it reopens as it was, with the task's result. */}
+        {cashier ? null : <ReceiptHistory view={view} className={shownTask ? "hidden" : undefined} />}
       </div>
     </div>
   );

@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "@/lib/booking/phone";
 import { cn } from "@/lib/utils";
@@ -65,6 +67,15 @@ export function OrderStrip({
     setPanel(next);
   };
   const close = () => changePanel(null);
+  // Phones get one header row: the customer, an Orders icon and ⋯ (Add booking, New order).
+  const phone = useIsMobile(640) === true;
+  const strip = useRef<HTMLDivElement>(null);
+  const focusMore = (event: Event) => {
+    const more = strip.current?.querySelector<HTMLElement>(`[aria-label="${MORE_LABEL}"]`);
+    if (!more) return;
+    event.preventDefault();
+    more.focus();
+  };
 
   // Customer writes go through the order's write queue like every other change. The dialog stays
   // open until they succeed, and a failure is shown in the dialog with what was typed kept.
@@ -118,10 +129,10 @@ export function OrderStrip({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3 pb-2 sm:px-6">
-      <div className="min-w-0 max-w-full">
+    <div ref={strip} className={cn("flex items-center px-4 pt-3 pb-2 sm:px-6", phone ? "gap-2" : "flex-wrap gap-x-3 gap-y-2")}>
+      <div className={cn("min-w-0", phone ? "flex-1" : "max-w-full")}>
         {/* Wide screens name the order once, in the order panel beside the catalog (shown from lg). */}
-        <p className="text-sm font-semibold lg:hidden" data-testid="order-title">{title}</p>
+        <p className="truncate text-sm font-semibold lg:hidden" data-testid="order-title">{title}</p>
         <p className="truncate text-xs text-muted-foreground">
           {source ? (
             <>
@@ -137,12 +148,13 @@ export function OrderStrip({
         </p>
       </div>
 
-      {/* Each button is its dialog's trigger, so closing the dialog puts focus back on it. */}
+      {/* Each button is its dialog's trigger, so closing the dialog puts focus back on it. On a
+          phone, Add booking and New order sit in ⋯, and focus goes back to ⋯. */}
       <Dialog open={panel === "customer"} onOpenChange={(open) => { if (!customerPending) changePanel(open ? "customer" : null); }}>
         <DialogTrigger asChild>
-          <Button variant="outline" className="max-w-[60vw]" disabled={order?.state === "discarded"} aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Add customer"}>
+          <Button variant="outline" className={cn(phone ? "max-w-[40vw] shrink-0 px-3" : "max-w-[60vw]")} disabled={order?.state === "discarded"} aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Add customer"}>
             {customer ? <UserRound aria-hidden className="size-4" /> : <UserRoundPlus aria-hidden className="size-4" />}
-            <span className="truncate">{customer ? customer.name : "Add customer"}</span>
+            <span className="truncate">{customer ? customer.name : phone ? "Customer" : "Add customer"}</span>
           </Button>
         </DialogTrigger>
         <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
@@ -151,41 +163,61 @@ export function OrderStrip({
       </Dialog>
 
       <Dialog open={panel === "booking"} onOpenChange={(open) => changePanel(open ? "booking" : null)}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" disabled={order?.state === "discarded"}>
-            <Link2 aria-hidden className="size-4" /> Add booking
-          </Button>
-        </DialogTrigger>
-        <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+        {phone ? null : (
+          <DialogTrigger asChild>
+            <Button variant="ghost" disabled={order?.state === "discarded"}>
+              <Link2 aria-hidden className="size-4" /> Add booking
+            </Button>
+          </DialogTrigger>
+        )}
+        <CheckoutDialogContent onCloseAutoFocus={phone ? focusMore : undefined} className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
           {panel === "booking" ? <AttachList orderId={order?._id ?? null} run={run} onDone={close} /> : null}
         </CheckoutDialogContent>
       </Dialog>
 
-      <div className="ml-auto flex max-w-full flex-wrap justify-end gap-2">
+      <div className={cn("flex justify-end gap-2", phone ? "shrink-0" : "ml-auto max-w-full flex-wrap")}>
         {displayControl}
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
-            <Button variant="ghost">
-              <ListOrdered aria-hidden className="size-4" />
-              <span>Orders</span>
-            </Button>
+            {phone ? (
+              <Button variant="ghost" size="icon" className="size-11" aria-label="Orders">
+                <ListOrdered aria-hidden className="size-5" />
+              </Button>
+            ) : (
+              <Button variant="ghost">
+                <ListOrdered aria-hidden className="size-4" />
+                <span>Orders</span>
+              </Button>
+            )}
           </DialogTrigger>
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>{cashier ? "Unpaid orders, latest first." : "Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device."}</DialogDescription>
+              <DialogDescription>Latest first. A paid order opens its receipt.</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
         </Dialog>
-        <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
-          <Plus aria-hidden className="size-4" />
-          <span>New order</span>
-        </Button>
+        {phone ? (
+          <MoreMenu
+            label={MORE_LABEL}
+            items={[
+              { label: "Add booking", disabled: order?.state === "discarded", onSelect: () => changePanel("booking") },
+              { label: "New order", disabled: !order && !canStartNew, onSelect: () => onOrderChange(null) },
+            ]}
+          />
+        ) : (
+          <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
+            <Plus aria-hidden className="size-4" />
+            <span>New order</span>
+          </Button>
+        )}
       </div>
     </div>
   );
 }
+
+const MORE_LABEL = "More checkout actions";
 
 const EMPTY_FORM: NewCustomer = { name: "", phone: "", email: "" };
 
@@ -590,7 +622,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
-                  <span className="block text-xs text-muted-foreground">Due</span>
+                  <span className="block text-xs text-muted-foreground">Balance due</span>
                   <span className="block text-sm font-semibold tabular-nums">{formatMoney(row.due, row.currency)}</span>
                 </span>
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
@@ -700,7 +732,7 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
-                  <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
+                  <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Balance due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
                   <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>
