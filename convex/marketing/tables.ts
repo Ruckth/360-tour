@@ -121,7 +121,7 @@ export const marketingTables = {
 	}).index('by_link_and_time', ['linkId', 'occurredAt']).index('by_occurredAt', ['occurredAt']),
 
 
-	// Release 3a: one consented browser session (see convex/lib/marketingAttribution.ts). No personal data.
+	// Release 3a: one consented browser session (see convex/shared/marketingAttribution.ts). No personal data.
 	marketingSessions: defineTable({
 		/** Server-minted, kept in the browser only after analytics consent. */
 		visitorKey: v.string(),
@@ -186,7 +186,7 @@ export const marketingTables = {
 		currentVersion: v.number(),
 		used: v.number(),
 		discountGranted: v.number(),
-		// Release 2: slots and discount held by unpaid bookings (see convex/lib/couponRedemptions.ts).
+		// Release 2: slots and discount held by unpaid bookings (see convex/marketing/couponRedemptions.ts).
 		held: v.optional(v.number()),
 		heldDiscount: v.optional(v.number()),
 		createdAt: v.number(),
