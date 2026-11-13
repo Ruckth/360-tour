@@ -52,8 +52,9 @@ Node **22.22.3**, frozen dependencies; disconnected application environment. Val
 | Existing booking UI suite, two workers | **223 passed**, 24 existing opt-in captures skipped; ignored config changes only server cwd/port to **4499** |
 | `E2E_PORT=3095 pnpm test:e2e:smoke` | **13 passed**; separate production build serialized after verify |
 | Source/binding, actual schema exports, real CLI codegen/spec and eight negative CLI calls | Pass, as above |
+| Clean committed implementation `7d7a713` | Both Phase 2 gate spellings **19/19**; historical archive/gate suites **2 files / 23 tests passed** |
 
-Final focused checks include the added eval admission assertion; final `pnpm check` rechecks all types. Validation logs and schema/CLI evidence are ignored under `output/phase3b-maintenance/`. Committed-tree archive/gate results are recorded in the PR handoff.
+Final focused checks include the added eval admission assertion; final `pnpm check` rechecks all types. Validation logs and schema/CLI evidence are ignored under `output/phase3b-maintenance/`. The evidence-only documentation commit is followed by another clean-tree gate check; it changes no validated source.
 
 ## Operator retirement and remaining work
 
