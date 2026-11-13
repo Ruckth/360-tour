@@ -1,6 +1,6 @@
 # Architecture and feature recipe
 
-Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3f-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` remains **2** until all Phase 3 exit work, including live 3f acceptance, is proven.
+Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3f-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` is **3**: domain boundaries, local development and live seeded Preview/auth/rebuild acceptance are proven. Phase 4 contracts and measured hot spots remain.
 
 ## Ownership and useful interfaces
 
@@ -133,8 +133,8 @@ pnpm test:pure               # pure/Node/tooling and pure backend leaves
 pnpm test:dom <file-filter>   # DOM views, same real Convex harness
 pnpm test:convex <filter>     # edge-runtime backend suites
 pnpm verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
-pnpm arch:score --phase 2    # run on a clean committed tree
-pnpm arch:score --phase2     # equivalent spelling, 19 completed-phase checks
+pnpm arch:score --phase 3    # run on a clean committed tree
+pnpm arch:score --phase3     # equivalent spelling, 30 completed-phase checks
 ```
 
 `pnpm verify` runs typechecks, zero-warning lint, unit/backend tests and a production build with real configured app variables. With no configuration it must fail clearly. `pnpm verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `pnpm test:booking-ui` covers component/browser behavior; `pnpm test:e2e` owns a complete local backend/auth/build lifecycle. Never run two Next builds concurrently.

@@ -8,7 +8,7 @@ Describe the user-visible result, owning domain, access policy and any schema/co
 - [ ] `pnpm typecheck`, `pnpm lint` (zero warnings), `pnpm knip`
 - [ ] Meaningful focused tests and full `pnpm test:unit` (or included in integration)
 - [ ] `pnpm verify:integration` with the real isolated backend and dedicated Clerk test tenant
-- [ ] Clean committed tree: `pnpm arch:score --phase 2` and `pnpm arch:score --phase2`
+- [ ] Clean committed tree: `pnpm arch:score --phase $(cat .arch-phase)` (currently Phase 3)
 - [ ] For unchanged-contract refactors: explicit-parent schema equality and registration/HTTP/scheduler comparison
 - [ ] Describe failures, skipped checks, remaining limits and any required root-owned CI/Preview/live acceptance
 
@@ -20,4 +20,4 @@ Describe the user-visible result, owning domain, access policy and any schema/co
 - [ ] Keep authenticated state/traces private; attach only reviewed evidence safe to share
 - [ ] Or explain why no rendered UI changed
 
-See [ARCHITECTURE.md](../ARCHITECTURE.md). Passing a static score does not authorize a deploy, reset or Phase 3 ratchet.
+See [ARCHITECTURE.md](../ARCHITECTURE.md). Record runtime and deployment evidence separately from static gates.

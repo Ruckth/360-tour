@@ -1,6 +1,6 @@
 # Local development and isolated PR Previews
 
-Phase 3f supplies commands; it does not authorize a shared/prod deployment, provider send, preview deletion or environment change. `.arch-phase` stays **2** until root independently accepts all Phase 3 exits. [Implementation evidence](phase3f-implementation.md) records the tested head and limitations.
+Phase 3f local development and live Preview exits are accepted; `.arch-phase` is **3**. Root owns shared/production operations and retention deletion. [Implementation evidence](phase3f-implementation.md) records the tested head and limitations.
 
 ## One persistent local command
 
@@ -103,4 +103,4 @@ pnpm preview:retention --evidence <private-evidence.json> --project-id <id> --te
 
 Supported endpoints and backup recommendation: [list deployments](https://docs.convex.dev/management-api/list-deployments), [delete deployment](https://docs.convex.dev/management-api/delete-deployment). No top-level thread, scheduled task, cloud retention worker, paid upgrade or live cleanup is introduced.
 
-Root review corrections: the real installed CLI is exercised against a loopback-only authorization fixture; signal acceptance now includes SIGHUP. The worker limit explicitly consumes `VITEST_MAX_WORKERS` (default 4); Vitest does not consume that project convention automatically. Test deadlines and assertions are unchanged. Root removed only Preview defaults for AI_API_KEY, RESEND_API_KEY and CONVEX_SERVER_SECRET, checked dev/prod defaults unchanged, and configured the three nonsecret Vercel Preview scope settings while preserving existing deploy keys. Live first-build/auth/rebuild acceptance remains pending.
+Root review corrections: the real installed CLI is exercised against a loopback-only authorization fixture; signal acceptance now includes SIGHUP. The worker limit explicitly consumes `VITEST_MAX_WORKERS` (default 4); Vitest does not consume that project convention automatically. Test deadlines and assertions are unchanged. Root removed only Preview defaults for AI_API_KEY, RESEND_API_KEY and CONVEX_SERVER_SECRET, checked dev/prod defaults unchanged, and configured the three nonsecret Vercel Preview scope settings while preserving existing deploy keys. Live first-build/auth/rebuild acceptance passed; the original Preview owner allowlist was restored and all run-owned test users removed.
