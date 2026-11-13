@@ -10,7 +10,7 @@ import { orderPaymentRecord } from './private/orderLifecycle';
 import { orderLines } from './private/orderLines';
 import { activeOrderFor, orderState, ordersForSource } from './private/orderLinks';
 import { isOpenOrder } from './private/orderLinks';
-import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from '../lib/orderMath';
+import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from '../shared/orderMath';
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from './private/orderRefunds';
 import { type OrderPromotionView } from '../lib/posCoupons';
 import { canReadCheckoutOrder } from '../auth/model';

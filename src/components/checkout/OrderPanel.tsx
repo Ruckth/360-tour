@@ -19,7 +19,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isTimeValue } from "@/lib/dates/values";
 import { useNow } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/lib/orderMath";
+import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/shared/orderMath";
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { ApprovalRequestForm, OrderApprovalStatus, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";

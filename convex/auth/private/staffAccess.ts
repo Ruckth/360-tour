@@ -6,7 +6,7 @@ import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
 import { adminEmails } from '../../lib/adminEmails';
 import { resortTodayIso } from '../../lib/dates';
 import { isOpenOrder, isSettledOrder } from '../../pos/model';
-import { lineCouponBase, roundMoney, type PricedLine } from '../../lib/orderMath';
+import { lineCouponBase, roundMoney, type PricedLine } from '../../shared/orderMath';
 import { STAFF_INVITATION_TTL_MS, type CashierAction } from '../../lib/staffTypes';
 import { cashierRules } from '../../settings/model';
 import { percentageOf, roundRatio } from '../../shared/money';

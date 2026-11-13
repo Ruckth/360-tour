@@ -10,7 +10,7 @@ import { stayMoney } from '../../lib/stayMoney';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { resortTodayIso } from '../../lib/dates';
 import { orderLineLinks } from './lineLinks';
-import { assertTenders, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
+import { assertTenders, lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { assertCustomerCanLink, assertCustomerReviewed } from './customerModel';

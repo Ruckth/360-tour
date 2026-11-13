@@ -3,7 +3,7 @@ import { staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
 import { bookingRevision } from '../lib/bookingMoney';
 import { openOrderCharging, type OrderSource } from './private/orderLinks';
-import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../lib/orderMath';
+import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../shared/orderMath';
 import { resortLocalParts } from '../shared/resortLocalParts';
 import { canReadCheckoutOrder, requireCashierAction } from '../auth/model';
 import { ATTACH_SCAN, LINK_TARGET, appointmentAttachable, bookingCheckoutBlock, bookingClosed, bookingPayable } from './private/orderModel';

@@ -14,7 +14,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "@/lib/booking/phone";
 import { cn } from "@/lib/utils";
-import { formatReceiptNumber } from "convex/lib/orderMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import { useCheckoutBackend, type Attachable, type Customer, type CustomerId, type NewCustomer, type OrderFilter, type OrderId, type OrderView } from "./backend";
 import { orderTime } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";

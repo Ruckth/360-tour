@@ -4,7 +4,7 @@ import type { QueryCtx } from '../_generated/server';
 import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from '../lib/marketingReport';
 import { orderPaymentRecord } from '../pos/model';
 import { isSettledOrder } from '../pos/model';
-import { orderTitle, roundMoney } from '../lib/orderMath';
+import { orderTitle, roundMoney } from '../shared/orderMath';
 import { ReadBudget, ReadBudgetExceeded } from '../lib/readBudget';
 import { resortLocalParts } from '../shared/resortLocalParts';
 import { stayMoney } from '../lib/stayMoney';

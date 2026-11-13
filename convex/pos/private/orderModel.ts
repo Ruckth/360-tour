@@ -10,7 +10,7 @@ import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage
 import { MAX_LINES, orderLines } from './orderLines';
 import { insertOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from './orderLinks';
 import { isOpenOrder } from './orderLinks';
-import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
+import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../shared/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/resortLocalParts';

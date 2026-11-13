@@ -5,7 +5,7 @@ import { adminEmails } from '../lib/adminEmails';
 import { affiliateSnapshot } from '../lib/affiliateTypes';
 import { resortTodayIso } from '../lib/dates';
 import { orderPaymentRecord } from '../pos/model';
-import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../lib/orderMath';
+import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../shared/orderMath';
 import { ATTRIBUTION_WINDOW_MS, MAX_SESSIONS_READ, isVisitorKey, type MarketingCapture } from '../shared/marketingAttribution';
 
 export type AffiliateSnapshot = Infer<typeof affiliateSnapshot>;

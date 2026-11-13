@@ -2,7 +2,7 @@ import type { Id } from '../../_generated/dataModel';
 import { liveFees } from './orderLifecycle';
 import { isOpenOrder } from './orderLinks';
 import { linkedOpenOrder, openOrderCharging, type OrderSource } from './orderLinks';
-import { orderTitle } from '../../lib/orderMath';
+import { orderTitle } from '../../shared/orderMath';
 import { Line, Order, ReadCtx, isSourceRow, sourceIssue } from './orderModel';
 
 /** Who, when and why an order was discarded, as the lists and the order screen show it. */

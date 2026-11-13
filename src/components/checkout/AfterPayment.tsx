@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { formatReceiptNumber } from "convex/lib/orderMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";

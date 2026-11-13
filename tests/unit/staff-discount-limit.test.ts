@@ -1,6 +1,6 @@
 // The cashier's "over your limit" hint must agree with the server's refusal, satang for satang.
 import { describe, expect, it } from "vitest";
-import type { LineDiscount } from "convex/lib/orderMath";
+import type { LineDiscount } from "convex/shared/orderMath";
 import { assertCashierDiscount, type StaffActor } from 'convex/auth/private/staffAccess';
 import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
 import { discountOverLimit } from "@/components/checkout/staff-approvals";

@@ -5,7 +5,7 @@ import { blockBookingDates, releaseBookingDates } from '../private/availabilityW
 import { assertBookingRevision } from '../../lib/bookingMoney';
 import { writeBooking } from '../private/money';
 import { stayMoney } from '../../lib/stayMoney';
-import { roundMoney } from '../../lib/orderMath';
+import { roundMoney } from '../../shared/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { bookingHoldExpiresAt } from '../../lib/siteSettings';
 import { isDocumentedLiveRefund, recordStayPayment } from '../private/stays';

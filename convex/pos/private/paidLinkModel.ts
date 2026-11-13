@@ -7,7 +7,7 @@ import { writeBooking, MAX_STAY_ROWS, stayPaymentReversalPatch } from '../../boo
 import { stayMoney } from '../../lib/stayMoney';
 import { activeSourceLink } from './lineLinks';
 import { openOrderCharging } from './orderLinks';
-import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
+import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
 import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, sourceRows } from './orderModel';
 
 /** The paid row to link, or why it can't be. */

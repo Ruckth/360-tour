@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { resortTodayIso } from '../../lib/dates';
-import { MAX_ORDER_REFUNDS, lineNet } from '../../lib/orderMath';
+import { MAX_ORDER_REFUNDS, lineNet } from '../../shared/orderMath';
 import { readBudget } from '../../lib/readBudget';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { appendRecordHistory } from '../../settings/model';

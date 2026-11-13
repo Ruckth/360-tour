@@ -3,7 +3,7 @@ import { adminMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../lib/bookingMoney';
 import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../private/orderLifecycle';
 import { isOpenOrder } from '../private/orderLinks';
-import { assertPrice } from '../../lib/orderMath';
+import { assertPrice } from '../../shared/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/resortLocalParts';
 import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';

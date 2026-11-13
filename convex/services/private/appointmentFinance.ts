@@ -3,7 +3,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { attemptKey, cleanReason, effectiveTime } from '../../lib/bookingMoney';
 import { MANUAL_PAYMENT_METHODS } from '../../lib/financeValidators';
 import { sourceLineLinks, assertNotOnOpenOrder } from '../../pos/model';
-import { lineNet, roundMoney } from '../../lib/orderMath';
+import { lineNet, roundMoney } from '../../shared/orderMath';
 import { assertMoney } from '../../lib/stayMoney';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';

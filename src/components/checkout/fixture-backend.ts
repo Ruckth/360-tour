@@ -15,7 +15,7 @@ import {
   lineNet,
   orderTitle,
   roundMoney,
-} from "convex/lib/orderMath";
+} from "convex/shared/orderMath";
 import { paymentDateInput } from "./payment-time";
 import { changeSchedule } from "convex/lib/serviceSchedule";
 import { effectiveTime } from "convex/lib/bookingMoney";

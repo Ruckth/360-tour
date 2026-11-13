@@ -7,7 +7,7 @@ import { syncAffiliateCredit } from '../../marketing/model';
 import { STALE_APPOINTMENT, recordAppointmentChange } from '../../services/model';
 import { STALE_BOOKING, bookingRevision, cleanReason } from '../../lib/bookingMoney';
 import { activeLineLink } from './lineLinks';
-import { formatReceiptNumber, orderTitle } from '../../lib/orderMath';
+import { formatReceiptNumber, orderTitle } from '../../shared/orderMath';
 import { assertLineHasNoPosRefunds } from './orderRefunds';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
 import { assertCorrectionRevision, correctionReplay, linkPaidLineArgs, oneSource, unlinkPaidLineArgs } from './orderModel';

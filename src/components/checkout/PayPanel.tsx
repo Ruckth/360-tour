@@ -28,7 +28,7 @@ import {
   roundMoney,
   type Tender,
   type TenderMethod,
-} from "convex/lib/orderMath";
+} from "convex/shared/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,

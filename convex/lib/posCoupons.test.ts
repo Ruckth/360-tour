@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { orderTotals, lineCouponDiscount, lineNet } from './orderMath';
+import { orderTotals, lineCouponDiscount, lineNet } from '../shared/orderMath';
 import type { CouponRules } from './offers';
 import { evaluateOrderCoupon, isCouponEligibleLine, parseCouponInput, posCouponMessage, type PosCouponLine } from './posCoupons';
 

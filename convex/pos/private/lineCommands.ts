@@ -6,7 +6,7 @@ import { appendBookingHistory } from '../../bookings/model';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
-import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../lib/orderMath';
+import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
 import { changeSchedule } from '../../lib/serviceSchedule';
 import { assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';

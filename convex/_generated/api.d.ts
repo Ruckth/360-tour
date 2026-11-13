@@ -105,7 +105,7 @@ import type * as lib_marketingPrivacy from "../lib/marketingPrivacy.js";
 import type * as lib_marketingReport from "../lib/marketingReport.js";
 import type * as lib_marketingSlugs from "../lib/marketingSlugs.js";
 import type * as lib_offers from "../lib/offers.js";
-import type * as lib_orderMath from "../lib/orderMath.js";
+import type * as shared_orderMath from "../shared/orderMath.js";
 import type * as lib_posCoupons from "../lib/posCoupons.js";
 import type * as lib_pricing from "../lib/pricing.js";
 import type * as lib_readBudget from "../lib/readBudget.js";
@@ -403,7 +403,7 @@ declare const fullApi: ApiFromModules<{
   "lib/marketingReport": typeof lib_marketingReport;
   "lib/marketingSlugs": typeof lib_marketingSlugs;
   "lib/offers": typeof lib_offers;
-  "lib/orderMath": typeof lib_orderMath;
+  "shared/orderMath": typeof shared_orderMath;
   "lib/posCoupons": typeof lib_posCoupons;
   "lib/pricing": typeof lib_pricing;
   "lib/readBudget": typeof lib_readBudget;

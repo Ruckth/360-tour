@@ -7,7 +7,7 @@ import { demoCode } from '../../lib/codes';
 import { resortTodayIso } from '../../lib/dates';
 import { refundMethod } from '../../lib/financeValidators';
 import { deletePlaceholderOrders, orderDeleteBlocker } from '../../pos/model';
-import { roundMoney } from '../../lib/orderMath';
+import { roundMoney } from '../../shared/orderMath';
 import { calculateDirectQuote } from '../../lib/pricing';
 import { stayMoney } from '../../lib/stayMoney';
 import { quoteCouponBooking } from '../../marketing/model';

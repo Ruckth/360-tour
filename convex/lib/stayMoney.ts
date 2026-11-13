@@ -1,6 +1,6 @@
 import { ConvexError } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { MAX_ORDER, bookingBalance, roundMoney } from './orderMath';
+import { MAX_ORDER, bookingBalance, roundMoney } from '../shared/orderMath';
 
 export type Booking = Doc<'bookings'>;
 

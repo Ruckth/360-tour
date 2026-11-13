@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { orderLines } from './orderLines';
 import { isOpenOrder } from './orderLinks';
-import { assertDiscount, assertOrderSize, assertPrice, assertPriceOverride, orderTotals, roundMoney } from '../../lib/orderMath';
+import { assertDiscount, assertOrderSize, assertPrice, assertPriceOverride, orderTotals, roundMoney } from '../../shared/orderMath';
 import { executeOrderRefund, refundState } from './orderRefunds';
 import { manualReduction, type StaffActor } from '../../auth/model';
 import { type ApprovalPayload } from '../../lib/staffTypes';

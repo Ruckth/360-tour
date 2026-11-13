@@ -1,6 +1,6 @@
 import { percentageOf, basisPointsToPercent } from 'convex/shared/money';
 import { formatMoney } from "@/components/admin/labels";
-import { lineCouponBase, roundMoney, type LineDiscount, type PricedLine } from "convex/lib/orderMath";
+import { lineCouponBase, roundMoney, type LineDiscount, type PricedLine } from "convex/shared/orderMath";
 import type { ApprovalPayload, CashierRules } from "convex/lib/staffTypes";
 
 /**

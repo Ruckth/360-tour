@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminMutation, adminQuery, internalMutation, staffMutation, staffQuery } from '../auth/model';
 import { orderState } from './private/orderLinks';
-import { orderTitle, roundMoney } from '../lib/orderMath';
+import { orderTitle, roundMoney } from '../shared/orderMath';
 import { orderRefundTotal } from './private/orderRefunds';
 import { appendRecordHistory } from '../settings/model';
 import { cleanCustomer, CUSTOMER_POS_INTEGRATION_ENABLED, customerCard, customerInput, customerValues, expectRevision, mergeCustomerRecords, mergeInput, moveMergeBatch, pageSize, SEARCH_LIMIT } from './private/customerModel';

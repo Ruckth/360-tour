@@ -4,7 +4,7 @@ import { adminMutation } from '../../auth/model';
 import { assertBookingRevision, assertNoLiveCheckout, cleanReason } from '../../lib/bookingMoney';
 import { writeBooking } from '../private/money';
 import { stayMoney } from '../../lib/stayMoney';
-import { roundMoney } from '../../lib/orderMath';
+import { roundMoney } from '../../shared/orderMath';
 import { paymentCancelBlocker, stayPaymentReversalPatch } from '../private/stayCorrections';
 import { loadBooking } from '../private/stays';
 

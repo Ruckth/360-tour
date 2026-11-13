@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { TENDER_METHODS, type TenderMethod } from "convex/lib/orderMath";
+import { TENDER_METHODS, type TenderMethod } from "convex/shared/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,

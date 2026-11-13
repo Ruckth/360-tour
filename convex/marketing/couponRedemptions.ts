@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { type BookingPatch } from '../lib/bookingMoney';
 import { resortTodayIso } from '../lib/dates';
 import { evaluateOffer, type CouponProblem, type CouponRules } from '../lib/offers';
-import { roundMoney } from '../lib/orderMath';
+import { roundMoney } from '../shared/orderMath';
 import { stayMoney } from '../lib/stayMoney';
 
 export type HoldInput = { coupon: Doc<'coupons'>; couponVersion: number; discount: number; bookingId: Id<'bookings'> };
