@@ -111,7 +111,7 @@ Node **22.22.3**; frozen lockfile/dependencies unchanged. Verify and smoke use e
 | Source inventory / real local function spec | **295 explicit / 0 raw**, actual local backend **295 public** |
 | Runtime retirement | Nine old RPCs absent on real local backend; module/export absence independently proved in convex-test |
 | Real isolated CLI codegen | Pass, component-aware actual bindings and types |
-| Phase 2 scorecard | Pending clean committed-tree check; working-tree run passed the 18 non-cleanliness gates |
+| `pnpm arch:score --phase 2` and `--phase2` | **19/19** gates pass on the clean committed tree |
 
 The first focused run exposed the expected retirement-test distinction after deleting root emails: `emails:sendStaffAlert` now raises missing-module instead of missing-export. That assertion was updated to require the stronger accurate absence condition; its retired path stays unchanged. The corrected 703-test run passes. Initial local setup correctly refused a missing issuer; the nonfunctional local issuer fixed configuration only. An initial standalone codegen after a one-shot backend stopped failed because no local process was listening; the corrected persistent checkout-local backend and codegen passed. These are isolated setup/test fixes, not shared operations or policy changes.
 
