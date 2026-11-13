@@ -111,3 +111,11 @@ The initial focused run exposed the nested test module-map issue described above
 Remaining later-phase metrics are unchanged and visible: 24 `as never`, 72 src imports of convex/lib, one convex import of src, 34 demo files, three CI placeholders, one existing file over 1,000 lines, 52 no-login return-validator gaps, no architecture recipe and no Phase 4 read-budget test. Nine domains and zero cross-domain bypasses do not mean Phase 3 is complete.
 
 Independent review, CI/Preview and root-controlled live acceptance remain pending. Disconnected tests do not establish live authentication or operational acceptance.
+
+## Root review and acceptance preparation
+
+Spec and Standards reviews found no findings at `6734ad3`. The independent identity/access audit also found no new regressions: its import-stripped body comparison confirmed the preserved implementations, its runtime graph found no cycles, and 1,222 broader identity/access tests passed. Root merged five duplicate Auth imports and marked the pre-architecture staff-role endpoint inventory as historical, closing both cosmetic findings. These changes preserve the resolved bindings and runtime behavior.
+
+Root verification with those corrections passed **2,873 tests**, all app/test/Convex typechecks, zero-warning lint and production build. Knip, fixed-base contract/binding comparison and exact 74-table schema equality against merged Marketing `c1847f0` passed separately. The clean-tree Phase 2 gate is checked on the committed review head before publication. A merge-tree comparison permits retargeting to `main` without adding a redundant merge commit.
+
+The actual `6734ad3` Preview `dpl_B9JQu8uimnpXhTVrTPZqq2e3XMEh` is READY and build logs name only isolated `chatty-starfish-84.convex.cloud`. Later heads require a fresh Preview check. Root captured a protected production baseline for owner/anonymous/nonstaff bootstrap, self profiles, internal caller access and Team rows; unauthorized writes, owner downgrade and invalid grant email are rejected with user/grant tables unchanged. This uses admin identity impersonation, not an actual Clerk browser login. No Auth backend cutover, invitation renewal/claim, financial/provider/email action or final live acceptance is claimed by this preparation.
