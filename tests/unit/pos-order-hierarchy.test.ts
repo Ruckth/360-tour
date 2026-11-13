@@ -38,6 +38,13 @@ const showCheckout = (backend: CheckoutBackend, start: OrderId | null) => act(as
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const row = (name: string) => [...panel().querySelectorAll("li")].find(li => li.querySelector("button")?.textContent?.startsWith(name));
 const line = (name: string) => read.view!.lines.find(l => l.name === name);
+/** Opens the order panel's ⋯ and picks an item. */
+async function openMenuItem(label: string) {
+  const more = panel().querySelector<HTMLButtonElement>('button[aria-label="More order actions"]')!;
+  await act(async () => { more.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })); more.click(); });
+  await tick();
+  await press([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(el => el.textContent === label));
+}
 const historyDetails = (scope: ParentNode) => [...scope.querySelectorAll("details")].find(d => d.querySelector("summary")?.textContent === "Order history");
 
 beforeEach(() => {
@@ -95,10 +102,9 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   await press(row(massage.name)!.querySelector('button[aria-label="Clear service time"]')); await tick();
   expect(line(massage.name)!.schedule).toEqual({});
 
-  // Percent discount, then removal.
-  await press([...row(massage.name)!.querySelectorAll("button")].find(b => b.textContent === "%"));
-  await type(row(massage.name)!.querySelector<HTMLInputElement>('input[aria-label="Discount"]'), "10");
-  await press(within(row(massage.name)!, "Apply")); await tick();
+  // Percent discount, typed as one value, then removal.
+  await type(row(massage.name)!.querySelector<HTMLInputElement>('input[aria-label="Discount"]'), "10%");
+  await press([...row(massage.name)!.querySelectorAll("button")].find(b => b.textContent?.startsWith("Apply 10% ("))); await tick();
   expect(line(massage.name)!.discount).toEqual({ type: "percent", value: 10 });
   expect(line(massage.name)!.net).toBe(Math.round(listPrice * 0.9 * 100) / 100);
   await press(within(row(massage.name)!, "Remove")); await tick();
@@ -127,13 +133,13 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   await press(within(row("Tea")!, "Remove item")); await tick();
   expect(line("Tea")).toBeUndefined();
 
-  // Clear order asks first; Cancel keeps the items.
-  await press(panel().querySelector('button[aria-label="Clear order"]'));
+  // Clear order, in the order's ⋯, asks first; Cancel keeps the items.
+  await openMenuItem("Clear order");
   const dialog = () => document.querySelector<HTMLElement>('[role="alertdialog"]');
   expect(dialog()!.textContent).toContain("Clear this order?");
   await press(within(dialog()!, "Cancel"));
   expect(read.view!.lines).toHaveLength(1);
-  await press(panel().querySelector('button[aria-label="Clear order"]'));
+  await openMenuItem("Clear order");
   await press(within(dialog()!, "Clear order")); await tick();
   expect(read.view!.lines).toHaveLength(0);
   expect(panel().textContent).toContain("Tap an item to add it to the order.");
@@ -146,44 +152,24 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   expect(history.textContent).toContain("Tea");
 });
 
-it("offers Discard and Restore… as sibling row controls: discard asks first, naming the order, restore is reviewed", async () => {
+it("lists unpaid orders without a Discard button and offers Restore… beside each discarded row, reviewed first", async () => {
   const backend = createFixtureBackend();
   const actions = backend.useActions();
-  const discard = vi.spyOn(actions, "discardOrder");
   const restore = vi.spyOn(actions, "restoreOrder");
   await act(async () => root.render(provide(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }))));
   const selected = () => document.querySelector<HTMLButtonElement>('[aria-current="true"]')!;
   const title = selected().textContent!.split(" · ")[0];
-  const action = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label} ${title}"]`)!;
-  const confirm = () => document.querySelector<HTMLElement>('[role="alertdialog"]');
+  const action = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label} ${title}"]`);
+  // Discard lives in the open order's ⋯ now.
+  expect(action("Discard")).toBeNull();
+  expect(selected().closest("li")!.querySelectorAll("button")).toHaveLength(1);
 
-  const item = selected().closest("li")!;
-  expect(action("Discard").parentElement).toBe(item);
-  expect(selected().contains(action("Discard"))).toBe(false);
-  expect(action("Discard").textContent).toBe("Discard");
-  expect(action("Discard").className).toContain("min-h-11");
-
-  // One tap only asks. Keep leaves the order as it was.
-  await press(action("Discard")); await tick();
-  expect(discard).not.toHaveBeenCalled();
-  expect(title).toMatch(/^Order #/);
-  expect(confirm()!.textContent).toContain(`Discard ${title.replace(/^Order/, "order")}?`);
-  await press(within(confirm()!, "Keep")); await tick();
-  expect(confirm()).toBeNull();
-  expect(discard).not.toHaveBeenCalled();
-
-  await press(action("Discard")); await tick();
-  await press(within(confirm()!, "Discard")); await tick();
-  expect(discard).toHaveBeenCalledOnce();
-  expect(confirm()).toBeNull();
-  const status = document.querySelector('[role="status"]')!.textContent;
-  expect(status).toContain("its charges are released for other orders");
-  expect(status).toContain("Restore it from Discarded");
-
-  await press(within(document, "Back to orders"));
+  await run(actions.discardOrder({ orderId: saved, expectedRevision: 2, idempotencyKey: "hierarchy-discard" }));
   await press([...document.querySelectorAll("button")].find(b => b.textContent === "Discarded"));
-  expect(action("Restore").parentElement).toBe(selected().closest("li"));
-  expect(action("Restore").textContent).toBe("Restore…");
+  expect(action("Restore")!.parentElement).toBe(selected().closest("li"));
+  expect(selected().contains(action("Restore"))).toBe(false);
+  expect(action("Restore")!.textContent).toBe("Restore…");
+  expect(action("Restore")!.className).toContain("min-h-11");
 
   // Restore… opens the review; leaving it restores nothing.
   await press(action("Restore"));

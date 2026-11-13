@@ -15,6 +15,8 @@ export type ReasonFieldProps = {
   disabled?: boolean;
   error?: string | null;
   placeholder?: string;
+  /** Smaller chips and a screen-reader-only label, for a reason inside a tight panel. */
+  compact?: boolean;
   className?: string;
 };
 
@@ -28,6 +30,7 @@ export function ReasonField({
   disabled = false,
   error,
   placeholder = "Pick one or type",
+  compact = false,
   className,
 }: ReasonFieldProps) {
   const autoId = useId();
@@ -37,9 +40,9 @@ export function ReasonField({
 
   return (
     <div className={cn("grid gap-2", className)}>
-      <Label htmlFor={inputId}>{label}</Label>
+      <Label htmlFor={inputId} className={cn(compact && "sr-only")}>{label}</Label>
       {chips.length > 0 ? (
-        <div role="group" aria-label={`Quick ${label.toLowerCase()}`} className="flex flex-wrap gap-2">
+        <div role="group" aria-label={`Quick ${label.toLowerCase()}`} className={cn("flex flex-wrap", compact ? "gap-1.5" : "gap-2")}>
           {chips.map((chip) => {
             const pressed = current === chip;
             return (
@@ -50,7 +53,8 @@ export function ReasonField({
                 disabled={disabled}
                 onClick={() => onChange(chip)}
                 className={cn(
-                  "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
+                  "inline-flex items-center rounded-full border font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
+                  compact ? "min-h-8 px-3 text-xs" : "min-h-10 px-3.5 text-sm",
                   pressed
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-border bg-muted text-foreground hover:border-input",

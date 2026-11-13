@@ -87,7 +87,7 @@ it('prevents closing the customer sheet during a pending correction', async () =
   expect(document.body.textContent).toContain('Customer saved.');
 });
 
-it('archives without a reason prompt and provides explicit archived access and restore', async () => {
+it('archives without a reason prompt, leaves archived profiles out of the search, and restores from the linked order', async () => {
   const { backend, actions, orderId } = await setup();
   const archive = vi.spyOn(actions, 'setCustomerArchived');
   await show(backend, orderId); await openDetails(); await click('Archive customer'); await settle();
@@ -96,16 +96,16 @@ it('archives without a reason prompt and provides explicit archived access and r
   expect(document.body.textContent).toContain('Customer archived.');
   await click('Back to customers');
   expect(document.querySelector('[aria-label="Customers"]')?.textContent).not.toContain('Somchai');
-  await click('Show archived customers');
-  expect(document.querySelector('[aria-label="Customers"]')?.textContent).toContain('Somchai');
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="View or edit Somchai Prasert"]')!.click());
+  // No archive toggle or per-result Details: the order's own customer opens the profile.
+  expect(button('Show archived customers')).toBeUndefined();
+  await click('View / edit');
   await click('Restore customer'); await settle();
   expect(archive).toHaveBeenLastCalledWith({ customerId, expectedRevision: 1, archived: false });
-  await click('Back to customers'); await click('Show active customers');
+  await click('Back to customers');
   expect(document.querySelector('[aria-label="Customers"]')?.textContent).toContain('Somchai');
 });
 
-it('opens the editor directly from a search result and recovers a paginated search failure', async () => {
+it('recovers a paginated search failure, and results have no Details button', async () => {
   const { backend, orderId } = await setup();
   let down = true;
   const flaky: CheckoutBackend = { ...backend, useCustomerPage: (query, archived) => { if (down && query.length >= 2) throw new Error('Disconnected'); return backend.useCustomerPage(query, archived); } };
@@ -115,9 +115,8 @@ it('opens the editor directly from a search result and recovers a paginated sear
   await type('[aria-label="Search customers"]', 'Anna');
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("Couldn't search customers");
   down = false; await click('Try again');
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="View or edit Anna Schmidt"]')!.click());
-  await click('Edit details');
-  expect(document.querySelector<HTMLInputElement>('#customer-edit-name')?.value).toBe('Anna Schmidt');
+  expect(document.querySelector('[aria-label="Customers"]')?.textContent).toContain('Anna Schmidt');
+  expect(document.querySelector('[aria-label^="View or edit"]')).toBeNull();
 });
 
 it('enables deliberate duplicate merging with destination/reason review and visible completion', async () => {

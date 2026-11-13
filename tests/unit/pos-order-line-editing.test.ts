@@ -92,9 +92,11 @@ describe("editing a changed price", () => {
     const discount = panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!;
     type(discount, ".");
     expect(discount.value).toBe(".");
-    expect(inPanel("Apply")?.disabled).toBe(true);
+    // Not a discount yet: no Apply, and the field says what it takes.
+    expect([...panel().querySelectorAll("button")].some((el) => el.textContent?.startsWith("Apply"))).toBe(false);
+    expect(panel().querySelector('[data-testid="discount-echo"]')?.textContent).toBe("Type 15% or 150");
     type(discount, "10");
-    expect(inPanel("Apply")?.disabled).toBe(false);
+    expect([...panel().querySelectorAll("button")].find((el) => el.textContent?.startsWith("Apply ฿10"))?.disabled).toBe(false);
 
     await click(inPanel("Change price"));
     type(priceInput(), ".");

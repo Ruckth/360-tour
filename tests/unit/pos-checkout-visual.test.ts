@@ -101,15 +101,28 @@ describe("checkout category groups", () => {
     expect(header("Body").getAttribute("aria-expanded")).toBe("true");
     expect(tile("Hot stone 60").closest("[hidden]")).toBeNull();
 
-    // Searching keeps the fold, with the matching count still shown in the header.
-    await act(async () => type(document.querySelector<HTMLInputElement>('input[aria-label="Search items"]')!, "Thai"));
-    expect(header("Massage").textContent).toContain("2 services");
-    expect(header("Massage").getAttribute("aria-expanded")).toBe("false");
-
-    await click(header("Massage"));
+    // A search lists matches from every tab in one flat list, folds or not.
+    await act(async () => type(document.querySelector<HTMLInputElement>('input[aria-label="Search all items"]')!, "Thai"));
+    expect(header("Massage")).toBeUndefined();
     expect(tile("Thai massage 60").closest("[hidden]")).toBeNull();
     expect(tile("Thai massage 90").closest("[hidden]")).toBeNull();
     expect(tile("Aroma oil massage 90")).toBeUndefined();
+  });
+
+  it("searches every tab from any tab, and offers the search as a custom item when nothing matches", async () => {
+    await show(createFixtureBackend());
+    await click(tab("Spa"));
+    const search = () => document.querySelector<HTMLInputElement>('input[aria-label="Search all items"]')!;
+    await act(async () => type(search(), "coconut"));
+    // A service and an extra, from two tabs, while Spa is selected.
+    expect(tile("Coconut body scrub 45")).toBeTruthy();
+    expect(tile("Coconut water")).toBeTruthy();
+    expect(buttonText("Add as custom item")).toBeUndefined();
+
+    await act(async () => type(search(), "Champagne"));
+    expect(catalog().textContent).toContain("No item matches “Champagne”.");
+    await click(buttonText("Add as custom item"));
+    expect(document.querySelector<HTMLInputElement>("#custom-item-name")?.value).toBe("Champagne");
   });
 
   it("keeps each tab's folds separate", async () => {
@@ -193,7 +206,6 @@ const LAYERS: Record<string, () => Promise<void>> = {
   Orders: () => click(buttonText("Orders")),
   Customer: () => click(document.querySelector('[aria-label="Add customer"]')),
   "Add booking": () => click(buttonText("Add booking")),
-  Filters: () => click(document.querySelector('[aria-label^="Filters"]')),
   "Custom item": async () => {
     await click(tab("Extras"));
     await click(buttonText("Custom item"));

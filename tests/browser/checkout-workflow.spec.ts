@@ -5,20 +5,17 @@ async function open(page: import('@playwright/test').Page, query = '') {
   await page.goto(`/tests/browser/checkout.html${query}`);
   await page.locator('[data-fixture-ready]').waitFor();
 }
-test('discard asks first, keeps the selected order read only and restores it through Discarded', async ({ page }) => {
+test('discard from the order\'s ⋯ asks first, keeps the order read only and restores it through Discarded', async ({ page }) => {
   await open(page, '?lines=1');
-  await page.getByRole('button', { name: 'Orders', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  const selected = dialog.locator('li').filter({ has: page.locator('[aria-current="true"]') });
-  await selected.getByRole('button', { name: /^Discard Order/ }).click();
+  const order = page.getByRole('complementary', { name: 'Order', exact: true });
+  await order.getByRole('button', { name: 'More order actions' }).click();
+  await page.getByRole('menuitem', { name: 'Discard order…' }).click();
   const confirm = page.getByRole('alertdialog');
   await expect(confirm.getByRole('heading', { name: /^Discard order #\d+\?$/ })).toBeVisible();
   await confirm.getByRole('button', { name: 'Discard', exact: true }).click();
-  await expect(dialog.getByText(/discarded\. Contents/)).toBeVisible();
-  await dialog.getByRole('button', { name: 'Back to orders' }).click();
-  await dialog.getByRole('radio', { name: 'Discarded', exact: true }).click();
-  await dialog.locator('[aria-current="true"]').click();
-  await expect(page.getByRole('complementary', { name: 'Order', exact: true }).getByText(/^Read only\./)).toBeVisible();
+  await expect(confirm).toHaveCount(0);
+  await expect(order.getByText(/^Read only\./)).toBeVisible();
+  const dialog = page.getByRole('dialog');
   await expect(page.getByRole('button', { name: 'Cash', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add booking', exact: true })).toBeDisabled();
   await expect(page.getByRole("complementary", { name: "Order", exact: true }).locator("li").filter({ has: page.locator("p.font-medium") }).getByText(/^Layout check item 1/)).toBeVisible();

@@ -120,7 +120,7 @@ describe("adding a coupon at checkout", () => {
     // A staff discount stays its own row in the totals.
     await click(row("Breakfast basket").querySelector("button"));
     await act(async () => type(panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!, "50"));
-    await click(button("Apply"));
+    await click(button(/^Apply ฿50 /));
     await settle();
     expect(panel().textContent).toContain("Discounts-฿50");
     expect(panel().querySelector('[data-testid="order-coupon-total"]')?.textContent).toContain("-฿500");
