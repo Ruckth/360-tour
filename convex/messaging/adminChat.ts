@@ -313,6 +313,22 @@ async function filterMatchingSessions(
 	return sessions.filter((_, index) => matches[index]);
 }
 
+/** Cached heads are internal storage, never additional browser response fields. */
+function adminSessionMetadata(session: Doc<'conversations'>): Omit<Doc<'conversations'>, 'lastMessagePreview' | 'lastDeliveryStatus' | 'inboxProjectionVersion' | 'lastActivityAt'> {
+  const metadata = { ...session };
+  delete metadata.lastMessagePreview;
+  delete metadata.lastDeliveryStatus;
+  delete metadata.inboxProjectionVersion;
+  delete metadata.lastActivityAt;
+  return metadata;
+}
+
+function latestSessionDelivery(ctx: QueryCtx, session: Doc<'conversations'>, channel: Doc<'channelEvents'>['channel']) {
+  if (session.channel !== channel || channel === 'web') return null;
+  if (session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined) return session.lastDeliveryStatus;
+  return ctx.db.query('channelEvents').withIndex('by_channel_and_sessionId', q => q.eq('channel', channel).eq('sessionId', session._id)).order('desc').first();
+}
+
 async function decorateSession(
 	ctx: QueryCtx,
 	lookups: SessionLookups,
@@ -328,39 +344,15 @@ async function decorateSession(
 		property
 	] = await Promise.all([
 		latestSessionMessage(lookups, session),
-		session.channel === 'line'
-            ? session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined ? session.lastDeliveryStatus : ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'facebook'
-            ? session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined ? session.lastDeliveryStatus : ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'whatsapp'
-            ? session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined ? session.lastDeliveryStatus : ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
-		session.channel === 'instagram'
-            ? session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined ? session.lastDeliveryStatus : ctx.db
-					.query('channelEvents')
-					.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', session._id))
-					.order('desc')
-					.first()
-			: null,
+        latestSessionDelivery(ctx, session, 'line'),
+        latestSessionDelivery(ctx, session, 'facebook'),
+        latestSessionDelivery(ctx, session, 'whatsapp'),
+        latestSessionDelivery(ctx, session, 'instagram'),
 		session.propertyId ? lookups.property(session.propertyId) : null
 	]);
 
 	return {
-		...session,
+		...adminSessionMetadata(session),
 		messageCount: Math.max(getAdminChatMessageCount(session), latestMessage ? 1 : 0),
 		latestMessageAt: latestMessage?.timestamp ?? session.latestMessageAt,
 		adminSortAt: getAdminChatSortAt(session),
@@ -686,7 +678,7 @@ export const getSessionDetail = adminQuery({
 
 		return {
 			session: {
-				...session,
+				...adminSessionMetadata(session),
 				propertyName: property?.name,
 				latestMessage,
 				latestGuestMessageId: session.latestGuestMessageId ??
@@ -784,7 +776,7 @@ export const getTranscript = adminQuery({
 
 		return {
 			session: {
-				...session,
+				...adminSessionMetadata(session),
 				propertyName: property?.name,
 				isActive: isChatSessionActive(session, now)
 			},

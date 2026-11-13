@@ -1,4 +1,4 @@
-import { insertChannelEvent } from './inboxProjection';
+import { initialInboxProjection, insertChannelEvent } from './inboxProjection';
 import { chatCreateSessionResult, chatTouchSessionResult, chatCloseSessionResult, chatCreateBrowserHandoffResult, chatClaimBrowserHandoffResult, chatIdentifyVisitorResult, chatGetSessionResult, chatIsAiPausedResult, chatGetMessagesResult } from './validators';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
@@ -88,7 +88,7 @@ export const createSession = publicMutation({
 		const now = Date.now();
 		const guestToken = createGuestToken();
 		const sessionId = await ctx.db.insert('conversations', {
-            inboxProjectionVersion: 1, lastMessagePreview: null, lastDeliveryStatus: null, lastActivityAt: now, inboxState: 'processing',
+            ...initialInboxProjection(now),
 			guestTokenHash: await hashGuestToken(guestToken),
 			...(marketingCapture ? { marketingCapture } : {}),
 			propertyId,
@@ -189,6 +189,7 @@ export const touchSession = guestMutation({
 			propertyId === session.propertyId &&
 			adminSearchText === session.adminSearchText &&
 			adminSortAt === session.adminSortAt &&
+            adminSortAt === session.lastActivityAt &&
 			typeof session.latestMessageAt === 'number' &&
 			typeof session.lastSeenAt === 'number' &&
 			now - session.lastSeenAt < PRESENCE_WRITE_THROTTLE_MS &&
@@ -200,7 +201,7 @@ export const touchSession = guestMutation({
 			...(propertyId !== session.propertyId ? { propertyId } : {}),
 			lastSeenAt: now,
 			...(args.isOpen ? { lastOpenedAt: now } : {}),
-			...(adminSortAt !== session.adminSortAt ? { adminSortAt } : {}),
+			...(adminSortAt !== session.adminSortAt || adminSortAt !== session.lastActivityAt ? { adminSortAt, lastActivityAt: adminSortAt } : {}),
 			...(adminSearchText !== session.adminSearchText ? { adminSearchText } : {})
 		});
 	}
@@ -213,7 +214,8 @@ export const closeSession = guestMutation({
 		const now = Date.now();
 		await ctx.db.patch(args.sessionId, {
 			lastClosedAt: now,
-			lastSeenAt: now
+			lastSeenAt: now,
+            ...buildAdminChatMetadataPatch(ctx.guestSession, { lastSeenAt: now })
 		});
 	}
 });
@@ -260,7 +262,8 @@ export const claimBrowserHandoff = publicMutation({
 		await ctx.db.patch(handoff.sessionId, {
 			guestTokenHash: await hashGuestToken(guestToken),
 			lastSeenAt: now,
-			lastOpenedAt: now
+			lastOpenedAt: now,
+            ...buildAdminChatMetadataPatch(session, { lastSeenAt: now })
 		});
 
 		return { sessionId: handoff.sessionId, guestToken };

@@ -132,14 +132,15 @@ it('refuses oversized uninitialized aggregates atomically and verifies small-tab
   expect(await t.mutation(initialize, { propertyId: small, dryRun: true })).toMatchObject({ changed: false });
 });
 
-it('keeps the durable Web delivery head exact through preparation and accepted completion', async () => {
+it('keeps durable Web delivery evidence on its event through preparation and accepted completion', async () => {
   const t = convexTest(schema, modules);
   const { sessionId, guestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
   const { eventId } = await t.mutation(api.messaging.chat.sendMessage, { sessionId, guestToken, clientMessageId: crypto.randomUUID(), content: 'Hello' });
   const check = () => t.run(async ctx => {
     const session = (await ctx.db.get(sessionId))!;
     expect(session).toMatchObject(await inboxProjection(ctx, session));
-    expect(session.lastDeliveryStatus?._id).toBe(eventId);
+    expect(session.lastDeliveryStatus).toBeNull();
+    expect(await ctx.db.get(eventId)).toMatchObject({ sessionId, channel: 'web' });
   });
   await check();
   await t.mutation(internal.messaging.worker.claim, { eventId, token: 'web-claim' });
@@ -149,20 +150,22 @@ it('keeps the durable Web delivery head exact through preparation and accepted c
   await t.mutation(internal.messaging.worker.commitTurn, { eventId, claimToken: 'web-claim' });
   await check();
   const session = await t.run(ctx => ctx.db.get(sessionId));
-  expect(session).toMatchObject({ inboxState: 'done', lastDeliveryStatus: { status: 'replied', dispatchState: 'sent' }, lastMessagePreview: { content: 'Welcome' } });
+  expect(session).toMatchObject({ inboxState: 'done', lastDeliveryStatus: null, lastMessagePreview: { content: 'Welcome' } });
+  expect(await t.run(ctx => ctx.db.get(eventId))).toMatchObject({ status: 'replied', dispatchState: 'sent' });
 });
 
 it('refreshes an initialized eval transcript without introducing production admission or tasks', async () => {
   const t = convexTest(schema, modules);
   const sessionId = await t.mutation(internal.maintenance.chatEval.createSession, { channel: 'web' });
   await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'user', content: 'First question' });
-  expect(await t.run(ctx => ctx.db.get(sessionId))).not.toHaveProperty('inboxState');
+  expect(await t.run(ctx => ctx.db.get(sessionId))).toMatchObject({ inboxProjectionVersion: 1, inboxState: 'needs_staff' });
   await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
   await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'assistant', content: 'Eval answer' });
   await t.run(async ctx => {
     const session = (await ctx.db.get(sessionId))!;
-    expect(session).toMatchObject(await inboxProjection(ctx, session));
-    expect(session).toMatchObject({ inboxState: 'processing', lastMessagePreview: { role: 'assistant', content: 'Eval answer' } });
+    for (const [field, value] of Object.entries(await inboxProjection(ctx, session))) expect(Reflect.get(session, field)).toEqual(value);
+    expect(session).toMatchObject({ lastMessagePreview: { role: 'assistant', content: 'Eval answer' } });
+    expect(session).not.toHaveProperty('inboxState');
     expect(session).not.toHaveProperty('lastStaffAlertAt');
     expect(session).not.toHaveProperty('staffTask');
     expect(await ctx.db.query('rateLimits').collect()).toEqual([]);

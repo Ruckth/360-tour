@@ -80,7 +80,10 @@ it('keeps eval writers guarded, bounded, paused and separate from production adm
   const session = await t.run(ctx => ctx.db.get(sessionId));
   expect(session).not.toHaveProperty('lastStaffAlertAt');
   expect(await t.run(ctx => ctx.db.query('rateLimits').collect())).toEqual([]);
-  expect(session).not.toHaveProperty('inboxState');
+  // Read projection state follows the transcript without creating production inbox tasks.
+  expect(session).toMatchObject({ inboxProjectionVersion: 1, inboxState: 'needs_staff' });
+  expect(session).not.toHaveProperty('staffTask');
+  expect(await t.run(ctx => ctx.db.system.query('_scheduled_functions').take(1))).toEqual([]);
 });
 
 it('retains explicit model flags, tool/LLM traces and messaging channel behavior without calling a model', async () => {

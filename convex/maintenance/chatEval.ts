@@ -1,4 +1,4 @@
-import { inboxProjection } from '../messaging/model';
+import { buildAdminChatMetadataPatch, initialInboxProjection, inboxProjection } from '../messaging/model';
 import { internalAction, internalMutation } from '../_generated/server';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
@@ -14,15 +14,17 @@ export const createSession = internalMutation({
 		visitorPhone: v.optional(v.string()),
 		visitorName: v.optional(v.string())
 	},
-	handler: async (ctx, args) =>
-		await ctx.db.insert('conversations', {
-			channel: args.channel,
-			visitorId: `eval:${args.channel}:${crypto.randomUUID()}`,
-			...(args.propertySlug ? { propertySlug: args.propertySlug } : {}),
-			...(args.visitorPhone ? { visitorPhone: args.visitorPhone } : {}),
-			...(args.visitorName ? { visitorName: args.visitorName } : {}),
-			createdAt: Date.now()
-		})
+	handler: async (ctx, args) => {
+    const now = Date.now();
+    const fields = {
+      channel: args.channel, visitorId: `eval:${args.channel}:${crypto.randomUUID()}`,
+      ...(args.propertySlug ? { propertySlug: args.propertySlug } : {}),
+      ...(args.visitorPhone ? { visitorPhone: args.visitorPhone } : {}),
+      ...(args.visitorName ? { visitorName: args.visitorName } : {}),
+      createdAt: now,
+    };
+    return await ctx.db.insert('conversations', { ...fields, ...initialInboxProjection(now), ...buildAdminChatMetadataPatch(fields) });
+  }
 });
 
 /** Evaluation transcripts intentionally skip production quotas, alerts and inbox tasks. */
@@ -35,7 +37,7 @@ export const writeMessage = internalMutation({
     if (args.role === 'assistant' && session.aiPaused) return null;
     const timestamp = Date.now();
     const id = await ctx.db.insert('messages', { ...args, timestamp });
-    const metadata = { messageCount: (session.messageCount ?? 0) + 1, latestMessageAt: timestamp };
+    const metadata = buildAdminChatMetadataPatch(session, { messageCount: (session.messageCount ?? 0) + 1, latestMessageAt: Math.max(session.latestMessageAt ?? 0, timestamp) });
     // Eval transcripts skip inbox tasks, but an explicitly initialized read projection must
     // still follow the transcript's implicit last-guest-message rule.
     const projection = session.inboxProjectionVersion === 1

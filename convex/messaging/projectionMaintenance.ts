@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import { internalMutation } from '../auth/model';
 import { inboxProjection } from './inboxProjection';
 
@@ -8,7 +8,7 @@ export const initializeInbox = internalMutation({
   returns: v.object({ checked: v.number(), changed: v.number(), complete: v.boolean() }),
   handler: async (ctx, { dryRun }) => {
     const rows = await ctx.db.query('conversations').take(101);
-    if (rows.length > 100) throw new Error('Inbox initialization requires a paginated rollout above 100 conversations.');
+    if (rows.length > 100) throw new ConvexError({ code: 'INBOX_INITIALIZATION_REQUIRED', message: 'Inbox initialization requires a paginated rollout above 100 conversations.' });
     let changed = 0;
     for (const row of rows) {
       const fields = await inboxProjection(ctx, row);

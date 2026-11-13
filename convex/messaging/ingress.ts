@@ -1,4 +1,4 @@
-import { patchChannelEvent, insertChannelEvent } from './inboxProjection';
+import { initialInboxProjection, patchChannelEvent, insertChannelEvent } from './inboxProjection';
 import { internalMutation, httpAction, type ActionCtx } from '../auth/model';
 import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
@@ -26,7 +26,7 @@ export const accept = internalMutation({
         const visitorId = `${channel}:${event.recipient}`;
         const session = (await ctx.db.query('conversations').withIndex('by_visitor', q => q.eq('visitorId', visitorId)).order('desc').take(10)).find(row => row.channel === channel);
         sessionId = session?._id ?? await ctx.db.insert('conversations', {
-          inboxProjectionVersion: 1, lastMessagePreview: null, lastDeliveryStatus: null, lastActivityAt: now, inboxState: 'processing',
+          ...initialInboxProjection(now),
           channel, visitorId, visitorContactApp: channel, visitorContactHandle: event.recipient,
           ...(channel === 'whatsapp' ? { visitorPhone: event.recipient } : {}), ...(event.profileName ? { visitorName: event.profileName?.trim() } : {}),
           lastSeenAt: now, createdAt: now, messageCount: 0, adminSortAt: now, adminSearchText: buildAdminSearchText({ channel, visitorId, visitorName: event.profileName?.trim() }),
