@@ -96,7 +96,7 @@ const money = (s: Stay) => {
 const paymentStatus = (s: Stay) => (paidOf(s) >= s.total ? "paid" : "pending") as AdminBooking["paymentStatus"];
 const toAdmin = (s: Stay): AdminBooking => ({
   _id: s._id, propertyId: s.propertyId, guestName: s.guestName, guestPhone: s.guestPhone, guestEmail: s.guestEmail,
-  checkIn: s.checkIn, checkOut: s.checkOut, guests: s.guests, nights: nightsBetweenIso(s.checkIn, s.checkOut), total: s.total,
+  checkIn: s.checkIn, checkOut: s.checkOut, guests: s.guests, nights: nightsBetweenIso(s.checkIn, s.checkOut), total: s.total, owed: money(s).owed,
   promotion: undefined, currency: "THB", status: s.status, paymentStatus: paymentStatus(s), paymentMethod: undefined,
   amountPaid: paymentStatus(s) === "paid" ? paidOf(s) : undefined, source: s.source, chatSessionId: undefined,
   confirmationCode: s.confirmationCode, createdAt: now - 30 * DAY_MS, revision: s.revision,
@@ -178,6 +178,13 @@ registerFixtureFunctions({
       properties, blocks: [], dateBlocks: [], complete: true,
       bookings: desk.stays.filter((s) => s.checkIn < to && s.checkOut > from).map(toAdmin),
     }),
+    "adminBookings:stayAppointments": ({ bookingId }: { bookingId: string }) => ({
+      appointments: desk.appointments.filter((a) => a.bookingId === bookingId).sort((a, b) => a.start - b.start).map((a) => ({
+        _id: a._id, serviceName: a.serviceNameSnapshot ?? "Spa", start: a.start, price: a.price,
+        currency: a.currency, status: a.status, paymentStatus: a.paymentStatus, onOrder: null,
+      })),
+      complete: true,
+    }),
     "adminBookings:getForAdmin": ({ bookingId }: { bookingId: string }) => {
       const s = find(bookingId);
       return s ? detail(s) : null;
@@ -217,6 +224,22 @@ registerFixtureFunctions({
     "pos:appointmentFees": () => [],
   },
   mutations: {
+    "pos:openStayCheckout": async ({ bookingId }: { bookingId: Id<"bookings"> }) => {
+      write("openStayCheckout", { bookingId });
+      const actions = checkout.useActions();
+      const { orderId } = await actions.openOrderFor({ bookingId });
+      const added: Id<"serviceAppointments">[] = [];
+      const skipped: { appointmentId: Id<"serviceAppointments">; reason: string }[] = [];
+      for (const a of desk.appointments.filter((a) => a.bookingId === bookingId)) {
+        try {
+          await actions.attach({ orderId, appointmentId: a._id });
+          added.push(a._id);
+        } catch (err) {
+          skipped.push({ appointmentId: a._id, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+      return { orderId, added, skipped };
+    },
     "adminBookings:recordPayment": (args: { bookingId: string; expectedRevision: number; expectedAmount: number; method: string; effectiveAt: number; idempotencyKey: string }) => {
       write("recordPayment", args);
       const s = find(args.bookingId)!;
@@ -303,7 +326,7 @@ function Desk() {
             <AdminStaffBookingsView tab="calendar" />
           </div>
         ) : (
-          <AdminBookingsView checkoutBackend={checkout} />
+          <AdminBookingsView />
         )
       ) : (
         <CheckoutBackendProvider backend={checkout}>

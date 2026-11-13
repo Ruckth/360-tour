@@ -86,7 +86,7 @@ export function BookingQuickActions({
     setOpening(true);
     setProblems([]);
     try {
-      const found = await openCheckout(booking._id, spa.appointments);
+      const found = await openCheckout(booking._id);
       if (found.length) setProblems(found);
     } catch (err) {
       setProblems([errorText(err, "Couldn't open checkout for this stay.")]);

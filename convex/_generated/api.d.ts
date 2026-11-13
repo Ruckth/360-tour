@@ -101,6 +101,7 @@ import type * as lib_siteSettings from "../lib/siteSettings.js";
 import type * as lib_slug from "../lib/slug.js";
 import type * as lib_socialProof from "../lib/socialProof.js";
 import type * as lib_stayCorrections from "../lib/stayCorrections.js";
+import type * as lib_stayAppointments from "../lib/stayAppointments.js";
 import type * as lib_stayOverlap from "../lib/stayOverlap.js";
 import type * as lib_turnMetrics from "../lib/turnMetrics.js";
 import type * as lib_unknownReply from "../lib/unknownReply.js";
@@ -230,6 +231,7 @@ declare const fullApi: ApiFromModules<{
   "lib/slug": typeof lib_slug;
   "lib/socialProof": typeof lib_socialProof;
   "lib/stayCorrections": typeof lib_stayCorrections;
+  "lib/stayAppointments": typeof lib_stayAppointments;
   "lib/stayOverlap": typeof lib_stayOverlap;
   "lib/turnMetrics": typeof lib_turnMetrics;
   "lib/unknownReply": typeof lib_unknownReply;

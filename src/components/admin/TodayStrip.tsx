@@ -6,6 +6,7 @@ import type { AdminBooking } from "convex/adminBookings";
 import { useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "./labels";
 import { paymentText, serverTodayIso } from "./admin-bookings-shared";
 
 export type TodayGroup = "arriving" | "leaving" | "inHouse" | "balanceDue";
@@ -26,7 +27,7 @@ export function todayGroups(bookings: readonly AdminBooking[], today: string): R
   const arriving = live.filter((b) => b.checkIn === today);
   const leaving = live.filter((b) => b.checkOut === today);
   const inHouse = live.filter((b) => b.checkIn < today && b.checkOut > today);
-  const balanceDue = [...leaving, ...inHouse, ...arriving].filter((b) => b.paymentStatus !== "paid" && b.paymentStatus !== "refunded");
+  const balanceDue = [...leaving, ...inHouse, ...arriving].filter((b) => b.owed > 0);
   return { arriving, leaving, inHouse, balanceDue };
 }
 
@@ -38,6 +39,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
   const [open, setOpen] = useState<TodayGroup | null>(null);
   const groups = data ? todayGroups(data.bookings, today) : null;
   const list = open && groups ? groups[open] : [];
+  const owed = groups?.balanceDue.filter((b) => b.currency === "THB").reduce((sum, b) => sum + b.owed, 0) ?? 0;
 
   return (
     <section aria-label="Today" className="grid shrink-0 gap-2">
@@ -56,7 +58,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
             )}
           >
             <span className="text-xs leading-tight font-semibold text-muted-foreground">{label}</span>
-            <span className="text-xl font-semibold tabular-nums">{groups ? groups[key].length : "–"}</span>
+            <span className="text-xl font-semibold tabular-nums">{groups ? key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length : "–"}</span>
           </button>
         ))}
       </div>

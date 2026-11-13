@@ -54,6 +54,7 @@ import { correctedTender } from './lib/financeValidators';
 import { appendRecordHistory } from './lib/recordHistory';
 import { MAX_STAY_ROWS, orderStayPayment, stayPaymentReversalPatch } from './lib/stayCorrections';
 import { MAX_LINES, orderLines } from './lib/orderLines';
+import { MAX_STAY_APPOINTMENTS, readStayAppointments } from './lib/stayAppointments';
 import { activeLineLink, activeSourceLink, orderLineLinks } from './lib/lineLinks';
 import { changeSchedule, scheduleFromStartAt } from './lib/serviceSchedule';
 import { DISCARDED_ORDER, FEE_LABEL, assertFeeAmount, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage, orderPaymentRecord, type FeeKind } from './lib/orderLifecycle';
@@ -385,8 +386,8 @@ async function linkFirstSource(ctx: MutationCtx, order: Order, source: OrderSour
 	await ctx.db.patch(order._id, { ...('bookingId' in link ? { bookingId: link.bookingId } : { appointmentId: link.appointmentId }), implicitSourceLink: true });
 }
 
-/** Charges a booking or appointment on the order. Customer and guest details are left alone. */
-async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor) {
+/** Validates a source before any writes. Shared by direct attachment and stay checkout. */
+async function prepareAttach(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor) {
 	await assertRoom(ctx, order._id);
 	let line: LineFields;
 	let appointment: Doc<'serviceAppointments'> | undefined;
@@ -410,10 +411,24 @@ async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, act
 	}
 	// Only this new source line is subject to the cashier ceiling; approved existing rows stay usable.
 	await assertCashierDiscount(ctx, actor, line);
+	return { line, appointment };
+}
+
+/** Only pre-write refusals can be skipped. Any failure after a write aborts the whole transaction. */
+async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor, skipUnavailable = false) {
+	let prepared: Awaited<ReturnType<typeof prepareAttach>>;
+	try {
+		prepared = await prepareAttach(ctx, order, source, actor);
+	} catch (error) {
+		if (skipUnavailable && error instanceof ConvexError && typeof error.data === 'string') return error.data;
+		throw error;
+	}
+	const { line, appointment } = prepared;
 	const lineId = await ctx.db.insert('billLines', { billId: order._id, ...line, createdAt: Date.now() });
 	await linkFirstSource(ctx, order, source, appointment);
 	await refreshOrder(ctx, order._id);
 	await logOrder(ctx, order._id, actor.email, 'source_attached', { after: { ...lineSnapshot(line), lineId } });
+	return null;
 }
 
 /** The newest paid order for a source, which a later charge on it follows. */
@@ -1135,6 +1150,28 @@ export const openOrderFor = mutation({
 	handler: async (ctx, args) => {
 		const admin = await requireStaff(ctx, 'checkout');
 		return await openSourceOrder(ctx, oneSource(args), admin);
+	}
+});
+
+/** Opens the stay and attaches its appointments atomically, using the ordinary checkout guards. */
+export const openStayCheckout = mutation({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, { bookingId }) => {
+		const actor = await requireStaff(ctx, 'checkout');
+		const appointments = await readStayAppointments(ctx, bookingId);
+		if (appointments.length > MAX_STAY_APPOINTMENTS) {
+			throw new ConvexError(`This stay has more than ${MAX_STAY_APPOINTMENTS} appointments. Review them in checkout individually.`);
+		}
+		const { orderId } = await openSourceOrder(ctx, { bookingId }, actor);
+		const order = await editableOrder(ctx, orderId, actor.email);
+		const added: Id<'serviceAppointments'>[] = [];
+		const skipped: Array<{ appointmentId: Id<'serviceAppointments'>; reason: string }> = [];
+		for (const appointment of appointments) {
+			const reason = await attachTo(ctx, order, { appointmentId: appointment._id }, actor, true);
+			if (reason) skipped.push({ appointmentId: appointment._id, reason });
+			else added.push(appointment._id);
+		}
+		return { orderId, added, skipped };
 	}
 });
 

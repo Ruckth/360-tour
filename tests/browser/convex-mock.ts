@@ -80,6 +80,7 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   const name = getFunctionName(query);
   // Picker fixtures supply their catalog through the real component's initial props.
   if (name === "adminServices:listServices" || name === "adminServices:listStaff") return undefined;
+  if (name === "adminBookings:stayAppointments") return { appointments: [], complete: true };
   if (name === "adminServices:listSchedule") return { staff: [], services: [], appointments: [], blocks: [], shifts: [], patternHistory: [] };
   if (name === "pos:ordersForBooking") return {
     balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
@@ -106,7 +107,7 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   if (name === "adminBookings:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
-    subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB",
+    subtotal: 34000, discountAmount: 5100, total: 28900, owed: 0, currency: "THB",
     status: "completed", paymentStatus: "paid", amountPaid: 28900, source: "admin",
     propertyName: "Tideglass Pool Residence", hasStripePayment: false, checkoutLive: false,
     revision: 0, propertyStatus: "active", priceOverride: null, money, historical: true,

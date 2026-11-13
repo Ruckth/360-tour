@@ -39,7 +39,8 @@ import {
 	writeBooking,
 	type BookingPatch
 } from './lib/bookingMoney';
-import { round2 } from './lib/billMath';
+import { orderTitle, round2 } from './lib/billMath';
+import { readStayAppointments, MAX_STAY_APPOINTMENTS } from './lib/stayAppointments';
 import { demoCode } from './lib/codes';
 import { calculateDirectQuote } from './lib/pricing';
 import { nightsBetween, stayDates, resortTodayIso } from './lib/dates';
@@ -58,7 +59,7 @@ import {
 } from './lib/stayCorrections';
 import { assertNoBookingOverlap, MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './lib/stayOverlap';
 import { assertValidIsoDate } from './lib/validation';
-import { assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
+import { activeOrderFor, assertNotOnOpenOrder, deletePlaceholderOrders, orderDeleteBlocker } from './lib/orderLinks';
 import { normalizeCouponCode } from './lib/offers';
 import { quoteCouponBooking, repriceCouponBooking } from './lib/couponRedemptions';
 
@@ -76,6 +77,7 @@ function toAdminBooking(booking: Doc<'bookings'>) {
 		guests: booking.guests,
 		nights: booking.nights,
 		total: booking.total,
+		owed: stayMoney(booking).owed,
 		promotion: booking.promotion,
 		currency: booking.currency,
 		status: booking.status,
@@ -216,6 +218,25 @@ export const getForAdmin = query({
 			/** What a staff action does about guest email when not told otherwise. */
 			notifyByDefault: resolveNotify(undefined, booking)
 		};
+	}
+});
+
+/** Appointments belonging to this stay, including paid/cancelled rows and their active order. */
+export const stayAppointments = query({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, { bookingId }) => {
+		await requireAdmin(ctx);
+		const rows = await readStayAppointments(ctx, bookingId);
+		const appointments = await Promise.all(rows.slice(0, MAX_STAY_APPOINTMENTS).map(async (appointment) => {
+			const order = await activeOrderFor(ctx, { appointmentId: appointment._id });
+			const serviceName = appointment.serviceNameSnapshot ?? (await ctx.db.get(appointment.serviceId))?.name ?? 'Spa';
+			return {
+				_id: appointment._id, serviceName, start: appointment.start, price: appointment.price,
+				currency: appointment.currency, status: appointment.status, paymentStatus: appointment.paymentStatus,
+				onOrder: order ? { _id: order._id, title: orderTitle(order.orderNumber) } : null
+			};
+		}));
+		return { appointments: appointments.sort((a, b) => a.start - b.start), complete: rows.length <= MAX_STAY_APPOINTMENTS };
 	}
 });
 
