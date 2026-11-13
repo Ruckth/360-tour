@@ -1,8 +1,8 @@
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { appointmentRevision } from './appointmentWindow';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { appointmentRevision } from '../../lib/appointmentWindow';
+import { appendRecordHistory } from '../../settings/model';
 import { appointmentLookupFields } from './serviceSlots';
-import { appendRecordHistory } from '../settings/model';
 
 /**
  * Shared recording for calendar edits and guest cancellations. Each tracked change
@@ -10,10 +10,13 @@ import { appendRecordHistory } from '../settings/model';
  */
 
 type Appointment = Doc<'appointments'>;
+
 type ChangeKind = Doc<'appointmentChanges'>['kind'];
 
 export const STALE_APPOINTMENT = 'This appointment changed since you opened it. Review the latest details and try again.';
+
 export const HISTORY_LIMIT = 50;
+
 const REASON_MAX = 500;
 
 /** Fields whose old and new values are kept in the history. */
@@ -22,9 +25,11 @@ const TRACKED = [
 	'amountPaid', 'amountRefunded', 'financialRevision', 'status', 'paymentStatus', 'guestName', 'guestPhone', 'guestEmail', 'notes',
 	'staffNameSnapshot', 'serviceNameSnapshot', 'paidAt', 'paidBy', 'refundedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason'
 ] as const;
+
 type Tracked = (typeof TRACKED)[number];
 
 export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'refundedAt' | 'cancelledAt' | 'cancelledBy' | 'cancellationReason'>>;
+
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
 /** Refuses a change confirmed against an older version of the appointment. */

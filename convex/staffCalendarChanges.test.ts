@@ -1,12 +1,10 @@
 // @vitest-environment edge-runtime
-
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { STALE_APPOINTMENT } from './lib/appointmentChanges';
-import { addDays, localDateTimeUtc } from './lib/serviceSlots';
-import { STALE_ROSTER } from './services/model';
+import { STALE_APPOINTMENT, addDays, localDateTimeUtc, STALE_ROSTER } from './services/model';
+
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

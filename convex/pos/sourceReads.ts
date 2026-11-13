@@ -1,6 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { staffQuery } from '../auth/model';
-import { appointmentMoney } from '../lib/appointmentFinance';
+import { appointmentMoney } from '../services/model';
 import { bookingRevision } from '../lib/bookingMoney';
 import { openOrderCharging, type OrderSource } from '../lib/orderLinks';
 import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../lib/orderMath';

@@ -4,11 +4,12 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminMutation, adminQuery, internalMutation } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
-import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from '../lib/rosterHistory';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, weekdayOf, type DayPlan, type RosterBreak } from '../lib/serviceSlots';
+import { patternForDate, patternsForRange, rosterDate, writeWeeklyPattern } from './private/rosterHistory';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, addDays, assertValidTime, blocksTime, effectivePlan, localDayRange, patternDay, planUncovers, weekdayOf } from './private/serviceSlots';
+import { type DayPlan, type RosterBreak } from '../shared/serviceScheduleTypes';
 import { resortLocalParts } from '../shared/resortLocalParts';
 import { assertValidIsoDate } from '../lib/validation';
-import { RosterConflict, STALE_ROSTER } from './model';
+import { RosterConflict, STALE_ROSTER } from './private/administration';
 
 /**
  * Staff roster: the weekly pattern on `staff` plus per-date overrides in `staffDays`.

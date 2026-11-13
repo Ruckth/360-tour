@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { archiveStaffRecord, logStaff } from '../model';
+import { archiveStaffRecord, logStaff } from '../private/administration';
 
 export const archiveStaff = adminMutation({
 	args: { staffId: v.id('staff') },

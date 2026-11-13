@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, cleanReason, recordAppointmentChange } from '../../lib/appointmentChanges';
-import { assertStaffFree, historicalWarnings } from '../../lib/serviceSlots';
-import { loadAppointment } from '../model';
+import { assertFresh, cleanReason, recordAppointmentChange } from '../private/appointmentChanges';
+import { assertStaffFree, historicalWarnings } from '../private/serviceSlots';
+import { loadAppointment } from '../private/administration';
 
 /** Deliberate correction, separate from the frictionless forward operational buttons. */
 export const correctAppointmentStatus = adminMutation({

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { attachServiceImage, logService, required, validateService, validateStaffIds } from '../model';
+import { attachServiceImage, logService, required, validateService, validateStaffIds } from '../private/administration';
 
 export const createService = adminMutation({
 	args: { slug: v.string(), name: v.string(), description: v.string(), category: v.string(), durationMin: v.number(), bufferMin: v.number(), price: v.number(), currency: v.string(), staffIds: v.array(v.id('staff')), imageStorageId: v.optional(v.id('_storage')) },

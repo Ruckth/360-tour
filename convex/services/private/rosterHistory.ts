@@ -1,16 +1,21 @@
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { assertValidIsoDate } from './validation';
-import { appendRecordHistory } from '../settings/model';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { assertValidIsoDate } from '../../lib/validation';
+import { appendRecordHistory } from '../../settings/model';
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 export type WeeklyPattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
+
 export type PatternEvidence = { pattern: WeeklyPattern; historyKnown: boolean; knownFrom: string };
+
 export function rosterDate(at = Date.now()) {
 	// Match serviceSlots' production-safe fixed Bangkok offset (no DST).
 	return new Date(at + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
+
 const pattern = (staff: WeeklyPattern): WeeklyPattern => ({ workingHours: staff.workingHours, breaks: staff.breaks });
+
 function initialPatternEvidence(person: Doc<'staff'>): PatternEvidence {
 	// Creation is the only proven origin when the document has never been updated.
 	const proven = person.createdAt === person.updatedAt;
@@ -128,7 +133,6 @@ export async function writeWeeklyPattern(
 	});
 	return versionId;
 }
-
 
 export async function initializeWeeklyPattern(ctx: MutationCtx, staffId: Id<'staff'>, actor: string) {
 	const person = await ctx.db.get(staffId);

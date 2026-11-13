@@ -1,14 +1,12 @@
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
-
 import type { PaginationResult } from 'convex/server';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { STALE_APPOINTMENT } from './lib/appointmentChanges';
+import { STALE_APPOINTMENT, boundedIntegrityRows, createAppointmentRecord, localDateTimeUtc } from './services/model';
 import { canCorrectAppointmentTime, canReschedule } from './lib/appointmentWindow';
-import { boundedIntegrityRows, createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

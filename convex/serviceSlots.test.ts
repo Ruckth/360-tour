@@ -3,7 +3,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
-import { localDateTimeUtc } from './lib/serviceSlots';
+import { localDateTimeUtc } from './services/model';
 import { resortLocalParts } from './shared/resortLocalParts';
 import schema from './schema';
 

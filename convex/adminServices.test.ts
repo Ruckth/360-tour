@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
+import { createAppointmentRecord, localDateTimeUtc } from './services/model';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

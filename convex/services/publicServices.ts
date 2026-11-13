@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internalQuery, publicQuery } from '../auth/model';
-import { catalogCategory, catalogFilter, publicService, serviceCategories, serviceQuery, } from "../lib/serviceCatalog";
+import { catalogCategory, catalogFilter, publicService, serviceCategories, serviceQuery } from './private/serviceCatalog';
 
 export const categories = publicQuery({
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",

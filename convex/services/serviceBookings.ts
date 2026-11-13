@@ -2,17 +2,17 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
-import { cancelAppointmentRecord } from '../lib/appointmentChanges';
+import { cancelAppointmentRecord } from './private/appointmentChanges';
 import { appointmentRevision } from '../lib/appointmentWindow';
 import { bookingsByPhone } from '../bookings/model';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../lib/chatWriteGuard';
 import { enforceRateLimit } from '../messaging/model';
-import { SLOT_CONFLICT, assertAppointmentStart, createAppointmentRecord, findOpenSlots, localDateTimeUtc, serviceRostered } from '../lib/serviceSlots';
+import { SLOT_CONFLICT, assertAppointmentStart, createAppointmentRecord, findOpenSlots, localDateTimeUtc, serviceRostered } from './private/serviceSlots';
 import { resortLocalParts } from '../shared/resortLocalParts';
 import { getEffectiveSettings } from '../settings/model';
 import { durableToolValidator, withDurableTool } from '../messaging/model';
-import { NOT_SCHEDULED } from './model';
+import { NOT_SCHEDULED } from './private/administration';
 
 type ReadCtx = QueryCtx | MutationCtx;
 

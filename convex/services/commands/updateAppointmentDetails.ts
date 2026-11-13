@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, recordAppointmentChange } from '../../lib/appointmentChanges';
-import { guestDetails } from '../../lib/serviceSlots';
-import { loadAppointment, serviceChange } from '../model';
+import { assertFresh, recordAppointmentChange } from '../private/appointmentChanges';
+import { guestDetails } from '../private/serviceSlots';
+import { loadAppointment, serviceChange } from '../private/administration';
 
 /** Guest details, notes and optionally the service, validated together and saved in one write. */
 export const updateAppointmentDetails = adminMutation({

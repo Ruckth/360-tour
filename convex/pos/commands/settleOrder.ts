@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { markBookingPaid } from '../../bookings/model';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
-import { recordAppointmentChange } from '../../lib/appointmentChanges';
+import { recordAppointmentChange } from '../../services/model';
 import { effectiveTime } from '../../lib/bookingMoney';
 import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../../lib/orderLifecycle';

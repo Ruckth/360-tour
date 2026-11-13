@@ -7,7 +7,7 @@ import { anyApi } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
-import { localDateTimeUtc } from './lib/serviceSlots';
+import { localDateTimeUtc } from './services/model';
 
 const api = anyApi;
 const modules = import.meta.glob('./**/*.ts');

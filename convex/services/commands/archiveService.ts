@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { countUpcoming, logService } from '../model';
+import { countUpcoming, logService } from '../private/administration';
 
 /** Upcoming appointments stay booked; the count is returned so the UI can say so. */
 export const archiveService = adminMutation({

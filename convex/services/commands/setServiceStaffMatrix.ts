@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { logService } from '../model';
+import { logService } from '../private/administration';
 
 /** Saves the services × staff matrix in one go. Refuses if an active service would be left with no one. */
 export const setServiceStaffMatrix = adminMutation({

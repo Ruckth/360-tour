@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { initializeWeeklyPattern } from '../../lib/rosterHistory';
-import { attachAvatarUpload, hour, logStaff, required, rest, validateHours } from '../model';
+import { initializeWeeklyPattern } from '../private/rosterHistory';
+import { attachAvatarUpload, hour, logStaff, required, rest, validateHours } from '../private/administration';
 
 export const createStaff = adminMutation({
 	args: { name: v.string(), role: v.string(), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.id('_storage')), color: v.string(), workingHours: v.array(hour), breaks: v.array(rest) },

@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { recordAppointmentPayment } from '../../lib/appointmentFinance';
+import { recordAppointmentPayment } from '../private/appointmentFinance';
 import { manualPaymentMethod } from '../../lib/financeValidators';
-import { loadAppointment } from '../model';
+import { loadAppointment } from '../private/administration';
 
 export const markAppointmentPaid = adminMutation({
  args: { appointmentId: v.id('appointments'), expectedRevision: v.optional(v.number()), effectiveAt: v.optional(v.number()), method: v.optional(manualPaymentMethod), idempotencyKey: v.optional(v.string()) },

@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, recordAppointmentChange } from '../../lib/appointmentChanges';
+import { assertFresh, recordAppointmentChange } from '../private/appointmentChanges';
 import { canEditTurnaround, turnaroundMinutes, turnaroundProblem, withTurnaround } from '../../lib/appointmentWindow';
-import { staffBusyRanges } from '../../lib/serviceSlots';
-import { MINUTE, loadAppointment } from '../model';
+import { staffBusyRanges } from '../private/serviceSlots';
+import { MINUTE, loadAppointment } from '../private/administration';
 
 /** This appointment's turnaround only; the service default is untouched. */
 export const updateAppointmentTurnaround = adminMutation({

@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
 import { deleteUnreferencedPhoto } from '../../lib/adminPhotos';
-import { attachServiceImage, logService, required, serviceStatus, validateService, validateStaffIds } from '../model';
+import { attachServiceImage, logService, required, serviceStatus, validateService, validateStaffIds } from '../private/administration';
 
 export const updateService = adminMutation({
 	args: { serviceId: v.id('services'), slug: v.optional(v.string()), name: v.optional(v.string()), description: v.optional(v.string()), category: v.optional(v.string()), durationMin: v.optional(v.number()), bufferMin: v.optional(v.number()), price: v.optional(v.number()), currency: v.optional(v.string()), staffIds: v.optional(v.array(v.id('staff'))), status: v.optional(serviceStatus),

@@ -2,7 +2,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/lib/appointmentWindow";
-import type { RosterBreak } from "convex/lib/serviceSlots";
+import type { RosterBreak } from 'convex/shared/serviceScheduleTypes';
 import { formatResortFullDate, formatResortTime, resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
 
 /** Pure helpers behind the calendar's proposed changes: nothing here saves anything. */

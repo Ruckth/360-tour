@@ -1,18 +1,19 @@
-import { syncAffiliateCredit } from '../marketing/model';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { attemptKey, cleanReason, effectiveTime } from '../../lib/bookingMoney';
+import { MANUAL_PAYMENT_METHODS } from '../../lib/financeValidators';
+import { sourceLineLinks } from '../../lib/lineLinks';
+import { assertNotOnOpenOrder } from '../../lib/orderLinks';
+import { lineNet, roundMoney } from '../../lib/orderMath';
+import { assertMoney } from '../../lib/stayMoney';
+import { syncAffiliateCredit } from '../../marketing/model';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
-import { assertMoney } from './stayMoney';
-import { attemptKey, cleanReason, effectiveTime } from './bookingMoney';
-import { lineNet, roundMoney } from './orderMath';
-import { assertNotOnOpenOrder } from './orderLinks';
-import { sourceLineLinks } from './lineLinks';
-import { MANUAL_PAYMENT_METHODS } from './financeValidators';
 
 type Appointment = Doc<'appointments'>;
-type ReadCtx = QueryCtx | MutationCtx;
-const LIMIT = 200;
 
+type ReadCtx = QueryCtx | MutationCtx;
+
+const LIMIT = 200;
 
 export function appointmentMoney(a: Appointment) {
   const gross = a.amountPaid ?? 0;

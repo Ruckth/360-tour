@@ -1,5 +1,5 @@
-import type { Doc } from "../_generated/dataModel";
-import type { QueryCtx } from "../_generated/server";
+import type { Doc } from '../../_generated/dataModel';
+import type { QueryCtx } from '../../_generated/server';
 
 export function publicService(service: Doc<"services">) {
   return {
