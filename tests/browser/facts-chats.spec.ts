@@ -85,6 +85,53 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(toast).toHaveCount(0);
     });
 
+    test("a report card has one way to resolve: the select, with Create fact last; Ignore in ⋯", async ({ page }) => {
+      await open(page, "/tests/browser/questions.html?path=/admin/questions");
+      const card = page.locator("tbody tr").filter({ hasText: "Do you have a baby cot?" });
+      // Before round 2: checkbox, Open chat, the select, Create fact, Ignore (5), plus a "New" badge,
+      // a "Context" label and the page path (/villas/tideglass) on every card.
+      const controls = await card.evaluate((el) => el.querySelectorAll("button, select, a[href], input:not([type=hidden])").length);
+      expect(controls).toBe(4);
+      await expect(card.getByRole("button", { name: "Create fact" })).toHaveCount(0);
+      await expect(card.getByRole("button", { name: "Ignore", exact: true })).toHaveCount(0);
+      await expect(page.locator("tbody").getByText("New", { exact: true })).toHaveCount(0);
+      await expect(page.locator("tbody").getByText("/villas/")).toHaveCount(0);
+      await expect(page.locator('tbody [data-label="Context"]')).toHaveCount(0);
+      await expect(card).toContainText("Tideglass Pool Residence");
+      await expectAtMostSentences(page.getByRole("tabpanel"), 1);
+
+      // Create fact: the select's last option opens the form, prefilled from the question.
+      const taps = recorder();
+      await taps.tap(card.getByRole("combobox", { name: 'Resolve "Do you have a baby cot?" with a fact or source' }));
+      await expect(page.getByRole("option").last()).toHaveText("Create fact…");
+      await taps.tap(page.getByRole("option", { name: "Create fact…" }));
+      const form = page.getByRole("dialog");
+      await expect(form).toBeVisible();
+      await expect(form.getByRole("textbox").first()).toHaveValue(/Do you have a baby cot\?/);
+      expect(taps.taps).toBe(2);
+      expect(await fixtureCalls(page)).toEqual([]);
+      await page.keyboard.press("Escape");
+
+      // Ignore: ⋯, then Ignore, with Undo.
+      const dog = page.locator("tbody tr").filter({ hasText: "Can I bring my dog?" });
+      await dog.getByRole("button", { name: 'More for "Can I bring my dog?"' }).click();
+      await page.getByRole("menuitem", { name: "Ignore" }).click();
+      await expect(page.getByTestId("undo-toast")).toContainText("Ignored 1 report");
+      expect((await fixtureCalls(page)).at(-1)).toEqual(["adminIgnoreUnknownGroups", { normalizedQuestions: ["can i bring my dog"] }]);
+      await shot(page, `after-${size}-missing-r2`);
+    });
+
+    test("handled reports keep their status and a Reopen button", async ({ page }) => {
+      await open(page, "/tests/browser/questions.html?path=/admin/questions");
+      await page.getByRole("combobox", { name: 'Resolve "Is breakfast included?" with a fact or source' }).click();
+      await page.getByRole("option", { name: "Breakfast is included" }).click();
+      await page.getByRole("combobox", { name: "Report status" }).click();
+      await page.getByRole("option", { name: "All" }).click();
+      const card = page.locator("tbody tr").filter({ hasText: "Is breakfast included?" });
+      await expect(card).toContainText("Resolved");
+      await expect(card.getByRole("button", { name: "Reopen" })).toBeVisible();
+    });
+
     test("No reply needed clears the chat and opens the next one", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
       const taps = recorder();
@@ -133,6 +180,14 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(sheet.getByText("Europe/Berlin")).toBeVisible();
       await expectAtMostSentences(sheet, 1);
       await shot(page, `after-${size}-technical`);
+    });
+
+    test("chat actions say chat, never conversation", async ({ page }) => {
+      await open(page, "/tests/browser/chats.html?path=/admin/chats");
+      if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();
+      await page.getByRole("button", { name: "More chat actions" }).click();
+      await expect(page.getByRole("menuitem", { name: "Archive chat" })).toBeVisible();
+      await expect(page.getByText(/conversation/i)).toHaveCount(0);
     });
 
     test("an LINE guest shows the app handle in the header", async ({ page }) => {
