@@ -4,28 +4,27 @@ import { api } from "convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BusinessFactsPanel } from "@/components/admin/BusinessFactsPanel";
-import { LegacyArchivePanel } from "@/components/admin/LegacyArchivePanel";
 import { MissingInformationPanel } from "@/components/admin/MissingInformationPanel";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 
-const VIEW_MODES = ["facts", "missing", "legacy"] as const;
+// Missing information is the work queue, so it comes first and is where the page opens.
+const VIEW_MODES = ["missing", "facts"] as const;
 type ViewMode = (typeof VIEW_MODES)[number];
 const TAB_LABELS: Record<ViewMode, string> = {
-  facts: "Business facts",
   missing: "Missing information",
-  legacy: "Legacy archive",
+  facts: "Business facts",
 };
 
 /**
- * Staff knowledge workspace: author approved business facts, resolve missing-information reports,
- * and read the retired Q&A archive. Replaces the old Auto Answers / Q&A / variant authoring.
+ * Staff knowledge workspace: resolve missing-information reports and author approved business
+ * facts. Old `?tab=legacy` links fall back to Missing information; the retired Q&A data is kept.
  */
 export function BusinessFactsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tab = searchParams.get("tab");
-  const mode: ViewMode = VIEW_MODES.includes(tab as ViewMode) ? (tab as ViewMode) : "facts";
+  const mode: ViewMode = VIEW_MODES.includes(tab as ViewMode) ? (tab as ViewMode) : "missing";
 
   // Active properties scope a fact and gate which facts can resolve a report. properties.adminList
   // returns every property; the panels filter to active ones where it matters.
@@ -47,9 +46,8 @@ export function BusinessFactsView() {
         onValueChange={setMode}
       />
       <section {...tabPanelProps("knowledge", mode)} className="min-w-0 border border-border bg-card">
-        {mode === "facts" ? <BusinessFactsPanel properties={properties} /> : null}
         {mode === "missing" ? <MissingInformationPanel properties={properties} /> : null}
-        {mode === "legacy" ? <LegacyArchivePanel /> : null}
+        {mode === "facts" ? <BusinessFactsPanel properties={properties} /> : null}
       </section>
     </div>
   );
