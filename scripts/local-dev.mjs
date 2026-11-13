@@ -87,7 +87,7 @@ try {
     // A fresh anonymous deployment has no selector yet. The CLI rejects an explicit
     // empty env file before reaching anonymous setup; blank inherited selectors
     // and the private HOME/project isolate that first start. Restarts use the file.
-    processes.launch(process.execPath, [path.join(root, 'node_modules/convex/bin/main.js'), 'dev', ...(selected ? ['--env-file', selectionFile] : []), '--local', '--local-cloud-port', String(ports.cloud), '--local-site-port', String(ports.site), '--tail-logs', 'disable'], project, env);
+    processes.launch(process.execPath, [path.join(root, 'node_modules/convex/bin/main.js'), 'dev', ...(selected ? ['--env-file', selectionFile] : []), '--local-cloud-port', String(ports.cloud), '--local-site-port', String(ports.site), '--tail-logs', 'disable'], project, env);
     let backend;
     await wait(async () => {
       try {

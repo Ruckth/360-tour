@@ -16,7 +16,7 @@ importers:
         version: 7.3.7(next@16.2.6(@babel/core@7.29.0)(@opentelemetry/api@1.9.1)(@playwright/test@1.60.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@convex-dev/rate-limiter':
         specifier: 0.3.2
-        version: 0.3.2(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)
+        version: 0.3.2(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)
       '@date-fns/tz':
         specifier: ^1.5.0
         version: 1.5.0
@@ -60,11 +60,11 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       convex:
-        specifier: ^1.34.1
-        version: 1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+        specifier: ^1.50.0
+        version: 1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
       convex-helpers:
         specifier: 0.1.120
-        version: 0.1.120(@standard-schema/spec@1.1.0)(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@5.9.3)(zod@4.4.3)
+        version: 0.1.120(@standard-schema/spec@1.1.0)(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@5.9.3)(zod@4.4.3)
       date-fns:
         specifier: ^4.1.0
         version: 4.1.0
@@ -155,7 +155,7 @@ importers:
         version: 0.176.0
       convex-test:
         specifier: ^0.0.53
-        version: 0.0.53(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))
+        version: 0.0.53(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))
       eslint:
         specifier: ^9.39.1
         version: 9.39.4(jiti@2.7.0)
@@ -3065,18 +3065,21 @@ packages:
     peerDependencies:
       convex: ^1.32.0
 
-  convex@1.34.1:
-    resolution: {integrity: sha512-ooyFnZVVq0u6b5zt0Ptq8QB2ixhf/2vXe+PIcUtdtrs0lq/TwpkmmruHdqkFmWgMd6N+Tmfy8AGkz6QnZUYZBA==}
-    engines: {node: '>=18.0.0', npm: '>=7.0.0'}
+  convex@1.50.0:
+    resolution: {integrity: sha512-WzzCad5hyzU4zzW0ChyUGB3Mil4LgRYMYii9cyQtC24WQnfaRgkZB0IKyhIIgRm1a2IXiGJoZnVYYSfttiap3Q==}
+    engines: {node: '>=22.0.0', npm: '>=7.0.0'}
     hasBin: true
     peerDependencies:
       '@auth0/auth0-react': ^2.0.1
       '@clerk/clerk-react': ^4.12.8 || ^5.0.0
+      '@clerk/react': ^6.4.3
       react: ^18.0.0 || ^19.0.0-0 || ^19.0.0
     peerDependenciesMeta:
       '@auth0/auth0-react':
         optional: true
       '@clerk/clerk-react':
+        optional: true
+      '@clerk/react':
         optional: true
       react:
         optional: true
@@ -4865,8 +4868,8 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
-  ws@8.18.0:
-    resolution: {integrity: sha512-8VbfWfHLbbwu3+N6OKsOMpBdT4kXPDDB9cJk2bJ6mh9ucxdlnNvH1e+roYkKmN9Nxw2yjz7VzeO9oOz2zJ04Pw==}
+  ws@8.21.0:
+    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -5169,9 +5172,9 @@ snapshots:
       - react
       - react-dom
 
-  '@convex-dev/rate-limiter@0.3.2(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)':
+  '@convex-dev/rate-limiter@0.3.2(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)':
     dependencies:
-      convex: 1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      convex: 1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
     optionalDependencies:
       react: 19.2.6
 
@@ -7343,26 +7346,27 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
-  convex-helpers@0.1.120(@standard-schema/spec@1.1.0)(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@5.9.3)(zod@4.4.3):
+  convex-helpers@0.1.120(@standard-schema/spec@1.1.0)(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@5.9.3)(zod@4.4.3):
     dependencies:
-      convex: 1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      convex: 1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
     optionalDependencies:
       '@standard-schema/spec': 1.1.0
       react: 19.2.6
       typescript: 5.9.3
       zod: 4.4.3
 
-  convex-test@0.0.53(convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)):
+  convex-test@0.0.53(convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)):
     dependencies:
-      convex: 1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      convex: 1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
 
-  convex@1.34.1(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6):
+  convex@1.50.0(@clerk/clerk-react@5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(@clerk/react@6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6):
     dependencies:
       esbuild: 0.27.0
       prettier: 3.8.3
-      ws: 8.18.0
+      ws: 8.21.0
     optionalDependencies:
       '@clerk/clerk-react': 5.61.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@clerk/react': 6.6.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react: 19.2.6
     transitivePeerDependencies:
       - bufferutil
@@ -9444,7 +9448,7 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
-  ws@8.18.0: {}
+  ws@8.21.0: {}
 
   ws@8.22.0: {}
 

@@ -208,7 +208,6 @@ try {
     [
       path.join(root, "node_modules/convex/bin/main.js"),
       "dev",
-      "--local",
       "--local-cloud-port",
       String(cloud),
       "--local-site-port",

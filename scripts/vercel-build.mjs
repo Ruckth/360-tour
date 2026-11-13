@@ -41,7 +41,7 @@ try {
     const convex = args => run(process.execPath, [cli, ...args, '--env-file', envFile], env);
     const result = await buildSeededPreview({
       deploy: async () => {
-        await convex(['deploy', '--preview-create', branch, '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'node scripts/preview-capture.mjs']);
+        await convex(['deploy', '--preview-name', branch, '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'node scripts/preview-capture.mjs']);
         return await fs.readFile(targetFile, 'utf8');
       },
       resolve: async () => {

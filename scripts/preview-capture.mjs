@@ -14,5 +14,5 @@ async function convex(args) {
   } catch { throw new Error('Pre-push Preview verification failed; no backend push or seed allowed'); }
 }
 if (previewDashboardTarget(await convex(['dashboard', '--no-open', '--preview-name', branch])) !== url) throw new Error('Pre-push branch identity differs from claimed Preview');
-assertPreviewProvidersDisabled(await convex(['env', 'list', '--preview-name', branch]));
+assertPreviewProvidersDisabled(await convex(['env', 'list', '--include-values', '--preview-name', branch]));
 fs.writeFileSync(process.env.PHASE3F_TARGET_FILE, url, { mode: 0o600, flag: 'wx' });

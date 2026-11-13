@@ -62,10 +62,16 @@ describe('project-scoped Preview build', () => {
   it('passes the Preview key through the real installed CLI env-file selection before any network authorization', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'phase3f-cli-'));
     let authorized = false;
+    let claim: { identifier?: string; reuse?: boolean } = {};
     const server = http.createServer((request, response) => {
       authorized = request.headers.authorization === `Bearer ${env.CONVEX_DEPLOY_KEY}`;
-      response.writeHead(401, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ code: 'Unauthorized', message: 'offline fixture unauthorized' }));
+      let body = '';
+      request.setEncoding('utf8').on('data', chunk => { body += chunk; });
+      request.on('end', () => {
+        if (request.url?.endsWith('/claim_preview_deployment')) claim = JSON.parse(body);
+        response.writeHead(401, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ code: 'Unauthorized', message: 'offline fixture unauthorized' }));
+      });
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     const address = server.address();
@@ -76,6 +82,8 @@ describe('project-scoped Preview build', () => {
         env: { NODE_ENV: 'test', PATH: process.env.PATH, ...env, CONVEX_PROVISION_HOST: `http://127.0.0.1:${address.port}`, HOME: dir }, timeout: 15000,
       })).rejects.toMatchObject({ stderr: expect.stringContaining('offline fixture unauthorized') });
       expect(authorized).toBe(true);
+      // Test the installed CLI, not a mock: claiming must retain the branch DB.
+      expect(claim).toMatchObject({ identifier: env.VERCEL_GIT_COMMIT_REF, reuse: true });
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()));
       await fs.rm(dir, { recursive: true, force: true });
