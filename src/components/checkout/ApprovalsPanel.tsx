@@ -45,7 +45,9 @@ function ApprovalsButton() {
 
   // Read the queue as it is when the decision lands, not as it was when Approve was tapped.
   const queueNow = useRef(queue);
-  queueNow.current = queue;
+  useEffect(() => {
+    queueNow.current = queue;
+  }, [queue]);
   // Another manager can clear what's left while the panel shows a result: close then too.
   useEffect(() => {
     if (!open || count || !notice) return;
