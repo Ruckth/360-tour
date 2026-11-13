@@ -1,0 +1,38 @@
+{
+  "task": "ignore-report",
+  "viewport": "phone",
+  "taps": 2,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 16,
+    "controlsOnPage": 16,
+    "wordsOnScreen": 60,
+    "wordsOnPage": 60,
+    "wordsInnerText": 63
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "⋯",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Ignore",
+      "scrolled": false,
+      "decision": true,
+      "choices": 17
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "ignore-report-phone-00-start.png"
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "task": "discount-limit-only",
+  "viewport": "phone",
+  "taps": 1,
+  "fields": 1,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 2,
+  "start": {
+    "controlsOnScreen": 18,
+    "controlsOnPage": 25,
+    "wordsOnScreen": 37,
+    "wordsOnPage": 57,
+    "wordsInnerText": 97
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "type",
+      "label": "Discount without approval",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Save",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "discount-limit-only-phone-00-start.png"
+  ]
+}

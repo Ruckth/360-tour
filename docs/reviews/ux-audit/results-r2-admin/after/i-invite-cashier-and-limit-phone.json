@@ -1,0 +1,59 @@
+{
+  "task": "i-invite-cashier-and-limit",
+  "viewport": "phone",
+  "taps": 3,
+  "fields": 2,
+  "keys": 0,
+  "decisions": 0,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 17,
+    "controlsOnPage": 20,
+    "wordsOnScreen": 53,
+    "wordsOnPage": 57,
+    "wordsInnerText": 65
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Invite",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Email",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Send invite",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Discount without approval",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Save",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "i-invite-cashier-and-limit-phone-00-start.png"
+  ]
+}

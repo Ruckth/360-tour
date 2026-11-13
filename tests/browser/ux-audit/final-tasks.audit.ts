@@ -320,11 +320,12 @@ for (const vp of Object.keys(VIEWPORTS) as ViewportName[]) {
       rec.note(`Invite Desk role default: ${await desk.inputValue()}`);
       if ((await desk.inputValue()) !== "cashier") await rec.pick(desk, "cashier", "Desk role");
       await rec.tap(people.getByRole("button", { name: "Send invite" }), "Send invite");
-      await expect(people.getByRole("status")).toContainText("Invited fon@auraliscove.co");
+      await expect(people.getByRole("status")).toContainText(/Invited (fon@auraliscove\.co|Fon)/);
       await rec.shot("invited");
       const rules = page.getByRole("form", { name: "Rules for all cashiers" });
       await rec.type(rules.getByRole("textbox", { name: "Discount without approval" }), "15", "Discount without approval");
-      await rec.tap(rules.getByRole("button", { name: "Save rules" }), "Save rules");
+      // "Save rules" before round 2, "Save" after.
+      await rec.tap(rules.getByRole("button", { name: /^Save( rules)?$/ }), "Save rules");
       await expect(rules.getByRole("status")).toContainText("Saved");
       await rec.shot("saved");
       rec.save();
@@ -335,8 +336,11 @@ for (const vp of Object.keys(VIEWPORTS) as ViewportName[]) {
       const rec = recorder(page, "i2-grant-marketing", vp);
       await rec.begin();
       const people = page.getByRole("region", { name: "People" });
-      await rec.pick(people.getByRole("combobox", { name: "Marketing role for mint@auraliscove.co" }), "marketer", "Marketing role for mint");
-      await expect(people.getByRole("status")).toContainText("Invited mint@auraliscove.co to Marketing");
+      // Round 2: roles are text with one Change per person, which opens the selects.
+      const change = people.getByRole("button", { name: "Change roles for Mint" });
+      if (await change.count()) await rec.tap(change, "Change");
+      await rec.pick(people.getByRole("combobox", { name: /^Marketing role for (Mint|mint@auraliscove\.co)$/ }), "marketer", "Marketing role for mint");
+      await expect(people.getByRole("status")).toContainText(/Invited (mint@auraliscove\.co|Mint) to Marketing/);
       rec.save();
     });
 
@@ -350,7 +354,9 @@ for (const vp of Object.keys(VIEWPORTS) as ViewportName[]) {
       await rec.begin();
       await rec.dump("start");
       await rec.type(page.getByRole("textbox", { name: "Code", exact: true }), "SPA20", "Code");
-      await rec.type(page.getByRole("textbox", { name: "Discount", exact: true }), "20", "Discount %");
+      // One field like checkout's since round 2: "20%" is a percent, "20" baht.
+      const toggle = await page.getByRole("radio", { name: "Percent" }).count();
+      await rec.type(page.getByRole("textbox", { name: "Discount", exact: true }), toggle ? "20" : "20%", "Discount %");
       await rec.tap(page.getByRole("radio", { name: /^Spa services/ }), "Covers: Spa services", { decision: true });
       await rec.shot("filled");
       await rec.tap(page.getByRole("button", { name: "Save & publish", exact: true }).locator("visible=true"), "Save & publish");

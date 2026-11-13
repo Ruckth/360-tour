@@ -242,7 +242,7 @@ const PAGES: Record<string, PageSpec> = {
     url: COUPON,
     prep: async (page) => {
       await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
-      await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+      await page.getByRole("textbox", { name: "Discount", exact: true }).fill((await page.getByRole("radio", { name: "Percent" }).count()) ? "20" : "20%");
       await page.getByRole("button", { name: "Save & publish", exact: true }).locator("visible=true").click();
       await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
       await expect(page.getByRole("heading", { name: "SPA20" })).toBeVisible();
