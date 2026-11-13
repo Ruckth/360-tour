@@ -24,7 +24,7 @@ async function claim(t: Harness, eventKey: string, messageText: string) {
 }
 async function setup() {
   const t = createHarness(convexTest);
-  await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   const property = (await t.run(ctx => ctx.db.query('properties').take(10))).find(row => row.status === 'active')!;
   const turn = await claim(t, 'prepare', 'Book a villa for Test Guest');
   const bookingArgs = { sessionId: turn.event.sessionId!, propertySlug: property.slug, checkIn: '2027-02-01', checkOut: '2027-02-03', guests: 2, guestName: 'Test Guest' };

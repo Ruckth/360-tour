@@ -1,4 +1,4 @@
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx } from '../../_generated/server';
 import type { PropertyMap } from './properties';
 
 const ROOMS = [

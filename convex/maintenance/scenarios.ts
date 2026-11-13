@@ -1,11 +1,11 @@
 import type { MutationCtx } from '../_generated/server';
 import type { Id, TableNames } from '../_generated/dataModel';
 import schema from '../schema';
-import { seedProperties } from '../seeds/properties';
-import { seedRooms } from '../seeds/rooms';
-import { seedReviews } from '../seeds/reviews';
-import { seedTourSnippets } from '../seeds/tourSnippets';
-import { seedStaffServicesData } from '../seeds/staffServices';
+import { seedProperties } from './seeds/properties';
+import { seedRooms } from './seeds/rooms';
+import { seedReviews } from './seeds/reviews';
+import { seedTourSnippets } from './seeds/tourSnippets';
+import { seedStaffServicesData } from './seeds/staffServices';
 import { recomputeSocialProof } from '../catalog/model';
 import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking } from '../bookings/model';
 

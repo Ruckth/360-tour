@@ -32,7 +32,7 @@
     "bench:messaging": "vitest run -c vitest.bench.config.ts",
     "verify": "pnpm check && pnpm lint && pnpm test:unit && pnpm build",
     "vercel-build": "npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'",
-    "seed": "npx convex run seed:seedAll",
+    "seed": "npx convex run maintenance/seed:seedAll",
     "eval:ai-booking": "node scripts/ai-booking-eval.ts",
     "ui-loop:capture": "node scripts/ui-loop/capture.ts",
     "ui-loop:audit": "node scripts/ui-loop/audit.ts",

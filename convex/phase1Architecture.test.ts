@@ -9,22 +9,22 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 
 it('seeds the demo-resort scenario from empty', async () => {
   const t = createHarness(convexTest);
-  const empty = await t.mutation(internal.seed.seedAll, { scenario: 'empty' });
+  const empty = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'empty' });
   expect(Object.values(empty.counts).every(count => count === 0)).toBe(true);
-  const demo = await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  const demo = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   expect(demo.counts).toMatchObject({ properties: 3, tourScenes: 5, reviews: 7, reviewStats: 3, staff: 5, services: 6, appointments: 4, bookings: 2, bookingPayments: 1, orders: 3, orderLines: 1, conversations: 1, messages: 1, siteSettings: 1, cashierRules: 1, businessFacts: 1 });
   const stay = await t.run(ctx => ctx.db.get(demo.bookings[0].bookingId));
   expect(stay).toMatchObject({ amountPaid: 1445000, amountRefunded: 0, paymentStatus: 'paid', guestEmailsOff: true });
   expect(await t.query(api.messaging.chat.getMessages, { ...demo.conversation! })).toMatchObject([{ role: 'user' }]);
-  await expect(t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' })).rejects.toThrow('empty database');
-  const busy = await createHarness(convexTest).mutation(internal.seed.seedAll, { scenario: 'busy-weekend' });
+  await expect(t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' })).rejects.toThrow('empty database');
+  const busy = await createHarness(convexTest).mutation(internal.maintenance.seed.seedAll, { scenario: 'busy-weekend' });
   expect(busy.counts.bookings).toBe(6);
   expect(busy.counts.availability).toBe(12);
 });
 
 it('charges Stripe the stored satang amount', async () => {
   const t = createHarness(convexTest);
-  const seed = await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  const seed = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   const stay = seed.bookings[1];
   const booking = (await t.run(ctx => ctx.db.get(stay.bookingId)))!;
   vi.stubEnv('STRIPE_SECRET_KEY', 'test-only'); vi.stubEnv('SITE_URL', 'https://example.test');
@@ -45,7 +45,7 @@ it('charges Stripe the stored satang amount', async () => {
 
 it('acknowledges Stripe events for deleted bookings', async () => {
   const t = createHarness(convexTest);
-  const demo = await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  const demo = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   const bookingId = demo.bookings[1].bookingId;
   await t.run(ctx => ctx.db.delete(bookingId));
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_test_only');
@@ -96,7 +96,7 @@ async function signedStripeDelivery(t: ReturnType<typeof createHarness>, event: 
 
 it('acknowledges pre-cutover malformed and foreign Stripe booking references without losing later completion evidence', async () => {
   const t = createHarness(convexTest);
-  await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   const foreign = (await t.run(ctx => ctx.db.query('properties').first()))!._id;
   vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'whsec_cutover_test');
   vi.stubEnv('ARCH_MONEY_CUTOVER_AT', String(Date.now()));

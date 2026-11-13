@@ -116,21 +116,23 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 ## Production Data
 
-After the first production deployment, seed the production Convex deployment once:
+Seed scenarios are for a deliberately fresh, isolated deployment. They are **not** an upgrade or repair step for a nonempty production, development or Preview database. `maintenance/seed:seedAll` checks every application table and throws `Seed requires an empty database; <table> is not empty` if any contains a record, including when the requested scenario is `empty`. It never clears data or returns `already_seeded`.
+
+After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default) or `busy-weekend`:
 
 ```sh
-pnpm seed
+pnpm exec convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
 ```
 
-`seed:seedAll` is idempotent and exits with `already_seeded` if properties already exist.
-
-To add the demo staff, services and sample appointments to a deployment that was seeded earlier, run `npx convex run seed:seedStaffServices` (internal, also idempotent).
-
-For Preview deployments that should get fresh demo data automatically, change the Vercel build command to:
+`pnpm seed` uses this same canonical internal function with the default scenario. There is no `seed:seedStaffServices` endpoint; do not try to add fixtures to an existing deployment. Preview initialization may use the following **only for a fresh empty Preview**; running it again against populated data refuses rather than upgrading it:
 
 ```sh
-npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run seed:seedAll
+npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run maintenance/seed:seedAll
 ```
+
+The future Phase 3f local/CI seed harness must use `maintenance/seed:seedAll` after establishing that its own disposable backend is empty; it must not turn refusal into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
+
+Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
 ## Admin Setup
 
