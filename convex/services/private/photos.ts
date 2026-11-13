@@ -1,5 +1,5 @@
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { Id } from '../../_generated/dataModel';
 
 export const pendingAvatarUpload = (ctx: QueryCtx, storageId: Id<'_storage'>) =>
 	ctx.db.query('staffAvatarUploads').withIndex('by_storageId', (q) => q.eq('storageId', storageId)).unique();

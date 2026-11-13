@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { attachPhotoUpload } from '../../lib/adminPhotos';
+import { attachPhotoUpload } from './photos';
 import { turnaroundProblem } from '../../lib/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { type DayPlan, type RosterBreak } from '../../shared/serviceScheduleTypes';

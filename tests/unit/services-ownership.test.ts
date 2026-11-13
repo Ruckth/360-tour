@@ -7,6 +7,7 @@ const tree = (file: string) => ts.createSourceFile(file, readFileSync(file, 'utf
 const resolve = (file: string, spec: string) => normalize(join(dirname(file), spec)) + '.ts';
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
   entry.isDirectory() ? entry.name === '_generated' ? [] : walk(join(dir, entry.name)) : [join(dir, entry.name)]);
+const retired = ['adminPhotos'];
 const owned = ['serviceCatalog', 'serviceSlots', 'rosterHistory', 'appointmentChanges', 'appointmentFinance'];
 
 it('owns actual implementations behind named model exports, with no endpoint or cycle in the runtime closure', () => {
@@ -31,6 +32,8 @@ it('owns actual implementations behind named model exports, with no endpoint or 
     patternsForRange: 'rosterHistory', recordAppointmentChange: 'appointmentChanges', recordAppointmentRefund: 'appointmentFinance',
     attachAvatarUpload: 'administration' })) expect(declarations.get(name)).toBe(`convex/services/private/${module}.ts`);
 
+  for (const name of ['pendingAvatarUpload', 'deleteStoredFile', 'attachPhotoUpload', 'deleteUnreferencedPhoto']) expect(declarations.has(name)).toBe(false);
+
   const visited = new Set<string>();
   function closure(file: string, stack: string[] = []) {
     expect(stack, `Runtime cycle through ${file}`).not.toContain(file);
@@ -46,17 +49,17 @@ it('owns actual implementations behind named model exports, with no endpoint or 
     }
   }
   closure(model.fileName);
-  for (const name of [...owned, 'administration']) expect(visited.has(`convex/services/private/${name}.ts`)).toBe(true);
+  for (const name of [...owned, 'administration', 'photos']) expect(visited.has(`convex/services/private/${name}.ts`)).toBe(true);
 });
 
 it('removes old ctx modules, enforces model consumers and keeps browser schedule types free of backend code', () => {
-  for (const name of owned) expect(existsSync(`convex/lib/${name}.ts`)).toBe(false);
+  for (const name of [...owned, ...retired]) expect(existsSync(`convex/lib/${name}.ts`)).toBe(false);
   for (const file of [...walk('convex'), ...walk('src')].filter(file => /\.tsx?$/.test(file) && !file.endsWith('.test.ts'))) {
     for (const node of tree(file).statements) {
       if ((!ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)) || !node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) continue;
       const spec = node.moduleSpecifier.text;
       const target = spec.startsWith('.') ? resolve(file, spec) : `${spec}.ts`;
-      expect(owned.map(name => `convex/lib/${name}.ts`)).not.toContain(target);
+      expect([...owned, ...retired].map(name => `convex/lib/${name}.ts`)).not.toContain(target);
       if (file.startsWith('src/')) expect(target).not.toMatch(/^convex\/services\/(?:model|private\/)/);
       else if (!file.startsWith('convex/services/') && target.startsWith('convex/services/') && file !== 'convex/schema.ts') expect(target).toBe('convex/services/model.ts');
     }

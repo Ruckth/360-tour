@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { deleteStoredFile, pendingAvatarUpload } from '../../lib/adminPhotos';
+import { deleteStoredFile, pendingAvatarUpload } from '../private/photos';
 
 /** Drops an upload whose save failed or was cancelled. Does nothing once the photo is attached. */
 export const discardStaffAvatarUpload = adminMutation({
