@@ -10,7 +10,7 @@ import { OrdersBrowser } from "@/components/checkout/OrderStrip";
 
 /*
  * K6: items come before their history, the customer is named once beside the catalog, and every
- * existing line edit stays. K8: Discard (direct) and Restore… (reviewed) sit beside each row.
+ * existing line edit stays. K8: Discard (confirmed) and Restore… (reviewed) sit beside each row.
  */
 
 let root: Root;
@@ -146,7 +146,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   expect(history.textContent).toContain("Tea");
 });
 
-it("offers Discard and Restore… as sibling row controls: discard is one click, restore is reviewed", async () => {
+it("offers Discard and Restore… as sibling row controls: discard asks first, naming the order, restore is reviewed", async () => {
   const backend = createFixtureBackend();
   const actions = backend.useActions();
   const discard = vi.spyOn(actions, "discardOrder");
@@ -155,6 +155,7 @@ it("offers Discard and Restore… as sibling row controls: discard is one click,
   const selected = () => document.querySelector<HTMLButtonElement>('[aria-current="true"]')!;
   const title = selected().textContent!.split(" · ")[0];
   const action = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label} ${title}"]`)!;
+  const confirm = () => document.querySelector<HTMLElement>('[role="alertdialog"]');
 
   const item = selected().closest("li")!;
   expect(action("Discard").parentElement).toBe(item);
@@ -162,9 +163,19 @@ it("offers Discard and Restore… as sibling row controls: discard is one click,
   expect(action("Discard").textContent).toBe("Discard");
   expect(action("Discard").className).toContain("min-h-11");
 
+  // One tap only asks. Keep leaves the order as it was.
   await press(action("Discard")); await tick();
+  expect(discard).not.toHaveBeenCalled();
+  expect(title).toMatch(/^Order #/);
+  expect(confirm()!.textContent).toContain(`Discard ${title.replace(/^Order/, "order")}?`);
+  await press(within(confirm()!, "Keep")); await tick();
+  expect(confirm()).toBeNull();
+  expect(discard).not.toHaveBeenCalled();
+
+  await press(action("Discard")); await tick();
+  await press(within(confirm()!, "Discard")); await tick();
   expect(discard).toHaveBeenCalledOnce();
-  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  expect(confirm()).toBeNull();
   const status = document.querySelector('[role="status"]')!.textContent;
   expect(status).toContain("its charges are released for other orders");
   expect(status).toContain("Restore it from Discarded");

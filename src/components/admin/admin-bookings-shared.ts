@@ -80,7 +80,7 @@ export function cancelConfirmOptions(booking: { guestEmail?: string; notifyByDef
 /** How money was received or given back, as staff read it. */
 export const MONEY_METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
-  promptpay: "PromptPay",
+  promptpay: "PromptPay QR",
   card: "Card",
   transfer: "Bank transfer",
   other: "Other",

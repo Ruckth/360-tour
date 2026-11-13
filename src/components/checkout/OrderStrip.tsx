@@ -6,7 +6,7 @@ import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type Rea
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -588,8 +588,14 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
 
 const PAGE = 20;
 
+/** "Order #1042" → "Discard order #1042?" */
+export function discardQuestion(title: string) {
+  return `Discard ${title.replace(/^Order\b/, "order")}?`;
+}
+
 function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onAction: (id: OrderId, mode: "discard" | "restore") => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
+  const [confirming, setConfirming] = useState<{ id: OrderId; title: string } | null>(null);
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
@@ -632,14 +638,14 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
             </button>
-            {/* Discard is direct (one click, no confirmation); Restore… opens the conflict review. */}
+            {/* Discard asks first, naming the order; Restore… opens the conflict review. */}
             {row.state === "unpaid" || row.state === "discarded" ? (
               <Button
                 variant="outline"
                 size="sm"
                 className="h-auto min-h-11 max-w-28 shrink-0 whitespace-normal"
                 aria-label={`${row.state === "unpaid" ? "Discard" : "Restore"} ${row.title}`}
-                onClick={() => onAction(row._id, row.state === "unpaid" ? "discard" : "restore")}
+                onClick={() => row.state === "unpaid" ? setConfirming({ id: row._id, title: row.title }) : onAction(row._id, "restore")}
               >
                 {row.state === "unpaid" ? "Discard" : "Restore…"}
               </Button>
@@ -647,6 +653,19 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
           </li>
         ))}
       </ul>
+      {/* A local dialog rather than useConfirm: it nests in the Orders dialog, which one from outside would dismiss. */}
+      <Dialog open={confirming !== null} onOpenChange={(open) => { if (!open) setConfirming(null); }}>
+        <CheckoutDialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{confirming ? discardQuestion(confirming.title) : ""}</DialogTitle>
+            <DialogDescription>Its contents and history are kept, and you can restore it from Discarded.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirming(null)}>Keep</Button>
+            <Button variant="destructive" onClick={() => { if (!confirming) return; const { id } = confirming; setConfirming(null); onAction(id, "discard"); }}>Discard</Button>
+          </DialogFooter>
+        </CheckoutDialogContent>
+      </Dialog>
       {status === "CanLoadMore" || status === "LoadingMore" ? (
         <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE)}>
           {status === "LoadingMore" ? <Spinner label="Loading more orders" className="text-current" /> : null}

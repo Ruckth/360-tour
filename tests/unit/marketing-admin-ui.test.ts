@@ -315,6 +315,15 @@ describe("change history in the marketing editors", () => {
     expect(slot()).toBe("History of k1");
   });
 
+  it("says nothing about versions before a new coupon is saved, and uses a neutral code example", async () => {
+    await render(couponEditor({ isNew: true }));
+    expect(document.body.textContent).not.toMatch(/version/i);
+    const code = document.querySelector<HTMLInputElement>('input[id$="-code"]')!;
+    expect(code.placeholder).toBe("e.g. SUMMER15");
+    await render(couponEditor({ detail: coupon, isNew: false }));
+    expect(document.body.textContent).toContain("No changes");
+  });
+
   it("labels the marketing fields the backend records", () => {
     expect(historyChanges({ before: { benefit: { kind: "percent", percent: 10 }, maxSaving: 1500 }, after: { benefit: { kind: "fixed", amount: 500 }, maxSaving: 3000 } })).toEqual([
       { field: "benefit", label: "Discount", before: "10% off", after: "฿500 off" },

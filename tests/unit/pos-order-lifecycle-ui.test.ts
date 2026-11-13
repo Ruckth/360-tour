@@ -19,6 +19,13 @@ const appt = 'fxappt000002' as Id<'serviceAppointments'>;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
 const button = (text: string) => buttons().find(b => b.textContent?.trim() === text)!;
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text).click(); });
+/** Row Discard, then Discard in its confirm. */
+const discardRow = async () => {
+  await click('Discard');
+  const confirm = document.querySelector('[role="alertdialog"]')!;
+  expect(confirm, 'discard confirm').toBeTruthy();
+  await act(async () => [...confirm.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === 'Discard')!.click());
+};
 const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 async function run<T>(promise: Promise<T>) { await tick(); return await promise; }
 async function show(backend: CheckoutBackend, child: ReactElement) { await act(async () => root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, child))); }
@@ -42,7 +49,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it('directly discards the selected order, guards pending dismissal, and reopens retained rows read only', async () => {
   const backend = createFixtureBackend();
   await show(backend, createElement(Harness, { id: saved }));
-  await click('Orders'); await click('Discard');
+  await click('Orders'); await discardRow();
   const dialog = document.querySelector('[role="dialog"]')!;
   await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
   expect(document.querySelector('[role="dialog"]')).toBeTruthy();
@@ -64,7 +71,7 @@ it('retries a lost discard response with the identical key and revision after it
   const backend = createFixtureBackend(); const actions = backend.useActions(), original = actions.discardOrder;
   const discard = vi.spyOn(actions, 'discardOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Response lost'); });
   await show(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }));
-  await click('Discard'); await tick();
+  await discardRow(); await tick();
   expect(document.body.textContent).toContain('Response lost'); await click('Retry discard'); await tick();
   expect(discard).toHaveBeenCalledTimes(2); expect(discard.mock.calls[1][0]).toEqual(discard.mock.calls[0][0]);
   expect(document.body.textContent).toContain('discarded. Contents');

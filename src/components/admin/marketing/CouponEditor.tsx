@@ -195,8 +195,9 @@ function CouponBuilder({
   const state = detail ? couponState(detail, today) : null;
   const liveCampaigns = campaigns.filter((campaign) => campaign.status !== "archived" || campaign._id === form.campaignId);
 
+  // A new coupon has no version yet, so it says nothing about versions until it is saved.
   const saveHint = !canEdit ? "Read-only for your Marketing role" : !detail
-    ? "Saved as version 1"
+    ? ""
     : !dirty
       ? "No changes"
       : changedRules
@@ -349,7 +350,7 @@ function CouponBuilder({
                       {...field("code")}
                       value={form.code}
                       onChange={(event) => set("code", event.target.value.toUpperCase().replace(/\s+/g, "-"))}
-                      placeholder="DCNT-F1-20"
+                      placeholder="e.g. SUMMER15"
                       autoComplete="off"
                       autoCapitalize="characters"
                       spellCheck={false}

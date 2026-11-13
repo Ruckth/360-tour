@@ -156,6 +156,8 @@ test.describe("Settings › Team", () => {
     await expect(people.getByTestId("team-person").filter({ hasText: "narin@" })).toContainText("Owner");
     await expect(people.getByTestId("team-person").filter({ hasText: "sun@" })).toContainText("Marketing · Marketer");
     await expect(people.getByRole("link", { name: "Manage" }).first()).toHaveAttribute("href", "/admin/marketing/access");
+    const lek = people.getByTestId("team-person").filter({ hasText: "lek@" });
+    await expect(lek.getByRole("button")).toHaveText(["Renew", "Copy sign-in link", "Revoke"]);
 
     await people.getByRole("button", { name: "Invite" }).click();
     await people.getByRole("textbox", { name: "Email" }).fill("Fon@AuralisCove.co");

@@ -384,7 +384,7 @@ export function NewBookingDialog({
                 setCouponInput(event.target.value);
                 setCouponError("");
               }}
-              placeholder="DCNT-F1-20"
+              placeholder="e.g. SUMMER15"
               autoComplete="off"
               autoCapitalize="characters"
               spellCheck={false}

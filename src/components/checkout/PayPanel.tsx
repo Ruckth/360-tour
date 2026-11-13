@@ -496,13 +496,13 @@ function SplitForm({
               }
             >
               <SelectTrigger
-                className="w-full @min-[17rem]:w-32"
+                className="w-full @min-[17rem]:w-36"
                 aria-label={`Payment ${index + 1} method`}
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className={TOUCH_TARGETS}>
-                {/* Short labels: the long ones ("PromptPay QR") truncate in the narrow trigger. */}
+                {/* Short labels, so they fit the narrow trigger. */}
                 {TENDER_METHODS.map((method) => (
                   <SelectItem key={method} value={method}>
                     {TENDER_LABELS[method].short}
