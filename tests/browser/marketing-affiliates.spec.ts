@@ -21,7 +21,12 @@ for (const width of [390, 1180])
         "Enter a partner name",
       );
       await dialog.getByLabel("Partner name", { exact: true }).fill("Carla");
-      await dialog.getByLabel("Permanent link name").fill("carla");
+      // The link name follows the name; rare fields wait under More options.
+      await expect(dialog.getByLabel("Permanent link name")).toHaveValue(
+        "carla",
+      );
+      await expect(dialog.getByLabel("Contact email (optional)")).toBeHidden();
+      await dialog.getByText("More options", { exact: true }).click();
       await dialog
         .getByLabel("Contact email (optional)")
         .fill("carla@example.com");
@@ -94,18 +99,88 @@ test("viewer can inspect referral evidence without partner or review mutations",
   ).toHaveCount(0);
 });
 
-test("newly eligible referral buttons are immediately readable", async ({ page }) => {
+test("newly eligible referral buttons are immediately readable", async ({
+  page,
+}) => {
   await page.goto("/tests/browser/marketing-affiliates.html?theme=dark");
-  await page.addStyleTag({ content: "button { transition-duration: 2s !important; }" });
+  await page.addStyleTag({
+    content: "button { transition-duration: 2s !important; }",
+  });
   await page.getByRole("button", { name: "Review Order #1" }).click();
-  const review = page.getByRole("dialog", { name: "Referral Order #1", exact: true });
-  await review.getByLabel("Decision reason").fill("Guest confirmed partner Ben");
+  const review = page.getByRole("dialog", {
+    name: "Referral Order #1",
+    exact: true,
+  });
+  await review
+    .getByLabel("Decision reason")
+    .fill("Guest confirmed partner Ben");
   await review.getByLabel("Partner to credit").selectOption("ben");
-  const approve = review.getByRole("button", { name: "Approve referral credit" });
+  const approve = review.getByRole("button", {
+    name: "Approve referral credit",
+  });
   const reject = review.getByRole("button", { name: "Reject referral credit" });
   await expect(approve).toBeEnabled();
   await expect(reject).toBeEnabled();
-  expect(await approve.evaluate(button => getComputedStyle(button).opacity)).toBe("1");
-  expect(await reject.evaluate(button => getComputedStyle(button).opacity)).toBe("1");
-  expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual([]);
+  expect(
+    await approve.evaluate((button) => getComputedStyle(button).opacity),
+  ).toBe("1");
+  expect(
+    await reject.evaluate((button) => getComputedStyle(button).opacity),
+  ).toBe("1");
+  expect(
+    (await new AxeBuilder({ page }).include('[role="dialog"]').analyze())
+      .violations,
+  ).toEqual([]);
+});
+
+test("the link name follows the partner name until edited, and + New campaign works in place", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1180, height: 900 });
+  await page.goto("/tests/browser/marketing-affiliates.html");
+  await page.getByRole("button", { name: "New partner", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New partner", exact: true });
+  const name = dialog.getByLabel("Partner name", { exact: true });
+  const slug = dialog.getByLabel("Permanent link name");
+  await name.fill("Ploy Café & Spa");
+  await expect(slug).toHaveValue("ploy-cafe-spa");
+  await expect(dialog.getByText("/r/ploy-cafe-spa ·")).toBeVisible();
+  await slug.fill("ploy");
+  await name.fill("Ploy Café and Spa");
+  await expect(slug).toHaveValue("ploy");
+
+  await dialog.getByRole("combobox", { name: "Campaign" }).click();
+  await page.getByRole("option", { name: "+ New campaign" }).click();
+  const campaignName = dialog.getByRole("textbox", {
+    name: /New campaign name/,
+  });
+  await expect(campaignName).toHaveValue("Ploy Café and Spa referrals");
+  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    dialog.getByRole("combobox", { name: "Campaign" }),
+  ).toContainText("Ploy Café and Spa referrals");
+  expect(
+    JSON.parse((await page.locator("body").getAttribute("data-campaign"))!),
+  ).toEqual({
+    name: "Ploy Café and Spa referrals",
+    source: "partner",
+    medium: "affiliate",
+  });
+
+  // A bad end date under More options opens it and takes focus.
+  await dialog.getByText("More options", { exact: true }).click();
+  await dialog.getByLabel("Starts on (optional)").fill("2026-12-10");
+  await dialog.getByLabel("Ends on (optional)").fill("2026-12-01");
+  await dialog.getByText("More options", { exact: true }).click();
+  await dialog.getByRole("button", { name: "Save partner" }).click();
+  await expect(dialog.getByLabel("Ends on (optional)")).toBeFocused();
+  await dialog.getByLabel("Ends on (optional)").fill("2026-12-31");
+  await dialog.getByRole("button", { name: "Save partner" }).click();
+  await expect(dialog).toBeHidden();
+  expect(
+    JSON.parse((await page.locator("body").getAttribute("data-saved"))!),
+  ).toMatchObject({
+    slug: "ploy",
+    campaignId: "campaign2",
+  });
 });

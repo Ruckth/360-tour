@@ -28,7 +28,7 @@ export function CouponLedger({ code, redemptions }: { code: string; redemptions:
   const overLimit = redemptions.filter((row) => row.overLimit).length;
 
   return (
-    <SideCard id={`${id}-ledger`} title="Usage ledger" description="Each booking or checkout sale that used the code, newest first.">
+    <SideCard id={`${id}-ledger`} title="Usage ledger" description="Bookings and sales that used the code, newest first">
       {redemptions.length ? (
         <>
           <div className="flex flex-wrap gap-0.5 px-3 pt-3" role="group" aria-label="Show entries">
@@ -85,7 +85,7 @@ export function CouponLedger({ code, redemptions }: { code: string; redemptions:
           </dl>
         </>
       ) : (
-        <p className="p-4 text-sm text-muted-foreground">No uses yet. Bookings made with {code} show here, held until they’re paid, and checkout sales once paid.</p>
+        <p className="p-4 text-sm text-muted-foreground">No uses of {code} yet · bookings show while held, sales once paid</p>
       )}
     </SideCard>
   );

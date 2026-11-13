@@ -343,6 +343,10 @@ describe("dates", () => {
     expect(presetRange("last90", FIXTURE_TODAY)).toEqual({ from: "2026-08-09", to: "2026-11-06" });
     expect(presetRange("month", FIXTURE_TODAY)).toEqual({ from: "2026-11-01", to: "2026-11-07" });
     expect(presetRange("prev30", FIXTURE_TODAY)).toEqual({ from: "2026-09-08", to: "2026-10-07" });
+    // Last week is the previous Monday to Sunday, from any day of this week.
+    expect(presetRange("lastweek", FIXTURE_TODAY)).toEqual({ from: "2026-10-26", to: "2026-11-01" });
+    expect(presetRange("lastweek", "2026-11-02")).toEqual({ from: "2026-10-26", to: "2026-11-01" });
+    expect(presetRange("lastweek", "2026-11-08")).toEqual({ from: "2026-10-26", to: "2026-11-01" });
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
 

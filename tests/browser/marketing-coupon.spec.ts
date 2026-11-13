@@ -1,0 +1,191 @@
+import AxeBuilder from "@axe-core/playwright";
+import { expect, test, type Page } from "@playwright/test";
+import { census } from "./helpers/screen-census";
+import { expectAtMostSentences } from "./helpers/sentence-budget";
+
+/*
+ * P8 · Marketing: the coupon page (marketing-coupon-fixture.tsx) in a real browser.
+ *   - New coupon: at most 130 words and 14 controls on the page at the start (was 332 / 28).
+ *   - Create → Save & publish → QR card → Print on the coupon page: 8 taps and 2 typed fields,
+ *     one confirm, no other page (was about 18 taps and 2 page switches through Links & QR).
+ *   - At most one explanatory sentence in the coupon editor.
+ * Set UX_P8_SHOTS to a folder to keep screenshots.
+ */
+
+const SIZES = { ipad: { width: 1180, height: 820 }, phone: { width: 390, height: 844 }, desktop: { width: 1440, height: 900 } } as const;
+const SHOTS = process.env.UX_P8_SHOTS;
+
+async function open(page: Page, size: { width: number; height: number }, query = "") {
+  await page.setViewportSize(size);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // Printing is the browser's dialog; record what would be printed instead.
+  await page.addInitScript(() => {
+    window.print = () => {
+      const sheet = document.querySelector(".qr-print-sheet");
+      document.body.dataset.printed = sheet?.querySelector("svg") ? (sheet.getAttribute("data-qr-print") ?? "") : "nothing";
+    };
+  });
+  await page.goto(`/tests/browser/marketing-coupon.html${query}`);
+  await page.locator("[data-fixture-ready]").waitFor();
+  await expect(page.getByRole("heading", { name: "New coupon" })).toBeVisible();
+}
+
+const editor = (page: Page) => page.locator("[data-coupon-editor]");
+const calls = async (page: Page) => JSON.parse((await page.locator("body").getAttribute("data-calls")) ?? "[]").map((call: { name: string }) => call.name);
+/** The visible copy of a control that the header and the phone footer both carry. */
+const visible = (page: Page, name: string) => page.getByRole("button", { name, exact: true }).locator("visible=true");
+
+for (const [name, size] of Object.entries(SIZES)) {
+  test(`new coupon starts with at most 130 words, 14 controls and 1 sentence (${name})`, async ({ page }) => {
+    await open(page, size);
+    const counts = await census(page);
+    expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
+    expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
+    await expectAtMostSentences(editor(page), 1);
+    // Dates, minimums and terms are folded away; a quote can't run before the first save.
+    await expect(page.getByText("More rules", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Total uses")).toBeHidden();
+    await expect(page.getByRole("heading", { name: "Test a quote" })).toHaveCount(0);
+    const axe = await new AxeBuilder({ page }).analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
+    if (SHOTS && name !== "ipad") await page.screenshot({ path: `${SHOTS}/after-new-coupon-${name}.png`, fullPage: true });
+  });
+
+  test(`create, publish and print the QR card on the coupon page in 8 taps (${name})`, async ({ page }) => {
+    await open(page, size);
+    const url = page.url();
+    let taps = 0;
+    let fields = 0;
+    let confirms = 0;
+    const tap = async (target: ReturnType<Page["locator"]>) => {
+      await target.click();
+      taps += 1;
+    };
+    const fill = async (target: ReturnType<Page["locator"]>, text: string) => {
+      await target.fill(text);
+      fields += 1;
+    };
+
+    await fill(page.getByRole("textbox", { name: "Code", exact: true }), "SPA20");
+    await fill(page.getByRole("textbox", { name: "Discount", exact: true }), "20");
+    await tap(page.getByRole("radio", { name: /^Spa services/ }));
+    await tap(visible(page, "Save & publish"));
+    const confirm = page.getByRole("alertdialog");
+    await expect(confirm).toContainText("Publish SPA20?");
+    confirms += 1;
+    await tap(confirm.getByRole("button", { name: "Save & publish" }));
+
+    await expect(page.getByRole("status").filter({ hasText: "SPA20 is live" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "SPA20" })).toBeVisible();
+    // Test a quote appears once the rules are saved.
+    await expect(page.getByRole("heading", { name: "Test a quote" })).toBeVisible();
+    if (SHOTS && name !== "ipad") await page.screenshot({ path: `${SHOTS}/after-coupon-published-${name}.png` });
+
+    await tap(visible(page, "QR card"));
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("QR card for SPA20");
+    await tap(dialog.getByRole("combobox", { name: "Campaign" }));
+    await tap(page.getByRole("option", { name: "Songkran spa week" }));
+    await expect(dialog.getByRole("textbox", { name: "Short link" })).toHaveValue("spa20");
+    await tap(dialog.getByRole("button", { name: "Publish the card" }));
+    await expect(dialog.getByRole("heading", { name: "QR offer card" })).toBeVisible();
+    if (SHOTS && name !== "ipad") await page.screenshot({ path: `${SHOTS}/after-qr-card-${name}.png` });
+    await tap(dialog.getByRole("button", { name: "Print" }));
+    await expect(page.locator("body")).toHaveAttribute("data-printed", "square");
+
+    expect({ taps, fields, confirms }).toEqual({ taps: 8, fields: 2, confirms: 1 });
+    expect(page.url(), "never left the coupon page").toBe(url);
+    // Publish only after each save succeeded.
+    expect(await calls(page)).toEqual(["saveCoupon", "setCouponStatus", "saveLink", "setLinkStatus"]);
+    const axe = await new AxeBuilder({ page }).include('[role="dialog"]').analyze();
+    expect(axe.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ") + " " + n.failureSummary).join(" | ")}`)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expectAtMostSentences(editor(page), 1);
+  });
+}
+
+test("a failed publish keeps the saved draft and says so once", async ({ page }) => {
+  await open(page, SIZES.ipad, "?fail=publish");
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await visible(page, "Save & publish").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
+  await expect(page.getByRole("alert")).toHaveText(/Saved SPA20 as a draft, but it isn’t live\. The server didn’t answer\./);
+  await expect(page.getByRole("alert")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "SPA20" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeVisible();
+  expect(await calls(page)).toEqual(["saveCoupon", "setCouponStatus"]);
+});
+
+test("a failed save publishes nothing", async ({ page }) => {
+  await open(page, SIZES.ipad, "?fail=save");
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await visible(page, "Save & publish").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
+  await expect(page.getByRole("alert")).toContainText("The server didn’t answer.");
+  await expect(page.getByRole("heading", { name: "New coupon" })).toBeVisible();
+  expect(await calls(page)).toEqual(["saveCoupon"]);
+});
+
+test("Save as draft skips the confirm and doesn't publish", async ({ page }) => {
+  await open(page, SIZES.ipad);
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByRole("button", { name: "More save options" }).locator("visible=true").click();
+  await page.getByRole("menuitem", { name: "Save as draft" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved SPA20 as a draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "QR card" })).toHaveCount(0);
+  expect(await calls(page)).toEqual(["saveCoupon"]);
+});
+
+test("an error under More rules opens it and focuses the field", async ({ page }) => {
+  await open(page, SIZES.ipad);
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await page.getByText("More rules", { exact: true }).click();
+  await page.getByLabel("Total uses").fill("0");
+  await page.getByText("More rules", { exact: true }).click();
+  await expect(page.getByLabel("Total uses")).toBeHidden();
+  await visible(page, "Save & publish").click();
+  await expect(page.getByLabel("Total uses")).toBeFocused();
+  await expect(page.getByText("Leave empty for no limit")).toBeVisible();
+  expect(await calls(page)).toEqual([]);
+});
+
+test("a failed link publish opens the card on its draft, with Publish", async ({ page }) => {
+  await open(page, SIZES.ipad, "?fail=link-publish");
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await visible(page, "Save & publish").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
+  await visible(page, "QR card").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "Campaign" }).click();
+  await page.getByRole("option", { name: "Songkran spa week" }).click();
+  await dialog.getByRole("button", { name: "Publish the card" }).click();
+  await expect(dialog.getByRole("alert").first()).toContainText("Saved /spa20 as a draft, but it isn’t live.");
+  await expect(dialog.getByText("This link is a draft")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Print" })).toBeDisabled();
+});
+
+test("with no campaigns, + New campaign makes one inside the QR card step", async ({ page }) => {
+  await open(page, SIZES.ipad, "?campaigns=0");
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  await visible(page, "Save & publish").click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Save & publish" }).click();
+  await visible(page, "QR card").click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "Publish the card" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Choose a campaign");
+  await dialog.getByRole("combobox", { name: "Campaign" }).click();
+  await page.getByRole("option", { name: "+ New campaign" }).click();
+  await expect(dialog.getByRole("textbox", { name: /New campaign name/ })).toHaveValue("SPA20 print");
+  await dialog.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(dialog.getByRole("combobox", { name: "Campaign" })).toContainText("SPA20 print");
+  await dialog.getByRole("button", { name: "Publish the card" }).click();
+  await expect(dialog.getByRole("button", { name: "Print" })).toBeEnabled();
+  const all = JSON.parse((await page.locator("body").getAttribute("data-calls"))!);
+  expect(all.find((call: { name: string }) => call.name === "saveCampaign").args).toEqual({ name: "SPA20 print", source: "print", medium: "qr" });
+});

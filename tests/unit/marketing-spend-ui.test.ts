@@ -238,7 +238,7 @@ describe("CouponRefusalsCard", () => {
     expect(text()).toContain("Booking site30");
     expect(text()).toContain("Staff booking0");
     expect(text()).toContain("Checkout4");
-    expect(text()).toContain("Counted when a guest or staff member saw the refusal. Diagnostic only.");
+    expect(text()).toContain("Counted when a guest or staff member saw the refusal · diagnostic only");
   });
 
   it("has an empty state", async () => {

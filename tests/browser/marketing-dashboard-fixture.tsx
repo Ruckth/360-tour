@@ -1,7 +1,7 @@
 import type { ReportData } from "convex/lib/marketingReport";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DashboardView, DEFAULT_REQUEST, type ReportRequest, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
+import { DashboardView, initialRequest, type ReportRequest, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
 import { dashboardReport, FIXTURE_AS_OF, FIXTURE_TODAY, firstRunReport, untrackedReport } from "./marketing-dashboard-data";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import "@/app.css";
@@ -29,7 +29,7 @@ function record(key: string, value: unknown) {
 }
 
 function Fixture() {
-  const [request, setRequest] = useState<ReportRequest>(() => ({ ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: scenario === "refunds" ? "cash" : "cohort" }));
+  const [request, setRequest] = useState<ReportRequest>(() => ({ ...initialRequest(FIXTURE_TODAY), basis: scenario === "refunds" ? "cash" : "cohort" }));
   const state: ReportState =
     scenario === "loading"
       ? { status: "loading" }

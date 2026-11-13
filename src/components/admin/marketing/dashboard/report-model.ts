@@ -120,6 +120,7 @@ export function addDays(iso: string, days: number) {
 
 export const PRESETS = [
   { id: "last7", label: "Last 7 days" },
+  { id: "lastweek", label: "Last week" },
   { id: "last30", label: "Last 30 days" },
   { id: "last90", label: "Last 90 days" },
   { id: "month", label: "This month" },
@@ -128,12 +129,21 @@ export const PRESETS = [
 export type PresetId = (typeof PRESETS)[number]["id"];
 export type RangeChoice = { preset: PresetId | "custom"; from: string; to: string };
 
-/** Rolling ranges end yesterday, so every day in them is complete; This month runs to today. */
+/**
+ * Rolling ranges end yesterday, so every day in them is complete; This month runs to today. Last
+ * week is the previous Monday to Sunday.
+ */
 export function presetRange(id: PresetId, today: string): { from: string; to: string } {
   const yesterday = addDays(today, -1);
   switch (id) {
     case "last7":
       return { from: addDays(today, -7), to: yesterday };
+    case "lastweek": {
+      // 0 = Monday … 6 = Sunday, from the calendar date (no time zone involved).
+      const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+      const monday = addDays(today, -weekday - 7);
+      return { from: monday, to: addDays(monday, 6) };
+    }
     case "last30":
       return { from: addDays(today, -30), to: yesterday };
     case "last90":

@@ -100,12 +100,12 @@ export function TestQuotePanel({
   }
 
   return (
-    <SideCard id={`${id}-title`} title="Test a quote" description="Runs the saved rules through the same pricing as the guest checkout. Nothing is held or booked.">
+    <SideCard id={`${id}-title`} title="Test a quote" description="Saved rules, guest checkout pricing · nothing is held or booked">
       <form noValidate onSubmit={run} className="grid gap-4 p-4">
         {!code ? (
-          <Callout>Save the coupon first. The test uses its saved rules.</Callout>
+          <Callout>Save the coupon to test it</Callout>
         ) : dirty ? (
-          <Callout tone="warning">You have unsaved changes. This tests the saved version{savedVersion ? ` (v${savedVersion})` : ""}.</Callout>
+          <Callout tone="warning">Tests the saved version{savedVersion ? ` (v${savedVersion})` : ""}, not your unsaved changes.</Callout>
         ) : null}
 
         <div className="grid gap-2">
