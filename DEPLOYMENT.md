@@ -21,13 +21,9 @@ Use these settings in the Vercel project:
 | Build command | `pnpm vercel-build` |
 | Output directory | Leave unset |
 
-`pnpm vercel-build` runs:
+`pnpm vercel-build` runs the guarded [Phase 3f build workflow](docs/architecture/phase3f-operations.md). Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'pnpm build'` path with an explicit production-key guard and never seeds.
 
-```sh
-npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build'
-```
-
-That command deploys Convex functions first, injects the Convex deployment URL into `NEXT_PUBLIC_CONVEX_URL`, then builds the Next.js frontend against that backend.
+Ordering matters: installed Convex 1.34.1 runs `--cmd` **before** its backend push, and `--preview-run` afterward. The previous combined command could cache an empty catalog on a fresh Preview; simply adding `--preview-run` does not fix that order. Root owns Preview key/default configuration and actual live acceptance.
 
 ## Environment Variables
 
@@ -124,7 +120,7 @@ pnpm exec convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
 npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run maintenance/seed:seedAll
 ```
 
-Current local/CI integration and future per-PR Preview initialization use `maintenance/seed:seedAll` after establishing that their own disposable backend is empty; they must not turn refusal into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
+Current local/CI integration and guarded per-PR Preview initialization use the unchanged atomic `maintenance/seed:seedAll` only on their explicitly isolated backend. Its all-table nonempty refusal must never turn into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
 
 Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
@@ -180,7 +176,7 @@ pnpm knip
 pnpm arch:score --phase 2  # clean committed tree
 ```
 
-This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f Preview isolation/retention and development-loop redesign remain pending; current local integration is already active.
+This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f local orchestration, test projects and guarded Preview/retention tooling are implemented; root-owned live Preview acceptance remains pending. See the [operations runbook](docs/architecture/phase3f-operations.md).
 
 After an authorized deployment, root owns live acceptance. Coordinate any external message, payment/refund, seed or reset separately; local integration disables those business providers. Review these flows against the explicitly selected environment:
 

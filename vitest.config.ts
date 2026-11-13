@@ -1,15 +1,23 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { testProjects } from "./scripts/vitest-projects.mjs";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
-    setupFiles: ["./tests/unit/convex-components.ts"],
-    // Bundle next-intl so its Next.js subpath imports resolve in proxy integration tests.
-    server: { deps: { inline: ["next-intl"] } },
-    include: ["tests/unit/**/*.test.ts", "convex/**/*.test.ts"],
+    projects: Object.entries(testProjects(dirname)).map(([name, include]) => ({
+      extends: true,
+      test: {
+        name,
+        include,
+        environment: name === "dom" ? "happy-dom" : name === "convex" ? "edge-runtime" : "node",
+        setupFiles: name === "unit" ? [] : ["./tests/unit/convex-components.ts"],
+        // Bundle next-intl for Next.js subpath imports in proxy integration tests.
+        server: { deps: { inline: ["next-intl"] } },
+      },
+    })),
   },
   resolve: {
     alias: [

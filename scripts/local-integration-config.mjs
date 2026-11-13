@@ -5,6 +5,8 @@ export const disabledServiceKeys = [
   "CONVEX_SERVER_SECRET",
   "CONVEX_SELF_HOSTED_URL",
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
+  "CONVEX_OVERRIDE_ACCESS_TOKEN",
+  "CONVEX_OVERRIDE_DEPLOYMENT_URL",
   "NEXT_PUBLIC_CONVEX_SITE_URL",
   "PUBLIC_CONVEX_URL",
   "PUBLIC_CLERK_PUBLISHABLE_KEY",
@@ -63,6 +65,9 @@ export function createPrivateOutput(write, privateValues = []) {
           .replaceAll(secret, "[redacted]")
           .replaceAll(encodeURIComponent(secret), "[redacted]");
     return value
+      .replace(/https?:\/\/[^\s"'<>]*[?&]__clerk[^\s"'<>]*/gi, '[private Clerk browser URL]')
+      .replace(/rawPacket:.*$/gm, 'rawPacket: [redacted]')
+      .replace(/(View the Convex dashboard at )\S+/g, '$1[private local dashboard]')
       .replace(
         /([?&](?:__clerk_db_jwt|__clerk_ticket|__clerk_testing_token|token|guestToken|accessToken)=)[^&\s)]*/gi,
         "$1[redacted]",

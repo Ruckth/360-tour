@@ -45,4 +45,6 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify with fresh local Convex and real Clerk browser sign-in
         run: pnpm verify:integration
+      - name: Verify persistent local dev restart, real Clerk and failure cleanup
+        run: pnpm test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.

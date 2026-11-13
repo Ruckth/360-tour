@@ -1,6 +1,6 @@
 # Architecture and feature recipe
 
-Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3e-guardrails-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` remains **2** until all Phase 3 exit work, including 3f, is proven.
+Read this before changing application code. The [plan](docs/plans/scalable-architecture-plan.html) records the migration decisions; [implementation records](docs/architecture/phase3f-implementation.md) record evidence, not permanent source snapshots. `.arch-phase` remains **2** until all Phase 3 exit work, including live 3f acceptance, is proven.
 
 ## Ownership and useful interfaces
 
@@ -128,7 +128,10 @@ pnpm install --frozen-lockfile
 pnpm typecheck
 pnpm lint                    # standard command always uses --max-warnings 0
 pnpm knip
-pnpm test:unit
+pnpm test:unit               # all three Vitest projects; full former default
+pnpm test:pure               # pure/Node/tooling and pure backend leaves
+pnpm test:dom <file-filter>   # DOM views, same real Convex harness
+pnpm test:convex <filter>     # edge-runtime backend suites
 pnpm verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
 pnpm arch:score --phase 2    # run on a clean committed tree
 pnpm arch:score --phase2     # equivalent spelling, 19 completed-phase checks
@@ -147,4 +150,4 @@ node scripts/check-function-contracts.mjs --base <reviewed-parent> --local-spec 
 
 The first compares actual schema exports offline; the second checks registration initializers/builder bindings and full HTTP/scheduler source for that refactor. These are equivalence tools, not restrictions against adding features. For an intentional contract change, review the actual schema/data rollout and update coverage/inventory deliberately. Active reset/maintenance artifact generation, rollback safety and historical schema restoration tests remain supported; follow the [reset runbook](docs/architecture/phase1-reset-runbook.md) for authorized operations. One-shot Phase 3b/3c move generators and fixed-base source proofs are historical, retired in 3e and recoverable from git. Their old commands are not current validation.
 
-Phase 3f still owns `pnpm dev` orchestration, Vitest projects, per-PR seeded Preview deployment and retention. Phase 4 still owns the public return-validator sweep, read budgets/performance changes and audit-writer changes. A passing static Phase 3 report does not prove those exits, live deployment acceptance or provider delivery.
+`pnpm dev` now owns one private persistent checkout-local anonymous Convex and Next lifetime; it requires mode-600 `.env.dev.local`, explicit Clerk test owners and no inherited deployment target, and seeds only an empty database. `pnpm test:dev` exercises restart/auth/SIGINT/failure behavior with unique run-owned users. See the [Phase 3f operations runbook](docs/architecture/phase3f-operations.md) for command interfaces, focused Vitest projects, guarded deploy→seed→Next Preview ordering and conservative offline retention. Root owns actual key/environment settings, live Preview acceptance and all retention deletion. Phase 4 still owns the public return-validator sweep, read budgets/performance changes and audit-writer changes. A passing static Phase 3 report does not prove those exits, live deployment acceptance or provider delivery.
