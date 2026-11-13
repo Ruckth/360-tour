@@ -37,6 +37,21 @@ const MARKETING_ROLES: Record<string, string> = { admin: "Admin", manager: "Mana
 /** A native select, as Marketing access uses: reliable on iPad and phones, themed for dark mode. */
 const SELECT = "h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60 dark:[color-scheme:dark] pointer-coarse:min-h-11";
 
+/** Where an invited person signs in: /admin asks them to sign in, then to activate the invite. */
+export function staffSignInLink(origin = window.location.origin) {
+  return `${origin}/admin`;
+}
+
+async function copyText(text: string) {
+  try {
+    if (!navigator.clipboard?.writeText) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Settings › Team: who has access and their role, plus what cashiers may do without a manager. */
 export function TeamSettings() {
   const people = useQuery(api.staffAccess.listPeople, {});
@@ -126,10 +141,19 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
                 if (!(await confirm({ title: `Remove ${person.email}?`, description: "Their staff access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", destructive: true }))) return;
                 await save(person.email, () => setGrant({ email: person.email, role: null }), `Removed ${person.email}.`);
               }}
-              onInvitation={(action) => {
+              onRenew={() => {
                 const grant = person.staffGrant;
                 if (!grant) return;
-                void save(person.email, () => updateInvitation({ grantId: grant.id as Id<"staffGrants">, action }), action === "resend" ? `Invite renewed for ${person.email}.` : `Invite for ${person.email} expired.`);
+                // Renewing only extends the invite's deadline; no email is sent.
+                void save(person.email, () => updateInvitation({ grantId: grant.id as Id<"staffGrants">, action: "resend" }), `Invite renewed for ${person.email}.`);
+              }}
+              onCopyLink={async () => {
+                const link = staffSignInLink();
+                setMessage(
+                  (await copyText(link))
+                    ? { text: `Sign-in link copied. ${person.email} signs in there with this email to activate the invite.` }
+                    : { text: `Couldn’t copy. Send ${person.email} this sign-in link: ${link}`, error: true },
+                );
               }}
             />
           ))}
@@ -184,12 +208,13 @@ function inviteState(person: Person) {
   return grant.expiresAt ? `Invited · expires ${new Date(grant.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Invited";
 }
 
-function PersonRow({ person, busy, onRole, onRevoke, onInvitation }: {
+function PersonRow({ person, busy, onRole, onRevoke, onRenew, onCopyLink }: {
   person: Person;
   busy: boolean;
   onRole: (role: StaffRole) => Promise<boolean>;
   onRevoke: () => Promise<void>;
-  onInvitation: (action: "resend" | "expire") => void;
+  onRenew: () => void;
+  onCopyLink: () => Promise<void>;
 }) {
   const grant = person.staffGrant;
   const marketing = person.marketingGrant;
@@ -230,10 +255,10 @@ function PersonRow({ person, busy, onRole, onRevoke, onInvitation }: {
               <option value="cashier">Cashier</option>
             </select>
             {!grant.claimed ? (
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => onInvitation("resend")}>Resend</Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button>
             ) : null}
             {!grant.claimed && !grant.expired ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onInvitation("expire")}>Expire</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onCopyLink()}>Copy sign-in link</Button>
             ) : null}
             <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void onRevoke()}>Revoke</Button>
           </>
