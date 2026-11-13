@@ -13,12 +13,10 @@ const MINUTE = 60_000;
 
 const DAY = 24 * 60 * MINUTE;
 
-export const TIME_OFF_LOOKBACK = 60 * DAY;
+export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
 
-// time off is capped at 60 days
-export const APPOINTMENT_LOOKBACK = DAY;
+export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
 
-// duration + buffer is capped at 24 hours
 export const SLOT_CONFLICT = 'That time was just taken. Please choose another time.';
 
 export type Range = [start: number, end: number];

@@ -162,7 +162,7 @@ export const servicesTables = {
 		guestPhone: v.string(),
 		guestEmail: v.optional(v.string()),
 		// Exact-lookup forms of the guest's phone (digits only, '' when it has none) and email
-		// (trimmed, lower case), written with every appointment (lib/serviceSlots.ts
+		// (trimmed, lower case), written with every appointment (convex/services/private/serviceSlots.ts
 		// appointmentLookupFields). Missing guestPhoneDigits means a row saved before these fields;
 
 		guestPhoneDigits: v.string(),
