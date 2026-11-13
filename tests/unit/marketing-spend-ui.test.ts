@@ -111,7 +111,7 @@ describe("SpendDialog", () => {
     expect(noteInput()?.value).toBe("Meta ads · October invoice");
 
     await type(amountInput(), "28000");
-    await click(button("Save changes"));
+    await click(button("Save"));
     expect(props.onSave).toHaveBeenCalledWith({ id: "s1", campaignId: c1, amount: 28000, from: "2026-10-08", to: "2026-10-31", note: "Meta ads · October invoice" });
 
     await click(button("Delete"));

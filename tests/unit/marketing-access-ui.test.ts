@@ -68,15 +68,15 @@ const campaigns = (status: CampaignRow["status"] = "draft") => createElement(Cam
 it("lets marketers save drafts without budget or publishing controls and inspect live campaigns read-only", async () => {
   campaignActions.saveCampaign.mockClear();
   await render(campaigns(), "marketer"); await click(button("Campaign"));
-  expect(button("Start")).toBeUndefined(); expect(button("Save changes")).toBeDefined();
+  expect(button("Start")).toBeUndefined(); expect(button("Save")).toBeDefined();
   expect(document.querySelector<HTMLInputElement>('input[placeholder="Not set"]')!.disabled).toBe(true);
-  await click(button("Save changes")); expect(campaignActions.saveCampaign).toHaveBeenCalledOnce(); expect(campaignActions.saveCampaign.mock.calls[0][0]).not.toHaveProperty("budget");
+  await click(button("Save")); expect(campaignActions.saveCampaign).toHaveBeenCalledOnce(); expect(campaignActions.saveCampaign.mock.calls[0][0]).not.toHaveProperty("budget");
   await render(campaigns("active"), "marketer"); await click(button("Campaign"));
-  expect(button("Save changes")).toBeUndefined(); expect(button("Pause")).toBeUndefined(); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("edit drafts only");
+  expect(button("Save")).toBeUndefined(); expect(button("Pause")).toBeUndefined(); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("edit drafts only");
 });
 
 it.each(["viewer", "finance"] as const)("lets %s inspect campaigns and hides all draft creation controls", async role => {
-  await render(campaigns(), role); expect(button("New campaign")).toBeUndefined(); await click(button("Campaign")); expect(button("Save changes")).toBeUndefined(); expect(button("Start")).toBeUndefined();
+  await render(campaigns(), role); expect(button("New campaign")).toBeUndefined(); await click(button("Campaign")); expect(button("Save")).toBeUndefined(); expect(button("Start")).toBeUndefined();
   await render(createElement(LinksView, { links: [], campaigns: [], coupons: [], properties: [], origin: "https://example.com", brand: "Resort", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn() } }), role); expect(button("New link")).toBeUndefined(); expect(document.body.textContent).toContain("No short links yet");
   await render(createElement(CouponsView, { coupons: [], campaigns: [], properties: [], today: "2026-11-09", couponHref: () => "/c", newCouponHref: "/c/new" }), role); expect(document.querySelector('a[href="/c/new"]')).toBeNull();
   await render(createElement(CouponEditor, { isNew: true, coupons: [], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", origin: "https://example.com", brand: "Resort", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn(), saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn(), saveCampaign: vi.fn() } }), role); expect(button("Save & publish")).toBeUndefined(); expect(button("Save draft")).toBeUndefined(); expect(document.body.textContent).toContain("requires draft access");
@@ -125,7 +125,7 @@ it("preserves an affiliate alias association when a manager saves details", asyn
   const alias: LinkRow = { ...partnerLink, slug: "anna-extra", shortUrlPath: "/anna-extra", status: "draft" };
   const saveLink = vi.fn<MarketingActions["saveLink"]>().mockResolvedValue(alias._id);
   await render(createElement(LinkEditor, { link: alias, links: [alias], campaigns: [campaign], coupons: [], properties: [], origin: "https://example.com", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink, checkSlug: vi.fn() }, onDone() {}, onCancel() {}, onDuplicate() {} }), "manager");
-  await click(button("Save changes")); expect(saveLink).toHaveBeenCalledWith(expect.objectContaining({ linkId: alias._id, affiliateId: alias.affiliateId }));
+  await click(button("Save")); expect(saveLink).toHaveBeenCalledWith(expect.objectContaining({ linkId: alias._id, affiliateId: alias.affiliateId }));
 });
 it("copies a partner alias as an explicit ordinary draft for marketers", async () => {
   const saveLink = vi.fn<MarketingActions["saveLink"]>().mockResolvedValue("copy" as Id<"marketingLinks">);

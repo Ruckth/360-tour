@@ -16,7 +16,7 @@ for (const width of [390, 1180])
         name: "New partner",
         exact: true,
       });
-      await dialog.getByRole("button", { name: "Save partner" }).click();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog.getByRole("alert")).toContainText(
         "Enter a partner name",
       );
@@ -30,7 +30,7 @@ for (const width of [390, 1180])
       await dialog
         .getByLabel("Contact email (optional)")
         .fill("carla@example.com");
-      await dialog.getByRole("button", { name: "Save partner" }).click();
+      await dialog.getByRole("button", { name: "Save", exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect(page.getByText("/r/carla", { exact: true })).toBeVisible();
       expect(
@@ -172,10 +172,10 @@ test("the link name follows the partner name until edited, and + New campaign wo
   await dialog.getByLabel("Starts on (optional)").fill("2026-12-10");
   await dialog.getByLabel("Ends on (optional)").fill("2026-12-01");
   await dialog.getByText("More options", { exact: true }).click();
-  await dialog.getByRole("button", { name: "Save partner" }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog.getByLabel("Ends on (optional)")).toBeFocused();
   await dialog.getByLabel("Ends on (optional)").fill("2026-12-31");
-  await dialog.getByRole("button", { name: "Save partner" }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toBeHidden();
   expect(
     JSON.parse((await page.locator("body").getAttribute("data-saved"))!),

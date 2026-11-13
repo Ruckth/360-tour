@@ -324,6 +324,7 @@ export function SheetForm({
 }
 
 export function NoticeBar({ notice, onClose }: { notice: Notice | null; onClose: () => void }) {
+  // A success is a status line that goes by itself (useNotice clears it); only an error waits for Dismiss.
   return (
     <div aria-live="polite" className={notice ? undefined : "sr-only"}>
       {notice ? (
@@ -336,9 +337,11 @@ export function NoticeBar({ notice, onClose }: { notice: Notice | null; onClose:
         >
           {notice.tone === "danger" ? <CircleAlert aria-hidden className="size-4 shrink-0" /> : <CircleCheck aria-hidden className="size-4 shrink-0" />}
           <span className="min-w-0 flex-1">{notice.text}</span>
-          <Button type="button" variant="ghost" size="sm" onClick={onClose} className="-my-1 h-8">
-            Dismiss
-          </Button>
+          {notice.tone === "danger" ? (
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="-my-1 h-8">
+              Dismiss
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

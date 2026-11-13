@@ -27,6 +27,13 @@ async function expectAccessible(page: Page, label: string) {
   expect.soft(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).slice(0, 3).join(" | ")}`), `axe (${label})`).toEqual([]);
 }
 
+/** Export CSV: a toolbar button from 640 px, in ⋯ on a phone. */
+async function openExport(page: Page, width: number) {
+  if (width >= 640) return page.getByRole("button", { name: "Export CSV" }).click();
+  await page.getByRole("button", { name: "More dashboard actions" }).click();
+  await page.getByRole("menuitem", { name: "Export CSV" }).click();
+}
+
 async function shot(page: Page, name: string, fullPage = true) {
   if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/${name}.png`, fullPage });
 }
@@ -44,7 +51,12 @@ for (const theme of ["light", "dark"] as const) {
           await expect(page.getByRole("status").filter({ hasText: "No campaigns or links yet" })).toBeVisible();
           await expect(page.getByRole("link", { name: "Create a campaign" })).toBeVisible();
           await expect(page.getByText("Business total").first()).toBeVisible();
-          await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+          if (width >= 640) await expect(page.getByRole("button", { name: "Export CSV" })).toBeEnabled();
+          else {
+            await page.getByRole("button", { name: "More dashboard actions" }).click();
+            await expect(page.getByRole("menuitem", { name: "Export CSV" })).toBeEnabled();
+            await page.keyboard.press("Escape");
+          }
           await expect(page.getByText("See which links bring paid bookings")).toHaveCount(0);
         }
         if (scenario === "truncated") await expect(page.getByText("These figures are incomplete")).toBeVisible();
@@ -76,7 +88,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.keyboard.press("Escape");
       await expect(sheet).toBeHidden();
 
-      await page.getByRole("button", { name: "Export CSV" }).click();
+      await openExport(page, width);
       const dialog = page.getByRole("dialog", { name: "Export CSV" });
       await expect(dialog.getByTestId("csv-preview")).toContainText("# Time zone: Asia/Bangkok");
       await dialog.getByText("One row per sale").click();
@@ -157,3 +169,42 @@ test("the range is remembered on this device, Last week included, and attributio
   await expect(page.getByRole("button", { name: /^Dates: Last week/ })).toBeVisible();
   await shot(page, "remembered-last-week-1180-light", false);
 });
+
+/*
+ * Round 2 (docs/reviews/ux-audit/r2-admin.md): on a phone, 8 controls stood before the first number
+ * (dates, property, Marketing, Finance, View options, Definitions, Export CSV, Refresh) and the
+ * context line ended "(last_touch_30d@1)".
+ */
+const BEFORE_PHONE_CONTROLS_BEFORE_FIGURES = 8;
+
+for (const width of [390, 1180]) {
+  test(`controls before the first figure, and attribution in words (${width}px)`, async ({ page }) => {
+    await open(page, width, "normal", "light");
+    const kpi = page.locator('section[aria-labelledby="kpi-title"]');
+    await expect(kpi).toBeVisible();
+    const before = await kpi.evaluate((el) => {
+      const top = el.getBoundingClientRect().top;
+      const selector = "button, a[href], input:not([type=hidden]), select, [role=radio], [role=combobox]";
+      return Array.from(document.querySelectorAll(selector)).filter((node) => {
+        const r = node.getBoundingClientRect();
+        return r.width > 1 && r.height > 1 && node.checkVisibility() && !node.parentElement?.closest(selector) && r.top < top;
+      }).length;
+    });
+    await expect(page.getByText("last_touch_30d@1")).toHaveCount(0);
+    await expect(page.getByText("Last touch · 30 days")).toBeVisible();
+    if (width < 640) {
+      // Dates, property, Marketing, Finance, View options, ⋯.
+      expect(before).toBe(6);
+      expect(before).toBeLessThan(BEFORE_PHONE_CONTROLS_BEFORE_FIGURES);
+      await expect(page.getByRole("button", { name: "Export CSV" })).toBeHidden();
+      await expect(page.getByRole("button", { name: "Definitions" })).toBeHidden();
+      await page.getByRole("button", { name: "More dashboard actions" }).click();
+      await expect(page.getByRole("menuitem")).toHaveText(["Refresh", "Definitions", "Export CSV"]);
+      await page.getByRole("menuitem", { name: "Refresh" }).click();
+      await expect(page.getByRole("menu")).toHaveCount(0);
+    } else {
+      expect(before).toBe(BEFORE_PHONE_CONTROLS_BEFORE_FIGURES);
+      await expect(page.getByRole("button", { name: "More dashboard actions" })).toBeHidden();
+    }
+  });
+}

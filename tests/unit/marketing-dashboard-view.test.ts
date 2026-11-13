@@ -150,7 +150,8 @@ describe("dashboard view", () => {
     render(ready());
     expect(text()).toContain("As of 7 Nov 2026, 06:00");
     expect(text()).toContain("Asia/Bangkok · THB");
-    expect(text()).toContain("Last touch (last_touch_30d@1)");
+    expect(text()).toContain("Last touch · 30 days");
+    expect(text()).not.toContain("last_touch_30d@1");
     expect(text()).toContain("11,980");
     expect(text()).toContain("179 paid stays in all · 7 checkout orders count in money only");
     // The ROAS tile says which campaigns its figure leaves out.

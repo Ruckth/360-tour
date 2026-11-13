@@ -295,8 +295,7 @@ export function AffiliatesView({
                 : "New partner"}
             </SheetTitle>
             <SheetDescription>
-              Changes apply to future referrals · the link name is permanent ·
-              no messages are sent
+              {sheet.editing?.partner ? "Changes apply to future referrals." : "Nothing is sent to the partner."}
             </SheetDescription>
           </>
         }
@@ -406,7 +405,7 @@ function PartnerEditor({
     <SheetForm
       saving={editor.saving}
       error={editor.saveError}
-      submitLabel="Save partner"
+      submitLabel="Save"
       onCancel={onCancel}
       onSubmit={(event) => {
         // The end date sits under More options; open it so the error can take focus.
