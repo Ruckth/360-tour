@@ -45,7 +45,7 @@ Set these in Vercel Production and Preview. Social ingress signatures and verifi
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Optional | Convex HTTP origin for the OTA export URL shown in admin. If omitted, the app derives it from `NEXT_PUBLIC_CONVEX_URL`. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Required Clerk UI/provider configuration for the application. |
 | `LINE_CHANNEL_SECRET` | Website config-status mirror only | LINE Developers Console -> Messaging API channel -> Basic settings -> Channel secret. |
-| `LINE_CHANNEL_ACCESS_TOKEN` | Website config-status mirror only | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
+| `LINE_CHANNEL_ACCESS_TOKEN` | For website staff replies | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
 | `FACEBOOK_ACCESS_TOKEN` | For website staff replies | Meta Developers -> Messenger API settings -> Generate access tokens -> Page access token. |
 | `FACEBOOK_PAGE_ID` | No, provider setup reference | Meta Developers -> Messenger API settings -> connected Page ID. |
 | `FACEBOOK_VERIFY_TOKEN` | Website config-status mirror only | Custom secret you create; must exactly match the Meta webhook Verify token field. |

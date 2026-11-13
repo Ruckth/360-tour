@@ -8,7 +8,7 @@
 //
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
-import { inspectArchitecture, SOURCE_EXTENSION } from './lib/architecture.mjs';
+import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -41,7 +41,7 @@ const rel = (p) => relative(ROOT, p).split(sep).join('/');
 const read = (p) => readFileSync(p, 'utf8');
 const isTest = (p) => /\.test\.tsx?$|\/tests\//.test(rel(p));
 const convexFiles = walk(join(ROOT, 'convex'));
-const convexProd = convexFiles.filter((p) => !isTest(p));
+const convexProd = convexFiles.filter((p) => isConvexEntryFile(rel(p)));
 const srcFiles = walk(join(ROOT, 'src'));
 const testFiles = [...convexFiles.filter(isTest), ...walk(join(ROOT, 'tests'))];
 const count = (files, re) => files.reduce((n, p) => n + (read(p).match(re) ?? []).length, 0);
@@ -72,7 +72,7 @@ function missingReturns() {
 }
 
 // The same AST rules used by lint; all supported deployed source extensions count.
-const ownership = [...convexProd, ...srcFiles].flatMap(p => inspectArchitecture(rel(p), read(p)).map(issue => ({ ...issue, path: rel(p) })));
+const ownership = [...convexFiles, ...srcFiles].flatMap(p => inspectArchitecture(rel(p), read(p)).map(issue => ({ ...issue, path: rel(p) })));
 const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).map(issue => `${issue.path}:${issue.line} ${issue.message}`);
 const DOMAINS = SCHEMA_DOMAINS;
 

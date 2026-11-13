@@ -22,20 +22,20 @@ const config = [
     ],
   },
   {
-    files: ["**/*.{ts,tsx,js,mjs}"],
+    files: ["**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
     languageOptions: {
       parserOptions: { project: "./tsconfig.eslint.json", tsconfigRootDir: import.meta.dirname },
     },
     rules: { "@typescript-eslint/no-floating-promises": "error" },
   },
   {
-    files: ["{src,convex}/**/*.{ts,tsx,js,mjs}"],
+    files: ["{src,convex}/**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
     plugins: { architecture },
     rules: { "architecture/ownership": "error" },
   },
   {
-    files: ["convex/**/*.{ts,tsx,js,mjs}"],
-    ignores: ["convex/auth/model.ts", "convex/**/*.test.*", "convex/testing/**"],
+    files: ["convex/**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
+    ignores: ["convex/auth/model.ts", "convex/**/*.test.*"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{
@@ -47,7 +47,7 @@ const config = [
     },
   },
   {
-    files: ["src/**/*.{ts,tsx,js,mjs}"],
+    files: ["src/**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
     rules: {
       "no-restricted-imports": ["error", {
         patterns: [{ group: ["convex/lib/**", "convex/*/model", "convex/*/model.*", "convex/*/private/**"], message: "Use convex/shared rules or generated API/data types in browser code." }],

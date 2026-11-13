@@ -4,18 +4,26 @@ import ts from 'typescript';
 import { posix } from 'node:path';
 import { SCHEMA_DOMAINS } from './convex-schema.mjs';
 
-export const SOURCE_EXTENSION = /\.(?:ts|tsx|js|mjs)$/;
+// Convex 1.34's complete entry-point extension list. Additional forms fail closed below.
+export const SOURCE_EXTENSION = /\.(?:ts|tsx|js|mjs|cjs|mts|cts|jsx)$/;
+export const INSPECTED_SOURCE_EXTENSION = /\.(?:ts|tsx|js|mjs)$/;
+/** Match Convex's entry-point exclusions, not a directory's descriptive name.
+ * @param {string} path */
+export const isConvexEntryFile = path => path.startsWith('convex/') && SOURCE_EXTENSION.test(path)
+  && !path.includes('/_generated/') && !/^[.#]/.test(posix.basename(path))
+  && (posix.basename(path).match(/\./g) ?? []).length === 1 && !path.includes(' ')
+  && !['convex/schema.ts', 'convex/schema.js'].includes(path);
 /** @param {string} path */
-export const isTestSource = path => /(?:^|\/)(?:tests|testing)\/|\.(?:test|spec)\.[^.]+$/.test(path);
+export const isTestSource = path => /(?:^|\/)(?:tests|testing)(?:\/|$)|\.(?:test|spec)(?:\.[^.]+)?$/.test(path);
 /** @param {string} path */
-export const modulePath = path => path.replace(/\.(?:ts|tsx|js|mjs)$/, '');
+export const modulePath = path => path.replace(SOURCE_EXTENSION, '');
 const sdk = new Set(['convex/server', 'convex/values', 'convex/browser', 'convex/react', 'convex/react-clerk', 'convex/nextjs']);
 const roots = new Set(['schema', 'http', 'crons', 'auth.config', 'convex.config'].map(p => `convex/${p}`));
 // Invocation accounting and backend configuration, not homes for business ctx implementations.
 const forbiddenGlobals = new Set(['ctx', 'process', 'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'Deno', 'Bun', 'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'eval', 'Function']);
 const infrastructure = new Set(['adminEmails', 'maintenance', 'readBudget'].map(p => `convex/lib/${p}`));
 /** @param {string} path */
-export const domainOf = path => SCHEMA_DOMAINS.find(d => path.startsWith(`convex/${d}/`));
+export const domainOf = path => SCHEMA_DOMAINS.find(d => path === `convex/${d}` || path.startsWith(`convex/${d}/`));
 /** @param {string} path @param {string} specifier */
 export function importTarget(path, specifier) {
   if (specifier.startsWith('.')) return modulePath(posix.normalize(posix.join(posix.dirname(path), specifier)));
@@ -57,14 +65,15 @@ export function sourceImports(file) {
 /** @param {string} path @param {string} source */
 export function inspectArchitecture(path, source) {
   path = path.replaceAll('\\', '/');
-  if (isTestSource(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return [];
+  if (isTestSource(path) && !isConvexEntryFile(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return [];
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   /** @type {{rule: string, line: number, message: string}[]} */
   const issues = [];
   /** @param {string} rule @param {import('typescript').Node} node @param {string} message */
   const report = (rule, node, message) => issues.push({ rule, line: file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1, message });
-  const own = domainOf(path), moduleId = modulePath(path), shared = path.startsWith('convex/shared/');
-  if (path.startsWith('convex/') && !own && !path.startsWith('convex/maintenance/') && !shared && !roots.has(moduleId) && !infrastructure.has(moduleId)) report('owner', file, 'Backend implementations belong to a domain; root only assembles schema, HTTP, crons and configuration.');
+  const own = domainOf(path), moduleId = modulePath(path), shared = path.startsWith('convex/shared/'), testInfrastructure = isTestSource(path);
+  if (isConvexEntryFile(path) && !INSPECTED_SOURCE_EXTENSION.test(path)) report('extension', file, 'This Convex-deployable extension is not inspected; use .ts, .tsx, .js or .mjs.');
+  if (path.startsWith('convex/') && !testInfrastructure && !own && !path.startsWith('convex/maintenance/') && !shared && !roots.has(moduleId) && !infrastructure.has(moduleId)) report('owner', file, 'Backend implementations belong to a domain; root only assembles schema, HTTP, crons and configuration.');
   // Syntax errors must not make a source scan appear to have zero dependencies.
   if (!('parseDiagnostics' in file) || !Array.isArray(file.parseDiagnostics) || file.parseDiagnostics.length) report('syntax', file, 'Cannot inspect invalid source syntax.');
   for (const dependency of sourceImports(file)) {
@@ -83,17 +92,54 @@ export function inspectArchitecture(path, source) {
     // Root assembly has just two deliberate private imports: schema tables and HTTP ingress.
     const assembly = moduleId === 'convex/schema' && other && target === `convex/${other}/tables`
       || moduleId === 'convex/http' && target === 'convex/messaging/ingress';
-    if (path.startsWith('convex/') && other && other !== own && !assembly && target !== `convex/${other}/model`) report('cross-domain', node, `Use convex/${other}/model across domains, including type imports and reexports.`);
+    if (path.startsWith('convex/') && !testInfrastructure && other && other !== own && !assembly && target !== `convex/${other}/model`) report('cross-domain', node, `Use convex/${other}/model across domains, including type imports and reexports.`);
     if (shared && !((target.startsWith('convex/shared/')) || target === 'convex/values' || target === 'libphonenumber-js/min' || typeOnly && target === 'convex/_generated/dataModel')) report('shared', node, `Shared rules are pure; ${target} is not a shared rule, validator or generated data type.`);
     if (infrastructure.has(moduleId) && other) report('infrastructure', node, 'Backend lib infrastructure must not depend on business domains.');
-    if (path.startsWith('convex/') && (target.startsWith('convex/testing/') || isTestSource(target))) report('testing', node, 'Production cannot depend on test harnesses or fixtures.');
+    if (!testInfrastructure && (path.startsWith('convex/') || path.startsWith('src/')) && isTestSource(target)) report('testing', node, 'Production cannot depend on test harnesses or fixtures.');
+  }
+  /** @param {import('typescript').BindingName} name @param {string} text @returns {boolean} */
+  function binds(name, text) {
+    return ts.isIdentifier(name) ? name.text === text : name.elements.some(element => !ts.isOmittedExpression(element) && binds(element.name, text));
+  }
+  /** Global names used as pure local data are not references to the ambient runtime.
+   * @param {import('typescript').Identifier} identifier */
+  function locallyBound(identifier) {
+    for (let scope = identifier.parent; scope; scope = scope.parent) {
+      if (ts.isFunctionLike(scope) && scope.parameters.some(parameter => binds(parameter.name, identifier.text))) return true;
+      if (ts.isCatchClause(scope) && scope.variableDeclaration && binds(scope.variableDeclaration.name, identifier.text)) return true;
+      if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue;
+      for (const statement of scope.statements) {
+        if (ts.isVariableStatement(statement) && statement.declarationList.declarations.some(declaration => binds(declaration.name, identifier.text))) return true;
+        if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name?.text === identifier.text) return true;
+        if (ts.isImportDeclaration(statement)) {
+          const clause = statement.importClause, names = clause?.namedBindings;
+          if (clause?.name?.text === identifier.text || names && (ts.isNamespaceImport(names) ? names.name.text === identifier.text : names.elements.some(name => name.name.text === identifier.text))) return true;
+        }
+      }
+    }
+    return false;
   }
   /** @param {import('typescript').Node} node */
   function visit(node) {
     if (ts.isIdentifier(node) && node.text === 'require' && !(ts.isCallExpression(node.parent) && node.parent.expression === node)) report('imports', node, 'Do not alias require; use a literal direct module import so ownership can be verified.');
     if (shared) {
       // Identifier checks also catch renamed/destructured access, without counting comments/strings.
-      if (ts.isIdentifier(node) && forbiddenGlobals.has(node.text)) report('shared', node, `Shared rules cannot access ${node.text}; pass pure data instead.`);
+      const propertyName = ts.isIdentifier(node) && (
+        ts.isPropertyAccessExpression(node.parent) && node.parent.name === node
+        || ts.isBindingElement(node.parent) && node.parent.propertyName === node
+        || ts.isTypeReferenceNode(node.parent)
+        || (ts.isPropertyAssignment(node.parent) || ts.isPropertySignature(node.parent)
+          || ts.isPropertyDeclaration(node.parent) || ts.isMethodDeclaration(node.parent)
+          || ts.isMethodSignature(node.parent) || ts.isGetAccessorDeclaration(node.parent)
+          || ts.isSetAccessorDeclaration(node.parent)) && node.parent.name === node
+      );
+      if (ts.isIdentifier(node) && !propertyName && forbiddenGlobals.has(node.text) && (node.text === 'ctx' || !locallyBound(node))) report('shared', node, `Shared rules cannot access ${node.text}; pass pure data instead.`);
+      if (ts.isIdentifier(node) && !propertyName && ['globalThis', 'self', 'global'].includes(node.text) && !locallyBound(node)) {
+        const parent = node.parent;
+        const member = ts.isPropertyAccessExpression(parent) && parent.expression === node ? parent.name.text
+          : ts.isElementAccessExpression(parent) && parent.expression === node && ts.isStringLiteralLike(parent.argumentExpression) ? parent.argumentExpression.text : undefined;
+        if (!member || forbiddenGlobals.has(member)) report('shared', node, 'Shared rules cannot alias runtime globals or access side effects through them.');
+      }
       if (ts.isElementAccessExpression(node) && ['globalThis', 'self', 'global'].includes(node.expression.getText(file)) && (!ts.isStringLiteralLike(node.argumentExpression) || forbiddenGlobals.has(node.argumentExpression.text))) report('shared', node, 'Shared rules cannot access runtime globals indirectly.');
       if (ts.isIdentifier(node) && /^(?:QueryCtx|MutationCtx|ActionCtx|GenericQueryCtx|GenericMutationCtx|GenericActionCtx)$/.test(node.text)) report('shared', node, 'Shared rules cannot accept a backend context.');
       if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) report('shared', node, 'Shared rules cannot read runtime environment metadata.');

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
-import { inspectArchitecture, SOURCE_EXTENSION } from '../../scripts/lib/architecture.mjs';
+import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from '../../scripts/lib/architecture.mjs';
 import { inspectRuntimeGraph } from '../../scripts/lib/architecture-graph.mjs';
 import { inspectConvexAccess } from '../../scripts/lib/convex-access.mjs';
 
@@ -21,6 +21,26 @@ it.each(['ts', 'tsx', 'js', 'mjs'])('inspects deployed .%s sources including ali
     "const { query: renamed } = require('../_generated/server');",
     "const server = await import('../_generated/server');",
   ]) expect(issues(`convex/catalog/leak.${ext}`, source), source).not.toEqual([]);
+});
+
+it.each(['convex/testing/leak.ts', 'convex/pos/tests/leak.js', 'convex/tests/leak.mjs'])('does not exempt deployed test-directory registrations: %s', path => {
+  const raw = "import { query } from 'convex/server'; export const leak = query({args:{},handler:()=>null});";
+  expect(isConvexEntryFile(path)).toBe(true);
+  expect(inspectConvexAccess(path, raw).violations).not.toEqual([]);
+  expect(issues(path, raw)).not.toEqual([]);
+  expect(inspectConvexAccess(path, "import { adminQuery } from 'convex/auth/model'; export const leak = adminQuery({args:{},handler:()=>null});").violations).not.toEqual([]);
+});
+
+it.each(['cjs', 'mts', 'cts', 'jsx'])('scans and rejects unsupported Convex .%s entry points instead of skipping them', extension => {
+  const path = `convex/pos/leak.${extension}`;
+  expect(SOURCE_EXTENSION.test(path)).toBe(true);
+  expect(isConvexEntryFile(path)).toBe(true);
+  expect(inspectArchitecture(path, 'export const value = 1;')).toEqual(expect.arrayContaining([expect.objectContaining({ rule: 'extension' })]));
+  expect(inspectConvexAccess(path, '').violations).not.toEqual([]);
+});
+
+it.each(['ownerQuery', 'marketingAction', 'guestAction'])('fails explicitly on an unregistered access builder: %s', builder => {
+  expect(inspectConvexAccess('convex/pos/model.ts', `import { ${builder} } from '../auth/model'; export const leak = ${builder}({args:{},handler:()=>null});`).violations).toEqual(expect.arrayContaining([expect.stringContaining('unknown access builder')]));
 });
 
 it('limits raw public builders to the exact auth model and preserves internal builder reexports', () => {
@@ -48,6 +68,8 @@ it.each([
 });
 
 it.each([
+  "import { hidden } from '../services';",
+  "export { hidden } from 'convex/services';",
   "import { hidden as alias } from '../services/private/photos.js';",
   "import type { Hidden } from '../services/appointments.tsx';",
   "export * from '../services/appointments.mjs';",
@@ -82,6 +104,8 @@ it.each([
   "const send = globalThis.fetch;",
   "const send = globalThis['fetch'];",
   "const send = globalThis[name];",
+  "const runtime = globalThis; export const send = runtime['fetch'];",
+  "const { fetch: send } = globalThis;",
   "const socket = new WebSocket('wss://example.test');",
   "const environment = import.meta.env;",
   "import { readFile } from 'node:fs/promises';",
@@ -93,9 +117,21 @@ it.each([
 it('preserves legitimate typed browser/shared imports, domain models and focused private tests', () => {
   expect(issues('src/components/good.tsx', "import type { Doc } from 'convex/_generated/dataModel'; import type { PriceQuote } from 'convex/shared/pricing.js'; import { api } from 'convex/_generated/api'; import { useQuery } from 'convex/react';")).toEqual([]);
   expect(issues('convex/shared/good.ts', "import { type Doc } from '../_generated/dataModel'; import { v } from 'convex/values'; import { percentageOf } from './money'; // process.env and fetch() are only a comment\n export const label = 'ctx.db.query';")).toEqual([]);
+  expect(issues('convex/shared/data.ts', 'export const audit = { process: "booking", fetch: "caption" }; export type Details = { ctx: string }; export const label = audit.process;')).toEqual([]);
+  expect(issues('convex/shared/crypto.ts', 'export const digest = globalThis.crypto.subtle;')).toEqual([]);
+  expect(issues('convex/shared/parameters.ts', 'export function title(document: { title: string }) { return document.title; } const process = "booking"; export const label = process;')).toEqual([]);
+  expect(issues('convex/shared/fields.ts', 'type Callback = Function; export function copy(data: { window: number, document: string }) { const { document: label } = data; return { window: data.window, label }; }')).toEqual([]);
   expect(issues('convex/pos/orders.ts', "import { createAppointmentRecord } from '../services/model.js'; import { internalMutation as command } from '../auth/model'; export const write = command({ args: {}, handler: () => null });")).toEqual([]);
   expect(issues('convex/pos/private/orderLinks.test.ts', "import { privateHelper } from '../../services/private/photos';")).toEqual([]);
   expect(issues('tests/unit/example.test.ts', "import { privateHelper } from '../../convex/pos/private/orderLinks';")).toEqual([]);
+});
+
+it.each([
+  "import { fixture } from '../../../tests/support/checkout-backend';",
+  "import { fixture } from './fixture.test';",
+  "export * from '../../../tests';",
+])('keeps browser production code off test infrastructure: %s', source => {
+  expect(issues('src/components/admin/feature.tsx', source)).not.toEqual([]);
 });
 
 it('refuses invalid syntax and runtime cycles or registrations behind model interfaces', () => {
@@ -127,3 +163,15 @@ it('checks every current deployed source and actual emitted backend graph withou
   for (const [path, source] of Object.entries(sources)) expect(issues(path, source), path).toEqual([]);
   expect(inspectRuntimeGraph(sources)).toEqual([]);
 }, 30_000);
+
+it.each([
+  "import { read as registeredRead } from './orders'; export const forwarded = registeredRead;",
+  "import { read } from './orders'; const renamed = read; export { renamed as forwarded };",
+  "import * as endpoints from './orders'; export const forwarded = endpoints.read;",
+  "import * as endpoints from './orders'; const renamed = endpoints; export const forwarded = renamed['read'];",
+])('rejects endpoint aliases forwarded through a model: %s', model => {
+  expect(inspectRuntimeGraph({
+    'convex/pos/model.ts': model,
+    'convex/pos/orders.ts': "import { internalQuery } from '../auth/model'; export const read = internalQuery({args:{},handler:()=>null});",
+  })).toEqual(expect.arrayContaining([expect.stringContaining('reexports endpoint registrations')]));
+});

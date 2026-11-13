@@ -4,13 +4,13 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { SOURCE_EXTENSION, importTarget } from './lib/architecture.mjs';
+import { isConvexEntryFile, importTarget } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 
 const baseFlag = process.argv.indexOf('--base');
 if (baseFlag < 0 || !process.argv[baseFlag + 1] || process.argv[baseFlag + 1].startsWith('--')) throw new Error('Supply --base <reviewed commit>; this compares a specific refactor, not a permanent business snapshot.');
 const base = process.argv[baseFlag + 1];
-const files = ref => execFileSync('git', ref ? ['ls-tree', '-r', '--name-only', ref, 'convex'] : ['ls-files', '--cached', '--others', '--exclude-standard', 'convex'], { encoding: 'utf8' }).trim().split('\n').filter(f => SOURCE_EXTENSION.test(f) && !/\.(?:test|spec)\.[^.]+$|\/_generated\/|\/testing\/|\.d\.ts$/.test(f));
+const files = ref => execFileSync('git', ref ? ['ls-tree', '-r', '--name-only', ref, 'convex'] : ['ls-files', '--cached', '--others', '--exclude-standard', 'convex'], { encoding: 'utf8' }).trim().split('\n').filter(isConvexEntryFile);
 const sourceCache = new Map();
 function read(file, ref) {
   const key = `${ref ?? 'working'}:${file}`;

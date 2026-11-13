@@ -1,6 +1,6 @@
 // Recognize builders by imported identity, never by a bare spelling or a fixed endpoint quota.
 import ts from 'typescript';
-import { domainOf, importTarget, isTestSource, modulePath, sourceImports } from './architecture.mjs';
+import { domainOf, importTarget, isTestSource, isConvexEntryFile, INSPECTED_SOURCE_EXTENSION, modulePath, sourceImports } from './architecture.mjs';
 export const ACCESS_BUILDERS = new Set([
   'publicQuery', 'publicMutation', 'publicAction',
   'guestQuery', 'guestMutation', 'deviceQuery', 'deviceMutation',
@@ -20,10 +20,12 @@ export function inspectConvexAccess(path, source) {
   const registrations = [];
   /** @type {string[]} */
   const endpoints = [];
-  if (isTestSource(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return { violations, registrations, endpoints };
+  if (isTestSource(path) && !isConvexEntryFile(path) || path.includes('/_generated/') || path.endsWith('.d.ts')) return { violations, registrations, endpoints };
+  if (isConvexEntryFile(path) && !INSPECTED_SOURCE_EXTENSION.test(path)) violations.push(`${path}: unsupported deployable extension; use .ts, .tsx, .js or .mjs`);
   const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
   /** @type {Map<string, string>} */
   const bindings = new Map();
+  const unknownBuilders = new Map();
   /** @type {Set<import('typescript').Node>} */
   const importNames = new Set();
   const authModel = path === 'convex/auth/model.ts';
@@ -50,7 +52,13 @@ export function inspectConvexAccess(path, source) {
     for (const spec of names.elements) {
       if (spec.isTypeOnly) continue;
       const original = (spec.propertyName ?? spec.name).text;
-      if (!builders.has(original)) continue;
+      if (!builders.has(original)) {
+        if (!rawModule && /(?:Query|Mutation|Action)$/.test(original)) {
+          unknownBuilders.set(spec.name.text, original);
+          importNames.add(spec.name);
+        }
+        continue;
+      }
       if (rawModule && RAW.has(original) && !authModel) fail(spec, `imports/reexports raw ${original}; only convex/auth/model.ts owns raw public builders`);
       if (ts.isExportDeclaration(node)) {
         if (!(authModel && INTERNAL.has(original))) fail(spec, 'do not reexport registration builders; import from auth/model at the registration');
@@ -58,12 +66,18 @@ export function inspectConvexAccess(path, source) {
         bindings.set(spec.name.text, original);
         importNames.add(spec.name);
         const owner = domainOf(path) || path.startsWith('convex/maintenance/');
-        if (!authModel && (!owner || /\/(?:model|tables)\.[^.]+$|\/private\//.test(path)) && !(modulePath(path) === 'convex/http' && original === 'httpAction')) fail(spec, 'registration builders belong in domain endpoint files, not root, lib, model or private implementations');
+        if (!authModel && (!owner || !isConvexEntryFile(path) || isTestSource(path) || /\/(?:model|tables)\.[^.]+$|\/private\//.test(path)) && !(modulePath(path) === 'convex/http' && original === 'httpAction')) fail(spec, 'registration builders belong in domain endpoint files, not root, lib, model or private/test implementations');
       }
     }
   }
   /** @param {import('typescript').Node} node */
   function visit(node) {
+    if (ts.isIdentifier(node) && unknownBuilders.has(node.text) && !importNames.has(node)) {
+      const call = ts.isCallExpression(node.parent) && node.parent.expression === node ? node.parent : undefined;
+      const declaration = call?.parent;
+      const statement = declaration && ts.isVariableDeclaration(declaration) ? declaration.parent.parent : undefined;
+      if (!call || statement && ts.isVariableStatement(statement) && statement.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) fail(node, `unknown access builder ${unknownBuilders.get(node.text)}; add its verified policy to ACCESS_BUILDERS before use`);
+    }
     if (ts.isIdentifier(node) && bindings.has(node.text) && !importNames.has(node)) {
       const builder = bindings.get(node.text) ?? "";
       // auth/model composes wrappers and deliberately preserves internal builders.
