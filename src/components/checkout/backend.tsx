@@ -84,6 +84,8 @@ export type CheckoutBackend = {
   useOrder(orderId: OrderId | null): OrderView | null | undefined;
   useOrderHistory(orderId: OrderId): CustomerPage<OrderHistoryRow>;
   useOrders(filter: OrderFilter): OrdersPage;
+  /** Open orders with items that this checkout actor can recall (pos.listOpenOrders). */
+  useOpenOrders(): OrdersPage;
   /** undefined while loading; [] for a query under two characters. */
   useCustomerSearch(query: string): Customer[] | undefined;
   useCustomerPage(query: string, archived: boolean): CustomerPage<Customer>;

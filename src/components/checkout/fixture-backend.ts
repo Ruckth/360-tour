@@ -1401,6 +1401,18 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       useVersion();
       return usePage(state.orderHistory.filter(r => r.entityId === orderId).toReversed(), orderId);
     },
+    useOpenOrders: () => {
+      const v = useVersion();
+      const results = useMemo(
+        () => [...state.orders.values()].filter(o => o.hasItems && isOpen(o) && cashierCanRead(o))
+          // As the status range index: legacy held orders first, then newest change per status.
+          .sort((a, b) => (a.status === b.status ? b.updatedAt - a.updatedAt || b._creationTime - a._creationTime : a.status === "held" ? -1 : 1)).map(orderRow),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `v` is the store version
+        [v],
+      );
+      const page = usePage(results, "open");
+      return { ...page, loadMore: n => page.loadMore(Math.min(Math.max(n, 1), 50)) };
+    },
     useOrders: (filter: OrderFilter) => {
       const v = useVersion();
       const results = useMemo(

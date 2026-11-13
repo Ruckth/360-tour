@@ -735,6 +735,31 @@ function discardedField(order: Order): { discarded?: DiscardedInfo | null } {
 		: {};
 }
 
+/** The shared row contract for the manager browser and checkout's open-order picker. */
+async function orderListRow(ctx: QueryCtx, order: Order) {
+	const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
+	const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
+	return {
+		_id: order._id,
+		orderNumber: order.orderNumber,
+		title: orderTitle(order.orderNumber),
+		state: orderState(order),
+		itemCount: order.itemCount,
+		total: order.total,
+		...refundAmounts,
+		due: await remaining(ctx, order),
+		currency: order.currency,
+		updatedAt: order.updatedAt,
+		receiptNumber: order.receiptNumber,
+		customerName: await customerName(ctx, order),
+		/** The order's booking, as in its header (see orderSourceRefs). */
+		bookingReference: sources[0]?.reference,
+		/** How many more bookings it is for. */
+		otherBookings: Math.max(sources.length - 1, 0),
+		...discardedField(order)
+	};
+}
+
 /**
  * Orders with items, newest change first, for the Orders list: unpaid, paid, voided or discarded.
  * Unpaid never includes discarded orders; `discarded` lists them newest discard first.
@@ -753,30 +778,27 @@ export const listOrders = query({
 			})
 			.order('desc')
 			.paginate({ ...args.paginationOpts, numItems });
-		const orders = page.page;
 		const rows = [];
-		for (const order of orders) {
-			const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
-			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
-			rows.push({
-				_id: order._id,
-				orderNumber: order.orderNumber,
-				title: orderTitle(order.orderNumber),
-				state: orderState(order),
-				itemCount: order.itemCount,
-				total: order.total,
-				...refundAmounts,
-				due: await remaining(ctx, order),
-				currency: order.currency,
-				updatedAt: order.updatedAt,
-				receiptNumber: order.receiptNumber,
-				customerName: await customerName(ctx, order),
-				/** The order's booking, as in its header (see orderSourceRefs). */
-				bookingReference: sources[0]?.reference,
-				/** How many more bookings it is for. */
-				otherBookings: Math.max(sources.length - 1, 0),
-				...discardedField(order)
-			});
+		for (const order of page.page) rows.push(await orderListRow(ctx, order));
+		return { ...page, page: rows };
+	}
+});
+
+/** Open orders with items that this checkout actor can recall, in the Orders browser's order. */
+export const listOpenOrders = query({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const actor = await requireStaff(ctx, 'checkout');
+		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
+		const page = await ctx.db.query('bills')
+			.withIndex('by_hasItems_and_status_and_updatedAt', q => q.eq('hasItems', true).gte('status', 'draft').lte('status', 'held'))
+			.order('desc')
+			.paginate({ ...args.paginationOpts, numItems });
+		// Paginate before the access check: never scan beyond this bounded page to fill it.
+		// The current read rule permits every draft/held order, irrespective of its creator.
+		const rows = [];
+		for (const order of page.page) {
+			if (canReadCheckoutOrder(actor, order)) rows.push(await orderListRow(ctx, order));
 		}
 		return { ...page, page: rows };
 	}
