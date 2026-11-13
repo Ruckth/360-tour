@@ -46,12 +46,19 @@ it('operator planner requires protected fresh export, matching hash and valid ZI
     fs.writeFileSync(proofFile, JSON.stringify({ ...evidence, observedAt: new Date().toISOString() }), { mode: 0o600 });
     expect(invoke()).toContain('"dryRun": true');
     expect(invoke()).not.toContain('operatorEndpointAfterFreshRecheck');
-    execFileSync('python3', ['-c', 'import sys,zipfile,json\nwith zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_STORED) as z:z.writestr("orders/documents.jsonl",json.dumps({"sentinel":True})+chr(10))', archive]);
+    execFileSync('python3', ['-c', 'import sys,zipfile,json\nwith zipfile.ZipFile(sys.argv[1],"w",compression=zipfile.ZIP_STORED) as z:\n z.writestr("orders/documents.jsonl",json.dumps({"sentinel":True})+chr(10))\n for n in ["_tables/documents.jsonl","_storage/documents.jsonl","_components/rateLimiter/_tables/documents.jsonl","_components/rateLimiter/_storage/documents.jsonl"]:z.writestr(n, "")', archive]);
     fs.chmodSync(archive, 0o600);
     const backup = { deploymentId: 1, deploymentName: deployment.name, projectId: 123, previewIdentifier: branch, path: archive, exportedAt: new Date().toISOString(), includeFileStorage: true, sha256: createHash('sha256').update(fs.readFileSync(archive)).digest('hex') };
     const write = (value: typeof backup) => fs.writeFileSync(manifestFile, JSON.stringify([value]), { mode: 0o600 });
     write(backup);
     expect(invoke(['--backups', manifestFile])).toContain(`POST https://api.convex.dev/v1/deployments/${deployment.name}/delete`);
+    const complete = fs.readFileSync(archive);
+    for (const omitted of ['_storage/documents.jsonl', '_components/rateLimiter/_tables/documents.jsonl']) {
+      execFileSync('python3', ['-c', 'import sys,zipfile,io\np=sys.argv[1]\nwith zipfile.ZipFile(p) as z: members=[(n,z.read(n)) for n in z.namelist() if n!=sys.argv[2]]\nwith zipfile.ZipFile(p,"w") as z:\n for n,data in members:z.writestr(n,data)', archive, omitted]);
+      write({ ...backup, sha256: createHash('sha256').update(fs.readFileSync(archive)).digest('hex') });
+      expect(() => invoke(['--backups', manifestFile])).toThrow();
+      fs.writeFileSync(archive, complete);
+    }
     for (const mutation of [{ sha256: 'wrong' }, { includeFileStorage: false }, { exportedAt: 'invalid' }, { exportedAt: new Date(Date.now() - 3600000).toISOString() }]) {
       write({ ...backup, ...mutation }); expect(() => invoke(['--backups', manifestFile])).toThrow();
     }

@@ -1,4 +1,23 @@
 import { seedEmpty } from './seed-empty.mjs';
+import { disabledServiceKeys, disabledServices } from './local-integration-config.mjs';
+
+/** Installed `convex env list` prints NAME=value, quoting nonempty multiline values.
+ * Empty values alone are safe. Never include provider values in an error or log.
+ * @param {string} listing
+ */
+export function assertPreviewProvidersDisabled(listing) {
+  const forbidden = disabledServiceKeys.filter(name =>
+    new RegExp(`^${name}=.+`, 'm').test(listing));
+  if (forbidden.length) throw new Error(`Disable Preview provider variables before pushing: ${forbidden.join(', ')}`);
+}
+
+/** Pin disabled values so Next cannot restore business credentials from dotenv.
+ * @param {NodeJS.ProcessEnv} env @param {string} url
+ */
+export function previewFrontendEnvironment(env, url) {
+  const siteUrl = env.VERCEL_URL ? `https://${env.VERCEL_URL}` : '';
+  return { ...env, ...disabledServices, NEXT_PUBLIC_CONVEX_URL: previewUrl(url), NEXT_PUBLIC_CONVEX_SITE_URL: url.replace('.convex.cloud', '.convex.site'), SITE_URL: siteUrl, NEXT_PUBLIC_SITE_URL: siteUrl };
+}
 
 export const protectedDeployments = ['wary-toad-189', 'optimistic-turtle-573'];
 /** @param {Record<string, string | undefined>} env */

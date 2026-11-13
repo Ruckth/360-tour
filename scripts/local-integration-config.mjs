@@ -33,6 +33,8 @@ export const disabledServiceKeys = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "OWNER_NOTIFICATION_EMAIL",
+  "MESSAGING_IMAGE_SECRET",
+  "NEXT_PUBLIC_SITE_URL",
 ];
 export const disabledServices = Object.fromEntries(
   disabledServiceKeys.map((key) => [key, ""]),

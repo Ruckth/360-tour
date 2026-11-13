@@ -31,7 +31,7 @@ if (args.includes('--help') || !args.length) {
     if (sha256 !== backup.sha256) throw new Error('Backup SHA-256 mismatch');
     // Reading every ZIP member checks CRC. Require root and component data plus file-storage export attestation.
     if (backup.includeFileStorage !== true) throw new Error('Backup must include file storage');
-    execFileSync('python3', ['-c', 'import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n assert z.testzip() is None, "CRC failure"\n assert any(n.endswith("/documents.jsonl") for n in z.namelist()), "Missing table export"\n assert all(not n.startswith("/") and ".." not in n.split("/") for n in z.namelist()), "Unsafe member"', file], { timeout: 30000, stdio: 'pipe' });
+    execFileSync('python3', ['-c', 'import sys,zipfile\nwith zipfile.ZipFile(sys.argv[1]) as z:\n assert z.testzip() is None, "CRC failure"\n assert "_tables/documents.jsonl" in z.namelist(), "Missing root table inventory"\n assert "_storage/documents.jsonl" in z.namelist(), "Missing storage inventory"\n assert "_components/rateLimiter/_tables/documents.jsonl" in z.namelist(), "Missing rateLimiter component inventory"\n assert "_components/rateLimiter/_storage/documents.jsonl" in z.namelist(), "Missing component storage inventory"\n assert all(not n.startswith("/") and ".." not in n.split("/") for n in z.namelist()), "Unsafe member"', file], { timeout: 30000, stdio: 'pipe' });
     row.backupVerified = true;
     row.sha256 = sha256;
     row.operatorEndpointAfterFreshRecheck = `POST https://api.convex.dev/v1/deployments/${row.name}/delete`;

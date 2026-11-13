@@ -7,6 +7,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS || 4),
     projects: Object.entries(testProjects(dirname)).map(([name, include]) => ({
       extends: true,
       test: {

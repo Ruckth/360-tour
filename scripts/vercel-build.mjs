@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { previewConfiguration, buildSeededPreview, previewDashboardTarget } from './preview-build.mjs';
+import { previewConfiguration, buildSeededPreview, previewDashboardTarget, previewFrontendEnvironment } from './preview-build.mjs';
 import { createPrivateOutput } from './local-integration-config.mjs';
 
 process.umask(0o077);
@@ -33,10 +33,11 @@ try {
     work = await fs.mkdtemp(path.join(os.tmpdir(), '360-preview-build-'));
     const home = path.join(work, 'home');
     await fs.mkdir(home, { mode: 0o700 });
-    const envFile = path.join(work, 'empty.env');
-    await fs.writeFile(envFile, '', { mode: 0o600 });
+    // --env-file makes the installed CLI ignore process.env's deploy key.
+    const envFile = path.join(work, 'preview.env');
+    await fs.writeFile(envFile, `CONVEX_DEPLOY_KEY=${process.env.CONVEX_DEPLOY_KEY}\n`, { mode: 0o600 });
     const targetFile = path.join(work, 'target');
-    const env = { ...process.env, HOME: home, CONVEX_AGENT_MODE: 'anonymous', CONVEX_DEPLOYMENT: '', CONVEX_SELF_HOSTED_URL: '', CONVEX_SELF_HOSTED_ADMIN_KEY: '', PHASE3F_TARGET_FILE: targetFile };
+    const env = { ...process.env, HOME: home, CONVEX_AGENT_MODE: 'anonymous', CONVEX_DEPLOYMENT: '', CONVEX_SELF_HOSTED_URL: '', CONVEX_SELF_HOSTED_ADMIN_KEY: '', PHASE3F_TARGET_FILE: targetFile, PHASE3F_ENV_FILE: envFile };
     const convex = args => run(process.execPath, [cli, ...args, '--env-file', envFile], env);
     const result = await buildSeededPreview({
       deploy: async () => {
@@ -50,7 +51,7 @@ try {
       seed: () => convex(['run', '--preview-name', branch, 'maintenance/seed:seedAll', '{"scenario":"demo-resort"}']),
       build: async url => {
         console.log('Preview backend deployed; empty-only seed complete. Building Next.');
-        await run('pnpm', ['build'], { ...env, CONVEX_DEPLOY_KEY: '', NEXT_PUBLIC_CONVEX_URL: url, NEXT_PUBLIC_CONVEX_SITE_URL: url.replace('.convex.cloud', '.convex.site') }, true);
+        await run('pnpm', ['build'], previewFrontendEnvironment(env, url), true);
       },
     });
     console.log(`Preview initialization: ${result}.`);

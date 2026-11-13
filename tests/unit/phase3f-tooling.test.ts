@@ -1,9 +1,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import http from 'node:http';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { readDevConfig, refuseInheritedTarget, devEnvironment, requireAnonymousState } from '../../scripts/local-dev-config.mjs';
-import { buildSeededPreview, previewConfiguration, previewUrl, previewDashboardTarget } from '../../scripts/preview-build.mjs';
+import { buildSeededPreview, previewConfiguration, previewUrl, previewDashboardTarget, assertPreviewProvidersDisabled, previewFrontendEnvironment } from '../../scripts/preview-build.mjs';
 import { seedEmpty } from '../../scripts/seed-empty.mjs';
 import { testProjects } from '../../scripts/vitest-projects.mjs';
 
@@ -48,6 +51,36 @@ describe('persistent local development configuration', () => {
 
 const env = { VERCEL: '1', VERCEL_ENV: 'preview', VERCEL_GIT_REPO_OWNER: 'Ruckth', VERCEL_GIT_REPO_SLUG: '360-tour', CONVEX_DEPLOY_KEY: 'preview:test-team:test-project|offline-fixture', CONVEX_PREVIEW_TEAM: 'test-team', CONVEX_PREVIEW_PROJECT: 'test-project', CONVEX_PREVIEW_DEFAULT_BRANCH: 'main', VERCEL_GIT_COMMIT_REF: 't3/phase3f-local-dev-preview' };
 describe('project-scoped Preview build', () => {
+  it('rejects inherited provider values without printing them and pins Next dotenv overrides', () => {
+    for (const listing of ['AI_API_KEY=private-fixture', "RESEND_API_KEY='private\nfixture'", 'STRIPE_SECRET_KEY=   ']) {
+      expect(() => assertPreviewProvidersDisabled(listing)).toThrow('Disable Preview provider');
+      try { assertPreviewProvidersDisabled(listing); } catch (error) { expect(String(error)).not.toContain('private'); }
+    }
+    expect(() => assertPreviewProvidersDisabled('AI_API_KEY=\nRESEND_API_KEY=\nADMIN_EMAILS=fixture')).not.toThrow();
+    expect(previewFrontendEnvironment({ NODE_ENV: 'production', AI_API_KEY: 'private', MESSAGING_IMAGE_SECRET: 'private', NEXT_PUBLIC_SENTRY_DSN: 'private', CLERK_SECRET_KEY: 'test-fixture', VERCEL_URL: 'branch.example.test' }, 'https://preview-example-123.convex.cloud')).toMatchObject({ AI_API_KEY: '', MESSAGING_IMAGE_SECRET: '', NEXT_PUBLIC_SENTRY_DSN: '', CONVEX_DEPLOY_KEY: '', CLERK_SECRET_KEY: 'test-fixture', NEXT_PUBLIC_SITE_URL: 'https://branch.example.test' });
+  });
+  it('passes the Preview key through the real installed CLI env-file selection before any network authorization', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'phase3f-cli-'));
+    let authorized = false;
+    const server = http.createServer((request, response) => {
+      authorized = request.headers.authorization === `Bearer ${env.CONVEX_DEPLOY_KEY}`;
+      response.writeHead(401, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ code: 'Unauthorized', message: 'offline fixture unauthorized' }));
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing fixture port');
+    try {
+      await expect(promisify(execFile)(process.execPath, ['scripts/vercel-build.mjs'], {
+        cwd: path.resolve(import.meta.dirname, '../..'),
+        env: { NODE_ENV: 'test', PATH: process.env.PATH, ...env, CONVEX_PROVISION_HOST: `http://127.0.0.1:${address.port}`, HOME: dir }, timeout: 15000,
+      })).rejects.toMatchObject({ stderr: expect.stringContaining('offline fixture unauthorized') });
+      expect(authorized).toBe(true);
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }, 20000);
   it('requires exact project scope, Vercel repository and a non-default branch', () => {
     expect(previewConfiguration(env).branch).toBe(env.VERCEL_GIT_COMMIT_REF);
     for (const mutation of [{ VERCEL_ENV: 'production' }, { VERCEL: '0' }, { CONVEX_PREVIEW_TEAM: 'wrong' }, { CONVEX_PREVIEW_PROJECT: 'wrong' }, { VERCEL_GIT_REPO_SLUG: 'other' }, { CONVEX_PREVIEW_DEFAULT_BRANCH: '' }, ...['main', 'master', 'default', 'production', 'bad branch', 'bad/../branch', 'trailing/'].map(branch => ({ VERCEL_GIT_COMMIT_REF: branch })), ...['prod:wary-toad-189|secret', 'preview:instance-name|secret', 'project:team:project|secret', 'personal-token'].map(key => ({ CONVEX_DEPLOY_KEY: key })), ...['CONVEX_DEPLOYMENT', 'CONVEX_SELF_HOSTED_URL', 'CONVEX_OVERRIDE_ACCESS_TOKEN', 'CONVEX_OVERRIDE_DEPLOYMENT_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY'].map(key => ({ [key]: 'conflict' }))]) expect(() => previewConfiguration({ ...env, ...mutation })).toThrow();

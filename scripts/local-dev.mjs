@@ -20,7 +20,7 @@ let interrupted = false;
 const abort = new AbortController();
 let release;
 const signal = new Promise(resolve => { release = resolve; });
-for (const name of ['SIGINT', 'SIGTERM']) process.on(name, () => { interrupted = true; abort.abort(); release(); });
+for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(name, () => { interrupted = true; abort.abort(); release(); });
 const wait = (check, label) => waitFor(check, label, 180000, abort.signal);
 const localFetch = (resource, options = {}) => fetch(resource, { ...options, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(10000)]) });
 let secrets = [];
@@ -84,7 +84,10 @@ try {
   const env = { ...devEnvironment(process.env, home, config), NEXT_PUBLIC_CONVEX_URL: url, NEXT_PUBLIC_CONVEX_SITE_URL: `http://127.0.0.1:${ports.site}`, SITE_URL: `http://localhost:${config.port}` };
   processes = localProcesses(secrets);
   const start = async () => {
-    processes.launch(process.execPath, [path.join(root, 'node_modules/convex/bin/main.js'), 'dev', '--env-file', selectionFile, '--local', '--local-cloud-port', String(ports.cloud), '--local-site-port', String(ports.site), '--tail-logs', 'disable'], project, env);
+    // A fresh anonymous deployment has no selector yet. The CLI rejects an explicit
+    // empty env file before reaching anonymous setup; blank inherited selectors
+    // and the private HOME/project isolate that first start. Restarts use the file.
+    processes.launch(process.execPath, [path.join(root, 'node_modules/convex/bin/main.js'), 'dev', ...(selected ? ['--env-file', selectionFile] : []), '--local', '--local-cloud-port', String(ports.cloud), '--local-site-port', String(ports.site), '--tail-logs', 'disable'], project, env);
     let backend;
     await wait(async () => {
       try {

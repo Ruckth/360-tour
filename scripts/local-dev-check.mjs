@@ -45,7 +45,7 @@ function finalize() {
     console.log('Owned processes and unique Clerk test users cleaned; local data retained.');
   })();
 }
-for (const name of ['SIGINT', 'SIGTERM']) process.on(name, () => { void finalize().finally(() => process.exit(130)); });
+for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(name, () => { void finalize().finally(() => process.exit(130)); });
 let activeLog = '';
 const port = await new Promise((resolve, reject) => {
   const server = net.createServer(); server.on('error', reject);
@@ -64,10 +64,10 @@ async function start() {
     return activeLog.includes('Local development ready at');
   }, 'development loop readiness');
 }
-async function stop() {
+async function stop(signal = 'SIGINT') {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  child.kill('SIGINT');
-  await waitFor(async () => child.exitCode !== null || child.signalCode !== null, 'SIGINT cleanup', 15000);
+  child.kill(signal);
+  await waitFor(async () => child.exitCode !== null || child.signalCode !== null, `${signal} cleanup`, 15000);
   assert.equal(child.exitCode, 130);
 }
 async function stoppedPorts() {
@@ -135,7 +135,8 @@ try {
   assert.deepEqual(await restartedOwner.query(makeFunctionReference('pos/orders:getOrder'), { orderId: saved.orderId }), before);
   await clerk.signOut({ page }); await page.close();
   report.push('Restart reused the exact anonymous deployment; real Clerk query read the identical saved order; direct reseed refused without changing it.');
-  await stop(); await stoppedPorts();
+  await stop('SIGHUP'); await stoppedPorts();
+  report.push('Terminal-close SIGHUP stopped Next and Convex and released the lock.');
   blocker = net.createServer();
   blocker.on('connection', socket => { blockerSockets.add(socket); socket.on('close', () => blockerSockets.delete(socket)); });
   await new Promise(resolve => blocker.listen(port, 'localhost', resolve));
