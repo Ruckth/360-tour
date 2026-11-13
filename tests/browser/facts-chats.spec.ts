@@ -85,14 +85,14 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(toast).toHaveCount(0);
     });
 
-    test("a report card has one way to resolve: the select, with Create fact last; Ignore in ⋯", async ({ page }) => {
+    test("a report card: resolve with a fact, Create fact in one tap, Ignore in ⋯", async ({ page }) => {
       await open(page, "/tests/browser/questions.html?path=/admin/questions");
       const card = page.locator("tbody tr").filter({ hasText: "Do you have a baby cot?" });
       // Before round 2: checkbox, Open chat, the select, Create fact, Ignore (5), plus a "New" badge,
       // a "Context" label and the page path (/villas/tideglass) on every card.
       const controls = await card.evaluate((el) => el.querySelectorAll("button, select, a[href], input:not([type=hidden])").length);
-      expect(controls).toBe(4);
-      await expect(card.getByRole("button", { name: "Create fact" })).toHaveCount(0);
+      expect(controls).toBe(5);
+      await expect(card.getByRole("button", { name: "Create fact" })).toHaveCount(1);
       await expect(card.getByRole("button", { name: "Ignore", exact: true })).toHaveCount(0);
       await expect(page.locator("tbody").getByText("New", { exact: true })).toHaveCount(0);
       await expect(page.locator("tbody").getByText("/villas/")).toHaveCount(0);
@@ -100,15 +100,13 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(card).toContainText("Tideglass Pool Residence");
       await expectAtMostSentences(page.getByRole("tabpanel"), 1);
 
-      // Create fact: the select's last option opens the form, prefilled from the question.
+      // Create fact: one tap opens the form, prefilled from the question (most reports need a new fact).
       const taps = recorder();
-      await taps.tap(card.getByRole("combobox", { name: 'Resolve "Do you have a baby cot?" with a fact or source' }));
-      await expect(page.getByRole("option").last()).toHaveText("Create fact…");
-      await taps.tap(page.getByRole("option", { name: "Create fact…" }));
+      await taps.tap(card.getByRole("button", { name: "Create fact" }));
       const form = page.getByRole("dialog");
       await expect(form).toBeVisible();
       await expect(form.getByRole("textbox").first()).toHaveValue(/Do you have a baby cot\?/);
-      expect(taps.taps).toBe(2);
+      expect(taps.taps).toBe(1);
       expect(await fixtureCalls(page)).toEqual([]);
       await page.keyboard.press("Escape");
 
