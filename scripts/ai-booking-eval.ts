@@ -377,7 +377,7 @@ function runScenario(scenario: Scenario) {
   scenario.before?.();
   const phone =
     scenario.channel === "whatsapp" ? `668${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}` : undefined;
-  const sessionId = convex<string>("chatEval:createSession", {
+  const sessionId = convex<string>("maintenance/chatEval:createSession", {
     channel: scenario.channel,
     ...(phone ? { visitorPhone: phone } : {}),
     ...(scenario.visitorName ? { visitorName: scenario.visitorName } : {}),
@@ -386,7 +386,7 @@ function runScenario(scenario: Scenario) {
   const transcript: string[] = [];
 
   scenario.turns.forEach((turn, index) => {
-    const result = convex<TurnResult>("chatEval:messagingTurn", {
+    const result = convex<TurnResult>("maintenance/chatEval:messagingTurn", {
       sessionId,
       userMessage: turn.say,
       siteUrl: "https://tour.helpgueststay.com",

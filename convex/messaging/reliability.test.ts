@@ -138,7 +138,7 @@ it('deduplicates web sends before charging admission and rejects altered replay 
 it('recovers a real committed booking without replaying the model or booking mutation', async () => {
   vi.stubEnv('SITE_URL', 'https://resort.example');
   const t = createHarness(convexTest);
-  await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   const property = (await t.run(ctx => ctx.db.query('properties').take(10))).find(row => row.status === 'active')!;
   await t.mutation(internal.messaging.ingress.accept, { channel: 'whatsapp', events: [{ eventKey: 'prepare', eventType: 'message', recipient: '66912345678', messageText: 'Book a villa', eventTimestamp: Date.now() }] });
   const prep = (await t.run(ctx => ctx.db.query('channelEvents').take(10)))[0];

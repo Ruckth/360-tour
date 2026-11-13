@@ -9,7 +9,7 @@ it('builds the concierge prompt', async () => {
   const clock = vi.spyOn(Date, 'now').mockReturnValue(now);
   try {
     const t = createHarness(convexTest);
-    await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+    await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
     const properties = await t.run(ctx => ctx.db.query('properties').take(10));
     const settings = await t.query(internal.settings.settings.effective, {});
     const session = (await t.run(ctx => ctx.db.query('conversations').take(1)))[0];

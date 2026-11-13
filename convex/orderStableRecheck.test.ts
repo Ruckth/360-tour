@@ -2,8 +2,8 @@
 // Checks complete fixture records written through both real appointment seed paths.
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { seedAiEvalData } from './seeds/aiEvalData';
-import { seedStaffServicesData } from './seeds/staffServices';
+import { seedAiEvalData } from './maintenance/seeds/aiEvalData';
+import { seedStaffServicesData } from './maintenance/seeds/staffServices';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => {

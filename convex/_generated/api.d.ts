@@ -8,7 +8,6 @@
  * @module
  */
 
-import type * as aiEval from "../aiEval.js";
 import type * as auth_model from "../auth/model.js";
 import type * as auth_private_adminAuth from "../auth/private/adminAuth.js";
 import type * as auth_private_staffAccess from "../auth/private/staffAccess.js";
@@ -57,7 +56,6 @@ import type * as catalog_model from "../catalog/model.js";
 import type * as catalog_properties from "../catalog/properties.js";
 import type * as catalog_publicProperties from "../catalog/publicProperties.js";
 import type * as catalog_tables from "../catalog/tables.js";
-import type * as chatEval from "../chatEval.js";
 import type * as concierge_businessFacts from "../concierge/businessFacts.js";
 import type * as concierge_context from "../concierge/context.js";
 import type * as concierge_copy from "../concierge/copy.js";
@@ -119,7 +117,16 @@ import type * as lib_staffTypes from "../lib/staffTypes.js";
 import type * as lib_stayMoney from "../lib/stayMoney.js";
 import type * as lib_unknownReply from "../lib/unknownReply.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as maintenance_aiEval from "../maintenance/aiEval.js";
+import type * as maintenance_chatEval from "../maintenance/chatEval.js";
 import type * as maintenance_scenarios from "../maintenance/scenarios.js";
+import type * as maintenance_seed from "../maintenance/seed.js";
+import type * as maintenance_seeds_aiEvalData from "../maintenance/seeds/aiEvalData.js";
+import type * as maintenance_seeds_properties from "../maintenance/seeds/properties.js";
+import type * as maintenance_seeds_reviews from "../maintenance/seeds/reviews.js";
+import type * as maintenance_seeds_rooms from "../maintenance/seeds/rooms.js";
+import type * as maintenance_seeds_staffServices from "../maintenance/seeds/staffServices.js";
+import type * as maintenance_seeds_tourSnippets from "../maintenance/seeds/tourSnippets.js";
 import type * as marketing_access from "../marketing/access.js";
 import type * as marketing_accessPolicy from "../marketing/accessPolicy.js";
 import type * as marketing_affiliateCredits from "../marketing/affiliateCredits.js";
@@ -231,13 +238,6 @@ import type * as pos_private_staffApprovalState from "../pos/private/staffApprov
 import type * as pos_sourceReads from "../pos/sourceReads.js";
 import type * as pos_staffApprovals from "../pos/staffApprovals.js";
 import type * as pos_tables from "../pos/tables.js";
-import type * as seed from "../seed.js";
-import type * as seeds_aiEvalData from "../seeds/aiEvalData.js";
-import type * as seeds_properties from "../seeds/properties.js";
-import type * as seeds_reviews from "../seeds/reviews.js";
-import type * as seeds_rooms from "../seeds/rooms.js";
-import type * as seeds_staffServices from "../seeds/staffServices.js";
-import type * as seeds_tourSnippets from "../seeds/tourSnippets.js";
 import type * as services_admin from "../services/admin.js";
 import type * as services_commands_addTimeOff from "../services/commands/addTimeOff.js";
 import type * as services_commands_archiveService from "../services/commands/archiveService.js";
@@ -306,7 +306,6 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  aiEval: typeof aiEval;
   "auth/model": typeof auth_model;
   "auth/private/adminAuth": typeof auth_private_adminAuth;
   "auth/private/staffAccess": typeof auth_private_staffAccess;
@@ -355,7 +354,6 @@ declare const fullApi: ApiFromModules<{
   "catalog/properties": typeof catalog_properties;
   "catalog/publicProperties": typeof catalog_publicProperties;
   "catalog/tables": typeof catalog_tables;
-  chatEval: typeof chatEval;
   "concierge/businessFacts": typeof concierge_businessFacts;
   "concierge/context": typeof concierge_context;
   "concierge/copy": typeof concierge_copy;
@@ -417,7 +415,16 @@ declare const fullApi: ApiFromModules<{
   "lib/stayMoney": typeof lib_stayMoney;
   "lib/unknownReply": typeof lib_unknownReply;
   "lib/validation": typeof lib_validation;
+  "maintenance/aiEval": typeof maintenance_aiEval;
+  "maintenance/chatEval": typeof maintenance_chatEval;
   "maintenance/scenarios": typeof maintenance_scenarios;
+  "maintenance/seed": typeof maintenance_seed;
+  "maintenance/seeds/aiEvalData": typeof maintenance_seeds_aiEvalData;
+  "maintenance/seeds/properties": typeof maintenance_seeds_properties;
+  "maintenance/seeds/reviews": typeof maintenance_seeds_reviews;
+  "maintenance/seeds/rooms": typeof maintenance_seeds_rooms;
+  "maintenance/seeds/staffServices": typeof maintenance_seeds_staffServices;
+  "maintenance/seeds/tourSnippets": typeof maintenance_seeds_tourSnippets;
   "marketing/access": typeof marketing_access;
   "marketing/accessPolicy": typeof marketing_accessPolicy;
   "marketing/affiliateCredits": typeof marketing_affiliateCredits;
@@ -529,13 +536,6 @@ declare const fullApi: ApiFromModules<{
   "pos/sourceReads": typeof pos_sourceReads;
   "pos/staffApprovals": typeof pos_staffApprovals;
   "pos/tables": typeof pos_tables;
-  seed: typeof seed;
-  "seeds/aiEvalData": typeof seeds_aiEvalData;
-  "seeds/properties": typeof seeds_properties;
-  "seeds/reviews": typeof seeds_reviews;
-  "seeds/rooms": typeof seeds_rooms;
-  "seeds/staffServices": typeof seeds_staffServices;
-  "seeds/tourSnippets": typeof seeds_tourSnippets;
   "services/admin": typeof services_admin;
   "services/commands/addTimeOff": typeof services_commands_addTimeOff;
   "services/commands/archiveService": typeof services_commands_archiveService;

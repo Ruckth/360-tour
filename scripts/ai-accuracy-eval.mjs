@@ -39,10 +39,10 @@ const cases = [
 const report = { startedAt: new Date().toISOString(), deployment, modelOverride: true, forcedModel, routingCoverage: false, repetitions, dataset: 'critical-read-only-v1', expected: { checkIn: settings.checkInTime, checkOut: settings.checkOutTime, poolThreeNightTotal: total }, results: [] };
 for (let repeat = 1; repeat <= repetitions; repeat++) {
 	for (const scenario of cases) {
-		const sessionId = await run('chatEval:createSession', { channel: scenario.channel, visitorName: 'Accuracy eval' });
+		const sessionId = await run('maintenance/chatEval:createSession', { channel: scenario.channel, visitorName: 'Accuracy eval' });
 		const started = Date.now();
 		try {
-			const reply = await run('chatEval:comparisonTurn', { sessionId, userMessage: scenario.prompt, model: forcedModel });
+			const reply = await run('maintenance/chatEval:comparisonTurn', { sessionId, userMessage: scenario.prompt, model: forcedModel });
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, latencyMs: Date.now() - started, ...reply, passed: reply.model === scenario.model && scenario.check(reply.response) });
 		} catch (error) {
 			report.results.push({ id: scenario.id, repeat, sessionId, prompt: scenario.prompt, passed: false, error: error.message });

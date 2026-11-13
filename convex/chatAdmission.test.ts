@@ -39,10 +39,10 @@ it.each([['global', 500], ['session', 20]] as const)('retains the %s hourly budg
 });
 it('evaluation writers require an eval session and avoid production admission and alerts', async () => {
   const t = createHarness(convexTest), ordinary = await guestSession(t);
-  await expect(t.mutation(internal.chatEval.writeMessage, { sessionId: ordinary.sessionId, role: 'assistant', content: 'No' })).rejects.toThrow('eval session');
-  const sessionId = await t.mutation(internal.chatEval.createSession, { channel: 'web' });
-  await t.mutation(internal.chatEval.writeMessage, { sessionId, role: 'user', content: 'I need a human agent' });
-  await t.mutation(internal.chatEval.writeMessage, { sessionId, role: 'assistant', content: 'Eval reply' });
+  await expect(t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId: ordinary.sessionId, role: 'assistant', content: 'No' })).rejects.toThrow('eval session');
+  const sessionId = await t.mutation(internal.maintenance.chatEval.createSession, { channel: 'web' });
+  await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'user', content: 'I need a human agent' });
+  await t.mutation(internal.maintenance.chatEval.writeMessage, { sessionId, role: 'assistant', content: 'Eval reply' });
   const session = await t.run(ctx => ctx.db.get(sessionId));
   expect(session).toMatchObject({ messageCount: 2 }); expect(session).not.toHaveProperty('lastStaffAlertAt'); expect(session).not.toHaveProperty('inboxState');
 });

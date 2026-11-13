@@ -8,7 +8,7 @@ import { makeFunctionReference } from 'convex/server';
 import { api } from './_generated/api';
 import * as chat from "./messaging/chat";
 import * as concierge from './concierge/model';
-import * as chatEval from './chatEval';
+import * as chatEval from './maintenance/chatEval';
 import { recordUnknownQuestion } from './concierge/knowledge';
 import { asAdmin, createHarness, fixedClock, guestSession } from './testing/harness';
 import { hashGuestToken } from './messaging/guestToken';

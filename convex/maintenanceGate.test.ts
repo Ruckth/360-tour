@@ -21,7 +21,7 @@ it('blocks public reads, writes, actions and webhooks during a cutover while int
 it('seeds internally under maintenance and restores public queries only after unpausing', async () => {
   const t = createHarness(convexTest);
   vi.stubEnv('ARCH_RESET_PAUSED', '1');
-  const seed = await t.mutation(internal.seed.seedAll, { scenario: 'demo-resort' });
+  const seed = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   expect(seed.counts.properties).toBe(3);
   await expect(t.query(api.messaging.chat.getMessages, seed.conversation!)).rejects.toThrow('MAINTENANCE');
   vi.stubEnv('ARCH_RESET_PAUSED', '0');
