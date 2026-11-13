@@ -165,6 +165,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const coupons = useQuery(api.marketing.listCoupons, {});
   const campaigns = useQuery(api.marketing.listCampaigns, {});
   const properties = useQuery(api.marketing.catalog, {});
+  const profile = useQuery(api.settings.publicProfile, {});
   return (
     <CouponEditor
       detail={detail}
@@ -174,6 +175,8 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
       properties={properties}
       today={useToday()}
       listHref={adminMarketingPath("coupons")}
+      origin={useOrigin()}
+      brand={profile?.businessName ?? ""}
       actions={useMarketingActions()}
       onCreated={(id) => router.replace(couponPath(id))}
       history={couponHistory}

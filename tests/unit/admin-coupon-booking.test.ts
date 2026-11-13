@@ -215,6 +215,6 @@ describe("coupon usage", () => {
 
   it("explains an empty ledger", async () => {
     await render(createElement(CouponLedger, { code: "DCNT-F1-20", redemptions: [] }));
-    expect(text()).toContain("No uses yet. Bookings made with DCNT-F1-20 show here");
+    expect(text()).toContain("No uses of DCNT-F1-20 yet");
   });
 });
