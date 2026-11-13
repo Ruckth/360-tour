@@ -7,7 +7,6 @@ import type { Id } from "convex/_generated/dataModel";
 import { marketingCapabilities } from "convex/lib/marketingAccess";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { MarketingAccessGate, MarketingAccessProvider, useMarketingAccess, type MarketingAccess, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
-import { MarketingAccessScreen } from "@/components/admin/marketing/MarketingAccessScreen";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
 import { LinkEditor } from "@/components/admin/marketing/LinkEditor";
 import { LinksView } from "@/components/admin/marketing/LinksView";
@@ -91,17 +90,9 @@ it.each(["viewer", "marketer", "finance", "manager"] as const)("shows spend edit
   expect(!!document.querySelector('[role="dialog"]')).toBe(role === "finance" || role === "manager");
 });
 
-it("hides Access navigation and avoids the grants query for role-only users", async () => {
-  await render(createElement(MarketingSectionNav, null, createElement(MarketingAccessScreen)), "manager");
+it.each(["manager", "admin"] as const)("links no Access page for %s: Marketing roles are set on Settings › Team", async role => {
+  await render(createElement(MarketingSectionNav, null, null), role);
   expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketingAccess:listGrants")).toBe(false);
-});
-
-it("creates invitations without sending messages and displays mutation errors", async () => {
-  await render(createElement(MarketingAccessScreen), "admin");
-  await type(document.querySelector<HTMLInputElement>("#marketing-invite-email")!, "friend@example.com");
-  mocked.mutate.mockRejectedValueOnce(new Error("Could not save role"));
-  await click(button("Create invitation")); expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not save role");
-  await click(button("Create invitation")); expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" }); expect(document.body.textContent).toContain("No email is sent");
 });
 
 
@@ -144,17 +135,4 @@ it("copies a partner alias as an explicit ordinary draft for marketers", async (
   await type(document.querySelector<HTMLInputElement>('input[placeholder="f2"]')!, "anna-copy");
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
   await click(button("Create link")); expect(saveLink).toHaveBeenCalledOnce(); expect(saveLink.mock.calls[0][0]).not.toHaveProperty("affiliateId");
-});
-
-
-it("shows expired invitations and lets administrators refresh them", async () => {
-  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", expiresAt: 0, expired: true }];
-  await render(createElement(MarketingAccessScreen), "admin");
-  expect(document.body.textContent).toContain("Expired");
-  await click(button("Renew invitation"));
-  expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" });
-  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", tokenIdentifier: "friend", expiresAt: null, expired: false }];
-  await render(createElement(MarketingAccessScreen), "admin");
-  expect(document.body.textContent).toContain("Access activated");
-  expect(button("Renew invitation")).toBeUndefined();
 });

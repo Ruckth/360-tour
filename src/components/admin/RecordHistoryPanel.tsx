@@ -206,12 +206,15 @@ export function RecordHistoryPanel({
   entityId,
   title = "History",
   onRestore,
+  restoreLabel = "Restore to before this",
   disabled = false,
 }: {
   entityType: string;
   entityId?: string;
   title?: string;
+  /** Shows one restore button per change, which puts the record back as it was before it. */
   onRestore?: (entry: HistoryEntry, side: "before" | "after") => Promise<void>;
+  restoreLabel?: string;
   disabled?: boolean;
 }) {
   const { results, status, loadMore } = usePaginatedQuery(listHistory, { entityType, entityId }, { initialNumItems: 10 });
@@ -219,11 +222,6 @@ export function RecordHistoryPanel({
     <section aria-label={title} className="min-w-0 space-y-3 border-t border-border pt-4">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       <p className="text-xs text-muted-foreground">History begins with changes recorded now. Earlier edits were not recorded.</p>
-      {entityType === "settings" ? (
-        <p className="text-xs text-muted-foreground">
-          Applying an earlier configuration creates a new change. AI instructions and provider secrets are retained.
-        </p>
-      ) : null}
       {status === "LoadingFirstPage" ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading history…
@@ -252,16 +250,11 @@ export function RecordHistoryPanel({
                 </div>
               ))}
             </dl>
-            {onRestore ? (
-              <div className="flex flex-wrap gap-2">
-                {(["before", "after"] as const).map((side) =>
-                  entry[side] ? (
-                    <Button key={side} type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void onRestore(entry, side)}>
-                      Apply {side} this change
-                    </Button>
-                  ) : null,
-                )}
-              </div>
+            {/* "After this change" is the next change's "before", so one button per change covers both. */}
+            {onRestore && entry.before ? (
+              <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void onRestore(entry, "before")}>
+                {restoreLabel}
+              </Button>
             ) : null}
           </li>
         ))}

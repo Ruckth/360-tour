@@ -6,23 +6,24 @@ import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/lib/staffTypes";
 import { Check, UserPlus } from "lucide-react";
-import Link from "next/link";
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
-import { adminMarketingPath } from "./admin-routes";
 import { ROLE_LABELS } from "./staff-access";
 import { TONES } from "./status-tones";
 
 type Person = FunctionReturnType<typeof api.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
+/** Stored Marketing roles. "manager" is shown as Lead; the stored value is unchanged. */
+type MarketingRole = "manager" | "marketer" | "finance" | "viewer";
 type Permission = CashierRules["voidPaidSale"];
 type RuleKey = "refund" | "voidPaidSale" | "customPrice" | "paymentFix";
 
@@ -32,14 +33,24 @@ const RULES: { key: RuleKey; label: string }[] = [
   { key: "customPrice", label: "Custom price" },
   { key: "paymentFix", label: "Fix a payment" },
 ];
-const MARKETING_ROLES: Record<string, string> = { admin: "Admin", manager: "Manager", marketer: "Marketer", finance: "Finance", viewer: "Viewer" };
+const DESK_OPTIONS: { value: StaffRole; label: string }[] = [
+  { value: "manager", label: ROLE_LABELS.manager },
+  { value: "cashier", label: ROLE_LABELS.cashier },
+];
+export const MARKETING_ROLE_LABELS: Record<MarketingRole, string> = { manager: "Lead", marketer: "Marketer", finance: "Finance", viewer: "Viewer" };
+const MARKETING_OPTIONS = (Object.keys(MARKETING_ROLE_LABELS) as MarketingRole[]).map((value) => ({ value, label: MARKETING_ROLE_LABELS[value] }));
 
-/** A native select, as Marketing access uses: reliable on iPad and phones, themed for dark mode. */
+/** A native select: reliable on iPad and phones, themed for dark mode. */
 const SELECT = "h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60 dark:[color-scheme:dark] pointer-coarse:min-h-11";
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Where an invited person signs in: /admin asks them to sign in, then to activate the invite. */
 export function staffSignInLink(origin = window.location.origin) {
   return `${origin}/admin`;
+}
+/** Marketing invites are activated on the Marketing page. */
+export function marketingSignInLink(origin = window.location.origin) {
+  return `${origin}/admin/marketing`;
 }
 
 async function copyText(text: string) {
@@ -52,7 +63,7 @@ async function copyText(text: string) {
   }
 }
 
-/** Settings › Team: who has access and their role, plus what cashiers may do without a manager. */
+/** Settings › Team: everyone with a Desk or Marketing role, plus what cashiers may do without a manager. */
 export function TeamSettings() {
   const people = useQuery(api.staffAccess.listPeople, {});
   return (
@@ -78,9 +89,17 @@ function Section({ title, tip, action, children, label }: { title: string; tip: 
   );
 }
 
+const ROLES_TIP = (
+  <span className="grid gap-1 text-left">
+    <span><strong>Desk.</strong> Owner: everything. Manager: the desk and approvals. Cashier: Checkout, within the rules below.</span>
+    <span><strong>Marketing.</strong> Lead: draft, publish, spend and partners. Marketer: drafts. Finance: spend and credits. Viewer: read only.</span>
+  </span>
+);
+
 function PeoplePanel({ people }: { people: Person[] | undefined }) {
-  const setGrant = useMutation(api.staffAccess.setGrant);
+  const setStaffGrant = useMutation(api.staffAccess.setGrant);
   const updateInvitation = useMutation(api.staffAccess.updateInvitation);
+  const setMarketingGrant = useMutation(api.marketingAccess.setGrant);
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -102,11 +121,32 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
     }
   }
 
+  async function setDesk(person: Person, role: StaffRole | null) {
+    if (role === null) {
+      if (!(await confirm({ title: `Remove ${person.email} from the desk?`, description: "Their desk access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", destructive: true }))) return;
+      await save(person.email, () => setStaffGrant({ email: person.email, role: null }), `Removed ${person.email} from the desk.`);
+      return;
+    }
+    const done = person.staffGrant ? `${person.email} is now ${ROLE_LABELS[role]}.` : `Invited ${person.email} to the desk as ${ROLE_LABELS[role]}.`;
+    await save(person.email, () => setStaffGrant({ email: person.email, role }), done);
+  }
+
+  async function setMarketing(person: Person, role: MarketingRole | null) {
+    if (role === null) {
+      if (!(await confirm({ title: `Remove ${person.email} from Marketing?`, description: "Their Marketing access ends now. Desk access, if any, stays.", confirmLabel: "Remove", destructive: true }))) return;
+      await save(person.email, () => setMarketingGrant({ email: person.email, role: null }), `Removed ${person.email} from Marketing.`);
+      return;
+    }
+    const label = MARKETING_ROLE_LABELS[role];
+    const done = person.marketingGrant ? `${person.email} is now Marketing ${label}.` : `Invited ${person.email} to Marketing as ${label}.`;
+    await save(person.email, () => setMarketingGrant({ email: person.email, role }), done);
+  }
+
   return (
     <Section
       title="People"
       label="People"
-      tip={<>Owner: everything, including Settings. Manager: the desk and approvals. Cashier: Checkout, within the rules below.</>}
+      tip={ROLES_TIP}
       action={
         <Button size="sm" variant="outline" aria-expanded={inviting} onClick={() => setInviting(!inviting)}>
           <UserPlus aria-hidden className="size-4" /> Invite
@@ -117,8 +157,15 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
         <InviteForm
           busy={busy !== null}
           onCancel={() => setInviting(false)}
-          onInvite={async (email, role) => {
-            const ok = await save(email, () => setGrant({ email, role }), `Invited ${email}. They sign in with this email to activate it.`);
+          onInvite={async (email, desk, marketing) => {
+            const ok = await save(
+              email,
+              async () => {
+                if (desk) await setStaffGrant({ email, role: desk });
+                if (marketing) await setMarketingGrant({ email, role: marketing });
+              },
+              `Invited ${email}. They sign in with this email to activate it.`,
+            );
             if (ok) setInviting(false);
             return ok;
           }}
@@ -133,22 +180,28 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
         <ul className="divide-y divide-border" aria-label="People with access">
           {people.map((person) => (
             <PersonRow
-              key={`${person.email}:${person.staffGrant?.role ?? ""}`}
+              key={`${person.email}:${person.staffGrant?.role ?? ""}:${person.marketingGrant?.role ?? ""}`}
               person={person}
               busy={busy !== null}
-              onRole={(role) => save(person.email, () => setGrant({ email: person.email, role }), `${person.email} is now ${ROLE_LABELS[role]}.`)}
-              onRevoke={async () => {
-                if (!(await confirm({ title: `Remove ${person.email}?`, description: "Their staff access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", destructive: true }))) return;
-                await save(person.email, () => setGrant({ email: person.email, role: null }), `Removed ${person.email}.`);
-              }}
+              onDesk={(role) => void setDesk(person, role)}
+              onMarketing={(role) => void setMarketing(person, role)}
               onRenew={() => {
-                const grant = person.staffGrant;
-                if (!grant) return;
-                // Renewing only extends the invite's deadline; no email is sent.
-                void save(person.email, () => updateInvitation({ grantId: grant.id as Id<"staffGrants">, action: "resend" }), `Invite renewed for ${person.email}.`);
+                const staff = person.staffGrant && !person.staffGrant.claimed ? person.staffGrant : null;
+                const marketing = person.marketingGrant && !person.marketingGrant.claimed ? person.marketingGrant : null;
+                // Renewing only extends the invite's deadline; no email is sent. Saving an unclaimed
+                // Marketing invite with its own role renews it.
+                void save(
+                  person.email,
+                  async () => {
+                    if (staff) await updateInvitation({ grantId: staff.id as Id<"staffGrants">, action: "resend" });
+                    if (marketing) await setMarketingGrant({ email: person.email, role: marketing.role as MarketingRole });
+                  },
+                  `Invite renewed for ${person.email}.`,
+                );
               }}
               onCopyLink={async () => {
-                const link = staffSignInLink();
+                const staffPending = person.staffGrant && !person.staffGrant.claimed;
+                const link = staffPending ? staffSignInLink() : marketingSignInLink();
                 setMessage(
                   (await copyText(link))
                     ? { text: `Sign-in link copied. ${person.email} signs in there with this email to activate the invite.` }
@@ -163,35 +216,51 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
   );
 }
 
-function InviteForm({ busy, onInvite, onCancel }: { busy: boolean; onInvite: (email: string, role: StaffRole) => Promise<boolean>; onCancel: () => void }) {
+function InviteForm({ busy, onInvite, onCancel }: {
+  busy: boolean;
+  onInvite: (email: string, desk: StaffRole | null, marketing: MarketingRole | null) => Promise<boolean>;
+  onCancel: () => void;
+}) {
   const id = useId();
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<StaffRole>("cashier");
+  const [desk, setDesk] = useState<StaffRole | "">("cashier");
+  const [marketing, setMarketing] = useState<MarketingRole | "">("");
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
     const address = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    if (!EMAIL.test(address)) {
       setError("Enter a valid email.");
       return;
     }
+    if (!desk && !marketing) {
+      setError("Pick a Desk or Marketing role.");
+      return;
+    }
     setError("");
-    if (await onInvite(address, role)) setEmail("");
+    if (await onInvite(address, desk || null, marketing || null)) setEmail("");
   }
   return (
     <form onSubmit={submit} className="mb-4 grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end" aria-label="Invite">
-      <div className="grid min-w-0 gap-1.5">
+      <div className="grid min-w-0 gap-1.5 sm:col-span-3">
         <Label htmlFor={`${id}-email`}>Email</Label>
         <Input id={`${id}-email`} type="email" required maxLength={254} autoFocus value={email} disabled={busy} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" aria-invalid={error ? true : undefined} />
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor={`${id}-role`}>Role</Label>
-        <select id={`${id}-role`} className={SELECT} value={role} disabled={busy} onChange={(e) => setRole(e.target.value as StaffRole)}>
-          <option value="manager">Manager</option>
-          <option value="cashier">Cashier</option>
+        <Label htmlFor={`${id}-desk`}>Desk</Label>
+        <select id={`${id}-desk`} className={SELECT} value={desk} disabled={busy} onChange={(e) => setDesk(e.target.value as StaffRole | "")}>
+          {DESK_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+          <option value="">No desk access</option>
         </select>
       </div>
-      <div className="flex gap-2">
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${id}-marketing`}>Marketing</Label>
+        <select id={`${id}-marketing`} className={SELECT} value={marketing} disabled={busy} onChange={(e) => setMarketing(e.target.value as MarketingRole | "")}>
+          <option value="">No Marketing access</option>
+          {MARKETING_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-2 sm:justify-end">
         <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={busy || !email.trim()}>Send invite</Button>
       </div>
@@ -200,69 +269,85 @@ function InviteForm({ busy, onInvite, onCancel }: { busy: boolean; onInvite: (em
   );
 }
 
-function inviteState(person: Person) {
-  const grant = person.staffGrant;
-  if (!grant) return null;
-  if (grant.claimed) return "Active";
-  if (grant.expired) return "Invite expired";
-  return grant.expiresAt ? `Invited · expires ${new Date(grant.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}` : "Invited";
+const shortDate = (at: number) => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+type Grant = NonNullable<Person["staffGrant"]>;
+function inviteState(grant: Grant | null, prefix = "") {
+  if (!grant || grant.claimed) return null;
+  if (grant.expired) return `${prefix}Invite expired`;
+  return grant.expiresAt ? `${prefix}Invited · expires ${shortDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
-function PersonRow({ person, busy, onRole, onRevoke, onRenew, onCopyLink }: {
+function PersonRow({ person, busy, onDesk, onMarketing, onRenew, onCopyLink }: {
   person: Person;
   busy: boolean;
-  onRole: (role: StaffRole) => Promise<boolean>;
-  onRevoke: () => Promise<void>;
+  onDesk: (role: StaffRole | null) => void;
+  onMarketing: (role: MarketingRole | null) => void;
   onRenew: () => void;
   onCopyLink: () => Promise<void>;
 }) {
+  const id = useId();
   const grant = person.staffGrant;
   const marketing = person.marketingGrant;
   const owner = person.role === "owner";
-  const state = owner ? null : inviteState(person);
+  const pending = [grant, marketing].filter((row): row is Grant => Boolean(row && !row.claimed));
+  const states = owner ? [] : [inviteState(grant), inviteState(marketing, "Marketing: ")].filter(Boolean);
+  const linkWorks = pending.some((row) => !row.expired);
+  const allExpired = pending.length > 0 && !linkWorks;
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 first:pt-0 last:pb-0" data-testid="team-person">
       <div className="flex min-w-0 flex-1 basis-56 items-center gap-3">
         <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-sm font-semibold uppercase text-muted-foreground">{person.email[0]}</span>
         <div className="min-w-0">
           <p className="text-sm font-medium break-all text-foreground">{person.email}</p>
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            {owner ? <span className="sm:hidden">Owner</span> : null}
-            {state ? <span>{state}</span> : null}
-            {marketing ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Badge variant="muted" className="px-2 py-0.5">Marketing · {MARKETING_ROLES[marketing.role] ?? marketing.role}</Badge>
-                <Link href={adminMarketingPath("access")} className="underline underline-offset-2 hover:text-foreground">Manage</Link>
-              </span>
-            ) : null}
-          </p>
+          {states.length ? <p className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">{states.map((state) => <span key={state}>{state}</span>)}</p> : null}
         </div>
       </div>
       {/* On phones the controls wrap under the email, lined up with it. */}
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 max-sm:w-full max-sm:pl-12 max-sm:justify-start">
+      <div className="ml-auto flex flex-wrap items-end justify-end gap-2 max-sm:w-full max-sm:justify-start max-sm:pl-12">
         {owner ? (
-          <span className="text-sm text-muted-foreground max-sm:hidden">Owner</span>
-        ) : grant ? (
+          <Badge variant="muted">Owner · all access</Badge>
+        ) : (
           <>
-            <select
-              aria-label={`Role for ${person.email}`}
-              className={SELECT}
-              value={grant.role}
+            <div className="grid gap-1">
+              <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
+              <select
+                id={`${id}-desk`}
+                aria-label={`Desk role for ${person.email}`}
+                className={SELECT}
+                value={grant?.role ?? ""}
+                disabled={busy}
+                onChange={(e) => onDesk((e.target.value || null) as StaffRole | null)}
+              >
+                {DESK_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                <option value="">None</option>
+              </select>
+            </div>
+            <div className="grid gap-1">
+              <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
+              <select
+                id={`${id}-marketing`}
+                aria-label={`Marketing role for ${person.email}`}
+                className={SELECT}
+                value={marketing?.role ?? ""}
+                disabled={busy}
+                onChange={(e) => onMarketing((e.target.value || null) as MarketingRole | null)}
+              >
+                {MARKETING_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+                <option value="">None</option>
+              </select>
+            </div>
+            {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
+            {allExpired ? <Button size="sm" variant="outline" className="h-10" disabled={busy} onClick={onRenew}>Renew</Button> : null}
+            <MoreMenu
+              label={`More for ${person.email}`}
               disabled={busy}
-              onChange={(e) => void onRole(e.target.value as StaffRole)}
-            >
-              <option value="manager">Manager</option>
-              <option value="cashier">Cashier</option>
-            </select>
-            {!grant.claimed ? (
-              <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button>
-            ) : null}
-            {!grant.claimed && !grant.expired ? (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => void onCopyLink()}>Copy sign-in link</Button>
-            ) : null}
-            <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={busy} onClick={() => void onRevoke()}>Revoke</Button>
+              items={[
+                { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
+                { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
+              ]}
+            />
           </>
-        ) : null}
+        )}
       </div>
     </li>
   );
@@ -280,14 +365,15 @@ const isStaleRules = (err: unknown) => {
 
 type Draft = { limit: string } & Record<RuleKey, Permission>;
 const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
+const sameDraft = (a: Draft, b: Draft) => Number(a.limit) === Number(b.limit) && a.limit.trim() !== "" && RULES.every(({ key }) => a[key] === b[key]);
 
 function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }) {
   const rules = useQuery(api.staffAccess.getCashierRules, {});
   return (
     <Section
-      title="Cashier rules"
-      label="Cashier rules"
-      tip={<>Cashiers can always sell, take payment and apply valid coupons. Anything set to Manager approves becomes a request.</>}
+      title="Rules for all cashiers"
+      label="Rules for all cashiers"
+      tip={<>Cashiers can always sell, take payment and apply valid coupons. Anything that needs a manager becomes a request.</>}
       action={hasCashiers === false ? <Badge variant="muted">No cashiers</Badge> : null}
     >
       {rules === undefined ? <div className="grid place-items-center py-8"><Spinner label="Loading cashier rules" /></div> : <RulesForm rules={rules} />}
@@ -295,20 +381,49 @@ function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }
   );
 }
 
+/** An on/off switch: on means the action needs a manager. */
+function NeedsManagerSwitch({ id, label, checked, disabled, onChange }: { id: string; label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
+  return (
+    <button
+      id={id}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={`${label} needs manager`}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+        // A 44px touch target without moving the layout.
+        "after:absolute after:-inset-2 after:content-['']",
+        checked ? "bg-primary" : "bg-muted-foreground/30",
+      )}
+    >
+      <span aria-hidden className={cn("inline-block size-5 rounded-full bg-background shadow transition-transform", checked ? "translate-x-6" : "translate-x-1")} />
+    </button>
+  );
+}
+
 function RulesForm({ rules }: { rules: CashierRules }) {
   const id = useId();
   const update = useMutation(api.staffAccess.updateCashierRules);
   const [revision, setRevision] = useState(rules.revision);
+  const [base, setBase] = useState<Draft>(() => draftOf(rules));
   const [draft, setDraft] = useState<Draft>(() => draftOf(rules));
   const [state, setState] = useState<{ saving: boolean; saved: boolean; error: string; notice: string }>({ saving: false, saved: false, error: "", notice: "" });
   const lock = useRef(false);
   const [reload, setReload] = useState(false);
+  const load = (next: CashierRules) => {
+    setRevision(next.revision);
+    setBase(draftOf(next));
+    setDraft(draftOf(next));
+  };
   if (reload && rules.revision !== revision) {
     setReload(false);
-    setRevision(rules.revision);
-    setDraft(draftOf(rules));
+    load(rules);
   }
   const problem = limitProblem(draft.limit);
+  const dirty = !sameDraft(draft, base);
   const set = (patch: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setState((current) => ({ ...current, saved: false, notice: "" }));
@@ -316,7 +431,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (lock.current || problem) return;
+    if (lock.current || problem || !dirty) return;
     lock.current = true;
     setState({ saving: true, saved: false, error: "", notice: "" });
     try {
@@ -328,8 +443,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
         paymentFix: draft.paymentFix,
         refund: draft.refund,
       });
-      setRevision(saved.revision);
-      setDraft(draftOf(saved));
+      load(saved);
       setState({ saving: false, saved: true, error: "", notice: "" });
     } catch (err) {
       if (isStaleRules(err)) {
@@ -343,7 +457,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="grid gap-1" aria-label="Cashier rules">
+    <form onSubmit={submit} noValidate className="grid" aria-label="Rules for all cashiers">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2.5">
         <Label htmlFor={`${id}-limit`}>Discount without approval</Label>
         <span className="flex items-center gap-1.5">
@@ -361,21 +475,26 @@ function RulesForm({ rules }: { rules: CashierRules }) {
         </span>
         {problem ? <p id={`${id}-limit-error`} className="w-full text-right text-xs text-destructive">{problem}</p> : null}
       </div>
+      <p aria-hidden className="pt-3 pb-1 text-right text-xs font-medium text-muted-foreground">Needs manager</p>
       {RULES.map(({ key, label }) => (
-        <div key={key} className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2.5">
+        <div key={key} className="flex items-center justify-between gap-3 border-b border-border py-2.5">
           <Label htmlFor={`${id}-${key}`}>{label}</Label>
-          <select id={`${id}-${key}`} className={SELECT} value={draft[key]} disabled={state.saving} onChange={(e) => set({ [key]: e.target.value as Permission } as Partial<Draft>)}>
-            <option value="manager">Manager approves</option>
-            <option value="cashier">Cashier can</option>
-          </select>
+          <NeedsManagerSwitch
+            id={`${id}-${key}`}
+            label={label}
+            checked={draft[key] === "manager"}
+            disabled={state.saving}
+            onChange={(on) => set({ [key]: on ? "manager" : "cashier" } as Partial<Draft>)}
+          />
         </div>
       ))}
       {state.error ? <p role="alert" className="pt-2 text-sm text-destructive">{state.error}</p> : null}
-      <div className="flex flex-wrap items-center justify-end gap-3 pt-3">
+      {/* Sticky, so Save stays in reach on a phone; above the phone tab bar in the admin shell. */}
+      <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur" data-testid="rules-save-bar">
         <span role="status" className="text-sm text-muted-foreground">
-          {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="link" className="h-auto p-0" onClick={() => { setRevision(rules.revision); setDraft(draftOf(rules)); }}>Load latest</Button></> : ""}
+          {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="link" className="h-auto p-0" onClick={() => load(rules)}>Load latest</Button></> : ""}
         </span>
-        <Button type="submit" disabled={state.saving || Boolean(problem)}>
+        <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty}>
           {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
           Save rules
         </Button>

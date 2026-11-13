@@ -154,70 +154,86 @@ test.describe("Settings › Team", () => {
     await open(page, "?view=settings&tab=team");
     const people = page.getByRole("region", { name: "People" });
     await expect(people.getByTestId("team-person").filter({ hasText: "narin@" })).toContainText("Owner");
-    await expect(people.getByTestId("team-person").filter({ hasText: "sun@" })).toContainText("Marketing · Marketer");
-    await expect(people.getByRole("link", { name: "Manage" }).first()).toHaveAttribute("href", "/admin/marketing/access");
+    await expect(people.getByRole("combobox", { name: "Marketing role for sun@auraliscove.co" })).toHaveValue("marketer");
+    await expect(people.getByRole("link")).toHaveCount(0);
     const lek = people.getByTestId("team-person").filter({ hasText: "lek@" });
-    await expect(lek.getByRole("button")).toHaveText(["Renew", "Copy sign-in link", "Revoke"]);
+    await expect(lek.getByRole("button")).toHaveCount(1);
+    await lek.getByRole("button", { name: "More for lek@auraliscove.co" }).click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Copy sign-in link", "Renew invite"]);
+    await page.keyboard.press("Escape");
 
     await people.getByRole("button", { name: "Invite" }).click();
     await people.getByRole("textbox", { name: "Email" }).fill("Fon@AuralisCove.co");
-    await people.getByRole("combobox", { name: "Role", exact: true }).selectOption("manager");
+    await people.getByRole("combobox", { name: "Desk", exact: true }).selectOption("manager");
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toContainText("Invited fon@auraliscove.co");
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
     await expect(fon).toContainText(/Invited · expires/);
-    await expect(fon.getByRole("combobox")).toHaveValue("manager");
+    await expect(fon.getByRole("combobox", { name: /^Desk role/ })).toHaveValue("manager");
 
-    await people.getByRole("combobox", { name: "Role for mint@auraliscove.co" }).selectOption("manager");
+    await people.getByRole("combobox", { name: "Desk role for mint@auraliscove.co" }).selectOption("manager");
     await expect(people.getByRole("status")).toHaveText("mint@auraliscove.co is now Manager.");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "manager" });
 
-    const rules = page.getByRole("form", { name: "Cashier rules" });
+    const rules = page.getByRole("form", { name: "Rules for all cashiers" });
+    const save = rules.getByRole("button", { name: "Save rules" });
+    await expect(save).toBeDisabled();
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("100.001");
     await expect(rules.getByText("Use 0–100, up to two decimals.")).toBeVisible();
-    await expect(rules.getByRole("button", { name: "Save rules" })).toBeDisabled();
+    await expect(save).toBeDisabled();
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("12.5");
-    await rules.getByRole("combobox", { name: "Void a paid sale" }).selectOption("cashier");
-    await rules.getByRole("button", { name: "Save rules" }).click();
+    await rules.getByRole("switch", { name: "Void a paid sale needs manager" }).click();
+    await save.click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
+    await expect(save).toBeDisabled();
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({
       expectedRevision: 0, discountLimitPercent: 12.5, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager", refund: "manager",
     });
   });
 
-  test("refunds come first in the cashier rules, default to Manager approves, and save", async ({ page }) => {
+  test("cashier rules are Needs manager switches, refunds first and on by default", async ({ page }) => {
     await open(page, "?view=settings&tab=team");
-    const rules = page.getByRole("form", { name: "Cashier rules" });
-    await expect(rules.getByRole("combobox")).toHaveCount(4);
+    const rules = page.getByRole("form", { name: "Rules for all cashiers" });
+    await expect(rules.getByRole("combobox")).toHaveCount(0);
     await expect(rules.locator("label")).toHaveText(["Discount without approval", "Refunds", "Void a paid sale", "Custom price", "Fix a payment"]);
-    const refunds = rules.getByRole("combobox", { name: "Refunds" });
-    await expect(refunds).toHaveValue("manager");
-    await expect(refunds.locator("option")).toHaveText(["Manager approves", "Cashier can"]);
-    await refunds.selectOption("cashier");
+    const switches = rules.getByRole("switch");
+    await expect(switches).toHaveCount(4);
+    for (const one of await switches.all()) await expect(one).toHaveAttribute("aria-checked", "true");
+    const refunds = rules.getByRole("switch", { name: "Refunds needs manager" });
+    await refunds.click();
+    await expect(refunds).toHaveAttribute("aria-checked", "false");
+    // Switching back is no change, so Save turns off again.
+    await refunds.click();
+    await expect(rules.getByRole("button", { name: "Save rules" })).toBeDisabled();
+    await refunds.click();
     await rules.getByRole("button", { name: "Save rules" }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
-    await expect(refunds).toHaveValue("cashier");
+    await expect(refunds).toHaveAttribute("aria-checked", "false");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 0, refund: "cashier" });
   });
 
   test("a rules conflict reloads the latest rules", async ({ page }) => {
     await open(page, "?view=settings&tab=team&stale=1");
-    const rules = page.getByRole("form", { name: "Cashier rules" });
+    const rules = page.getByRole("form", { name: "Rules for all cashiers" });
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("20");
     await rules.getByRole("button", { name: "Save rules" }).click();
     await expect(rules.getByRole("status")).toHaveText("Rules changed on another device. Reloaded.");
     await expect(rules.getByRole("textbox", { name: "Discount without approval" })).toHaveValue("12");
   });
 
-  test("managers don't see Team and read settings without saving", async ({ page }) => {
+  test("managers don't see Team, get a read-only banner and read settings without saving", async ({ page }) => {
     await open(page, "?view=settings&role=manager&tab=team");
     const tabs = page.getByRole("tablist", { name: "Settings sections" });
     await expect(tabs.getByRole("tab")).toHaveText(["Business", "Booking rules", "AI assistant", "Email", "Channels"]);
     await expect(page.getByRole("region", { name: "People" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Save / })).toHaveCount(0);
     await expect(page.getByLabel(/^Business name/)).toBeDisabled();
-    await page.getByRole("button", { name: "Why read only" }).click();
-    await expect(page.getByRole("tooltip")).toHaveText("Only owners can change settings.");
+    const banner = page.getByTestId("read-only-banner");
+    await expect(banner).toHaveText("Read only. Only owners can change settings.");
+    // The banner is the first thing on the page.
+    const top = await banner.boundingBox();
+    const tabsTop = await tabs.boundingBox();
+    expect(top!.y).toBeLessThan(tabsTop!.y);
   });
 });
 

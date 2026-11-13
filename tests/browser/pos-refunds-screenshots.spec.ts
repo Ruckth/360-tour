@@ -77,7 +77,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
 
       test("Team cashier rules", async ({ page }) => {
         await open(page, "?view=settings&tab=team", theme);
-        const rules = page.getByRole("form", { name: "Cashier rules" });
+        const rules = page.getByRole("form", { name: "Rules for all cashiers" });
         await rules.evaluate((el, block) => el.scrollIntoView({ block }), size === "phone" ? ("start" as const) : ("center" as const));
         await shot(page, "team-cashier-rules");
       });

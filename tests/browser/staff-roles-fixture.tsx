@@ -199,8 +199,14 @@ registerFixtureFunctions({
     "staffAccess:getCashierRules": () => team.rules,
     "settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
     "settings:setupChecklist": () => undefined,
-    "settings:channelHealth": () => undefined,
-    "settings:serverConfig": () => undefined,
+    "settings:channelHealth": () => ({
+      channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: 0, failed7d: index === 1 ? 2 : 0, failedCapped: false, latestError: null })),
+      ical: [
+        { _id: "ical-1", propertyName: "Tideglass Pool Residence", platform: "airbnb", lastSyncedAt: now - 1_800_000, lastSyncError: null },
+        { _id: "ical-2", propertyName: "Sea Fern Villa", platform: "booking", lastSyncedAt: null, lastSyncError: "Calendar link returned 404" },
+      ],
+    }),
+    "settings:serverConfig": () => ({ RESEND_API_KEY: true, OPENAI_API_KEY: true, STRIPE_SECRET_KEY: false, LINE_CHANNEL_SECRET: true }),
   },
   mutations: {
     "staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
@@ -214,6 +220,16 @@ registerFixtureFunctions({
         ? team.people.map((person) => (person.email === email ? { ...person, role: next, staffGrant: grant } : person))
         : [...team.people, { email, role: next, staffGrant: grant, marketingGrant: null }].sort((a, b) => a.email.localeCompare(b.email));
       return grant.id;
+    },
+    "marketingAccess:setGrant": ({ email, role: next }: { email: string; role: MarketingGrant["role"] | null }) => {
+      const known = team.people.some((person) => person.email === email);
+      const fresh: MarketingGrant | null = next ? { id: `mkt-${email}`, role: next, claimed: false, expiresAt: Date.now() + 14 * DAY, expired: false, updatedAt: Date.now() } : null;
+      team.people = known
+        ? team.people
+            .map((person) => (person.email === email ? { ...person, marketingGrant: next ? { ...(person.marketingGrant ?? fresh!), role: next, updatedAt: Date.now() } : null } : person))
+            .filter((person) => person.role || person.marketingGrant)
+        : [...team.people, ...(fresh ? [{ email, role: null, staffGrant: null, marketingGrant: fresh }] : [])].sort((a, b) => a.email.localeCompare(b.email));
+      return null;
     },
     "staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
       const expiresAt = action === "resend" ? Date.now() + 14 * DAY : Date.now();

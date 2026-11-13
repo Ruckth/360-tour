@@ -23,6 +23,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "./ConfirmDialog";
 import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
 import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
@@ -51,7 +52,10 @@ export function AdminSettingsView() {
   const access = useStaffAccess();
   // Managers read settings; only owners change them or see Team. Others see them as before.
   const readOnly = access.role === "manager" || access.role === "cashier";
-  const tabs = TABS.filter(({ id }) => id !== "team" || !readOnly);
+  // Team comes second, so on a phone it starts on screen instead of past the edge.
+  const tabs = [...TABS]
+    .sort((a, b) => Number(b.id === "business") - Number(a.id === "business") || Number(b.id === "team") - Number(a.id === "team"))
+    .filter(({ id }) => id !== "team" || !readOnly);
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const requested = adminSettingsTab(searchParams.get("tab"));
   const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";
@@ -62,9 +66,18 @@ export function AdminSettingsView() {
     if (legacyTab) router.replace(adminSettingsTabPath("team"), { scroll: false });
   }, [legacyTab, router]);
   const settings = useQuery(api.settings.get, {});
+  // A tab opened from a link (?tab=channels) scrolls into view in the tab row on a phone.
+  useEffect(() => {
+    document.getElementById(`settings-tab-${tab}`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [tab]);
 
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-4 sm:px-6">
+      {readOnly ? (
+        <Alert data-testid="read-only-banner">
+          <AlertDescription><strong className="font-semibold">Read only.</strong> Only owners can change settings.</AlertDescription>
+        </Alert>
+      ) : null}
       <SetupChecklistCard />
       <SegmentedTabs
         id="settings"
@@ -231,6 +244,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
   const pending = useRef(false);
   const update = useMutation(api.settings.update);
   const restore = useMutation(api.settings.restore);
+  const confirm = useConfirm();
   const [revision, setRevision] = useState(settings.revision);
   const [savedValues, setSavedValues] = useState(() => config.values(settings));
   const [values, setValues] = useState(() => config.values(settings));
@@ -269,6 +283,12 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
   const dirty = JSON.stringify(values) !== JSON.stringify(savedValues);
   async function applyHistory(entry: HistoryEntry, side: "before" | "after") {
     if (pending.current || dirty) return;
+    const ok = await confirm({
+      title: "Restore settings to before this change?",
+      description: "This puts every settings tab back as it was before this change: business, booking rules, AI assistant and email, not just this tab. Extra AI instructions stay as they are.",
+      confirmLabel: "Restore settings",
+    });
+    if (!ok || pending.current) return;
     pending.current = true;
     setState({ saving: true, saved: false, error: "" });
     try {
@@ -292,7 +312,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
           {config.fields(settings).map((field) => {
             const id = `settings-${section}-${field.name}`;
             const error = errorFor(field.name);
-            const describedBy = [error ? `${id}-error` : "", field.hint ? `${id}-hint` : ""].filter(Boolean).join(" ") || undefined;
+            const describedBy = error ? `${id}-error` : undefined;
             const common = {
               id,
               name: field.name,
@@ -309,10 +329,13 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
             };
             return (
               <div key={field.name} className={cn("grid content-start gap-2", field.wide && "sm:col-span-2")}>
-                <Label htmlFor={id}>
-                  {field.label}
-                  {field.required ? <span className="text-muted-foreground"> (required)</span> : null}
-                </Label>
+                <span className="flex items-center gap-1.5">
+                  <Label htmlFor={id}>
+                    {field.label}
+                    {field.required ? <span className="text-muted-foreground"> (required)</span> : null}
+                  </Label>
+                  {field.hint ? <InfoTip label={`About ${field.label.toLowerCase()}`}>{field.hint}</InfoTip> : null}
+                </span>
                 {field.type === "textarea" ? (
                   <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
                 ) : field.type === "time" ? (
@@ -341,11 +364,6 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
                     {error}
                   </p>
                 ) : null}
-                {field.hint ? (
-                  <p id={`${id}-hint`} className="text-xs text-muted-foreground">
-                    {field.hint}
-                  </p>
-                ) : null}
               </div>
             );
           })}
@@ -358,13 +376,8 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
         ) : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-          {readOnly ? (
-            <span className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
-              Read only
-              <InfoTip label="Why read only">Only owners can change settings.</InfoTip>
-            </span>
-          ) : (
-            <Button type="submit" disabled={state.saving}>
+          {readOnly ? null : (
+            <Button type="submit" disabled={state.saving || !dirty}>
               {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
               Save {config.title.toLowerCase()}
             </Button>
@@ -384,8 +397,19 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
         </div>
       </form>
       {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
-      {dirty ? <p className="mt-4 text-xs text-muted-foreground">Save your draft before applying an earlier configuration.</p> : null}
-      <div className="mt-4"><RecordHistoryPanel entityType="settings" entityId="default" onRestore={readOnly ? undefined : applyHistory} disabled={state.saving || dirty || settings.revision > revision} /></div>
+      <div className="mt-4">
+        <HistoryDisclosure label="Settings history">
+          {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or undo your changes first.</p> : null}
+          <RecordHistoryPanel
+            entityType="settings"
+            entityId="default"
+            title="Settings history"
+            restoreLabel="Restore settings to before this"
+            onRestore={readOnly ? undefined : applyHistory}
+            disabled={state.saving || dirty || settings.revision > revision}
+          />
+        </HistoryDisclosure>
+      </div>
     </Panel>
   );
 }
@@ -465,45 +489,21 @@ function ChannelsPanel() {
         )}
       </Panel>
 
-      <Panel title="iCal calendars" description="OTA calendars imported into villa availability. Manage them from Hotel bookings.">
-        {health === undefined ? (
-          <PanelSpinner label="Loading iCal calendars" />
-        ) : health.ical.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No iCal calendars connected.</p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {health.ical.map((source) => (
-              <li key={source._id} className="grid gap-1 py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="flex-1 text-sm font-medium text-foreground">
-                    {source.propertyName} · {sourceLabel(source.platform)}
-                  </span>
-                  <StatusBadge
-                    tone={source.lastSyncError ? "danger" : source.lastSyncedAt ? "success" : "muted"}
-                    label={source.lastSyncError ? "Sync failed" : source.lastSyncedAt ? "Synced" : "Not synced yet"}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Last synced: {source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "never"}
-                </p>
-                {source.lastSyncError ? <p className="break-words text-xs text-destructive">{source.lastSyncError}</p> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
     </>
   );
 }
 
 // ---------- Shared bits ----------
 
+/** A settings panel. Its explanation sits behind the ⓘ beside the title. */
 function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <section className="border border-border bg-card">
+    <section className="border border-border bg-card" aria-label={title}>
       <header className="border-b border-border px-4 py-3">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        <p className="text-xs text-muted-foreground">{description}</p>
+        <h2 className="flex items-center gap-1.5 text-base font-semibold text-foreground">
+          {title}
+          <InfoTip label={`About ${title.toLowerCase()}`}>{description}</InfoTip>
+        </h2>
       </header>
       <div className="p-4">{children}</div>
     </section>

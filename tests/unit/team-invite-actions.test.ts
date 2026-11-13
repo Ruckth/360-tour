@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ mutation: vi.fn(), people: [] as unknown[] }));
+const mocks = vi.hoisted(() => ({ calls: [] as [string, unknown][], people: [] as unknown[], confirm: vi.fn() }));
 vi.mock("convex/react", async () => {
   const { getFunctionName } = await import("convex/server");
   return {
@@ -13,26 +13,34 @@ vi.mock("convex/react", async () => {
       if (name === "staffAccess:getCashierRules") return { discountLimitPercent: 10, voidPaidSale: "manager", customPrice: "manager", paymentFix: "manager", refund: "manager", revision: 0 };
       return undefined;
     },
-    useMutation: () => mocks.mutation,
+    useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
+      const name = getFunctionName(ref);
+      return async (args: unknown) => {
+        mocks.calls.push([name, args]);
+        return null;
+      };
+    },
   };
 });
-vi.mock("next/link", () => ({ default: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
-vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => async () => true }));
-import { TeamSettings, staffSignInLink } from "@/components/admin/TeamSettings";
+vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => mocks.confirm }));
+import { TeamSettings, marketingSignInLink, staffSignInLink } from "@/components/admin/TeamSettings";
 
 const now = Date.now();
 const DAY = 86_400_000;
-const pending = { email: "lek@auraliscove.co", role: "cashier", staffGrant: { id: "grant-lek", role: "cashier", claimed: false, expiresAt: now + 12 * DAY, expired: false, updatedAt: now }, marketingGrant: null };
-const expired = { email: "may@auraliscove.co", role: "cashier", staffGrant: { id: "grant-may", role: "cashier", claimed: false, expiresAt: now - DAY, expired: true, updatedAt: now }, marketingGrant: null };
-const active = { email: "mint@auraliscove.co", role: "cashier", staffGrant: { id: "grant-mint", role: "cashier", claimed: true, expiresAt: null, expired: false, updatedAt: now }, marketingGrant: null };
+const grant = (id: string, role: string, claimed: boolean, expired = false) => ({ id, role, claimed, expiresAt: claimed ? null : now + (expired ? -DAY : 12 * DAY), expired, updatedAt: now });
+const pending = { email: "lek@auraliscove.co", role: "cashier", staffGrant: grant("grant-lek", "cashier", false), marketingGrant: null };
+const expired = { email: "may@auraliscove.co", role: "cashier", staffGrant: grant("grant-may", "cashier", false, true), marketingGrant: null };
+const active = { email: "mint@auraliscove.co", role: "cashier", staffGrant: grant("grant-mint", "cashier", true), marketingGrant: null };
+const marketer = { email: "sun@auraliscove.co", role: null, staffGrant: null, marketingGrant: grant("mkt-sun", "manager", true) };
+const owner = { email: "narin@auraliscove.co", role: "owner", staffGrant: null, marketingGrant: null };
 
 let root: Root;
 let host: HTMLDivElement;
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-  mocks.mutation.mockReset();
-  mocks.mutation.mockResolvedValue({ expiresAt: now + 14 * DAY });
-  mocks.people = [pending, expired, active];
+  mocks.calls = [];
+  mocks.confirm.mockReset().mockResolvedValue(true);
+  mocks.people = [pending, expired, active, marketer, owner];
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -45,46 +53,78 @@ afterEach(async () => {
 });
 
 const row = (email: string) => [...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]')].find((li) => li.textContent?.includes(email))!;
-const buttonsIn = (el: HTMLElement) => [...el.querySelectorAll("button")].map((b) => b.textContent?.trim());
-const press = (el: HTMLElement, text: string) =>
-  act(async () => [...el.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!.click());
+const buttonsIn = (el: HTMLElement) => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
+const select = (el: HTMLElement, name: string) => el.querySelector<HTMLSelectElement>(`select[aria-label^="${name}"]`)!;
+const pick = (node: HTMLSelectElement, value: string) =>
+  act(async () => {
+    node.value = value;
+    node.dispatchEvent(new Event("change", { bubbles: true }));
+  });
 const render = () => act(async () => root.render(createElement(TeamSettings)));
 
-it("offers Renew and Copy sign-in link on a pending invite, and no Resend or Expire", async () => {
+it("gives each person a Desk and a Marketing role, with Marketing Manager shown as Lead", async () => {
   await render();
-  expect(buttonsIn(row(pending.email))).toEqual(["Renew", "Copy sign-in link", "Revoke"]);
-  // An expired invite's link won't work until it is renewed.
-  expect(buttonsIn(row(expired.email))).toEqual(["Renew", "Revoke"]);
-  expect(buttonsIn(row(active.email))).toEqual(["Revoke"]);
-  expect(host.textContent).not.toMatch(/Resend|Expire\b/);
+  const sun = row(marketer.email);
+  expect(select(sun, "Desk role").value).toBe("");
+  expect(select(sun, "Marketing role").value).toBe("manager");
+  expect([...select(sun, "Marketing role").options].map((o) => o.text)).toEqual(["Lead", "Marketer", "Finance", "Viewer", "None"]);
+  expect([...select(sun, "Desk role").options].map((o) => o.text)).toEqual(["Manager", "Cashier", "None"]);
+  expect(row(owner.email).textContent).toContain("Owner");
+  expect(row(owner.email).querySelector("select")).toBeNull();
+  expect(host.textContent).not.toMatch(/Resend|Expire\b|Revoke|Manage\b/);
 });
 
-it("Renew renews the invite through the unchanged backend action", async () => {
+it("grants Marketing access from the row, through the unchanged Marketing mutation", async () => {
   await render();
-  await press(row(pending.email), "Renew");
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ grantId: "grant-lek", action: "resend" });
-  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for lek@auraliscove.co.");
+  await pick(select(row(active.email), "Marketing role"), "marketer");
+  expect(mocks.calls).toEqual([["marketingAccess:setGrant", { email: active.email, role: "marketer" }]]);
+  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited mint@auraliscove.co to Marketing as Marketer.");
+  expect(mocks.confirm).not.toHaveBeenCalled();
 });
 
-it("copies the sign-in link", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+it("asks before removing either role, and leaves the other alone", async () => {
   await render();
-  await press(row(pending.email), "Copy sign-in link");
-  expect(writeText).toHaveBeenCalledExactlyOnceWith(staffSignInLink());
+  mocks.confirm.mockResolvedValueOnce(false);
+  await pick(select(row(marketer.email), "Marketing role"), "");
+  expect(mocks.calls).toEqual([]);
+  await pick(select(row(active.email), "Desk role"), "");
+  expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Remove mint@auraliscove.co from the desk?", destructive: true }));
+  expect(mocks.calls).toEqual([["staffAccess:setGrant", { email: active.email, role: null }]]);
+});
+
+it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
+  await render();
+  expect(buttonsIn(row(pending.email))).toEqual(["More for lek@auraliscove.co"]);
+  expect(buttonsIn(row(expired.email))).toEqual(["Renew"]);
+  expect(buttonsIn(row(active.email))).toEqual([]);
+  await act(async () => [...row(expired.email).querySelectorAll("button")][0].click());
+  expect(mocks.calls).toEqual([["staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
+  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for may@auraliscove.co.");
+});
+
+it("invites with a Desk role, a Marketing role, or both", async () => {
+  await render();
+  await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Invite")!.click());
+  const form = host.querySelector<HTMLFormElement>('form[aria-label="Invite"]')!;
+  const email = form.querySelector<HTMLInputElement>('input[type="email"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(email, "Fon@AuralisCove.co");
+    email.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  const [desk, marketing] = form.querySelectorAll("select");
+  await pick(desk, "");
+  await act(async () => form.requestSubmit());
+  expect(form.querySelector('[role="alert"]')!.textContent).toBe("Pick a Desk or Marketing role.");
+  await pick(desk, "manager");
+  await pick(marketing, "viewer");
+  await act(async () => form.requestSubmit());
+  expect(mocks.calls).toEqual([
+    ["staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager" }],
+    ["marketingAccess:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
+  ]);
+});
+
+it("signs desk invites in at /admin and Marketing-only invites at /admin/marketing", () => {
   expect(staffSignInLink("https://desk.example")).toBe("https://desk.example/admin");
-  expect(host.querySelector('[role="status"]')!.textContent).toContain("Sign-in link copied.");
-  expect(mocks.mutation).not.toHaveBeenCalled();
-});
-
-it.each([
-  { name: "is missing", clipboard: undefined },
-  { name: "refuses", clipboard: { writeText: () => Promise.reject(new Error("denied")) } },
-])("shows the link to copy by hand when the clipboard $name", async ({ clipboard }) => {
-  vi.stubGlobal("navigator", { ...navigator, clipboard });
-  await render();
-  await press(row(pending.email), "Copy sign-in link");
-  const alert = host.querySelector('[role="alert"]')!;
-  expect(alert.textContent).toContain("Couldn’t copy.");
-  expect(alert.textContent).toContain(staffSignInLink());
+  expect(marketingSignInLink("https://desk.example")).toBe("https://desk.example/admin/marketing");
 });
