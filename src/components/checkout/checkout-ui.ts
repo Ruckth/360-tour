@@ -82,7 +82,7 @@ export function receiptSchedule(schedule: ServiceSchedule | undefined) {
 
 /** How an order correction is titled in its history. */
 export function correctionTitle(kind: "amended" | "void_unreceived" | "linked" | "unlinked") {
-  return { amended: "Payment recording amended", void_unreceived: "Mistaken payment entry voided", linked: "Row linked after payment", unlinked: "Link undone" }[kind];
+  return { amended: "Payment recording corrected", void_unreceived: "Mistaken payment entry voided", linked: "Row linked after payment", unlinked: "Link undone" }[kind];
 }
 
 /** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
@@ -150,7 +150,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...(totals.coupon ? [row("Subtotal", formatMoney(round2(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
     row("Total", formatMoney(totals.total)),
     row("VAT 7% included", formatMoney(totals.vat)),
-    ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),
+    ...(totals.deposit ? [row("Paid in advance", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
     ...(change ? [row("Change", formatMoney(change))] : []),
     ...(refunded ? [row("Refunded", formatMoney(-refunded / 100)), row("Net", formatMoney((Math.round(totals.total * 100) - refunded) / 100))] : []),

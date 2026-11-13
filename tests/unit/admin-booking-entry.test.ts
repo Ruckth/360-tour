@@ -38,6 +38,13 @@ vi.mock("@/components/reui/phone-input", () => ({
     createElement("input", { id, value, onChange: (event: { target: { value: string } }) => onChange(event.target.value) }),
 }));
 
+vi.mock("@/components/booking/BookingDatePicker", () => ({
+  BookingRangePicker: ({ checkIn, checkOut, onChange }: { checkIn: string; checkOut: string; onChange: (range: { checkIn: string; checkOut: string }) => void }) => createElement("div", null,
+    createElement("input", { id: "test-check-in", type: "date", value: checkIn, onChange: (event: { target: { value: string } }) => onChange({ checkIn: event.target.value, checkOut }) }),
+    createElement("input", { id: "test-check-out", type: "date", value: checkOut, onChange: (event: { target: { value: string } }) => onChange({ checkIn, checkOut: event.target.value }) }),
+  ),
+}));
+
 const NOW = Date.parse("2026-10-28T03:00:00Z");
 const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 10000, directDiscountPercent: 0, currency: "THB" };
 const oldVilla = { ...villa, _id: "p2", slug: "old-villa", name: "Old Villa", status: "archived" };
@@ -90,16 +97,18 @@ describe("new booking", () => {
   it("does not email the guest about a past stay unless staff tick it, and sends the choice explicitly", async () => {
     await render(createElement(NewBookingDialog, props({ propertyId: "p1", checkIn: "2026-10-20", checkOut: "2026-10-22" })));
     await fillGuest();
-    expect(text()).toContain("Email mia@example.com about this booking");
-    expect(text()).toContain("The guest will not be emailed.");
-    expect(text()).toContain("Past stays don’t email the guest unless you tick this.");
+    expect(document.querySelector("[role=dialog] h2")?.textContent).toBe("Record past stay");
+    expect(text()).toContain("Email guest about this booking");
+    expect(text()).toContain("mia@example.com");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(false);
+    expect(text()).toContain("Past stay · Email off by default");
     await submit();
     expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ checkIn: "2026-10-20", notifyGuest: false, confirmed: true }));
     expect(mutations.createBooking.mock.calls[0][0]).not.toHaveProperty("priceOverride");
     expect(mutations.createBooking.mock.calls[0][0]).not.toHaveProperty("archivedVillaReason");
 
     await click(document.getElementById("nb-notify"));
-    expect(text()).toContain("The guest will be emailed.");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
     await submit();
     expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ notifyGuest: true }));
   });
@@ -107,10 +116,34 @@ describe("new booking", () => {
   it("emails the guest about a future stay by default, and says so", async () => {
     await render(createElement(NewBookingDialog, props({ propertyId: "p1", checkIn: "2026-11-20", checkOut: "2026-11-22" })));
     await fillGuest();
-    expect(text()).toContain("The guest will be emailed.");
-    expect(text()).not.toContain("Past stays don’t email");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
+    expect(text()).not.toContain("Past stay · Email off by default");
     await submit();
     expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ notifyGuest: true }));
+  });
+
+  it("follows edited stay dates until staff explicitly chooses the notification outcome", async () => {
+    await render(createElement(NewBookingDialog, props({ propertyId: "p1", checkIn: "2026-10-20", checkOut: "2026-10-22" })));
+    await fillGuest();
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(false);
+    await type("test-check-in", "2026-11-20");
+    await type("test-check-out", "2026-11-22");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
+    await click(document.getElementById("nb-notify"));
+    await type("test-check-in", "2026-10-20");
+    await type("test-check-out", "2026-10-22");
+    await type("test-check-in", "2026-11-20");
+    await type("test-check-out", "2026-11-22");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(false);
+    await submit();
+    expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ checkIn: "2026-11-20", notifyGuest: false }));
+
+    await click(document.getElementById("nb-notify"));
+    await type("test-check-in", "2026-10-20");
+    await type("test-check-out", "2026-10-22");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
+    await submit();
+    expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ checkIn: "2026-10-20", notifyGuest: true }));
   });
 
   it("takes an optional custom price only with a valid amount and a reason", async () => {
@@ -162,7 +195,7 @@ describe("new booking", () => {
     await act(async () => fail(new Error("[CONVEX M(adminBookings:createBooking)] Uncaught Error: These dates are no longer available.\n at x")));
     expect(alertText()).toContain("These dates are no longer available.");
     expect((document.getElementById("nb-name") as HTMLInputElement).value).toBe("Mia");
-    expect(text()).toContain("The guest will be emailed.");
+    expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
     mutations.createBooking.mockResolvedValueOnce("b9");
     await submit();
     expect(mutations.createBooking).toHaveBeenCalledTimes(2);
@@ -190,9 +223,9 @@ describe("moving a booking on the calendar", () => {
     const onClose = vi.fn();
     await render(createElement(MoveBookingDialog, props({ onMoved, onClose })));
     expect(text()).toContain("New total ฿30,000");
-    expect(text()).toContain("The guest will be emailed.");
+    expect((document.getElementById("move-notify") as HTMLInputElement).checked).toBe(true);
     await click(document.getElementById("move-notify"));
-    expect(text()).toContain("The guest will not be emailed.");
+    expect((document.getElementById("move-notify") as HTMLInputElement).checked).toBe(false);
     await click(button("Move booking"));
     expect(button("Move booking")?.disabled).toBe(true);
     expect(button("Keep dates")?.disabled).toBe(true);
@@ -212,7 +245,7 @@ describe("moving a booking on the calendar", () => {
   it("does not email a guest who was entered silently unless staff tick it", async () => {
     queries.getForAdmin.mockReturnValue(detail({ guestEmailsOff: true }));
     await render(createElement(MoveBookingDialog, props()));
-    expect(text()).toContain("The guest will not be emailed.");
+    expect((document.getElementById("move-notify") as HTMLInputElement).checked).toBe(false);
     await click(button("Move booking"));
     expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ notifyGuest: false }));
   });

@@ -144,9 +144,9 @@ it('pages financial ledgers beyond 20/50 and retries a failed continuation indep
   vi.spyOn(console, 'error').mockImplementation(() => {});
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
   await expandHistory("Browse all financial history");
-  const section = () => document.querySelector('[aria-label="All payment amendments"]')!;
+  const section = () => document.querySelector('[aria-label="Payment corrections"]')!;
   expect(section().textContent).toContain('#61'); expect(section().textContent).not.toContain('Reason 1Recorded');
-  await click('Load older payment amendments'); expect(section().textContent).toContain("Couldn't load");
+  await click('Load older payment corrections'); expect(section().textContent).toContain("Couldn't load");
   down = false;
   await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
   await expandHistory("Browse all financial history");
@@ -156,8 +156,8 @@ it('pages financial ledgers beyond 20/50 and retries a failed continuation indep
   backend.useCorrectionHistory = base.useCorrectionHistory;
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
   await expandHistory("Browse all financial history");
-  for (let i = 0; i < 3; i++) await click('Load older payment amendments');
-  expect(section().querySelectorAll('li')).toHaveLength(61); expect(section().textContent).toContain('#1'); expect(button('Load older payment amendments')).toBeUndefined();
+  for (let i = 0; i < 3; i++) await click('Load older payment corrections');
+  expect(section().querySelectorAll('li')).toHaveLength(61); expect(section().textContent).toContain('#1'); expect(button('Load older payment corrections')).toBeUndefined();
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('No entries recorded');
 });
 it('retries a lost restore response with the identical revision and explicit row choice', async () => {

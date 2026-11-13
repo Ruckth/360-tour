@@ -9,6 +9,8 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { StatusBadge } from "./StatusBadge";
+import { DisabledReason } from "./DisabledReason";
+import type { BookingSheetAction } from "./BookingSheet";
 import { formatMoney } from "./labels";
 import {
   canEditBooking,
@@ -36,7 +38,7 @@ export function BookingQuickActions({
   target: QuickTarget;
   villaName: string;
   onClose: () => void;
-  onOpenDetails: () => void;
+  onOpenDetails: (initialAction?: BookingSheetAction) => void;
   onNotice: (notice: { text: string; error?: boolean }) => void;
 }) {
   const { booking, rect } = target;
@@ -46,6 +48,11 @@ export function BookingQuickActions({
   const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);
   const isPaid = booking.paymentStatus === "paid";
+  const canPay = detail
+    ? editable && detail.money.owed > 0 && !detail.money.legacyRefund && detail.paymentStatus !== "failed"
+    : editable && !isPaid;
+  const checkoutLive = Boolean(detail?.checkoutLive);
+  const checkoutReason = checkoutLive && "Wait for the guest's Stripe checkout to finish or expire.";
 
   async function run(work: () => Promise<unknown>, done: string) {
     onClose();
@@ -59,10 +66,10 @@ export function BookingQuickActions({
 
   /** Paid stays are cancelled from the sheet, which asks whether to keep the payment or record a refund. */
   async function cancel() {
-    if (!detail) return;
+    if (!detail || checkoutLive) return;
     onClose();
     if (detail.money.net > 0) {
-      onOpenDetails();
+      onOpenDetails("cancel");
       return;
     }
     if (!(await confirm(cancelConfirmOptions(detail)))) return;
@@ -102,18 +109,20 @@ export function BookingQuickActions({
               Confirm
             </Button>
           ) : null}
-          {editable && !isPaid ? (
-            // Recording a payment needs its method and date, which the booking sheet asks for.
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                onClose();
-                onOpenDetails();
-              }}
-            >
-              Record payment…
-            </Button>
+          {canPay ? (
+            <DisabledReason reason={checkoutReason}>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={checkoutLive}
+                onClick={() => {
+                  onClose();
+                  onOpenDetails("pay");
+                }}
+              >
+                Record payment
+              </Button>
+            </DisabledReason>
           ) : null}
           {detail?.accessToken ? (
             <Button
@@ -125,10 +134,12 @@ export function BookingQuickActions({
             </Button>
           ) : null}
           {editable ? (
-            <Button size="sm" variant="outline" onClick={cancel} disabled={!detail}>
-              {detail ? null : <Spinner className="text-current" />}
-              {detail && detail.money.net > 0 ? "Cancel…" : "Cancel"}
-            </Button>
+            <DisabledReason reason={checkoutReason}>
+              <Button size="sm" variant="outline" onClick={cancel} disabled={!detail || checkoutLive}>
+                {detail ? null : <Spinner className="text-current" />}
+                Cancel booking
+              </Button>
+            </DisabledReason>
           ) : null}
           <Button
             size="sm"

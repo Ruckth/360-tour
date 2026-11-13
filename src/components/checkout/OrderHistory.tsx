@@ -33,7 +33,7 @@ const fields: Record<string, string> = {
   qty: "Quantity",
   unitPrice: "Unit price",
   currency: "Currency",
-  deposit: "Paid before checkout",
+  deposit: "Paid in advance",
   staffId: "Staff reference",
   startAt: "Service date",
   serviceDate: "Service date",

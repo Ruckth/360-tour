@@ -28,7 +28,7 @@ export function ServicePicker({
   onChange: (serviceId: Id<"services">) => void;
 }) {
   const [viewing, setViewing] = useState<Service | null>(null);
-  const search = useRef<HTMLInputElement>(null);
+  const photoTrigger = useRef<HTMLButtonElement>(null);
   const options = useMemo(
     () =>
       groupServices(services).flatMap(([group, items]) =>
@@ -40,7 +40,10 @@ export function ServicePicker({
           renderThumbnail: (className: string) => (
             <ServiceThumb service={service} className={className} />
           ),
-          onPreview: service.imageUrl ? () => setViewing(service) : undefined,
+          onPreview: service.imageUrl ? (trigger: HTMLButtonElement) => {
+            photoTrigger.current = trigger;
+            setViewing(service);
+          } : undefined,
         })),
       ),
     [services],
@@ -61,14 +64,15 @@ export function ServicePicker({
         emptyLabel="No services yet. Add one under Services."
         noResultsLabel="No services match."
         interactionLocked={viewing !== null}
-        searchRef={search}
       />
       <ServicePhotoLightbox
         service={viewing}
         onClose={() => setViewing(null)}
         onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          search.current?.focus();
+          if (photoTrigger.current?.isConnected) {
+            event.preventDefault();
+            photoTrigger.current.focus();
+          }
         }}
       />
     </>

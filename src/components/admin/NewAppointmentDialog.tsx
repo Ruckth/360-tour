@@ -6,7 +6,6 @@ import type { Doc, Id } from "convex/_generated/dataModel";
 import { useRef, useState, type FormEvent } from "react";
 import { appointmentEntrySlot, appointmentEntryStatus } from "@/components/admin/appointment-entry";
 import { ServicePicker } from "@/components/admin/ServicePicker";
-import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -110,7 +109,6 @@ export function NewAppointmentDialog({
   });
   const service = services.find((s) => s._id === serviceId);
   const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
-  const [changingStaff, setChangingStaff] = useState(false);
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
   const [saving, setSaving] = useState(false);
@@ -132,6 +130,14 @@ export function NewAppointmentDialog({
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
   const review = useQuery(api.adminServices.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
   const assigned = staff.find((person) => person._id === assignedId);
+  // Presentation follows the selected service time; eligibility above deliberately
+  // keeps its existing date-based rule.
+  const entryStart = selectedSlot?.start ?? start;
+  const completed = entryStart !== null && service !== undefined && appointmentEntryStatus(entryStart, service.durationMin, now) === "completed";
+  const inProgress = entryStart !== null && !completed && entryStart <= now;
+  // An automatic fallback may be this morning's first slot. Keep later choices
+  // available until staff explicitly select or enter a time that has started.
+  const showSuggestedTimes = date >= today && !(start !== null && start <= now);
   const parts = DAY_PARTS.map((part, i) => ({
     label: part.label,
     slots: (slots ?? []).filter((slot) => {
@@ -236,11 +242,16 @@ export function NewAppointmentDialog({
                     : ""}
                 </p>
               ) : null}
-              {selectedSlot && service ? <p className="text-sm">{appointmentEntryStatus(selectedSlot.start, service.durationMin, now) === "completed" ? "Completed · Unpaid. Checkout can collect payment for this service." : "Booked · Unpaid."}</p> : null}
+              {selectedSlot && service ? <p className="text-sm">{completed ? "Completed · Unpaid. Checkout can collect payment for this service." : inProgress ? "In progress · Unpaid." : "Booked · Unpaid."}</p> : null}
               <div className="grid gap-2">
-                <Label>Time</Label>
-                {historicalDate ? <div className="grid gap-2"><Label htmlFor="na-actual-time">Actual time (Bangkok)</Label><Input id="na-actual-time" type="time" step={60} value={start === null ? "" : resortTime24(start)} onChange={event => { if (event.target.value) setStart(resortDateTime(date, event.target.value)); }} /><p className="text-xs text-muted-foreground">Enter the recorded time or choose a time below.</p></div> : null}
-                {slots === undefined ? (
+                {historicalDate ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="na-actual-time">Time (Bangkok)</Label>
+                    <Input id="na-actual-time" type="time" step={60} value={entryStart === null ? "" : resortTime24(entryStart)} onChange={event => setStart(event.target.value ? resortDateTime(date, event.target.value) : null)} />
+                  </div>
+                ) : null}
+                {showSuggestedTimes ? <Label>{historicalDate ? "Suggested open times" : "Time (Bangkok)"}</Label> : null}
+                {showSuggestedTimes && slots === undefined ? (
                   <div
                     role="status"
                     aria-label="Finding open times"
@@ -250,9 +261,9 @@ export function NewAppointmentDialog({
                       <Skeleton key={i} className="h-9" />
                     ))}
                   </div>
-                ) : slots.length === 0 ? (
+                ) : showSuggestedTimes && slots?.length === 0 ? (
                   <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                    No available times. For past work, choose the staff member who performed it below.
+                    No available times.
                     <Button
                       type="button"
                       size="sm"
@@ -264,7 +275,7 @@ export function NewAppointmentDialog({
                       Next day
                     </Button>
                   </p>
-                ) : (
+                ) : showSuggestedTimes ? (
                   <div className="grid max-h-64 gap-3 overflow-y-auto rounded-lg border border-border p-3">
                     {parts.map((part) => (
                       <fieldset key={part.label}>
@@ -297,7 +308,7 @@ export function NewAppointmentDialog({
                       </fieldset>
                     ))}
                   </div>
-                )}
+                ) : null}
                 {start !== null &&
                 selectedSlot &&
                 selectedSlot.start !== start ? (
@@ -310,62 +321,29 @@ export function NewAppointmentDialog({
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="na-staff">Staff</Label>
-                {changingStaff || (historicalDate && !staffId) ? (
-                  <Select
-                    value={staffId ?? "auto"}
-                    disabled={saving}
-                    onValueChange={(value) => {
-                      setStaffChoice(value);
-                      setChangingStaff(false);
-                    }}
-                  >
-                    <SelectTrigger id="na-staff" className="rounded-lg">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {!historicalDate ? <SelectItem value="auto">Auto (least busy that day)</SelectItem> : null}
-                      {qualified.map((person) => (
-                        <SelectItem key={person._id} value={person._id}>
-                          {person.name}{person.status === "archived" ? " (archived)" : ""}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
-                    {assigned ? (
-                      <>
-                        <StaffAvatar staff={assigned} className="size-6" />
-                        <span>
-                          Assigned to{" "}
-                          <span className="font-semibold">{assigned.name}</span>
-                          {staffId ? null : (
-                            <span className="text-muted-foreground">
-                              {" "}
-                              · least busy
-                            </span>
-                          )}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        Picked automatically once there&apos;s an open time.
-                      </span>
-                    )}
-                    <Button
-                      id="na-staff"
-                      type="button"
-                      size="sm"
-                      variant="link"
-                      className="h-auto px-1"
-                      onClick={() => setChangingStaff(true)}
-                    >
-                      Change
-                    </Button>
-                  </p>
-                )}
+                <Select
+                  value={staffId ?? (historicalDate ? "" : "auto")}
+                  disabled={saving}
+                  onValueChange={setStaffChoice}
+                >
+                  <SelectTrigger id="na-staff" className="rounded-lg">
+                    <SelectValue placeholder="Choose who did the work" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!historicalDate ? (
+                      <SelectItem value="auto">
+                        Auto (least busy){staffId ? "" : ` · ${assigned?.name ?? "picked once a time is chosen"}`}
+                      </SelectItem>
+                    ) : null}
+                    {qualified.map((person) => (
+                      <SelectItem key={person._id} value={person._id}>
+                        {person.name}{person.status === "archived" ? " (archived)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              {historicalDate ? <p className="text-sm text-muted-foreground">Past work is recorded at its actual service time. Current assignments and roster may differ from what happened; verify the staff and service. No notification is sent.</p> : null}
+              {completed ? <p className="text-xs text-muted-foreground">Past work · Verify service and staff. No guest notification.</p> : null}
               {review?.problem ? <p role="alert" className="text-sm text-destructive">{review.problem}</p> : null}
               {review?.warnings.map(warning => <p key={warning} className="text-sm text-muted-foreground">{warning}</p>)}
               {review?.needsReason ? <div className="grid gap-2"><Label htmlFor="na-reason">Reason for the historical overlap</Label><Input id="na-reason" required maxLength={500} value={historicalReason} onChange={event => setHistoricalReason(event.target.value)} /></div> : null}

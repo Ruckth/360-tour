@@ -17,7 +17,7 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
   return <HistoryDetails orderId={orderId} title="Browse all financial history">
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
-      <Ledger title="All payment amendments"><Corrections orderId={orderId} /></Ledger>
+      <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
       <Ledger title="All receipt activity"><Audit orderId={orderId} /></Ledger>
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
@@ -36,10 +36,16 @@ function Page<T extends { _id: string }>({ page, label, render }: { page: Custom
     {page.status === "CanLoadMore" || page.status === "LoadingMore" ? <Button variant="outline" disabled={page.status === "LoadingMore"} onClick={() => page.loadMore(20)}>{page.status === "LoadingMore" ? "Loading older entries…" : `Load older ${label}`}</Button> : null}
   </>;
 }
-function Corrections({ orderId }: { orderId: OrderId }) {
+/** The row and booking reference from a link correction, now in the single paged history. */
+function linkSummary(view: OrderView, change: OrderView["corrections"][number]) {
+  const row = view.lines.find((line) => line._id === change.lineId)?.name ?? "A row";
+  const link = view.links.find((item) => item._id === change.linkId);
+  return `${row} → ${link?.target.reference ?? "its booking"}${change.amount !== undefined ? ` · ${formatMoney(change.amount)}` : ""}`;
+}
+function Corrections({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useCorrectionHistory(orderId);
-  return <Page page={page} label="payment amendments" render={r => <>
-    <p className="font-medium">{correctionTitle(r.kind)} · #{r.sequence}</p>{r.amount !== undefined ? <p>Applied {formatMoney(r.amount)}</p> : null}<p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
+  return <Page page={page} label="payment corrections" render={r => <>
+    <p className="font-medium">{correctionTitle(r.kind)} · #{r.sequence}</p>{view && (r.kind === "linked" || r.kind === "unlinked") ? <p>{linkSummary(view, r)}</p> : r.amount !== undefined ? <p>Applied {formatMoney(r.amount)}</p> : null}<p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
     {r.tendersBefore ? <p>Before: {r.tendersBefore.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.tendersAfter ? <p>After: {r.tendersAfter.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.effectiveAtBefore !== undefined ? <p>Received date: {historyTime(r.effectiveAtBefore)} → {r.effectiveAtAfter !== undefined ? historyTime(r.effectiveAtAfter) : "Unknown"}</p> : null}

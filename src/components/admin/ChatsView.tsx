@@ -409,10 +409,24 @@ export function ChatsView() {
     replyError: reply.error,
     replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
-    onAddBusinessFact: (message: AdminMessage) =>
-      setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
-    actions: selectedSession ? (
+    onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
+  };
+
+  function renderDetail(compact = false) {
+    const detail = (actions?: ReactNode, followUp?: ReactNode) => (
+      <AdminSessionDetail
+        key={selectedSession?._id ?? "none"}
+        {...detailProps}
+        compact={compact}
+        emptyList={!loadingSessions && sessions.length === 0}
+        onBack={compact ? () => selectSession(null) : undefined}
+        actions={actions}
+        followUp={followUp}
+      />
+    );
+    return selectedSession ? (
       <AdminSessionActions
+        key={selectedSession._id}
         session={{ ...selectedSession, latestGuestMessageId:
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         onDeleted={() => {
@@ -430,9 +444,11 @@ export function ChatsView() {
             selectSession(isLargeViewport ? (next?._id ?? null) : null);
           }
         }}
-      />
-    ) : null,
-  };
+      >
+        {({ actions, followUp }) => detail(actions, followUp)}
+      </AdminSessionActions>
+    ) : detail();
+  }
 
   useEffect(() => {
     if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
@@ -906,13 +922,7 @@ export function ChatsView() {
 
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">
             {/* Mobile uses the dialog below. Until the viewport is known, CSS keeps this hidden on small screens. */}
-            {largeViewport !== false ? (
-              <AdminSessionDetail
-                key={selectedSession?._id ?? "none"}
-                {...detailProps}
-                emptyList={!loadingSessions && sessions.length === 0}
-              />
-            ) : null}
+            {largeViewport !== false ? renderDetail() : null}
           </section>
         </div>
       </div>
@@ -933,12 +943,7 @@ export function ChatsView() {
           <DialogDescription className="sr-only">
             Visitor context and transcript for the selected chat session.
           </DialogDescription>
-          <AdminSessionDetail
-            key={selectedSession?._id ?? "none"}
-            compact
-            onBack={() => selectSession(null)}
-            {...detailProps}
-          />
+          {renderDetail(true)}
         </DialogContent>
       </Dialog>
       <BusinessFactFormDialog

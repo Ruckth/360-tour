@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { getFunctionName, type FunctionReference } from "convex/server";
+import { ConvexError } from "convex/values";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,27 +16,41 @@ const mutations = vi.hoisted(() => ({
   "displays:createPairLink": vi.fn(async () => ({ secret: "secret", expiresAt: Date.now() + 600_000 })),
   "displays:takeDisplay": vi.fn(async () => null),
   "displays:revoke": vi.fn(async () => null),
-  "displays:approveCode": vi.fn(),
+  "displays:approveCode": vi.fn<(args: { code: string; clientId: string }) => Promise<{ displayId: string; name: string }>>(),
 }));
+
+type Driver = { clientId: string; displays: Array<{ _id: string; name: string; lastSeenAt: number | null }>; driver: "here" | "elsewhere" | "none" };
+// Another checkout tab drives the paired iPad, unless a test says otherwise.
+const ELSEWHERE: Driver = { clientId: "tab-here", displays: [{ _id: "display-1", name: "iPad", lastSeenAt: null }], driver: "elsewhere" };
+const driverState = vi.hoisted(() => ({ current: null as unknown }));
 
 vi.mock("convex/react", () => ({
   useMutation: (ref: FunctionReference<"mutation">) => mutations[getFunctionName(ref) as keyof typeof mutations],
 }));
-// Another checkout tab drives the paired iPad.
-vi.mock("@/components/admin/useDisplayDriver", () => ({
-  useDisplayDriver: () => ({ clientId: "tab-here", displays: [{ _id: "display-1", name: "iPad", lastSeenAt: null }], driver: "elsewhere" }),
-}));
+vi.mock("@/components/admin/useDisplayDriver", () => ({ useDisplayDriver: () => driverState.current }));
 
 let root: Root;
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.includes(label)) as HTMLButtonElement;
-const openDialog = async (orderId: string | null | undefined) => {
-  await act(async () => root.render(createElement(CustomerDisplayControl, { orderId })));
-  await act(async () => button("on another checkout").click());
+const buttons = (label: string) => [...document.querySelectorAll("button")].filter((el) => el.textContent?.trim() === label);
+const render = (orderId: string | null | undefined) => act(async () => root.render(createElement(CustomerDisplayControl, { orderId })));
+const openDialog = async (orderId: string | null | undefined, trigger = "Display ·") => {
+  await render(orderId);
+  await act(async () => button(trigger).click());
 };
+/** Types into a React-controlled input. */
+const type = (input: HTMLInputElement, value: string) =>
+  act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+const dialog = () => document.querySelector('[role="dialog"]');
+const tab = (label: string) => [...document.querySelectorAll('[role="tab"]')].find((el) => el.textContent === label) as HTMLButtonElement;
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   for (const mutation of Object.values(mutations)) mutation.mockClear();
+  mutations["displays:approveCode"].mockReset();
+  driverState.current = ELSEWHERE;
   qrRender.mockClear();
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -49,6 +64,8 @@ afterEach(async () => {
 describe("customer display dialog", () => {
   it("creates no pairing link until staff ask for one (H1-07)", async () => {
     await openDialog(null);
+    expect(document.querySelector('[role="tabpanel"]')).toBeNull();
+    await act(async () => button("Pair a different display").click());
     expect(document.querySelector('[role="tabpanel"]')).toBeTruthy();
     expect(mutations["displays:createPairLink"]).not.toHaveBeenCalled();
     expect(qrRender).not.toHaveBeenCalled();
@@ -77,6 +94,98 @@ describe("customer display dialog", () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toBe("Not authorized");
     expect(button("Disconnect").disabled).toBe(false);
   });
+
+  it("leads with the paired display's status, below an urgent take-over, and keeps setup behind Pair a different display", async () => {
+    await openDialog("k17order0001");
+    const text = dialog()!.textContent!;
+    expect(text).toContain("iPad");
+    expect(text).toContain("Not seen yet");
+    expect(text).toContain("Showing another checkout");
+    // Take-over comes before the status card.
+    expect(text.indexOf("Show this checkout on the display")).toBeLessThan(text.indexOf("Not seen yet"));
+    expect(document.querySelector('[role="tablist"]')).toBeNull();
+    // Pairing again is reached before the immediate Disconnect.
+    const order = [...dialog()!.querySelectorAll("button")].map((el) => el.textContent?.trim());
+    expect(order.indexOf("Pair a different display")).toBeLessThan(order.indexOf("Disconnect"));
+    await act(async () => button("Pair a different display").click());
+    expect(document.activeElement).toBe(tab("Send link"));
+    expect(button("Pair a different display")).toBeUndefined();
+    expect(dialog()!.textContent).toContain("Opening the link on another display disconnects iPad.");
+    await act(async () => tab("Enter code").click());
+    expect(dialog()!.textContent).toContain("Pairing disconnects iPad.");
+    await act(async () => tab("This computer").click());
+    expect(dialog()!.textContent).toContain("Opening it disconnects iPad.");
+    expect(mutations["displays:createPairLink"]).not.toHaveBeenCalled();
+  });
+
+  it("shows when an offline display was last seen and that this checkout drives it, without inviting a re-pair", async () => {
+    driverState.current = { clientId: "tab-here", displays: [{ _id: "display-1", name: "Front iPad", lastSeenAt: Date.now() - 5 * 60_000 }], driver: "here" };
+    await openDialog(null);
+    const text = dialog()!.textContent!;
+    expect(text).toContain("Offline · last seen 5 minutes ago");
+    expect(text).toContain("Showing this checkout");
+    expect(text).toContain("It reconnects by itself.");
+    expect(text).not.toContain("isn't following this checkout");
+  });
+
+  it("opens straight onto setup with one Close and no replacement warning when nothing is paired", async () => {
+    driverState.current = { clientId: "tab-here", displays: [], driver: "none" };
+    await openDialog(null, "Connect display");
+    expect(document.querySelector('[role="tablist"]')).toBeTruthy();
+    expect(dialog()!.textContent).not.toContain("disconnects");
+    expect(dialog()!.textContent).not.toContain("Disconnect");
+    expect(buttons("Close")).toHaveLength(1);
+    expect(dialog()!.textContent).not.toMatch(/Not now|Done/);
+    await act(async () => buttons("Close")[0].click());
+    expect(dialog()).toBeNull();
+    expect(mutations["displays:createPairLink"]).not.toHaveBeenCalled();
+  });
+
+  it("pairs only a normalized six-character code, keeps the display on a failed code, and Done closes", async () => {
+    driverState.current = { clientId: "tab-here", displays: [], driver: "none" };
+    await openDialog(null, "Connect display");
+    await act(async () => tab("Enter code").click());
+    const input = dialog()!.querySelector<HTMLInputElement>("input")!;
+    await type(input, "ab-12");
+    expect(button("Pair")!.disabled).toBe(true);
+    await act(async () => input.form!.requestSubmit());
+    expect(mutations["displays:approveCode"]).not.toHaveBeenCalled();
+    mutations["displays:approveCode"].mockRejectedValueOnce(new ConvexError({ code: "CODE_EXPIRED", message: "That code has expired. Check the display for a new code" }));
+    await type(input, "ab c-234");
+    expect(button("Pair")!.disabled).toBe(false);
+    await act(async () => button("Pair")!.click());
+    expect(mutations["displays:approveCode"]).toHaveBeenLastCalledWith({ code: "ABC234", clientId: "tab-here" });
+    expect(document.querySelector('[role="alert"]')!.textContent).toBe("That code has expired. Check the display for a new code");
+    expect(button("Done")).toBeUndefined();
+    mutations["displays:approveCode"].mockResolvedValueOnce({ displayId: "display-2", name: "Front iPad" });
+    await act(async () => button("Pair")!.click());
+    expect(dialog()!.textContent).toContain("Paired with Front iPad");
+    expect(buttons("Done")).toHaveLength(1);
+    expect(buttons("Close")).toHaveLength(0);
+    await act(async () => button("Done")!.click());
+    expect(dialog()).toBeNull();
+  });
+
+  it("ends a link pairing on Paired once the link is used, without offering the used link again", async () => {
+    await openDialog(null);
+    await act(async () => button("Pair a different display").click());
+    await act(async () => button("Create link").click());
+    expect(document.querySelector('[aria-label="Display link"]')).toBeTruthy();
+    // The display opened the link: the old iPad is replaced by the new one, and this tab drives it.
+    driverState.current = { clientId: "tab-here", displays: [{ _id: "display-2", name: "Front iPad", lastSeenAt: Date.now() }], driver: "here" };
+    await render(null);
+    expect(dialog()!.textContent).toContain("Paired with Front iPad");
+    expect(dialog()!.textContent).toContain("It now shows the order open at this checkout.");
+    expect(document.querySelector('[aria-label="Display link"]')).toBeNull();
+    expect(qrRender).toHaveBeenCalledOnce();
+    expect(mutations["displays:createPairLink"]).toHaveBeenCalledOnce();
+  });
+
+  it("disconnects with the plain Disconnect button and no confirmation", async () => {
+    await openDialog(null);
+    await act(async () => button("Disconnect").click());
+    expect(mutations["displays:revoke"]).toHaveBeenCalledExactlyOnceWith({ displayId: "display-1" });
+  });
 });
 
 
@@ -84,6 +193,7 @@ it("renders the QR once through 60 countdown ticks, updates it once for a new UR
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-03T00:00:00Z"));
   await openDialog(null);
+  await act(async () => button("Pair a different display").click());
   await act(async () => button("Create link").click());
   expect(qrRender).toHaveBeenCalledOnce();
   const initial = document.querySelector('[role="tabpanel"]')!.textContent;

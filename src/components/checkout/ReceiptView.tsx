@@ -1,7 +1,7 @@
 "use client";
 
 import { Ban, ChevronLeft, Copy, Plus, Printer, Share2 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -66,7 +66,12 @@ function printCss(paper: Paper, lengthMm: number) {
   `;
 }
 
-/** Receipt after payment: thermal print (58/80mm), share or copy, and void with a reason. */
+const noSubscription = () => () => undefined;
+/** Whether the system share sheet exists here; false on the server so hydration matches. */
+const useCanShare = () =>
+  useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
+
+/** Receipt after payment: thermal print (58/80mm), share (where the device can) or copy, and void with a reason. */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
   const view = backend.useOrder(orderId);
@@ -76,6 +81,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const approvals = backend.useOrderApprovals(view ? view.order._id : null);
   const [paper, setPaper] = useState<Paper>("80");
   const [notice, setNotice] = useState("");
+  const canShare = useCanShare();
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
   const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
@@ -138,21 +144,19 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     (trigger && !message ? trigger : noticeRef.current ?? trigger)?.focus();
   }
 
+  // Share only opens the system sheet; copying is the Copy button's job, so neither outcome claims the other.
   async function share() {
-    const text = receiptText(view!, business);
+    setNotice("");
     try {
-      if (navigator.share) {
-        await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text });
-        return;
-      }
-      await navigator.clipboard.writeText(text);
-      setNotice("Receipt copied.");
+      await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text: receiptText(view!, business) });
     } catch (err) {
-      if ((err as Error).name !== "AbortError") setNotice("Couldn't share. Try copy instead.");
+      // Closing the share sheet is not a failure, and nothing was copied.
+      if ((err as Error).name !== "AbortError") setNotice("Couldn't share. Use Copy to copy the receipt instead.");
     }
   }
 
   async function copy() {
+    setNotice("");
     try {
       await navigator.clipboard.writeText(receiptText(view!, business));
       setNotice("Receipt copied.");
@@ -204,16 +208,30 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             <ToggleGroupItem value="80" className={QUIET_SELECTED}>80 mm</ToggleGroupItem>
           </ToggleGroup>
           <Button variant="outline" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
-          <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button>
-          <Button variant="ghost" onClick={copy} aria-label="Copy receipt text"><Copy aria-hidden className="size-4" /> Copy</Button>
+          {canShare ? <Button variant="outline" onClick={share}><Share2 aria-hidden className="size-4" /> Share</Button> : null}
+          <Button variant="ghost" onClick={copy} aria-label="Copy receipt"><Copy aria-hidden className="size-4" /> Copy</Button>
         </div>
+        {isVoid ? (
+          <div className="grid gap-1 text-xs text-muted-foreground print:hidden" data-testid="receipt-void-status"><p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>{view.paymentRecord.voidUnreceived ? <p>Voided as a mistaken entry: no money was received. No refund was sent.</p> : null}</div>
+        ) : hasLineRefunds(view) ? (
+          // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
+          <div className="flex items-center gap-2 print:hidden">
+            <Button variant="outline" disabled className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
+            <InfoTip label="Why void is off">A receipt with refunds can’t be voided.</InfoTip>
+          </div>
+        ) : (
+          <div className="print:hidden">
+            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={waiting} />
+          </div>
+        )}
         {/* The browser sets the page size; the printer's driver decides what reaches the paper. */}
+        <p id="receipt-print-help" className="w-full text-xs text-muted-foreground print:hidden">Prints {paper} mm wide, as long as the receipt.</p>
         <details className="w-full text-xs text-muted-foreground print:hidden">
           <summary className="w-fit cursor-pointer rounded font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:py-3">
-            Print setup for {paper} mm paper
+            Printing tips
           </summary>
-          <p id="receipt-print-help" className="mt-1">
-            Prints on a {paper} mm wide page, as long as the receipt. In the print dialog, choose the receipt printer, margins None and scale 100%.
+          <p className="mt-1">
+            In the print dialog, choose the receipt printer, margins None and scale 100%.
             If it still prints on another paper size, select the {paper} mm roll in the printer&apos;s own settings.
           </p>
         </details>
@@ -310,7 +328,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             ) : null}
             <div className="flex justify-between font-bold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(totals.total)}</dd></div>
             <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="tabular-nums">{formatMoney(totals.vat)}</dd></div>
-            {totals.deposit ? <div className="flex justify-between"><dt>Paid before checkout</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
+            {totals.deposit ? <div className="flex justify-between"><dt>Paid in advance</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
             {payments.map((payment) => (
               <div key={payment._id} className="flex justify-between">
                 <dt>{TENDER_LABELS[payment.method].long}</dt>
@@ -337,19 +355,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <AfterPayment view={view} />
         <PaymentRecord view={view} />
         <OrderHistory orderId={orderId} />
-        {isVoid ? (
-          <p className="text-xs text-muted-foreground">Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""}. The order and receipt numbers stay on record.</p>
-        ) : hasLineRefunds(view) ? (
-          // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
-          <div className="flex items-center gap-2 border-t border-border pt-4">
-            <Button variant="outline" disabled className="text-destructive"><Ban aria-hidden className="size-4" /> Void…</Button>
-            <InfoTip label="Why void is off">A receipt with refunds can’t be voided.</InfoTip>
-          </div>
-        ) : (
-          <div className="border-t border-border pt-4">
-            <VoidDialog orderId={orderId} receipt={`${receiptNumber} · ${formatMoney(totals.total)}`} hasAttached={lines.some((l) => l.bookingId || l.appointmentId)} waiting={waiting} />
-          </div>
-        )}
+
       </div>
     </div>
   );

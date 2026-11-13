@@ -34,7 +34,7 @@ import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
-import { BookingSheet, useBookingEditQuote } from "./BookingSheet";
+import { BookingSheet, useBookingEditQuote, type BookingSheetAction } from "./BookingSheet";
 import { bookingEditPrice, reviewedPrice } from "./booking-edit-price";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
 import { IcalSourcesDialog } from "./IcalSourcesDialog";
@@ -104,7 +104,7 @@ export function AdminBookingsView() {
   const [storedView, setView] = useStoredState("admin.hotel.view", "month");
   const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
-  const [selectedId, setSelectedId] = useState<Id<"bookings"> | null>(null);
+  const [selected, setSelected] = useState<{ id: Id<"bookings">; initialAction?: BookingSheetAction } | null>(null);
   const [quick, setQuick] = useState<QuickTarget | null>(null);
   const [creating, setCreating] = useState<NewBookingPrefill | null>(null);
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
@@ -144,10 +144,14 @@ export function AdminBookingsView() {
     [data, villa, showCancelled, checkInTime, checkOutTime],
   );
 
+  function openDetails(id: Id<"bookings">, initialAction?: BookingSheetAction) {
+    setSelected({ id, initialAction });
+  }
+
   function openFromSearch(booking: AdminBooking) {
     if (villa !== "all" && villa !== booking.propertyId) setVilla("all");
     if (booking.status === "cancelled") setShowCancelled(true);
-    setSelectedId(booking._id);
+    openDetails(booking._id);
   }
 
   /** Where a drag may drop: an active villa, no past check-in (unless unchanged), no overlap with held dates. */
@@ -192,7 +196,6 @@ export function AdminBookingsView() {
           interval={60}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: true }}
-          canSelectSlot={(slot) => isoDate(slot.start) >= today}
           onSelectSlot={(slot) => {
             const checkIn = isoDate(slot.start);
             const end = slot.allDay ? isoDate(slot.end) : "";
@@ -201,7 +204,7 @@ export function AdminBookingsView() {
           onSlotClick={(slot) => {
             // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
             const checkIn = isoDate(slot.date);
-            if (slot.view === "resource" && slot.allDay && slot.resourceId && checkIn >= today) {
+            if (slot.view === "resource" && slot.allDay && slot.resourceId) {
               openNew(checkIn, addDaysIso(checkIn, 1), slot.resourceId);
             }
           }}
@@ -237,7 +240,7 @@ export function AdminBookingsView() {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "booking") {
               setQuick(null);
-              setSelectedId(eventData.booking._id);
+              openDetails(eventData.booking._id);
             }
           }}
           onRangeChange={({ range: visible }) =>
@@ -319,14 +322,14 @@ export function AdminBookingsView() {
         </div>
       </div>
 
-      <BookingSheet bookingId={selectedId} properties={data?.properties ?? []} onClose={() => setSelectedId(null)} />
+      <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={data?.properties ?? []} onClose={() => setSelected(null)} />
       {quick ? (
         <BookingQuickActions
           key={quick.booking._id}
           target={quick}
           villaName={villaName(quick.booking.propertyId)}
           onClose={() => setQuick(null)}
-          onOpenDetails={() => setSelectedId(quick.booking._id)}
+          onOpenDetails={(initialAction) => openDetails(quick.booking._id, initialAction)}
           onNotice={setNotice}
         />
       ) : null}
@@ -352,7 +355,7 @@ export function AdminBookingsView() {
           }}
           onOpenBooking={(id) => {
             setMoving(null);
-            setSelectedId(id);
+            openDetails(id);
           }}
         />
       ) : null}
@@ -364,7 +367,7 @@ export function AdminBookingsView() {
           onClose={() => setCreating(null)}
           onCreated={(id) => {
             setCreating(null);
-            setSelectedId(id);
+            openDetails(id);
           }}
           onBlockInstead={(target) => {
             setCreating(null);

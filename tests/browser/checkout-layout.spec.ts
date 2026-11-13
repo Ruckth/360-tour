@@ -373,3 +373,57 @@ test.describe("receipt print page size (PM-01)", () => {
     });
   }
 });
+
+test.describe("receipt and orders hierarchy (K1, K8)", () => {
+  test("390px enlarged receipt keeps every toolbar action reachable without horizontal overflow", async ({ page }) => {
+    await open(page, { width: 390, height: 844 }, "?scenario=history");
+    await setRootFont(page, ENLARGED);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    for (const name of ["New sale", "Print", "Copy receipt", "Void…"]) {
+      await expectReachable(page, page.getByRole("button", { name, exact: true }), name);
+    }
+    for (const paper of ["58 mm", "80 mm"]) {
+      await expectReachable(page, page.getByRole("radio", { name: paper, exact: true }), paper);
+    }
+  });
+
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {
+    test(`${viewport.width}x${viewport.height}: New sale and Void… are on screen above the receipt without scrolling`, async ({ page }) => {
+      await open(page, viewport, "?scenario=history");
+      const receipt = page.getByRole("article", { name: "Receipt" });
+      await expect(receipt).toBeVisible();
+      const [newSale, voidButton, paper] = await boxesOf([page.getByRole("button", { name: "New sale", exact: true }), page.getByRole("button", { name: "Void…", exact: true }), receipt]);
+      for (const [label, box] of [["New sale", newSale], ["Void…", voidButton]] as const) {
+        expect.soft(box.y, `${label} top`).toBeGreaterThanOrEqual(0);
+        expect.soft(box.y + box.height, `${label} bottom, unscrolled`).toBeLessThanOrEqual(viewport.height);
+        expect.soft(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 0.5);
+        expect.soft(box.y + box.height, `${label} above the receipt`).toBeLessThanOrEqual(paper.y);
+      }
+      expect.soft(await page.evaluate(() => document.documentElement.scrollWidth), "no horizontal page overflow").toBeLessThanOrEqual(viewport.width);
+      // The current record is visible; only the paged history is collapsed.
+      await expect(page.getByRole("region", { name: "Payment record and corrections" }).getByText("Corrections", { exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Payment corrections" })).toHaveCount(0);
+      await shot(page, `receipt-toolbar-${viewport.width}`);
+    });
+  }
+
+  test("390x844, normal and enlarged text: Discard sits beside its row with a 44px target", async ({ page }) => {
+    await open(page, { width: 390, height: 844 }, "?lines=1");
+    await page.getByRole("button", { name: "Orders", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    const item = dialog.locator("li").filter({ has: page.locator('[aria-current="true"]') });
+    const discard = item.getByRole("button", { name: /^Discard Order/ });
+    for (const size of ["16px", ENLARGED]) {
+      await setRootFont(page, size);
+      const [rowBox, discardBox, dialogBox] = await boxesOf([item.locator('[aria-current="true"]'), discard, dialog]);
+      expect.soft(discardBox.height, `Discard height at ${size}`).toBeGreaterThanOrEqual(44);
+      expect.soft(discardBox.x, `Discard is beside the row at ${size}`).toBeGreaterThanOrEqual(rowBox.x + rowBox.width - 0.5);
+      expect.soft(discardBox.y + discardBox.height / 2, `Discard centred on its row at ${size}`).toBeGreaterThan(rowBox.y);
+      expect.soft(discardBox.y + discardBox.height / 2).toBeLessThan(rowBox.y + rowBox.height);
+      expect.soft(discardBox.x + discardBox.width, `Discard inside the dialog at ${size}`).toBeLessThanOrEqual(dialogBox.x + dialogBox.width + 0.5);
+      const overflow = await discard.evaluate((el) => el.scrollWidth - el.clientWidth);
+      expect.soft(overflow, `Discard label fits at ${size}`).toBeLessThanOrEqual(1);
+      await shot(page, `orders-row-actions-${size}`);
+    }
+  });
+});

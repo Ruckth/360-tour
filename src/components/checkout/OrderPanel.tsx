@@ -140,7 +140,8 @@ export function OrderPanel({
             <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-base" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? `${formatMoney(totals.due)} due` : title}</h2>
             <p className="truncate text-sm text-muted-foreground">
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
-              {view?.customer ? ` · ${view.customer.name}` : ""}
+              {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
+              {onClose && view?.customer ? ` · ${view.customer.name}` : ""}
             </p>
           </div>
         </div>
@@ -188,10 +189,10 @@ export function OrderPanel({
         <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
-          <div className="min-h-[min(14rem,28dvh)] flex-1 overflow-y-auto [@media(max-height:36rem)]:min-h-[24dvh]">
-            {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
+          {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
+          <div className="flex min-h-[min(14rem,28dvh)] flex-1 flex-col overflow-y-auto [@media(max-height:36rem)]:min-h-[24dvh]">
             {lines.length === 0 ? (
-              <div className="grid h-full place-items-center px-6 text-center text-sm text-muted-foreground">
+              <div className="grid flex-1 place-items-center px-6 py-8 text-center text-sm text-muted-foreground">
                 <p>Tap an item to add it to the order.</p>
               </div>
             ) : (
@@ -210,6 +211,7 @@ export function OrderPanel({
                 ))}
               </ul>
             )}
+            {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
           </div>
 
           <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
@@ -226,8 +228,8 @@ export function OrderPanel({
                   <dd className="text-right font-medium tabular-nums">{formatMoney(-totals.coupon)}</dd>
                 </div>
               ) : null}
-              <TotalRow label="VAT 7% (included)" value={formatMoney(totals.vat)} muted />
-              {totals.deposit ? <TotalRow label="Paid online (deposit)" value={formatMoney(-totals.deposit)} /> : null}
+              <TotalRow label="VAT 7% included" value={formatMoney(totals.vat)} muted />
+              {totals.deposit ? <TotalRow label="Paid in advance" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
             <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-3 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
               <span className="font-serif text-2xl font-semibold">Due</span>
@@ -334,7 +336,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting }: { li
             {line.name}
           </span>
           <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line, now)}</span>
-          {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid online</span> : null}
+          {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid in advance</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
           {line.stayCoupon ? (
             <span className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground">

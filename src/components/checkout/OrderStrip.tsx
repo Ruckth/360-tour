@@ -511,7 +511,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
                   <span className="block truncate text-xs text-muted-foreground">Guest: {row.guestName || "Unnamed"}</span>
                   <span className="block text-xs text-muted-foreground">
                     {formatMoney(row.price, row.currency)}
-                    {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} already paid` : ""}
+                    {row.deposit ? ` · ${formatMoney(row.deposit, row.currency)} paid in advance` : ""}
                   </span>
                   {row.unavailableReason ? <span className="mt-1 block text-xs text-destructive">{row.unavailableReason}</span> : null}
                 </span>
@@ -577,7 +577,7 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
       <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
-      <p className="text-xs text-muted-foreground">Discard moves the order to Discarded and keeps its items and history. Its bookings stay active and can be added to another order.</p>
+      {filter === "unpaid" || filter === "discarded" ? <p className="text-xs text-muted-foreground">{filter === "unpaid" ? "Discard keeps the order and its history. Bookings are not cancelled." : "Restore… checks for rows now on another order first."}</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
         <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onAction={(id, mode) => setAction({ id, mode })} />
       </InlineErrorBoundary>
@@ -596,12 +596,13 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
     <div className="grid gap-2">
       <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
-          <li key={row._id}>
+          // Open and Discard/Restore… are sibling buttons on one row, never one inside the other.
+          <li key={row._id} className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onOpen(row._id)}
               aria-current={row._id === currentId ? "true" : undefined}
-              className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+              className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">
@@ -631,7 +632,18 @@ function OrdersList({ filter, currentId, onOpen, onAction }: { filter: OrderFilt
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
             </button>
-            {filter === "unpaid" || filter === "discarded" ? <Button variant="ghost" size="sm" className={cn("mb-2 -ml-2", filter === "unpaid" && "text-destructive hover:text-destructive")} aria-label={`${filter === "unpaid" ? "Discard" : "Restore"} ${row.title}`} onClick={() => onAction(row._id, filter === "unpaid" ? "discard" : "restore")}>{filter === "unpaid" ? "Discard" : "Restore…"}</Button> : null}
+            {/* Discard is direct (one click, no confirmation); Restore… opens the conflict review. */}
+            {row.state === "unpaid" || row.state === "discarded" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-auto min-h-11 max-w-28 shrink-0 whitespace-normal"
+                aria-label={`${row.state === "unpaid" ? "Discard" : "Restore"} ${row.title}`}
+                onClick={() => onAction(row._id, row.state === "unpaid" ? "discard" : "restore")}
+              >
+                {row.state === "unpaid" ? "Discard" : "Restore…"}
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>

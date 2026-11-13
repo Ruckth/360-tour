@@ -16,6 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { receiptPath } from "@/components/checkout/checkout-source";
 import { formatResortDateTime } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { BookingPromotionLine } from "./BookingPromotion";
+import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { DisabledReason } from "./DisabledReason";
 import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
 import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
@@ -49,16 +51,24 @@ type Dialog =
  * given back by staff, online payments stay the provider's record, and checkout payments are
  * corrected from their receipt.
  */
-export function BookingFinancials({ booking }: { booking: BookingDetail }) {
+export function BookingFinancials({ booking, initialAction }: { booking: BookingDetail; initialAction?: "pay" }) {
   const data = useQuery(api.adminBookings.bookingFinancials, { bookingId: booking._id });
-  const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [notice, setNotice] = useState("");
-
   if (data === undefined) return <Skeleton className="h-20 w-full" aria-label="Loading payments" />;
   if (data === null) return null;
+  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} />;
+}
+
+function LoadedBookingFinancials({ booking, data, initialAction }: { booking: BookingDetail; data: Financials; initialAction?: "pay" }) {
   const { money } = data;
+  const promotion = bookingPromotion(booking);
   const cancelled = booking.status === "cancelled";
   const canPay = !cancelled && money.owed > 0 && !money.legacyRefund && booking.paymentStatus !== "failed";
+  // Wait for canonical financial data before taking the initial shortcut. A blocked
+  // shortcut stays on the details; subsequent query updates never reopen the form.
+  const [dialog, setDialog] = useState<Dialog | null>(() =>
+    initialAction === "pay" && canPay && !booking.checkoutLive ? { kind: "pay" } : null,
+  );
+  const [notice, setNotice] = useState("");
   const close = (done?: string) => {
     setDialog(null);
     if (done) setNotice(done);
@@ -66,76 +76,18 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
 
   return (
     <section aria-labelledby="booking-payments" className="grid gap-3">
-      <h3 id="booking-payments" className="admin-eyebrow">Payments and refunds</h3>
-      <p className="text-sm">
-        Paid {formatMoney(money.net, money.currency)}
-        {money.refunded > 0 ? ` · Refunded ${formatMoney(money.refunded, money.currency)}` : ""}
-        {" · "}
-        <span className="font-medium">
-          {money.owed > 0 && !cancelled
-            ? `Balance due ${formatMoney(money.owed, money.currency)}`
-            : money.credit > 0
-              ? `Credit ${formatMoney(money.credit, money.currency)}`
-              : cancelled && money.net > 0
-                ? `${formatMoney(money.net, money.currency)} kept`
-                : "Settled"}
-        </span>
-      </p>
-      {money.legacyRefund ? (
-        <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
-      ) : null}
-
-      {data.payments.length ? (
-        <ul className="grid gap-2">
-          {data.payments.map((payment) => (
-            <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
-          ))}
-        </ul>
-      ) : null}
-      {data.unitemised > 0 ? (
-        <div className="grid gap-1 text-sm text-muted-foreground">
-          <p>{formatMoney(data.unitemised, money.currency)} was recorded before payments were itemised.</p>
-          {data.legacyManual.cancellable ? (
-            <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "cancelLegacy", amount: data.legacyManual.cancellable ? data.legacyManual.amount : 0 })}>
-              Not received…
-            </Button>
-          ) : null}
+      <h3 id="booking-payments" className="admin-eyebrow">Stay payment</h3>
+      <dl aria-label="Stay payment summary" className="grid grid-cols-3 gap-3 text-sm">
+        <div><dt className="text-muted-foreground">Total</dt><dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(money.total, money.currency)}</dd></div>
+        <div><dt className="text-muted-foreground">Paid</dt><dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(money.net, money.currency)}</dd></div>
+        <div>
+          <dt className="text-muted-foreground">{cancelled ? (money.net > 0 ? "Kept" : "Settled") : money.owed > 0 ? "Due" : money.credit > 0 ? "Credit" : "Settled"}</dt>
+          <dd className="font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(cancelled ? money.net : money.owed > 0 ? money.owed : money.credit, money.currency)}</dd>
         </div>
-      ) : null}
-      {data.legacyOrders.length ? (
-        <ul className="grid gap-1 text-sm text-muted-foreground">
-          {data.legacyOrders.map((order) => (
-            <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
-              <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
-                {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
-              </Link>
-              <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      {data.refunds.length ? (
-        <ul className="grid gap-1 text-sm" aria-label="Refunds">
-          {data.refunds.map((refund) => (
-            <li key={refund._id} className="grid gap-0.5">
-              <p>
-                Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
-                <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {refund.reason}
-                {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {refund.recordedBy}
-              </p>
-              {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
-              {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
-                <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
+      </dl>
+      {money.refunded > 0 ? <p className="text-sm">Refunded {formatMoney(money.refunded, money.currency)}</p> : null}
+      {booking.checkoutLive ? <p className="text-xs text-muted-foreground">Guest has a Stripe checkout open. Wait for it to finish or expire before recording another payment.</p> : null}
+      {booking.paymentStatus === "failed" ? <p className="text-sm text-destructive">Payment failed.</p> : null}
       <div className="flex flex-wrap gap-2">
         {canPay ? (
           <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
@@ -150,6 +102,80 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
           </Button>
         ) : null}
       </div>
+      <details className="text-sm">
+        <summary className="min-h-9 cursor-pointer py-2 font-medium">Price breakdown</summary>
+        <div className="grid gap-1 pb-2 text-muted-foreground">
+          <p>{formatMoney(booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0, booking.currency)} × {booking.nights} {booking.nights === 1 ? "night" : "nights"} = {formatMoney(booking.subtotal, booking.currency)}</p>
+          {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
+            line.kind === "coupon" && promotion ? (
+              <BookingPromotionLine key="coupon" promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
+            ) : (
+              <p key="direct">Direct discount −{formatMoney(line.amount, booking.currency)}</p>
+            ),
+          )}
+          {booking.priceOverride ? <p>Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}</p> : null}
+        </div>
+      </details>
+      {money.legacyRefund ? (
+        <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
+      ) : null}
+
+      {data.unitemised > 0 ? (
+        <div className="grid gap-1 text-sm text-muted-foreground">
+          <p>{formatMoney(data.unitemised, money.currency)} was recorded before payments were itemised.</p>
+          {data.legacyManual.cancellable ? (
+            <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "cancelLegacy", amount: data.legacyManual.cancellable ? data.legacyManual.amount : 0 })}>
+              Not received…
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <details className="text-sm">
+        <summary className="min-h-9 cursor-pointer py-2 font-medium">Payments and refunds ({data.payments.length + data.refunds.length + data.legacyOrders.length})</summary>
+        <div className="grid gap-3 pb-2">
+          {data.payments.length ? (
+            <ul className="grid gap-2">
+              {data.payments.map((payment) => (
+                <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
+              ))}
+            </ul>
+          ) : null}
+          {data.legacyOrders.length ? (
+            <ul className="grid gap-1 text-sm text-muted-foreground">
+              {data.legacyOrders.map((order) => (
+                <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
+                  <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
+                    {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
+                  </Link>
+                  <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {data.refunds.length ? (
+            <ul className="grid gap-1 text-sm" aria-label="Refunds">
+              {data.refunds.map((refund) => (
+                <li key={refund._id} className="grid gap-0.5">
+                  <p>
+                    Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
+                    <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {refund.reason}
+                    {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {refund.recordedBy}
+                  </p>
+                  {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
+                  {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
+                    <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+        </div>
+      </details>
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
 
       {dialog?.kind === "pay" ? <RecordPaymentDialog booking={booking} owed={money.owed} onClose={close} /> : null}

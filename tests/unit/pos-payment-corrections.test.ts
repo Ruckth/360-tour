@@ -109,7 +109,7 @@ it("amends a wrong tender through the real control while preserving the original
   expect(amendment).toHaveBeenCalledOnce();
   expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, tenders: [{ method: "transfer", amount: 100 }] });
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toBe(originalPaper);
-  expect(document.querySelector('[aria-label="Payment recording"]')!.textContent).toContain("Bank transfer · ฿100 · amended");
+  expect(document.querySelector('[aria-label="Payment record and corrections"]')!.textContent).toContain("Bank transfer · ฿100 · corrected");
   await show(backend, orderId);
   expect(current.payments).toEqual(originalPayments);
   expect(current.paymentRecord.effectiveAt).toBe(Date.parse("2026-10-01T03:00:34.567Z"));
