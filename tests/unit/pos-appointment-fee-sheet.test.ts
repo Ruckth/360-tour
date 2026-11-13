@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest';
 import { AppointmentSheet } from '@/components/admin/AppointmentSheet';
 const mocks = vi.hoisted(() => ({ fee: vi.fn() }));
 vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
-vi.mock('@/components/admin/AppointmentFinancials', () => ({ AppointmentFinancials: () => createElement('p', {}, 'Appointment financials retained') }));
+vi.mock('@/components/admin/AppointmentFinancials', () => ({ AppointmentFinancials: () => createElement('p', {}, 'Appointment financials retained'), AppointmentMoneyBlock: () => createElement('p', {}, 'Appointment money block') }));
 vi.mock('@/components/admin/AppointmentHistory', () => ({ AppointmentHistory: () => createElement('p', {}, 'Appointment history retained') }));
 vi.mock('convex/react', () => ({
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
@@ -39,7 +39,7 @@ it('mounts the real fee control beside financials and blocks sheet Close, Escape
     await act(async () => button('Add fee to checkout').click());
     await act(async () => button('Close').click());
     await act(async () => document.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-    expect(onClose).not.toHaveBeenCalled(); expect(button('Adding fee…').disabled).toBe(true); expect(button('Correct status').disabled).toBe(true);
+    expect(onClose).not.toHaveBeenCalled(); expect(button('Adding fee…').disabled).toBe(true); expect(document.querySelector<HTMLButtonElement>('[aria-label="More appointment actions"]')!.disabled).toBe(true);
     expect(mocks.fee).toHaveBeenCalledExactlyOnceWith({ appointmentId: appointment._id, kind: 'no_show', amount: 500, reason: 'No attendance', expectedRevision: appointment.revision ?? 0, idempotencyKey: expect.any(String) });
     await act(async () => finish({ orderId: 'fxbill000099' as Id<'bills'>, lineId: 'fxline000099' as Id<'billLines'>, replayed: false }));
     expect(document.querySelector('a[href="/admin/checkout?order=fxbill000099"]')).toBeTruthy();

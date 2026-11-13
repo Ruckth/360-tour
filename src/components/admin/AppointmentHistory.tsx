@@ -73,8 +73,10 @@ export function AppointmentHistory({
   }
 
   return (
-    <section aria-labelledby="appointment-history" className="grid gap-2">
-      <h3 id="appointment-history" className="admin-eyebrow">History</h3>
+    // One closed section per record (rule 4).
+    <details aria-labelledby="appointment-history" className="text-sm">
+      <summary id="appointment-history" className="min-h-9 cursor-pointer py-2 font-medium">History</summary>
+      <div className="grid gap-2 pb-2">
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-12" />
       ) : history.length === 0 ? (
@@ -102,6 +104,7 @@ export function AppointmentHistory({
         </ol>
       )}
       {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(25)}>{status === "LoadingMore" ? "Loading history…" : "Load earlier history"}</Button> : null}
-    </section>
+      </div>
+    </details>
   );
 }

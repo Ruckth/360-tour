@@ -56,6 +56,7 @@ import {
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
+import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
 
 type Appointment = Doc<"serviceAppointments">;
@@ -83,6 +84,23 @@ const CALENDAR_I18N = { viewNames: { resource: "Day" } };
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
   return { from, to: from + DAY_MS };
+}
+
+const STAFF_VIEWS = ["resource", "week", "agenda"] as const satisfies CalendarView[];
+
+/** A set of ids remembered on this device (JSON in localStorage). */
+function useStoredSet(key: string): [Set<string>, (next: Set<string>) => void] {
+  const [stored, setStored] = useStoredState(key, "[]");
+  const value = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+    } catch {
+      return new Set<string>();
+    }
+  }, [stored]);
+  const update = useCallback((next: Set<string>) => setStored(JSON.stringify([...next])), [setStored]);
+  return [value, update];
 }
 
 const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as const);
@@ -172,13 +190,17 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 
 function StaffCalendar() {
   const [range, setRange] = useState(todayRange);
-  const [view, setView] = useState<CalendarView>("resource");
+  // This device remembers the view and filters (rule 5); the date always starts today.
+  const [storedView, setView] = useStoredState("admin.staff.view", "resource");
+  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : "resource";
   const [date, setDate] = useState(() => new Date());
-  const [hiddenStaff, setHiddenStaff] = useState<Set<string>>(() => new Set());
-  const [hiddenServices, setHiddenServices] = useState<Set<string>>(() => new Set());
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => new Set());
+  const [hiddenStaff, setHiddenStaff] = useStoredSet("admin.staff.hiddenStaff");
+  const [hiddenServices, setHiddenServices] = useStoredSet("admin.staff.hiddenServices");
+  const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
-  const [showCancelled, setShowCancelled] = useState(false);
+  const [storedCancelled, setStoredCancelled] = useStoredState("admin.staff.showCancelled", "no");
+  const showCancelled = storedCancelled === "yes";
+  const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
@@ -428,7 +450,7 @@ function StaffCalendar() {
           onViewChange={setView}
           date={date}
           onDateChange={setDate}
-          views={["resource", "week", "agenda"]}
+          views={[...STAFF_VIEWS]}
           // listSchedule serves at most 14 days; the list defaults to 30.
           agendaDayCount={7}
           resources={resources}

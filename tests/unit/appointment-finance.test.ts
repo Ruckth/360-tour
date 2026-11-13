@@ -39,7 +39,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it('shows accurate net/refunded balances, actual receipt path, legacy unknowns and refund provenance', async () => {
   mocks.query.mockReturnValue({ revision: 4, money: { gross: 1200, refunded: 200, net: 1000, owed: 0 }, unitemised: 1200, payments: [], orders: [{ billId: 'order1', receiptNumber: 42, charged: 1200, refundable: 1000 }], refunds: [{ _id: 'refund1', amount: 200, method: 'cash', reason: 'Courtesy', effectiveAt: now - 60000, recordedAt: now, recordedBy: 'desk@example.com' }] });
   await render(createElement(AppointmentFinancials, { appointment }));
-  expect(document.body.textContent).toContain('Paid ฿1,000 · Refunded ฿200 · To collect ฿0');
+  expect(document.body.textContent).toContain('Paid ฿1,000 · Refunded ฿200');
   expect(document.querySelector('a')?.getAttribute('href')).toContain('order1');
   expect(document.body.textContent).toContain('Correct the tender or payment date');
   expect(document.body.textContent).toContain('desk@example.com');

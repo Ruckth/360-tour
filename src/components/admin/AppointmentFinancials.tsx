@@ -11,7 +11,7 @@ import { receiptPath } from "@/components/checkout/checkout-source";
 import { ChangeConfirmDialog } from "./ChangeConfirmDialog";
 import { EffectiveTimeFields, MethodPicker, useEffectiveTime } from "./BookingMoneyFields";
 import { formatMoney } from "./labels";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,9 +26,12 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
   const [dialog, setDialog] = useState<Dialog | null>(null);
   if (!data) return <p className="text-sm text-muted-foreground">Loading payment records…</p>;
   const money = (n: number) => formatMoney(n, appointment.currency);
-  return <section aria-label="Appointment payments" className="grid gap-3">
-    <h3 className="font-semibold">Payments and refunds</h3>
-    <p className="text-sm">Paid {money(data.money.net)} · Refunded {money(data.money.refunded)} · To collect {money(data.money.owed)}</p>
+  const records = data.orders.length + data.payments.length + data.refunds.length + (data.unitemised > 0 ? 1 : 0);
+  if (records === 0 && appointment.paymentStatus !== "refunded" && !dialog) return null;
+  return <details aria-label="Appointment payments" className="grid gap-3 text-sm">
+    <summary className="min-h-9 cursor-pointer py-2 font-medium">Payments and refunds ({records})</summary>
+    <div className="grid gap-3 pb-2">
+    <p className="text-sm">Paid {money(data.money.net)} · Refunded {money(data.money.refunded)}</p>
     {data.orders.map(order => <div key={order.billId} className="grid gap-2 border-t border-border pt-3 text-sm">
       <Link className="underline underline-offset-2" href={receiptPath(order.billId)}>Receipt {order.receiptNumber ?? "record"} · {money(order.charged)}</Link>
       <p className="text-muted-foreground">Correct the tender or payment date, or void a payment recorded in error, from this receipt.</p>
@@ -49,8 +52,33 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
       <p className="text-muted-foreground">Returned {formatResortDateTime(refund.effectiveAt)} · Recorded {formatResortDateTime(refund.recordedAt)} · {refund.recordedBy}</p>
     </div>)}
     {appointment.paymentStatus === "refunded" && data.refunds.length === 0 ? <p className="text-sm text-muted-foreground">Legacy full refund. Its original amount, method and actor were not recorded separately.</p> : null}
-    {appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? <Button variant="secondary" onClick={() => setDialog({ kind: "pay" })}>Record payment</Button> : null}
+    </div>
     {dialog ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={dialog} onClose={() => setDialog(null)} /> : null}
+  </details>;
+}
+
+/**
+ * The money at the top of the appointment sheet: what is due, Take payment (checkout for this
+ * appointment, on its stay's order when it has one) and Already paid… (records a desk payment).
+ */
+export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: Appointment; disabled?: boolean }) {
+  const data = useQuery(api.adminServices.getAppointmentFinancials, { appointmentId: appointment._id });
+  const [paying, setPaying] = useState(false);
+  const chargeable = appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show";
+  const owed = data && chargeable ? data.money.owed : 0;
+  const headline = owed > 0 ? { label: "Balance due", amount: owed } : data && data.money.net > 0 ? { label: "Paid", amount: data.money.net } : { label: "Nothing due", amount: 0 };
+  return <section aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
+    <div data-sentence-budget="ignore">
+      <h3 id={`appointment-money-${appointment._id}`} className="text-sm font-medium text-muted-foreground">{data ? headline.label : "Balance"}</h3>
+      <p className="font-serif text-3xl font-semibold tabular-nums">{data ? formatMoney(headline.amount, appointment.currency) : "…"}</p>
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      {owed > 0 ? <ButtonLink href={`/admin/checkout?appointment=${appointment._id}`} aria-disabled={disabled || undefined} className={disabled ? "pointer-events-none opacity-50" : undefined}>Take payment</ButtonLink> : null}
+      {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
+        <Button variant="link" className="min-h-10 px-1" disabled={disabled} onClick={() => setPaying(true)}>Already paid…</Button>
+      ) : null}
+    </div>
+    {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}
   </section>;
 }
 
