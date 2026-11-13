@@ -1,15 +1,17 @@
-import { ConvexError, v } from "convex/values";
-import { publicQuery, authenticatedMutation, marketingQuery, marketingMutation } from './auth/model';
-import { marketingRole } from "./lib/affiliateTypes";
-import { marketingAccess, marketingInvitationExpiry, marketingInvitationExpired } from "./lib/marketingAccess";
-import { appendRecordHistory } from './settings/model';
-import { MARKETING_INVITATION_TTL_MS } from "./lib/marketingPolicy";
-import { adminEmails } from "./lib/adminAuth";
+import { ConvexError, v } from 'convex/values';
+import { authenticatedMutation, marketingMutation, marketingQuery, publicQuery } from '../auth/model';
+import { adminEmails } from '../lib/adminEmails';
+import { marketingRole } from '../lib/affiliateTypes';
+import { MARKETING_INVITATION_TTL_MS } from '../lib/marketingPolicy';
+import { appendRecordHistory } from '../settings/model';
+import { marketingAccess, marketingInvitationExpired, marketingInvitationExpiry } from './accessPolicy';
+
 export const current = publicQuery({
   reason: "Sign-in bootstrap returns caller access or anonymous capabilities.",
   args: {},
   handler: (ctx) => marketingAccess(ctx),
 });
+
 export const claimInvite = authenticatedMutation({
   args: {},
   handler: async (ctx) => {
@@ -44,6 +46,7 @@ export const claimInvite = authenticatedMutation({
     return null;
   },
 });
+
 export const listGrants = marketingQuery({
   permission: "manageAccess",
   args: {},
@@ -57,6 +60,7 @@ export const listGrants = marketingQuery({
     }));
   },
 });
+
 export const setGrant = marketingMutation({
   permission: "manageAccess",
   args: { email: v.string(), role: v.union(marketingRole, v.null()) },

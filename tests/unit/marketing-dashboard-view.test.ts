@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SpendDialogProps } from "@/components/admin/marketing/SpendDialog";
 import { DashboardView, DEFAULT_REQUEST, type DashboardViewProps, type ReportState } from "@/components/admin/marketing/dashboard/DashboardView";
 import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
-import { marketingCapabilities } from "convex/lib/marketingAccess";
+import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { csvMeta, salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
 import { buildBreakdown, businessTotals, prepareReport } from "@/components/admin/marketing/dashboard/report-model";
 import type { ReportData, ReportSale } from "convex/lib/marketingReport";

@@ -2,7 +2,7 @@ import { affiliateSnapshot } from '../lib/affiliateTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { bookingPriceOverride, stayPaymentOrigin, storedPaymentMethod, storedRefundMethod } from '../lib/financeValidators';
-import { marketingAttributionValidator } from '../lib/marketingAttribution';
+import { marketingAttributionValidator } from '../shared/marketingAttribution';
 
 // Owned by bookings; assembled only by convex/schema.ts.
 export const bookingsTables = {

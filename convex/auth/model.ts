@@ -7,7 +7,8 @@ import { action as rawAction, httpAction as rawHttpAction, mutation as rawMutati
 import { requireAdmin } from '../lib/adminAuth';
 import { sha256 } from '../lib/displayTokens';
 import { maintenancePaused } from '../lib/maintenance';
-import { requireMarketingPermission, type MarketingPermission } from '../lib/marketingAccess';
+import { requireMarketingPermission } from '../marketing/model';
+import { type MarketingPermission } from '../shared/marketingAccess';
 import { requireStaff, type StaffCapability } from '../lib/staffAccess';
 import { requireGuestToken } from '../messaging/model';
 

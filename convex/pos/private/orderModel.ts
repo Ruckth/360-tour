@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { isDocumentedLiveRefund } from '../../bookings/model';
 import { attemptKey } from '../../lib/bookingMoney';
-import { couponVersion } from '../../lib/couponRedemptions';
+import { couponVersion } from '../../marketing/model';
 import { resortTodayIso } from '../../lib/dates';
 import { correctedTender } from '../../lib/financeValidators';
 import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from '../../lib/orderLifecycle';

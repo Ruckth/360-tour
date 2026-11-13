@@ -93,7 +93,7 @@ describe("marketingErrorText", () => {
   });
 
   it("falls back to the dev message, then the fallback", () => {
-    expect(marketingErrorText(new Error("[CONVEX M(marketing:saveLink)] Uncaught Error: Slug taken\n  at handler"), "fallback")).toBe("Slug taken");
+    expect(marketingErrorText(new Error("[CONVEX M(marketing/commands/saveLink:saveLink)] Uncaught Error: Slug taken\n  at handler"), "fallback")).toBe("Slug taken");
     expect(marketingErrorText("nope", "fallback")).toBe("fallback");
   });
 });

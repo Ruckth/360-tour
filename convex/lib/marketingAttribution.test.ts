@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Id, TableNames } from '../_generated/dataModel';
-import {
-	ATTRIBUTION_WINDOW_MS, buildAttribution, cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey,
-	touchFromLink, type MarketingTouch, type SessionTouch
-} from './marketingAttribution';
+import { ATTRIBUTION_WINDOW_MS, buildAttribution, cleanLandingPath, cleanReferrerHost, isVisitorKey, newVisitorKey, touchFromLink, type MarketingTouch, type SessionTouch } from '../shared/marketingAttribution';
 
 const id = <T extends TableNames>(value: string) => value as Id<T>;
 const now = Date.UTC(2026, 10, 8, 10);

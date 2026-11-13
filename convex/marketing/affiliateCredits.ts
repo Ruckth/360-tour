@@ -1,19 +1,17 @@
-import type { Infer } from "convex/values";
-import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { affiliateSnapshot } from "./affiliateTypes";
-import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from "./orderMath";
-import { resortTodayIso } from "./dates";
-import { orderPaymentRecord } from "./orderLifecycle";
-import { adminEmails } from "./adminAuth";
-import {
-  ATTRIBUTION_WINDOW_MS,
-  MAX_SESSIONS_READ,
-  isVisitorKey,
-  type MarketingCapture,
-} from "./marketingAttribution";
+import type { Infer } from 'convex/values';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { adminEmails } from '../lib/adminEmails';
+import { affiliateSnapshot } from '../lib/affiliateTypes';
+import { resortTodayIso } from '../lib/dates';
+import { orderPaymentRecord } from '../lib/orderLifecycle';
+import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../lib/orderMath';
+import { ATTRIBUTION_WINDOW_MS, MAX_SESSIONS_READ, isVisitorKey, type MarketingCapture } from '../shared/marketingAttribution';
+
 export type AffiliateSnapshot = Infer<typeof affiliateSnapshot>;
+
 const LIMIT = 500;
+
 /** Frozen once, on booking creation / order settlement. Never reconstruct historical candidates. */
 export async function captureAffiliateSnapshot(
   ctx: QueryCtx | MutationCtx,
@@ -134,6 +132,7 @@ export async function captureAffiliateSnapshot(
     flags,
   };
 }
+
 export async function creditMoney(
   ctx: QueryCtx | MutationCtx,
   credit: Pick<Doc<"affiliateCredits">, "bookingId" | "orderId">,
@@ -191,6 +190,7 @@ export async function creditMoney(
       (gross === 0 && refunded === 0 && (row.promotion?.discount ?? 0) > 0));
   return { eligible, net };
 }
+
 export async function appendCreditChange(
   ctx: MutationCtx,
   row: Doc<"affiliateCredits">,
@@ -211,6 +211,7 @@ export async function appendCreditChange(
     recordedAt: Date.now(),
   });
 }
+
 export async function syncAffiliateCredit(
   ctx: MutationCtx,
   source: { bookingId: Id<"bookings"> } | { orderId: Id<"orders"> },

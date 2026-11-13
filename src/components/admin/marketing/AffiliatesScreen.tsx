@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { CreditRow } from "convex/marketingAffiliates";
+import type { CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import { useState, useSyncExternalStore } from "react";
 import { AffiliatesView, CreditList, CreditReview } from "./AffiliatesView";
 import { useMarketingAccess } from "./MarketingAccess";
@@ -20,24 +20,24 @@ export function AffiliatesScreen() {
   const [partner, setPartner] = useState("all");
   const [state, setState] = useState("all");
   const [opened, setOpened] = useState<CreditRow | null>(null);
-  const partners = useQuery(api.marketingAffiliates.listAffiliates, {});
-  const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const coupons = useQuery(api.marketing.listCoupons, {});
-  const properties = useQuery(api.marketing.catalog, {});
-  const credits = useQuery(api.marketingAffiliates.listCredits, {
+  const partners = useQuery(api.marketing.affiliates.listAffiliates, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const coupons = useQuery(api.marketing.queries.listCoupons, {});
+  const properties = useQuery(api.marketing.queries.catalog, {});
+  const credits = useQuery(api.marketing.affiliates.listCredits, {
     affiliateId:
       partner === "all" ? undefined : (partner as Id<"marketingAffiliates">),
     state: state === "all" ? undefined : (state as CreditRow["state"]),
   });
   const detail = useQuery(
-    api.marketingAffiliates.getCredit,
+    api.marketing.affiliates.getCredit,
     opened ? { creditId: opened._id } : "skip",
   );
-  const save = useMutation(api.marketingAffiliates.saveAffiliate);
-  const status = useMutation(api.marketingAffiliates.setAffiliateStatus);
-  const coupon = useMutation(api.marketingAffiliates.assignCoupon);
-  const review = useMutation(api.marketingAffiliates.reviewCredit);
-  const refresh = useMutation(api.marketingAffiliates.refreshCredit);
+  const save = useMutation(api.marketing.commands.saveAffiliate.saveAffiliate);
+  const status = useMutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus);
+  const coupon = useMutation(api.marketing.commands.assignCoupon.assignCoupon);
+  const review = useMutation(api.marketing.commands.reviewCredit.reviewCredit);
+  const refresh = useMutation(api.marketing.commands.refreshCredit.refreshCredit);
   return (
     <AffiliatesView
       origin={origin}

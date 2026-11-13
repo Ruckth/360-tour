@@ -6,7 +6,7 @@ import { activeLineLink } from './lineLinks';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from './staffAccess';
 import { resortTodayIso } from './dates';
 import { appendRecordHistory } from '../settings/model';
-import { syncAffiliateCredit } from './affiliateCredits';
+import { syncAffiliateCredit } from '../marketing/model';
 import { readBudget } from './readBudget';
 
 type ReadCtx = QueryCtx | MutationCtx;

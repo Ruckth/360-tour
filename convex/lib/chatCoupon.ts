@@ -3,7 +3,7 @@ import { v, type Infer } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { evaluateOffer, normalizeCouponCode, type OfferResult } from './offers';
-import { couponVersion } from './couponRedemptions';
+import { couponVersion } from '../marketing/model';
 import { resortTodayIso } from './dates';
 import { quoteBookableStay, type StayInput } from './bookingWrites';
 

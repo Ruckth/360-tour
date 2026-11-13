@@ -1,11 +1,11 @@
-// Counters reserve both slots and budget in the booking transaction. Reversed uses stay counted.
 import { ConvexError } from 'convex/values';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
-import { stayMoney, type BookingPatch } from './bookingMoney';
-import { evaluateOffer, type CouponProblem, type CouponRules } from './offers';
-import { resortTodayIso } from './dates';
-import { roundMoney } from './orderMath';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { type BookingPatch } from '../lib/bookingMoney';
+import { resortTodayIso } from '../lib/dates';
+import { evaluateOffer, type CouponProblem, type CouponRules } from '../lib/offers';
+import { roundMoney } from '../lib/orderMath';
+import { stayMoney } from '../lib/stayMoney';
 
 export type HoldInput = { coupon: Doc<'coupons'>; couponVersion: number; discount: number; bookingId: Id<'bookings'> };
 

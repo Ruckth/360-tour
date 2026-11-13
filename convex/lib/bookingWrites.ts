@@ -1,8 +1,9 @@
-import { captureAffiliateSnapshot, syncAffiliateCredit } from './affiliateCredits';
-import { resolveMarketingAttribution, type MarketingCapture } from './marketingAttribution';
+import { captureAffiliateSnapshot, syncAffiliateCredit } from '../marketing/model';
+import { resolveMarketingAttribution } from '../marketing/model';
+import { type MarketingCapture } from '../shared/marketingAttribution';
 import { ConvexError } from 'convex/values';
 import { evaluateOffer, normalizeCouponCode } from './offers';
-import { couponUnavailable, couponVersion, holdCouponRedemption } from './couponRedemptions';
+import { couponUnavailable, couponVersion, holdCouponRedemption } from '../marketing/model';
 import { getEffectiveSettings } from '../settings/model';
 import { resortLocalParts } from './serviceSlots';
 import { blockBookingDates } from './availabilityWrites';

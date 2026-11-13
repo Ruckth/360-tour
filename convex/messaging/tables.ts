@@ -2,7 +2,7 @@ import { chatCouponValidator } from '../lib/chatCoupon';
 import { defineTable } from 'convex/server';
 import { inboxReasonValidator } from '../lib/inboxTypes';
 import { v } from 'convex/values';
-import { marketingCaptureValidator } from '../lib/marketingAttribution';
+import { marketingCaptureValidator } from '../shared/marketingAttribution';
 
 // Owned by messaging; assembled only by convex/schema.ts.
 export const messagingTables = {

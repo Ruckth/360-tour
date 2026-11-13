@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import type { MarketingAttribution, MarketingTouch } from "convex/lib/marketingAttribution";
+import type { MarketingAttribution, MarketingTouch } from 'convex/shared/marketingAttribution';
 import { BookingMarketingSource } from "@/components/admin/BookingMarketingSource";
 
 const touch = (slug: string, patch: Partial<MarketingTouch> = {}): MarketingTouch => ({

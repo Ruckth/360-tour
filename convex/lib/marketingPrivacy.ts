@@ -1,4 +1,4 @@
-import type { MarketingRole } from './marketingAccess';
+import type { MarketingRole } from '../shared/marketingAccess';
 
 /** Marketing read access alone does not include guest identity or partner contact details. */
 export function canReadMarketingPersonalData(access: { role: MarketingRole | 'admin' | null }) {

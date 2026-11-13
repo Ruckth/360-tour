@@ -3,7 +3,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { recordStayPayment } from '../../bookings/model';
-import { syncAffiliateCredit } from '../../lib/affiliateCredits';
+import { syncAffiliateCredit } from '../../marketing/model';
 import { STALE_APPOINTMENT, recordAppointmentChange } from '../../lib/appointmentChanges';
 import { STALE_BOOKING, bookingRevision, cleanReason } from '../../lib/bookingMoney';
 import { activeLineLink } from '../../lib/lineLinks';

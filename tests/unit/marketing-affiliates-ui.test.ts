@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import type { CreditRow } from "convex/marketingAffiliates";
+import type { CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import {
   CreditList,
   CreditReview,

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Id } from "convex/_generated/dataModel";
-import type { AffiliateRow, CreditRow } from "convex/marketingAffiliates";
+import type { AffiliateRow, CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import {
   AffiliatesView,

@@ -6,7 +6,7 @@ import { useState, type ReactNode } from "react";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { AffiliateRow, CreditRow } from "convex/marketingAffiliates";
+import type { AffiliateRow, CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,18 +25,18 @@ import { useConfirm } from "../ConfirmDialog";
 import { marketingErrorText } from "./marketing-format";
 import type { CampaignRow, CouponRow, MarketingProperty } from "./types";
 
-type SavePartner = FunctionArgs<typeof api.marketingAffiliates.saveAffiliate>;
-type Decision = FunctionArgs<typeof api.marketingAffiliates.reviewCredit>;
+type SavePartner = FunctionArgs<typeof api.marketing.commands.saveAffiliate.saveAffiliate>;
+type Decision = FunctionArgs<typeof api.marketing.commands.reviewCredit.reviewCredit>;
 export type CreditDetail = FunctionReturnType<
-  typeof api.marketingAffiliates.getCredit
+  typeof api.marketing.affiliates.getCredit
 >;
 export type AffiliateActions = {
   save: (args: SavePartner) => Promise<unknown>;
   status: (
-    args: FunctionArgs<typeof api.marketingAffiliates.setAffiliateStatus>,
+    args: FunctionArgs<typeof api.marketing.commands.setAffiliateStatus.setAffiliateStatus>,
   ) => Promise<unknown>;
   coupon: (
-    args: FunctionArgs<typeof api.marketingAffiliates.assignCoupon>,
+    args: FunctionArgs<typeof api.marketing.commands.assignCoupon.assignCoupon>,
   ) => Promise<unknown>;
 };
 const money = (amount: number) =>

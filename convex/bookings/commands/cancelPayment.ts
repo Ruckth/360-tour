@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, assertNoLiveCheckout, cleanReason, stayMoney, writeBooking } from '../../lib/bookingMoney';
+import { assertBookingRevision, assertNoLiveCheckout, cleanReason, writeBooking } from '../../lib/bookingMoney';
+import { stayMoney } from '../../lib/stayMoney';
 import { roundMoney } from '../../lib/orderMath';
 import { paymentCancelBlocker, stayPaymentReversalPatch } from '../../lib/stayCorrections';
 import { loadBooking } from '../model';

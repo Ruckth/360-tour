@@ -13,7 +13,7 @@ export function MarketingCapture() {
 
   useEffect(() => {
     if (isUntrackedPath(pathname)) return;
-    const run = () => void capturePageView(convex ? (args) => convex.mutation(api.marketing.startSession, args) : null);
+    const run = () => void capturePageView(convex ? (args) => convex.mutation(api.marketing.public.startSession, args) : null);
     run();
     window.addEventListener(CONSENT_EVENT, run);
     return () => window.removeEventListener(CONSENT_EVENT, run);

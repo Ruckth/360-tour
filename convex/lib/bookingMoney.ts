@@ -1,22 +1,12 @@
-import { syncAffiliateCredit } from './affiliateCredits';
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { MAX_ORDER, bookingBalance, roundMoney } from './orderMath';
-import { resortTodayIso } from './dates';
-import { syncCouponRedemption } from './couponRedemptions';
+import { syncAffiliateCredit, syncCouponRedemption } from '../marketing/model';
 import { appendRecordHistory } from '../settings/model';
+import { resortTodayIso } from './dates';
+import { MAX_ORDER, roundMoney } from './orderMath';
+import type { Booking } from './stayMoney';
 
-/**
- * Shared rules for booking corrections and money: revisions, reasons, amounts, effective dates,
- * notification defaults and the booking history (recordChanges, entity type `booking`).
- *
- * Every booking write that should be traceable goes through `writeBooking`, which patches the
- * booking, bumps its revision and appends the before/after of each changed field in the same
- * transaction. History starts when this shipped; nothing earlier is reconstructed.
- */
-
-type Booking = Doc<'bookings'>;
 
 export const STALE_BOOKING = 'This booking changed since you opened it. Review the latest details and try again.';
 export const LIVE_CHECKOUT = 'The guest has a Stripe checkout open. Wait for it to finish or expire before changing this booking.';
@@ -52,13 +42,6 @@ export function cleanReason(value: string | undefined, label = 'Reason', require
 	return trimmed;
 }
 
-/** A money amount: finite, more than zero, whole satang and within the till limit. */
-export function assertMoney(amount: number, label = 'Amount') {
-	if (!Number.isFinite(amount) || amount <= 0) throw new ConvexError(`${label} must be more than zero`);
-	if (roundMoney(amount) !== amount) throw new ConvexError(`${label} is in whole satang (at most 2 decimals)`);
-	if (amount > MAX_ORDER) throw new ConvexError(`${label} is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}`);
-}
-
 /** A stay price: zero or more, whole satang, within the till limit. */
 export function assertStayPrice(total: number) {
 	if (!Number.isFinite(total) || total < 0) throw new ConvexError('Price must be zero or more');
@@ -90,26 +73,6 @@ export const isHistoricalStay = (stay: { checkIn: string }) => stay.checkIn < re
  */
 export function resolveNotify(explicit: boolean | undefined, stay: { checkIn: string; guestEmailsOff?: boolean }) {
 	return explicit ?? (!stay.guestEmailsOff && !isHistoricalStay(stay));
-}
-
-/** Money on the stay, net of refunds (see orderMath.bookingBalance). */
-export function stayMoney(booking: Booking) {
-	const { paid, owed, gross, refunded } = bookingBalance(booking);
-	const cancelled = booking.status === 'cancelled';
-	// A live stay only refunds what exceeds its price, so a refund never reopens a balance; to give
-	// back more, correct the price or cancel first. A cancelled stay can refund everything kept.
-	const refundable = booking.paymentStatus === 'refunded' ? 0 : cancelled ? paid : Math.max(0, roundMoney(-owed));
-	return {
-		total: booking.total,
-		currency: booking.currency,
-		gross,
-		refunded,
-		net: paid,
-		owed: Math.max(0, owed),
-		credit: Math.max(0, roundMoney(-owed)),
-		refundable,
-		refundContext: cancelled ? ('cancellation' as const) : ('credit' as const)
-	};
 }
 
 /** Fields kept in the booking history. Secrets (access token, checkout URLs) never are. */

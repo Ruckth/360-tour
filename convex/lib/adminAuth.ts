@@ -1,14 +1,6 @@
-import { requireStaff } from './staffAccess';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+import { requireStaff } from './staffAccess';
 
-export function adminEmails() {
-	return new Set(
-		(process.env.ADMIN_EMAILS ?? '')
-			.split(',')
-			.map((email) => email.trim().toLowerCase())
-			.filter(Boolean)
-	);
-}
 
 /** Desk/operations access; marketing keeps its own permission checks. */
 export async function requireAdmin(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<{ email: string }> {

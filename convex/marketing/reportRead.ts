@@ -1,18 +1,21 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { roundMoney, orderTitle } from './orderMath';
-import { stayMoney } from './bookingMoney';
-import { ATTRIBUTION_MODEL, touchFromLink } from './marketingAttribution';
-import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from './marketingReport';
-import { orderPaymentRecord } from './orderLifecycle';
-import { isSettledOrder } from './orderLinks';
-import { ReadBudget, ReadBudgetExceeded } from './readBudget';
-import { resortLocalParts } from './serviceSlots';
+import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from '../lib/marketingReport';
+import { orderPaymentRecord } from '../lib/orderLifecycle';
+import { isSettledOrder } from '../lib/orderLinks';
+import { orderTitle, roundMoney } from '../lib/orderMath';
+import { ReadBudget, ReadBudgetExceeded } from '../lib/readBudget';
+import { resortLocalParts } from '../lib/serviceSlots';
+import { stayMoney } from '../lib/stayMoney';
+import { ATTRIBUTION_MODEL, touchFromLink } from '../shared/marketingAttribution';
 
 export const reportSpend = (row: Doc<'marketingSpend'>) => ({ id: row._id, campaignId: row.campaignId, amount: row.amount, from: row.from, to: row.to, ...(row.note !== undefined ? { note: row.note } : {}) });
+
 const dayOf = (at: number) => resortLocalParts(at).date;
+
 const touch = ({ linkId, campaignId, slug, campaignName, source, medium, entry }: ReportTouch): ReportTouch => ({ linkId, campaignId, slug, campaignName, source, medium, entry });
+
 const sum = <T>(rows: T[], amount: (row: T) => number) => roundMoney(rows.reduce((total, row) => total + amount(row), 0));
 
 /**

@@ -5,7 +5,7 @@ import type { Doc } from '../_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 import { cashierRules } from '../settings/model';
 import { percentageOf, roundRatio } from '../shared/money';
-import { adminEmails } from './adminAuth';
+import { adminEmails } from './adminEmails';
 import { resortTodayIso } from './dates';
 import { isOpenOrder, isSettledOrder } from './orderLinks';
 import { lineCouponBase, roundMoney, type PricedLine } from './orderMath';

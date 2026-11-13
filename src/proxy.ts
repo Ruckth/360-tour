@@ -22,10 +22,10 @@ async function handleRequest(request: NextRequest, event: NextFetchEvent) {
   if (slug && convexUrl && convexUrl !== "placeholder") {
     try {
       const client = new ConvexHttpClient(convexUrl);
-      const resolved = await client.query(api.marketing.resolveLink, { slug });
+      const resolved = await client.query(api.marketing.public.resolveLink, { slug });
       if (resolved && isInternalMarketingPath(resolved.path)) {
         // Keep the event alive after the response without delaying the redirect.
-        event.waitUntil(client.mutation(api.marketing.recordOpen, {
+        event.waitUntil(client.mutation(api.marketing.public.recordOpen, {
           slug, bot: isMarketingBot(request.headers.get("user-agent")),
         }).catch(() => undefined));
         const response = NextResponse.redirect(new URL(resolved.path, request.url), 302);

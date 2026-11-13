@@ -52,7 +52,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   usePendingApprovals: () => useQuery(api.pos.staffApprovals.pending, useStaffAccess().capabilities.approve ? {} : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
   useActions: () => {
-    const noteCouponRefusal = useMutation(api.marketingReport.noteCouponRefusal);
+    const noteCouponRefusal = useMutation(api.marketing.report.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.commands.discardOrder.discardOrder);
     const restoreOrder = useMutation(api.pos.commands.restoreOrder.restoreOrder);
     const addAppointmentFee = useMutation(api.pos.commands.addAppointmentFee.addAppointmentFee);

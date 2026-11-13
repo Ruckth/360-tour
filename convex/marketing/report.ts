@@ -1,15 +1,15 @@
 import { ConvexError, v } from 'convex/values';
-import { marketingQuery, marketingMutation, publicMutation } from './auth/model';
-import type { Doc, Id } from './_generated/dataModel';
-import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from './lib/marketingReport';
-import { requireStaff } from './lib/staffAccess';
-import { canReadMarketingPersonalData } from './lib/marketingPrivacy';
-import { readMarketingReport, reportSpend } from './lib/marketingReportRead';
-import { appendRecordHistory } from './settings/model';
-import { normalizeCouponCode } from './lib/offers';
-import { enforceRateLimit } from './messaging/model';
-import { resortLocalParts } from './lib/serviceSlots';
-import { readRangeWithinBudget } from './lib/readBudget';
+import type { Doc, Id } from '../_generated/dataModel';
+import { marketingMutation, marketingQuery, publicMutation } from '../auth/model';
+import { canReadMarketingPersonalData } from '../lib/marketingPrivacy';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from '../lib/marketingReport';
+import { normalizeCouponCode } from '../lib/offers';
+import { readRangeWithinBudget } from '../lib/readBudget';
+import { resortLocalParts } from '../lib/serviceSlots';
+import { requireStaff } from '../lib/staffAccess';
+import { enforceRateLimit } from '../messaging/model';
+import { appendRecordHistory } from '../settings/model';
+import { readMarketingReport, reportSpend } from './reportRead';
 
 export const getReport = marketingQuery({
   permission: 'view',

@@ -3,7 +3,7 @@ import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { guestMutation, guestQuery, internalMutation, internalQuery, type MutationCtx, publicMutation } from '../auth/model';
 import { PRESENCE_WRITE_THROTTLE_MS } from '../lib/chatPresence';
-import { cleanCapture, marketingCaptureValidator } from '../lib/marketingAttribution';
+import { cleanCapture, marketingCaptureValidator } from '../shared/marketingAttribution';
 import { assertValidEmail, normalizeEmail } from '../lib/validation';
 import { buildAdminChatMetadataPatch, buildAdminSearchText, getAdminChatSortAt, patchSessionAfterMessages } from './adminChatMetadata';
 import { consumeChatAdmission } from './chatAdmission';
