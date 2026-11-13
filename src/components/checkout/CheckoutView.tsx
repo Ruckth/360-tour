@@ -53,6 +53,9 @@ export function CheckoutView({
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
+  // Approvers keep the header's Approvals usable over the phone order sheet, so for them the sheet
+  // is non-modal: it stops under the header, and the page behind it is inert instead.
+  const keepHeader = access.capabilities.approve;
   const customNeedsManager = cashier && access.cashierRules.customPrice === "manager";
   // A cashier's custom item that needs a manager: asked for, not added.
   const [askItem, setAskItem] = useState<{ name: string; price: number } | null>(null);
@@ -168,7 +171,7 @@ export function CheckoutView({
   const message = error || notice || (missing ? (cashier ? "Not available." : "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders.") : "");
 
   return (
-    <div className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
+    <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
@@ -202,7 +205,7 @@ export function CheckoutView({
       </Dialog>
 
       {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen} modal={!keepHeader}>
         <SheetTrigger asChild>
           <button
             type="button"
@@ -219,7 +222,7 @@ export function CheckoutView({
             <ChevronUp aria-hidden className="size-5 shrink-0" />
           </button>
         </SheetTrigger>
-        <CheckoutSheetContent side="bottom" showCloseButton={false} className="h-[94dvh] gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden">
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>

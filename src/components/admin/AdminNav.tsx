@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { adminTabBarFor } from "@/components/admin/admin-access";
 import { adminNavItem, type AdminNavItem } from "@/components/admin/admin-routes";
-import { ApprovalCountBadge } from "@/components/admin/ApprovalCountBadge";
 import { useAdminNav } from "@/components/admin/staff-access";
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
@@ -41,15 +40,14 @@ function TileBody({ icon: Icon, label, fullLabel }: TileProps & { fullLabel?: st
 function SectionTile({ item, current, className }: { item: AdminNavItem; current: boolean; className?: string }) {
   const label = item.shortLabel ?? item.label;
   return (
-    <Link href={item.href} aria-current={current ? "page" : undefined} title={item.label} className={tile(current, cn("relative", className))}>
+    <Link href={item.href} aria-current={current ? "page" : undefined} title={item.label} className={tile(current, className)}>
       <TileBody icon={item.icon} label={label} fullLabel={item.label} />
-      {item.href === "/admin/checkout" ? <ApprovalCountBadge className="absolute top-1 right-1" /> : null}
     </Link>
   );
 }
 
-/** Tab bar columns: its sections plus Search and Menu. */
-const TAB_COLUMNS: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
+/** Tab bar columns: its sections plus Menu. */
+const TAB_COLUMNS: Record<number, string> = { 2: "grid-cols-2", 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 
 function ActionTile({ onClick, className, ...body }: TileProps & { onClick: () => void }) {
   return (
@@ -93,8 +91,9 @@ export function AdminRail() {
 }
 
 /**
- * Phone navigation (below 768px): a bottom tab bar with the daily sections, Search and Menu.
- * Menu lists every section, in the sidebar's order, and is marked current on the pages it holds.
+ * Phone navigation (below 768px): a bottom tab bar with the daily sections and Menu. Menu lists
+ * every section, in the sidebar's order, with the search field, and is marked current on the
+ * pages it holds.
  */
 export function AdminTabBar() {
   const current = adminNavItem(usePathname())?.href;
@@ -104,12 +103,11 @@ export function AdminTabBar() {
   return (
     <nav
       aria-label="Admin sections"
-      className={cn("sticky bottom-0 z-30 mt-auto grid shrink-0 gap-1", TAB_COLUMNS[sections.length + 2] ?? "grid-cols-5", " border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sidebar-foreground backdrop-blur md:hidden")}
+      className={cn("sticky bottom-0 z-30 mt-auto grid shrink-0 gap-1", TAB_COLUMNS[sections.length + 1] ?? "grid-cols-5", " border-t border-border bg-sidebar/95 px-1 pt-1 pb-[max(0.25rem,env(safe-area-inset-bottom))] text-sidebar-foreground backdrop-blur md:hidden")}
     >
       {sections.map((item) => (
         <SectionTile key={item.href} item={item} current={item.href === current} className="min-h-14" />
       ))}
-      <ActionTile icon={Search} label="Search" onClick={openSearch} className="min-h-14" />
       <ActionTile icon={Menu} label="Menu" current={inMenu} onClick={() => setOpenMobile(true)} className="min-h-14" />
     </nav>
   );

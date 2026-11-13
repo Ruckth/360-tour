@@ -96,8 +96,8 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   },
 ];
 
-/** The sections on the phone tab bar, besides Search and Menu: the ones staff use all day. */
-export const ADMIN_TAB_BAR: readonly AdminNavItem[] = ["/admin/chats", "/admin/hotel", "/admin/staff/calendar"].map(
+/** The sections on the phone tab bar, besides Menu: the ones staff use all day. Search is in Menu. */
+export const ADMIN_TAB_BAR: readonly AdminNavItem[] = ["/admin/chats", "/admin/hotel", "/admin/staff/calendar", "/admin/checkout"].map(
   (href) => ADMIN_NAV.find((item) => item.href === href)!,
 );
 
