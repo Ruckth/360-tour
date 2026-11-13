@@ -76,7 +76,7 @@ export async function testUsers(env, createClient = createClerkClient) {
   }
   try {
     for (const role of ["owner", "cashier", "nonstaff"]) {
-      const email = `architecture-e2e-${role}-${runId}+clerk_test@example.com`;
+      const email = `arch-e2e-${role}-${runId.replaceAll("-", "")}+clerk_test@example.com`;
       const user = await clerk.users.createUser({
         emailAddress: [email],
         skipPasswordRequirement: true,

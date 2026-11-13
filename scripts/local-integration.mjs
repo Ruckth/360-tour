@@ -36,9 +36,6 @@ const privateValues = () => [
   supplied.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   supplied.CLERK_SECRET_KEY,
   supplied.CLERK_JWT_ISSUER_DOMAIN,
-  ...["owner", "cashier", "nonstaff"].map(
-    (role) => `architecture-e2e-${role}+clerk_test@example.com`,
-  ),
 ];
 function privateError(error) {
   let message = "";

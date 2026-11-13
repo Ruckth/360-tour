@@ -43,6 +43,7 @@ describe("Clerk test-user ownership", () => {
     const second = await testUsers(env, () => tenant.client);
     expect(new Set(tenant.created.map((user) => user.email)).size).toBe(6);
     expect(new Set(tenant.created.map((user) => user.runId)).size).toBe(2);
+    expect(tenant.created.every((user) => user.email.split("@")[0].length <= 64)).toBe(true);
     await first.cleanupSessions();
     expect([...tenant.activeUsers].sort()).toEqual([
       "existing-human", ...Object.values(second.users).map((user) => user.id),

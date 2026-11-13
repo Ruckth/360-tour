@@ -30,10 +30,10 @@ The runner:
 
 - Allows only the three Clerk fields from an ignored local env file or explicit CI environment; inherited deployment/provider credentials are excluded and disabled service values are pinned empty so Next cannot restore them from dotenv.
 - Requires `pk_test_` / `sk_test_`, matching publishable-key host and active OIDC issuer, and the existing `convex` JWT template with audience `convex`. It does not modify tenant configuration or production policies.
-- Creates/reuses three dedicated test-only users, requiring an ownership marker before reusing them. No human owner, email, invitation, impersonation, admin-auth login or token/client mock is used.
+- Creates three uniquely named, run-owned test-only users with an ownership marker and run identifier. It never reuses shared users, so overlapping local/PR/main runs cannot sign each other out. No human owner, email, invitation, impersonation, admin-auth login or token/client mock is used.
 - Starts anonymous Convex with unique local cloud/site ports in a fresh ignored project and isolated CLI HOME; application ports are also allocated locally. The existing seed rejects a nonempty database. Local admin credentials are confined to empty seeding and the dedicated cashier grant import, never browser auth evidence.
 - Supplies only the local issuer/owner allowlist and test cashier grant to that fresh backend. No original Convex or external provider credentials are copied. The app builds against the actual seeded backend.
-- Uses private ignored env/artifact files (0600), directories (0700), and a private umask. Authenticated screenshots, video and traces are disabled and never uploaded. Each child process group is stopped on completion/failure; sessions created during the run are revoked without touching pre-existing sessions.
+- Uses private ignored env/artifact files (0600), directories (0700), and a private umask. Authenticated screenshots, video and traces are disabled and never uploaded. Each child process group is stopped on completion/failure; run-owned test users are deleted with their sessions on completion. Partial provisioning is cleaned up, and unrelated users and sessions are untouched.
 
 Browser sign-in uses `clerkSetup` and `clerk.signIn({ page, emailAddress })`, then the browser's actual Clerk session obtains its `convex` JWT. That token authorizes `ConvexHttpClient` calls against the isolated server; the application independently uses `ConvexProviderWithClerk`. No `setAdminAuth` acceptance client exists.
 
@@ -85,9 +85,9 @@ An initial diagnostic process listing included transient local-backend instance 
 
 ## CI and limitations
 
-Verification triggers on **main pushes and PRs**, rather than both branch pushes and PRs. Concurrency cancels superseded runs. Fork PRs skip the secret-bearing job; there is no `pull_request_target` and no authenticated artifacts are uploaded. The workflow fails before integration when required secrets are absent. It uses no placeholder Convex URL or Clerk key: the runner supplies a fresh local backend URL and validates the real test tenant.
+Verification triggers on **main pushes and PRs**, rather than both branch pushes and PRs. Concurrency cancels superseded runs. Fork PRs receive no secrets and fail the required secret preflight rather than reporting a skipped verification job as passing; there is no `pull_request_target` and no authenticated artifacts are uploaded. The workflow fails before integration when required secrets are absent. It uses no placeholder Convex URL or Clerk key: the runner supplies a fresh local backend URL and validates the real test tenant.
 
-Root must set these repository secrets, using a dedicated Clerk **test** tenant with the existing `convex` JWT template (`aud: convex`) and browser sign-in enabled:
+Root configured these repository secrets privately on 13 November 2026, using a dedicated Clerk **test** tenant with the existing `convex` JWT template (`aud: convex`) and browser sign-in enabled:
 
 | Repository secret | Runtime field |
 | --- | --- |
@@ -98,3 +98,14 @@ Root must set these repository secrets, using a dedicated Clerk **test** tenant 
 No Convex deployment/admin key, production provider secret, human account, extra E2E email secret or stored browser session is required. The runner provisions its own dedicated identities. Candidate local test fields were validated privately and real browser login succeeded; there is no missing local credential prerequisite.
 
 The implementation commits are `09f1c6880639e6c00debbe3c76930fabe8c22215` and `8e878683687936f703f4e3e2230e42cb2d251696`; the final evidence commit changes this record only. Root owns writing GitHub secrets, final exact-head CI validation, independent reviews, any Preview/live acceptance and merge. No remote CI success, shared/prod deployment or live pending-work/delivery inspection is claimed. No real external payment/refund, email, model or social send was performed. Local cash recording and registered-backend financial integration tests do not establish external-provider acceptance. No watches or external messages were created.
+
+
+## Root review follow-up
+
+Spec and Standards reviews independently identified cross-run Clerk teardown: the original three fixed users let one CI invocation revoke another invocation's sessions. Root replaced reuse with unique invocation-owned users (short enough to satisfy email limits), with cleanup of partial provisioning and deletion of only those users and sessions. The runner acquires identities inside its cleanup lifetime. An offline regression models overlapping runs, retains an unrelated human account, and proves cleanup isolation, idempotency and partial-failure cleanup.
+
+Spec review also identified a lost recovery deadline when the forwarding wrappers were removed. Browser handoff now bounds optional session/token preparation at eight seconds and offers the tokenless external-browser link while disconnected. Direct typed Convex calls remain. Hook regressions cover both never-settling session creation and handoff creation, including late session completion without a stale handoff request.
+
+The independent audit found that the hook could select six suggestions although markShown accepts five. Root restored the total five-chip cap and candidate deduplication. A hook-level regression uses all twelve candidates and actual registered Convex queries/mutations to prove five impressions persist. Together the new and existing focused isolation tests pass eight checks. A test's initial render was corrected to await the actual backend impression commit before asserting the reactive result.
+
+Other direct Convex mutations retain the client's normal disconnected queue behavior rather than the deleted forwarding layer's generic timeouts. The optional external-browser transfer has its own recovery deadline. Test-only cache/transport duplication is a nonblocking cleanup candidate; no financial rules are copied there. Root configured the three test-tenant repository secrets using stdin and private local configuration; no secret value was logged or committed. Root full integration, exact-head CI/Preview and production acceptance remain pending at this record update. The original diagnostic exposures involved discarded local credentials and revoked test sessions; production and human accounts were not involved.

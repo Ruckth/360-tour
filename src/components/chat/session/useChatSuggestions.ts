@@ -119,14 +119,15 @@ export function useChatSuggestions(sessionId: Id<"conversations"> | null, active
         return;
 
       try {
-        const candidateIds = orderedStaticSuggestions.map(suggestion => suggestion.id);
+        const candidateIds = [...new Set(orderedStaticSuggestions.map(suggestion => suggestion.id))];
+        const selectionLimit = Math.min(visibleSuggestionLimit, 5);
         const nextSuggestions: FunctionReturnType<typeof api.messaging.chatSuggestions.nextForSession> = [];
         // The public query admits five candidates; retain ranking across all candidates.
-        for (let offset = 0; offset < candidateIds.length && nextSuggestions.length < visibleSuggestionLimit; offset += 5) {
+        for (let offset = 0; offset < candidateIds.length && nextSuggestions.length < selectionLimit; offset += 5) {
           nextSuggestions.push(...await convex.query(api.messaging.chatSuggestions.nextForSession, {
             sessionId, guestToken: getStoredGuestToken(sessionId),
             candidateSuggestionIds: candidateIds.slice(offset, offset + 5),
-            limit: visibleSuggestionLimit - nextSuggestions.length,
+            limit: selectionLimit - nextSuggestions.length,
           }));
         }
         if (cancelled) return;
