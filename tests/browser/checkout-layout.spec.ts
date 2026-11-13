@@ -170,37 +170,37 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     await setRootFont(page, ENLARGED);
 
     await sheet.getByRole("button", { name: "Cash", exact: true }).click();
-    await sheet.getByText("Payment date and time", { exact: false }).first().click();
+    await sheet.getByRole("button", { name: "Change payment time" }).click();
     await expectReachable(page, sheet.getByLabel("Money received date · Bangkok time"), "payment business date");
     await expectReachable(page, sheet.getByLabel("Money received time · Bangkok time"), "payment business time");
     const paymentWidth = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
     expect.soft(paymentWidth.scroll, "payment sheet has no horizontal overflow").toBeLessThanOrEqual(paymentWidth.client + 1);
-    for (const label of ["Back to order", "Exact", "+฿100", "+฿500", "+฿1,000", "Confirm cash"]) {
-      await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
-    }
+    // The tender row stays on top of the panel and does Back's job.
+    for (const label of TENDERS) await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
+    const notes = sheet.getByRole("group", { name: "Notes handed over" }).getByRole("button");
+    await expect(notes).toHaveCount(2);
+    for (const index of [0, 1]) await expectReachable(page, notes.nth(index), `note chip ${index + 1}`);
+    await expectReachable(page, sheet.getByRole("button", { name: /^Confirm cash ฿[\d,.]+ · no change$/ }), "Confirm cash");
     await expectReachable(page, sheet.getByLabel("Cash received"), "Cash received");
-    await expectReachable(page, sheet.getByTestId("cash-balance"), "amount still short");
-    await expectOneLine(sheet.getByTestId("cash-balance"), "amount still short");
+    const confirm = await sheet.getByRole("button", { name: /^Confirm cash/ }).evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    expect.soft(confirm.scroll, "the money button's label wraps inside it").toBeLessThanOrEqual(confirm.client + 1);
     await shot(page, "pay-cash-text200");
 
-    await sheet.getByRole("button", { name: "Back to order" }).click();
     await sheet.getByRole("button", { name: "Split payment", exact: true }).click();
     const controls = [
-      sheet.getByRole("combobox", { name: "Payment 1 method" }),
+      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: "Cash", exact: true }),
+      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: "Transfer", exact: true }),
       sheet.getByLabel("Payment 1 amount"),
-      sheet.getByRole("button", { name: "Rest" }).first(),
-      sheet.getByRole("button", { name: "Remove payment 1" }),
-      sheet.getByRole("combobox", { name: "Payment 2 method" }),
+      sheet.getByRole("group", { name: "Payment 2 method" }).getByRole("button", { name: "Card", exact: true }),
       sheet.getByLabel("Payment 2 amount"),
       sheet.getByRole("button", { name: "Add payment" }),
       sheet.getByRole("button", { name: "Confirm split" }),
     ];
     for (const [index, control] of controls.entries()) await expectReachable(page, control, `split control ${index + 1}`);
-    const boxes = await boxesOf(controls);
-    for (let i = 0; i < 4; i += 1) {
-      for (let j = i + 1; j < 4; j += 1) expect.soft(overlaps(boxes[i], boxes[j]), `split row controls ${i + 1} and ${j + 1}`).toBe(false);
+    const boxes = await boxesOf(controls.slice(0, 3));
+    for (let i = 0; i < 3; i += 1) {
+      for (let j = i + 1; j < 3; j += 1) expect.soft(overlaps(boxes[i], boxes[j]), `split row controls ${i + 1} and ${j + 1}`).toBe(false);
     }
-    await expectReachable(page, sheet.getByTestId("split-remaining"), "remaining amount");
     await expectOneLine(sheet.getByTestId("split-remaining"), "remaining amount");
     const amount = await sheet.getByLabel("Payment 1 amount").boundingBox();
     expect.soft(amount!.width, "amount field keeps room to type").toBeGreaterThanOrEqual(96);
@@ -216,10 +216,11 @@ test("phone cash entry and confirmation stay visible above a reduced keyboard vi
   await input.focus();
   await page.setViewportSize({ width: 360, height: 464 });
   await input.fill("1200");
-  const confirm = sheet.getByRole("button", { name: "Confirm cash", exact: true });
+  // Whatever the total, the money button (Confirm, or Short while too little) stays in view.
+  const confirm = sheet.getByRole("button", { name: /^(Confirm cash|Short) ฿/ });
   await expect.poll(async () => {
-    const [field, balance, action] = await boxesOf([input, sheet.getByTestId("cash-balance"), confirm]);
-    return field.y >= 0 && field.y + field.height <= balance.y && balance.y + balance.height <= action.y && action.y + action.height <= 464.5;
+    const [field, action] = await boxesOf([input, confirm]);
+    return field.y >= 0 && field.y + field.height <= action.y && action.y + action.height <= 464.5;
   }).toBe(true);
 });
 
@@ -329,8 +330,7 @@ test.describe("receipt print page size (PM-01)", () => {
     test(`${paper} mm: the browser accepts the page size and prints one page that wide`, async ({ page }) => {
       await open(page, { width: 1280, height: 800 }, "?lines=3");
       await page.getByRole("button", { name: "Cash", exact: true }).click();
-      await page.getByRole("button", { name: "Exact" }).click();
-      await page.getByRole("button", { name: "Confirm cash" }).click();
+      await page.getByRole("button", { name: /^Confirm cash/ }).click();
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();
       await page.getByRole("radio", { name: `${paper} mm` }).click();

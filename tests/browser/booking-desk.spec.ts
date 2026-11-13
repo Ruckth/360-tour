@@ -85,7 +85,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(popover(page, "Maya Lin").getByRole("button", { name: "Checkout ฿10,000" })).toBeVisible();
     });
 
-    test("guest leaves: balance with spa, paid, receipt printed in at most 6 taps", async ({ page }) => {
+    test("guest leaves: balance with spa, paid, receipt printed in 5 taps", async ({ page }) => {
       await openDesk(page);
       const t = new Taps(page);
       await t.tap(chip(page, "Anna Schmidt"), "Anna's stay");
@@ -96,13 +96,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       if (size === "phone") await t.tap(page.getByRole("button", { name: /^View order/ }), "View order");
       await expect(page.getByText("Hot stone 60").first()).toBeVisible();
       await t.tap(page.getByRole("button", { name: "Cash", exact: true }), "Cash");
-      await t.tap(page.getByRole("button", { name: "Exact", exact: true }), "Exact");
       await t.tap(page.getByRole("button", { name: /^Confirm cash/ }), "Confirm cash");
       await t.tap(page.getByRole("button", { name: "Print", exact: true }), "Print");
       await expect(page.locator("body")).toHaveAttribute("data-printed", "1");
       await expect(page.getByRole("article", { name: "Receipt" })).toContainText("27,500");
-      // iPad: 6. A phone adds "View order" (plan: counts are iPad).
-      expect(t.summary()).toMatchObject({ taps: size === "phone" ? 7 : 6, typed: 0 });
+      // iPad: 5, since cash opens with the amount due. A phone adds "View order" (plan: counts are iPad).
+      expect(t.summary()).toMatchObject({ taps: size === "phone" ? 6 : 5, typed: 0 });
     });
 
     test("stay sheet leads with one money block and reads in one sentence", async ({ page }) => {
