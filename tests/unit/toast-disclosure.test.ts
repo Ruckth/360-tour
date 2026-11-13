@@ -61,7 +61,7 @@ describe("Toast", () => {
 
 describe("Disclosure", () => {
   it("is a native details with the label, the hint after it, and lazy content", async () => {
-    await act(async () => root.render(createElement(Disclosure, { label: "More", hint: "dates, minimums", lazy: "first-open", children: createElement("p", null, "Inside") })));
+    await act(async () => root.render(createElement(Disclosure, { label: "More", hint: "dates, minimums", lazy: "first-open" }, createElement("p", null, "Inside"))));
     const details = document.querySelector("details")!;
     expect(details.querySelector("summary")!.textContent).toBe("More · dates, minimums");
     expect(details.open).toBe(false);
@@ -81,7 +81,7 @@ describe("Disclosure", () => {
 
   it("keeps its default open state and reports changes when controlled", async () => {
     const onOpenChange = vi.fn();
-    await act(async () => root.render(createElement(Disclosure, { label: "More", open: true, onOpenChange, children: "Body" })));
+    await act(async () => root.render(createElement(Disclosure, { label: "More", open: true, onOpenChange }, "Body")));
     const details = document.querySelector("details")!;
     expect(details.open).toBe(true);
     await act(async () => {

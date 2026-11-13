@@ -9,7 +9,7 @@ type DisclosureProps = {
   label: ReactNode;
   /** What is inside, after the label: "More · dates, minimums". */
   hint?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   /** Open on first render (uncontrolled), or the open state when `onOpenChange` is given. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
