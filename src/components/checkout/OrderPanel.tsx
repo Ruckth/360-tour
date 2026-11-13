@@ -264,7 +264,7 @@ export function OrderPanel({
             {couponBlocked ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
             ) : null}
-            {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} decide={false} className="mb-2" /> : null}
+            {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
             {waiting ? (
               <Button className="h-12 w-full rounded-xl" disabled data-testid="waiting-for-approval">Waiting for approval</Button>
             ) : lines.length && totals.due === 0 ? (
@@ -449,7 +449,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
           }}
         />
       ) : null}
-      {request ? <ApprovalInline key={request._id} request={request} lineName={line.name} decide={false} className="mx-3 mb-3" /> : null}
+      {request ? <ApprovalInline key={request._id} request={request} lineName={line.name} className="mx-3 mb-3" /> : null}
       {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} waiting={waiting} onSent={onSent} /> : null}
     </li>
   );
