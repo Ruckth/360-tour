@@ -217,7 +217,7 @@ describe("checkout theme", () => {
         // header's Approvals stays usable: it has no overlay. Every other layer dims the page.
         const overlay = name === "Order sheet" ? null : content.previousElementSibling!;
         if (overlay) expect(overlay.className).toContain("bg-background/80");
-        else expect(content.className).toContain("h-[calc(100dvh-var(--admin-header,6dvh))]");
+        else expect(content.className).toContain("h-[calc(100dvh-4rem-env(safe-area-inset-top))]");
         expect(content.className).toContain("pointer-coarse:[&_button]:min-h-11");
         // No checkout-only palette, and nothing below <html> forces a theme.
         expect(document.querySelector(".checkout-theme")).toBeNull();

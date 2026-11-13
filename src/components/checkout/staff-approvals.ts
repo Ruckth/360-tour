@@ -123,21 +123,24 @@ export function orderRef(title: string) {
 
 /** The result of approving or declining, as one line: "Approved 15% discount on #1042". */
 export function approvalResultText(status: ApprovalStatus, replayed: boolean, what: string, title: string) {
+  // Before the order loads its title is just "Order"; then leave the order out.
   const ref = orderRef(title);
-  if (replayed) return `${what.charAt(0).toUpperCase()}${what.slice(1)} on ${ref} was already handled`;
+  const known = ref.startsWith("#");
+  const on = known ? ` on ${ref}` : "";
+  if (replayed) return `${what.charAt(0).toUpperCase()}${what.slice(1)}${on} was already handled`;
   switch (status) {
     case "applied":
-      return `Approved ${what} on ${ref}`;
+      return `Approved ${what}${on}`;
     case "rejected":
-      return `Declined ${what} on ${ref}`;
+      return `Declined ${what}${on}`;
     case "stale":
-      return `${ref} changed, so the request no longer applies`;
+      return `${known ? ref : "The order"} changed, so the request no longer applies`;
     case "expired":
-      return `The request on ${ref} expired`;
+      return `The request${on} expired`;
     case "cancelled":
-      return `The request on ${ref} was cancelled`;
+      return `The request${on} was cancelled`;
     case "pending":
-      return `${ref} is still waiting`;
+      return known ? `${ref} is still waiting` : "Still waiting";
   }
 }
 

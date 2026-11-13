@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Badge } from "@/components/ui/badge";
@@ -43,8 +43,19 @@ function ApprovalsButton() {
   const { message: toastMessage, show: showToast } = useToast();
   const count = queue?.count ?? 0;
 
+  // Read the queue as it is when the decision lands, not as it was when Approve was tapped.
+  const queueNow = useRef(queue);
+  queueNow.current = queue;
+  // Another manager can clear what's left while the panel shows a result: close then too.
+  useEffect(() => {
+    if (!open || count || !notice) return;
+    closedWith.current = notice;
+    setNotice("");
+    setOpen(false);
+  }, [open, count, notice]);
+
   function onDecided(requestId: string, result: string) {
-    const others = queue?.list.filter((request) => request._id !== requestId).length ?? 0;
+    const others = queueNow.current?.list.filter((request) => request._id !== requestId).length ?? 0;
     if (others) {
       setNotice(result);
       return;

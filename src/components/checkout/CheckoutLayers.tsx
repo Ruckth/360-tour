@@ -23,7 +23,7 @@ export function CheckoutDialogContent({ className, onEscapeKeyDown, ...props }: 
   return <DialogContent className={cn(className, TOUCH_TARGETS)} onEscapeKeyDown={escape(onEscapeKeyDown)} {...props} />;
 }
 
-export function CheckoutSheetContent({ className, onEscapeKeyDown, onInteractOutside, ...props }: ComponentProps<typeof SheetContent>) {
+export function CheckoutSheetContent({ className, onEscapeKeyDown, onInteractOutside, onFocusOutside, ...props }: ComponentProps<typeof SheetContent>) {
   return (
     <SheetContent
       className={cn(className, TOUCH_TARGETS)}
@@ -33,6 +33,11 @@ export function CheckoutSheetContent({ className, onEscapeKeyDown, onInteractOut
         const target = event.target instanceof Element ? event.target : null;
         if (target?.closest("[data-approvals]")) event.preventDefault();
         else onInteractOutside?.(event);
+      }}
+      // Tabbing out of a non-modal sheet (an approver's phone order) doesn't close it.
+      onFocusOutside={(event) => {
+        event.preventDefault();
+        onFocusOutside?.(event);
       }}
       {...props}
     />
