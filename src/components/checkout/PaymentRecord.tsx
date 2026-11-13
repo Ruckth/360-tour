@@ -475,7 +475,10 @@ function PaymentEditor({
           }
         >
           {saving ? <Spinner /> : null}
-          {ask
+          {/* Retry only after a real failure; while the first save runs, say so. */}
+          {saving
+            ? ask ? "Sending…" : "Saving…"
+            : ask
             ? "Send request"
             : attempted
             ? "Retry correction"

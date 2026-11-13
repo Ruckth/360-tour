@@ -138,6 +138,21 @@ it("retains correction inputs and key on response loss, and preserves original c
   expect(current.corrections).toHaveLength(1);
 });
 
+it("says Saving… while the first correction save runs, and offers Retry only after it fails", async () => {
+  const { backend, actions, orderId } = await paidSale(true);
+  let fail!: (err: Error) => void;
+  vi.spyOn(actions, "amendOrderPayment").mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await receipt(backend, orderId); await click("Correct payment recording");
+  await input("#payment-correction-reason", "Recorded card, actually bank transfer");
+  await click("Save recording correction");
+  expect(button("Saving…")).toBeTruthy();
+  expect(button("Saving…").disabled).toBe(true);
+  expect(button("Retry correction")).toBeUndefined();
+  await act(async () => fail(new Error("Network down")));
+  expect(button("Saving…")).toBeUndefined();
+  expect(button("Retry correction")).toBeTruthy();
+});
+
 it("requires the explicit no-money assertion and reason before voiding a mistaken entry", async () => {
   const { backend, actions, orderId } = await paidSale();
   const voidEntry = vi.spyOn(actions, "voidUnreceivedOrder");
