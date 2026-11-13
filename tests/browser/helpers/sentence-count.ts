@@ -1,6 +1,6 @@
 /**
  * Returns the visible explanatory sentences inside `root`: text that ends in . ! or ? and has at
- * least 4 words. Text in buttons, form controls, labels, headings, hidden elements and anything
+ * least 4 words. Text in closed <details> (other than the summary), buttons, form controls, labels, headings, hidden elements and anything
  * under `data-sentence-budget="ignore"` (money, receipt paper) does not count.
  *
  * Self-contained on purpose: Playwright serialises it into the page via `locator.evaluate`.
@@ -16,6 +16,9 @@ export function visibleSentences(root: Element): string[] {
   const shown = (el: Element) => {
     for (let node: Element | null = el; node; node = node.parentElement) {
       if (view?.getComputedStyle(node).display === "none") return false;
+      // A closed <details> hides everything but its summary (Chromium keeps their display as is).
+      const parent = node.parentElement;
+      if (parent?.tagName === "DETAILS" && !(parent as HTMLDetailsElement).open && node.tagName !== "SUMMARY") return false;
       if (node === root) break;
     }
     return view?.getComputedStyle(el).visibility !== "hidden";
