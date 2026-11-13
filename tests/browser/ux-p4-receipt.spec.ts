@@ -12,7 +12,9 @@ import { TaskCounter, UX_VIEWPORTS, controlsOnScreen, type UxViewport } from "./
  *   refund one line             3 taps (Refund, a reason chip, Record refund ฿600), 0 typed, 0 scrolls
  *   correct the payment method  5 taps (⋯, Correct payment, method, reason chip, Save), 0 typed, 0 scrolls, ≤ 7 controls
  *   print on 58 mm              3 taps the first time (⋯, Use 58 mm paper, Print), then 1
- *   link the only appointment   the review opens at once: Link, a reason chip, Confirm link
+ *   link the only appointment   the review opens at once: Link, a reason chip, Confirm link (3 taps:
+ *                               the reason is an audit record, so no chip is picked for staff)
+ *   while Correct or Void… is open, the toolbar is only Close, and words outside the paper stay ≤ 25
  */
 
 async function open(page: Page, query: string, fixture = "staff-roles") {
@@ -118,12 +120,19 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(form.getByRole("heading", { name: "Correct payment" })).toBeFocused();
       expect(await controlsOnScreen(page, form), "correction controls").toBeLessThanOrEqual(7);
       await expect(form.getByLabel("Received at · Bangkok time")).toBeHidden();
+      // One way to give a reason in money forms: labelled, chips and its own text in view.
+      await expect(form.getByRole("textbox", { name: "Reason" })).toBeVisible();
+      await expect(form.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      // The toolbar is only Close while the task is open.
+      await expect(page.getByRole("toolbar", { name: "Receipt actions" }).getByRole("button")).toHaveText(["Close"]);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
       await expectAtMostSentences(view(page), 1);
-      await count.tap(form.getByRole("button", { name: "PromptPay QR", exact: true }), "PromptPay QR");
+      await count.tap(form.getByRole("button", { name: "PromptPay", exact: true }), "PromptPay");
       await count.tap(form.getByRole("button", { name: "Wrong method picked" }), "reason chip");
-      await count.tap(form.getByRole("button", { name: "Save · PromptPay QR ฿1,800" }), "Save");
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+      await count.tap(form.getByRole("button", { name: "Save · PromptPay ฿1,800" }), "Save");
       await expect(form).toHaveCount(0);
-      await expect(page.getByRole("status").filter({ hasText: "Payment corrected · PromptPay QR ฿1,800" })).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: "Payment corrected · PromptPay ฿1,800" })).toBeVisible();
       await expect(page.getByText("Order #1043 · ฿1,800 · Paid by card · corrected")).toBeVisible();
       // The issued receipt keeps its tender.
       await expect(receipt(page)).toContainText("Card");
@@ -131,7 +140,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       expect(result(count), count.log.join("\n")).toEqual({ taps: 5, typed: 0, scrolls: 0 });
     });
 
-    test("More holds the received date, the amount, another tender, the customer and an own reason", async ({ page }) => {
+    test("More holds the received date, the amount, another tender and the customer", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
       await more(page).click();
       await page.getByRole("menuitem", { name: "Correct payment" }).click();
@@ -141,11 +150,15 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(form.getByRole("textbox", { name: "Corrected payment 1 amount" })).toHaveValue("1800");
       await expect(form.getByRole("button", { name: "Add another tender" })).toBeVisible();
       await expect(form.getByLabel("Customer")).toBeVisible();
-      await form.getByRole("textbox", { name: "Own reason" }).fill("Guest paid by QR at the desk");
+      await expect(form.getByRole("textbox", { name: "Own reason" })).toHaveCount(0);
+      await form.getByRole("textbox", { name: "Reason" }).fill("Guest paid by QR at the desk");
       // Nothing differs from the recorded payment yet, so there is nothing to save.
-      await expect(form.getByRole("button", { name: "Save correction" })).toBeDisabled();
+      await expect(form.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+      await expect(form.getByRole("button", { name: "Wrong amount typed" })).toHaveCount(0);
       await form.getByRole("textbox", { name: "Corrected payment 1 amount" }).fill("1700");
-      await expect(form.getByRole("button", { name: "Save correction" })).toBeEnabled();
+      // The button says the money once something changed, and the amount chip joins the reasons.
+      await expect(form.getByRole("button", { name: "Save · Card ฿1,700" })).toBeEnabled();
+      await expect(form.getByRole("button", { name: "Wrong amount typed" })).toBeVisible();
       await expectAtMostSentences(view(page), 1);
       // Close puts the ⋯ back; nothing was saved.
       await page.getByRole("button", { name: "Close Correct payment" }).click();
@@ -205,9 +218,11 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const panel = page.getByTestId("void-panel");
       const yes = panel.locator('[data-void-choice="received"]');
       const no = panel.locator('[data-void-choice="unreceived"]');
-      await expect(panel.getByText("Was money received?")).toBeVisible();
-      await expect(yes).toHaveText("YesVoid the sale · no refund sent");
-      await expect(no).toHaveText("NoEntered by mistake · nothing was received");
+      await expect(panel.getByText("Money received?")).toBeVisible();
+      await expect(yes).toHaveText("YesNo refund sent");
+      await expect(no).toHaveText("NoEntered by mistake");
+      await expect(page.getByRole("toolbar", { name: "Receipt actions" }).getByRole("button")).toHaveText(["Close"]);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
       // No answer is picked for them, and neither runs without a reason.
       await expect(yes).toBeDisabled();
       await expect(no).toBeDisabled();
@@ -226,8 +241,9 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await more(page).click();
       await page.getByRole("menuitem", { name: "Void…" }).click();
       const panel = page.getByTestId("void-panel");
-      await expect(panel.locator('[data-void-choice="received"]')).toHaveText("YesVoid the sale · bookings and appointments stay paid");
-      await expect(panel.locator('[data-void-choice="unreceived"]')).toHaveText("NoEntered by mistake · their balances reopen");
+      await expect(panel.locator('[data-void-choice="received"]')).toHaveText("YesBookings stay paid");
+      await expect(panel.locator('[data-void-choice="unreceived"]')).toHaveText("NoBalances reopen");
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
     });
 
     test("Void… · No voids it as entered by mistake", async ({ page }) => {
@@ -281,6 +297,10 @@ test.describe("link after payment", () => {
       await count.tap(receipt(page).getByRole("button", { name: "Link appointment" }), "Link appointment");
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByTestId("link-review")).toContainText("SVC-0002");
+      // One sentence: the "Not changed… No new payment is taken." paragraph is gone.
+      await expectAtMostSentences(dialog, 1);
+      // No reason is picked for staff: "Guest asked" and "Booked under another name" are both guesses.
+      await expect(dialog.getByRole("textbox", { name: "Reason" })).toHaveValue("");
       await count.tap(dialog.getByRole("button", { name: "Guest asked" }), "reason chip");
       await count.tap(dialog.getByRole("button", { name: "Confirm link" }), "Confirm link");
       await expect(receipt(page).getByTestId("line-link")).toHaveText("Linked · SVC-0002");

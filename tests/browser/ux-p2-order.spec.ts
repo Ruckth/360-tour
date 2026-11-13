@@ -28,7 +28,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
   test.describe(size, () => {
     test.use({ viewport: UX_VIEWPORTS[size] });
 
-    test("checkout shows at most 22 controls at the start and 31 with a line open", async ({ page }) => {
+    test("checkout shows at most 22 controls at the start and 26 with a line open", async ({ page }) => {
       await open(page, "?role=cashier");
       expect(await controlsOnScreen(page)).toBeLessThanOrEqual(22);
       await expect(page.getByRole("button", { name: "Filters" })).toHaveCount(0);
@@ -40,9 +40,17 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expectAtMostSentences(panel, 1);
       await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
       await expect(panel.getByRole("textbox", { name: "Discount" })).toBeInViewport();
-      // 30 in P2. P2b removed Save & close, so the header lost a row and the opened line's
-      // Service date and time fields now fit on screen without a scroll: one control fewer, two more in view.
-      expect(await controlsOnScreen(page)).toBeLessThanOrEqual(31);
+      // The plan's budget is 30 with a line open; therapist chips, date and time fold into one
+      // Schedule row that opens on tap (31 → 26 on iPad).
+      expect(await controlsOnScreen(page)).toBeLessThanOrEqual(30);
+      expect(await controlsOnScreen(page)).toBeLessThanOrEqual(26);
+      const schedule = panel.getByRole("button", { name: /^Schedule/ });
+      await expect(schedule).toHaveText("ScheduleAny therapist · Not scheduled");
+      await expect(schedule).toHaveAttribute("aria-expanded", "false");
+      await expect(panel.getByLabel("Service date")).toHaveCount(0);
+      await schedule.click();
+      await expect(panel.getByRole("button", { name: "Any", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(panel.getByLabel("Service date")).toBeVisible();
       await expect(panel.getByRole("radio", { name: "%" })).toHaveCount(0);
       await expectAtMostSentences(panel, 1);
     });
@@ -86,6 +94,10 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(waiting).toContainText("Waiting for a manager · ฿180 discount");
       await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
       await expectAtMostSentences(panel, 1);
+      // Waiting shows once: the line's bar (the cashier withdraws there), and the tenders are off.
+      await expect(panel.getByText("Waiting for approval")).toHaveCount(0);
+      await expect(waiting.getByRole("button", { name: "Withdraw" })).toBeVisible();
+      await expect(panel.getByRole("button", { name: "Cash", exact: true })).toBeDisabled();
 
       await page.evaluate(() => window.fixture.setRole("manager"));
       await page.waitForTimeout(300);
@@ -135,6 +147,31 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     });
   });
 }
+
+test.describe("phone header", () => {
+  test.use({ viewport: UX_VIEWPORTS.phone });
+
+  test("is one row: Customer, Orders and ⋯ with Add booking and New order", async ({ page }) => {
+    await open(page, "?role=cashier&scenario=spa");
+    const customer = page.getByRole("button", { name: "Add customer" });
+    const orders = page.getByRole("button", { name: "Orders", exact: true });
+    const more = page.getByRole("button", { name: "More checkout actions" });
+    const title = page.getByTestId("order-title");
+    await expect(customer).toHaveText("Customer");
+    await expect(page.getByRole("button", { name: "Add booking" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "New order", exact: true })).toHaveCount(0);
+    const middles = await Promise.all([title, customer, orders, more].map(async (el) => { const b = (await el.boundingBox())!; return b.y + b.height / 2; }));
+    for (const middle of middles) expect(Math.abs(middle - middles[1]), "one row").toBeLessThanOrEqual(12);
+    await more.click();
+    await expect(page.getByRole("menuitem")).toHaveText(["Add booking", "New order"]);
+    await page.getByRole("menuitem", { name: "Add booking" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add a booking" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Done" }).click();
+    // Focus comes back to ⋯, where Add booking was.
+    await expect(more).toBeFocused();
+  });
+});
 
 test.describe("customer dialog", () => {
   test.use({ viewport: UX_VIEWPORTS.ipad });

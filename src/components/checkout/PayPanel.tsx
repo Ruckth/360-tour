@@ -34,14 +34,16 @@ import {
   cashNotes,
   couponRefusal,
   tenderConfirmLabel,
+  tendersText,
 } from "./checkout-ui";
 
 type PayMode = TenderMethod | "split";
 
 /**
  * Takes the payment. The tender row stays on top and replaces Back: another tender switches to it,
- * the active one closes the panel (so does Escape). Each tender is its own attempt (PayAttempt,
- * keyed by mode), exactly as going back and picking another tender would be.
+ * the active one closes the panel (so does Escape). A split, whose payments each pick a method,
+ * shows Back instead. Each tender is its own attempt (PayAttempt, keyed by mode), exactly as going
+ * back and picking another tender would be.
  */
 export function PayPanel({
   mode: opened,
@@ -245,7 +247,8 @@ function PayAttempt({
 
   return (
     <>
-      {mode === "none" ? (
+      {/* Splitting has its own method chips per payment, so the tender row gives way to one Back. */}
+      {mode === "none" || mode === "split" ? (
         <button
           ref={backButton}
           type="button"
@@ -695,9 +698,7 @@ function SplitForm({
         disabled={!ready}
         onClick={() => onPay(tenders)}
       >
-        {ready
-          ? `Confirm ${tenders.map((tender) => `${formatMoney(tender.amount)} ${TENDER_LABELS[tender.method].confirm}`).join(" + ")}`
-          : "Confirm split"}
+        {ready ? `Confirm ${tendersText(tenders)}` : "Confirm split"}
       </PayButton>
     </>
   );

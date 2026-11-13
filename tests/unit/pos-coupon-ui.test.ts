@@ -107,7 +107,9 @@ describe("adding a coupon at checkout", () => {
     const chip = panel().querySelector('[data-testid="order-coupon"]')!;
     expect(chip.textContent).toContain("DCNT-SPA-500");
     expect(chip.textContent).toContain("Saves ฿500");
-    expect(chip.textContent).toContain("฿500 off spa services of ฿1,500 or more");
+    // The terms sit behind an ⓘ, not as a sentence in the order.
+    expect(chip.textContent).not.toContain("฿500 off spa services");
+    expect(chip.querySelector('[aria-label="Terms of DCNT-SPA-500"]')).toBeTruthy();
     expect(panel().querySelector('[data-testid="order-coupon-total"]')?.textContent).toBe("Coupon DCNT-SPA-500-฿500");
     expect(panel().textContent).not.toContain("Discounts");
     expect(due()).toBe("฿1,750");
@@ -215,7 +217,7 @@ describe("a coupon that no longer fits", () => {
     expect(warning.textContent).toContain("DCNT-SPA-500 not applied");
     expect(warning.textContent).toContain("Eligible items come to ฿600. This coupon needs at least ฿1,500.");
     expect(panel().textContent).toContain("Fix or remove the coupon before taking payment.");
-    for (const tender of ["Cash", "PromptPay QR", "Card", "Transfer", "Split payment"]) expect(button(tender)?.disabled, tender).toBe(true);
+    for (const tender of ["Cash", "PromptPay", "Card", "Transfer", "Split payment"]) expect(button(tender)?.disabled, tender).toBe(true);
     expect(panel().querySelector('[data-testid="order-coupon-total"]')).toBeNull();
     expect(due()).toBe("฿1,050");
 
@@ -261,7 +263,7 @@ describe("paying with a coupon", () => {
   async function payByCard(fixture: Fixture, orderId: OrderId) {
     await show(fixture, orderId);
     await click(button("Card"));
-    await click(button(/^Confirm card ฿/));
+    await click(button(/^Confirm ฿[\d,.]+ card$/));
     await settle();
   }
 
@@ -318,7 +320,7 @@ describe("paying with a coupon", () => {
     await show(fixture, orderId);
     await click(button("Card"));
     expect(panel().textContent).toContain("Includes coupon DCNT-SPA-500 · -฿500");
-    await click(button("Confirm card ฿1,750"));
+    await click(button("Confirm ฿1,750 card"));
     await settle();
     const view = await readOrder(fixture, orderId);
     expect(view.order.state).toBe("paid");
@@ -365,7 +367,7 @@ describe("order history", () => {
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);
-    const history = [...document.querySelectorAll("summary")].find((el) => el.textContent?.includes("Order history"));
+    const history = [...document.querySelectorAll("summary")].find((el) => el.textContent === "History");
     await click(history);
     const entry = [...document.querySelectorAll('section[aria-label="Order history"] li')].find((li) => li.querySelector("p")?.textContent === "Coupon applied")!;
     expect(entry).toBeDefined();

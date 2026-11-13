@@ -75,7 +75,7 @@ it("uses actual received date in Bangkok and freezes every attempt input after a
   await click("Change");
   await input("#payment-effective", "2026-10-02");
   await input("#payment-effective-time", "14:15");
-  await click("Confirm card ฿100"); await tick();
+  await click("Confirm ฿100 card"); await tick();
   expect(document.body.textContent).toContain("Response lost");
   expect(document.querySelector<HTMLInputElement>("#payment-effective")?.disabled).toBe(false); // disabled by its fieldset
   expect(document.querySelector("#payment-effective")?.closest("fieldset")?.disabled).toBe(true);
@@ -113,8 +113,12 @@ it("amends a wrong tender through the real control while preserving the original
   await correctPayment();
   // The method is a chip: the other three methods, beside what was recorded.
   const panel = document.querySelector<HTMLElement>('[data-testid="correct-payment"]')!;
-  expect(panel.textContent).toContain("Method · recorded as Card ฿100");
-  expect([...panel.querySelectorAll<HTMLButtonElement>('[role="group"] button')].map(b => b.textContent)).toEqual(["Cash", "PromptPay QR", "Transfer", "Wrong method picked", "Wrong amount typed"]);
+  expect(panel.textContent).toContain("Method · was Card");
+  // Reason is labelled, its chips and own text up front; "Wrong amount typed" joins once an amount changes.
+  expect([...panel.querySelectorAll<HTMLButtonElement>('[role="group"] button')].map(b => b.textContent)).toEqual(["Cash", "PromptPay", "Transfer", "Wrong method picked"]);
+  expect(panel.querySelector<HTMLInputElement>("#payment-correction-reason")?.closest("details")).toBeNull();
+  // Nothing changed yet: the button is a plain, disabled Save.
+  expect(button("Save")?.disabled).toBe(true);
   await click("Transfer");
   await click("Wrong method picked");
   await click("Save · Transfer ฿100"); await tick();
@@ -125,7 +129,7 @@ it("amends a wrong tender through the real control while preserving the original
   expect(document.body.textContent).toContain("Paid by card · corrected");
   await expandHistory("History");
   await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent === "Payments")!.click());
-  expect(document.querySelector('[aria-label="Payment record"]')!.textContent).toContain("Bank transfer · ฿100 · corrected");
+  expect(document.querySelector('[aria-label="Payment record"]')!.textContent).toContain("Transfer · ฿100 · corrected");
   await show(backend, orderId);
   expect(current.payments).toEqual(originalPayments);
   expect(current.paymentRecord.effectiveAt).toBe(Date.parse("2026-10-01T03:00:34.567Z"));
@@ -142,7 +146,7 @@ it("retains correction inputs and key on response loss, and preserves original c
   await act(async () => buttons().find(b => b.textContent?.includes("Anna Schmidt · +49"))!.click());
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Correct payer and actual received date");
-  await click("Save correction"); await tick();
+  await click("Save · Card ฿100"); await tick();
   await run(actions.updateCustomer({ customerId: "fxcust000001" as CustomerId, expectedRevision: 0, name: "Edited after recording" }));
   await click("Retry correction"); await tick();
   expect(amendment.mock.calls[1][0]).toEqual(amendment.mock.calls[0][0]);
@@ -178,9 +182,9 @@ it("asks whether money was received with no default, and voids a mistaken entry 
   await receipt(backend, orderId); await pickReceiptAction("Void…");
   const yes = document.querySelector<HTMLButtonElement>('[data-void-choice="received"]')!;
   const no = () => document.querySelector<HTMLButtonElement>('[data-void-choice="unreceived"]')!;
-  expect(document.body.textContent).toContain("Was money received?");
-  expect(yes.textContent).toBe("YesVoid the sale · no refund sent");
-  expect(no().textContent).toBe("NoEntered by mistake · nothing was received");
+  expect(document.body.textContent).toContain("Money received?");
+  expect(yes.textContent).toBe("YesNo refund sent");
+  expect(no().textContent).toBe("NoEntered by mistake");
   // No default: neither runs without a reason.
   expect(yes.disabled).toBe(true); expect(no().disabled).toBe(true);
   await click("Duplicate sale");
@@ -228,7 +232,7 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   for (let i = 0; i < 25; i++) await run(actions.addItem({ orderId, item: { kind: "extra", name: `Item ${i}`, price: 10 } }));
   await run(actions.clearOrder({ orderId }));
   await act(async () => root.render(provide(backend, createElement(OrderHistory, { orderId }))));
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain("Before · removed contents");
   expect(document.body.textContent).toContain("Item 24"); expect(document.body.textContent).toContain("preview@example.com");
   expect(document.body.textContent).toContain("Effective"); expect(document.body.textContent).toContain("Recorded"); expect(document.body.textContent).not.toContain('"unitPrice"');
@@ -238,7 +242,7 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   expect(document.body.textContent).toContain("Item: Tea");
   const loaded = document.querySelector('[aria-label="Order history"]')!.textContent;
   await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toBe(loaded);
   expect(button("Load older order changes")).toBeUndefined();
 });
@@ -250,7 +254,7 @@ it("recovers order history errors and displays loading, empty and continuation s
   const broken: CheckoutBackend = { ...backend, useOrderHistory: () => { if (fail) throw new Error("History offline"); return { results: [], status: "LoadingFirstPage", loadMore }; } };
   vi.spyOn(console, "error").mockImplementation(() => {});
   await act(async () => root.render(provide(broken, createElement(OrderHistory, { orderId }))));
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.body.textContent).toContain("Couldn't load order history");
   fail = false; await click("Try again");
   expect(document.querySelector('[aria-label="Loading order history"]')).toBeTruthy();

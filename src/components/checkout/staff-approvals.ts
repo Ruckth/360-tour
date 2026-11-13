@@ -158,7 +158,7 @@ export function approvalOutcome(request: Pick<ApprovalView, "status" | "approver
     case "stale":
       return "Order changed. Send a new request if you still need it.";
     case "cancelled":
-      return "Request cancelled.";
+      return "Request withdrawn.";
   }
 }
 

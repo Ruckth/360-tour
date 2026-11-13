@@ -84,7 +84,7 @@ describe("open orders list", () => {
     const items = [...list()!.querySelectorAll("li")];
     expect(items.map((li) => li.querySelector("span span")?.textContent)).toEqual(["Order #1045", "Order #1044 · on screen", "Order #1043"]);
     expect(items[0].textContent).toContain("Somchai Prasert · 3 items");
-    expect(items[0].textContent).toContain("Due฿780");
+    expect(items[0].textContent).toContain("Balance due฿780");
     expect(items[1].textContent).toContain("CONF-B +1 · 1 item");
     expect(items[1].textContent).toContain("฿26,000");
     expect(items[1].querySelector("button")?.getAttribute("aria-current")).toBe("true");

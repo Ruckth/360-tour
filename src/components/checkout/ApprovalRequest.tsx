@@ -131,7 +131,7 @@ export function ApprovalDecisionButtons({ busy, onDecide, size, className }: { b
 /**
  * The compact inline request: one line with what is waiting and its status, for an order row, a
  * line or the receipt. While it is pending, approvers get Decline and Approve, and the cashier who
- * asked gets Cancel. Once settled it shows the outcome ("Approved by Ploy").
+ * asked gets Withdraw. Once settled it shows the outcome ("Approved by Ploy").
  *
  * - `request`: a staffApprovals.forOrder or staffApprovals.pending row.
  * - `lineName`: the line it is on, so a refund reads "refund ฿300 · Foot spa".
@@ -168,7 +168,7 @@ export function ApprovalInline({
     try {
       await actions.cancelApproval({ requestId: request._id });
     } catch (err) {
-      setCancelError(checkoutErrorText(err, "Couldn’t cancel the request."));
+      setCancelError(checkoutErrorText(err, "Couldn’t withdraw the request."));
     } finally {
       setCancelling(false);
     }
@@ -188,7 +188,7 @@ export function ApprovalInline({
         {pending ? <><span className="font-semibold">Waiting for a manager</span> · {approvalWhat(request, lineName)}</> : approvalOutcome(request)}
       </span>
       {pending && mine ? (
-        <Button type="button" size="sm" variant="ghost" className="h-8" disabled={cancelling} onClick={() => void cancel()}>Cancel</Button>
+        <Button type="button" size="sm" variant="ghost" className="h-8" disabled={cancelling} onClick={() => void cancel()}>Withdraw</Button>
       ) : null}
       {canDecide ? (
         <ApprovalDecisionButtons
@@ -203,7 +203,7 @@ export function ApprovalInline({
 }
 
 /**
- * The order's request, one line: "Waiting for a manager · ฿150 discount" with Cancel for the
+ * The order's request, one line: "Waiting for a manager · ฿150 discount" with Withdraw for the
  * cashier who asked, then its outcome for a few minutes. `decide` adds Approve and Decline for
  * approvers (off by default).
  */

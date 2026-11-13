@@ -186,7 +186,7 @@ it("updates the current record, its count and the open history together; the iss
   await pickReceiptAction("Correct payment"); await openMore();
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Guest paid on the 3rd");
-  await click("Save correction"); await tick();
+  await click("Save · Card ฿100"); await tick();
   const corrected = historyTime(Date.parse("2026-10-03T01:45:00Z"));
   expect(fact("Money received")).toBe(`${corrected} · Bangkok`);
   expect(fact("Corrections")).toBe("1");
@@ -199,7 +199,7 @@ it("updates the current record, its count and the open history together; the iss
   await click("Wrong method picked");
   await click("Save · Transfer ฿100"); await tick();
   expect(amend.mock.calls[1][0]).toMatchObject({ expectedCorrectionRevision: 1, tenders: [{ method: "transfer", amount: 100 }] });
-  expect(fact("Payments")).toBe("Bank transfer · ฿100 · corrected");
+  expect(fact("Payments")).toBe("Transfer · ฿100 · corrected");
   expect(fact("Corrections")).toBe("2");
   expect(ledger().querySelectorAll("li")).toHaveLength(2);
   expect(ledger().textContent).toContain("Payment recording corrected · #2");

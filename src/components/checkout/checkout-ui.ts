@@ -7,25 +7,32 @@ import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, t
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
 
-/** `confirm` names the method on its money button: "Confirm card ฿1,200", "Confirm ฿500 cash + ฿700 card". */
+/**
+ * One name per method everywhere in checkout: PromptPay, Transfer, Cash, Card. `confirm` names the
+ * method after the money on its button: "Confirm ฿1,200 card", "Confirm ฿500 cash + ฿700 card".
+ */
 export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; confirm: string; hint: string }> = {
   cash: { short: "Cash", long: "Cash", confirm: "cash", hint: "" },
-  promptpay: { short: "PromptPay QR", long: "PromptPay QR", confirm: "PromptPay", hint: "Show the shop's QR and confirm once the transfer shows in the bank app." },
+  promptpay: { short: "PromptPay", long: "PromptPay", confirm: "PromptPay", hint: "Show the shop's QR and confirm once the transfer shows in the bank app." },
   card: { short: "Card", long: "Card", confirm: "card", hint: "Charge the amount on the card terminal, then confirm here." },
-  transfer: { short: "Transfer", long: "Bank transfer", confirm: "transfer", hint: "Confirm once the transfer has arrived in the account." },
+  transfer: { short: "Transfer", long: "Transfer", confirm: "transfer", hint: "Confirm once the transfer has arrived in the account." },
 };
 
-/** "Confirm card ฿1,200": the money button for one non-cash tender. */
-export const tenderConfirmLabel = (method: TenderMethod, amount: number) => `Confirm ${TENDER_LABELS[method].confirm} ${formatMoney(amount)}`;
+/** "฿500 cash + ฿700 card": tenders as the money buttons name them, money first. */
+export const tendersText = (tenders: readonly { method: TenderMethod; amount: number }[]) =>
+  tenders.map((tender) => `${formatMoney(tender.amount)} ${TENDER_LABELS[tender.method].confirm}`).join(" + ");
+
+/** "Confirm ฿1,200 card": the money button for one non-cash tender. */
+export const tenderConfirmLabel = (method: TenderMethod, amount: number) => `Confirm ${tendersText([{ method, amount }])}`;
 
 /**
- * The cash money button: "Confirm cash ฿1,200 · no change", "Confirm cash ฿1,500 · change ฿300",
+ * The cash money button: "Confirm ฿1,200 cash · no change", "Confirm ฿1,500 cash · change ฿300",
  * or "Short ฿200" while less than the amount due is entered (the button is off then).
  */
 export function cashConfirmLabel(due: number, received: number) {
   if (received < due) return { ready: false, text: `Short ${formatMoney(round2(due - received))}` };
   const change = round2(received - due);
-  return { ready: true, text: `Confirm cash ${formatMoney(received)} · ${change ? `change ${formatMoney(change)}` : "no change"}` };
+  return { ready: true, text: `Confirm ${formatMoney(received)} cash · ${change ? `change ${formatMoney(change)}` : "no change"}` };
 }
 
 /** The first round amount strictly above `due` in steps of `step`. */

@@ -16,10 +16,9 @@ test.describe("cashier checkout", () => {
     const order = orderPanel(page);
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
 
-    // The limit explained behind the ⓘ, on tap.
-    await order.getByRole("button", { name: "About the discount limit" }).click();
-    await expect(page.getByRole("tooltip")).toHaveText("Up to 10% without a manager. Coupons don't count.");
-    await page.keyboard.press("Escape");
+    // The limit sits beside the label, no tap needed; screen readers hear the whole rule.
+    await expect(order.getByTestId("discount-limit")).toHaveText("· up to 10% without a manager; coupons don't count");
+    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveAccessibleDescription(/up to 10% without a manager; coupons don't count/);
 
     const discount = order.getByRole("textbox", { name: "Discount" });
     const echo = order.getByTestId("discount-echo");
@@ -50,13 +49,14 @@ test.describe("cashier checkout", () => {
     await send.click();
 
     await expect(order.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager · ฿180 discount");
-    await expect(order.getByTestId("waiting-for-approval")).toBeDisabled();
-    await expect(order.getByRole("button", { name: "Cash", exact: true })).toHaveCount(0);
+    // Waiting shows once, on the bar; the tenders stay off until it is decided.
+    await expect(order.getByTestId("waiting-for-approval")).toHaveCount(0);
+    await expect(order.getByRole("button", { name: "Cash", exact: true })).toBeDisabled();
     // Nothing changed on the order before approval.
     await expect(order.getByTestId("order-due")).toHaveText("฿1,200");
 
-    await order.locator('[data-approval-status="pending"]').getByRole("button", { name: "Cancel" }).click();
-    await expect(order.locator('[data-approval-status="cancelled"]')).toHaveText("Request cancelled.");
+    await order.locator('[data-approval-status="pending"]').getByRole("button", { name: "Withdraw" }).click();
+    await expect(order.locator('[data-approval-status="cancelled"]')).toHaveText("Request withdrawn.");
     await expect(order.getByRole("button", { name: "Cash", exact: true })).toBeEnabled();
   });
 
@@ -156,7 +156,7 @@ test.describe("manager approvals", () => {
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
     await order.getByRole("textbox", { name: "Discount" }).fill("50");
     await expect(order.getByRole("button", { name: "Apply ฿50 (4.17%)" })).toBeEnabled();
-    await expect(order.getByRole("button", { name: "About the discount limit" })).toHaveCount(0);
+    await expect(order.getByTestId("discount-limit")).toHaveCount(0);
     await expect(order.getByTestId("discount-limit-hint")).toHaveCount(0);
   });
 });

@@ -131,8 +131,8 @@ function usePanelFocus<T extends HTMLElement>() {
 type TenderRow = { method: TenderMethod; amount: number; received?: number; amountInput: string; receivedInput: string };
 
 /**
- * Correct payment: what usually changes (the method) and a reason chip up front; the received date,
- * the amount, another tender, the customer and an own reason fold into More. The issued receipt
+ * Correct payment: what usually changes (the method) and the reason (chips and its own text) up
+ * front; the received date, the amount, another tender and the customer fold into More. The issued receipt
  * and the money stay as they are. One attempt key per opened panel; a retry resends the frozen
  * attempt. A cashier whose rules keep payment fixes for managers sends the change as a request.
  */
@@ -162,7 +162,6 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
   useEffect(() => onBusyChange(saving), [saving, onBusyChange]);
   const setRow = (index: number, patch: Partial<TenderRow>) => setTenders((rows) => rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const chips = single && tenders.length === 1 && recorded;
-  const picked = chips && tenders[0].method !== recorded ? tenders[0] : null;
   const locked = saving || attempted;
   // Save only once something differs from the recorded payment: the server refuses "Nothing changed."
   const changed =
@@ -239,15 +238,18 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
     }
   }
 
+  // The money button says the money once something changed: "Save · PromptPay ฿1,800".
+  const money = changed && tenders.length ? tenders.map((t) => `${TENDER_LABELS[t.method].short} ${formatMoney(Number(t.amountInput) || 0)}`).join(" + ") : "";
   const label = saving
     ? ask ? "Sending…" : "Saving…"
     : attempted
       ? "Retry correction"
       : ask
-        ? "Send to manager"
-        : picked
-          ? `Save · ${TENDER_LABELS[picked.method].short} ${formatMoney(Number(picked.amountInput) || 0)}`
-          : "Save correction";
+        ? money ? `Send ${money} to manager` : "Send to manager"
+        : money ? `Save · ${money}` : "Save";
+  // "Wrong amount typed" joins the quick reasons once an amount (under More) differs; the method is what usually changes.
+  const amountChanged = tenders.some((row, i) => Number(row.amountInput) !== reviewedRecord.tenders[i]?.amount);
+  const reasonChips = chips && !amountChanged ? REASON_CHIPS.correct.filter((chip) => chip !== "Wrong amount typed") : REASON_CHIPS.correct;
 
   return (
     <form
@@ -258,14 +260,15 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
       onSubmit={(e) => { e.preventDefault(); void submit(); }}
     >
       <div className="grid gap-0.5">
-        <h3 id="correct-payment-title" ref={title} tabIndex={-1} className="rounded font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">{ask ? "Ask a manager to correct the payment" : "Correct payment"}</h3>
-        <p className="text-xs text-muted-foreground">Fixes the record; the receipt and the money stay as issued.</p>
+        <h3 id="correct-payment-title" ref={title} tabIndex={-1} aria-describedby="correct-payment-help" className="rounded font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">{ask ? "Ask a manager to correct the payment" : "Correct payment"}</h3>
+        {/* The paper beside it shows the receipt unchanged; screen readers still hear it. */}
+        <p id="correct-payment-help" className="sr-only">Fixes the record; the receipt and the money stay as issued.</p>
       </div>
       <fieldset disabled={locked} className="grid gap-3">
         {chips ? (
           <div className="grid gap-2">
             <p id="correct-payment-method" className="text-sm font-medium">
-              Method · recorded as {TENDER_LABELS[recorded].short} {formatMoney(Number(tenders[0].amountInput) || 0)}
+              Method · was {TENDER_LABELS[recorded].short}
             </p>
             <div role="group" aria-labelledby="correct-payment-method" className="flex flex-wrap gap-2">
               {TENDER_METHODS.filter((method) => method !== recorded).map((method) => {
@@ -288,7 +291,7 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
             </div>
           </div>
         ) : null}
-        <ReasonField value={reason} onChange={setReason} chips={REASON_CHIPS.correct} showInput={false} disabled={locked} id="payment-correction-chips" />
+        <ReasonField value={reason} onChange={setReason} chips={reasonChips} disabled={locked} id="payment-correction-reason" />
         <details className="group/more rounded-lg border border-border" open={!chips || undefined}>
           <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-lg px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
             <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/more:rotate-90" />More
@@ -326,7 +329,6 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
             <InlineErrorBoundary message="Couldn't load customer choices. Retry before selecting the payer.">
               <PayerChoice selected={payer} onSelect={setPayer} />
             </InlineErrorBoundary>
-            <ReasonField value={reason} onChange={setReason} chips={[]} label="Own reason" id="payment-correction-reason" disabled={locked} placeholder="Type a reason" />
           </div>
         </details>
       </fieldset>
@@ -390,7 +392,7 @@ export function voidReopens(view: Pick<OrderView, "lines" | "links">) {
 type VoidChoice = "received" | "unreceived";
 
 /**
- * One Void…: a reason, then "Was money received?" with no default. Yes voids the sale
+ * One Void…: a reason, then "Money received?" with no default. Yes voids the sale
  * (pos.voidOrder; its stays and appointments stay paid). No voids it as entered by mistake
  * (pos.voidUnreceivedOrder, which reopens their balances), with one attempt key and the reviewed
  * correction revision, reused by a retry. Each choice says what it does. A cashier whose rules keep
@@ -479,12 +481,13 @@ export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & {
       data-testid="void-panel"
       className={cn("grid scroll-my-4 gap-3 rounded-xl border border-destructive/40 bg-card p-4 print:hidden", TOUCH_TARGETS)}
     >
-      <h3 id="void-title" ref={title} tabIndex={-1} className="rounded font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">Void {receipt}</h3>
+      {/* The receipt number and total are in the header right above. */}
+      <h3 id="void-title" ref={title} tabIndex={-1} aria-label={`Void ${receipt}`} className="rounded font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">Void</h3>
       <ReasonField value={reason} onChange={setReason} chips={REASON_CHIPS.void} disabled={busy !== null || frozen} id="void-reason" />
       <div role="group" aria-labelledby="void-question" className="grid gap-2">
-        <p id="void-question" className="text-sm font-semibold">Was money received?</p>
-        {option("received", ask("received") ? "Yes · ask a manager" : "Yes", attached ? "Void the sale · bookings and appointments stay paid" : "Void the sale · no refund sent")}
-        {option("unreceived", ask("unreceived") ? "No · ask a manager" : "No", attached ? "Entered by mistake · their balances reopen" : "Entered by mistake · nothing was received")}
+        <p id="void-question" className="text-sm font-semibold">Money received?</p>
+        {option("received", ask("received") ? "Yes · ask a manager" : "Yes", attached ? "Bookings stay paid" : "No refund sent")}
+        {option("unreceived", ask("unreceived") ? "No · ask a manager" : "No", attached ? "Balances reopen" : "Entered by mistake")}
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : (ask("received") || ask("unreceived")) && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
     </section>

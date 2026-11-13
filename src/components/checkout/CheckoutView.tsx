@@ -13,7 +13,7 @@ import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
-import { OrderPanel } from "./OrderPanel";
+import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
 import { needsApproval } from "./staff-approvals";
@@ -49,6 +49,8 @@ export function CheckoutView({
   const actions = backend.useActions();
   const [error, setError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Set by the phone bar's Cash: the sheet opens on the cash panel instead of the rows.
+  const [payOnOpen, setPayOnOpen] = useState<"cash" | undefined>();
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
@@ -98,6 +100,7 @@ export function CheckoutView({
   const changeOrder = useCallback(
     (next: OrderId | null) => {
       setSheetOpen(false);
+      setPayOnOpen(undefined);
       // A failed write belongs to the order it was made on; the next order starts without its banner.
       setError("");
       switchTo(next);
@@ -121,6 +124,10 @@ export function CheckoutView({
   const lines = view?.lines ?? [];
   const count = lines.reduce((n, line) => n + line.qty, 0);
   const settled = view && (view.order.state === "paid" || view.order.state === "void");
+  const due = view?.totals.due ?? 0;
+  // The phone bar offers exact cash once the order could be paid with it.
+  const { cannotPay } = usePayState(missing ? null : view);
+  const quickCash = !cannotPay && due > 0 && view?.order.state !== "discarded";
 
   // A paid or void order opened by link goes straight to its receipt.
   useEffect(() => {
@@ -132,15 +139,18 @@ export function CheckoutView({
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 64rem)");
     const onChange = () => {
-      if (wide.matches) setSheetOpen(false);
+      if (wide.matches) {
+        setSheetOpen(false);
+        setPayOnOpen(undefined);
+      }
     };
     wide.addEventListener("change", onChange);
     return () => wide.removeEventListener("change", onChange);
   }, []);
 
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
-  const panel = (onClose?: () => void) => (
-    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} />
+  const panel = (onClose?: () => void, initialPay?: "cash") => (
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} initialPay={initialPay} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
@@ -191,24 +201,39 @@ export function CheckoutView({
         </CheckoutDialogContent>
       </Dialog>
 
-      {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen} modal={!keepHeader}>
-        <SheetTrigger asChild>
-          <button
-            type="button"
-            // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
-            aria-label={`View order ${count} ${count === 1 ? "item" : "items"} ${formatMoney(view?.totals.due ?? 0)} · ${title}, due · open the order`}
-            className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-center gap-3 rounded-2xl bg-primary px-5 py-3 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40"
-          >
-            <ReceiptText aria-hidden className="size-5 shrink-0" />
-            <span className="min-w-0 flex-1 text-left leading-tight">
-              <span className="block truncate text-sm font-semibold">View order</span>{" "}
-              <span className="block truncate text-xs opacity-80">{count} {count === 1 ? "item" : "items"}</span>{" "}
-            </span>
-            <span className="shrink-0 font-serif text-2xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(view?.totals.due ?? 0)}</span>
-            <ChevronUp aria-hidden className="size-5 shrink-0" />
-          </button>
-        </SheetTrigger>
+      {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. Once the
+          order can be paid, Cash ฿X beside it opens the sheet on the cash panel, prefilled; its
+          Confirm is still the one that takes the money. */}
+      <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setPayOnOpen(undefined); }} modal={!keepHeader}>
+        <div className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl bg-primary p-1 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40">
+          <SheetTrigger asChild>
+            <button
+              type="button"
+              // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
+              aria-label={`View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-primary-foreground"
+            >
+              <ReceiptText aria-hidden className="size-5 shrink-0" />
+              <span className="min-w-0 flex-1 leading-tight">
+                <span className="block truncate text-sm font-semibold">View order</span>{" "}
+                <span className="block truncate text-xs opacity-80">{count} {count === 1 ? "item" : "items"}</span>{" "}
+              </span>
+              {quickCash ? null : <span className="shrink-0 font-serif text-2xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(due)}</span>}
+              <ChevronUp aria-hidden className="size-5 shrink-0" />
+            </button>
+          </SheetTrigger>
+          {quickCash ? (
+            <button
+              type="button"
+              data-testid="bar-cash"
+              onClick={() => { setPayOnOpen("cash"); setSheetOpen(true); }}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-4 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-foreground"
+            >
+              <span className="text-sm font-semibold">Cash</span>
+              <span className="font-serif text-xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(due)}</span>
+            </button>
+          ) : null}
+        </div>
         {/* --admin-header is set on <html> by the shell, since the sheet is portaled outside it. */}
         <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
@@ -216,7 +241,7 @@ export function CheckoutView({
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
           {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
           {error ? alert(error) : null}
-          {panel(() => setSheetOpen(false))}
+          {panel(() => { setSheetOpen(false); setPayOnOpen(undefined); }, payOnOpen)}
         </CheckoutSheetContent>
       </Sheet>
     </div>
