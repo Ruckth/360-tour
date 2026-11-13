@@ -84,16 +84,17 @@ test.describe("cashier checkout", () => {
     await expect(page.getByRole("alert")).toHaveCount(0);
   });
 
-  test("cashiers open orders by number and see no order list, profiles or archive", async ({ page }) => {
+  test("cashiers reopen open orders from a list, today's receipts by number, and see no profiles or archive", async ({ page }) => {
     await open(page, "?role=cashier&scenario=spa");
     await page.getByRole("button", { name: "Orders", exact: true }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("radio", { name: "Paid" })).toHaveCount(0);
-    await dialog.getByRole("textbox", { name: "Order number" }).fill("999");
-    await dialog.getByRole("button", { name: "Open" }).click();
+    await expect(dialog.getByRole("list", { name: "Open orders" }).getByRole("button")).toHaveCount(2);
+    await dialog.getByRole("textbox", { name: "Go to order #" }).fill("999");
+    await dialog.getByRole("button", { name: "Go", exact: true }).click();
     await expect(dialog.getByText("Not available.")).toBeVisible();
-    await dialog.getByRole("textbox", { name: "Order number" }).fill("1042");
-    await dialog.getByRole("button", { name: "Open" }).click();
+    await dialog.getByRole("textbox", { name: "Go to order #" }).fill("1042");
+    await dialog.getByRole("button", { name: "Go", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(orderPanel(page).getByTestId("order-panel-title")).toHaveText("Order #1042");
 

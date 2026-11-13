@@ -140,7 +140,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
       const width = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
       expect.soft(width.scroll, "sheet has no horizontal overflow").toBeLessThanOrEqual(width.client + 1);
 
-      for (const label of ["Close order", "Save & close", "More order actions"]) {
+      for (const label of ["Close order", "More order actions"]) {
         await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
       }
 
@@ -236,7 +236,7 @@ test.describe("order panel at normal text keeps its compact layout", () => {
       await open(page, viewport, "?lines=13");
       const sheet = await openOrderSheet(page);
       const tops: number[] = [];
-      for (const label of [...TENDERS, "Close order", "Save & close"]) {
+      for (const label of [...TENDERS, "Close order", "More order actions"]) {
         // Visible as laid out, without any scrolling.
         const box = (await sheet.getByRole("button", { name: label, exact: true }).boundingBox())!;
         expect(box.y, `${label} top`).toBeGreaterThanOrEqual(0);

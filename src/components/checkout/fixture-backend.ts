@@ -837,12 +837,6 @@ export function createFixtureBackend(options: { bookings?: Partial<FixtureBookin
       audit({ billId: order._id, kind: "customer_unlinked", customerId: order.customerId });
       return { orderId };
     }),
-    saveOrder: ({ orderId }) => later(() => {
-      const order = editableOrder(orderId);
-      if (!order.hasItems) throw new Error("Add an item before saving the order");
-      patchOrder(orderId, { updatedAt: Date.now() });
-      return null;
-    }),
     clearOrder: ({ orderId }) => later(() => {
       editableOrder(orderId);
       const lines = linesOf(orderId);

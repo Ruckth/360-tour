@@ -49,7 +49,7 @@ export function OrderStrip({
   displayControl?: ReactNode;
 }) {
   const actions = useCheckoutBackend().useActions();
-  // Cashiers can't list orders (an operations area); they open one by its number.
+  // Cashiers get the open orders and today's receipts by number, not the full order lists (an operations area).
   const cashier = useStaffAccess().role === "cashier";
   const [panel, setPanel] = useState<Panel>(null);
   const [ordersPending, setOrdersPending] = useState(false);
@@ -173,9 +173,9 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>{cashier ? "Open an unpaid order or one of today’s receipts by its number." : "Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device."}</DialogDescription>
+              <DialogDescription>{cashier ? "Unpaid orders, latest first." : "Open an unpaid order to keep selling or take payment, or a paid one to see its receipt. Saved orders reopen here on any device."}</DialogDescription>
             </DialogHeader>
-            {panel === "orders" ? (cashier ? <OrderLookup onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
+            {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
         </Dialog>
         <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
@@ -526,8 +526,70 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   );
 }
 
-/** A cashier's way back to an order: its number. Older receipts read as not available. */
-export function OrderLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
+/**
+ * A cashier's way back to an order: the unpaid ones, as pos.listOpenOrders returns them (latest
+ * change first), one tap each. Today's paid receipts aren't listed, so they open by number below.
+ */
+export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
+  return (
+    <div className="grid gap-4">
+      <InlineErrorBoundary message="Couldn't load orders. Check your connection and try again.">
+        <OpenOrdersList currentId={currentId} onOpen={onOpen} />
+      </InlineErrorBoundary>
+      <OrderNumberLookup onOpen={onOpen} />
+    </div>
+  );
+}
+
+function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
+  const { results, status, loadMore } = useCheckoutBackend().useOpenOrders();
+  if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
+  if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">No open orders.</p>;
+  return (
+    <div className="grid gap-2">
+      <ul className="max-h-[50dvh] divide-y divide-border overflow-y-auto" aria-label="Open orders">
+        {results.map((row) => (
+          <li key={row._id}>
+            <button
+              type="button"
+              onClick={() => onOpen(row._id)}
+              aria-current={row._id === currentId ? "true" : undefined}
+              className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">
+                  {row.title}
+                  {row._id === currentId ? <span className="font-normal text-muted-foreground"> · on screen</span> : null}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {row.customerName ?? (row.bookingReference ? (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference) : "No customer")}
+                  {" · "}
+                  {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="text-right">
+                  <span className="block text-xs text-muted-foreground">Due</span>
+                  <span className="block text-sm font-semibold tabular-nums">{formatMoney(row.due, row.currency)}</span>
+                </span>
+                <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {status === "CanLoadMore" || status === "LoadingMore" ? (
+        <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(PAGE)}>
+          {status === "LoadingMore" ? <Spinner label="Loading more orders" className="text-current" /> : null}
+          Load more
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Today's receipts (and any open order) by number. Older receipts read as not available. */
+function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   const [text, setText] = useState("");
   const [number, setNumber] = useState<number | null>(null);
   const found = useCheckoutBackend().useFindOrder(number);
@@ -544,11 +606,11 @@ export function OrderLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) 
     setNumber(Number.isSafeInteger(value) && value > 0 ? value : null);
   }
   return (
-    <form onSubmit={submit} className="grid gap-3">
-      <Label htmlFor="order-lookup">Order number</Label>
+    <form onSubmit={submit} className="grid gap-2 border-t border-border pt-3">
+      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Go to order #</Label>
       <div className="flex gap-2">
-        <Input id="order-lookup" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. 1043" autoFocus />
-        <Button type="submit" disabled={!text.replace(/\D/g, "")}>Open</Button>
+        <Input id="order-lookup" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. 1043" />
+        <Button type="submit" variant="outline" disabled={!text.replace(/\D/g, "")}>Go</Button>
       </div>
       {number !== null && found === undefined ? <Spinner label="Finding order" /> : null}
       {number !== null && found === null ? <p role="status" className="text-sm text-muted-foreground">Not available.</p> : null}

@@ -56,7 +56,7 @@ export type OrdersPage = {
 type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
-  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
+  | "linkCustomer" | "unlinkCustomer" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
   | "linkPaidLine" | "unlinkPaidLine" | "refundLine"
   | "applyOrderCoupon" | "removeOrderCoupon" | "recheckOrderCoupon";
 type ApprovalAction = "create" | "approve" | "reject" | "cancel";

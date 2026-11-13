@@ -48,7 +48,6 @@ export function CheckoutView({
   const view = backend.useOrder(orderId);
   const actions = backend.useActions();
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
   const access = useStaffAccess();
@@ -99,7 +98,6 @@ export function CheckoutView({
   const changeOrder = useCallback(
     (next: OrderId | null) => {
       setSheetOpen(false);
-      setSaved("");
       // A failed write belongs to the order it was made on; the next order starts without its banner.
       setError("");
       switchTo(next);
@@ -140,17 +138,9 @@ export function CheckoutView({
     return () => wide.removeEventListener("change", onChange);
   }, []);
 
-  const onSaved = useCallback(
-    (savedTitle: string) => {
-      changeOrder(null);
-      setSaved(`${savedTitle} saved. Reopen it from Orders.`);
-    },
-    [changeOrder],
-  );
-
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void) => (
-    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onSaved={onSaved} onPaid={toReceipt} onClose={onClose} />
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
@@ -175,9 +165,6 @@ export function CheckoutView({
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
-      {saved && !message ? (
-        <p role="status" className="border-b border-border/70 bg-muted/50 px-4 py-2 text-sm text-muted-foreground sm:px-6">{saved}</p>
-      ) : null}
       <div className="flex min-h-0 flex-1">
         {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
