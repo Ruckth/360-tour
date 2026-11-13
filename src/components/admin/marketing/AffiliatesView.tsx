@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -20,8 +21,14 @@ import {
   useNotice,
 } from "./MarketingBits";
 import { useConfirm } from "../ConfirmDialog";
+import { CampaignPicker } from "./CampaignPicker";
 import { marketingErrorText } from "./marketing-format";
-import type { CampaignRow, CouponRow, MarketingProperty } from "./types";
+import type {
+  CampaignRow,
+  CouponRow,
+  MarketingActions,
+  MarketingProperty,
+} from "./types";
 
 type SavePartner = FunctionArgs<typeof api.marketingAffiliates.saveAffiliate>;
 type Decision = FunctionArgs<typeof api.marketingAffiliates.reviewCredit>;
@@ -36,7 +43,21 @@ export type AffiliateActions = {
   coupon: (
     args: FunctionArgs<typeof api.marketingAffiliates.assignCoupon>,
   ) => Promise<unknown>;
+  /** Makes the campaign picked with "+ New campaign"; left out when the role can't. */
+  saveCampaign?: MarketingActions["saveCampaign"];
 };
+
+/** "Anna Spa & Co." → "anna-spa-co": a permanent link name that follows the partner name. */
+export function partnerSlug(name: string) {
+  return name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+/, "")
+    .slice(0, 30)
+    .replace(/-+$/, "");
+}
 const money = (amount: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "THB" }).format(
     amount,
@@ -133,7 +154,12 @@ export function AffiliatesView({
           </p>
         </div>
         {canManage && (
-          <Button onClick={() => sheet.open({})} disabled={!campaigns?.length}>
+          <Button
+            onClick={() => sheet.open({})}
+            disabled={
+              !campaigns || (!campaigns.length && !actions.saveCampaign)
+            }
+          >
             New partner
           </Button>
         )}
@@ -144,7 +170,7 @@ export function AffiliatesView({
           Partner results are limited. Counts and totals may be incomplete.
         </Callout>
       )}
-      {campaigns?.length === 0 && (
+      {campaigns?.length === 0 && !actions.saveCampaign && (
         <Callout>Create a campaign before adding a partner.</Callout>
       )}
       {partners === undefined ? (
@@ -269,8 +295,8 @@ export function AffiliatesView({
                 : "New partner"}
             </SheetTitle>
             <SheetDescription>
-              Names and scope affect future referrals. The named link stays
-              permanent. No messages are sent to the contact.
+              Changes apply to future referrals · the link name is permanent ·
+              no messages are sent
             </SheetDescription>
           </>
         }
@@ -332,6 +358,23 @@ function PartnerEditor({
     onDirtyChange,
   );
   const { form, set } = editor;
+  // The link name follows the partner name until someone types in it; a saved partner's is permanent.
+  const [slugEdited, setSlugEdited] = useState(!!partner);
+  const [moreOpen, setMoreOpen] = useState(
+    () =>
+      !!(
+        partner?.contactEmail ||
+        partner?.startsOn ||
+        partner?.endsOn ||
+        partner?.notes ||
+        partner?.propertySlugs?.length
+      ),
+  );
+  const datesInvalid = !!(
+    form.startsOn &&
+    form.endsOn &&
+    form.startsOn > form.endsOn
+  );
   const validation = !form.name.trim()
     ? "Enter a partner name."
     : !/^[a-z0-9][a-z0-9-]{0,29}$/.test(form.slug)
@@ -365,7 +408,10 @@ function PartnerEditor({
       error={editor.saveError}
       submitLabel="Save partner"
       onCancel={onCancel}
-      onSubmit={(event) =>
+      onSubmit={(event) => {
+        // The end date sits under More options; open it so the error can take focus.
+        if (datesInvalid && form.name.trim() && form.campaignId)
+          flushSync(() => setMoreOpen(true));
         void editor.submit(
           event,
           !form.name.trim()
@@ -390,8 +436,8 @@ function PartnerEditor({
             onDone();
           },
           "Couldn’t save partner.",
-        )
-      }
+        );
+      }}
     >
       {editor.submitted && validation && (
         <p role="alert" className="text-sm text-destructive">
@@ -404,7 +450,10 @@ function PartnerEditor({
           required
           maxLength={120}
           value={form.name}
-          onChange={(e) => set("name", e.target.value)}
+          onChange={(e) => {
+            set("name", e.target.value);
+            if (!slugEdited) set("slug", partnerSlug(e.target.value));
+          }}
         />
       </Field>
       <Field label="Permanent link name" id="partner-slug">
@@ -414,91 +463,116 @@ function PartnerEditor({
           pattern="[a-z0-9][a-z0-9-]{0,29}"
           disabled={!!partner}
           value={form.slug}
-          onChange={(e) => set("slug", e.target.value.toLowerCase())}
+          onChange={(e) => {
+            set("slug", e.target.value.toLowerCase());
+            setSlugEdited(true);
+          }}
         />
         <p className="text-xs text-muted-foreground">
-          /r/{form.slug || "anna"} · 1–30 lowercase letters, numbers or hyphens.
+          /r/{form.slug || "anna"} · 1–30 lowercase letters, numbers or hyphens
         </p>
       </Field>
       <Field label="Campaign" id="partner-campaign">
-        <select
+        <CampaignPicker
           id="partner-campaign"
-          className={fieldClass}
           value={form.campaignId}
-          onChange={(e) =>
-            set("campaignId", e.target.value as Id<"marketingCampaigns">)
+          onChange={(value) =>
+            set("campaignId", value as Id<"marketingCampaigns">)
           }
-        >
-          {campaigns.map((c) => (
-            <option key={c._id} value={c._id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Contact email (optional)" id="partner-email">
-        <Input
-          id="partner-email"
-          type="email"
-          value={form.contactEmail}
-          onChange={(e) => set("contactEmail", e.target.value)}
+          campaigns={campaigns}
+          onCreate={actions.saveCampaign}
+          defaults={{
+            name: form.name.trim()
+              ? `${form.name.trim()} referrals`
+              : "Partner referrals",
+            source: "partner",
+            medium: "affiliate",
+          }}
         />
-        <p className="text-xs text-muted-foreground">
-          Used to flag possible self-referrals for manual review.
-        </p>
       </Field>
-      <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm font-medium">
-          Eligible properties
-        </legend>
-        <p className="text-xs text-muted-foreground">
-          Leave all unchecked to allow every property.
-        </p>
-        {properties.map((p) => (
-          <label key={p._id} className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.propertySlugs.includes(p.slug)}
-              onChange={(e) =>
-                set(
-                  "propertySlugs",
-                  e.target.checked
-                    ? [...form.propertySlugs, p.slug]
-                    : form.propertySlugs.filter((s) => s !== p.slug),
-                )
-              }
+      <details
+        open={moreOpen}
+        onToggle={(event) => setMoreOpen(event.currentTarget.open)}
+        className="group rounded-lg border border-border"
+      >
+        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
+          <span
+            aria-hidden
+            className="text-muted-foreground transition group-open:rotate-90"
+          >
+            ›
+          </span>
+          <span>More options</span>
+          <span className="font-normal text-muted-foreground">
+            Contact, villas, dates, notes
+          </span>
+        </summary>
+        <div className="grid gap-4 border-t border-border p-3">
+          <Field label="Contact email (optional)" id="partner-email">
+            <Input
+              id="partner-email"
+              type="email"
+              value={form.contactEmail}
+              onChange={(e) => set("contactEmail", e.target.value)}
             />
-            {p.name}
-          </label>
-        ))}
-      </fieldset>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Starts on (optional)" id="partner-start">
-          <Input
-            id="partner-start"
-            type="date"
-            value={form.startsOn}
-            onChange={(e) => set("startsOn", e.target.value)}
-          />
-        </Field>
-        <Field label="Ends on (optional)" id="partner-end">
-          <Input
-            id="partner-end"
-            type="date"
-            value={form.endsOn}
-            onChange={(e) => set("endsOn", e.target.value)}
-          />
-        </Field>
-      </div>
-      <Field label="Notes" id="partner-notes">
-        <textarea
-          id="partner-notes"
-          maxLength={4000}
-          className={fieldClass}
-          value={form.notes}
-          onChange={(e) => set("notes", e.target.value)}
-        />
-      </Field>
+            <p className="text-xs text-muted-foreground">
+              Used to flag possible self-referrals for manual review.
+            </p>
+          </Field>
+          <fieldset className="grid gap-2">
+            <legend className="mb-2 text-sm font-medium">
+              Eligible properties
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              Leave all unchecked to allow every property.
+            </p>
+            {properties.map((p) => (
+              <label key={p._id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.propertySlugs.includes(p.slug)}
+                  onChange={(e) =>
+                    set(
+                      "propertySlugs",
+                      e.target.checked
+                        ? [...form.propertySlugs, p.slug]
+                        : form.propertySlugs.filter((s) => s !== p.slug),
+                    )
+                  }
+                />
+                {p.name}
+              </label>
+            ))}
+          </fieldset>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Starts on (optional)" id="partner-start">
+              <Input
+                id="partner-start"
+                type="date"
+                value={form.startsOn}
+                onChange={(e) => set("startsOn", e.target.value)}
+              />
+            </Field>
+            <Field label="Ends on (optional)" id="partner-end">
+              <Input
+                id="partner-end"
+                type="date"
+                value={form.endsOn}
+                onChange={(e) => set("endsOn", e.target.value)}
+              />
+            </Field>
+          </div>
+          <Field label="Notes" id="partner-notes">
+            <textarea
+              id="partner-notes"
+              maxLength={4000}
+              className={fieldClass}
+              value={form.notes}
+              onChange={(e) => set("notes", e.target.value)}
+            />
+          </Field>
+        </div>
+      </details>
       {partner && (
         <div className="grid gap-2 rounded-lg border border-border p-3">
           <h3 className="text-sm font-semibold">Unique partner coupons</h3>
@@ -737,7 +811,10 @@ export function CreditReview({
               ))}
             </div>
             {(credit.reasonHidden || credit.reason) && (
-              <p className="text-sm">Last decision: {credit.reasonHidden ? "Reason hidden" : credit.reason}</p>
+              <p className="text-sm">
+                Last decision:{" "}
+                {credit.reasonHidden ? "Reason hidden" : credit.reason}
+              </p>
             )}
             {canReview && (
               <Button
@@ -847,7 +924,9 @@ export function CreditReview({
                   <p>
                     Net {money(h.eligibleNet)} · Approved {money(h.approvedNet)}
                   </p>
-                  {(h.reasonHidden || h.reason) && <p>{h.reasonHidden ? "Reason hidden" : h.reason}</p>}
+                  {(h.reasonHidden || h.reason) && (
+                    <p>{h.reasonHidden ? "Reason hidden" : h.reason}</p>
+                  )}
                 </li>
               ))}
             </ol>
