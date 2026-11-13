@@ -21,3 +21,12 @@ export function useRouter() {
 export function useParams() {
   return {};
 }
+export function useSelectedLayoutSegment() {
+  return null;
+}
+// next-intl's navigation helpers (`@/i18n/navigation`) import these; fixtures never redirect.
+export function redirect(href: string): never {
+  navigate(href);
+  throw new Error(`redirect(${href}) in a browser fixture`);
+}
+export const permanentRedirect = redirect;

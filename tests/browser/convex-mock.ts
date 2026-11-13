@@ -76,6 +76,7 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   const name = getFunctionName(query);
   // Picker fixtures supply their catalog through the real component's initial props.
   if (name === "adminServices:listServices" || name === "adminServices:listStaff") return undefined;
+  if (name === "adminServices:listSchedule") return { staff: [], services: [], appointments: [], blocks: [], shifts: [], patternHistory: [] };
   if (name === "pos:ordersForBooking") return {
     balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
     activeOrder: null,
