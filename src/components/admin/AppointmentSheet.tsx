@@ -57,7 +57,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type StatusAction = "arrived" | "in_service" | "completed" | "no_show" | "paid" | "refund";
+type StatusAction = "arrived" | "in_service" | "completed" | "no_show";
 
 const NEXT_ACTIONS: Record<AppointmentStatus, StatusAction[]> = {
   booked: ["arrived", "in_service", "completed", "no_show"],
@@ -73,13 +73,11 @@ const ACTION_LABELS: Record<StatusAction, string> = {
   in_service: "Start service",
   completed: "Complete",
   no_show: "No-show",
-  paid: "Mark paid",
-  refund: "Record refund",
 };
 
 const CANCELLABLE: AppointmentStatus[] = ["booked", "arrived"];
 
-type Dialog = "reschedule" | "turnaround" | "cancel" | "correct" | "payment" | null;
+type Dialog = "reschedule" | "turnaround" | "cancel" | "correct" | null;
 
 export function AppointmentSheet({
   appointment,
@@ -112,11 +110,9 @@ export function AppointmentSheet({
 
   async function run(action: StatusAction) {
     if (!appointment || pending !== null || feePending) return;
-    if (action === "paid") { setDialog("payment"); return; }
     setPending(action);
     setError("");
     try {
-      if (action === "refund") return;
       await updateStatus({ appointmentId: appointment._id, status: action, expectedRevision: appointmentRevision(appointment) });
     } catch (err) {
       setError(errorText(err, "Could not update the appointment."));
@@ -126,9 +122,7 @@ export function AppointmentSheet({
   }
 
   const actions = appointment
-    ? [
-        ...NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now),
-      ]
+    ? NEXT_ACTIONS[appointment.status].filter((action) => action !== "no_show" || appointment.start <= now)
     : [];
   const status = appointment ? appointmentStatus(displayStatus(appointment)) : null;
   const turnaround = appointment ? turnaroundMinutes(appointment) : 0;
@@ -222,7 +216,7 @@ export function AppointmentSheet({
                   {actions.map((action) => (
                     <Button
                       key={action}
-                      variant={action === "no_show" || action === "refund" ? "outline" : action === "paid" ? "secondary" : "default"}
+                      variant={action === "no_show" ? "outline" : "default"}
                       onClick={() => run(action)}
                       disabled={feePending || pending !== null}
                     >
@@ -271,7 +265,7 @@ export function AppointmentSheet({
             )}
           </div>
         ) : null}
-        {appointment && (dialog === "correct" || dialog === "payment") ? <AppointmentCorrectionDialog key={dialog} appointment={appointment} payment={dialog === "payment"} onClose={() => setDialog(null)} /> : null}
+        {appointment && dialog === "correct" ? <AppointmentCorrectionDialog appointment={appointment} onClose={() => setDialog(null)} /> : null}
         {appointment && dialog === "reschedule" ? (
           <RescheduleDialog appointment={appointment} serviceName={serviceName} staffById={staffById} onClose={() => setDialog(null)} />
         ) : null}
