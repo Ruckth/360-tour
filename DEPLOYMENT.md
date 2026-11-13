@@ -116,7 +116,7 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 ## Production Data
 
-Seed scenarios are for a deliberately fresh, isolated deployment. They are **not** an upgrade or repair step for a nonempty production, development or Preview database. `maintenance/seed:seedAll` checks every application table and throws `Seed requires an empty database` if any contains a record, including when the requested scenario is `empty`. It never clears data or returns `already_seeded`.
+Seed scenarios are for a deliberately fresh, isolated deployment. They are **not** an upgrade or repair step for a nonempty production, development or Preview database. `maintenance/seed:seedAll` checks every application table and throws `Seed requires an empty database; <table> is not empty` if any contains a record, including when the requested scenario is `empty`. It never clears data or returns `already_seeded`.
 
 After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default) or `busy-weekend`:
 
