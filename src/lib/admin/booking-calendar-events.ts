@@ -1,6 +1,6 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/bookings/model";
+import type { AdminBooking } from './booking-types';
 import { format } from "date-fns";
 import { addDaysIso } from "@/lib/booking/dates";
 import type { CalendarEvent } from "@/components/reui/event-calendar/event-calendar-types";

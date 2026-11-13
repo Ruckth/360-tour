@@ -3,12 +3,12 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminQuery, internalMutation, internalQuery, publicMutation, publicQuery, requireAdmin } from '../auth/model';
-import { releaseBookingDates } from '../lib/availabilityWrites';
+import { releaseBookingDates } from './private/availabilityWrites';
 import { stayMoney } from '../lib/stayMoney';
-import { writeBooking } from '../lib/bookingMoney';
-import { bookingsByPhone } from '../lib/bookingPhone';
-import { createBookingRecord, loadProperty, type BookingSource } from '../lib/bookingWrites';
-import { activeGuestCoupon, assertGuestSuppliedCoupon, couponSnapshotIdentity, quoteChatStay, type ChatCouponSnapshot } from '../lib/chatCoupon';
+import { writeBooking } from './private/money';
+import { bookingsByPhone } from './private/bookingPhone';
+import { createBookingRecord, loadProperty, type BookingSource } from './private/bookingWrites';
+import { activeGuestCoupon, assertGuestSuppliedCoupon, couponSnapshotIdentity, quoteChatStay, type ChatCouponSnapshot } from './private/chatCoupon';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../lib/chatWriteGuard';
 import { demoCode, signProposal, verifyProposal } from '../lib/codes';
@@ -22,7 +22,7 @@ import { bookingHoldExpiresAt } from '../lib/siteSettings';
 import { getEffectiveSettings } from '../settings/model';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../lib/validation';
 import { currentClaim, durableToolValidator, durableTurnValidator, startDurablePreparation, withDurableTool } from '../messaging/model';
-import { markBookingPaid, queueCancellationEmail } from './model';
+import { markBookingPaid, queueCancellationEmail } from './private/stays';
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,

@@ -1,9 +1,10 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, cleanReason, effectiveTime, writeBooking, type BookingPatch } from '../../lib/bookingMoney';
+import { assertBookingRevision, cleanReason, effectiveTime, type BookingPatch } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
 import { manualPaymentMethod } from '../../lib/financeValidators';
-import { paymentAmendBlocker } from '../../lib/stayCorrections';
-import { loadBooking } from '../model';
+import { paymentAmendBlocker } from '../private/stayCorrections';
+import { loadBooking } from '../private/stays';
 
 /**
  * Corrects how or when a hand-entered payment was received (wrong method, wrong date, note). The

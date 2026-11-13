@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { AdminBooking } from "convex/bookings/model";
+import type { AdminBooking } from '../../lib/admin/booking-types';
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { PlusIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

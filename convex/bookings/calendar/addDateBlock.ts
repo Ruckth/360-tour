@@ -1,7 +1,7 @@
 import { adminMutation } from '../../auth/model';
-import { writeDateBlockRows } from '../../lib/availabilityWrites';
+import { writeDateBlockRows } from '../private/availabilityWrites';
 import { appendRecordHistory } from '../../settings/model';
-import { dateBlockArgs, validateDateBlock } from '../model';
+import { dateBlockArgs, validateDateBlock } from '../private/stays';
 
 export const addDateBlock = adminMutation({
 	args: dateBlockArgs,

@@ -154,7 +154,7 @@ it('retires the former root messaging endpoints', async () => {
 	for (const path of ['adminReply:claim', 'inboxLifecycle:expireAnswer', 'chatAi:consumeChatLimit', 'chatKnowledge:alertStaffForHandoff']) {
 		await expect(t.mutation(makeFunctionReference<'mutation'>(path), {})).rejects.toThrow('Could not find module for:');
 	}
-	await expect(t.action(makeFunctionReference<'action'>('emails:sendStaffAlert'), {})).rejects.toThrow('there is no such export');
+	await expect(t.action(makeFunctionReference<'action'>('emails:sendStaffAlert'), {})).rejects.toThrow('Could not find module for:');
 	await expect(t.mutation(makeFunctionReference<'mutation'>('crons:cleanRateLimits'), {})).rejects.toThrow('there is no such export');
 });
 

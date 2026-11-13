@@ -5,8 +5,8 @@ import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 import { holdCouponRedemption } from './marketing/couponRedemptions';
-import { writeBooking } from './lib/bookingMoney';
-import { createBookingRecord } from './lib/bookingWrites';
+import { writeBooking } from './bookings/private/money';
+import { createBookingRecord } from './bookings/private/bookingWrites';
 
 const modules = import.meta.glob('./**/*.ts');
 const email = 'admin@example.com';
@@ -59,7 +59,7 @@ async function setup(limits: Limits = {}) {
   const expire = async (id: Id<'bookings'>, sessionId?: string) => {
     await t.run(ctx => ctx.db.patch(id, { unpaidHoldExpiresAt: NOW - 1, stripeCheckoutExpiresAt: NOW - 1 }));
     if (sessionId) await t.mutation(internal.bookings.payments.stripe.expireCheckout, { bookingId: id, sessionId });
-    else await t.mutation(internal.crons.expireBookingHold, { bookingId: id, expectedRevision: 0 });
+    else await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: id, expectedRevision: 0 });
   };
   const reconcile = async () => {
     const rows = await t.run(ctx => ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).take(100));

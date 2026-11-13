@@ -5,13 +5,13 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
 import { isHistoricalStay, resolveNotify } from '../lib/bookingMoney';
 import { stayMoney } from '../lib/stayMoney';
-import { assertCapacity, assertStayDates, assertStayFree } from '../lib/bookingWrites';
+import { assertCapacity, assertStayDates, assertStayFree } from './private/bookingWrites';
 import { nightsBetween } from '../lib/dates';
 import { readBudget } from '../lib/readBudget';
-import { stayFinancials } from '../lib/stayCorrections';
-import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from '../lib/stayOverlap';
+import { stayFinancials } from './private/stayCorrections';
+import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './private/stayOverlap';
 import { assertValidIsoDate } from '../lib/validation';
-import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, SEARCH_SCAN_LIMIT, toAdminBooking } from './model';
+import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
 
 /**
  * Villas, bookings, OTA blocks and host date blocks overlapping [from, to) for the admin calendar.

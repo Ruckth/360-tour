@@ -1,13 +1,14 @@
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { queueCancellationEmail } from '../bookings/model';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify } from '../../lib/bookingMoney';
+import { activeSourceLink, orderLineLinks } from '../../lib/lineLinks';
+import { isSettledOrder } from '../../lib/orderLinks';
+import { lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
+import { assertMoney, stayMoney } from '../../lib/stayMoney';
 import { releaseBookingDates } from './availabilityWrites';
-import { lineNet, orderTitle, roundMoney } from './orderMath';
-import { assertMoney, stayMoney } from './stayMoney';
-import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify, writeBooking } from './bookingMoney';
-import { isSettledOrder } from './orderLinks';
-import { activeSourceLink, orderLineLinks } from './lineLinks';
+import { writeBooking } from './money';
+import { queueCancellationEmail } from './stays';
 
 /**
  * Refunds, cancellations and mistaken-entry corrections on a stay (see lib/bookingMoney.ts for the
@@ -16,6 +17,7 @@ import { activeSourceLink, orderLineLinks } from './lineLinks';
  */
 
 type ReadCtx = QueryCtx | MutationCtx;
+
 type Booking = Doc<'bookings'>;
 
 export type RefundInput = {
@@ -33,6 +35,7 @@ export type RefundInput = {
 
 /** At most this many rows of one booking's payments or refunds are read; far above any real stay. */
 export const MAX_STAY_ROWS = 100;
+
 const MAX_ORDER_LINES = 100;
 
 export const NOTHING_TO_REFUND = 'Nothing is left to refund on this booking.';
@@ -217,7 +220,6 @@ export function paymentAmendBlocker(payment: Doc<'bookingPayments'>): string | n
 	if (payment.origin === 'pos') return 'This was paid on an order. Correct the tender or date on the order’s receipt.';
 	return null;
 }
-
 
 export async function stayFinancials(ctx: ReadCtx, booking: Booking) {
 	const money = stayMoney(booking);

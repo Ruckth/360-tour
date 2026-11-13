@@ -1,10 +1,10 @@
-import { guestCouponFromHistory } from './guestCouponCode';
 import { v, type Infer } from 'convex/values';
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
-import { evaluateOffer, normalizeCouponCode, type OfferResult } from './offers';
-import { couponVersion } from '../marketing/model';
-import { resortTodayIso } from './dates';
+import type { Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { resortTodayIso } from '../../lib/dates';
+import { guestCouponFromHistory } from '../../lib/guestCouponCode';
+import { evaluateOffer, normalizeCouponCode, type OfferResult } from '../../lib/offers';
+import { couponVersion } from '../../marketing/model';
 import { quoteBookableStay, type StayInput } from './bookingWrites';
 
 export const chatCouponValidator = v.object({

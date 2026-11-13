@@ -1,7 +1,7 @@
 import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
 import type { ActionCtx } from '../../_generated/server';
-import { assertCapacity, assertStayDates } from '../../lib/bookingWrites';
+import { assertCapacity, assertStayDates } from '../../bookings/model';
 import { calculateDirectQuote, maxSavings } from '../../lib/pricing';
 import { humanToolResult } from './presentation';
 import { ToolArgs } from './types';

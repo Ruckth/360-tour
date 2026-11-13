@@ -1,11 +1,12 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { blockBookingDates } from '../../lib/availabilityWrites';
-import { assertBookingRevision, assertNoLiveCheckout, cleanReason, resolveNotify, writeBooking } from '../../lib/bookingMoney';
+import { blockBookingDates } from '../private/availabilityWrites';
+import { assertBookingRevision, assertNoLiveCheckout, cleanReason, resolveNotify } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
 import { stayMoney } from '../../lib/stayMoney';
-import { assertStayFree } from '../../lib/bookingWrites';
+import { assertStayFree } from '../private/bookingWrites';
 import { demoCode } from '../../lib/codes';
-import { archivedVillaPolicy, loadBooking, queueBookingEmails } from '../model';
+import { archivedVillaPolicy, loadBooking, queueBookingEmails } from '../private/stays';
 
 /**
  * Reopens a cancelled, expired or refunded stay. Its refund records and payments stay; money still

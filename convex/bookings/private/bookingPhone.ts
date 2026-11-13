@@ -1,4 +1,4 @@
-import type { QueryCtx } from '../_generated/server';
+import type { QueryCtx } from '../../_generated/server';
 
 /** Match the same international number with or without '+', never infer a country for access checks. */
 export async function bookingsByPhone(ctx: QueryCtx, phone: string, limit: number) {

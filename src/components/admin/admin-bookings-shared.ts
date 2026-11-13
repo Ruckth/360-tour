@@ -2,7 +2,7 @@
 import { bahtToSatang } from 'convex/shared/money';
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/bookings/model";
+import type { AdminBooking } from '../../lib/admin/booking-types';
 import { format } from "date-fns";
 import { addDaysIso, isoToDate, todayIsoResort } from "@/lib/booking/dates";
 import type { ConfirmOptions } from "./ConfirmDialog";

@@ -272,8 +272,8 @@ describe('settings in emails', () => {
 			checkOut: '2026-10-03', nights: 2, guests: 2, total: 20000, currency: 'THB'
 		};
 
-		await t.action(internal.emails.sendOwnerNotification, { ...booking, guestPhone: '123' });
-		await t.action(internal.emails.sendBookingConfirmation, booking);
+		await t.action(internal.bookings.emails.sendOwnerNotification, { ...booking, guestPhone: '123' });
+		await t.action(internal.bookings.emails.sendBookingConfirmation, booking);
 
 		expect(sent[0]).toMatchObject({ from: '"Sea Breeze Team" <bookings@example.com>', to: 'owner@example.com' });
 		expect(sent[1].from).toBe('"Sea Breeze Team" <bookings@example.com>');

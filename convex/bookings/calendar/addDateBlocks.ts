@@ -1,10 +1,10 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { writeDateBlockRows } from '../../lib/availabilityWrites';
-import { assertStayDates, assertStayFree } from '../../lib/bookingWrites';
+import { writeDateBlockRows } from '../private/availabilityWrites';
+import { assertStayDates, assertStayFree } from '../private/bookingWrites';
 import { appendRecordHistory } from '../../settings/model';
-import { blockReason, MAX_BLOCKED_NIGHTS_PER_CALL } from '../model';
+import { blockReason, MAX_BLOCKED_NIGHTS_PER_CALL } from '../private/stays';
 
 /** One block per villa over the same nights. Villas with a conflict are reported and skipped; the rest are blocked. */
 export const addDateBlocks = adminMutation({

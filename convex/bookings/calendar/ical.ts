@@ -8,7 +8,7 @@ import { maintenancePaused } from '../../lib/maintenance';
 import { resortTodayIso } from '../../lib/dates';
 import { assertSafeIcalUrl, blockedDatesFromIcal } from '../../lib/ical';
 import { readBudget } from '../../lib/readBudget';
-import { nightRows } from '../../lib/stayOverlap';
+import { nightRows } from '../private/stayOverlap';
 import { assertValidIsoDate } from '../../lib/validation';
 
 const DAY_MS = 86_400_000;

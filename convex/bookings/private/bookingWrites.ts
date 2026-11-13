@@ -1,21 +1,19 @@
-import { captureAffiliateSnapshot, syncAffiliateCredit } from '../marketing/model';
-import { resolveMarketingAttribution } from '../marketing/model';
-import { type MarketingCapture } from '../shared/marketingAttribution';
 import { ConvexError } from 'convex/values';
-import { evaluateOffer, normalizeCouponCode } from './offers';
-import { couponUnavailable, couponVersion, holdCouponRedemption } from '../marketing/model';
-import { getEffectiveSettings } from '../settings/model';
-import { resortLocalParts } from '../shared/resortLocalParts';
+import { internal } from '../../_generated/api';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { nightsBetween, resortTodayIso } from '../../lib/dates';
+import { evaluateOffer, normalizeCouponCode } from '../../lib/offers';
+import { ensureLinkedOrder } from '../../lib/orderLinks';
+import { calculateDirectQuote } from '../../lib/pricing';
+import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../../lib/validation';
+import { captureAffiliateSnapshot, couponUnavailable, couponVersion, holdCouponRedemption, resolveMarketingAttribution, syncAffiliateCredit } from '../../marketing/model';
+import { getEffectiveSettings } from '../../settings/model';
+import { type MarketingCapture } from '../../shared/marketingAttribution';
+import { resortLocalParts } from '../../shared/resortLocalParts';
 import { blockBookingDates } from './availabilityWrites';
-import { internal } from '../_generated/api';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
-import { nightsBetween, resortTodayIso } from './dates';
-import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from './validation';
-import { calculateDirectQuote } from './pricing';
+import { appendBookingHistory, bookingSnapshot } from './money';
 import { assertNoBookingOverlap, findBlockingNight, STAY_BLOCKED_ERROR } from './stayOverlap';
-import { ensureLinkedOrder } from './orderLinks';
-import { appendBookingHistory, bookingSnapshot } from './bookingMoney';
 
 export type BookingSource = 'web' | 'whatsapp' | 'messenger' | 'line' | 'instagram' | 'admin';
 
@@ -226,7 +224,7 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		await blockBookingDates(ctx, created, bookingId);
 		await ctx.scheduler.runAt(
 			unpaidHoldExpiresAt!,
-			internal.crons.expireBookingHold,
+			internal.bookings.maintenance.expireBookingHold,
 			{ bookingId, expectedRevision: created.revision ?? 0 }
 		);
 	}

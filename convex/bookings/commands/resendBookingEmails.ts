@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { queueBookingEmails } from '../model';
+import { queueBookingEmails } from '../private/stays';
 
 export const resendBookingEmails = adminMutation({
 	args: { bookingId: v.id('bookings') },

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertBookingRevision } from '../../lib/bookingMoney';
-import { deleteBlocker, deleteBookingRecord, loadBooking, recordsBlocker } from '../model';
+import { deleteBlocker, deleteBookingRecord, loadBooking, recordsBlocker } from '../private/stays';
 
 /** Removes a test or mistaken booking. Anything that involved money must be cancelled instead. */
 export const deleteBooking = adminMutation({

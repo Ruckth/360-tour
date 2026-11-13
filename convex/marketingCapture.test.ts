@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
-import { createBookingRecord } from './lib/bookingWrites';
+import { createBookingRecord } from './bookings/private/bookingWrites';
 import { isVisitorKey, MAX_SESSIONS_READ, type MarketingCapture } from './shared/marketingAttribution';
 import { resolveMarketingAttribution } from './marketing/attribution';
 

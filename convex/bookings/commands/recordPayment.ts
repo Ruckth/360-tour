@@ -3,7 +3,7 @@ import { adminMutation } from '../../auth/model';
 import { assertBookingRevision, attemptKey, cleanReason } from '../../lib/bookingMoney';
 import { manualPaymentMethod } from '../../lib/financeValidators';
 import { assertNotOnOpenOrder } from '../../lib/orderLinks';
-import { loadBooking, recordStayPayment } from '../model';
+import { loadBooking, recordStayPayment } from '../private/stays';
 
 /**
  * Records money received at the desk for everything the stay owes: how it was paid, the business

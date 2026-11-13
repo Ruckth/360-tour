@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { releaseDateBlockRows, writeDateBlockRows } from '../../lib/availabilityWrites';
+import { releaseDateBlockRows, writeDateBlockRows } from '../private/availabilityWrites';
 import { stayDates } from '../../lib/dates';
 import { appendRecordHistory } from '../../settings/model';
-import { assertDateBlockUnchanged, dateBlockArgs, dateBlockSnapshot, validateDateBlock } from '../model';
+import { assertDateBlockUnchanged, dateBlockArgs, dateBlockSnapshot, validateDateBlock } from '../private/stays';
 
 export const updateDateBlock = adminMutation({
 	args: { blockId: v.id('dateBlocks'), ...dateBlockArgs, expected: v.optional(v.object(dateBlockArgs)) },
