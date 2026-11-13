@@ -3,10 +3,11 @@
 import { usePaginatedQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatResortDateTime } from "@/lib/staff-bookings";
-import { MONEY_METHOD_LABELS, PAYMENT_ORIGIN_LABELS } from "./admin-bookings-shared";
+import { MONEY_METHOD_LABELS, PAYMENT_ORIGIN_LABELS, staffLabel } from "./admin-bookings-shared";
 import { STATUS_LABELS, formatMoney } from "./labels";
 
 const PAGE = 10;
@@ -19,7 +20,7 @@ const KIND_LABELS: Record<string, string> = {
   price_set: "Custom price set",
   payment_recorded: "Payment recorded",
   payment_amended: "Payment corrected",
-  payment_cancelled: "Payment cancelled (not received)",
+  payment_cancelled: "Payment voided (entered by mistake)",
   order_payment_amended: "Checkout receipt corrected",
   order_voided: "Checkout order voided, payment kept",
   refund_recorded: "Refund recorded",
@@ -103,10 +104,13 @@ export function BookingHistory({
   bookingId,
   currency,
   villaName,
+  children,
 }: {
   bookingId: Id<"bookings">;
   currency: string;
   villaName: (id: string) => string;
+  /** The stay's other records (payments, past orders, price), shown above the changes in the same section. */
+  children?: ReactNode;
 }) {
   const { results, status, loadMore } = usePaginatedQuery(api.adminBookings.bookingHistory, { bookingId }, { initialNumItems: PAGE });
 
@@ -115,6 +119,8 @@ export function BookingHistory({
     <details aria-labelledby="booking-history" className="group text-sm">
       <summary id="booking-history" className="min-h-9 cursor-pointer py-2 font-medium">History</summary>
       <div className="grid gap-2 pb-2">
+      {children}
+      {children ? <h4 className="admin-eyebrow pt-2">Changes</h4> : null}
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-12" aria-label="Loading history" />
       ) : results.length === 0 ? (
@@ -128,7 +134,7 @@ export function BookingHistory({
                 <p className="font-medium">
                   {KIND_LABELS[entry.kind] ?? entry.kind}
                   <span className="font-normal text-muted-foreground">
-                    {" "}· {formatResortDateTime(entry.recordedAt)} · {entry.actor}
+                    {" "}· {formatResortDateTime(entry.recordedAt)} · {staffLabel(entry.actor)}
                   </span>
                 </p>
                 {Math.abs(entry.effectiveAt - entry.recordedAt) > 60_000 ? (

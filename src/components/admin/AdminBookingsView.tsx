@@ -5,8 +5,9 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
-import { PlusIcon, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -126,6 +127,8 @@ function HotelBookings() {
   const [moving, setMoving] = useState<Move | null>(null);
   const [stayDialog, setStayDialog] = useState<Extract<QuickAction, { kind: "pay" | "cancel" }> | null>(null);
   const [spaDraft, setSpaDraft] = useState<AppointmentDraft | null>(null);
+  // Below `sm` the villa filter moves into ⋯ and search folds to an icon.
+  const phone = useIsMobile(640);
 
   const data = useQuery(api.adminBookings.listForAdmin, range);
   const profile = useQuery(api.settings.publicProfile, {});
@@ -285,26 +288,27 @@ function HotelBookings() {
           loading={data === undefined}
           className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
         >
-          <AdminCalendarHeader>
+          <AdminCalendarHeader compact>
             <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
-            <VillaPicker
-              properties={data?.properties ?? []} value={villa} onChange={setVilla}
-              includeAll compact disabled={!data}
-              className="flex-1 sm:w-48 sm:flex-none"
-            />
-            <Button
-              size="sm"
-              variant={showCancelled ? "secondary" : "outline"}
-              aria-pressed={showCancelled}
-              onClick={() => setShowCancelled((value) => !value)}
-            >
-              Show cancelled
-            </Button>
+            {phone ? (
+              villa !== "all" ? (
+                // The villa filter lives in ⋯ on a phone; a filtered calendar says so and clears in one tap.
+                <Button size="sm" variant="secondary" className="max-w-40" aria-label={`Showing ${villaName(villa)} only. Show all villas`} onClick={() => setVilla("all")}>
+                  <span className="truncate">{villaName(villa)}</span>
+                  <XIcon aria-hidden className="size-3.5" />
+                </Button>
+              ) : null
+            ) : (
+              <VillaPicker
+                properties={data?.properties ?? []} value={villa} onChange={setVilla}
+                includeAll compact disabled={!data}
+                className="w-48"
+              />
+            )}
             {data === undefined ? <Spinner label="Loading bookings" /> : null}
-            <div className="flex w-full items-center gap-2 sm:ms-auto sm:w-auto">
+            <div className="ms-auto flex items-center gap-2">
               <Button
                 size="sm"
-                className="flex-1 sm:flex-none"
                 onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
                 disabled={!data}
               >
@@ -315,6 +319,13 @@ function HotelBookings() {
                 label="More calendar tools"
                 disabled={!data}
                 items={[
+                  ...(phone
+                    ? [
+                        { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
+                        ...(data?.properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
+                      ]
+                    : []),
+                  { label: "Show cancelled", checked: showCancelled, onSelect: () => setShowCancelled((value) => !value) },
                   { label: "Block dates", onSelect: () => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined }) },
                   { label: "OTA calendars", onSelect: () => setManagingCalendars(true) },
                   { label: "OTA rates", onSelect: () => setManagingRates(true) },
@@ -347,7 +358,8 @@ function HotelBookings() {
             </span>
           ))}
           <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
-            {notice?.text ?? "Drag across days to book or block · drag a booking to move it, or its edge to change dates"}
+            {/* The drag hint is for a mouse or pen; on touch the chips open on a tap. */}
+            {notice?.text ?? <span className="pointer-coarse:hidden">Drag across days to book or block · drag a booking to move it, or its edge to change dates</span>}
           </span>
         </div>
       </div>
@@ -385,7 +397,7 @@ function HotelBookings() {
           onCreated={(_id, start) => {
             const name = spaDraft.stay?.guestName ?? "Guest";
             setSpaDraft(null);
-            setNotice({ text: `${name}: spa booked for ${formatResortDateTime(start)}, on the stay's balance.` });
+            setNotice({ text: `${name}: spa booked for ${formatResortDateTime(start)}, added to the balance due.` });
           }}
         />
       ) : null}
@@ -594,16 +606,35 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
   const active = query.length >= 2 && text.trim().length >= 2;
   const results = useQuery(api.adminBookings.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
+  // On a phone the box folds to an icon until tapped; it folds again when left empty.
+  const [expanded, setExpanded] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (expanded) input.current?.focus();
+  }, [expanded]);
 
   return (
-    <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+    <>
+    {expanded ? null : (
+      <Button type="button" size="icon" variant="outline" className="size-9 sm:hidden" aria-label="Search bookings" onClick={() => setExpanded(true)}>
+        <SearchIcon aria-hidden className="size-4" />
+      </Button>
+    )}
+    <div className={expanded ? "relative order-last w-full min-w-0 sm:order-none sm:w-64" : "relative hidden min-w-0 sm:block sm:w-64"}>
       <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"
+        ref={input}
         value={text}
         onChange={(event) => setText(event.target.value)}
+        onBlur={() => {
+          if (!text.trim()) setExpanded(false);
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") setText("");
+          if (event.key === "Escape") {
+            setText("");
+            setExpanded(false);
+          }
         }}
         placeholder="Guest, phone or code"
         aria-label="Search bookings"
@@ -626,6 +657,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
                       goTo(new Date(`${booking.checkIn}T12:00:00`));
                       onPick(booking);
                       setText("");
+                      setExpanded(false);
                     }}
                   >
                     <span className="flex items-center justify-between gap-2 font-medium">
@@ -646,5 +678,6 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
         </div>
       ) : null}
     </div>
+    </>
   );
 }

@@ -69,10 +69,10 @@ export function cancelConfirmOptions(booking: { guestEmail?: string; notifyByDef
       : " The guest is not emailed (past stay)."
     : "";
   return {
-    title: "Cancel this booking?",
-    description: `The booking is cancelled and its dates are released.${email}`,
-    confirmLabel: "Cancel booking",
-    cancelLabel: "Keep booking",
+    title: "Cancel this stay?",
+    description: `Its dates are released.${email}`,
+    confirmLabel: "Cancel stay",
+    cancelLabel: "Keep stay",
     destructive: true,
   };
 }
@@ -80,9 +80,9 @@ export function cancelConfirmOptions(booking: { guestEmail?: string; notifyByDef
 /** How money was received or given back, as staff read it. */
 export const MONEY_METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
-  promptpay: "PromptPay QR",
+  promptpay: "PromptPay",
   card: "Card",
-  transfer: "Bank transfer",
+  transfer: "Transfer",
   other: "Other",
   stripe: "Stripe",
   provider: "Online payment",
@@ -123,6 +123,16 @@ export function parseAmount(text: string): number | null {
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Who did something, as staff read it: records keep the sign-in email, so show the part before
+ * the @ ("ploy"), or the value as stored when it is already a name ("Guest, in chat").
+ */
+export function staffLabel(actor: string | undefined) {
+  if (!actor) return "";
+  const at = actor.indexOf("@");
+  return at > 0 ? actor.slice(0, at) : actor;
 }
 
 export function payLink(bookingId: string, accessToken: string) {

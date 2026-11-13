@@ -30,6 +30,8 @@ type BookingRangePickerProps = {
   maxCheckIn?: string;
   compact?: boolean;
   markPastUnavailable?: boolean;
+  /** Offer the ✕ that clears the active date; off where both dates are required (staff booking forms). */
+  clearable?: boolean;
   className?: string;
   contentClassName?: string;
   onRangeChange?: () => void;
@@ -91,6 +93,7 @@ export function BookingRangePicker({
   maxCheckIn,
   compact = false,
   markPastUnavailable = false,
+  clearable = true,
   className,
   contentClassName,
   onRangeChange,
@@ -192,7 +195,7 @@ export function BookingRangePicker({
       unavailableDayClassName={unavailableDayClassName}
       clearLabel={clearLabel}
       onActivateField={setActiveField}
-      onClear={clearActiveDate}
+      onClear={clearable ? clearActiveDate : undefined}
       onSelectDate={selectDate}
       onMonthChange={onMonthChange}
     />
@@ -338,7 +341,7 @@ function RangePickerContent({
   unavailableDayClassName: string;
   clearLabel: string;
   onActivateField: (field: ActiveDateField) => void;
-  onClear: () => void;
+  onClear?: () => void;
   onSelectDate: (date: Date) => void;
   onMonthChange?: (month: Date) => void;
 }) {
@@ -383,7 +386,8 @@ function RangeHeader({
   compact: boolean;
   clearLabel: string;
   onActivateField: (field: ActiveDateField) => void;
-  onClear: () => void;
+  /** Left out where both dates are required. */
+  onClear?: () => void;
 }) {
   return (
     <div className="mb-2 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
@@ -402,7 +406,7 @@ function RangeHeader({
           onClick={() => onActivateField("checkOut")}
           compact={compact}
         />
-        <ClearDateButton label={clearLabel} onClear={onClear} />
+        {onClear ? <ClearDateButton label={clearLabel} onClear={onClear} /> : null}
       </div>
     </div>
   );

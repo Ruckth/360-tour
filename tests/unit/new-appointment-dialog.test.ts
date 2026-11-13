@@ -26,8 +26,8 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.useRealTimers(); });
 it.each([
-  ['2020-01-02', Date.parse('2020-01-02T10:07:00+07:00'), 'Completed · Unpaid. Checkout can collect payment for this service.'],
-  ['2026-11-01', now - 30 * 60000, 'In progress · Unpaid.'],
+  ['2020-01-02', Date.parse('2020-01-02T10:07:00+07:00'), 'Completed · Unpaid'],
+  ['2026-11-01', now - 30 * 60000, 'In progress · Unpaid'],
 ])('submits the mounted %s entry at its actual time and displays its default service/payment state', async (date, start, label) => {
   const onCreated = vi.fn();
   await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date, start, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated }))));
@@ -67,38 +67,67 @@ it("requires an actual person for historical work and keeps archived people mark
 });
 
 
-it("changes temporal wording and suggestions from the edited time without changing historical eligibility", async () => {
-  const future = Date.parse('2026-11-01T15:00:00+07:00');
-  mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff] : name.endsWith(':findOpenSlots') ? [{ start: future, staffIds: [staff._id], autoStaffId: staff._id }] : { warnings: [], needsReason: false, problem: null });
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', start: now - 2 * 60 * 60000, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
-  expect(document.body.textContent).toContain('Past work · Verify service and staff.');
-  expect(document.body.textContent).not.toContain('Suggested open times');
-  expect(document.querySelectorAll('input[type=time]')).toHaveLength(1);
-  const input = document.getElementById('na-actual-time') as HTMLInputElement;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '15:00');
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-  expect(document.body.textContent).not.toContain('Past work · Verify');
-  expect(document.body.textContent).toContain('Suggested open times');
-  expect(document.body.textContent).toContain('Booked · Unpaid.');
-  // Today keeps the existing date-based eligibility; this presentation change does not introduce Auto.
+const slotAt = (time: string) => ({ start: Date.parse(`2026-11-01T${time}:00+07:00`), staffIds: [staff._id], autoStaffId: staff._id });
+const withSlots = (...times: string[]) => mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff] : name.endsWith(':findOpenSlots') ? times.map(slotAt) : { warnings: [], needsReason: false, problem: null });
+const timeButton = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === label) as HTMLButtonElement | undefined;
+const staffOptions = async () => {
   await act(async () => document.getElementById('na-staff')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
-  expect([...document.querySelectorAll('[role=option]')].some(o => o.textContent?.includes('Auto'))).toBe(false);
+  return [...document.querySelectorAll('[role=option]')].map(o => o.textContent ?? '');
+};
+const setTime = (value: string) => act(async () => {
+  const input = document.getElementById('na-actual-time') as HTMLInputElement;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 });
 
-it("keeps today's later slots available when the automatic fallback is a finished morning slot", async () => {
-  const morning = Date.parse('2026-11-01T09:00:00+07:00');
-  const afternoon = Date.parse('2026-11-01T15:00:00+07:00');
-  mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff] : name.endsWith(':findOpenSlots') ? [morning, afternoon].map(start => ({ start, staffIds: [staff._id], autoStaffId: staff._id })) : { warnings: [], needsReason: false, problem: null });
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
-  expect(document.querySelector('[aria-label="9:00 AM"]')).not.toBeNull();
-  const later = document.querySelector<HTMLButtonElement>('[aria-label="3:00 PM"]');
-  expect(later).not.toBeNull();
-  expect(later!.disabled).toBe(false);
-  await act(async () => later!.click());
-  expect((document.getElementById('na-actual-time') as HTMLInputElement).value).toBe('15:00');
-  expect(document.body.textContent).toContain('Booked · Unpaid.');
+it("opens today as a normal booking: 24-hour chips, Auto staff, no time box and one sentence", async () => {
+  withSlots('15:00', '16:30');
+  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01' }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('true');
+  expect(timeButton('16:30')).toBeDefined();
+  expect(timeButton('Other time…')).toBeDefined();
+  expect(document.getElementById('na-actual-time')).toBeNull();
+  expect(document.body.textContent).not.toContain('Booked · Unpaid');
+  expect(document.body.textContent).not.toContain('Past work');
+  expect(document.getElementById('na-staff')?.textContent).toContain('Auto (least busy) · Mali');
+  expect(timeButton('Book Massage · 15:00')).toBeDefined();
+  // No footer Cancel: the dialog closes with ✕.
+  expect(timeButton('Cancel')).toBeUndefined();
   await act(async () => (document.querySelector('form') as HTMLFormElement).requestSubmit());
-  expect(mocks.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ staffId: staff._id, start: afternoon }));
+  expect(mocks.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ start: slotAt('15:00').start, staffId: staff._id }));
+});
+
+it("never offers a time that has already started, and books the first later one", async () => {
+  withSlots('09:00', '15:00');
+  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  expect(timeButton('09:00')).toBeUndefined();
+  expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('true');
+  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(true);
+});
+
+it("Other time… swaps the chips for a time box; a time before now is past work, a later one is a booking", async () => {
+  withSlots('15:00');
+  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => timeButton('Other time…')!.click());
+  expect(timeButton('15:00')).toBeUndefined();
+  expect((document.getElementById('na-actual-time') as HTMLInputElement).value).toBe('15:00');
+  // One minute before now: past work, so the person must be named and Auto goes.
+  await setTime('11:59');
+  expect(document.body.textContent).toContain('In progress · Unpaid');
+  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(false);
+  await act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
+  // Exactly now is not before now: a normal booking again, and the box stays while typing.
+  await setTime('12:00');
+  expect(document.getElementById('na-actual-time')).not.toBeNull();
+  expect(document.body.textContent).not.toContain('In progress');
+  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(true);
+});
+
+it("a calendar slot that started before now opens as past work with the time box", async () => {
+  withSlots('15:00');
+  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', start: now - 2 * 60 * 60000, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  expect(document.body.textContent).toContain('Past work · Verify service and staff.');
+  expect(document.querySelectorAll('input[type=time]')).toHaveLength(1);
+  expect(timeButton('15:00')).toBeUndefined();
+  expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(false);
 });

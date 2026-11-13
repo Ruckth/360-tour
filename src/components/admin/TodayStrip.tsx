@@ -43,7 +43,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
 
   return (
     <section aria-label="Today" className="grid shrink-0 gap-2">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {GROUPS.map(({ key, label }) => (
           <button
             key={key}

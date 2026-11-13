@@ -29,7 +29,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await shot(page, "today-arriving");
       await page.getByRole("region", { name: "Today" }).getByRole("button", { name: /Arriving/ }).click();
       await chip(page, "Anna Schmidt").click();
-      await page.getByRole("button", { name: /^Checkout ฿/ }).waitFor();
+      await page.getByRole("button", { name: /^Take payment ฿/ }).waitFor();
       await shot(page, "popover");
       await page.getByRole("button", { name: "Details" }).click();
       await page.getByRole("region", { name: "Balance due" }).waitFor();
@@ -39,8 +39,9 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     test("record payment and book spa from the popover", async ({ page }) => {
       await openDesk(page);
       await chip(page, "Maya Lin").click();
-      await page.getByRole("button", { name: "Record payment" }).click();
-      await page.getByRole("dialog", { name: "Record payment" }).waitFor();
+      await page.getByRole("button", { name: "More stay actions" }).click();
+      await page.getByRole("menuitem", { name: "Already paid…" }).click();
+      await page.getByRole("dialog", { name: "Already paid" }).waitFor();
       await shot(page, "record-payment");
       await page.keyboard.press("Escape");
       await chip(page, "Maya Lin").click();
@@ -73,7 +74,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     test("guest leaves: checkout with the stay and its spa", async ({ page }) => {
       await openDesk(page);
       await chip(page, "Anna Schmidt").click();
-      await page.getByRole("button", { name: "Checkout ฿27,500" }).click();
+      await page.getByRole("button", { name: "Take payment ฿27,500" }).click();
       await page.locator("[data-route=order]").waitFor();
       if (size === "phone") await page.getByRole("button", { name: /^View order/ }).click();
       await page.getByText("Hot stone 60").first().waitFor();

@@ -204,7 +204,7 @@ export function NewBookingDialog({
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle>{historical ? "Record past stay" : "New booking"}</DialogTitle>
-          <DialogDescription>Manual bookings never expire automatically.</DialogDescription>
+          <DialogDescription className="sr-only">Villa, dates and guest</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
           <div className="grid gap-2">
@@ -244,6 +244,7 @@ export function NewBookingDialog({
             unavailableDates={availability.blockedDates}
             onMonthChange={availability.onMonthChange}
             markPastUnavailable
+            clearable={false}
           />
           <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
@@ -334,13 +335,16 @@ export function NewBookingDialog({
             />
             <span>Create as confirmed</span>
           </label>
-          <NotifyGuestField
-            id="nb-notify"
-            guestEmail={guest.email.trim()}
-            checked={notify}
-            onChange={setNotifyChoice}
-            action="this booking"
-          />
+          {/* The email choice only matters once there is an email to send to. */}
+          {guest.email.trim() ? (
+            <NotifyGuestField
+              id="nb-notify"
+              guestEmail={guest.email.trim()}
+              checked={notify}
+              onChange={setNotifyChoice}
+              action="this booking"
+            />
+          ) : null}
           {historical && guest.email.trim() && notifyChoice === null ? (
             <p className="-mt-2 text-xs text-muted-foreground">Past stay · Email off by default</p>
           ) : null}

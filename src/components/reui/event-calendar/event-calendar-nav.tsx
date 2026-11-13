@@ -416,6 +416,8 @@ interface EventCalendarDatePickerProps extends Omit<
   /** Hover/focus-visible hint; defaults to null - no tooltip, because the
    *  button opens an overlay (see the NavButtonProps tooltip policy). */
   tooltip?: ReactNode | null
+  /** A "Today" button under the calendar, for toolbars without their own. */
+  showToday?: boolean
 }
 
 /** Views whose period reads better as a highlighted range. */
@@ -435,10 +437,11 @@ function EventCalendarDatePicker({
   children,
   tooltip = null,
   mode,
+  showToday = false,
   "aria-label": ariaLabel,
   ...props
 }: EventCalendarDatePickerProps) {
-  const { date, goTo, activeRange } = useEventCalendarNavigation()
+  const { date, goTo, activeRange, today, isToday } = useEventCalendarNavigation()
   const { view } = useEventCalendarView()
   const settings = useEventCalendarSettings()
   const viewConfig = useEventCalendarViewConfig()
@@ -508,6 +511,20 @@ function EventCalendarDatePicker({
             weekStartsOn={settings.weekStartsOn}
           />
         )}
+        {showToday ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="mt-2 h-9 w-full"
+            disabled={isToday}
+            onClick={() => {
+              today()
+              setOpen(false)
+            }}
+          >
+            {settings.i18n.labels.today}
+          </Button>
+        ) : null}
       </PopoverContent>
     </Popover>
   )

@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
@@ -36,8 +37,9 @@ export type QuickAction =
 const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 
 /**
- * Popover on a calendar booking chip. Checkout takes the stay's balance with its unpaid spa;
- * Book spa, Record payment and Cancel open their own dialogs. Results are reported through
+ * Popover on a calendar booking chip: Take payment (the stay's balance with its unpaid spa, at
+ * checkout), Book spa and Details; Already paid…, Copy pay link, Copy reference and Cancel stay
+ * sit in ⋯ and open their own dialogs. Results are reported through
  * `onNotice` because the popover closes before the action runs.
  */
 export function BookingQuickActions({
@@ -115,7 +117,7 @@ export function BookingQuickActions({
       <PopoverAnchor asChild>
         <span aria-hidden className="pointer-events-none fixed" style={rect} />
       </PopoverAnchor>
-      <PopoverContent align="start" className="grid w-80 gap-3 p-3" aria-label={`Booking for ${booking.guestName}`}>
+      <PopoverContent align="start" className="grid w-80 gap-3 overflow-visible p-3" aria-label={`Booking for ${booking.guestName}`}>
         <div>
           <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
             {booking.guestName}
@@ -126,7 +128,7 @@ export function BookingQuickActions({
             {booking.nights === 1 ? "night" : "nights"}
           </p>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {editable && booking.status === "pending" ? (
             <Button
               size="sm"
@@ -141,7 +143,7 @@ export function BookingQuickActions({
             <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
               <Button size="sm" disabled={!detail || !spa || checkoutLive || opening} onClick={() => void checkout()}>
                 {opening || !detail || !spa ? <Spinner className="text-current" /> : null}
-                {detail && spa ? `Checkout ${formatMoney(due, booking.currency)}` : "Checkout"}
+                {detail && spa ? `Take payment ${formatMoney(due, booking.currency)}` : "Take payment"}
               </Button>
             </DisabledReason>
           ) : null}
@@ -157,38 +159,6 @@ export function BookingQuickActions({
               Book spa
             </Button>
           ) : null}
-          {canPay && detail ? (
-            <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={checkoutLive}
-                onClick={() => {
-                  onClose();
-                  onAction({ kind: "pay", booking: detail });
-                }}
-              >
-                Record payment
-              </Button>
-            </DisabledReason>
-          ) : null}
-          {detail?.accessToken ? (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => run(() => navigator.clipboard.writeText(payLink(booking._id, detail.accessToken!)), "Pay link copied.")}
-            >
-              Copy pay link
-            </Button>
-          ) : null}
-          {editable ? (
-            <DisabledReason reason={checkoutLive && CHECKOUT_LIVE}>
-              <Button size="sm" variant="ghost" className="text-destructive" onClick={cancel} disabled={!detail || checkoutLive}>
-                {detail ? null : <Spinner className="text-current" />}
-                Cancel stay
-              </Button>
-            </DisabledReason>
-          ) : null}
           <Button
             size="sm"
             variant="ghost"
@@ -199,7 +169,35 @@ export function BookingQuickActions({
           >
             Details
           </Button>
+          <MoreMenu
+            label="More stay actions"
+            className="ms-auto size-9"
+            items={[
+              {
+                label: "Already paid…",
+                hidden: !canPay || !detail,
+                disabled: checkoutLive,
+                onSelect: () => {
+                  if (!detail) return;
+                  onClose();
+                  onAction({ kind: "pay", booking: detail });
+                },
+              },
+              {
+                label: "Copy pay link",
+                hidden: !detail?.accessToken,
+                onSelect: () => void run(() => navigator.clipboard.writeText(payLink(booking._id, detail!.accessToken!)), "Pay link copied."),
+              },
+              {
+                label: "Copy reference",
+                hidden: !booking.confirmationCode,
+                onSelect: () => void run(() => navigator.clipboard.writeText(booking.confirmationCode!), `Copied ${booking.confirmationCode}.`),
+              },
+              { label: "Cancel stay", destructive: true, hidden: !editable, disabled: !detail || checkoutLive, onSelect: () => void cancel() },
+            ]}
+          />
         </div>
+        {checkoutLive ? <p className="text-xs text-muted-foreground">{CHECKOUT_LIVE}</p> : null}
         {problems.length ? (
           <div role="alert" className="grid gap-1 text-sm text-destructive">
             {problems.map((problem) => <p key={problem}>{problem}</p>)}

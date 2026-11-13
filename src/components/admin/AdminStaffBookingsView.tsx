@@ -614,8 +614,8 @@ function StaffCalendar() {
             <Clock aria-hidden className="size-3" />
             Break / turnaround / time off
           </span>
-          <span className="ms-auto hidden sm:inline">
-            Drag a booking or break to propose a change; you confirm before it saves. Times are Bangkok time.
+          <span className="ms-auto hidden sm:inline pointer-coarse:hidden">
+            Drag a booking or break to propose a change · Bangkok time
           </span>
         </div>
       </div>
