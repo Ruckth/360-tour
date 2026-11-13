@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
-import { holdCouponRedemption } from './lib/couponRedemptions';
+import { holdCouponRedemption } from './marketing/couponRedemptions';
 import { writeBooking } from './lib/bookingMoney';
 import { createBookingRecord } from './lib/bookingWrites';
 
@@ -31,8 +31,8 @@ async function setup(limits: Limits = {}) {
     minNights: limits.minNights ?? 2, maxSaving: limits.maxSaving ?? 300000, usageLimit: limits.usageLimit ?? 500,
     discountBudget: limits.discountBudget ?? 8000000
   };
-  const { couponId } = await admin.mutation(api.marketing.saveCoupon, rules);
-  await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+  const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, rules);
+  await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
   const input = { propertySlug: 'mossbell', guestName: 'Mia', guestPhone: '+66811112222', guestEmail: 'mia@example.com', checkIn: '2026-11-10', checkOut: '2026-11-12', guests: 2, couponCode: ' dcnt-f1-20 ' };
   const get = async (id: Id<'bookings'>) => (await t.run(ctx => ctx.db.get(id)))!;
   const coupon = async () => (await t.run(ctx => ctx.db.get(couponId)))!;
@@ -86,7 +86,7 @@ async function setup(limits: Limits = {}) {
 describe('booking coupon reservations', () => {
   it('Mossbell 2n F1-20: freezes 7200 and holds one 1800 redemption; previews reserve nothing', async () => {
     const s = await setup();
-    expect(await s.t.query(api.marketing.previewCoupon, { code: s.input.couponCode, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: s.input.checkOut })).toMatchObject({ couponStatus: 'applied', total: 720000 });
+    expect(await s.t.query(api.marketing.public.previewCoupon, { code: s.input.couponCode, propertySlug: 'mossbell', checkIn: s.input.checkIn, checkOut: s.input.checkOut })).toMatchObject({ couponStatus: 'applied', total: 720000 });
     expect(await s.coupon()).toMatchObject({ used: 0 });
     const { bookingId, accessToken } = await s.web();
     expect(await s.t.query(api.bookings.bookings.getById, { id: bookingId, accessToken })).toMatchObject({ promotion: { code: 'DCNT-F1-20', discount: 180000 } });
@@ -145,12 +145,12 @@ describe('booking coupon reservations', () => {
     const s = await setup();
     await expect(s.create({ couponCode: 'unknown' })).rejects.toThrow(/not_found/);
     await expect(s.create({ checkOut: '2026-11-11' })).rejects.toThrow(/Add 1 more night.*min_nights/);
-    await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
+    await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId: s.couponId, status: 'paused' });
     await expect(s.create()).rejects.toThrow(/not_active/);
-    await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'active' });
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, bookTo: '2026-11-06' });
+    await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId: s.couponId, status: 'active' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, bookTo: '2026-11-06' });
     await expect(s.create()).rejects.toThrow(/expired/);
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, scope: 'services' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, scope: 'services' });
     await expect(s.create()).rejects.toThrow(/nothing_eligible/);
     expect(await s.t.run(ctx => ctx.db.query('bookings').collect())).toHaveLength(0);
     await s.reconcile();
@@ -327,8 +327,8 @@ describe('admin coupon repricing', () => {
   it('uses frozen rules as active after edits, pause, exhausted slots and the booking window closes', async () => {
     const s = await setup({ usageLimit: 1 });
     const id = await s.create();
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 500 }, minNights: 20 });
-    await s.admin.mutation(api.marketing.setCouponStatus, { couponId: s.couponId, status: 'paused' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 500 }, minNights: 20 });
+    await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId: s.couponId, status: 'paused' });
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-12-01T10:00:00Z'));
     await s.edit(id, { checkIn: '2026-12-02', checkOut: '2026-12-05' });
     expect(await s.get(id)).toMatchObject({ total: 1080000, promotion: { couponVersion: 1, discount: 270000 } });
@@ -380,7 +380,7 @@ describe('admin coupon repricing', () => {
         state: 'released', discount: 180000, createdAt: NOW + i, updatedAt: NOW + i
       });
     });
-    const detail = (await s.admin.query(api.marketing.getCoupon, { couponId: s.couponId }))!;
+    const detail = (await s.admin.query(api.marketing.queries.getCoupon, { couponId: s.couponId }))!;
     expect(detail.redemptions).toHaveLength(50);
     expect(detail.redemptions[0]).toMatchObject({ createdAt: NOW + 51, booking: { guestName: 'Mia', checkIn: '2026-11-10', checkOut: '2026-11-12', confirmationCode: b.confirmationCode } });
     expect(detail.redemptions[49].createdAt).toBe(NOW + 2);
@@ -477,7 +477,7 @@ describe('release 2a backend regressions', () => {
     const s = await setup({ discountBudget: 270000, usageLimit: 1 });
     const id = await s.create();
     if (state === 'consumed') await s.pay(id);
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
     const before = await s.get(id);
     const redemption = await s.row(id);
     const counters = await s.coupon();
@@ -535,7 +535,7 @@ describe('edit quote policy and lifecycle boundaries', () => {
 
   it.each(['minimum_nights', 'direct_better', 'wrong_property'] as const)('previews coupon removal and saves the direct fallback: %s', async reason => {
     const s = await setup();
-    if (reason === 'wrong_property') await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, propertySlugs: ['mossbell'] });
+    if (reason === 'wrong_property') await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, propertySlugs: ['mossbell'] });
     const id = await s.create();
     let propertyId = s.propertyId;
     let propertySlug = 'mossbell';
@@ -688,7 +688,7 @@ describe('edit save matches the reviewed quote', () => {
   it('keeps guest-only edits on frozen coupon pricing at the reviewed stored total', async () => {
     const s = await setup();
     const id = await s.create();
-    await s.admin.mutation(api.marketing.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...s.rules, couponId: s.couponId, benefit: { kind: 'percent', percent: 3000 } });
     await s.t.run(ctx => ctx.db.patch(s.propertyId, { pricePerNight: 600000 }));
     const quote = await s.admin.query(api.bookings.admin.quoteBookingEdit, { ...quoteArgs(id, '2026-11-12'), guests: 1 });
     expect(quote).toMatchObject({ total: 720000, repriced: false });

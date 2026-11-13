@@ -2,8 +2,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, it, vi } from "vitest";
 import { internal } from "./_generated/api";
-import { MARKETING_CLEANUP_BATCH_SIZE } from "./crons";
-import { ATTRIBUTION_WINDOW_MS } from "./lib/marketingAttribution";
+import { MARKETING_CLEANUP_BATCH_SIZE } from './marketing/maintenance';
+import { ATTRIBUTION_WINDOW_MS } from './shared/marketingAttribution';
 import { RAW_MARKETING_RETENTION_DAYS, RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
 import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
@@ -53,11 +53,17 @@ it("deletes only old raw rows in bounded pages and schedules all remaining pages
     }
     return { linkId, aggregateId, keptSessions, keptEvents };
   });
-  expect(await t.mutation(internal.crons.cleanRawMarketing, {})).toBe(MARKETING_CLEANUP_BATCH_SIZE * 2);
+  expect(await t.mutation(internal.marketing.maintenance.cleanRawMarketing, {})).toBe(MARKETING_CLEANUP_BATCH_SIZE * 2);
   await t.run(async ctx => {
     expect(await ctx.db.query("marketingSessions").collect()).toHaveLength(MARKETING_CLEANUP_BATCH_SIZE + 6);
     expect(await ctx.db.query("marketingEvents").collect()).toHaveLength(4);
-    expect(await ctx.db.system.query("_scheduled_functions").collect()).toHaveLength(1);
+    const jobs = await ctx.db.system.query("_scheduled_functions").collect();
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      name: 'marketing/maintenance:cleanRawMarketing',
+      args: [{ cutoff }],
+      scheduledTime: Date.now(),
+    });
   });
   // The chain retains its original cutoff even when the next page runs a day later.
   vi.setSystemTime(Date.now() + 86_400_000);
@@ -68,5 +74,5 @@ it("deletes only old raw rows in bounded pages and schedules all remaining pages
     expect(await ctx.db.get(aggregateId)).toMatchObject({ count: 1234, day: "2020-01-01" });
     expect(await ctx.db.get(linkId)).toMatchObject({ opens: 1234 });
   });
-  expect(await t.mutation(internal.crons.cleanRawMarketing, { cutoff })).toBe(0);
+  expect(await t.mutation(internal.marketing.maintenance.cleanRawMarketing, { cutoff })).toBe(0);
 });

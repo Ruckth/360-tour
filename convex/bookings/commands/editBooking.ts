@@ -4,7 +4,7 @@ import { adminMutation } from '../../auth/model';
 import { blockBookingDates, releaseBookingDates } from '../../lib/availabilityWrites';
 import { assertBookingRevision, resolveNotify, writeBooking } from '../../lib/bookingMoney';
 import { assertCapacity, assertStayDates, assertStayFree, cleanGuestDetails, guestLookupFields } from '../../lib/bookingWrites';
-import { repriceCouponBooking } from '../../lib/couponRedemptions';
+import { repriceCouponBooking } from '../../marketing/model';
 import { stayDates } from '../../lib/dates';
 import { archivedVillaPolicy, assertBookingEditable, assertReviewedPrice, loadBooking, planBookingEditPricing, priceOverrideInput } from '../model';
 

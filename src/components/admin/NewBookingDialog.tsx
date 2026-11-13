@@ -469,7 +469,7 @@ function useCouponQuote(args: { code: string; propertySlug: string; checkIn: str
     if (!args) return;
     let active = true;
     convex
-      .query(api.marketing.previewCoupon, args)
+      .query(api.marketing.public.previewCoupon, args)
       .then((result) => {
         if (active) setAnswer({ key, quote: { status: "ready", result } });
       })

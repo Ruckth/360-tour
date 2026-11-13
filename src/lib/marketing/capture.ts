@@ -1,4 +1,4 @@
-import { SESSION_IDLE_MS, type MarketingCapture } from "convex/lib/marketingAttribution";
+import { SESSION_IDLE_MS, type MarketingCapture } from 'convex/shared/marketingAttribution';
 import { validateMarketingSlug } from "convex/lib/marketingSlugs";
 
 /**

@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import type { MarketingAttribution } from "convex/lib/marketingAttribution";
+import type { MarketingAttribution } from 'convex/shared/marketingAttribution';
 
 const EVIDENCE: Record<MarketingAttribution["evidence"], string> = {
   tracked: "Tracked visit",

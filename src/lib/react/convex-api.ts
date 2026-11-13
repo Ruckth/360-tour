@@ -5,7 +5,7 @@ import type { CouponRefusalSurface } from "convex/lib/marketingReport";
 import { api } from "convex/_generated/api";
 import type { ConvexReactClient } from "convex/react";
 import type { OfferResult } from "convex/lib/offers";
-import type { MarketingCapture } from "convex/lib/marketingAttribution";
+import type { MarketingCapture } from 'convex/shared/marketingAttribution';
 import type { BookingProperty } from "@/lib/booking/booking";
 import type { ChatActionHint } from "@/lib/chat/action-card";
 import type { PropertyTranslation } from "@/lib/i18n/public-content";
@@ -167,7 +167,7 @@ export async function previewCoupon(
   args: { code: string; propertySlug: string; checkIn: string; checkOut: string },
 ) {
   return (await withConvexTimeout(
-    client.query(api.marketing.previewCoupon, args as never),
+    client.query(api.marketing.public.previewCoupon, args as never),
     "Checking the code",
   )) as OfferResult;
 }
@@ -366,6 +366,6 @@ export async function markChatSuggestionClicked(
 
 /** Once per code/problem on this page. All diagnostic failures are swallowed. */
 export function useCouponRefusalReporter(client: ConvexReactClient | null, surface: CouponRefusalSurface) {
-  const report = useMemo(() => createCouponRefusalReporter(note => client ? client.mutation(api.marketingReport.noteCouponRefusal, note) : Promise.resolve()), [client]);
+  const report = useMemo(() => createCouponRefusalReporter(note => client ? client.mutation(api.marketing.report.noteCouponRefusal, note) : Promise.resolve()), [client]);
   return useCallback((code: string, problem: unknown) => { if (client) report("page", code, problem, surface); }, [client, report, surface]);
 }

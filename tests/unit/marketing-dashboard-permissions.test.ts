@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { marketingCapabilities } from "convex/lib/marketingAccess";
+import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
 import { DashboardScreen } from "@/components/admin/marketing/dashboard/DashboardScreen";
 import type { DashboardViewProps } from "@/components/admin/marketing/dashboard/DashboardView";

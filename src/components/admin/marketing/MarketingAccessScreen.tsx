@@ -13,8 +13,8 @@ import { marketingErrorText } from "./marketing-format";
 
 type GrantRole = Exclude<MarketingRole, "admin">;
 type Grant = { _id: string; email: string; role: GrantRole; tokenIdentifier?: string; expiresAt: number | null; expired: boolean };
-const listGrants = makeFunctionReference<"query", Record<string, never>, Grant[]>("marketingAccess:listGrants");
-const setGrant = makeFunctionReference<"mutation", { email: string; role: GrantRole | null }, null>("marketingAccess:setGrant");
+const listGrants = makeFunctionReference<"query", Record<string, never>, Grant[]>("marketing/access:listGrants");
+const setGrant = makeFunctionReference<"mutation", { email: string; role: GrantRole | null }, null>("marketing/access:setGrant");
 const ROLES: { role: GrantRole; label: string; description: string }[] = [
   { role: "manager", label: "Manager", description: "Draft, publish, spend and manage affiliate partners." },
   { role: "marketer", label: "Marketer", description: "Create and edit drafts. Cannot publish, edit live records or manage spend." },

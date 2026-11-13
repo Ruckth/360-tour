@@ -1,8 +1,9 @@
-import { syncAffiliateCredit } from './affiliateCredits';
+import { syncAffiliateCredit } from '../marketing/model';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
-import { assertMoney, attemptKey, cleanReason, effectiveTime } from './bookingMoney';
+import { assertMoney } from './stayMoney';
+import { attemptKey, cleanReason, effectiveTime } from './bookingMoney';
 import { lineNet, roundMoney } from './orderMath';
 import { assertNotOnOpenOrder } from './orderLinks';
 import { sourceLineLinks } from './lineLinks';

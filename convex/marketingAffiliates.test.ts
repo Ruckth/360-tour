@@ -6,7 +6,7 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { RAW_MARKETING_RETENTION_MS } from "./lib/marketingPolicy";
 import type { Id } from "./_generated/dataModel";
-import { creditMoney, syncAffiliateCredit } from "./lib/affiliateCredits";
+import { creditMoney, syncAffiliateCredit } from './marketing/affiliateCredits';
 const modules = import.meta.glob("./**/*.ts");
 beforeEach(() => {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
@@ -42,19 +42,19 @@ async function setup() {
       status: "active",
     }),
   );
-  const campaignId = await admin.mutation(api.marketing.saveCampaign, {
+  const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
     name: "Partners",
     source: "partner",
     medium: "affiliate",
   });
   const partner = async (slug = "anna") => {
-    const id = await admin.mutation(api.marketingAffiliates.saveAffiliate, {
+    const id = await admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, {
       name: slug,
       slug,
       campaignId,
       contactEmail: `${slug}@example.com`,
     });
-    await admin.mutation(api.marketingAffiliates.setAffiliateStatus, {
+    await admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, {
       affiliateId: id,
       status: "active",
     });
@@ -65,16 +65,16 @@ async function setup() {
     scope: "accommodation" | "services" = "accommodation",
     amount = 10000,
   ) => {
-    const { couponId } = await admin.mutation(api.marketing.saveCoupon, {
+    const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, {
       code: `${scope === "services" ? "SPA" : "STAY"}${amount / 100}`,
       benefit: { kind: "fixed", amount },
       scope,
     });
-    await admin.mutation(api.marketing.setCouponStatus, {
+    await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, {
       couponId,
       status: "active",
     });
-    await admin.mutation(api.marketingAffiliates.assignCoupon, {
+    await admin.mutation(api.marketing.commands.assignCoupon.assignCoupon, {
       affiliateId,
       couponId,
     });
@@ -95,7 +95,7 @@ async function setup() {
       ...(options.slug ? { marketing: { slug: options.slug } } : {}),
     });
   const credit = async () => {
-    const { rows } = await admin.query(api.marketingAffiliates.listCredits, {});
+    const { rows } = await admin.query(api.marketing.affiliates.listCredits, {});
     return rows[0]!;
   };
   const pay = async (bookingId: Id<"bookings">) => {
@@ -110,7 +110,7 @@ async function setup() {
   };
   const approve = async (affiliateId?: Id<"marketingAffiliates">) => {
     const row = await credit();
-    return admin.mutation(api.marketingAffiliates.reviewCredit, {
+    return admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
       creditId: row._id,
       expectedRevision: row.revision,
       decision: "approved",
@@ -193,7 +193,7 @@ async function lateLinkSale() {
   const bookingCredit = () => credit(`booking:${bookingId}`);
   const approve = async (creditId: Id<"affiliateCredits">) => {
     const row = (await s.t.run((ctx) => ctx.db.get(creditId)))!;
-    await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+    await s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
       creditId,
       expectedRevision: row.revision,
       decision: "approved",
@@ -309,7 +309,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
     approvedNet: 0,
     revision: approved.revision + 1,
   });
-  const detail = (await s.admin.query(api.marketingAffiliates.getCredit, {
+  const detail = (await s.admin.query(api.marketing.affiliates.getCredit, {
     creditId: pending._id,
   }))!;
   expect(detail.history[0]).toMatchObject({
@@ -321,7 +321,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
     reason: expect.stringMatching(/unlinked.*review/i),
   });
   await expect(s.approve(pending._id)).rejects.toThrow("settled");
-  await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
+  await s.admin.mutation(api.marketing.commands.refreshCredit.refreshCredit, {
     creditId: pending._id,
   });
   expect(await s.bookingCredit()).toEqual(pending);
@@ -334,7 +334,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
     approvedNet: 0,
   });
   await expect(
-    s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+    s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
       creditId: pending._id,
       expectedRevision: pending.revision,
       decision: "approved",
@@ -346,7 +346,7 @@ it("requires a fresh review after unlinking an approved booking credit and allow
     state: "approved",
     approvedNet: 200000,
   });
-  const history = (await s.admin.query(api.marketingAffiliates.getCredit, {
+  const history = (await s.admin.query(api.marketing.affiliates.getCredit, {
     creditId: pending._id,
   }))!.history;
   expect(history.map((row) => row.kind)).toEqual([
@@ -382,7 +382,7 @@ it("still reverses an approved late-linked booking credit when its order is void
     eligibleNet: 0,
     approvedNet: 0,
   });
-  const detail = (await s.admin.query(api.marketingAffiliates.getCredit, {
+  const detail = (await s.admin.query(api.marketing.affiliates.getCredit, {
     creditId: booking._id,
   }))!;
   expect(detail.history[0]).toMatchObject({
@@ -451,28 +451,28 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
     email: "manager@example.com",
     tokenIdentifier: "issuer|manager",
   });
-  await s.admin.mutation(api.marketingAccess.setGrant, {
+  await s.admin.mutation(api.marketing.access.setGrant, {
     email: " MANAGER@example.com ",
     role: "manager",
   });
-  expect(await user.query(api.marketingAccess.current, {})).toMatchObject({
+  expect(await user.query(api.marketing.access.current, {})).toMatchObject({
     role: null,
     pendingInvitation: { role: "manager" },
   });
   await expect(
-    user.mutation(api.marketing.saveCampaign, {
+    user.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
       name: "No",
       source: "x",
       medium: "x",
     }),
   ).rejects.toThrow("Not authorized");
-  await user.mutation(api.marketingAccess.claimInvite, {});
-  expect(await user.query(api.marketingAccess.current, {})).toMatchObject({
+  await user.mutation(api.marketing.access.claimInvite, {});
+  expect(await user.query(api.marketing.access.current, {})).toMatchObject({
     role: "manager",
     capabilities: { publish: true, manageAccess: false },
   });
   await expect(
-    user.mutation(api.marketingAccess.setGrant, {
+    user.mutation(api.marketing.access.setGrant, {
       email: "manager@example.com",
       role: "finance",
     }),
@@ -483,7 +483,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
         email: "manager@example.com",
         tokenIdentifier: "other-issuer|manager",
       })
-      .mutation(api.marketingAccess.claimInvite, {}),
+      .mutation(api.marketing.access.claimInvite, {}),
   ).rejects.toThrow("No unclaimed");
   expect(
     (
@@ -492,23 +492,23 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
           email: "new@example.com",
           tokenIdentifier: "issuer|manager",
         })
-        .query(api.marketingAccess.current, {})
+        .query(api.marketing.access.current, {})
     ).role,
   ).toBe("manager");
   await expect(
-    user.mutation(api.marketingAccess.claimInvite, {
+    user.mutation(api.marketing.access.claimInvite, {
       userId: "admin",
     } as never),
   ).rejects.toThrow();
-  await s.admin.mutation(api.marketingAccess.setGrant, {
+  await s.admin.mutation(api.marketing.access.setGrant, {
     email: "manager@example.com",
     role: null,
   });
-  expect((await user.query(api.marketingAccess.current, {})).role).toBeNull();
+  expect((await user.query(api.marketing.access.current, {})).role).toBeNull();
 });
 it("restricts marketer to draft edits, protects budgets/status/active data and operational admin gates", async () => {
   const s = await setup();
-  await s.admin.mutation(api.marketingAccess.setGrant, {
+  await s.admin.mutation(api.marketing.access.setGrant, {
     email: "writer@example.com",
     role: "marketer",
   });
@@ -516,31 +516,31 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
     email: "writer@example.com",
     tokenIdentifier: "writer",
   });
-  await writer.mutation(api.marketingAccess.claimInvite, {});
+  await writer.mutation(api.marketing.access.claimInvite, {});
   const fields = { name: "Draft", source: "social", medium: "social" };
-  const campaignId = await writer.mutation(api.marketing.saveCampaign, fields);
-  await writer.mutation(api.marketing.saveCampaign, {
+  const campaignId = await writer.mutation(api.marketing.commands.saveCampaign.saveCampaign, fields);
+  await writer.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
     ...fields,
     campaignId,
     name: "Edited",
   });
   await expect(
-    writer.mutation(api.marketing.saveCampaign, { ...fields, budget: 100 }),
+    writer.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...fields, budget: 100 }),
   ).rejects.toThrow("budgets");
   await expect(
-    writer.mutation(api.marketing.setCampaignStatus, {
+    writer.mutation(api.marketing.commands.setCampaignStatus.setCampaignStatus, {
       campaignId,
       status: "active",
     }),
   ).rejects.toThrow();
-  await s.admin.mutation(api.marketing.setCampaignStatus, {
+  await s.admin.mutation(api.marketing.commands.setCampaignStatus.setCampaignStatus, {
     campaignId,
     status: "active",
   });
   await expect(
-    writer.mutation(api.marketing.saveCampaign, { ...fields, campaignId }),
+    writer.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...fields, campaignId }),
   ).rejects.toThrow("drafts only");
-  expect(await writer.query(api.marketing.catalog, {})).toMatchObject([
+  expect(await writer.query(api.marketing.queries.catalog, {})).toMatchObject([
     {
       _id: s.propertyId,
       name: "Villa",
@@ -552,7 +552,7 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
   ]);
   await expect(writer.query(api.catalog.properties.adminList, {})).rejects.toThrow();
   await expect(
-    writer.mutation(api.marketingAffiliates.saveAffiliate, {
+    writer.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, {
       name: "No",
       slug: "no",
       campaignId,
@@ -562,33 +562,33 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
 it("creates a draft canonical alias, preserves slug and safely synchronizes partner status", async () => {
   const s = await setup();
   const affiliateId = await s.admin.mutation(
-    api.marketingAffiliates.saveAffiliate,
+    api.marketing.commands.saveAffiliate.saveAffiliate,
     { name: "Anna", slug: "ANNA", campaignId: s.campaignId },
   );
   expect(
-    await s.t.query(api.marketing.resolveLink, { slug: "r/anna" }),
+    await s.t.query(api.marketing.public.resolveLink, { slug: "r/anna" }),
   ).toBeNull();
-  await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, {
+  await s.admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, {
     affiliateId,
     status: "active",
   });
   expect(
-    await s.t.query(api.marketing.resolveLink, { slug: "r/anna" }),
+    await s.t.query(api.marketing.public.resolveLink, { slug: "r/anna" }),
   ).toMatchObject({ status: "active", path: "/booking?mk=r%2Fanna" });
   await expect(
-    s.admin.mutation(api.marketingAffiliates.saveAffiliate, {
+    s.admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, {
       id: affiliateId,
       name: "New",
       slug: "new",
       campaignId: s.campaignId,
     }),
   ).rejects.toThrow("permanent");
-  await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, {
+  await s.admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, {
     affiliateId,
     status: "paused",
   });
   expect(
-    await s.t.query(api.marketing.resolveLink, { slug: "r/anna" }),
+    await s.t.query(api.marketing.public.resolveLink, { slug: "r/anna" }),
   ).toMatchObject({ status: "paused", offerRemoved: true });
 });
 it("freezes link/coupon conflict and self-referral candidates, requires explicit review and preserves decisions", async () => {
@@ -618,11 +618,11 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
     state: "approved",
     approvedNet: 190000,
   });
-  await s.admin.mutation(api.marketingAffiliates.assignCoupon, {
+  await s.admin.mutation(api.marketing.commands.assignCoupon.assignCoupon, {
     affiliateId: bob,
     couponId: null,
   });
-  await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
+  await s.admin.mutation(api.marketing.commands.refreshCredit.refreshCredit, {
     creditId: row._id,
   });
   expect(await s.credit()).toMatchObject({
@@ -633,7 +633,7 @@ it("freezes link/coupon conflict and self-referral candidates, requires explicit
     },
     approvedNet: 190000,
   });
-  const detail = await s.admin.query(api.marketingAffiliates.getCredit, {
+  const detail = await s.admin.query(api.marketing.affiliates.getCredit, {
     creditId: row._id,
   });
   expect(detail?.history.map((h) => h.kind)).toEqual([
@@ -657,7 +657,7 @@ it("supports coupon-only claims, retries once and updates approved net on partia
   });
   await s.pay(bookingId);
   expect(
-    (await s.admin.query(api.marketingAffiliates.listCredits, {})).rows,
+    (await s.admin.query(api.marketing.affiliates.listCredits, {})).rows,
   ).toHaveLength(1);
   const beforeEdit = (await s.t.run((ctx) => ctx.db.get(bookingId)))!;
   await s.admin.mutation(api.bookings.commands.editBooking.editBooking, {
@@ -700,15 +700,15 @@ it("supports coupon-only claims, retries once and updates approved net on partia
     approvedNet: 0,
     eligibleNet: 0,
   });
-  const history = (await s.admin.query(api.marketingAffiliates.getCredit, {
+  const history = (await s.admin.query(api.marketing.affiliates.getCredit, {
     creditId: row._id,
   }))!.history;
   expect(history[0]).toMatchObject({ kind: "reversed", approvedNet: 0 });
-  await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
+  await s.admin.mutation(api.marketing.commands.refreshCredit.refreshCredit, {
     creditId: row._id,
   });
   expect(
-    (await s.admin.query(api.marketingAffiliates.getCredit, {
+    (await s.admin.query(api.marketing.affiliates.getCredit, {
       creditId: row._id,
     }))!.history,
   ).toHaveLength(history.length);
@@ -718,7 +718,7 @@ it("does not backfill legacy sales or reopen rejected credits, and refuses archi
   const anna = await s.partner();
   const { bookingId } = await s.book({ slug: "r/anna" });
   const row = await s.credit();
-  await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+  await s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
     creditId: row._id,
     decision: "rejected",
     reason: "Not a genuine referral",
@@ -730,12 +730,12 @@ it("does not backfill legacy sales or reopen rejected credits, and refuses archi
   await s.t.run(async (ctx) => {
     await ctx.db.patch(bookingId, { affiliateSnapshot: undefined });
   });
-  await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, {
+  await s.admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, {
     affiliateId: anna,
     status: "archived",
   });
   expect(
-    (await s.admin.query(api.marketingAffiliates.listAffiliates, {})).rows[0]
+    (await s.admin.query(api.marketing.affiliates.listAffiliates, {})).rows[0]
       .summary,
   ).toMatchObject({ rejected: 1, approvedNet: 0 });
 });
@@ -747,14 +747,14 @@ it("enforces read/finance roles on public APIs and validates stale revisions and
   const row = await s.credit();
   for (const role of ["viewer", "finance"] as const) {
     const email = `${role}@example.com`;
-    await s.admin.mutation(api.marketingAccess.setGrant, { email, role });
+    await s.admin.mutation(api.marketing.access.setGrant, { email, role });
     const user = s.t.withIdentity({ email, tokenIdentifier: role });
-    await user.mutation(api.marketingAccess.claimInvite, {});
+    await user.mutation(api.marketing.access.claimInvite, {});
     expect(
-      (await user.query(api.marketingAffiliates.listCredits, {})).rows,
+      (await user.query(api.marketing.affiliates.listCredits, {})).rows,
     ).toHaveLength(1);
     await expect(
-      user.mutation(api.marketing.saveCampaign, {
+      user.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
         name: "x",
         source: "x",
         medium: "x",
@@ -768,26 +768,26 @@ it("enforces read/finance roles on public APIs and validates stale revisions and
     };
     if (role === "viewer")
       await expect(
-        user.mutation(api.marketingAffiliates.reviewCredit, review),
+        user.mutation(api.marketing.commands.reviewCredit.reviewCredit, review),
       ).rejects.toThrow();
     else {
       await expect(
-        user.mutation(api.marketingAffiliates.reviewCredit, {
+        user.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
           ...review,
           expectedRevision: -1,
         }),
       ).rejects.toThrow("changed");
       await expect(
-        user.mutation(api.marketingAffiliates.reviewCredit, {
+        user.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
           ...review,
           reason: "",
         }),
       ).rejects.toThrow("reason");
-      await user.mutation(api.marketingAffiliates.reviewCredit, review);
+      await user.mutation(api.marketing.commands.reviewCredit.reviewCredit, review);
     }
   }
   await expect(
-    s.t.query(api.marketingAffiliates.listCredits, {}),
+    s.t.query(api.marketing.affiliates.listCredits, {}),
   ).rejects.toThrow();
 });
 it("freezes POS settlement and excludes stay money from order credit, then reverses a no-money void", async () => {
@@ -835,7 +835,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
   };
   await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, args);
   await s.admin.mutation(api.pos.commands.settleOrder.settleOrder, args);
-  const rows = (await s.admin.query(api.marketingAffiliates.listCredits, {}))
+  const rows = (await s.admin.query(api.marketing.affiliates.listCredits, {}))
     .rows;
   expect(rows).toHaveLength(2);
   expect(rows.find((c) => c.orderId === orderId)).toMatchObject({
@@ -847,7 +847,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     eligibleNet: 200000,
   });
   const orderCredit = rows.find((c) => c.orderId === orderId)!;
-  await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+  await s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
     creditId: orderCredit._id,
     decision: "approved",
     reason: "Verified staff referral",
@@ -861,7 +861,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
   });
   expect(
     (
-      await s.admin.query(api.marketingAffiliates.getCredit, {
+      await s.admin.query(api.marketing.affiliates.getCredit, {
         creditId: orderCredit._id,
       })
     )?.credit,
@@ -869,14 +869,14 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
 });
 it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon edits", async () => {
   const s = await setup();
-  await s.admin.mutation(api.marketing.saveCampaign, {
+  await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
     campaignId: s.campaignId,
     name: "Budgeted",
     source: "partner",
     medium: "affiliate",
     budget: 50000,
   });
-  await s.admin.mutation(api.marketingAccess.setGrant, {
+  await s.admin.mutation(api.marketing.access.setGrant, {
     email: "writer@example.com",
     role: "marketer",
   });
@@ -884,8 +884,8 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     email: "writer@example.com",
     tokenIdentifier: "writer",
   });
-  await writer.mutation(api.marketingAccess.claimInvite, {});
-  await writer.mutation(api.marketing.saveCampaign, {
+  await writer.mutation(api.marketing.access.claimInvite, {});
+  await writer.mutation(api.marketing.commands.saveCampaign.saveCampaign, {
     campaignId: s.campaignId,
     name: "Edited",
     source: "partner",
@@ -899,48 +899,48 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     destination: { kind: "home" as const },
     entry: "link" as const,
   };
-  const linkId = await writer.mutation(api.marketing.saveLink, args);
-  await writer.mutation(api.marketing.saveLink, {
+  const linkId = await writer.mutation(api.marketing.commands.saveLink.saveLink, args);
+  await writer.mutation(api.marketing.commands.saveLink.saveLink, {
     ...args,
     linkId,
     name: "Changed",
   });
-  await s.admin.mutation(api.marketing.setLinkStatus, {
+  await s.admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, {
     linkId,
     status: "active",
   });
   await expect(
-    writer.mutation(api.marketing.saveLink, { ...args, linkId }),
+    writer.mutation(api.marketing.commands.saveLink.saveLink, { ...args, linkId }),
   ).rejects.toThrow("drafts only");
   const rules = {
     code: "WRITER",
     benefit: { kind: "fixed" as const, amount: 10000 },
     scope: "services" as const,
   };
-  const { couponId } = await writer.mutation(api.marketing.saveCoupon, rules);
-  await writer.mutation(api.marketing.saveCoupon, { ...rules, couponId });
-  await s.admin.mutation(api.marketing.setCouponStatus, {
+  const { couponId } = await writer.mutation(api.marketing.commands.saveCoupon.saveCoupon, rules);
+  await writer.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...rules, couponId });
+  await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, {
     couponId,
     status: "active",
   });
   await expect(
-    writer.mutation(api.marketing.saveCoupon, { ...rules, couponId }),
+    writer.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...rules, couponId }),
   ).rejects.toThrow("drafts only");
 });
 it("uses the last eligible affiliate touch independently of the last acquisition link", async () => {
   const s = await setup();
   const anna = await s.partner();
   const alias = (
-    await s.admin.query(api.marketingAffiliates.listAffiliates, {})
+    await s.admin.query(api.marketing.affiliates.listAffiliates, {})
   ).rows[0].canonicalLinkId!;
-  const ordinary = await s.admin.mutation(api.marketing.saveLink, {
+  const ordinary = await s.admin.mutation(api.marketing.commands.saveLink.saveLink, {
     slug: "ordinary",
     name: "Ordinary",
     campaignId: s.campaignId,
     destination: { kind: "home" },
     entry: "link",
   });
-  await s.admin.mutation(api.marketing.setLinkStatus, {
+  await s.admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, {
     linkId: ordinary,
     status: "active",
   });
@@ -982,7 +982,7 @@ it("uses the last eligible affiliate touch independently of the last acquisition
 it("rejects out-of-scope and expired candidates, archived approvals and unseen money changes", async () => {
   const s = await setup();
   const anna = await s.partner();
-  await s.admin.mutation(api.marketingAffiliates.saveAffiliate, {
+  await s.admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, {
     id: anna,
     name: "Anna",
     slug: "anna",
@@ -997,7 +997,7 @@ it("rejects out-of-scope and expired candidates, archived approvals and unseen m
   });
   await s.pay(row.bookingId!);
   await expect(s.approve()).rejects.toThrow("eligible frozen");
-  await s.admin.mutation(api.marketingAffiliates.reviewCredit, {
+  await s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, {
     creditId: row._id,
     decision: "rejected",
     reason: "Expired partner",
@@ -1010,10 +1010,10 @@ it("rejects out-of-scope and expired candidates, archived approvals and unseen m
   row = await t.credit();
   await t.t.run((ctx) => ctx.db.patch(bookingId, { amountPaid: 150000 }));
   await expect(t.approve()).rejects.toThrow("Sale changed");
-  await t.admin.mutation(api.marketingAffiliates.refreshCredit, {
+  await t.admin.mutation(api.marketing.commands.refreshCredit.refreshCredit, {
     creditId: row._id,
   });
-  await t.admin.mutation(api.marketingAffiliates.setAffiliateStatus, {
+  await t.admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, {
     affiliateId: partner,
     status: "archived",
   });
@@ -1042,7 +1042,7 @@ it("does not infer any historical affiliate credit when an older sale is paid", 
   );
   await s.pay(bookingId);
   expect(
-    (await s.admin.query(api.marketingAffiliates.listCredits, {})).rows,
+    (await s.admin.query(api.marketing.affiliates.listCredits, {})).rows,
   ).toEqual([]);
 });
 it("keeps zero-cash coupon-covered service orders as zero-net reporting credit without payouts", async () => {
@@ -1103,7 +1103,7 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
   await s.t.run((ctx) =>
     ctx.db.patch(bookingId, { amountPaid: 50000, paymentStatus: "pending" }),
   );
-  await s.admin.mutation(api.marketingAffiliates.refreshCredit, {
+  await s.admin.mutation(api.marketing.commands.refreshCredit.refreshCredit, {
     creditId: original._id,
   });
   expect(await s.credit()).toMatchObject({
@@ -1129,10 +1129,10 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
 it("does not pretend invitations can revoke or downgrade configured system administrators", async () => {
   const s = await setup();
   for (const role of [null, "viewer"] as const) {
-    await expect(s.admin.mutation(api.marketingAccess.setGrant, { email: "admin@example.com", role })).rejects.toThrow("ADMIN_EMAILS");
+    await expect(s.admin.mutation(api.marketing.access.setGrant, { email: "admin@example.com", role })).rejects.toThrow("ADMIN_EMAILS");
   }
-  expect((await s.admin.query(api.marketingAccess.current, {})).role).toBe("admin");
-  expect(await s.admin.query(api.marketingAccess.listGrants, {})).toEqual([]);
+  expect((await s.admin.query(api.marketing.access.current, {})).role).toBe("admin");
+  expect(await s.admin.query(api.marketing.access.listGrants, {})).toEqual([]);
 });
 
 
@@ -1143,9 +1143,9 @@ it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evi
     const link = (await s.t.run(ctx => ctx.db.get(anna)))!.canonicalLinkId!;
     const visitorKey = "mv_" + "b".repeat(32);
     // An anonymous open and another visitor's session do not establish this guest's visit.
-    await s.t.mutation(api.marketing.recordOpen, { slug: "r/anna", bot: false });
-    await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey: "mv_" + "c".repeat(32) });
-    if (recorded) await s.t.mutation(api.marketing.startSession, { slug: "r/anna", landingPath: "/", visitorKey });
+    await s.t.mutation(api.marketing.public.recordOpen, { slug: "r/anna", bot: false });
+    await s.t.mutation(api.marketing.public.startSession, { slug: "r/anna", landingPath: "/", visitorKey: "mv_" + "c".repeat(32) });
+    if (recorded) await s.t.mutation(api.marketing.public.startSession, { slug: "r/anna", landingPath: "/", visitorKey });
     const stay = {
       propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com",
       guestPhone: "+66811112222", checkIn: "2026-11-10", checkOut: "2026-11-12", guests: 2,
@@ -1178,7 +1178,7 @@ it.each(["create", "confirmProposal"] as const)("freezes recorded vs claimed evi
     });
     const linkBefore = await s.t.run(ctx => ctx.db.get(link));
     const aggregatesBefore = await s.t.run(ctx => ctx.db.query("marketingSessionDays").collect());
-    await s.t.mutation(internal.crons.cleanRawMarketing, {});
+    await s.t.mutation(internal.marketing.maintenance.cleanRawMarketing, {});
     expect(await s.t.run(ctx => ctx.db.get(result.bookingId))).toEqual(before);
     expect(await s.credit()).toEqual(credit);
     expect(await s.t.run(ctx => ctx.db.get(link))).toEqual(linkBefore);

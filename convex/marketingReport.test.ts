@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
-import { stayMoney } from './lib/bookingMoney';
-import { readMarketingReport } from './lib/marketingReportRead';
+import { stayMoney } from './lib/stayMoney';
+import { readMarketingReport } from './marketing/reportRead';
 import { ReadBudget } from './lib/readBudget';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -20,16 +20,16 @@ async function setup(couponAmount = 10000) {
 	const t = convexTest(schema, modules);
 	const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
 	const propertyId = await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
-	const campaignId = await admin.mutation(api.marketing.saveCampaign, { name: 'November', source: 'print', medium: 'qr' });
-	const { couponId } = await admin.mutation(api.marketing.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: couponAmount }, scope: 'services' });
-	await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-	const linkId = await admin.mutation(api.marketing.saveLink, { campaignId, couponId, slug: 'spa', name: 'Spa card', destination: { kind: 'home' }, entry: 'qr' });
-	await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
+	const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'November', source: 'print', medium: 'qr' });
+	const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: couponAmount }, scope: 'services' });
+	await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
+	const linkId = await admin.mutation(api.marketing.commands.saveLink.saveLink, { campaignId, couponId, slug: 'spa', name: 'Spa card', destination: { kind: 'home' }, entry: 'qr' });
+	await admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, { linkId, status: 'active' });
 	const booking = (patch: Partial<Doc<'bookings'>> = {}) => t.run(async ctx => { const id = await insertFixture(ctx, 'bookings', { propertyId, guestName: 'Guest', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, nights: 1, subtotal: 100000, discountAmount: 0, total: 100000, currency: 'THB', paymentStatus: 'pending', status: 'confirmed', createdAt: now, ...patch });
     if (patch.paymentStatus === 'paid' && patch.amountPaid === undefined) await ctx.db.insert('bookingPayments', { bookingId: id, origin: 'manual', method: 'cash', currency: patch.currency ?? 'THB', amount: patch.total ?? 100000, effectiveAt: patch.paidAt ?? now, recordedAt: now, recordedBy: email, status: 'recorded', refunded: 0 });
     return id; });
 	const order = async (orderId: Id<'orders'>) => (await admin.query(api.pos.orders.getOrder, { orderId }))!;
-	const report = (basis: 'cohort' | 'cash' = 'cohort', from = '2026-11-09', to = from) => admin.query(api.marketingReport.getReport, { from, to, basis });
+	const report = (basis: 'cohort' | 'cash' = 'cohort', from = '2026-11-09', to = from) => admin.query(api.marketing.report.getReport, { from, to, basis });
 	const payOrder = async (orderId: Id<'orders'>, effectiveAt = now) => {
 		const view = await order(orderId);
 		const args = { orderId, expectedRevision: view.order.revision, expectedDue: view.totals.due, idempotencyKey: `settle-${orderId}`, tenders: view.totals.due ? [{ method: 'cash' as const, amount: view.totals.due }] : [], effectiveAt };
@@ -98,13 +98,13 @@ describe('report money', () => {
 
 	it('counts a consumed stay coupon once, omits its unpaid hold and retains an archived referenced coupon', async () => {
 		const s = await setup();
-		const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
-		await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+		const { couponId } = await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
+		await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 		const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
 		expect((await s.report()).sales).toEqual([]);
 		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
-		await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'archived' });
+		await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'archived' });
 		const report = await s.report();
 		expect(report.sales).toMatchObject([{ id: bookingId, collected: 90000, discount: 10000, coupon: { couponId, code: 'VILLA100', campaignId: s.campaignId } }]);
 		expect(report.sales.reduce((sum, r) => sum + r.discount, 0)).toBe((await s.t.run(ctx => ctx.db.get(couponId)))!.discountGranted);
@@ -205,7 +205,7 @@ describe('report attribution and limits', () => {
 		for (const [from, to] of [['2026-01-01', '2026-04-03'], ['bad', '2026-11-09'], ['2026-11-10', '2026-11-09']]) await expect(s.report('cash', from, to)).rejects.toThrow(/92 Bangkok days/);
 		// Exactly 92 days is allowed.
 		expect((await s.report('cash', '2026-08-10', '2026-11-09')).truncated).toBe(false);
-		await expect(s.t.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' })).rejects.toThrow('authenticated');
+		await expect(s.t.query(api.marketing.report.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' })).rejects.toThrow('authenticated');
 	});
 
 	it('excludes foreign stays and orders once per sale', async () => {
@@ -220,7 +220,7 @@ describe('report attribution and limits', () => {
 
 	it('keeps names, spend and completed sales when a later candidate exhausts the budget', async () => {
 		const s = await setup();
-		await s.admin.mutation(api.marketingReport.saveSpend, { campaignId: s.campaignId, amount: 90000, from: '2026-11-01', to: '2026-11-09' });
+		await s.admin.mutation(api.marketing.report.saveSpend, { campaignId: s.campaignId, amount: 90000, from: '2026-11-01', to: '2026-11-09' });
 		const first = await s.booking({ paymentStatus: 'paid', paidAt: now });
 		await s.booking({ paymentStatus: 'paid', paidAt: now });
 		const args = { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' as const };
@@ -359,94 +359,94 @@ describe('spend and diagnostic rollups', () => {
 	it('validates spend, preserves creation time, audits CRUD and reports only live overlapping entries', async () => {
 		const s = await setup();
 		const draft = { campaignId: s.campaignId, amount: 100000, from: '2026-11-01', to: '2026-11-10', note: 'Launch' };
-		await expect(s.admin.mutation(api.marketingReport.saveSpend, { ...draft, amount: 1.5 })).rejects.toThrow('positive amount');
-		await expect(s.t.mutation(api.marketingReport.saveSpend, draft)).rejects.toThrow('authenticated');
-		const id = await s.admin.mutation(api.marketingReport.saveSpend, draft);
+		await expect(s.admin.mutation(api.marketing.report.saveSpend, { ...draft, amount: 1.5 })).rejects.toThrow('positive amount');
+		await expect(s.t.mutation(api.marketing.report.saveSpend, draft)).rejects.toThrow('authenticated');
+		const id = await s.admin.mutation(api.marketing.report.saveSpend, draft);
 		vi.setSystemTime(now + 1000);
-		await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, id, amount: 200000 });
+		await s.admin.mutation(api.marketing.report.saveSpend, { ...draft, id, amount: 200000 });
 		expect(await s.t.run(ctx => ctx.db.get(id))).toMatchObject({ createdAt: now, updatedAt: now + 1000 });
-		const deleted = await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, note: 'Delete' });
-		await s.admin.mutation(api.marketingReport.deleteSpend, { id: deleted });
-		await s.admin.mutation(api.marketingReport.deleteSpend, { id: deleted });
-		await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, from: '2026-11-10', to: '2026-11-11' });
-		await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, from: '2026-10-01', to: '2026-11-08' });
+		const deleted = await s.admin.mutation(api.marketing.report.saveSpend, { ...draft, note: 'Delete' });
+		await s.admin.mutation(api.marketing.report.deleteSpend, { id: deleted });
+		await s.admin.mutation(api.marketing.report.deleteSpend, { id: deleted });
+		await s.admin.mutation(api.marketing.report.saveSpend, { ...draft, from: '2026-11-10', to: '2026-11-11' });
+		await s.admin.mutation(api.marketing.report.saveSpend, { ...draft, from: '2026-10-01', to: '2026-11-08' });
 		expect((await s.report()).spend).toEqual([{ id, ...draft, amount: 200000 }]);
-		expect(await s.admin.query(api.marketingReport.listSpend, { campaignId: s.campaignId })).toHaveLength(3);
+		expect(await s.admin.query(api.marketing.report.listSpend, { campaignId: s.campaignId })).toHaveLength(3);
 		const history = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'marketingSpend').eq('entityId', id)).take(10));
 		expect(history.map(r => r.kind)).toEqual(['created', 'updated']);
 		expect(history[1]).toMatchObject({ before: { amount: 100000, from: draft.from, to: draft.to, note: 'Launch' }, after: { amount: 200000, from: draft.from, to: draft.to, note: 'Launch' } });
 		const deletion = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'marketingSpend').eq('entityId', deleted)).take(10));
 		expect(deletion.map(r => r.kind)).toEqual(['created', 'deleted']);
-		await expect(s.admin.mutation(api.marketingReport.saveSpend, { ...draft, id: deleted })).rejects.toThrow('not found');
+		await expect(s.admin.mutation(api.marketing.report.saveSpend, { ...draft, id: deleted })).rejects.toThrow('not found');
 		// Moving an entry to another campaign shows in its history.
-		const other = await s.admin.mutation(api.marketing.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
-		await s.admin.mutation(api.marketingReport.saveSpend, { ...draft, id, amount: 200000, campaignId: other });
+		const other = await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
+		await s.admin.mutation(api.marketing.report.saveSpend, { ...draft, id, amount: 200000, campaignId: other });
 		const moved = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'marketingSpend').eq('entityId', id)).take(10));
 		expect(moved[2]).toMatchObject({ kind: 'updated', before: { campaign: 'November' }, after: { campaign: 'December' } });
 		await s.t.run(ctx => ctx.db.delete(s.campaignId));
-		await expect(s.admin.mutation(api.marketingReport.saveSpend, draft)).rejects.toThrow('Campaign not found');
+		await expect(s.admin.mutation(api.marketing.report.saveSpend, draft)).rejects.toThrow('Campaign not found');
 	});
 
 	it('normalizes refusals, counts problems/surfaces, drops unauthorised/rate-limited calls and stores no unknown text', async () => {
 		const s = await setup();
 		const note = { code: ' spa100 ', problem: 'sold_out' as const, surface: 'booking' as const };
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, note);
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, note);
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'pos' });
-		await s.t.withIdentity({ email: 'guest@example.com' }).mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'admin_booking' });
-		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'admin_booking', problem: 'expired' });
-		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'pos' });
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, { ...note, code: 'private unknown text' });
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, { ...note, problem: 'coupon_worse' });
-		const summary = await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId });
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, note);
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, note);
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'pos' });
+		await s.t.withIdentity({ email: 'guest@example.com' }).mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'admin_booking' });
+		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'admin_booking', problem: 'expired' });
+		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'pos' });
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, { ...note, code: 'private unknown text' });
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, { ...note, problem: 'coupon_worse' });
+		const summary = await s.admin.query(api.marketing.report.couponRefusals, { couponId: s.couponId });
 		expect(summary).toMatchObject({ since: '2026-10-11', total: 4, byProblem: expect.arrayContaining([{ problem: 'sold_out', count: 3 }, { problem: 'expired', count: 1 }, { problem: 'coupon_worse', count: 1 }]), bySurface: expect.arrayContaining([{ surface: 'booking', count: 2 }, { surface: 'admin_booking', count: 1 }, { surface: 'pos', count: 1 }]) });
 		const unknown = await s.t.run(ctx => ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', undefined)).take(10));
 		expect(unknown).toMatchObject([{ problem: 'not_found', count: 1 }]);
 		expect(JSON.stringify(unknown)).not.toContain('private');
 		await s.t.run(async ctx => { const limit = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', 'coupon-refusal:global')).unique(); await ctx.db.patch(limit!._id, { count: 5000 }); });
-		await s.t.mutation(api.marketingReport.noteCouponRefusal, note);
-		expect(await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId })).toEqual(summary);
+		await s.t.mutation(api.marketing.report.noteCouponRefusal, note);
+		expect(await s.admin.query(api.marketing.report.couponRefusals, { couponId: s.couponId })).toEqual(summary);
 		// Public traffic can't use up the staff surfaces' limit.
-		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { ...note, surface: 'pos' });
-		expect((await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId } )).total).toBe(5);
+		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'pos' });
+		expect((await s.admin.query(api.marketing.report.couponRefusals, { couponId: s.couponId } )).total).toBe(5);
 		// A scanned link without an offer keeps its reason, without a coupon.
-		await s.admin.mutation(api.marketingReport.noteCouponRefusal, { code: 'old-card', problem: 'link_without_offer', surface: 'pos' });
+		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { code: 'old-card', problem: 'link_without_offer', surface: 'pos' });
 		const linkRows = await s.t.run(ctx => ctx.db.query('couponRefusalDays').withIndex('by_couponId_and_day', q => q.eq('couponId', undefined)).take(10));
 		expect(linkRows).toEqual(expect.arrayContaining([expect.objectContaining({ problem: 'link_without_offer', surface: 'pos', count: 1 })]));
-		await expect(s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId, days: 91 })).rejects.toThrow('90 days');
-		await expect(s.t.query(api.marketingReport.couponRefusals, { couponId: s.couponId })).rejects.toThrow('authenticated');
+		await expect(s.admin.query(api.marketing.report.couponRefusals, { couponId: s.couponId, days: 91 })).rejects.toThrow('90 days');
+		await expect(s.t.query(api.marketing.report.couponRefusals, { couponId: s.couponId })).rejects.toThrow('authenticated');
 		vi.setSystemTime(now + day);
-		expect((await s.admin.query(api.marketingReport.couponRefusals, { couponId: s.couponId, days: 1 })).total).toBe(0);
+		expect((await s.admin.query(api.marketing.report.couponRefusals, { couponId: s.couponId, days: 1 })).total).toBe(0);
 	});
 
 	it('rolls sessions up by Bangkok day/link and inserts/counts nothing when rate-limited', async () => {
 		const s = await setup();
 		const visitorKey = 'mv_' + '1'.repeat(32);
 		vi.setSystemTime(Date.parse('2026-11-08T16:59:59Z'));
-		await s.t.mutation(api.marketing.startSession, { visitorKey, slug: 'spa', landingPath: '/' });
+		await s.t.mutation(api.marketing.public.startSession, { visitorKey, slug: 'spa', landingPath: '/' });
 		vi.setSystemTime(Date.parse('2026-11-08T17:00:00Z'));
-		for (let i = 0; i < 29; i++) await s.t.mutation(api.marketing.startSession, { visitorKey, slug: 'spa', landingPath: '/' });
-		expect((await s.t.mutation(api.marketing.startSession, { visitorKey, landingPath: '/' })).sessionId).toBeNull();
+		for (let i = 0; i < 29; i++) await s.t.mutation(api.marketing.public.startSession, { visitorKey, slug: 'spa', landingPath: '/' });
+		expect((await s.t.mutation(api.marketing.public.startSession, { visitorKey, landingPath: '/' })).sessionId).toBeNull();
 		// A visitor over their own limit doesn't use up the allowance everyone shares.
 		expect((await s.t.run(ctx => ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', 'marketing-session:global')).unique()))!.count).toBe(30);
 		const rollups = await s.t.run(ctx => ctx.db.query('marketingSessionDays').take(10));
 		expect(rollups).toMatchObject([{ day: '2026-11-08', linkId: s.linkId, campaignId: s.campaignId, count: 1 }, { day: '2026-11-09', linkId: s.linkId, count: 29 }]);
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessions').take(100))).toHaveLength(30);
-		await s.t.mutation(api.marketing.startSession, { landingPath: '/' });
+		await s.t.mutation(api.marketing.public.startSession, { landingPath: '/' });
 		expect((await s.report()).sessions).toEqual(expect.arrayContaining([{ day: '2026-11-09', linkId: s.linkId, campaignId: s.campaignId, count: 29 }, { day: '2026-11-09', count: 1 }]));
 		const before = await s.t.run(ctx => ctx.db.query('marketingSessionDays').take(10));
 		await s.t.run(async ctx => { const limit = await ctx.db.query('rateLimits').withIndex('by_key', q => q.eq('key', 'marketing-session:global')).unique(); await ctx.db.patch(limit!._id, { count: 5000 }); });
-		expect((await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' })).sessionId).toBeNull();
+		expect((await s.t.mutation(api.marketing.public.startSession, { slug: 'spa', landingPath: '/' })).sessionId).toBeNull();
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessionDays').take(10))).toEqual(before);
 		expect(await s.t.run(ctx => ctx.db.query('marketingSessions').take(100))).toHaveLength(31);
 	});
 
 	it('keeps a moved link\'s earlier sessions under the campaign it had then', async () => {
 		const s = await setup();
-		await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' });
-		const other = await s.admin.mutation(api.marketing.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
+		await s.t.mutation(api.marketing.public.startSession, { slug: 'spa', landingPath: '/' });
+		const other = await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'December', source: 'facebook', medium: 'social' });
 		await s.t.run(ctx => ctx.db.patch(s.linkId, { campaignId: other }));
-		for (let i = 0; i < 2; i++) await s.t.mutation(api.marketing.startSession, { slug: 'spa', landingPath: '/' });
+		for (let i = 0; i < 2; i++) await s.t.mutation(api.marketing.public.startSession, { slug: 'spa', landingPath: '/' });
 		expect((await s.report()).sessions.map(row => [row.campaignId, row.count]).sort()).toEqual([[s.campaignId, 1], [other, 2]].sort());
 	});
 });
@@ -527,8 +527,8 @@ it('retains consumed coupon discount after a real service refund', async () => {
 
 it('reports zero coupon discount for a custom-price stay without changing coupon history or counters', async () => {
 	const s = await setup();
-	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
-	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+	const { couponId } = await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
+	await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
 	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 	const before = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).unique() }));
@@ -543,11 +543,11 @@ it('reports zero coupon discount for a custom-price stay without changing coupon
 it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts personal fields server-side for %s across report, affiliate credits and coupon detail', async role => {
 	const s = await setup();
 	const fullDetail = role === 'finance' || role === 'manager' || role === 'admin';
-	const affiliateId = await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'private-partner@example.com', notes: 'Private partner note' });
-	await s.admin.mutation(api.marketingAffiliates.setAffiliateStatus, { affiliateId, status: 'active' });
-	const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { campaignId: s.campaignId, code: 'BOTH100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation_and_services' });
-	await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-	await s.admin.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
+	const affiliateId = await s.admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'private-partner@example.com', notes: 'Private partner note' });
+	await s.admin.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, { affiliateId, status: 'active' });
+	const { couponId } = await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId: s.campaignId, code: 'BOTH100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation_and_services' });
+	await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
+	await s.admin.mutation(api.marketing.commands.assignCoupon.assignCoupon, { affiliateId, couponId });
 	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
 	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
 	await s.t.run(ctx => ctx.db.patch(bookingId, { confirmationCode: 'PRIVATE-CONF' }));
@@ -559,12 +559,12 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
 	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
 	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
-	const data = await reader.query(api.marketingReport.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
+	const data = await reader.query(api.marketing.report.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
 	expect(data.sales.find(row => row.id === bookingId)).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });
 	expect(data.sales.find(row => row.id === bookingId)?.ref).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
 	expect(data.sales.find(row => row.id === orderId)?.label).toBe(fullDetail ? 'Private Customer' : 'Guest');
 	expect(data.sales.find(row => row.id === appointmentId)?.label).toBe(fullDetail ? 'Desk guest' : 'Guest');
-	const credits = await reader.query(api.marketingAffiliates.listCredits, {});
+	const credits = await reader.query(api.marketing.affiliates.listCredits, {});
 	expect(credits.rows).toHaveLength(2);
 	for (const credit of credits.rows) {
 		const isStay = credit.bookingId === bookingId;
@@ -572,15 +572,15 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 		if (isStay) expect(credit.ref).toBe(fullDetail ? 'PRIVATE-CONF' : 'Booking');
 		expect(credit.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
 		expect(credit.snapshot.candidates[0].contactEmail).toBe(fullDetail ? 'private-partner@example.com' : undefined);
-		await s.admin.mutation(api.marketingAffiliates.reviewCredit, { creditId: credit._id, expectedRevision: credit.revision, decision: 'rejected', reason: 'Private finance reason' });
-		const detail = await reader.query(api.marketingAffiliates.getCredit, { creditId: credit._id });
+		await s.admin.mutation(api.marketing.commands.reviewCredit.reviewCredit, { creditId: credit._id, expectedRevision: credit.revision, decision: 'rejected', reason: 'Private finance reason' });
+		const detail = await reader.query(api.marketing.affiliates.getCredit, { creditId: credit._id });
 		expect(detail!.credit.reason).toBe(fullDetail ? 'Private finance reason' : null);
 		expect(detail!.credit.reasonHidden ?? false).toBe(!fullDetail);
 		expect(detail!.history[0].reason).toBe(fullDetail ? 'Private finance reason' : null);
 		expect(detail!.history[0].reasonHidden ?? false).toBe(!fullDetail);
-		expect((await reader.query(api.marketingAffiliates.listCredits, {})).rows.find(row => row._id === credit._id)!.reason).toBe(fullDetail ? 'Private finance reason' : null);
+		expect((await reader.query(api.marketing.affiliates.listCredits, {})).rows.find(row => row._id === credit._id)!.reason).toBe(fullDetail ? 'Private finance reason' : null);
 	}
-	await s.admin.mutation(api.marketingAffiliates.saveAffiliate, { id: affiliateId, name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'new-private@example.com', notes: 'New private note' });
+	await s.admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, { id: affiliateId, name: 'Partner', slug: 'partner', campaignId: s.campaignId, contactEmail: 'new-private@example.com', notes: 'New private note' });
 	for (const entityId of [undefined, affiliateId]) {
 		const history = await reader.query(api.settings.recordHistory.list, { entityType: 'marketingAffiliate', ...(entityId ? { entityId } : {}), paginationOpts: { numItems: 100, cursor: null } });
 		const serialized = JSON.stringify(history);
@@ -589,9 +589,9 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 			else expect(serialized).not.toContain(value);
 		}
 	}
-	const partners = await reader.query(api.marketingAffiliates.listAffiliates, {});
+	const partners = await reader.query(api.marketing.affiliates.listAffiliates, {});
 	expect(partners.rows[0].contactEmail).toBe(fullDetail ? 'new-private@example.com' : undefined);
-	const coupon = await reader.query(api.marketing.getCoupon, { couponId });
+	const coupon = await reader.query(api.marketing.queries.getCoupon, { couponId });
 	const booking = coupon!.redemptions.find(row => row.bookingId === bookingId)!.booking!;
 	expect(booking.guestName).toBe(fullDetail ? 'Private Guest' : 'Guest');
 	expect(booking.confirmationCode).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
@@ -601,7 +601,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 		for (const secret of ['Private Guest', 'PRIVATE-CONF', 'Private Customer', 'private-partner@example.com', 'Desk guest']) expect(responses).not.toContain(secret);
 	}
 	// Redaction is a read boundary: admin still sees persisted history unchanged after these reads.
-	expect((await s.admin.query(api.marketingAffiliates.listCredits, {})).rows[0].snapshot.candidates[0].contactEmail).toBe('private-partner@example.com');
+	expect((await s.admin.query(api.marketing.affiliates.listCredits, {})).rows[0].snapshot.candidates[0].contactEmail).toBe('private-partner@example.com');
 });
 
 

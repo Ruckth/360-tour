@@ -5,7 +5,8 @@ import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 import { createBookingRecord } from './lib/bookingWrites';
-import { isVisitorKey, MAX_SESSIONS_READ, resolveMarketingAttribution, type MarketingCapture } from './lib/marketingAttribution';
+import { isVisitorKey, MAX_SESSIONS_READ, type MarketingCapture } from './shared/marketingAttribution';
+import { resolveMarketingAttribution } from './marketing/attribution';
 
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-07T10:00:00Z');
@@ -30,11 +31,11 @@ async function setup() {
     slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
     maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
   }));
-  const campaignId = await admin.mutation(api.marketing.saveCampaign, campaign);
+  const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, campaign);
   const link = { slug: 'f1', name: 'Post', campaignId, destination: { kind: 'booking' as const }, entry: 'link' as const };
-  const linkId = await admin.mutation(api.marketing.saveLink, link);
-  await admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'active' });
-  const start = (capture: MarketingCapture = {}) => t.mutation(api.marketing.startSession, { landingPath: '/booking', ...capture });
+  const linkId = await admin.mutation(api.marketing.commands.saveLink.saveLink, link);
+  await admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, { linkId, status: 'active' });
+  const start = (capture: MarketingCapture = {}) => t.mutation(api.marketing.public.startSession, { landingPath: '/booking', ...capture });
   const booking = async (marketing?: MarketingCapture) => {
     const { bookingId } = await t.mutation(api.bookings.bookings.create, { ...stay, guestEmail: 'mia@example.com', marketing });
     return (await t.run(ctx => ctx.db.get(bookingId)))!;
@@ -77,7 +78,7 @@ describe('consented marketing sessions', () => {
       ['https://evil.example', 'https://facebook.com/path', '/', undefined],
       ['/book\ning', 'not a host', '/booking', undefined],
     ] as const) {
-      const { sessionId } = await s.t.mutation(api.marketing.startSession, { landingPath, referrerHost });
+      const { sessionId } = await s.t.mutation(api.marketing.public.startSession, { landingPath, referrerHost });
       const row = await s.t.run(ctx => ctx.db.get(sessionId!));
       expect(row?.landingPath).toBe(path);
       expect(row?.referrerHost).toBe(host);
@@ -108,15 +109,15 @@ describe('booking attribution', () => {
     const s = await setup();
     await s.session(now - 31 * day);
     const first = await s.session(now - 20 * day);
-    const campaignId = await s.admin.mutation(api.marketing.saveCampaign, { name: 'Lobby', source: 'print', medium: 'qr' });
-    const linkId = await s.admin.mutation(api.marketing.saveLink, { ...s.link, slug: 'q1', campaignId, entry: 'qr' });
-    await s.admin.mutation(api.marketing.setLinkStatus, { linkId, status: 'paused' });
+    const campaignId = await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'Lobby', source: 'print', medium: 'qr' });
+    const linkId = await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, slug: 'q1', campaignId, entry: 'qr' });
+    await s.admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, { linkId, status: 'paused' });
     const last = await s.t.run(ctx => ctx.db.insert('marketingSessions', { visitorKey, linkId, campaignId, landingPath: '/', startedAt: now - 5 * day }));
     const direct = await s.session(now - day, false);
     const booking = await s.booking({ visitorKey, slug: 'f1' });
     expect(booking.marketingAttribution).toMatchObject({ evidence: 'tracked', sessionId: direct,
       first: { slug: 'f1', sessionId: first, campaignName: 'November' }, last: { slug: 'q1', sessionId: last, campaignName: 'Lobby' } });
-    await s.admin.mutation(api.marketing.saveCampaign, { campaignId, name: 'Renamed', source: 'new', medium: 'new' });
+    await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { campaignId, name: 'Renamed', source: 'new', medium: 'new' });
     expect((await s.t.run(ctx => ctx.db.get(booking._id)))?.marketingAttribution).toEqual(booking.marketingAttribution);
   });
 
@@ -158,8 +159,8 @@ describe('booking attribution', () => {
   it('uses the session campaign even after its link moves to another campaign', async () => {
     const s = await setup();
     await s.session(now - day);
-    const campaignId = await s.admin.mutation(api.marketing.saveCampaign, { name: 'Other', source: 'print', medium: 'qr' });
-    await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, campaignId });
+    const campaignId = await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'Other', source: 'print', medium: 'qr' });
+    await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, linkId: s.linkId, campaignId });
     expect(await s.resolve({ visitorKey })).toMatchObject({ last: { campaignId: s.campaignId, campaignName: 'November' } });
     expect(await s.resolve({ slug: 'f1' })).toMatchObject({ last: { campaignId, campaignName: 'Other' } });
   });
@@ -254,28 +255,28 @@ describe('web chat capture', () => {
 describe('marketing history', () => {
   it('writes one created, updated and status event per entity, with only the changed business fields', async () => {
     const s = await setup();
-    const { couponId } = await s.admin.mutation(api.marketing.saveCoupon, { ...rules, campaignId: s.campaignId });
+    const { couponId } = await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...rules, campaignId: s.campaignId });
     const rows = (entityType: string, entityId: string) => s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', entityType).eq('entityId', entityId)).take(20));
     const event = (entityType: string, entityId: string, kind: string, after: unknown, before?: unknown) => ({ entityType, entityId, actor: email, kind, after, ...(before ? { before } : {}), recordedAt: now, effectiveAt: now });
     // Ignore only Convex system fields, so extra business fields fail these exact comparisons.
     const events = async (entityType: string, entityId: string) => (await rows(entityType, entityId)).map(row => ({ entityType: row.entityType, entityId: row.entityId, actor: row.actor, kind: row.kind, after: row.after, ...(row.before === undefined ? {} : { before: row.before }), recordedAt: row.recordedAt, effectiveAt: row.effectiveAt }));
-    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId, name: 'Renamed', notes: 'New' });
-    await s.admin.mutation(api.marketing.setCampaignStatus, { campaignId: s.campaignId, status: 'active' });
+    await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...campaign, campaignId: s.campaignId, name: 'Renamed', notes: 'New' });
+    await s.admin.mutation(api.marketing.commands.setCampaignStatus.setCampaignStatus, { campaignId: s.campaignId, status: 'active' });
     expect(await events('marketingCampaign', s.campaignId)).toEqual([
       event('marketingCampaign', s.campaignId, 'created', campaign),
       event('marketingCampaign', s.campaignId, 'updated', { name: 'Renamed', notes: 'New' }, { name: campaign.name, notes: null }),
       event('marketingCampaign', s.campaignId, 'status_changed', { status: 'active' }, { status: 'draft' }),
     ]);
-    await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, name: 'Card', placement: 'Lobby' });
-    await s.admin.mutation(api.marketing.setLinkStatus, { linkId: s.linkId, status: 'paused' });
+    await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, linkId: s.linkId, name: 'Card', placement: 'Lobby' });
+    await s.admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, { linkId: s.linkId, status: 'paused' });
     expect(await events('marketingLink', s.linkId)).toEqual([
       event('marketingLink', s.linkId, 'created', { slug: 'f1', name: 'Post', campaign: campaign.name, destination: s.link.destination, entry: 'link' }),
       event('marketingLink', s.linkId, 'status_changed', { status: 'active' }, { status: 'draft' }),
       event('marketingLink', s.linkId, 'updated', { name: 'Card', placement: 'Lobby' }, { name: 'Post', placement: null }),
       event('marketingLink', s.linkId, 'status_changed', { status: 'paused' }, { status: 'active' }),
     ]);
-    await s.admin.mutation(api.marketing.saveCoupon, { ...rules, couponId, code: 'NEW20' });
-    await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...rules, couponId, code: 'NEW20' });
+    await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     expect(await events('coupon', couponId)).toEqual([
       event('coupon', couponId, 'created', { code: rules.code, campaign: campaign.name }),
       event('coupon', couponId, 'version_added', { benefit: rules.benefit, scope: rules.scope, version: 1 }),
@@ -283,15 +284,15 @@ describe('marketing history', () => {
       event('coupon', couponId, 'status_changed', { status: 'active' }, { status: 'draft' }),
     ]);
     const before = await s.t.run(ctx => ctx.db.query('recordChanges').take(100));
-    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId, name: 'Renamed', notes: 'New' });
-    await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, name: 'Card', placement: 'Lobby' });
-    await s.admin.mutation(api.marketing.saveCoupon, { ...rules, couponId, code: 'NEW20' });
-    await s.admin.mutation(api.marketing.setCampaignStatus, { campaignId: s.campaignId, status: 'active' });
-    await s.admin.mutation(api.marketing.setLinkStatus, { linkId: s.linkId, status: 'paused' });
-    await s.admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...campaign, campaignId: s.campaignId, name: 'Renamed', notes: 'New' });
+    await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, linkId: s.linkId, name: 'Card', placement: 'Lobby' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...rules, couponId, code: 'NEW20' });
+    await s.admin.mutation(api.marketing.commands.setCampaignStatus.setCampaignStatus, { campaignId: s.campaignId, status: 'active' });
+    await s.admin.mutation(api.marketing.commands.setLinkStatus.setLinkStatus, { linkId: s.linkId, status: 'paused' });
+    await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     expect(await s.t.run(ctx => ctx.db.query('recordChanges').take(100))).toEqual(before);
     const changedRules = { benefit: { kind: 'percent' as const, percent: 2500 }, scope: rules.scope };
-    await s.admin.mutation(api.marketing.saveCoupon, { ...changedRules, couponId, code: 'NEW20' });
+    await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { ...changedRules, couponId, code: 'NEW20' });
     const history = await events('coupon', couponId);
     expect(history[history.length - 1]).toEqual(event('coupon', couponId, 'version_added', { ...changedRules, version: 2 }));
     expect(await rows('coupon', couponId)).toHaveLength(5);
@@ -299,10 +300,10 @@ describe('marketing history', () => {
 
   it('records clearing optional campaign and link fields as null', async () => {
     const s = await setup();
-    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId, budget: 10000 });
-    await s.admin.mutation(api.marketing.saveCampaign, { ...campaign, campaignId: s.campaignId });
-    await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId, placement: 'Lobby' });
-    await s.admin.mutation(api.marketing.saveLink, { ...s.link, linkId: s.linkId });
+    await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...campaign, campaignId: s.campaignId, budget: 10000 });
+    await s.admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { ...campaign, campaignId: s.campaignId });
+    await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, linkId: s.linkId, placement: 'Lobby' });
+    await s.admin.mutation(api.marketing.commands.saveLink.saveLink, { ...s.link, linkId: s.linkId });
     const latest = (entityType: string, entityId: Id<'marketingCampaigns'> | Id<'marketingLinks'>) => s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', entityType).eq('entityId', entityId)).order('desc').first());
     expect(await latest('marketingCampaign', s.campaignId)).toMatchObject({ before: { budget: 10000 }, after: { budget: null } });
     expect(await latest('marketingLink', s.linkId)).toMatchObject({ before: { placement: 'Lobby' }, after: { placement: null } });

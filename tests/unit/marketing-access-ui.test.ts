@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import { marketingCapabilities } from "convex/lib/marketingAccess";
+import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { MarketingAccessGate, MarketingAccessProvider, useMarketingAccess, type MarketingAccess, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
 import { MarketingAccessScreen } from "@/components/admin/marketing/MarketingAccessScreen";
@@ -24,7 +24,7 @@ vi.mock("convex/react", () => ({
   useMutation: () => mocked.mutate,
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(ref); mocked.query(name, args);
-    return args === "skip" ? undefined : name === "marketingAccess:current" ? mocked.access : name === "marketingAccess:listGrants" ? mocked.grants : undefined;
+    return args === "skip" ? undefined : name === "marketing/access:current" ? mocked.access : name === "marketing/access:listGrants" ? mocked.grants : undefined;
   },
 }));
 vi.mock("@clerk/nextjs", () => ({ SignInButton: ({ children }: { children: ReactNode }) => children }));
@@ -50,7 +50,7 @@ const gated = () => createElement(MarketingAccessGate, null, createElement(Prote
 it("keeps children unmounted while checking, signed out, denied and awaiting invitation activation", async () => {
   await render(gated()); expect(document.body.textContent).toContain("Checking Marketing access");
   mocked.auth.isAuthenticated = false;
-  await render(gated()); expect(button("Sign in")).toBeDefined(); expect(mocked.query).toHaveBeenLastCalledWith("marketingAccess:current", "skip");
+  await render(gated()); expect(button("Sign in")).toBeDefined(); expect(mocked.query).toHaveBeenLastCalledWith("marketing/access:current", "skip");
   mocked.auth.isAuthenticated = true; mocked.access = access(null);
   await render(gated()); expect(document.body.textContent).toContain("Marketing access required");
   mocked.access = { ...access(null), pendingInvitation: { role: "viewer" } };
@@ -93,7 +93,7 @@ it.each(["viewer", "marketer", "finance", "manager"] as const)("shows spend edit
 
 it("hides Access navigation and avoids the grants query for role-only users", async () => {
   await render(createElement(MarketingSectionNav, null, createElement(MarketingAccessScreen)), "manager");
-  expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketingAccess:listGrants")).toBe(false);
+  expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketing/access:listGrants")).toBe(false);
 });
 
 it("creates invitations without sending messages and displays mutation errors", async () => {

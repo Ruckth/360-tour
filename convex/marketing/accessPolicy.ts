@@ -1,36 +1,19 @@
-import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type { Doc } from "../_generated/dataModel";
-import { adminEmails } from "./adminAuth";
-import { MARKETING_INVITATION_TTL_MS } from "./marketingPolicy";
+import type { Doc } from '../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { adminEmails } from '../lib/adminEmails';
+import { MARKETING_INVITATION_TTL_MS } from '../lib/marketingPolicy';
+import type { MarketingPermission, MarketingRole } from '../shared/marketingAccess';
+import { marketingCapabilities } from '../shared/marketingAccess';
 
 export function marketingInvitationExpiry(grant: Doc<"marketingGrants">) {
   return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + MARKETING_INVITATION_TTL_MS;
 }
+
 export function marketingInvitationExpired(grant: Doc<"marketingGrants">, now = Date.now()) {
   const expiresAt = marketingInvitationExpiry(grant);
   return expiresAt !== null && expiresAt <= now;
 }
 
-export type MarketingRole = Doc<"marketingGrants">["role"];
-export type MarketingPermission =
-  | "view"
-  | "draft"
-  | "publish"
-  | "spend"
-  | "partners"
-  | "reviewCredits"
-  | "manageAccess";
-export function marketingCapabilities(role: MarketingRole | "admin" | null) {
-  return {
-    view: role !== null,
-    draft: role === "admin" || role === "manager" || role === "marketer",
-    publish: role === "admin" || role === "manager",
-    spend: role === "admin" || role === "manager" || role === "finance",
-    partners: role === "admin" || role === "manager",
-    reviewCredits: role === "admin" || role === "finance",
-    manageAccess: role === "admin",
-  };
-}
 export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   const email = identity?.email?.trim().toLowerCase() ?? null;
@@ -66,6 +49,7 @@ export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
         ? { role: invite.role } : null,
   };
 }
+
 export async function requireMarketingPermission(
   ctx: QueryCtx | MutationCtx,
   permission: MarketingPermission,
@@ -75,6 +59,7 @@ export async function requireMarketingPermission(
   if (!access.capabilities[permission]) throw new Error("Not authorized");
   return { ...access, email: access.email };
 }
+
 export function requireEditableDraft(
   access: { role: MarketingRole | "admin" | null },
   existing: { status: string } | null,

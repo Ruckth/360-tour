@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { assertMoney } from './bookingMoney';
+import { assertMoney } from './stayMoney';
 import { orderTitle } from './orderMath';
 import { isOpenOrder } from './orderLinks';
 

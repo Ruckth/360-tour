@@ -52,8 +52,8 @@ async function setup() {
   const request = (orderId: Id<'orders'>, payload: ApprovalPayload) => cashier.mutation(api.pos.staffApprovals.create, { orderId, payload, reason: 'Guest recovery' });
   const discountRequest = (orderId: Id<'orders'>, lineId: Id<'orderLines'>) => request(orderId, { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } });
   const coupon = async () => {
-    const { couponId } = await owner.mutation(api.marketing.saveCoupon, { code: 'TWENTY', scope: 'services', benefit: { kind: 'percent', percent: 2000 } });
-    await owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    const { couponId } = await owner.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'TWENTY', scope: 'services', benefit: { kind: 'percent', percent: 2000 } });
+    await owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     return couponId;
   };
   const booking = () => t.run(ctx => insertFixture(ctx, 'bookings', {
@@ -94,7 +94,7 @@ describe('staff permissions and invitations', () => {
     await expect(s.manager.mutation(api.settings.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.mutation(api.staffAccess.setGrant, { email: 'next@example.com', role: 'manager' })).rejects.toThrow('Not authorized');
-    await expect(s.manager.query(api.marketingAccess.listGrants, {})).rejects.toThrow('Not authorized');
+    await expect(s.manager.query(api.marketing.access.listGrants, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.settings.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     expect(await s.manager.action(ctx => requireAdmin(ctx))).toEqual({ email: 'manager@example.com' });
     await expect(s.cashier.action(ctx => requireAdmin(ctx))).rejects.toThrow('Not authorized');
@@ -145,8 +145,8 @@ describe('staff permissions and invitations', () => {
     const s = await setup();
     const id = await s.owner.mutation(api.staffAccess.setGrant, { email: 'invite@example.com', role: 'cashier' });
     await s.owner.mutation(api.staffAccess.updateInvitation, { grantId: id!, action: 'expire' });
-    await s.owner.mutation(api.marketingAccess.setGrant, { email: 'cashier@example.com', role: 'viewer' });
-    await s.cashier.mutation(api.marketingAccess.claimInvite, {});
+    await s.owner.mutation(api.marketing.access.setGrant, { email: 'cashier@example.com', role: 'viewer' });
+    await s.cashier.mutation(api.marketing.access.claimInvite, {});
     const people = await s.owner.query(api.staffAccess.listPeople, {});
     expect(people.find(p => p.email === 'owner@example.com')).toMatchObject({ role: 'owner' });
     expect(people.find(p => p.email === 'cashier@example.com')).toMatchObject({ role: 'cashier', staffGrant: { role: 'cashier', claimed: true }, marketingGrant: { role: 'viewer', claimed: true } });
@@ -287,8 +287,8 @@ describe('atomic manager approvals', () => {
     const { requestId } = await s.discountRequest(orderId, lineId);
     if (change === 'line') await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 100 } });
     if (change === 'coupon') await s.cashier.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'TWENTY' });
-    if (change === 'couponCatalog' || change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
-    if (change === 'couponRestored') await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    if (change === 'couponCatalog' || change === 'couponRestored') await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'paused' });
+    if (change === 'couponRestored') await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     if (change === 'rules') await s.rules({ discountLimitPercent: 2000 });
     if (change === 'role' || change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager' });
     if (change === 'roleRestored') await s.owner.mutation(api.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });

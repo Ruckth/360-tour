@@ -337,8 +337,8 @@ describe('display order projection', () => {
 		const { admin, current, show, settle, view } = await showing();
 		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
 		const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'spa', name: 'Spa', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId] });
-		const { couponId } = await admin.mutation(api.marketing.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 50000 }, scope: 'services', minEligibleSubtotal: 150000 });
-		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+		const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'SPA-500', benefit: { kind: 'fixed', amount: 50000 }, scope: 'services', minEligibleSubtotal: 150000 });
+		await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 		const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
 		const { lineId } = await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
 		await admin.mutation(api.pos.commands.overrideLinePrice.overrideLinePrice, { lineId, price: 60000, note: 'Foot spa' });
@@ -350,7 +350,7 @@ describe('display order projection', () => {
 		await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
 		expect((await view(orderId)).promotion?.problem).toBeNull();
 		await settle(orderId);
-		await admin.mutation(api.marketing.setCouponStatus, { couponId, status: 'paused' });
+		await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'paused' });
 		expect(await current()).toMatchObject({ state: 'paid', coupon: { code: 'SPA-500', saving: 50000 }, total: 190000, amountPaid: 190000 });
 	});
 

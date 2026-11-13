@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './auth/model';
-import { adminEmails } from './lib/adminAuth';
-import { marketingAccess, marketingInvitationExpiry } from './lib/marketingAccess';
+import { adminEmails } from './lib/adminEmails';
+import { marketingAccess, marketingInvitationExpiry } from './marketing/model';
 import { staffAccess, staffInvitationExpiry } from './lib/staffAccess';
 import { STAFF_INVITATION_TTL_MS, staffRole } from './lib/staffTypes';
 import { appendRecordHistory, cashierRules } from './settings/model';

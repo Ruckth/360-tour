@@ -1,10 +1,10 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { markBookingPaid } from '../../bookings/model';
-import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../lib/affiliateCredits';
+import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
 import { recordAppointmentChange } from '../../lib/appointmentChanges';
 import { effectiveTime } from '../../lib/bookingMoney';
-import { consumeOrderCoupon } from '../../lib/couponRedemptions';
+import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../../lib/orderLifecycle';
 import { orderLines } from '../../lib/orderLines';
 import { RECEIPT_COUNTER, isOpenOrder, nextCounter } from '../../lib/orderLinks';

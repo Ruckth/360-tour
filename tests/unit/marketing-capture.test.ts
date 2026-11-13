@@ -3,7 +3,7 @@ import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { SESSION_IDLE_MS } from "convex/lib/marketingAttribution";
+import { SESSION_IDLE_MS } from 'convex/shared/marketingAttribution';
 import messages from "../../messages/en.json";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));

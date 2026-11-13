@@ -1,9 +1,9 @@
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { MutationCtx } from '../../_generated/server';
-import { syncAffiliateCredit } from '../../lib/affiliateCredits';
+import { syncAffiliateCredit } from '../../marketing/model';
 import { appendBookingHistory } from '../../lib/bookingMoney';
-import { syncOrderCouponRedemption } from '../../lib/couponRedemptions';
+import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from '../../lib/lineLinks';
 import { orderLines } from '../../lib/orderLines';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../lib/orderMath';

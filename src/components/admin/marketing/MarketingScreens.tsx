@@ -34,9 +34,9 @@ const linkHistory = (id: string) => <History entityType="marketingLink" entityId
 const couponHistory = (id: string) => <History entityType="coupon" entityId={id} title="Coupon history" />;
 
 function CampaignSpend({ campaign }: { campaign: CampaignRow }) {
-  const spend = useQuery(api.marketingReport.listSpend, { campaignId: campaign._id });
-  const saveSpend = useMutation(api.marketingReport.saveSpend);
-  const deleteSpend = useMutation(api.marketingReport.deleteSpend);
+  const spend = useQuery(api.marketing.report.listSpend, { campaignId: campaign._id });
+  const saveSpend = useMutation(api.marketing.report.saveSpend);
+  const deleteSpend = useMutation(api.marketing.report.deleteSpend);
   return (
     <CampaignSpendSection
       campaign={campaign}
@@ -54,19 +54,19 @@ const campaignSpend = (campaign: CampaignRow) => <CampaignSpend campaign={campai
 
 const REFUSAL_DAYS = 30;
 function CouponRefusals({ couponId }: { couponId: Id<"coupons"> }) {
-  const summary = useQuery(api.marketingReport.couponRefusals, { couponId, days: REFUSAL_DAYS });
+  const summary = useQuery(api.marketing.report.couponRefusals, { couponId, days: REFUSAL_DAYS });
   return <CouponRefusalsCard summary={summary} days={REFUSAL_DAYS} />;
 }
 const couponRefusals = (couponId: Id<"coupons">) => <CouponRefusals couponId={couponId} />;
 
 function useMarketingActions(): MarketingActions {
   const convex = useConvex();
-  const saveCampaign = useMutation(api.marketing.saveCampaign);
-  const setCampaignStatus = useMutation(api.marketing.setCampaignStatus);
-  const saveLink = useMutation(api.marketing.saveLink);
-  const setLinkStatus = useMutation(api.marketing.setLinkStatus);
-  const saveCoupon = useMutation(api.marketing.saveCoupon);
-  const setCouponStatus = useMutation(api.marketing.setCouponStatus);
+  const saveCampaign = useMutation(api.marketing.commands.saveCampaign.saveCampaign);
+  const setCampaignStatus = useMutation(api.marketing.commands.setCampaignStatus.setCampaignStatus);
+  const saveLink = useMutation(api.marketing.commands.saveLink.saveLink);
+  const setLinkStatus = useMutation(api.marketing.commands.setLinkStatus.setLinkStatus);
+  const saveCoupon = useMutation(api.marketing.commands.saveCoupon.saveCoupon);
+  const setCouponStatus = useMutation(api.marketing.commands.setCouponStatus.setCouponStatus);
   return useMemo(
     () => ({
       saveCampaign,
@@ -76,8 +76,8 @@ function useMarketingActions(): MarketingActions {
       saveCoupon,
       setCouponStatus,
       // One-off reads: the slug field and the quote panel ask on demand instead of subscribing.
-      checkSlug: (args) => convex.query(api.marketing.checkSlug, args),
-      testQuote: (args) => convex.query(api.marketing.testQuote, args),
+      checkSlug: (args) => convex.query(api.marketing.queries.checkSlug, args),
+      testQuote: (args) => convex.query(api.marketing.queries.testQuote, args),
     }),
     [convex, saveCampaign, setCampaignStatus, saveLink, setLinkStatus, saveCoupon, setCouponStatus],
   );
@@ -100,10 +100,10 @@ function useOrigin() {
 }
 
 export function MarketingLinksScreen() {
-  const links = useQuery(api.marketing.listLinks, {});
-  const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const coupons = useQuery(api.marketing.listCoupons, {});
-  const properties = useQuery(api.marketing.catalog, {});
+  const links = useQuery(api.marketing.queries.listLinks, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const coupons = useQuery(api.marketing.queries.listCoupons, {});
+  const properties = useQuery(api.marketing.queries.catalog, {});
   const profile = useQuery(api.settings.settings.publicProfile, {});
   return (
     <LinksView
@@ -122,9 +122,9 @@ export function MarketingLinksScreen() {
 }
 
 export function MarketingCampaignsScreen() {
-  const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const links = useQuery(api.marketing.listLinks, {});
-  const coupons = useQuery(api.marketing.listCoupons, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const links = useQuery(api.marketing.queries.listLinks, {});
+  const coupons = useQuery(api.marketing.queries.listCoupons, {});
   return (
     <CampaignsView
       campaigns={campaigns}
@@ -141,9 +141,9 @@ export function MarketingCampaignsScreen() {
 }
 
 export function MarketingCouponsScreen() {
-  const coupons = useQuery(api.marketing.listCoupons, {});
-  const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const properties = useQuery(api.marketing.catalog, {});
+  const coupons = useQuery(api.marketing.queries.listCoupons, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const properties = useQuery(api.marketing.queries.catalog, {});
   return (
     <CouponsView
       coupons={coupons}
@@ -161,10 +161,10 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const router = useRouter();
   const isNew = couponId === "new";
   // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
-  const detail = useQuery(api.marketing.getCoupon, isNew ? "skip" : { couponId });
-  const coupons = useQuery(api.marketing.listCoupons, {});
-  const campaigns = useQuery(api.marketing.listCampaigns, {});
-  const properties = useQuery(api.marketing.catalog, {});
+  const detail = useQuery(api.marketing.queries.getCoupon, isNew ? "skip" : { couponId });
+  const coupons = useQuery(api.marketing.queries.listCoupons, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const properties = useQuery(api.marketing.queries.catalog, {});
   return (
     <CouponEditor
       detail={detail}

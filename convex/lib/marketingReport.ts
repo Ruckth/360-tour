@@ -2,7 +2,7 @@ import { roundRatio } from "../shared/money";
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { isIsoDate } from './dates';
-import type { ATTRIBUTION_MODEL } from './marketingAttribution';
+import type { ATTRIBUTION_MODEL } from '../shared/marketingAttribution';
 
 /**
  * Release 3b: what the marketing dashboard reads.

@@ -16,8 +16,8 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
   if (role !== 'admin') await t.run(ctx => ctx.db.insert('marketingGrants', {
     email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: 1, updatedAt: 1, updatedByEmail: 'private-actor@example.com'
   }));
-  const campaignId = await admin.mutation(api.marketing.saveCampaign, { name: 'Partner campaign', source: 'partner', medium: 'affiliate' });
-  const affiliateId = await admin.mutation(api.marketingAffiliates.saveAffiliate, {
+  const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'Partner campaign', source: 'partner', medium: 'affiliate' });
+  const affiliateId = await admin.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, {
     name: 'Partner', slug: 'private-partner', campaignId, contactEmail: 'private-partner@example.com', notes: 'Guest private-guest@example.com +66811112222'
   });
   const creditId = await t.run(async ctx => {
@@ -28,9 +28,9 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protect
     await ctx.db.insert('affiliateCreditChanges', { creditId: id, revision: 1, actor: 'private-actor@example.com', kind: 'created', reason: 'Guest private-guest@example.com', state: 'pending', eligibleNet: 10000, approvedNet: 0, affiliateId, recordedAt: 1 });
     return id;
   });
-  const partners = await reader.query(api.marketingAffiliates.listAffiliates, {});
-  const detail = await reader.query(api.marketingAffiliates.getCredit, { creditId });
-  const credits = await reader.query(api.marketingAffiliates.listCredits, {});
+  const partners = await reader.query(api.marketing.affiliates.listAffiliates, {});
+  const detail = await reader.query(api.marketing.affiliates.getCredit, { creditId });
+  const credits = await reader.query(api.marketing.affiliates.listCredits, {});
   if (full) {
     expect(partners.rows[0]).toMatchObject({ contactEmail: 'private-partner@example.com', notes: 'Guest private-guest@example.com +66811112222', updatedByEmail: 'private-actor@example.com' });
     expect(detail?.history[0]).toMatchObject({ actor: 'private-actor@example.com', reason: 'Guest private-guest@example.com' });

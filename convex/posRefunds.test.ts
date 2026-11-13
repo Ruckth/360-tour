@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
-import { creditMoney } from './lib/affiliateCredits';
+import { creditMoney } from './marketing/affiliateCredits';
 import { APPROVAL_TTL_MS, type CashierRules } from './lib/staffTypes';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -136,11 +136,11 @@ describe('POS line refunds', () => {
     await s.pay(orderId, now - 10 * day);
     vi.mocked(Date.now).mockReturnValue(now);
     await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId));
-    const report = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
+    const report = await s.owner.query(api.marketing.report.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
     expect(report.truncated).toBe(false);
     expect(report.sales).toMatchObject([{ id: orderId, collected: 100000, refunded: 25000 }]);
     expect(report.events).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-12', amount: 25000 }]);
-    const cohort = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-02', to: '2026-11-02', basis: 'cohort' });
+    const cohort = await s.owner.query(api.marketing.report.getReport, { from: '2026-11-02', to: '2026-11-02', basis: 'cohort' });
     expect(cohort.sales).toMatchObject([{ id: orderId, collected: 100000, refunded: 25000 }]);
   });
 
@@ -184,8 +184,8 @@ describe('POS line refunds', () => {
     const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
     await s.owner.mutation(api.pos.commands.attach.attach, { orderId, appointmentId });
     const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
-    const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'MIXED', scope: 'services', benefit: { kind: 'fixed', amount } });
-    await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    const { couponId } = await s.owner.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'MIXED', scope: 'services', benefit: { kind: 'fixed', amount } });
+    await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'MIXED' });
     const issued = await s.view(orderId);
     const stay = issued.lines.find(line => line.bookingId === bookingId)!;
@@ -209,8 +209,8 @@ describe('POS line refunds', () => {
     const { orderId, lineId } = await s.sale();
     const second = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     await s.owner.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 10000 } });
-    const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'SPA33', scope: 'services', benefit: { kind: 'fixed', amount: 33333 } });
-    await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
+    const { couponId } = await s.owner.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'SPA33', scope: 'services', benefit: { kind: 'fixed', amount: 33333 } });
+    await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
     await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA33' });
     await s.pay(orderId);
     const issued = await s.view(orderId);
@@ -337,7 +337,7 @@ describe('POS line refunds', () => {
     const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     await s.pay(orderId);
     await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 20000));
-    const report = await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
+    const report = await s.owner.query(api.marketing.report.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' });
     expect(report.sales.find(sale => sale.id === bookingId)).toMatchObject({ collected: 100000, refunded: 0 });
     expect(report.sales.find(sale => sale.id === orderId)).toMatchObject({ collected: 100000, refunded: 20000 });
     expect(report.events.filter(event => event.kind === 'refund')).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-12', amount: 20000 }]);
@@ -345,17 +345,17 @@ describe('POS line refunds', () => {
     expect((await s.view(orderId)).fullyRefunded).toBe(false);
     const before = report.events;
     await expect(s.owner.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Wrong order' })).rejects.toMatchObject(error('ORDER_HAS_REFUNDS'));
-    expect((await s.owner.query(api.marketingReport.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' })).events).toEqual(before);
+    expect((await s.owner.query(api.marketing.report.getReport, { from: '2026-11-12', to: '2026-11-12', basis: 'cash' })).events).toEqual(before);
   });
 
   it('reports on the Bangkok refund day, reduces affiliate credit, and feeds complete audit and order history', async () => {
     const s = await setup();
-    const campaignId = await s.owner.mutation(api.marketing.saveCampaign, { name: 'Partners', source: 'partner', medium: 'affiliate' });
-    const affiliateId = await s.owner.mutation(api.marketingAffiliates.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId });
-    await s.owner.mutation(api.marketingAffiliates.setAffiliateStatus, { affiliateId, status: 'active' });
-    const { couponId } = await s.owner.mutation(api.marketing.saveCoupon, { code: 'PARTNER100', scope: 'services', benefit: { kind: 'fixed', amount: 10000 } });
-    await s.owner.mutation(api.marketing.setCouponStatus, { couponId, status: 'active' });
-    await s.owner.mutation(api.marketingAffiliates.assignCoupon, { affiliateId, couponId });
+    const campaignId = await s.owner.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'Partners', source: 'partner', medium: 'affiliate' });
+    const affiliateId = await s.owner.mutation(api.marketing.commands.saveAffiliate.saveAffiliate, { name: 'Partner', slug: 'partner', campaignId });
+    await s.owner.mutation(api.marketing.commands.setAffiliateStatus.setAffiliateStatus, { affiliateId, status: 'active' });
+    const { couponId } = await s.owner.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'PARTNER100', scope: 'services', benefit: { kind: 'fixed', amount: 10000 } });
+    await s.owner.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
+    await s.owner.mutation(api.marketing.commands.assignCoupon.assignCoupon, { affiliateId, couponId });
     const { orderId, lineId } = await s.sale();
     await s.owner.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'PARTNER100' });
     await s.pay(orderId, now - day);
@@ -364,7 +364,7 @@ describe('POS line refunds', () => {
     expect(await s.t.run(ctx => creditMoney(ctx, { orderId: orderId }))).toEqual({ eligible: true, net: 80000 });
     const credit = await s.t.run(ctx => ctx.db.query('affiliateCredits').withIndex('by_sourceKey', q => q.eq('sourceKey', `order:${orderId}`)).unique());
     expect(credit).toMatchObject({ eligibleNet: 80000, eligible: true });
-    const report = (from: string, basis: 'cash' | 'cohort' = 'cash') => s.owner.query(api.marketingReport.getReport, { from, to: from, basis });
+    const report = (from: string, basis: 'cash' | 'cohort' = 'cash') => s.owner.query(api.marketing.report.getReport, { from, to: from, basis });
     expect((await report('2026-11-11')).events).toEqual([{ saleId: orderId, kind: 'payment', day: '2026-11-11', amount: 90000 }]);
     expect((await report('2026-11-12')).events).toEqual([]);
     expect((await report('2026-11-13')).events).toEqual([{ saleId: orderId, kind: 'refund', day: '2026-11-13', amount: 10000 }]);
