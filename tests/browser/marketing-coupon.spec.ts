@@ -48,7 +48,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
     // Dates, minimums and terms are folded away; a quote can't run before the first save.
-    await expect(page.getByText("More rules", { exact: true })).toBeVisible();
+    await expect(page.locator("summary", { hasText: "More · campaign, dates, limits, terms" })).toBeVisible();
     await expect(page.getByLabel("Total uses")).toBeHidden();
     await expect(page.getByRole("heading", { name: "Test a quote" })).toHaveCount(0);
     const axe = await new AxeBuilder({ page }).analyze();
@@ -147,13 +147,13 @@ test("Save as draft skips the confirm and doesn't publish", async ({ page }) => 
   expect(await calls(page)).toEqual(["saveCoupon"]);
 });
 
-test("an error under More rules opens it and focuses the field", async ({ page }) => {
+test("an error under More opens it and focuses the field", async ({ page }) => {
   await open(page, SIZES.ipad);
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
   await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
-  await page.getByText("More rules", { exact: true }).click();
+  await page.locator("summary", { hasText: "More · campaign" }).click();
   await page.getByLabel("Total uses").fill("0");
-  await page.getByText("More rules", { exact: true }).click();
+  await page.locator("summary", { hasText: "More · campaign" }).click();
   await expect(page.getByLabel("Total uses")).toBeHidden();
   await visible(page, "Save & publish").click();
   await expect(page.getByLabel("Total uses")).toBeFocused();

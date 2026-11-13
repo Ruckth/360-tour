@@ -14,12 +14,12 @@ import { moveProposal, scheduleRows, type ScheduleProposal } from "@/lib/schedul
 import {
   appointmentGuestLabel,
   errorText,
-  formatResortTime,
   resortDateTime,
   resortIsoDate,
   resortTime24,
   useNow,
 } from "@/lib/staff-bookings";
+import { staffTime } from "@/lib/staff-time";
 
 type Appointment = Doc<"serviceAppointments">;
 
@@ -70,7 +70,7 @@ export function RescheduleDialog({
           : !proposal
             ? null
             : !open
-              ? `${staffName(staffId)} isn't free at ${formatResortTime(start)} for the full service and turnaround. Pick an open time.`
+              ? `${staffName(staffId)} isn't free at ${staffTime(start)} for the full service and turnaround. Pick an open time.`
               : null);
 
   function changeDate(next: string) {
@@ -130,7 +130,7 @@ export function RescheduleDialog({
             <SelectContent>
               {(open ? times : [start, ...times].sort((a, b) => a - b)).map((time) => (
                 <SelectItem key={time} value={String(time)}>
-                  {formatResortTime(time)}
+                  {staffTime(time)}
                   {time === start && !open ? " (not open)" : time === original.start && staffId === original.staffId ? " (current)" : ""}
                 </SelectItem>
               ))}

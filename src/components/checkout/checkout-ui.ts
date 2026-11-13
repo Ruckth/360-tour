@@ -1,7 +1,8 @@
 import { tz } from "@date-fns/tz";
 import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { RESORT_ZONE, formatResortDate, formatResortFullDate, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { RESORT_ZONE, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { staffDate, staffDateTime, staffTime } from "@/lib/staff-time";
 import type { ServiceSchedule } from "convex/lib/serviceSchedule";
 import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, type TenderMethod } from "convex/lib/billMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
@@ -82,14 +83,11 @@ export const formatResort = (at: number, pattern: string) => format(at, pattern,
 
 /** When an order was last changed: the time today (the resort's day), with the date on other days. */
 export function orderTime(at: number, now = Date.now()) {
-  return formatResort(at, resortIsoDate(at) === resortIsoDate(now) ? "HH:mm" : "d MMM, HH:mm");
+  return resortIsoDate(at) === resortIsoDate(now) ? staffTime(at) : staffDateTime(at, { now });
 }
 
-/** "Mon, Oct 26" for a resort date this year, with the year otherwise. */
-function scheduleDay(date: string, now: number) {
-  const at = resortMidnight(date);
-  return date.slice(0, 4) === resortIsoDate(now).slice(0, 4) ? formatResortDate(at) : formatResortFullDate(at);
-}
+/** "Mon 26 Oct" for a resort date this year, with the year otherwise. */
+const scheduleDay = (date: string, now: number) => staffDate(resortMidnight(date), { weekday: true, now });
 
 /**
  * A service row's planned date and time as staff read it (lib/serviceSchedule.ts): "Not scheduled",

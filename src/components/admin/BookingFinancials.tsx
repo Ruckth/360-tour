@@ -15,7 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { receiptPath } from "@/components/checkout/checkout-source";
 import { Spinner } from "@/components/ui/spinner";
-import { errorText, formatResortDateTime } from "@/lib/staff-bookings";
+import { errorText } from "@/lib/staff-bookings";
+import { staffDateTime } from "@/lib/staff-time";
 import { useStayCheckout, useStaySpa } from "./stay-spa";
 import { cn } from "@/lib/utils";
 import { BookingPromotionLine } from "./BookingPromotion";
@@ -174,7 +175,7 @@ function LoadedBookingFinancials({
                 <li key={refund._id} className="grid gap-0.5">
                   <p>
                     Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
-                    <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
+                    <span className="text-muted-foreground"> · {staffDateTime(refund.effectiveAt)}</span>
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {refund.reason}
@@ -310,7 +311,7 @@ function PaymentRow({ payment, refundable, onAction }: { payment: Payment; refun
         ) : null}
       </p>
       <p className="text-xs text-muted-foreground">
-        Received {formatResortDateTime(payment.effectiveAt)} · recorded {formatResortDateTime(payment.recordedAt)} by {staffLabel(payment.recordedBy)}
+        Received {staffDateTime(payment.effectiveAt)} · recorded {staffDateTime(payment.recordedAt)} by {staffLabel(payment.recordedBy)}
         {payment.amendedBy ? ` · corrected by ${staffLabel(payment.amendedBy)}` : ""}
         {payment.note ? ` · ${payment.note}` : ""}
       </p>
@@ -494,7 +495,7 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
       description="The amount stays as recorded."
       rows={[
         { label: "Method", before: MONEY_METHOD_LABELS[payment.method] ?? payment.method, after: MONEY_METHOD_LABELS[method] },
-        { label: "Received", before: formatResortDateTime(payment.effectiveAt), after: when.at === null ? "—" : formatResortDateTime(when.at) },
+        { label: "Received", before: staffDateTime(payment.effectiveAt), after: when.at === null ? "—" : staffDateTime(when.at) },
       ]}
       confirmLabel="Save correction"
       keepLabel={null}

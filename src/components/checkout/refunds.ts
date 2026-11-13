@@ -1,7 +1,8 @@
+import { staffDate } from "@/lib/staff-time";
 import type { api } from "convex/_generated/api";
 import type { FunctionArgs } from "convex/server";
 import { formatMoney } from "@/components/admin/labels";
-import { errorText } from "@/lib/staff-bookings";
+import { errorText, resortMidnight } from "@/lib/staff-bookings";
 import type { OrderLine, OrderView } from "./backend";
 
 /**
@@ -63,8 +64,8 @@ const errorData = (err: unknown) => {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
 };
 const businessDay = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return y && m && d ? new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : iso;
+  const at = resortMidnight(iso);
+  return Number.isNaN(at) ? iso : staffDate(at);
 };
 
 /**

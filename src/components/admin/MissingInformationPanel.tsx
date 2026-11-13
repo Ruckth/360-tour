@@ -31,8 +31,8 @@ import {
   pluralize,
   useDebounced,
   useSelection,
-  useUndoNotice,
 } from "@/components/admin/admin-bulk";
+import { Toast, useToast } from "@/components/ui/toast";
 import {
   ChannelIcon,
   formatDateTime,
@@ -111,7 +111,7 @@ export function MissingInformationPanel({
   );
   const ignoreGroups = useMutation(api.chatKnowledge.adminIgnoreUnknownGroups);
   const reopenGroups = useMutation(api.chatKnowledge.adminReopenUnknownGroups);
-  const undo = useUndoNotice();
+  const undo = useToast();
   const [leftover, setLeftover] = useState<{
     remaining: number;
     remainingIsLowerBound: boolean;
@@ -133,8 +133,10 @@ export function MissingInformationPanel({
   const selectedClosed = selectedGroups.filter(
     (group) => group.counts.new < group.count,
   );
-  const reopenIds = (ids: Id<"chatUnknownQuestions">[]) => () =>
-    reopenGroups({ unknownQuestionIds: ids });
+  const undoAction = (ids: Id<"chatUnknownQuestions">[]) => ({
+    label: "Undo",
+    run: () => reopenGroups({ unknownQuestionIds: ids }),
+  });
 
   async function run(
     key: string,
@@ -171,7 +173,7 @@ export function MissingInformationPanel({
         selection.clear();
         undo.show(
           `Ignored ${pluralize(done.ignored, "report")}.`,
-          reopenIds(done.unknownQuestionIds),
+          undoAction(done.unknownQuestionIds),
         );
         offerRerun(
           done.remaining,
@@ -227,7 +229,7 @@ export function MissingInformationPanel({
           : undefined);
       undo.show(
         `Resolved ${pluralize(done.resolved, "report")}${answer ? ` with “${answer}”` : ""}`,
-        reopenIds(done.unknownQuestionIds),
+        undoAction(done.unknownQuestionIds),
       );
       offerRerun(
         done.remaining,
@@ -362,17 +364,7 @@ export function MissingInformationPanel({
           {actionError}
         </p>
       ) : null}
-      {undo.element ? (
-        // A toast, so Undo is in view wherever the picked row was; it sits above the phone tab bar.
-        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--admin-tab-bar,0px)+1rem)] z-50 flex justify-center px-4">
-          <div
-            data-testid="undo-toast"
-            className="pointer-events-auto w-full max-w-md overflow-hidden rounded-lg border border-border bg-card shadow-lg"
-          >
-            {undo.element}
-          </div>
-        </div>
-      ) : null}
+      <Toast {...undo} />
       {leftover ? (
         <div
           role="status"

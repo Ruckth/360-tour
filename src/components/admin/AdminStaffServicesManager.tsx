@@ -292,7 +292,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
         </ul>
       )}
 
-      {section === "staff" ? <HistoryDisclosure label="Time off history, including removed entries">
+      {section === "staff" ? <HistoryDisclosure hint="time off, including removed entries">
         <RecordHistoryPanel entityType="timeOff" title="All staff time off history" />
       </HistoryDisclosure> : null}
       {bulkTimeOff ? (
@@ -560,7 +560,7 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
             </p>
           )}
           {staff ? <>
-            <HistoryDisclosure label="Staff change history">
+            <HistoryDisclosure>
               <RecordHistoryPanel entityType="staff" entityId={staff._id} title={`${staff.name} history`} />
             </HistoryDisclosure>
             <TimeOffList staff={staff} />
@@ -736,7 +736,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
               ))}
             </div>
           </fieldset>
-          {service ? <HistoryDisclosure label="Service change history">
+          {service ? <HistoryDisclosure>
             <RecordHistoryPanel entityType="service" entityId={service._id} title={`${service.name} history`} />
           </HistoryDisclosure> : null}
           {staffIds.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person to save.</p> : null}
@@ -877,7 +877,7 @@ export function TimeOffDialog({ timeOff: initialTimeOff, staffName, onClose }: {
         </DialogHeader>
         <form onSubmit={submit} className="grid gap-4">
           <TimeOffFields idPrefix="to-edit" defaults={{ ...timeOffInput(timeOff), label: timeOff.label }} required />
-          <HistoryDisclosure label="Time off change history">
+          <HistoryDisclosure>
             <RecordHistoryPanel entityType="timeOff" entityId={timeOff._id} title="Time off history" />
           </HistoryDisclosure>
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

@@ -1,5 +1,7 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+import { Disclosure } from "@/components/ui/disclosure";
 import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
@@ -16,7 +18,6 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { formatResortDateTime } from "@/lib/staff-bookings";
 
 type Appointment = Doc<"serviceAppointments">;
 type Finance = FunctionReturnType<typeof api.adminServices.getAppointmentFinancials>;
@@ -29,9 +30,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
   const money = (n: number) => formatMoney(n, appointment.currency);
   const records = data.orders.length + data.payments.length + data.refunds.length + (data.unitemised > 0 ? 1 : 0);
   if (records === 0 && appointment.paymentStatus !== "refunded" && !dialog) return null;
-  return <details aria-label="Appointment payments" className="grid gap-3 text-sm">
-    <summary className="min-h-9 cursor-pointer py-2 font-medium">Payments and refunds ({records})</summary>
-    <div className="grid gap-3 pb-2">
+  return <Disclosure aria-label="Appointment payments" label={`Payments and refunds (${records})`} contentClassName="grid gap-3 pb-2">
     <p className="text-sm">Paid {money(data.money.net)} · Refunded {money(data.money.refunded)}</p>
     {data.orders.map(order => <div key={order.billId} className="grid gap-2 border-t border-border pt-3 text-sm">
       <Link className="underline underline-offset-2" href={receiptPath(order.billId)}>Receipt {order.receiptNumber ?? "record"} · {money(order.charged)}</Link>
@@ -40,7 +39,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
     </div>)}
     {data.payments.map(payment => <div key={payment._id} className="grid gap-2 border-t border-border pt-3 text-sm">
       <p>{money(payment.amount)} · {MONEY_METHOD_LABELS[payment.method] ?? payment.method} · {payment.status === "cancelled" ? "Voided: entered by mistake" : "Recorded at the desk"}</p>
-      <p className="text-muted-foreground">Received {formatResortDateTime(payment.effectiveAt)} · Recorded {formatResortDateTime(payment.recordedAt)} · {staffLabel(payment.recordedBy)}</p>
+      <p className="text-muted-foreground">Received {staffDateTime(payment.effectiveAt)} · Recorded {staffDateTime(payment.recordedAt)} · {staffLabel(payment.recordedBy)}</p>
       {payment.cancelReason ? <p>{payment.cancelReason}</p> : null}
       {payment.status === "recorded" ? <div className="flex flex-wrap gap-2">
         {!data.orders.length && (payment.method === "unrecorded" || MANUAL_PAYMENT_METHODS.some(method => method === payment.method)) ? <><Button size="sm" variant="outline" onClick={() => setDialog({ kind: "amend", payment })}>Correct…</Button><Button size="sm" variant="outline" disabled={data.money.refunded > 0} onClick={() => setDialog({ kind: "cancel", payment })}>Entered by mistake…</Button></> : null}
@@ -50,12 +49,11 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
     {data.unitemised > 0 && !data.orders.length ? <div className="grid gap-2 text-sm"><p>Earlier payment: {money(data.unitemised)}. Original method, actor and time were not itemised.</p>{data.legacyManualPayment ? <><p>The original change history identifies a manual Mark paid entry. Its original tender and received date remain unknown.</p><Button size="sm" variant="outline" onClick={() => setDialog({ kind: "legacyCancel", legacyChangeId: data.legacyManualPayment!.changeId })}>Entered by mistake…</Button></> : null}{data.money.net > 0 && !data.payments.some(p => p.status === "recorded") ? <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund", max: data.money.net })}>Record refund</Button> : null}</div> : null}
     {data.refunds.map(refund => <div key={refund._id} className="border-t border-border pt-3 text-sm">
       <p>Refund {money(refund.amount)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}</p><p>{refund.reason}</p>
-      <p className="text-muted-foreground">Returned {formatResortDateTime(refund.effectiveAt)} · Recorded {formatResortDateTime(refund.recordedAt)} · {staffLabel(refund.recordedBy)}</p>
+      <p className="text-muted-foreground">Returned {staffDateTime(refund.effectiveAt)} · Recorded {staffDateTime(refund.recordedAt)} · {staffLabel(refund.recordedBy)}</p>
     </div>)}
     {appointment.paymentStatus === "refunded" && data.refunds.length === 0 ? <p className="text-sm text-muted-foreground">Legacy full refund. Its original amount, method and actor were not recorded separately.</p> : null}
-    </div>
     {dialog ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={dialog} onClose={() => setDialog(null)} /> : null}
-  </details>;
+  </Disclosure>;
 }
 
 /**

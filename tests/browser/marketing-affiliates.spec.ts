@@ -21,12 +21,12 @@ for (const width of [390, 1180])
         "Enter a partner name",
       );
       await dialog.getByLabel("Partner name", { exact: true }).fill("Carla");
-      // The link name follows the name; rare fields wait under More options.
+      // The link name follows the name; rare fields wait under More.
       await expect(dialog.getByLabel("Permanent link name")).toHaveValue(
         "carla",
       );
       await expect(dialog.getByLabel("Contact email (optional)")).toBeHidden();
-      await dialog.getByText("More options", { exact: true }).click();
+      await dialog.locator("summary", { hasText: "More · contact" }).click();
       await dialog
         .getByLabel("Contact email (optional)")
         .fill("carla@example.com");
@@ -167,11 +167,11 @@ test("the link name follows the partner name until edited, and + New campaign wo
     medium: "affiliate",
   });
 
-  // A bad end date under More options opens it and takes focus.
-  await dialog.getByText("More options", { exact: true }).click();
+  // A bad end date under More opens it and takes focus.
+  await dialog.locator("summary", { hasText: "More · contact" }).click();
   await dialog.getByLabel("Starts on (optional)").fill("2026-12-10");
   await dialog.getByLabel("Ends on (optional)").fill("2026-12-01");
-  await dialog.getByText("More options", { exact: true }).click();
+  await dialog.locator("summary", { hasText: "More · contact" }).click();
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog.getByLabel("Ends on (optional)")).toBeFocused();
   await dialog.getByLabel("Ends on (optional)").fill("2026-12-31");

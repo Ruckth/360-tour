@@ -1,5 +1,7 @@
 "use client";
 
+import { resortMidnight } from "@/lib/staff-bookings";
+import { staffDate } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -272,6 +274,6 @@ function Stars({ rating }: { rating: number }) {
 }
 
 function formatDate(date: string) {
-  const parsed = new Date(`${date}T00:00:00`);
-  return Number.isNaN(parsed.getTime()) ? date : format(parsed, "d MMM yyyy");
+  const at = resortMidnight(date);
+  return Number.isNaN(at) ? date : staffDate(at);
 }

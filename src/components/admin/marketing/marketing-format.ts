@@ -1,4 +1,5 @@
 import type { CouponProblem } from "convex/lib/offers";
+import { staffDateTime } from "@/lib/staff-time";
 import { ConvexError } from "convex/values";
 import { localeLabels, type Locale } from "@/i18n/routing";
 import { errorText } from "@/lib/staff-bookings";
@@ -71,7 +72,7 @@ export function nightsBetween(checkIn: string, checkOut: string) {
   return Number.isFinite(days) && days > 0 ? Math.round(days) : 0;
 }
 
-const stamp = new Intl.DateTimeFormat("en-GB", {
+const exportStampFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Bangkok",
   day: "numeric",
   month: "short",
@@ -81,9 +82,14 @@ const stamp = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-/** A saved-at time in Bangkok: "3 Nov 2026, 10:12". */
+/** A time in exported files, always with the year: "3 Nov 2026, 10:12" (Bangkok). */
+export function exportStamp(ms: number) {
+  return exportStampFormat.format(ms).replace(/ at /, ", ");
+}
+
+/** A saved-at time in Bangkok, as the admin shows every moment: "3 Nov, 10:12" (staff-time.ts). */
 export function formatStamp(ms: number) {
-  return stamp.format(ms).replace(/ at /, ", ");
+  return staffDateTime(ms);
 }
 
 export const CAMPAIGN_STATUS: Record<CampaignStatus, StatusMeta> = {

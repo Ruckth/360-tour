@@ -20,6 +20,7 @@ import { TONES } from "@/components/admin/status-tones";
 import type { Id } from "convex/_generated/dataModel";
 import { CorrectPayment, LinkedRefunds, VoidPanel } from "./PaymentRecord";
 import { ReceiptHistory } from "./FinancialHistory";
+import { staffDateTime } from "@/lib/staff-time";
 import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
 import { LineLink, linkTarget, useCanLink } from "./AfterPayment";
 
@@ -407,7 +408,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       >
         {isVoid ? (
           <div className="grid gap-1 text-sm text-muted-foreground" data-testid="receipt-void-status">
-            <p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${formatResort(order.voidedAt, "d MMM, HH:mm")}` : ""} · order and receipt numbers stay on record</p>
+            <p>Voided by {order.voidedBy}{order.voidedAt ? ` on ${staffDateTime(order.voidedAt)}` : ""} · order and receipt numbers stay on record</p>
             {view.paymentRecord.voidUnreceived ? <p>Entered by mistake · no money was received, no refund sent</p> : null}
           </div>
         ) : null}

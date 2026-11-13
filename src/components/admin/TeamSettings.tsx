@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
+import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { personLabel } from "./person-label";
@@ -272,12 +273,11 @@ function InviteForm({ busy, onInvite, onCancel }: {
   );
 }
 
-const shortDate = (at: number) => new Date(at).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 type Grant = NonNullable<Person["staffGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
-  return grant.expiresAt ? `${prefix}Invited · expires ${shortDate(grant.expiresAt)}` : `${prefix}Invited`;
+  return grant.expiresAt ? `${prefix}Invited · expires ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */

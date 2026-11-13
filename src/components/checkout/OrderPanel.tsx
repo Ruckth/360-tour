@@ -17,12 +17,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { isTimeValue } from "@/lib/dates/values";
 import {
   errorText,
-  formatResortDate,
-  formatResortFullDate,
   resortIsoDate,
   resortTime24,
   useNow,
 } from "@/lib/staff-bookings";
+import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
 import type { ApprovalPayload } from "convex/lib/staffTypes";
@@ -55,13 +54,13 @@ export function serviceScheduleValue(line: Pick<OrderLine, "schedule" | "startAt
   return line.startAt !== undefined ? { date: resortIsoDate(line.startAt), time: resortTime24(line.startAt) } : { date: "", time: "" };
 }
 
-/** A legacy row's start: "14:00" today, "Mon, Oct 26, 14:00" on another day this year, with the year otherwise. */
+/** A legacy row's start: "14:00" today, "Mon 26 Oct, 14:00" on another day this year, with the year otherwise. */
 export function serviceStartLabel(startAt: number, now: number) {
   const time = resortTime24(startAt);
   const day = resortIsoDate(startAt);
   const today = resortIsoDate(now);
   if (day === today) return time;
-  return `${day.slice(0, 4) === today.slice(0, 4) ? formatResortDate(startAt) : formatResortFullDate(startAt)}, ${time}`;
+  return `${staffDate(startAt, { weekday: true, now })}, ${time}`;
 }
 
 /**

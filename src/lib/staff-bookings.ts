@@ -3,25 +3,17 @@ import { useEffect, useState } from "react";
 import type { Doc } from "convex/_generated/dataModel";
 import { STATUS_LABELS } from "@/components/admin/labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, statusMeta } from "@/components/admin/status-tones";
+import { RESORT_ZONE, staffDate, staffTime } from "@/lib/staff-time";
 
 /** Staff schedules run on resort time, whatever the admin's browser zone. */
-export const RESORT_ZONE = "Asia/Bangkok";
+export { RESORT_ZONE };
 const RESORT_OFFSET = "+07:00"; // Thailand has no DST
 export const DAY_MS = 86_400_000;
 
-const timeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, hour: "numeric", minute: "2-digit" });
-const dateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric" });
-const fullDateFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, weekday: "short", month: "short", day: "numeric", year: "numeric" });
-const dateTimeFormat = new Intl.DateTimeFormat("en-US", { timeZone: RESORT_ZONE, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const isoFormat = new Intl.DateTimeFormat("en-CA", { timeZone: RESORT_ZONE, year: "numeric", month: "2-digit", day: "2-digit" });
 const time24Format = new Intl.DateTimeFormat("en-GB", { timeZone: RESORT_ZONE, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-export const formatResortTime = (ms: number) => timeFormat.format(ms);
-export const formatResortDate = (ms: number) => dateFormat.format(ms);
-/** "Fri, Sep 25, 2026", for confirmations where the year matters. */
-export const formatResortFullDate = (ms: number) => fullDateFormat.format(ms);
-/** "Sep 25, 2:30 PM", for history entries. */
-export const formatResortDateTime = (ms: number) => dateTimeFormat.format(ms);
+// Shown dates and times come from staff-time.ts (staffDate, staffTime, staffDateTime).
 /** Shown under every schedule confirmation. */
 export const RESORT_ZONE_LABEL = "All times: Bangkok";
 /** YYYY-MM-DD in resort time. */
@@ -73,15 +65,15 @@ export function timeOffInput(range: { start: number; end: number }): TimeOffInpu
   };
 }
 
-/** "Mon, Sep 28 (all day)", "Mon, Sep 28 – Wed, Sep 30" or "Mon, Sep 28, 9:00 AM – 12:00 PM". */
+/** "Mon 28 Sep (all day)", "Mon 28 Sep – Wed 30 Sep" or "Mon 28 Sep, 09:00 – 12:00". */
 export function formatTimeOff(range: { start: number; end: number }) {
   const input = timeOffInput(range);
-  const day = (iso: string) => formatResortDate(resortMidnight(iso));
+  const day = (iso: string) => staffDate(resortMidnight(iso), { weekday: true });
   if (!input.startTime && !input.endTime) {
     return input.from === input.to ? `${day(input.from)} (all day)` : `${day(input.from)} – ${day(input.to)}`;
   }
-  const start = `${day(input.from)}, ${formatResortTime(range.start)}`;
-  const end = input.to === input.from ? formatResortTime(range.end) : `${day(input.to)}, ${formatResortTime(range.end)}`;
+  const start = `${day(input.from)}, ${staffTime(range.start)}`;
+  const end = input.to === input.from ? staffTime(range.end) : `${day(input.to)}, ${staffTime(range.end)}`;
   return `${start} – ${end}`;
 }
 

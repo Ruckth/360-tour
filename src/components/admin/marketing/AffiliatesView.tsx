@@ -1,5 +1,7 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+import { Disclosure } from "@/components/ui/disclosure";
 import { useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
@@ -489,24 +491,14 @@ function PartnerEditor({
           }}
         />
       </Field>
-      <details
+      <Disclosure
+        label="More"
+        hint="contact, villas, dates, notes"
         open={moreOpen}
-        onToggle={(event) => setMoreOpen(event.currentTarget.open)}
-        className="group rounded-lg border border-border"
+        onOpenChange={setMoreOpen}
+        className="border-t border-border"
+        contentClassName="grid gap-4 pt-1"
       >
-        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 text-sm font-medium [&::-webkit-details-marker]:hidden">
-          <span
-            aria-hidden
-            className="text-muted-foreground transition group-open:rotate-90"
-          >
-            ›
-          </span>
-          <span>More options</span>
-          <span className="font-normal text-muted-foreground">
-            Contact, villas, dates, notes
-          </span>
-        </summary>
-        <div className="grid gap-4 border-t border-border p-3">
           <Field label="Contact email (optional)" id="partner-email">
             <Input
               id="partner-email"
@@ -570,8 +562,7 @@ function PartnerEditor({
               onChange={(e) => set("notes", e.target.value)}
             />
           </Field>
-        </div>
-      </details>
+      </Disclosure>
       {partner && (
         <div className="grid gap-2 rounded-lg border border-border p-3">
           <h3 className="text-sm font-semibold">Unique partner coupons</h3>
@@ -915,9 +906,7 @@ export function CreditReview({
                     {h.state}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(h.recordedAt).toLocaleString("en-GB", {
-                      timeZone: "Asia/Bangkok",
-                    })}{" "}
+                    {staffDateTime(h.recordedAt)}{" "}
                     (Bangkok) · {h.actor}
                   </p>
                   <p>

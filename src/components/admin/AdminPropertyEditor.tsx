@@ -118,7 +118,7 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
             )}
           </div>
           <RecordHistoryPanel entityType="property" entityId={data.property._id} title="Villa history" />
-          <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
+          <HistoryDisclosure hint="deleted villas"><ConfigurationHistoryRecords /></HistoryDisclosure>
         </>
       )}
     </div>

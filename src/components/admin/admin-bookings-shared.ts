@@ -1,7 +1,8 @@
 import type { FunctionReturnType } from "convex/server";
+import { staffDate } from "@/lib/staff-time";
+import { resortMidnight } from "@/lib/staff-bookings";
 import type { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
-import { format } from "date-fns";
 import { addDaysIso, isoToDate, todayIsoResort } from "@/lib/booking/dates";
 import type { ConfirmOptions } from "./ConfirmDialog";
 import { formatMoney, paymentLabel } from "./labels";
@@ -41,9 +42,9 @@ export function isoNights(start: string, end: string) {
   return nights;
 }
 
+/** "Sat 14 Nov" for a stay date (with the year outside the current one). */
 export function displayDate(iso: string) {
-  const date = isoToDate(iso);
-  return date ? format(date, "EEE d MMM yyyy") : iso;
+  return isoToDate(iso) ? staffDate(resortMidnight(iso), { weekday: true }) : iso;
 }
 
 export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentStatus">) {

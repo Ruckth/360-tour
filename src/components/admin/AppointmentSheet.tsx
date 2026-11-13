@@ -40,11 +40,10 @@ import {
   appointmentStatus,
   displayStatus,
   errorText,
-  formatResortDate,
-  formatResortDateTime,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
+import { staffDate, staffDateTime } from "@/lib/staff-time";
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
@@ -219,14 +218,14 @@ export function AppointmentSheet({
                     )}
                   </Detail>
                   <Detail label="When">
-                    {formatResortDate(appointment.start)}, {timeRange(appointment.start, appointment.end)}
+                    {staffDate(appointment.start, { weekday: true })}, {timeRange(appointment.start, appointment.end)}
                     <span className="block text-muted-foreground">
                       {turnaround ? `Turnaround to ${endTime(appointment.start, appointment.blockedUntil)}` : "No turnaround"}
                     </span>
                   </Detail>
                   {appointment.cancelledAt ? (
                     <Detail label="Cancelled">
-                      {formatResortDateTime(appointment.cancelledAt)}
+                      {staffDateTime(appointment.cancelledAt)}
                       {appointment.cancelledBy ? ` · ${appointment.cancelledBy === "guest" ? "Guest, in chat" : staffLabel(appointment.cancelledBy)}` : ""}
                       {appointment.cancellationReason ? (
                         <span className="block text-muted-foreground">{appointment.cancellationReason}</span>

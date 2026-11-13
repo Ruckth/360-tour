@@ -40,7 +40,7 @@ function ApprovalsButton() {
   // The last decision's result, shown as a toast once the panel has closed and the page is
   // readable again (the open sheet hides the rest of the page from screen readers).
   const closedWith = useRef("");
-  const { message: toastMessage, show: showToast } = useToast();
+  const toast = useToast();
   const count = queue?.count ?? 0;
 
   // Read the queue as it is when the decision lands, not as it was when Approve was tapped.
@@ -94,7 +94,7 @@ function ApprovalsButton() {
           {...{ [APPROVALS_AREA]: "" }}
           // Focus the title, not the first control: that would open an ⓘ tip or arm Decline.
           onCloseAutoFocus={() => {
-            if (closedWith.current) showToast(closedWith.current);
+            if (closedWith.current) toast.show(closedWith.current);
             closedWith.current = "";
           }}
           onOpenAutoFocus={(event) => {
@@ -118,7 +118,7 @@ function ApprovalsButton() {
           )}
         </CheckoutSheetContent>
       </Sheet>
-      <Toast message={toastMessage} />
+      <Toast {...toast} />
     </>
   );
 }

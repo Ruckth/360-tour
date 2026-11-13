@@ -1,11 +1,11 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
 import { round2 } from "convex/lib/billMath";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Spinner } from "@/components/ui/spinner";
 import { useCheckoutBackend, type CustomerPage, type FinancialRows, type OrderId, type OrderView } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
@@ -17,7 +17,7 @@ import { refundMethodName, satangMoney } from "./refunds";
 
 /** These are separate ledgers with independent native cursors, never a merged/capped array. */
 export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
-  return <HistoryDetails orderId={orderId} title="Browse all financial history">
+  return <HistoryDetails orderId={orderId} title="History" hint="all ledgers">
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
       <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
@@ -45,7 +45,6 @@ export function ReceiptHistory({ view, className }: { view: OrderView; className
 }
 
 function ReceiptHistoryDetails({ view, className }: { view: OrderView; className?: string }) {
-  const [opened, setOpened] = useState(false);
   const [tab, setTab] = useState<HistoryTab>("items");
   const [visited, setVisited] = useState<Set<HistoryTab>>(() => new Set(["items"]));
   const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -74,15 +73,13 @@ function ReceiptHistoryDetails({ view, className }: { view: OrderView; className
     </div>
   ) : null;
   return (
-    <details
+    <Disclosure
       data-testid="receipt-history"
-      className={cn("group/details w-full border-t border-border text-sm print:hidden", className)}
-      onToggle={(event) => { if (event.currentTarget.open) setOpened(true); }}
+      label="History"
+      lazy="first-open"
+      className={cn("border-t border-border print:hidden", className)}
+      contentClassName="pb-0"
     >
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded py-2 font-semibold hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-90" />History
-      </summary>
-      {opened ? (
         <div className="pb-3">
           <div role="tablist" aria-label="History" className="inline-flex gap-1 rounded-lg bg-muted p-1" onKeyDown={onKeyDown}>
             {HISTORY_TABS.map((item) => (
@@ -120,8 +117,7 @@ function ReceiptHistoryDetails({ view, className }: { view: OrderView; className
           </>)}
           <p className="mt-3 text-xs text-muted-foreground">Bangkok time · the issued receipt never changes</p>
         </div>
-      ) : null}
-    </details>
+    </Disclosure>
   );
 }
 

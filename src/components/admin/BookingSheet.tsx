@@ -1,10 +1,10 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { format } from "date-fns";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
@@ -310,12 +310,12 @@ function BookingDetails({
           <BookingMarketingSource attribution={booking.marketingAttribution} />
         </Detail>
         <Detail label="Created">
-          {format(new Date(booking.createdAt), "d MMM yyyy, HH:mm")}
+          {staffDateTime(booking.createdAt)}
           {booking.createdBy ? <span className="block text-muted-foreground">by {staffLabel(booking.createdBy)}</span> : null}
         </Detail>
         {cancelled && booking.cancelledAt ? (
           <Detail label="Cancelled">
-            {format(new Date(booking.cancelledAt), "d MMM yyyy, HH:mm")}
+            {staffDateTime(booking.cancelledAt)}
             <span className="block text-muted-foreground">
               {booking.cancelledBy ? `by ${staffLabel(booking.cancelledBy)}` : ""}
               {booking.cancelReason ? ` · ${booking.cancelReason}` : ""}

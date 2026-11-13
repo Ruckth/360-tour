@@ -30,7 +30,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
-import { errorText, formatResortDateTime } from "@/lib/staff-bookings";
+import { errorText } from "@/lib/staff-bookings";
+import { STAFF_CALENDAR_FORMATS, staffDateTime } from "@/lib/staff-time";
+import { Toast, useToast } from "@/components/ui/toast";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
@@ -67,7 +69,7 @@ import {
 } from "@/lib/admin/booking-calendar-events";
 
 // Stable reference: the calendar rebuilds its settings when this object changes.
-const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" } };
+const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" }, formats: STAFF_CALENDAR_FORMATS };
 const VIEWS = ["month", "resource", "agenda"] as const satisfies CalendarView[];
 type HotelView = (typeof VIEWS)[number];
 
@@ -123,7 +125,10 @@ function HotelBookings() {
   const [managingCalendars, setManagingCalendars] = useState(false);
   const [managingRates, setManagingRates] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
+  // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const toast = useToast();
+  const report = (next: { text: string; error?: boolean }) => (next.error ? setNotice(next) : toast.show(next.text));
   const [moving, setMoving] = useState<Move | null>(null);
   const [stayDialog, setStayDialog] = useState<Extract<QuickAction, { kind: "pay" | "cancel" }> | null>(null);
   const [spaDraft, setSpaDraft] = useState<AppointmentDraft | null>(null);
@@ -373,7 +378,7 @@ function HotelBookings() {
           onClose={() => setQuick(null)}
           onOpenDetails={() => openDetails(quick.booking._id)}
           onAction={quickAction}
-          onNotice={setNotice}
+          onNotice={report}
         />
       ) : null}
       {stayDialog?.kind === "pay" ? (
@@ -383,7 +388,7 @@ function HotelBookings() {
           onClose={(done) => {
             const name = stayDialog.booking.guestName;
             setStayDialog(null);
-            if (done) setNotice({ text: `${name}: ${done}` });
+            if (done) toast.show(`${name}: ${done}`);
           }}
         />
       ) : null}
@@ -397,7 +402,7 @@ function HotelBookings() {
           onCreated={(_id, start) => {
             const name = spaDraft.stay?.guestName ?? "Guest";
             setSpaDraft(null);
-            setNotice({ text: `${name}: spa booked for ${formatResortDateTime(start)}, added to the balance due.` });
+            toast.show(`${name}: spa booked for ${staffDateTime(start)}, added to the balance due.`);
           }}
         />
       ) : null}
@@ -419,7 +424,7 @@ function HotelBookings() {
           onClose={() => setMoving(null)}
           onMoved={(text) => {
             setMoving(null);
-            setNotice({ text });
+            toast.show(text);
           }}
           onOpenBooking={(id) => {
             setMoving(null);
@@ -443,6 +448,7 @@ function HotelBookings() {
           }}
         />
       ) : null}
+      <Toast {...toast} />
     </div>
   );
 }

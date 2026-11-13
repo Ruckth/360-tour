@@ -285,7 +285,7 @@ function HostBlockForm({
             />
           </div>
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <HistoryDisclosure label={block ? "Date block history" : "Date block history, including removed blocks"}>
+          <HistoryDisclosure hint={block ? undefined : "including removed blocks"}>
             <RecordHistoryPanel entityType="dateBlock" entityId={block?._id} title="Date block history" />
           </HistoryDisclosure>
           <DialogFooter className="gap-2">

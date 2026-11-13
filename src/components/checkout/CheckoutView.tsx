@@ -206,7 +206,7 @@ export function CheckoutView({
           order can be paid, Cash ฿X beside it opens the sheet on the cash panel, prefilled; its
           Confirm is still the one that takes the money. */}
       <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setPayOnOpen(undefined); }} modal={!keepHeader}>
-        <div className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl bg-primary p-1 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40">
+        <div data-admin-bottom-bar="lg" className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl bg-primary p-1 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40">
           <SheetTrigger asChild>
             <button
               type="button"
