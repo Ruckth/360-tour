@@ -3,8 +3,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { syncAffiliateCredit } from '../../marketing/model';
-import { recordAppointmentChange } from '../../lib/appointmentChanges';
-import { appointmentMoney } from '../../lib/appointmentFinance';
+import { recordAppointmentChange, appointmentMoney } from '../../services/model';
 import { appendBookingHistory, writeBooking, orderStayPayment, stayPaymentReversalPatch } from '../../bookings/model';
 import { assertNoLiveCheckout, cleanReason, effectiveTime } from '../../lib/bookingMoney';
 import { stayMoney } from '../../lib/stayMoney';
@@ -14,7 +13,6 @@ import { orderLineLinks } from '../../lib/lineLinks';
 import { assertTenders, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
 import { assertNoPosRefunds } from '../../lib/orderRefunds';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
-
 import { assertCustomerCanLink, assertCustomerReviewed } from './customerModel';
 import { Line, MISSING_PAYMENT_EVIDENCE, Order, amendOrderPaymentArgs, assertCorrectionRevision, cleanTender, correctionReplay, sourceRows, voidUnreceivedOrderArgs } from './orderModel';
 import { linkReversal } from './paidLinkModel';

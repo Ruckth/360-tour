@@ -2,11 +2,11 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
-import { appointmentHistory } from '../lib/appointmentChanges';
-import { appointmentFinancials } from '../lib/appointmentFinance';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, blocksTime, boundedIntegrityRows, historicalWarnings, localDateTimeUtc, localDayRange, findOpenSlots as openSlots, planWorking, scheduleDays, staffBusyRanges } from '../lib/serviceSlots';
+import { appointmentHistory } from './private/appointmentChanges';
+import { appointmentFinancials } from './private/appointmentFinance';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, blocksTime, boundedIntegrityRows, historicalWarnings, localDateTimeUtc, localDayRange, findOpenSlots as openSlots, planWorking, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { resortLocalParts } from '../shared/resortLocalParts';
-import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './model';
+import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './private/administration';
 
 export const listStaff = adminQuery({
 	args: { includeArchived: v.optional(v.boolean()) },

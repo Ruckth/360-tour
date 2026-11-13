@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, cleanReason, recordAppointmentChange } from '../../lib/appointmentChanges';
+import { assertFresh, cleanReason, recordAppointmentChange } from '../private/appointmentChanges';
 import { canCorrectAppointmentTime, movedWindow } from '../../lib/appointmentWindow';
-import { assertAppointmentStart, assertStaffFree, blocksTime, historicalWarnings } from '../../lib/serviceSlots';
-import { loadAppointment } from '../model';
+import { assertAppointmentStart, assertStaffFree, blocksTime, historicalWarnings } from '../private/serviceSlots';
+import { loadAppointment } from '../private/administration';
 
 /**
  * Corrects an appointment's time/staff in any status. Financial terms stay as booked.

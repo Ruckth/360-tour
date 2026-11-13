@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { appendRecordHistory } from '../../settings/model';
-import { assertTimeOffFits, required, timeOffSnapshot } from '../model';
+import { assertTimeOffFits, required, timeOffSnapshot } from '../private/administration';
 
 export const updateTimeOff = adminMutation({
 	args: { timeOffId: v.id('staffTimeOff'), start: v.number(), end: v.number(), label: v.string(), expected: v.optional(v.object({ start: v.number(), end: v.number(), label: v.string() })) },

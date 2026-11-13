@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, recordAppointmentChange } from '../../lib/appointmentChanges';
-import { appointmentStatus, loadAppointment, transitions } from '../model';
+import { assertFresh, recordAppointmentChange } from '../private/appointmentChanges';
+import { appointmentStatus, loadAppointment, transitions } from '../private/administration';
 
 export const updateAppointmentStatus = adminMutation({
 	args: { appointmentId: v.id('appointments'), status: appointmentStatus, expectedRevision: v.optional(v.number()) },

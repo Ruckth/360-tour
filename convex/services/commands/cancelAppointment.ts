@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertFresh, cancelAppointmentRecord } from '../../lib/appointmentChanges';
-import { loadAppointment } from '../model';
+import { assertFresh, cancelAppointmentRecord } from '../private/appointmentChanges';
+import { loadAppointment } from '../private/administration';
 
 /** Keeps the record and its payment state; frees the staff member's time. */
 export const cancelAppointment = adminMutation({

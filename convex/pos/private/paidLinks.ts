@@ -4,7 +4,7 @@ import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { recordStayPayment } from '../../bookings/model';
 import { syncAffiliateCredit } from '../../marketing/model';
-import { STALE_APPOINTMENT, recordAppointmentChange } from '../../lib/appointmentChanges';
+import { STALE_APPOINTMENT, recordAppointmentChange } from '../../services/model';
 import { STALE_BOOKING, bookingRevision, cleanReason } from '../../lib/bookingMoney';
 import { activeLineLink } from '../../lib/lineLinks';
 import { formatReceiptNumber, orderTitle } from '../../lib/orderMath';

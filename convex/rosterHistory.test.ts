@@ -4,8 +4,7 @@ import { makeFunctionReference, type PaginationOptions, type PaginationResult } 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { initializeWeeklyPattern, patternForDate, patternsForRange, writeWeeklyPattern } from './lib/rosterHistory';
-import { localDateTimeUtc, serviceRostered } from './lib/serviceSlots';
+import { initializeWeeklyPattern, patternForDate, patternsForRange, writeWeeklyPattern, localDateTimeUtc, serviceRostered } from './services/model';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const list = makeFunctionReference<

@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery, staffQuery } from '../auth/model';
-import { appointmentMoney } from '../lib/appointmentFinance';
+import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../lib/stayMoney';
 import { couponVersion } from '../marketing/model';
 import { orderLineLinks } from '../lib/lineLinks';

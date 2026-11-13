@@ -1,22 +1,30 @@
-import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { requireAdmin } from '../auth/model';
-import { appendRecordHistory } from '../settings/model';
-import { RESORT_OFFSET, resortLocalParts } from '../shared/resortLocalParts';
-import { demoCode } from './codes';
-import { ensureLinkedOrder } from './orderLinks';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { requireAdmin } from '../../auth/model';
+import { demoCode } from '../../lib/codes';
+import { ensureLinkedOrder } from '../../lib/orderLinks';
+import { assertValidEmail, assertValidIsoDate } from '../../lib/validation';
+import { appendRecordHistory } from '../../settings/model';
+import { RESORT_OFFSET, resortLocalParts } from '../../shared/resortLocalParts';
+import type { DayPlan } from '../../shared/serviceScheduleTypes';
 import { patternForDate, patternsForRange } from './rosterHistory';
-import { assertValidEmail, assertValidIsoDate } from './validation';
-
 
 const MINUTE = 60_000;
+
 const DAY = 24 * 60 * MINUTE;
-export const TIME_OFF_LOOKBACK = 60 * DAY; // time off is capped at 60 days
-export const APPOINTMENT_LOOKBACK = DAY; // duration + buffer is capped at 24 hours
+
+export const TIME_OFF_LOOKBACK = 60 * DAY;
+
+// time off is capped at 60 days
+export const APPOINTMENT_LOOKBACK = DAY;
+
+// duration + buffer is capped at 24 hours
 export const SLOT_CONFLICT = 'That time was just taken. Please choose another time.';
 
 export type Range = [start: number, end: number];
+
 export type Slot = { start: number; staffIds: Id<'staff'>[] };
+
 type ReadCtx = QueryCtx | MutationCtx;
 
 /** Integrity scans fail explicitly on overflow; they never approve against a truncated prefix. */
@@ -87,10 +95,6 @@ export function mergeRanges(ranges: Range[]): Range[] {
 	return merged;
 }
 
-export type Shift = { start: string; end: string };
-export type RosterBreak = { start: string; end: string; label: string };
-/** One person's working day: shifts minus breaks. No shifts = off. */
-export type DayPlan = { shifts: Shift[]; breaks: RosterBreak[]; note?: string };
 type Pattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
 
 /** 0 = Sunday, for a "YYYY-MM-DD" date. */

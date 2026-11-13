@@ -6,7 +6,7 @@ import { convexTest } from 'convex-test';
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
-import { createAppointmentRecord, localDateTimeUtc } from './lib/serviceSlots';
+import { createAppointmentRecord, localDateTimeUtc } from './services/model';
 import schema from './schema';
 import { proposalIdentity } from './lib/chatWriteGuard';
 

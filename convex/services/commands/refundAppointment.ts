@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { recordAppointmentRefund } from '../../lib/appointmentFinance';
+import { recordAppointmentRefund } from '../private/appointmentFinance';
 import { refundMethod } from '../../lib/financeValidators';
-import { loadAppointment } from '../model';
+import { loadAppointment } from '../private/administration';
 
 /** Records a refund given at the desk; no money moves through the app. */
 export const refundAppointment = adminMutation({

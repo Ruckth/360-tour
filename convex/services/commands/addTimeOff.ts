@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
 import { appendRecordHistory } from '../../settings/model';
-import { assertTimeOffRange, required, timeOffConflicts } from '../model';
+import { assertTimeOffRange, required, timeOffConflicts } from '../private/administration';
 
 /**
  * Adds the same time off for one or more staff. People with booked appointments in the way

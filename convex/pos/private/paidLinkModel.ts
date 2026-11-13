@@ -1,15 +1,13 @@
 import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
-import { recordAppointmentChange } from '../../lib/appointmentChanges';
-import { appointmentMoney } from '../../lib/appointmentFinance';
+import { recordAppointmentChange, appointmentMoney } from '../../services/model';
 import { assertNoLiveCheckout } from '../../lib/bookingMoney';
 import { writeBooking, MAX_STAY_ROWS, stayPaymentReversalPatch } from '../../bookings/model';
 import { stayMoney } from '../../lib/stayMoney';
 import { activeSourceLink } from '../../lib/lineLinks';
 import { openOrderCharging } from '../../lib/orderLinks';
 import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
-
 import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, sourceRows } from './orderModel';
 
 /** The paid row to link, or why it can't be. */

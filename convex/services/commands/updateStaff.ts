@@ -2,9 +2,9 @@ import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
 import { deleteUnreferencedPhoto } from '../../lib/adminPhotos';
-import { initializeWeeklyPattern, writeWeeklyPattern } from '../../lib/rosterHistory';
-import { APPOINTMENT_LOOKBACK, blocksTime, boundedIntegrityRows, staffBusyRanges } from '../../lib/serviceSlots';
-import { archiveStaffRecord, attachAvatarUpload, hour, logService, logStaff, required, rest, staffStatus, validateHours } from '../model';
+import { initializeWeeklyPattern, writeWeeklyPattern } from '../private/rosterHistory';
+import { APPOINTMENT_LOOKBACK, blocksTime, boundedIntegrityRows, staffBusyRanges } from '../private/serviceSlots';
+import { archiveStaffRecord, attachAvatarUpload, hour, logService, logStaff, required, rest, staffStatus, validateHours } from '../private/administration';
 
 export const updateStaff = adminMutation({
 	// `avatarStorageId`: an uploaded photo to attach, or null to remove the photo. `avatarUrl` sets an external URL.

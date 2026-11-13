@@ -3,7 +3,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { writeBooking } from '../bookings/model';
 import { demoCode } from '../lib/codes';
-import { appointmentLookupFields, localDateTimeUtc } from '../lib/serviceSlots';
+import { appointmentLookupFields, localDateTimeUtc } from '../services/model';
 import { resortLocalParts } from '../shared/resortLocalParts';
 
 /**
