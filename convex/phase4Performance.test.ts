@@ -118,7 +118,7 @@ it('refuses oversized uninitialized aggregates atomically and verifies small-tab
     for (let i = 0; i < 1001; i++) await ctx.db.insert('reviews', { propertyId: id, authorAvatarUrl: '', ...review });
     return id;
   });
-  await expect(admin.mutation(api.catalog.adminReviews.create, { propertyId, ...review })).rejects.toThrow('bounded initialization');
+  await expect(admin.mutation(api.catalog.adminReviews.create, { propertyId, ...review })).rejects.toMatchObject({ data: { code: 'REVIEW_INITIALIZATION_REQUIRED', message: expect.stringContaining('bounded initialization') } });
   expect(await t.run(ctx => ctx.db.query('reviewStats').first())).toBeNull();
   expect(await t.run(ctx => ctx.db.query('reviews').collect())).toHaveLength(1001);
   const small = await t.run(ctx => ctx.db.insert('properties', { ...property, slug: 'small' }));

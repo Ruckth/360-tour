@@ -169,3 +169,9 @@ Node 22 and the parent hardware-aware ceiling of four Vitest workers are used. O
 - Earlier validation exposed implementation lint/test-typing issues and one old ownership assertion expecting the intentionally removed second audit. These were corrected while preserving rollback/history assertions. A prior component run had one unchanged coupon-fixture timeout; the exact case passed its focused recheck in 4.8 seconds under the original timeout, and the final complete component run passed all 228 enabled checks. No timeout or assertion was weakened.
 - Clean committed Phase 3 and Phase 4 scorecards: **30/30** and **32/32**. The phase marker remains 3. Final evidence is committed separately from private ignored logs.
 
+
+## Root review follow-up
+
+The independent Spec review found no requirement gaps. The Standards review identified an unstructured review-initialization error and two repeated helper shapes. The root follow-up uses a typed `ConvexError` for the bounded refusal, shares exact aggregate calculation/storage between first-write initialization and explicit repair, and centralizes the initialized-message fallback. No public response or repair contract changes. The structured refusal test also proves that oversized initialization leaves both source reviews and aggregate storage untouched.
+
+Root verification: complete integration passed with 3,059 unit/backend tests, 228 component checks and 73 actual-Clerk E2E checks; afterward the four affected suites passed 74/74 and all app/test/Convex typechecks passed with the review follow-up. Root live acceptance and the independent operational audit remain pending.

@@ -211,12 +211,18 @@ function createSessionLookups(ctx: QueryCtx): SessionLookups {
 	};
 }
 
+function latestSessionMessage(lookups: SessionLookups, session: Doc<'conversations'>) {
+  return session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined
+    ? Promise.resolve(session.lastMessagePreview)
+    : lookups.latestMessage(session._id);
+}
+
 async function sessionHasStoredMessages(lookups: SessionLookups, session: Doc<'conversations'>) {
-	return Boolean(await (session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined ? Promise.resolve(session.lastMessagePreview) : lookups.latestMessage(session._id)));
+	return Boolean(await latestSessionMessage(lookups, session));
 }
 
 async function getSessionLatestMessageAt(lookups: SessionLookups, session: Doc<'conversations'>) {
-	const latestStoredMessage = await (session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined ? Promise.resolve(session.lastMessagePreview) : lookups.latestMessage(session._id));
+	const latestStoredMessage = await latestSessionMessage(lookups, session);
  return latestStoredMessage?.timestamp ?? session.latestMessageAt;
 }
 
@@ -247,13 +253,13 @@ async function sessionMatchesFilters(
 	if (options.channel !== 'all' && session.channel !== options.channel) return false;
 	const adminStatus = session.adminStatus ?? 'open';
 	if (options.status === 'in_progress' && (session.inboxState ? session.inboxState !== 'processing' :
-		sessionNeedsReply(session, await (session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined ? Promise.resolve(session.lastMessagePreview) : lookups.latestMessage(session._id))))) return false;
+		sessionNeedsReply(session, await latestSessionMessage(lookups, session)))) return false;
 	if (options.adminStatus === 'done' ? adminStatus === 'open' : options.adminStatus !== 'all' && adminStatus !== options.adminStatus) {
 		return false;
 	}
 	if (
 		options.status === 'needs_reply' &&
-		!sessionNeedsReply(session, await (session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined ? Promise.resolve(session.lastMessagePreview) : lookups.latestMessage(session._id)))
+		!sessionNeedsReply(session, await latestSessionMessage(lookups, session))
 	) {
 		return false;
 	}
@@ -321,7 +327,7 @@ async function decorateSession(
 		latestInstagramEvent,
 		property
 	] = await Promise.all([
-		(session.inboxProjectionVersion === 1 && session.lastMessagePreview !== undefined ? Promise.resolve(session.lastMessagePreview) : lookups.latestMessage(session._id)),
+		latestSessionMessage(lookups, session),
 		session.channel === 'line'
             ? session.inboxProjectionVersion === 1 && session.lastDeliveryStatus !== undefined ? session.lastDeliveryStatus : ctx.db
 					.query('channelEvents')
