@@ -9,7 +9,7 @@ import { correctedTender } from '../../lib/financeValidators';
 import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from './orderLifecycle';
 import { MAX_LINES, orderLines } from './orderLines';
 import { insertOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from './orderLinks';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from './orderLinks';
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../lib/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../lib/posCoupons';
 import { appendRecordHistory } from '../../settings/model';

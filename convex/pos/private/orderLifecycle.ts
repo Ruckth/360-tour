@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { orderTitle } from '../../lib/orderMath';
 import { assertMoney } from '../../lib/stayMoney';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from './orderLinks';
 
 /**
  * Rules for the order lifecycle beyond paying: discarding and restoring unpaid orders, and
@@ -79,4 +79,13 @@ export function otherFeeMessage(other: { order: Doc<'orders'> } | undefined) {
 	return isOpenOrder(other.order)
 		? `A fee for this appointment is already on ${orderTitle(other.order.orderNumber)}.`
 		: `A fee for this appointment was already charged on ${orderTitle(other.order.orderNumber)}${other.order.receiptNumber !== undefined ? ` (receipt ${other.order.receiptNumber})` : ''}.`;
+}
+
+/** The receipt's current money and business date, shared with reporting. */
+export function orderPaymentRecord(order: Doc<'orders'>, payments: Pick<Doc<'orderPayments'>, 'method' | 'amount' | 'received'>[]) {
+	return {
+		effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
+		tenders: order.amendedTenders ?? payments.map(({ method, amount, received }) => ({ method, amount, ...(received !== undefined ? { received } : {}) })),
+		customer: order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null)
+	};
 }

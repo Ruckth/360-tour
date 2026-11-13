@@ -1,6 +1,6 @@
 import type { Id } from '../../_generated/dataModel';
 import { liveFees } from './orderLifecycle';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from './orderLinks';
 import { linkedOpenOrder, openOrderCharging, type OrderSource } from './orderLinks';
 import { orderTitle } from '../../lib/orderMath';
 import { Line, Order, ReadCtx, isSourceRow, sourceIssue } from './orderModel';

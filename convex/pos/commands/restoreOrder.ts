@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { attemptKey } from '../../lib/bookingMoney';
 import { orderLines } from '../private/orderLines';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from '../private/orderLinks';
 import { discardedInfo, restoreConflicts } from '../private/lifecycleModel';
 import { lifecycleArgs, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
 

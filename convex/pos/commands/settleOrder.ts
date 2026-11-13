@@ -8,7 +8,7 @@ import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../private/orderLifecycle';
 import { orderLines } from '../private/orderLines';
 import { RECEIPT_COUNTER, nextCounter } from '../private/orderLinks';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from '../private/orderLinks';
 import { assertTenders, lineNet, orderTotals, roundMoney } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { assertNoPendingApprovals } from '../private/staffApprovalState';

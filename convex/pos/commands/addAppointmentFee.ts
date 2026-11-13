@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../lib/bookingMoney';
 import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../private/orderLifecycle';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from '../private/orderLinks';
 import { assertPrice } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/resortLocalParts';

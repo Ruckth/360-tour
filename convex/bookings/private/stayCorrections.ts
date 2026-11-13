@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify } from '../../lib/bookingMoney';
 import { activeSourceLink, orderLineLinks } from '../../pos/model';
-import { isSettledOrder } from '../../shared/orderState';
+import { isSettledOrder } from '../../pos/model';
 import { lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
 import { assertMoney, stayMoney } from '../../lib/stayMoney';
 import { releaseBookingDates } from './availabilityWrites';

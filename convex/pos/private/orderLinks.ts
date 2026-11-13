@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { orderTitle } from '../../lib/orderMath';
-import { isOpenOrder } from '../../shared/orderState';
+
 import { sourceLineLinks } from './lineLinks';
 
 /**
@@ -163,3 +163,11 @@ export async function assertNotOnOpenOrder(ctx: ReadCtx, source: OrderSource, wh
 		throw new ConvexError(`${what} is on ${orderTitle(order.orderNumber)}, which is still open. Take the payment on that order, or remove it from the order first.`);
 	}
 }
+
+export const isOpenOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'draft';
+
+/**
+ * Paid or void: an order that was settled and is history. Use this, not `!isOpenOrder`, wherever
+ * "an order that took money" is meant: a discarded order is neither open nor settled.
+ */
+export const isSettledOrder = (order: Pick<Doc<'orders'>, 'status'>) => order.status === 'paid' || order.status === 'void';

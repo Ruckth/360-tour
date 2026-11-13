@@ -294,8 +294,6 @@ import type * as shared_marketingAttribution from "../shared/marketingAttributio
 import type * as shared_marketingTypes from "../shared/marketingTypes.js";
 import type * as shared_messagingImages from "../shared/messagingImages.js";
 import type * as shared_money from "../shared/money.js";
-import type * as shared_orderPaymentRecord from "../shared/orderPaymentRecord.js";
-import type * as shared_orderState from "../shared/orderState.js";
 import type * as shared_resortLocalParts from "../shared/resortLocalParts.js";
 import type * as shared_serviceScheduleTypes from "../shared/serviceScheduleTypes.js";
 import type * as shared_validation from "../shared/validation.js";
@@ -594,8 +592,6 @@ declare const fullApi: ApiFromModules<{
   "shared/marketingTypes": typeof shared_marketingTypes;
   "shared/messagingImages": typeof shared_messagingImages;
   "shared/money": typeof shared_money;
-  "shared/orderPaymentRecord": typeof shared_orderPaymentRecord;
-  "shared/orderState": typeof shared_orderState;
   "shared/resortLocalParts": typeof shared_resortLocalParts;
   "shared/serviceScheduleTypes": typeof shared_serviceScheduleTypes;
   "shared/validation": typeof shared_validation;

@@ -3,7 +3,7 @@ import type { QueryCtx } from '../../_generated/server';
 import { lineCouponDiscount, lineDiscount, lineNet, linePrice, orderTotals } from '../../lib/orderMath';
 import { getEffectiveSettings } from '../../settings/model';
 import type { DisplayCoupon, DisplayOrderState, Shared } from '../../shared/displayTypes';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
 
 /** "Anna Lee" → "Anna". The display never shows more of a customer's name. */

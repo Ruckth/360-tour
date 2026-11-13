@@ -32,9 +32,6 @@ function add(from, node, to, exported = false) {
 for (const from of origins) for (const node of trees.get(from).statements.filter(n => !ts.isImportDeclaration(n))) {
   let to = whole[from];
   if (from === 'convex/lib/displayView.ts' && ['DisplayLine', 'DisplayCoupon', 'Shared', 'DisplayOrderState'].includes(nameOf(node))) to = 'convex/shared/displayTypes.ts';
-  // These three pure declarations are the minimal seam required to avoid pos -> auth/marketing -> pos runtime cycles.
-  if (from === 'convex/lib/orderLinks.ts' && ['isOpenOrder', 'isSettledOrder'].includes(nameOf(node))) to = 'convex/shared/orderState.ts';
-  if (from === 'convex/lib/orderLifecycle.ts' && nameOf(node) === 'orderPaymentRecord') to = 'convex/shared/orderPaymentRecord.ts';
   if (from === 'convex/pos/private/displayModel.ts' && ['DisplayState', 'DisplayDriver'].includes(nameOf(node))) to = 'convex/shared/displayTypes.ts';
   add(from, node, to, nameOf(node) === 'Shared');
 }
@@ -128,8 +125,8 @@ function organize(file, source) {
   for (const node of [...ast(file, source).statements].filter(ts.isImportDeclaration).reverse()) source = source.slice(0, node.getStart()) + node.getText().replace(/\s+/g, ' ') + source.slice(node.end);
   return source.trimEnd() + '\n';
 }
-const helperExports = [...groups].filter(([to]) => ['orderLines', 'lineLinks', 'orderLinks'].some(name => to === `convex/pos/private/${name}.ts`)).map(([to, entries]) => {
-  const names = entries.filter(({node, exported}) => exported || node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)).map(({node}) => `${ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node) ? 'type ' : ''}${nameOf(node)}`);
+const helperExports = [...groups].filter(([to]) => ['orderLines', 'lineLinks', 'orderLinks', 'orderLifecycle'].some(name => to === `convex/pos/private/${name}.ts`)).map(([to, entries]) => {
+  const names = entries.filter(({node, exported}) => (exported || node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) && (to !== 'convex/pos/private/orderLifecycle.ts' || nameOf(node) === 'orderPaymentRecord')).map(({node}) => `${ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node) ? 'type ' : ''}${nameOf(node)}`);
   return `export { ${names.join(', ')} } from '${relative('convex/pos/model.ts', to)}';`;
 }).join('\n');
 // These unused internal command/approval re-exports pull bookings/services back into POS.

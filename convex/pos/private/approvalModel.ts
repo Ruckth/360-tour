@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { orderLines } from './orderLines';
-import { isOpenOrder } from '../../shared/orderState';
+import { isOpenOrder } from './orderLinks';
 import { assertDiscount, assertOrderSize, assertPrice, assertPriceOverride, orderTotals, roundMoney } from '../../lib/orderMath';
 import { executeOrderRefund, refundState } from './orderRefunds';
 import { manualReduction, type StaffActor } from '../../auth/model';
