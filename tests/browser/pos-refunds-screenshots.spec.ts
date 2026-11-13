@@ -22,7 +22,7 @@ async function record(page: Page, line: string, amount: string | null, reason: s
   const form = receipt(page).getByRole("form", { name: "Refund", exact: true });
   if (amount !== null) await form.getByRole("textbox", { name: "Amount (฿)" }).fill(amount);
   await form.getByRole("textbox", { name: "Reason" }).fill(reason);
-  await form.getByRole("button", { name: "Record refund" }).click();
+  await form.getByRole("button", { name: /^Record refund/ }).click();
   await form.waitFor({ state: "detached" });
 }
 

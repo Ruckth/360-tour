@@ -106,11 +106,13 @@ test.describe("cashier checkout", () => {
 
   test("a cashier's void of a paid sale is sent as a request", async ({ page }) => {
     await open(page, "?role=cashier&scenario=paid");
-    await page.getByRole("button", { name: "Void…" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("heading")).toHaveText(/^Ask a manager to void R-/);
-    await dialog.getByRole("textbox", { name: "Reason" }).fill("Charged the wrong guest");
-    await dialog.getByRole("button", { name: "Send request" }).click();
+    await page.getByRole("button", { name: "More receipt actions" }).click();
+    await page.getByRole("menuitem", { name: "Void…" }).click();
+    const panel = page.getByTestId("void-panel");
+    await panel.getByRole("textbox", { name: "Reason" }).fill("Charged the wrong guest");
+    const received = panel.locator('[data-void-choice="received"]');
+    await expect(received).toHaveText(/^Yes · ask a manager/);
+    await received.click();
     await expect(page.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager · void");
     await expect(page.getByRole("button", { name: "Link appointment" })).toHaveCount(0);
   });

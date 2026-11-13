@@ -28,6 +28,10 @@ export const satangMoney = (satang: number, currency = "THB") => formatMoney(sat
 /** The form's amount text for a satang value: "250", "99.50". */
 export const satangInput = (satang: number) => (satang / 100).toFixed(satang % 100 ? 2 : 0);
 
+/** The money button: "Record refund ฿300", or "Send refund ฿300 to manager" for a cashier who asks. */
+export const refundButtonLabel = (ask: boolean, money: string | null) =>
+  ask ? `Send refund${money ? ` ${money}` : ""} to manager` : `Record refund${money ? ` ${money}` : ""}`;
+
 /** Typed baht ("250", "99.5") to whole satang, or null when it isn't a positive amount with at most two decimals. */
 export function refundAmountSatang(text: string) {
   const clean = text.trim();

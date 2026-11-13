@@ -23,7 +23,6 @@ const type = (selector: string, value: string) => act(async () => {
   Object.getOwnPropertyDescriptor(el.tagName === "TEXTAREA" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(el, value);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
-const panel = () => document.querySelector<HTMLElement>('section[aria-label="After payment"]')!;
 // What prints: screen-only controls on the receipt (a line's Refund) are left out.
 const printed = () => {
   const paper = document.querySelector<HTMLElement>('article[aria-label="Receipt"]')!.cloneNode(true) as HTMLElement;
@@ -51,15 +50,19 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("pays an unscheduled service, links it to the guest's appointment later and unlinks it, leaving the receipt as issued", async () => {
+it("pays an unscheduled service, links it from its receipt line to the guest's appointment and unlinks it, leaving the receipt as issued", async () => {
   const { backend } = await paidMassage();
   const issued = printed();
   expect(issued).toContain("To be scheduled");
-  expect(panel().textContent).toContain("1 to link to an appointment");
-  expect(panel().textContent).toContain("No appointment");
+  expect(document.querySelector('section[aria-label="After payment"]')).toBeNull();
+  // Link sits on the line, inside the paper but screen-only.
+  expect(button("Link appointment")?.closest("[data-screen-only]")).toBeTruthy();
 
   await click("Link appointment");
-  // The customer's own unpaid appointment is suggested; another guest's other service can't take it.
+  // The only appointment that fits opens straight on its review.
+  expect(document.querySelector('[data-testid="link-review"]')?.textContent).toContain("Not changed: receipt R-000142");
+  // Back lists every candidate; another guest's other service can't take it.
+  await click("Back");
   const candidates = () => [...document.querySelectorAll('[data-testid="link-candidate"]')].map((el) => el.textContent ?? "");
   expect(candidates()[0]).toContain("SVC-0002");
   await type('input[aria-label="Find the appointment"]', "Anna");
@@ -67,17 +70,14 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   expect(button("Can't link")?.disabled).toBe(true);
   await type('input[aria-label="Find the appointment"]', "");
   await click("Review");
-  const review = document.querySelector('[data-testid="link-review"]')!.textContent;
-  expect(review).toContain("Not changed: receipt R-000142");
   expect(button("Confirm link")?.disabled).toBe(true);
-  await type('textarea[id^="link-reason-"]', "Guest booked the prepaid massage");
+  await click("Guest asked");
+  expect(document.querySelector<HTMLInputElement>('input[id^="link-reason-"]')!.value).toBe("Guest asked");
   await click("Confirm link");
   await tick();
 
-  expect(panel().textContent).toContain("Linked · SVC-0002");
-  expect(panel().textContent).toContain("Scheduling");
-  expect(panel().textContent).not.toContain("to link to an appointment");
-  expect(document.body.textContent).toContain("Row linked after payment · #1");
+  expect(document.querySelector('[data-testid="line-link"]')?.textContent?.trim()).toBe("Linked · SVC-0002");
+  expect(button("Link appointment")).toBeUndefined();
   expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 1600 });
   expect(printed()).toBe(issued);
 
@@ -85,8 +85,8 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
   await type('textarea[id^="unlink-reason-"]', "Wrong guest");
   await click("Unlink");
   await tick();
-  expect(panel().textContent).toContain("No appointment");
-  expect(document.body.textContent).toContain("Link undone · #2");
+  expect(document.querySelector('[data-testid="line-link"]')).toBeNull();
+  expect(button("Link appointment")).toBeTruthy();
   expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 1600 });
   expect(printed()).toBe(issued);
 });
@@ -94,11 +94,31 @@ it("pays an unscheduled service, links it to the guest's appointment later and u
 it("refuses a link reviewed before the appointment changed, and shows why", async () => {
   const { backend } = await paidMassage();
   await click("Link appointment");
-  await click("Review");
+  expect(document.querySelector('[data-testid="link-review"]')).toBeTruthy();
   await act(async () => backend.setAppointmentSnapshot(SOMCHAI_APPOINTMENT, { revision: 3 }));
-  await type('textarea[id^="link-reason-"]', "Booked it");
+  await type('input[id^="link-reason-"]', "Booked it");
   await click("Confirm link");
   await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/changed since you opened it/);
   expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false });
+});
+
+it("retries a link whose answer was lost with the same attempt key, and links once", async () => {
+  const { backend } = await paidMassage();
+  const actions = backend.useActions();
+  const real = actions.linkPaidLine;
+  const link = vi.spyOn(actions, "linkPaidLine").mockImplementationOnce(async (args) => { await real(args); throw new Error("Connection lost"); });
+  await click("Link appointment");
+  await click("Booked under another name");
+  await click("Confirm link");
+  await tick();
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
+  await click("Confirm link");
+  await tick();
+  expect(link).toHaveBeenCalledTimes(2);
+  expect(link.mock.calls[1][0].idempotencyKey).toBe(link.mock.calls[0][0].idempotencyKey);
+  // The server replays by key before it checks revisions (pos.linkPaidLine), so the retry links nothing twice.
+  expect(link.mock.calls[1][0]).toMatchObject({ lineId: link.mock.calls[0][0].lineId, appointmentId: link.mock.calls[0][0].appointmentId, reason: "Booked under another name" });
+  await expect(link.mock.results[1].value).resolves.toMatchObject({ replayed: true });
+  expect(document.querySelector('[data-testid="line-link"]')?.textContent?.trim()).toBe("Linked · SVC-0002");
 });

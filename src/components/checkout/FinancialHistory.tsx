@@ -1,13 +1,16 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import { round2 } from "convex/lib/billMath";
-import type { ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useCheckoutBackend, type CustomerPage, type FinancialRows, type OrderId, type OrderView } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
-import { historyTime } from "./OrderHistory";
+import { OrderHistoryList, historyTime } from "./OrderHistory";
+import { PaymentFacts } from "./PaymentRecord";
 import { TENDER_LABELS, correctionTitle } from "./checkout-ui";
 import { HistoryDetails } from "./HistoryDetails";
 import { refundMethodName, satangMoney } from "./refunds";
@@ -25,6 +28,103 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
     </div>
   </HistoryDetails>;
 }
+const HISTORY_TABS = [
+  { id: "items", label: "Items" },
+  { id: "payments", label: "Payments" },
+  { id: "refunds", label: "Refunds" },
+] as const;
+type HistoryTab = (typeof HISTORY_TABS)[number]["id"];
+
+/**
+ * The receipt's one History: a closed section with Items · Payments · Refunds. Nothing loads until
+ * it is opened, and a tab's ledgers load when the tab is first shown; a visited tab stays mounted,
+ * so its loaded pages survive switching tabs or closing the section (until another order opens).
+ */
+export function ReceiptHistory({ view, className }: { view: OrderView; className?: string }) {
+  return <ReceiptHistoryDetails key={view.order._id} view={view} className={className} />;
+}
+
+function ReceiptHistoryDetails({ view, className }: { view: OrderView; className?: string }) {
+  const [opened, setOpened] = useState(false);
+  const [tab, setTab] = useState<HistoryTab>("items");
+  const [visited, setVisited] = useState<Set<HistoryTab>>(() => new Set(["items"]));
+  const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const orderId = view.order._id;
+  // Stays and appointments get their own refund ledgers only when this receipt paid for one.
+  const sources = view.sources.length > 0 || view.links.length > 0 || view.refunds.length > 0 || view.lines.some((line) => line.bookingId || line.appointmentId);
+  function show(next: HistoryTab, focus = false) {
+    setTab(next);
+    setVisited((seen) => (seen.has(next) ? seen : new Set(seen).add(next)));
+    if (focus) tabs.current[next]?.focus();
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    const index = HISTORY_TABS.findIndex((item) => item.id === tab);
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      show(HISTORY_TABS[event.key === "Home" ? 0 : HISTORY_TABS.length - 1].id, true);
+    } else if (step) {
+      event.preventDefault();
+      show(HISTORY_TABS[(index + step + HISTORY_TABS.length) % HISTORY_TABS.length].id, true);
+    }
+  }
+  const panel = (id: HistoryTab, children: ReactNode) => visited.has(id) ? (
+    <div key={id} role="tabpanel" id={`receipt-history-${id}`} aria-labelledby={`receipt-history-tab-${id}`} hidden={tab !== id} className="grid gap-5 pt-3">
+      {children}
+    </div>
+  ) : null;
+  return (
+    <details
+      data-testid="receipt-history"
+      className={cn("group/details w-full border-t border-border text-sm print:hidden", className)}
+      onToggle={(event) => { if (event.currentTarget.open) setOpened(true); }}
+    >
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded py-2 font-semibold hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground transition-transform group-open/details:rotate-90" />History
+      </summary>
+      {opened ? (
+        <div className="pb-3">
+          <div role="tablist" aria-label="History" className="inline-flex gap-1 rounded-lg bg-muted p-1" onKeyDown={onKeyDown}>
+            {HISTORY_TABS.map((item) => (
+              <button
+                key={item.id}
+                ref={(el) => { tabs.current[item.id] = el; }}
+                type="button"
+                role="tab"
+                id={`receipt-history-tab-${item.id}`}
+                aria-selected={tab === item.id}
+                aria-controls={`receipt-history-${item.id}`}
+                tabIndex={tab === item.id ? 0 : -1}
+                onClick={() => show(item.id)}
+                className={cn(
+                  "min-h-9 rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11",
+                  tab === item.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {panel("items", <>
+            <OrderHistoryList orderId={orderId} intro={false} />
+            <Ledger title="Receipt activity"><Audit orderId={orderId} /></Ledger>
+          </>)}
+          {panel("payments", <>
+            <PaymentFacts view={view} />
+            <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
+          </>)}
+          {panel("refunds", <>
+            <Ledger title="Line refunds"><LineRefunds orderId={orderId} view={view} /></Ledger>
+            {sources ? <Ledger title="Stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger> : null}
+            {sources ? <Ledger title="Appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger> : null}
+          </>)}
+          <p className="mt-3 text-xs text-muted-foreground">Bangkok time · the issued receipt never changes</p>
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 function Ledger({ title, children }: { title: string; children: ReactNode }) {
   return <section aria-label={title} className="grid gap-2"><h3 className="font-semibold">{title}</h3><InlineErrorBoundary message={`Couldn't load ${title.toLowerCase()}. Try again.`}>{children}</InlineErrorBoundary></section>;
 }
