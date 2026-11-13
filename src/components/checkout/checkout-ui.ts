@@ -7,12 +7,41 @@ import { MAX_BILL, changeDue, formatReceiptNumber, lineCouponDiscount, round2, t
 import { posCouponMessage, type PosCouponProblem } from "convex/lib/posCoupons";
 import type { OrderView } from "./backend";
 
-export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
-  cash: { short: "Cash", long: "Cash", hint: "" },
-  promptpay: { short: "PromptPay QR", long: "PromptPay QR", hint: "Show the shop's PromptPay QR. Confirm only once the transfer shows in the bank app." },
-  card: { short: "Card", long: "Card", hint: "Charge the amount on the card terminal, then confirm here." },
-  transfer: { short: "Transfer", long: "Bank transfer", hint: "Confirm once the transfer has arrived in the account." },
+/** `confirm` names the method on its money button: "Confirm card ฿1,200", "Confirm ฿500 cash + ฿700 card". */
+export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; confirm: string; hint: string }> = {
+  cash: { short: "Cash", long: "Cash", confirm: "cash", hint: "" },
+  promptpay: { short: "PromptPay QR", long: "PromptPay QR", confirm: "PromptPay", hint: "Show the shop's QR and confirm once the transfer shows in the bank app." },
+  card: { short: "Card", long: "Card", confirm: "card", hint: "Charge the amount on the card terminal, then confirm here." },
+  transfer: { short: "Transfer", long: "Bank transfer", confirm: "transfer", hint: "Confirm once the transfer has arrived in the account." },
 };
+
+/** "Confirm card ฿1,200": the money button for one non-cash tender. */
+export const tenderConfirmLabel = (method: TenderMethod, amount: number) => `Confirm ${TENDER_LABELS[method].confirm} ${formatMoney(amount)}`;
+
+/**
+ * The cash money button: "Confirm cash ฿1,200 · no change", "Confirm cash ฿1,500 · change ฿300",
+ * or "Short ฿200" while less than the amount due is entered (the button is off then).
+ */
+export function cashConfirmLabel(due: number, received: number) {
+  if (received < due) return { ready: false, text: `Short ${formatMoney(round2(due - received))}` };
+  const change = round2(received - due);
+  return { ready: true, text: `Confirm cash ${formatMoney(received)} · ${change ? `change ${formatMoney(change)}` : "no change"}` };
+}
+
+/** The first round amount strictly above `due` in steps of `step`. */
+const nextUp = (due: number, step: number) => (Math.floor(due / step) + 1) * step;
+
+/**
+ * Cash a guest is likely to hand over for `due`, in Thai notes: the next ฿500 and ฿1,000 up (฿1,200 →
+ * ฿1,500 · ฿2,000), or the next ฿100 and ฿500 for under ฿500 (฿180 → ฿200 · ฿500). When both land on
+ * the same amount the second is one larger note on (฿950 → ฿1,000 · ฿2,000). Never above `max`.
+ */
+export function cashNotes(due: number, max = MAX_BILL): number[] {
+  const [small, large] = due < 500 ? [100, 500] : [500, 1000];
+  const first = nextUp(due, small);
+  const second = nextUp(due, large);
+  return [first, second === first ? first + large : second].filter((note) => note <= max);
+}
 
 /**
  * On touch screens (phones and iPads), every button, field and menu option inside a checkout area

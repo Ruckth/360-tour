@@ -261,7 +261,7 @@ describe("paying with a coupon", () => {
   async function payByCard(fixture: Fixture, orderId: OrderId) {
     await show(fixture, orderId);
     await click(button("Card"));
-    await click(button(/^Confirm .* received$/));
+    await click(button(/^Confirm card ฿/));
     await settle();
   }
 
@@ -318,7 +318,7 @@ describe("paying with a coupon", () => {
     await show(fixture, orderId);
     await click(button("Card"));
     expect(panel().textContent).toContain("Includes coupon DCNT-SPA-500 · -฿500");
-    await click(button("Confirm ฿1,750 received"));
+    await click(button("Confirm card ฿1,750"));
     await settle();
     const view = await readOrder(fixture, orderId);
     expect(view.order.state).toBe("paid");
