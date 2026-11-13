@@ -39,6 +39,8 @@ Browser sign-in uses `clerkSetup` and `clerk.signIn({ page, emailAddress })`, th
 
 Auth acceptance verifies anonymous and signed-in nonstaff denial, owner access plus team controls, cashier checkout plus refusal of people/price-override access and absence of Settings, and owner UI add/quantity/cash-receipt persistence across reload. Cash recording is local only. Services retain their existing one-row-per-service quantity policy; the live quantity case uses room nights. Persisted transcript fixtures use a real signed-in staff account and the existing web-only reply commands. With external model calls disabled, unknown questions produce the real backend's staff handoff; tests start fresh conversations for independent automatic-reply cases instead of inventing follow-up answers after handoff. Date-language cases freeze their intended October clock rather than changing date expectations as real time advances.
 
+Final review also restored the parent behavior for an unknown/retired villa URL: the initial selection comes from the actual backend list, and reactive removal of the selected villa highlights an existing backend villa. The selector exposes its pressed state; an actual-server E2E covers this case.
+
 ## Contracts and metrics
 
 Actual `schema.export()` equality against the exact parent: **74 parent/current/static tables**, SHA-256 `c684d5d73ba0329cd5a230ff6ce63d05b10aaee7196350e6c3b0cbda397a3ff6`. Normalization sorts object keys and top-level table order only.
@@ -68,14 +70,18 @@ Node **22.22.3**, `VITEST_MAX_WORKERS=4`, serialized Next builds. Private logs a
 
 | Check | Result |
 | --- | --- |
-| Full `pnpm verify` inside fresh local integration runner | App/test/backend types, lint, **242 files / 2,903 tests**, production build passed |
+| Full `pnpm verify:integration` on committed implementation `8e878683687936f703f4e3e2230e42cb2d251696` | App/test/backend types, lint, **242 files / 2,904 tests**, production build passed |
 | `pnpm exec eslint . --max-warnings 0`; `pnpm knip` | Passed, zero warnings/findings/config hints |
-| Full component browser suite | Pending final combined run; independent stable run: **228 passed**, 24 existing optional captures skipped |
-| Actual local Convex + real Clerk complete E2E | Pending final combined run |
+| Full component browser suite | **228 passed**, 24 existing optional captures skipped; all five exact-parent fixed-time cases retained |
+| Actual local Convex + real Clerk complete E2E | **73 passed** (72 acceptance cases plus Clerk setup), including actual JWT access controls, persisted guest data, owner cash receipt and retired-villa URL selection |
 | Exact-parent schema / registrations / HTTP / scheduler / local metadata | Passed as detailed above |
-| Both committed Phase 2 gate spellings | Pending clean commit |
+| Both committed Phase 2 gate spellings | **19/19 passed** on clean commits; historical schema/archive and CLI proof suites **23/23 passed** |
 
-During development, the runner's isolated HOME initially hid the installed Playwright browser cache. The runner now supplies the explicit platform browser cache while keeping the Convex CLI HOME isolated. Initial real-backend E2E also exposed stale demo response expectations and the handoff race described above; assertions now read persisted server replies and explicitly cover real staff handoff. No security, financial, fixed-clock or historical proof assertion was dropped to fix these failures.
+During development, the runner's isolated HOME initially hid the installed Playwright browser cache. The runner now supplies the explicit platform browser cache while keeping the Convex CLI HOME isolated. Initial real-backend E2E also exposed stale demo response expectations and the handoff race described above; assertions now read persisted server replies and explicitly cover real staff handoff. No security, financial, fixed-clock or historical proof assertion was dropped to fix these failures. A later cleanup of an old env file interrupted one Vite fixture import (connection refused before rendering); the unchanged retry/idempotency case and full lifecycle pass with source/env files held stable.
+
+The output boundary buffers complete lines and redacts both raw and encoded credentials, Clerk identifiers, JWTs, token parameters, guest/admin secrets, auth headers/cookies and emails. The new regression deliberately splits sensitive values across process chunks while asserting that HTTP/error evidence remains visible. SDK preflight/cleanup failures use the same redaction. Signal and normal cleanup share one finalization promise. An AST walk of **995 source/backend/test files** found **zero** `as never` assertions.
+
+An initial diagnostic process listing included transient local-backend instance secrets; a later Clerk-testing teardown warning included a token-bearing dev-browser URL. The affected deployments were stopped and discarded, dedicated test sessions were revoked, and retained diagnostic logs were sanitized. No production credential or human account was involved. Authenticated Playwright traces remain disabled. All owned listeners and active dedicated test sessions were checked absent at handoff.
 
 ## CI and limitations
 
@@ -91,4 +97,4 @@ Root must set these repository secrets, using a dedicated Clerk **test** tenant 
 
 No Convex deployment/admin key, production provider secret, human account, extra E2E email secret or stored browser session is required. The runner provisions its own dedicated identities. Candidate local test fields were validated privately and real browser login succeeded; there is no missing local credential prerequisite.
 
-Root owns writing GitHub secrets, final exact-head CI validation, independent reviews, any Preview/live acceptance and merge. No remote CI success, shared/prod deployment or live pending-work/delivery inspection is claimed. No real external payment/refund, email, model or social send was performed. Local cash recording and registered-backend financial integration tests do not establish external-provider acceptance. No watches or external messages were created.
+The implementation commits are `09f1c6880639e6c00debbe3c76930fabe8c22215` and `8e878683687936f703f4e3e2230e42cb2d251696`; the final evidence commit changes this record only. Root owns writing GitHub secrets, final exact-head CI validation, independent reviews, any Preview/live acceptance and merge. No remote CI success, shared/prod deployment or live pending-work/delivery inspection is claimed. No real external payment/refund, email, model or social send was performed. Local cash recording and registered-backend financial integration tests do not establish external-provider acceptance. No watches or external messages were created.
