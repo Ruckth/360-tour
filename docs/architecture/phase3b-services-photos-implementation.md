@@ -1,5 +1,8 @@
 # Phase 3b: Services photo ctx-helper ownership closure
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Exact parent: `39204f7a66e4ed91a076f4c6604ea0ccafc3fd63`, POS [PR #77](https://github.com/Ruckth/360-tour/pull/77), branch `t3/complete-pos-ownership`. Branch `t3/complete-services-photo-ownership` starts directly at that commit in the prepared isolated checkout `/Users/macbook/.t3/worktrees/360-tour/t3-8b2ea7c7-551d09a2b7490527`. No reset, rebase, parent rewrite or other checkout was used; the original dirty development checkout and root architecture checkout were untouched. No subagents.
 
 The plan's five rules, nine-domain map and Phase 3b put staff, services and their managed photo uploads in Services. This closes the explicit `lib/adminPhotos.ts` obligation in the [Services closure record](phase3b-services-closure-implementation.md), preserving the final twelve-helper POS model and all root follow-ups in the [POS closure record](phase3b-pos-closure-implementation.md).

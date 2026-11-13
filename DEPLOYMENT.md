@@ -1,12 +1,11 @@
 # Production Deployment
 
-This project deploys as a Next.js App Router app on Vercel with Convex for backend data and functions. Clerk is used for the admin area when configured, AI chat uses Convex environment variables, and live checkout uses Stripe when the Convex payment secrets are configured. The standalone `bookingId=demo` route remains a no-card UI demonstration.
+This project deploys as a Next.js App Router app on Vercel with Convex for backend data and functions. Clerk configuration is required by the app and protects the admin area, AI chat uses Convex environment variables, and live checkout uses Stripe when the Convex payment secrets are configured. Missing backend/auth configuration fails clearly; the old demo checkout was removed in Phase 3d.
 
 ## Current Production Shape
 
 - Public resort pages, localized routes, villa detail pages, room galleries, pricing, reviews, and 360 tour entry points.
 - Booking funnel with Convex-backed live inventory when production Convex is configured and seeded.
-- Demo checkout fallback at `bookingId=demo`; this confirms locally and does not charge a card.
 - Live Convex bookings start pending. Stripe Checkout creates a hosted payment session; only the signed Stripe webhook confirms a paid booking. Unpaid requests expire after 24 hours.
 - Concierge chat uses Convex. If AI env vars are present, responses use the configured xAI/OpenAI-compatible endpoint; otherwise the app falls back to static localized replies.
 - Admin chat dashboard uses Clerk plus Convex JWT validation and `ADMIN_EMAILS` allowlisting.
@@ -34,38 +33,34 @@ That command deploys Convex functions first, injects the Convex deployment URL i
 
 Verify every variable in the actual Vercel and Convex deployments before launch. This repository does not contain production secret values.
 
-Historical Vercel name audit on 24 September 2026 (superseded for ingress by Phase 2): Production and Preview both list `INSTAGRAM_APP_SECRET`, but neither lists `FACEBOOK_APP_SECRET`, `WHATSAPP_APP_SECRET`, or `META_APP_SECRET`. Facebook and WhatsApp POST webhooks will return 500 until the matching Meta app secret is added to those environments and redeployed. This audit checked variable names, not secret values or live webhook delivery.
-
-Convex production name audit on the same date: `RESEND_API_KEY` is present, while `EMAIL_FROM`, `OWNER_NOTIFICATION_EMAIL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `SITE_URL` are absent. Booking emails and live Stripe Checkout remain disabled there until those values are configured. Secret contents were not read.
-
 ### Vercel Environment Variables
 
-Set these in Vercel Production and Preview:
+Set these in Vercel Production and Preview. Social ingress signatures and verification tokens are configured in Convex. The website config-status screen still reports website-side presence flags; those flags do not prove Convex ingress or provider readiness.
 
 | Name | Required | Notes |
 | --- | --- | --- |
 | `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
 | `MESSAGING_IMAGE_SECRET` | For social card images | Dedicated image-conversion signing key, shared with Convex. It does not authenticate webhook functions. |
-| `NEXT_PUBLIC_CONVEX_URL` | Yes | Usually injected by `convex deploy`; keep a placeholder only if Vercel requires the key before first deploy. |
+| `NEXT_PUBLIC_CONVEX_URL` | Yes | Injected by `convex deploy`; use an actual deployment URL. |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Optional | Convex HTTP origin for the OTA export URL shown in admin. If omitted, the app derives it from `NEXT_PUBLIC_CONVEX_URL`. |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes for admin | Enables Clerk UI and admin sign-in. Do not use `placeholder` in production if admin should work. |
-| `LINE_CHANNEL_SECRET` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Basic settings -> Channel secret. |
-| `LINE_CHANNEL_ACCESS_TOKEN` | Yes for LINE auto-replies | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
-| `FACEBOOK_ACCESS_TOKEN` | Yes for Facebook Messenger auto-replies | Meta Developers -> Messenger API settings -> Generate access tokens -> Page access token. |
-| `FACEBOOK_PAGE_ID` | Yes for Facebook Messenger setup | Meta Developers -> Messenger API settings -> connected Page ID. |
-| `FACEBOOK_VERIFY_TOKEN` | Yes for Facebook Messenger webhook verification | Custom secret you create; must exactly match the Meta webhook Verify token field. |
-| `FACEBOOK_APP_SECRET` or `META_APP_SECRET` | Yes for Facebook Messenger POST events | Meta app secret used to verify the `X-Hub-Signature-256` header. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Required Clerk UI/provider configuration for the application. |
+| `LINE_CHANNEL_SECRET` | Website config-status mirror only | LINE Developers Console -> Messaging API channel -> Basic settings -> Channel secret. |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Website config-status mirror only | LINE Developers Console -> Messaging API channel -> Messaging API -> Channel access token. |
+| `FACEBOOK_ACCESS_TOKEN` | For website staff replies | Meta Developers -> Messenger API settings -> Generate access tokens -> Page access token. |
+| `FACEBOOK_PAGE_ID` | No, provider setup reference | Meta Developers -> Messenger API settings -> connected Page ID. |
+| `FACEBOOK_VERIFY_TOKEN` | Website config-status mirror only | Custom secret you create; must exactly match the Meta webhook Verify token field. |
+| `FACEBOOK_APP_SECRET` or `META_APP_SECRET` | Website config-status mirror only | Meta app secret used to verify the `X-Hub-Signature-256` header. |
 | `FACEBOOK_GRAPH_API_VERSION` | No | Defaults to `v25.0`; set only when intentionally pinning another supported Graph API version. |
-| `WHATSAPP_ACCESS_TOKEN` | Yes for WhatsApp replies | Meta WhatsApp Cloud API token. |
-| `WHATSAPP_PHONE_NUMBER_ID` | Yes for WhatsApp replies | The WhatsApp Business phone number ID. |
-| `WHATSAPP_VERIFY_TOKEN` | Yes for WhatsApp webhook verification | Custom token matching the Meta webhook subscription. |
-| `INSTAGRAM_ACCESS_TOKEN` | Yes for Instagram auto-replies | Instagram Messaging API access token with permission to send messages. |
-| `INSTAGRAM_VERIFY_TOKEN` | Yes for Instagram webhook verification | Custom secret you create; must exactly match the Meta webhook Verify token field. |
-| `INSTAGRAM_APP_SECRET` or `META_APP_SECRET` | Yes for Instagram POST events | Meta app secret used to verify the `X-Hub-Signature-256` header. |
+| `WHATSAPP_ACCESS_TOKEN` | For website staff replies | Meta WhatsApp Cloud API token. |
+| `WHATSAPP_PHONE_NUMBER_ID` | For website staff replies | The WhatsApp Business phone number ID. |
+| `WHATSAPP_VERIFY_TOKEN` | Website config-status mirror only | Custom token matching the Meta webhook subscription. |
+| `INSTAGRAM_ACCESS_TOKEN` | For website staff replies | Instagram Messaging API access token with permission to send messages. |
+| `INSTAGRAM_VERIFY_TOKEN` | Website config-status mirror only | Custom secret you create; must exactly match the Meta webhook Verify token field. |
+| `INSTAGRAM_APP_SECRET` or `META_APP_SECRET` | Website config-status mirror only | Meta app secret used to verify the `X-Hub-Signature-256` header. |
 | `INSTAGRAM_GRAPH_API_VERSION` | No | Defaults to `v25.0`; set only when intentionally pinning another supported Graph API version. |
 | `INSTAGRAM_APP_ID` | No for v1 webhook handling | Configured for Meta app reference; not used by the webhook route yet. |
 
-| `WHATSAPP_APP_SECRET` or `META_APP_SECRET` | Yes for WhatsApp POST events | Meta app secret used to verify the `X-Hub-Signature-256` header. |
+| `WHATSAPP_APP_SECRET` or `META_APP_SECRET` | Website config-status mirror only | Meta app secret used to verify the `X-Hub-Signature-256` header. |
 | `SITE_URL` | Yes | Canonical public origin, for example `https://tour.helpgueststay.com`; used for links, sitemap, and metadata. |
 | `NEXT_PUBLIC_POSTHOG_KEY` | Optional | Enables consent-based page view analytics. Configure `NEXT_PUBLIC_POSTHOG_HOST` for the project's region. |
 | `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` | Optional | Enable server and browser error reporting. |
@@ -102,7 +97,6 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 ## Payment Mode
 
-- The standalone `bookingId=demo` UI does not create a booking or charge a card.
 - Live bookings hold dates during card checkout. The signed `checkout.session.completed` event confirms the booking only when Stripe reports `paid` and the session, amount, and currency match. Expired checkouts release their holds; full Stripe refunds cancel and release the booking.
 - Set a Stripe webhook destination to `https://YOUR-CONVEX-DEPLOYMENT.convex.site/stripe/webhook` and subscribe to `checkout.session.completed`, `checkout.session.expired`, and `charge.refunded`. Use the destination's signing secret in Convex.
 - Set `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `SITE_URL` in the production Convex deployment. Do not activate live payment for demonstration inventory.
@@ -130,7 +124,7 @@ pnpm exec convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
 npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run maintenance/seed:seedAll
 ```
 
-The future Phase 3f local/CI seed harness must use `maintenance/seed:seedAll` after establishing that its own disposable backend is empty; it must not turn refusal into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
+Current local/CI integration and future per-PR Preview initialization use `maintenance/seed:seedAll` after establishing that their own disposable backend is empty; they must not turn refusal into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
 
 Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
@@ -143,7 +137,7 @@ To enable `/admin`:
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
 4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
 
-If Clerk is missing or set to `placeholder`, `/admin` shows the setup state. If Clerk is enabled but Convex cannot validate the token, the admin dashboard shows the Convex auth setup warning.
+Missing Clerk or Convex configuration refuses app initialization. Configure a matching Clerk issuer and `convex` JWT template with audience `convex`; a signed-in user without a staff grant must still be refused protected operations.
 
 ## Social webhook ingress (Phase 2)
 
@@ -181,17 +175,21 @@ If Vercel fails with `Vercel build environment detected but no Convex deployment
 Run before shipping:
 
 ```sh
-pnpm verify
+pnpm verify:integration
+pnpm knip
+pnpm arch:score --phase 2  # clean committed tree
 ```
 
-Smoke-test production after deploy:
+This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f Preview isolation/retention and development-loop redesign remain pending; current local integration is already active.
+
+After an authorized deployment, root owns live acceptance. Coordinate any external message, payment/refund, seed or reset separately; local integration disables those business providers. Review these flows against the explicitly selected environment:
 
 - Home page loads and hero media plays.
 - Localized routes load.
 - Villa pages open and galleries render.
 - 360 viewer opens, shows a non-blank sphere, and closes cleanly.
 - Booking funnel validates dates, guests, and guest details.
-- Demo checkout with `bookingId=demo` reaches the success page and does not charge a card.
+- Missing/invalid booking credentials refuse access; removed demo checkout cannot report success.
 - Live Convex booking redirects to Stripe Checkout; a signed test webhook marks it paid and queues both emails.
 - Invalid Stripe and Meta webhook signatures are rejected.
 - OTA imports block dates and the export feed includes confirmed bookings.

@@ -1,5 +1,8 @@
 # Phase 3c: shared portable rules
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Exact parent: `4748b630c3a4fc52cd6be3fb2c6b3b7802f5e19c`, maintenance [PR #79](https://github.com/Ruckth/360-tour/pull/79), branch `t3/complete-maintenance-ownership`. Branch `t3/phase3c-shared-rules` starts directly there in `/Users/macbook/.t3/worktrees/360-tour/t3-95a7fde2-bccfc0a15de62818`. Parent history is intact. No other checkout or subagent was used.
 
 This implements only the plan's five-rule/domain-map Phase 3c, applying the codebase-design vocabulary: actual implementations move behind useful shared interfaces; browser input/presentation adapters and backend ctx implementations keep their own roles. There is no shared index, framework, old-file forwarding stub or backend model/private import in browser code.

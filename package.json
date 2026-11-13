@@ -19,7 +19,7 @@
     "typecheck:tests": "tsc --noEmit -p tsconfig.tests.json",
     "typecheck:convex": "tsc --noEmit -p convex/tsconfig.json",
     "check": "pnpm typecheck",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "test": "pnpm test:unit && pnpm test:e2e",
     "test:unit": "vitest run",
     "test:booking-ui": "playwright test -c playwright.booking.config.ts",

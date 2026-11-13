@@ -1,5 +1,8 @@
 # Phase 3b: Bookings ownership closure
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `d4359d41203937982f53705ad11b24060d893bcf`, Auth PR [#74](https://github.com/Ruckth/360-tour/pull/74), including root's import/documentation cleanup. The prepared isolated checkout was clean at `3ca332d` and fast-forwarded to this exact commit. No origin/main substitution, reset, rebase, worktree creation or unpublished-history rewrite occurred. Neither `/Users/macbook/Development/360-tour` nor `/Users/macbook/Development/360-tour-arch` was touched. This PR targets **t3/complete-auth-ownership**. `.arch-phase` remains **2**. Root owns review, remote Preview inspection, backend acceptance, operational cutover and merge.
 
 ## Ownership and limits

@@ -1,5 +1,8 @@
 # Phase 3b: POS backend domain
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `77c06d6cb7440899ddb9d0f373994531762ce165`, PR [#68](https://github.com/Ruckth/360-tour/pull/68), services atop merged bookings #67. The prepared `t3/phase3b-pos-domain-move` checkout was clean but pointed at `3ca332d`; it was fast-forwarded to exactly the required base before implementation. No reset, rebase, replacement base or history rewrite occurred. The original dirty `/Users/macbook/Development/360-tour` and root review checkout were not changed. This PR targets `t3/services-domain-move`. `.arch-phase` remains **2**. Root owns independent review, live operations, backend acceptance, merge and retargeting.
 
 ## Scope and contracts

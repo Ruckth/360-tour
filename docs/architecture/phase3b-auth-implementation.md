@@ -1,5 +1,8 @@
 # Phase 3b: Auth ownership completion
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `f34e1e7b4f9746e5950572596fb7193c3c8fbfe9`, Marketing PR [#73](https://github.com/Ruckth/360-tour/pull/73), including the root archive-test timeout and schema-comment fixes. The prepared isolated checkout was clean at `3ca332d` and fast-forwarded to this exact commit. No origin/main substitution, reset, rebase, worktree creation or unpublished-history rewrite occurred. The original dirty `/Users/macbook/Development/360-tour` and root review `/Users/macbook/Development/360-tour-arch` stay untouched. This PR targets **t3/complete-marketing-ownership**. `.arch-phase` remains **2**. Root owns reviews, new Preview verification, live acceptance, operational cutover and merge.
 
 ## Ownership and preserved contracts

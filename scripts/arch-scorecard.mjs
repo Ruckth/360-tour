@@ -8,6 +8,7 @@
 //
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
+import { inspectArchitecture, SOURCE_EXTENSION } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
@@ -32,7 +33,7 @@ function walk(dir, out = []) {
 		if (SKIP.has(name)) continue;
 		const path = join(dir, name);
 		if (statSync(path).isDirectory()) walk(path, out);
-		else if (/\.(ts|tsx|mjs)$/.test(name)) out.push(path);
+		else if (SOURCE_EXTENSION.test(name)) out.push(path);
 	}
 	return out;
 }
@@ -70,22 +71,10 @@ function missingReturns() {
 	return missing;
 }
 
-// Cross-domain imports that bypass <domain>/model.ts.
+// The same AST rules used by lint; all supported deployed source extensions count.
+const ownership = [...convexProd, ...srcFiles].flatMap(p => inspectArchitecture(rel(p), read(p)).map(issue => ({ ...issue, path: rel(p) })));
+const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).map(issue => `${issue.path}:${issue.line} ${issue.message}`);
 const DOMAINS = SCHEMA_DOMAINS;
-function crossDomainViolations() {
-	const out = [];
-	for (const p of convexProd) {
-		const r = rel(p);
-		const own = DOMAINS.find((d) => r.startsWith(`convex/${d}/`));
-		if (!own) continue;
-		for (const m of read(p).matchAll(/from\s+['"](\.\.?\/[^'"]+)['"]/g)) {
-			const target = rel(join(p, '..', m[1]));
-			const dom = DOMAINS.find((d) => target.startsWith(`convex/${d}/`));
-			if (dom && dom !== own && !/\/model(\.ts)?$/.test(target)) out.push(`${r} → ${target}`);
-		}
-	}
-	return out;
-}
 
 const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
 	.filter((p) => !rel(p).endsWith('convex/schema.ts'))
@@ -142,11 +131,12 @@ const PHASE2_TESTS = ['ignores a duplicate webhook delivery', 'takes over a stal
 add('phase2-tests', 2, 'Required messaging reliability tests present', PHASE2_TESTS.filter(hasTest).length, PHASE2_TESTS.length, PHASE2_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 
-add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth', rawPublicViolations.length, 0, rawPublicViolations);
+add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth/model.ts', rawPublicViolations.length, 0, rawPublicViolations);
 add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...srcFiles, ...convexProd].filter((p) => !isTest(p)), /as never/g), 0);
-add('src-imports-convex-lib', 3, 'src imports of convex/lib', count(srcFiles, /from\s+['"][^'"]*convex\/lib\//g), 0, filesMatching(srcFiles, /from\s+['"][^'"]*convex\/lib\//));
-add('convex-imports-src', 3, 'convex imports of src', count(convexProd, /from\s+['"][^'"]*\/src\//g), 0, filesMatching(convexProd, /from\s+['"][^'"]*\/src\//));
-add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', crossDomainViolations().length, 0, crossDomainViolations().slice(0, 20));
+add('src-imports-convex-lib', 3, 'Browser imports of backend implementations', ownershipDetails('browser').length, 0, ownershipDetails('browser'));
+add('convex-imports-src', 3, 'Backend imports of browser implementations', ownershipDetails('backend').length, 0, ownershipDetails('backend'));
+add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', ownershipDetails('cross-domain').length, 0, ownershipDetails('cross-domain'));
+add('source-ownership', 3, 'Owner, shared purity and inspectable import forms', ownership.filter(issue => !['browser', 'backend', 'cross-domain'].includes(issue.rule)).length, 0, ownership.filter(issue => !['browser', 'backend', 'cross-domain'].includes(issue.rule)).map(issue => `${issue.path}:${issue.line} ${issue.message}`));
 add('domain-folders', 3, 'Domain folders owning assembled schema tables', DOMAINS.filter(d => schema.tables.some(table => table.source.startsWith(`convex/${d}/`))).length, DOMAINS.length, DOMAINS.map(d => `${d}: ${schema.tables.filter(table => table.source.startsWith(`convex/${d}/`)).length} tables`));
 add('demo-mode', 3, 'Files using demo mode (useOptionalConvex, dev:demo, bookingId=demo)', filesMatching([...srcFiles, ...testFiles], /useOptionalConvex|bookingId=demo/).length + (/"dev:demo"/.test(read(join(ROOT, 'package.json'))) ? 1 : 0), 0);
 add('ci-placeholder-backend', 3, 'CI steps using a placeholder Convex URL', (ciText.match(/example\.convex\.cloud|placeholder/g) ?? []).length, 0);

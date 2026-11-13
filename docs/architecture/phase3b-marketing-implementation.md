@@ -1,5 +1,8 @@
 # Phase 3b: Marketing ownership completion
 
+> Historical implementation evidence. Fixed-base move/proof commands below were retired in Phase 3e; retrieve them from parent `6a81d1715009bcb586f1dfd08f7b613b71334223` only to reproduce that history. Use [ARCHITECTURE.md](../../ARCHITECTURE.md) for current commands and ownership rules.
+
+
 Required dependent base: `e9f11ce5e9c03e4284794f046134976fa4e9f379`, Messaging PR [#72](https://github.com/Ruckth/360-tour/pull/72), including the root messaging retirement regression and merged Settings history. The prepared isolated `t3/cb836cd8` worktree (renamed to `t3/complete-marketing-ownership` for publication) was clean at `3ca332d` and fast-forwarded to exactly this base before implementation. Its unpublished history is preserved without rebase, reset or origin/main substitution. Neither `/Users/macbook/Development/360-tour` nor `/Users/macbook/Development/360-tour-arch` was touched. This PR targets **t3/complete-messaging-ownership**. `.arch-phase` stays **2**. Root owns independent reviews, new Preview log inspection, gated backend acceptance, operational reconciliation and merge. No subagents were used.
 
 ## Ownership and contracts
