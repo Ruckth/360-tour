@@ -309,11 +309,11 @@ export function AdminSessionDetail({
           <span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <MessageCircle className="size-5" aria-hidden="true" />
           </span>
-          <h2 className="text-base font-semibold">{emptyList ? "No conversation to open" : "No conversation open"}</h2>
+          <h2 className="text-base font-semibold">{emptyList ? "No chat to open" : "No chat open"}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {emptyList
-              ? "Change the search or filters in the list to see conversations."
-              : "Choose a conversation from the list to read it and reply."}
+              ? "Change the search or filters in the list to see chats."
+              : "Choose a chat from the list to read it and reply."}
           </p>
         </div>
       </div>
@@ -362,7 +362,7 @@ export function AdminSessionDetail({
                   size="icon"
                   variant="ghost"
                   className="size-9 shrink-0"
-                  aria-label="Back to conversations"
+                  aria-label="Back to chats"
                   onClick={onBack}
                 >
                   <ArrowLeft className="size-4" aria-hidden="true" />
