@@ -1,13 +1,22 @@
 import { createRequire } from "node:module";
+import { randomUUID } from "node:crypto";
 const { createClerkClient } = createRequire(import.meta.url)(
   "@clerk/nextjs/server",
 );
 
-/** Dedicated users in a test tenant only. No email, invitation, session impersonation or owner reuse. */
-export async function testUsers(env) {
+/**
+ * @typedef {{users: {createUser: (options: {emailAddress: string[], skipPasswordRequirement: boolean, skipLegalChecks: boolean, privateMetadata: {architectureE2E: boolean, runId: string}}) => Promise<{id: string}>, deleteUser: (id: string) => Promise<unknown>}, jwtTemplates: {list: () => Promise<{data: {name: string, claims: {aud?: unknown}}[]}>}}} TestClerkClient
+ */
+/**
+ * Dedicated users in a test tenant only. No email, invitation, session impersonation or owner reuse.
+ * @param {Record<string, string | undefined>} env
+ * @param {(options: {secretKey: string, publishableKey: string}) => TestClerkClient} createClient
+ */
+export async function testUsers(env, createClient = createClerkClient) {
   if (
     !env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith("pk_test_") ||
-    !env.CLERK_SECRET_KEY?.startsWith("sk_test_")
+    !env.CLERK_SECRET_KEY?.startsWith("sk_test_") ||
+    !env.CLERK_JWT_ISSUER_DOMAIN
   ) {
     throw new Error(
       "E2E requires Clerk test-tenant publishable and secret keys",
@@ -32,7 +41,7 @@ export async function testUsers(env) {
     throw new Error(
       "Clerk test issuer must be active and match OIDC discovery",
     );
-  const clerk = createClerkClient({
+  const clerk = createClient({
     secretKey: env.CLERK_SECRET_KEY,
     publishableKey: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   });
@@ -46,46 +55,43 @@ export async function testUsers(env) {
     throw new Error(
       "Test tenant requires its convex JWT template (audience convex)",
     );
+  const runId = randomUUID();
+  /** @type {Record<string, {email: string, id: string}>} */
   const users = {};
-  for (const role of ["owner", "cashier", "nonstaff"]) {
-    const email = `architecture-e2e-${role}+clerk_test@example.com`;
-    const found = await clerk.users.getUserList({ emailAddress: [email] });
-    let user = found.data[0];
-    if (user && user.privateMetadata?.architectureE2E !== true)
-      throw new Error(
-        "Dedicated E2E identity collision; refusing existing human account",
-      );
-    if (!user)
-      user = await clerk.users.createUser({
+  /** @type {Set<string>} */
+  const ownedUsers = new Set();
+  async function cleanupSessions() {
+    let failures = 0;
+    for (const id of ownedUsers) {
+      try {
+        // Deleting this invocation's user also revokes its sessions. Shared users are never read.
+        await clerk.users.deleteUser(id);
+        ownedUsers.delete(id);
+      } catch {
+        failures += 1;
+      }
+    }
+    if (failures)
+      throw new Error(`Failed to remove ${failures} run-owned Clerk test users`);
+  }
+  try {
+    for (const role of ["owner", "cashier", "nonstaff"]) {
+      const email = `architecture-e2e-${role}-${runId}+clerk_test@example.com`;
+      const user = await clerk.users.createUser({
         emailAddress: [email],
         skipPasswordRequirement: true,
         skipLegalChecks: true,
-        privateMetadata: { architectureE2E: true },
+        privateMetadata: { architectureE2E: true, runId },
       });
-    users[role] = { email, id: user.id };
-  }
-  const existingSessions = new Set();
-  for (const user of Object.values(users)) {
-    const sessions = await clerk.sessions.getSessionList({
-      userId: user.id,
-      status: "active",
-      limit: 100,
-    });
-    for (const session of sessions.data) existingSessions.add(session.id);
+      ownedUsers.add(user.id);
+      users[role] = { email, id: user.id };
+    }
+  } catch (error) {
+    await cleanupSessions();
+    throw error;
   }
   return {
     users,
-    async cleanupSessions() {
-      for (const user of Object.values(users)) {
-        const sessions = await clerk.sessions.getSessionList({
-          userId: user.id,
-          status: "active",
-          limit: 100,
-        });
-        for (const session of sessions.data)
-          if (!existingSessions.has(session.id))
-            await clerk.sessions.revokeSession(session.id);
-      }
-    },
+    cleanupSessions,
   };
 }

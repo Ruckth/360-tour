@@ -68,18 +68,34 @@ export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensu
 
     let cancelled = false;
     let fallbackTimeout = 0;
+    let preparationTimeout = 0;
+    let preparationExpired = false;
 
     async function openExternalBrowser() {
       let handoffToken: string | undefined;
       try {
-        const credentials = await ensureSessionRef.current();
-        const id = credentials?.sessionId;
-        if (cancelled) return;
-        if (id) {
-          handoffToken = await convex.mutation(api.messaging.chat.createBrowserHandoff, { sessionId: id, guestToken: getStoredGuestToken(id)! });
-        }
+        // Session transfer is optional: a disconnected mutation must not block browser recovery.
+        handoffToken = await Promise.race([
+          (async () => {
+            const credentials = await ensureSessionRef.current();
+            if (cancelled || preparationExpired || !credentials) return undefined;
+            return convex.mutation(api.messaging.chat.createBrowserHandoff, {
+              sessionId: credentials.sessionId,
+              guestToken: getStoredGuestToken(credentials.sessionId)!,
+            });
+          })(),
+          new Promise<undefined>((resolve) => {
+            preparationTimeout = window.setTimeout(() => {
+              preparationExpired = true;
+              resolve(undefined);
+            }, 8000);
+          }),
+        ]);
       } catch {
         // The browser link still works without a restorable Convex session.
+      } finally {
+        preparationExpired = true;
+        window.clearTimeout(preparationTimeout);
       }
 
       if (cancelled) return;
@@ -105,6 +121,8 @@ export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensu
 
     return () => {
       cancelled = true;
+      preparationExpired = true;
+      window.clearTimeout(preparationTimeout);
       if (fallbackTimeout) window.clearTimeout(fallbackTimeout);
     };
   }, [browserGateVisible, convex, hydrated, mode]);

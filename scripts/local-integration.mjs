@@ -51,9 +51,6 @@ function privateError(error) {
   output.end();
   return new Error(message);
 }
-const { users, cleanupSessions } = await testUsers(supplied).catch((error) => {
-  throw privateError(error);
-});
 await fs.mkdir(path.join(root, "output"), { recursive: true, mode: 0o700 });
 const work = await fs.mkdtemp(path.join(root, "output", "local-e2e-"));
 await fs.chmod(work, 0o700);
@@ -118,13 +115,11 @@ const env = {
   E2E_COMPONENT_PORT: String(component),
   E2E_MODE: "integration",
   E2E_CHAT_LOCAL: "1",
-  E2E_OWNER_EMAIL: users.owner.email,
-  E2E_CASHIER_EMAIL: users.cashier.email,
-  E2E_NONSTAFF_EMAIL: users.nonstaff.email,
   E2E_SEED_FILE: path.join(work, "seed.json"),
   VITEST_MAX_WORKERS: supplied.VITEST_MAX_WORKERS ?? "4",
 };
 const children = [];
+let cleanupSessions = async () => {};
 async function launch(command, args, cwd = root, childEnv = env, log) {
   const fd = log ? await fs.open(path.join(work, log), "w", 0o600) : null;
   const child = spawn(command, args, {
@@ -198,6 +193,17 @@ for (const signal of ["SIGINT", "SIGTERM"])
     void finalize().finally(() => process.exit(1));
   });
 try {
+  // Acquire external test identities inside the same lifetime that guarantees their cleanup.
+  const provisioned = await testUsers(supplied).catch((error) => {
+    throw privateError(error);
+  });
+  const { users } = provisioned;
+  cleanupSessions = provisioned.cleanupSessions;
+  Object.assign(env, {
+    E2E_OWNER_EMAIL: users.owner.email,
+    E2E_CASHIER_EMAIL: users.cashier.email,
+    E2E_NONSTAFF_EMAIL: users.nonstaff.email,
+  });
   await launch(
     process.execPath,
     [
