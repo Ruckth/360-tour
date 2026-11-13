@@ -1,0 +1,19 @@
+a "Coupons" @16
+button "QR card" @60
+button "Save" @60
+button "Dismiss" @114
+input "" @208
+button[radio] "Percent" @213
+button[radio] "Fixed ฿" @213
+input "" @208
+input "" @311
+input "" @311
+input "" @311
+summary "› More rules Campaign, dates, limits, terms" @383
+button "Pause" @631
+button "Archive" @631
+button[combobox] "Tideglass Pool Residence · ฿8,500" @820
+button "Nov 17, 2026" @898
+button "Nov 19, 2026" @898
+button "Add a service" @1000
+button "Run quote" @1052

@@ -1,0 +1,1702 @@
+{
+  "ipad · Checkout · new sale": {
+    "page": {
+      "controlsOnScreen": 32,
+      "controlsOnPage": 32,
+      "wordsOnScreen": 103,
+      "wordsOnPage": 103,
+      "wordsInnerText": 124,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 2,
+        "words": 2,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Checkout · empty till": {
+    "page": {
+      "controlsOnScreen": 29,
+      "controlsOnPage": 29,
+      "wordsOnScreen": 93,
+      "wordsOnPage": 93,
+      "wordsInnerText": 111,
+      "sentences": 1,
+      "sentenceText": [
+        "Tap an item to add it to the order."
+      ]
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 48,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 48,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 2,
+        "words": 2,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Receipt (paid by cash) · cashier": {
+    "page": {
+      "controlsOnScreen": 14,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 133,
+      "wordsOnPage": 134,
+      "wordsInnerText": 134,
+      "sentences": 3,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 99,
+        "sideBlocks": 14
+      }
+    },
+    "components": []
+  },
+  "ipad · Link appointment (after payment)": {
+    "page": {
+      "controlsOnScreen": 4,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 25,
+      "wordsOnPage": 25,
+      "wordsInnerText": 160,
+      "sentences": 4,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded.",
+        "฿1,600 paid on Order #1043, receipt R-000142."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 0,
+        "sideBlocks": 0
+      }
+    },
+    "components": [
+      {
+        "name": "Link dialog",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 4,
+        "words": 25,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 25,
+        "sentences": 1,
+        "sentenceText": [
+          "฿1,600 paid on Order #1043, receipt R-000142."
+        ]
+      }
+    ]
+  },
+  "ipad · Checkout · line open": {
+    "page": {
+      "controlsOnScreen": 38,
+      "controlsOnPage": 45,
+      "wordsOnScreen": 112,
+      "wordsOnPage": 123,
+      "wordsInnerText": 144,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 7,
+        "wordsOnScreen": 19,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · line editor",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 7,
+        "wordsOnScreen": 19,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 2,
+        "words": 2,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Checkout · cash": {
+    "page": {
+      "controlsOnScreen": 31,
+      "controlsOnPage": 31,
+      "wordsOnScreen": 93,
+      "wordsOnPage": 93,
+      "wordsInnerText": 114,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 49,
+        "controlsOnScreen": 18,
+        "wordsOnScreen": 49,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "PayPanel · cash",
+        "file": "src/components/checkout/PayPanel.tsx",
+        "controls": 9,
+        "words": 25,
+        "controlsOnScreen": 9,
+        "wordsOnScreen": 25,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 9,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 9,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Receipt (paid, 2 lines)": {
+    "page": {
+      "controlsOnScreen": 14,
+      "controlsOnPage": 18,
+      "wordsOnScreen": 145,
+      "wordsOnPage": 154,
+      "wordsInnerText": 154,
+      "sentences": 3,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 104,
+        "sideBlocks": 14
+      }
+    },
+    "components": [
+      {
+        "name": "ReceiptView · print toolbar",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 6,
+        "words": 13,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 13,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "PaymentRecord",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 4,
+        "words": 52,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 46,
+        "sentences": 3,
+        "sentenceText": [
+          "The issued receipt never changes.",
+          "Corrections here update what was recorded; they do not move money.",
+          "No payment amendments recorded."
+        ]
+      },
+      {
+        "name": "History disclosures + Void",
+        "file": "FinancialHistory.tsx, OrderHistory.tsx, ReceiptView.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx + RefundForm.tsx",
+        "controls": 2,
+        "words": 38,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 38,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 2,
+        "words": 34,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 34,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "ReceiptView · header",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 2,
+        "words": 11,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 11,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Receipt · correcting payment": {
+    "page": {
+      "controlsOnScreen": 13,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 139,
+      "wordsOnPage": 178,
+      "wordsInnerText": 184,
+      "sentences": 5,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "Correct the recording of money already received.",
+        "The issued receipt, original tenders and receipt number stay unchanged.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 106,
+        "sideBlocks": 14
+      }
+    },
+    "components": [
+      {
+        "name": "PaymentRecord · correction form",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 11,
+        "words": 50,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 26,
+        "sentences": 2,
+        "sentenceText": [
+          "Correct the recording of money already received.",
+          "The issued receipt, original tenders and receipt number stay unchanged."
+        ]
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 1,
+        "words": 30,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 30,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 1,
+        "words": 23,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 23,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · Settings › Team": {
+    "page": {
+      "controlsOnScreen": 24,
+      "controlsOnPage": 26,
+      "wordsOnScreen": 50,
+      "wordsOnPage": 58,
+      "wordsInnerText": 86,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "TeamSettings · People",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 12,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 30,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "TeamSettings · Cashier rules",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 7,
+        "words": 17,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 12,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Settings tabs",
+        "file": "src/components/admin/AdminSettingsView.tsx",
+        "controls": 6,
+        "words": 8,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 8,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · New booking": {
+    "page": {
+      "controlsOnScreen": 11,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 73,
+      "wordsOnPage": 97,
+      "wordsInnerText": 99,
+      "sentences": 4,
+      "sentenceText": [
+        "For phone or walk-in guests.",
+        "Manual bookings never expire automatically.",
+        "No guest email on file, so nobody is emailed.",
+        "Same rules as the website: the guest gets the better of the code or the direct discount."
+      ]
+    },
+    "components": [
+      {
+        "name": "Row · Block these dates instead",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Phone",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 2,
+        "words": 1,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 1,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Coupon code (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 20,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3,
+        "sentences": 1,
+        "sentenceText": [
+          "Same rules as the website: the guest gets the better of the code or the direct discount."
+        ]
+      },
+      {
+        "name": "Row · label",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 19,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 19,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Custom price",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Check in",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Check out",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Villa",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guest name",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guests",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 1,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 1,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 0,
+        "words": 9,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 9,
+        "sentences": 1,
+        "sentenceText": [
+          "No guest email on file, so nobody is emailed."
+        ]
+      }
+    ]
+  },
+  "ipad · New appointment": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 78,
+      "wordsOnPage": 78,
+      "wordsInnerText": 79,
+      "sentences": 6,
+      "sentenceText": [
+        "Record a service at its actual date and time.",
+        "Current and future availability is checked before saving.",
+        "For past work, choose the staff member who performed it below.",
+        "Picked automatically once there's an open time.",
+        "Leave guest details blank to reserve the time.",
+        "You can add them later."
+      ]
+    },
+    "components": [
+      {
+        "name": "Row · Cancel",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 2,
+        "words": 3,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Time",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 17,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 17,
+        "sentences": 1,
+        "sentenceText": [
+          "For past work, choose the staff member who performed it below."
+        ]
+      },
+      {
+        "name": "Row · Staff",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 9,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 9,
+        "sentences": 1,
+        "sentenceText": [
+          "Picked automatically once there's an open time."
+        ]
+      },
+      {
+        "name": "Row · Date",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Service",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guest name (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Phone (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · p (2)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 13,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 13,
+        "sentences": 2,
+        "sentenceText": [
+          "Leave guest details blank to reserve the time.",
+          "You can add them later."
+        ]
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 3,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "ipad · New coupon": {
+    "page": {
+      "controlsOnScreen": 16,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 197,
+      "wordsOnPage": 332,
+      "wordsInnerText": 350,
+      "sentences": 28,
+      "sentenceText": [
+        "It starts as a draft.",
+        "Publish it when the test quotes look right.",
+        "What guests type at checkout or show at reception.",
+        "Letters, numbers and dashes.",
+        "Saved in capitals; guests can type it in any case.",
+        "Groups it with the campaign’s links in reports.",
+        "The code is a label people remember.",
+        "The rules below decide the discount, so typing a different number at checkout never changes the price.",
+        "What the guest saves.",
+        "Caps the discount on big bookings.",
+        "What the code can discount.",
+        "Deposits and fees are never discounted.",
+        "When guests can book, and when they can stay or have a treatment.",
+        "When the booking or sale is made.",
+        "Every night or treatment must fall inside.",
+        "Dates are inclusive, in Asia/Bangkok time.",
+        "Leave them empty for no limit.",
+        "Keep the code from costing more than you planned.",
+        "Counts the items the code covers only.",
+        "Shorter stays keep the direct offer.",
+        "Paid bookings and sales.",
+        "New checkouts stop when discounts reach this.",
+        "Shown at checkout, on the QR card and on receipts.",
+        "Left empty, guests see terms written from the rules, like the placeholder.",
+        "Runs the saved rules through the same pricing as the guest checkout.",
+        "Nothing is held or booked.",
+        "Save the coupon first.",
+        "The test uses its saved rules."
+      ]
+    },
+    "components": [
+      {
+        "name": "Section · Test a quote",
+        "file": "src/components/admin/marketing/CouponEditor.tsx + TestQuotePanel.tsx",
+        "controls": 5,
+        "words": 52,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 47,
+        "sentences": 4,
+        "sentenceText": [
+          "Runs the saved rules through the same pricing as the guest checkout.",
+          "Nothing is held or booked.",
+          "Save the coupon first.",
+          "The test uses its saved rules."
+        ]
+      },
+      {
+        "name": "Section · Scope",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 5,
+        "words": 30,
+        "controlsOnScreen": 5,
+        "wordsOnScreen": 30,
+        "sentences": 2,
+        "sentenceText": [
+          "What the code can discount.",
+          "Deposits and fees are never discounted."
+        ]
+      },
+      {
+        "name": "Section · Dates",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 58,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 5,
+        "sentenceText": [
+          "When guests can book, and when they can stay or have a treatment.",
+          "When the booking or sale is made.",
+          "Every night or treatment must fall inside.",
+          "Dates are inclusive, in Asia/Bangkok time.",
+          "Leave them empty for no limit."
+        ]
+      },
+      {
+        "name": "Section · Minimums and limits",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 45,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 5,
+        "sentenceText": [
+          "Keep the code from costing more than you planned.",
+          "Counts the items the code covers only.",
+          "Shorter stays keep the direct offer.",
+          "Paid bookings and sales.",
+          "New checkouts stop when discounts reach this."
+        ]
+      },
+      {
+        "name": "Section · Benefit",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 19,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 19,
+        "sentences": 2,
+        "sentenceText": [
+          "What the guest saves.",
+          "Caps the discount on big bookings."
+        ]
+      },
+      {
+        "name": "Section · Code",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 61,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 61,
+        "sentences": 6,
+        "sentenceText": [
+          "What guests type at checkout or show at reception.",
+          "Letters, numbers and dashes.",
+          "Saved in capitals; guests can type it in any case.",
+          "Groups it with the campaign’s links in reports.",
+          "The code is a label people remember.",
+          "The rules below decide the discount, so typing a different number at checkout never changes the price."
+        ]
+      },
+      {
+        "name": "Section · Customer terms",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 27,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 2,
+        "sentenceText": [
+          "Shown at checkout, on the QR card and on receipts.",
+          "Left empty, guests see terms written from the rules, like the placeholder."
+        ]
+      },
+      {
+        "name": "Section · Summary",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 0,
+        "words": 18,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 18,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Checkout · new sale": {
+    "page": {
+      "controlsOnScreen": 11,
+      "controlsOnPage": 11,
+      "wordsOnScreen": 41,
+      "wordsOnPage": 41,
+      "wordsInnerText": 137,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 3,
+        "words": 2,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Checkout · empty till": {
+    "page": {
+      "controlsOnScreen": 21,
+      "controlsOnPage": 23,
+      "wordsOnScreen": 61,
+      "wordsOnPage": 68,
+      "wordsInnerText": 86,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "CatalogPane",
+        "file": "src/components/checkout/CatalogPane.tsx",
+        "controls": 18,
+        "words": 48,
+        "controlsOnScreen": 16,
+        "wordsOnScreen": 41,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderStrip",
+        "file": "src/components/checkout/OrderStrip.tsx",
+        "controls": 4,
+        "words": 11,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 11,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Receipt (paid by cash) · cashier": {
+    "page": {
+      "controlsOnScreen": 9,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 82,
+      "wordsOnPage": 134,
+      "wordsInnerText": 134,
+      "sentences": 3,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 48,
+        "sideBlocks": 14
+      }
+    },
+    "components": []
+  },
+  "phone · Link appointment (after payment)": {
+    "page": {
+      "controlsOnScreen": 4,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 25,
+      "wordsOnPage": 25,
+      "wordsInnerText": 160,
+      "sentences": 4,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded.",
+        "฿1,600 paid on Order #1043, receipt R-000142."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 0,
+        "sideBlocks": 0
+      }
+    },
+    "components": [
+      {
+        "name": "Link dialog",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 4,
+        "words": 25,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 25,
+        "sentences": 1,
+        "sentenceText": [
+          "฿1,600 paid on Order #1043, receipt R-000142."
+        ]
+      }
+    ]
+  },
+  "phone · Checkout · line open": {
+    "page": {
+      "controlsOnScreen": 22,
+      "controlsOnPage": 24,
+      "wordsOnScreen": 57,
+      "wordsOnPage": 61,
+      "wordsInnerText": 157,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "OrderPanel · rows",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 26,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · line editor",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 14,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 26,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · coupon, totals, tenders",
+        "file": "src/components/checkout/OrderPanel.tsx + OrderCoupon.tsx",
+        "controls": 6,
+        "words": 23,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 23,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "OrderPanel · header",
+        "file": "src/components/checkout/OrderPanel.tsx",
+        "controls": 3,
+        "words": 2,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Checkout · cash": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 31,
+      "wordsOnPage": 31,
+      "wordsInnerText": 127,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "PayPanel · cash",
+        "file": "src/components/checkout/PayPanel.tsx",
+        "controls": 9,
+        "words": 25,
+        "controlsOnScreen": 9,
+        "wordsOnScreen": 25,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Receipt (paid, 2 lines)": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 18,
+      "wordsOnScreen": 83,
+      "wordsOnPage": 154,
+      "wordsInnerText": 154,
+      "sentences": 3,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 42,
+        "sideBlocks": 14
+      }
+    },
+    "components": [
+      {
+        "name": "ReceiptView · print toolbar",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 6,
+        "words": 13,
+        "controlsOnScreen": 6,
+        "wordsOnScreen": 13,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "PaymentRecord",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 4,
+        "words": 52,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 3,
+        "sentenceText": [
+          "The issued receipt never changes.",
+          "Corrections here update what was recorded; they do not move money.",
+          "No payment amendments recorded."
+        ]
+      },
+      {
+        "name": "History disclosures + Void",
+        "file": "FinancialHistory.tsx, OrderHistory.tsx, ReceiptView.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx + RefundForm.tsx",
+        "controls": 2,
+        "words": 38,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 38,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 2,
+        "words": 34,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 18,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "ReceiptView · header",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 2,
+        "words": 11,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 11,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Receipt · correcting payment": {
+    "page": {
+      "controlsOnScreen": 6,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 93,
+      "wordsOnPage": 178,
+      "wordsInnerText": 184,
+      "sentences": 5,
+      "sentenceText": [
+        "The issued receipt never changes.",
+        "Corrections here update what was recorded; they do not move money.",
+        "Correct the recording of money already received.",
+        "The issued receipt, original tenders and receipt number stay unchanged.",
+        "No payment amendments recorded."
+      ],
+      "receipt": {
+        "wordsOutsidePaper": 92,
+        "sideBlocks": 14
+      }
+    },
+    "components": [
+      {
+        "name": "PaymentRecord · correction form",
+        "file": "src/components/checkout/PaymentRecord.tsx",
+        "controls": 11,
+        "words": 50,
+        "controlsOnScreen": 5,
+        "wordsOnScreen": 36,
+        "sentences": 2,
+        "sentenceText": [
+          "Correct the recording of money already received.",
+          "The issued receipt, original tenders and receipt number stay unchanged."
+        ]
+      },
+      {
+        "name": "ReceiptView · receipt paper",
+        "file": "src/components/checkout/ReceiptView.tsx",
+        "controls": 1,
+        "words": 30,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "AfterPayment",
+        "file": "src/components/checkout/AfterPayment.tsx",
+        "controls": 1,
+        "words": 23,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 21,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · Settings › Team": {
+    "page": {
+      "controlsOnScreen": 19,
+      "controlsOnPage": 26,
+      "wordsOnScreen": 42,
+      "wordsOnPage": 58,
+      "wordsInnerText": 86,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    "components": [
+      {
+        "name": "TeamSettings · People",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 12,
+        "words": 30,
+        "controlsOnScreen": 12,
+        "wordsOnScreen": 30,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "TeamSettings · Cashier rules",
+        "file": "src/components/admin/TeamSettings.tsx",
+        "controls": 7,
+        "words": 17,
+        "controlsOnScreen": 3,
+        "wordsOnScreen": 6,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Settings tabs",
+        "file": "src/components/admin/AdminSettingsView.tsx",
+        "controls": 6,
+        "words": 8,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 6,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · New booking": {
+    "page": {
+      "controlsOnScreen": 12,
+      "controlsOnPage": 15,
+      "wordsOnScreen": 73,
+      "wordsOnPage": 97,
+      "wordsInnerText": 99,
+      "sentences": 4,
+      "sentenceText": [
+        "For phone or walk-in guests.",
+        "Manual bookings never expire automatically.",
+        "No guest email on file, so nobody is emailed.",
+        "Same rules as the website: the guest gets the better of the code or the direct discount."
+      ]
+    },
+    "components": [
+      {
+        "name": "Row · Block these dates instead",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 3,
+        "words": 7,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Phone",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 2,
+        "words": 1,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 1,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Coupon code (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 20,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3,
+        "sentences": 1,
+        "sentenceText": [
+          "Same rules as the website: the guest gets the better of the code or the direct discount."
+        ]
+      },
+      {
+        "name": "Row · label",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 19,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 19,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Custom price",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 10,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 10,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Check in",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Check out",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 5,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 5,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Villa",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guest name",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guests",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 1,
+        "words": 1,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 1,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewBookingDialog.tsx",
+        "controls": 0,
+        "words": 9,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 9,
+        "sentences": 1,
+        "sentenceText": [
+          "No guest email on file, so nobody is emailed."
+        ]
+      }
+    ]
+  },
+  "phone · New appointment": {
+    "page": {
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 65,
+      "wordsOnPage": 78,
+      "wordsInnerText": 79,
+      "sentences": 6,
+      "sentenceText": [
+        "Record a service at its actual date and time.",
+        "Current and future availability is checked before saving.",
+        "For past work, choose the staff member who performed it below.",
+        "Picked automatically once there's an open time.",
+        "Leave guest details blank to reserve the time.",
+        "You can add them later."
+      ]
+    },
+    "components": [
+      {
+        "name": "Row · Cancel",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 2,
+        "words": 3,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Time",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 17,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 17,
+        "sentences": 1,
+        "sentenceText": [
+          "For past work, choose the staff member who performed it below."
+        ]
+      },
+      {
+        "name": "Row · Staff",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 9,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 9,
+        "sentences": 1,
+        "sentenceText": [
+          "Picked automatically once there's an open time."
+        ]
+      },
+      {
+        "name": "Row · Date",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 4,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 4,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Service",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Guest name (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 3,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Phone (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · Email (optional)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 1,
+        "words": 2,
+        "controlsOnScreen": 1,
+        "wordsOnScreen": 2,
+        "sentences": 0,
+        "sentenceText": []
+      },
+      {
+        "name": "Row · p (2)",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 13,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 2,
+        "sentenceText": [
+          "Leave guest details blank to reserve the time.",
+          "You can add them later."
+        ]
+      },
+      {
+        "name": "Row · p",
+        "file": "src/components/admin/NewAppointmentDialog.tsx",
+        "controls": 0,
+        "words": 3,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 3,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  },
+  "phone · New coupon": {
+    "page": {
+      "controlsOnScreen": 8,
+      "controlsOnPage": 28,
+      "wordsOnScreen": 94,
+      "wordsOnPage": 330,
+      "wordsInnerText": 352,
+      "sentences": 28,
+      "sentenceText": [
+        "It starts as a draft.",
+        "Publish it when the test quotes look right.",
+        "What guests type at checkout or show at reception.",
+        "Letters, numbers and dashes.",
+        "Saved in capitals; guests can type it in any case.",
+        "Groups it with the campaign’s links in reports.",
+        "The code is a label people remember.",
+        "The rules below decide the discount, so typing a different number at checkout never changes the price.",
+        "What the guest saves.",
+        "Caps the discount on big bookings.",
+        "What the code can discount.",
+        "Deposits and fees are never discounted.",
+        "When guests can book, and when they can stay or have a treatment.",
+        "When the booking or sale is made.",
+        "Every night or treatment must fall inside.",
+        "Dates are inclusive, in Asia/Bangkok time.",
+        "Leave them empty for no limit.",
+        "Keep the code from costing more than you planned.",
+        "Counts the items the code covers only.",
+        "Shorter stays keep the direct offer.",
+        "Paid bookings and sales.",
+        "New checkouts stop when discounts reach this.",
+        "Shown at checkout, on the QR card and on receipts.",
+        "Left empty, guests see terms written from the rules, like the placeholder.",
+        "Runs the saved rules through the same pricing as the guest checkout.",
+        "Nothing is held or booked.",
+        "Save the coupon first.",
+        "The test uses its saved rules."
+      ]
+    },
+    "components": [
+      {
+        "name": "Section · Test a quote",
+        "file": "src/components/admin/marketing/CouponEditor.tsx + TestQuotePanel.tsx",
+        "controls": 5,
+        "words": 52,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 4,
+        "sentenceText": [
+          "Runs the saved rules through the same pricing as the guest checkout.",
+          "Nothing is held or booked.",
+          "Save the coupon first.",
+          "The test uses its saved rules."
+        ]
+      },
+      {
+        "name": "Section · Scope",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 5,
+        "words": 30,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 2,
+        "sentenceText": [
+          "What the code can discount.",
+          "Deposits and fees are never discounted."
+        ]
+      },
+      {
+        "name": "Section · Dates",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 58,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 5,
+        "sentenceText": [
+          "When guests can book, and when they can stay or have a treatment.",
+          "When the booking or sale is made.",
+          "Every night or treatment must fall inside.",
+          "Dates are inclusive, in Asia/Bangkok time.",
+          "Leave them empty for no limit."
+        ]
+      },
+      {
+        "name": "Section · Minimums and limits",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 45,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 5,
+        "sentenceText": [
+          "Keep the code from costing more than you planned.",
+          "Counts the items the code covers only.",
+          "Shorter stays keep the direct offer.",
+          "Paid bookings and sales.",
+          "New checkouts stop when discounts reach this."
+        ]
+      },
+      {
+        "name": "Section · Benefit",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 4,
+        "words": 19,
+        "controlsOnScreen": 4,
+        "wordsOnScreen": 13,
+        "sentences": 2,
+        "sentenceText": [
+          "What the guest saves.",
+          "Caps the discount on big bookings."
+        ]
+      },
+      {
+        "name": "Section · Code",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 61,
+        "controlsOnScreen": 2,
+        "wordsOnScreen": 61,
+        "sentences": 6,
+        "sentenceText": [
+          "What guests type at checkout or show at reception.",
+          "Letters, numbers and dashes.",
+          "Saved in capitals; guests can type it in any case.",
+          "Groups it with the campaign’s links in reports.",
+          "The code is a label people remember.",
+          "The rules below decide the discount, so typing a different number at checkout never changes the price."
+        ]
+      },
+      {
+        "name": "Section · Customer terms",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 2,
+        "words": 27,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 2,
+        "sentenceText": [
+          "Shown at checkout, on the QR card and on receipts.",
+          "Left empty, guests see terms written from the rules, like the placeholder."
+        ]
+      },
+      {
+        "name": "Section · Summary",
+        "file": "src/components/admin/marketing/CouponEditor.tsx",
+        "controls": 0,
+        "words": 18,
+        "controlsOnScreen": 0,
+        "wordsOnScreen": 0,
+        "sentences": 0,
+        "sentenceText": []
+      }
+    ]
+  }
+}

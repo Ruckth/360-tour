@@ -1,0 +1,112 @@
+{
+  "task": "c-discount-over-limit-approval",
+  "viewport": "phone",
+  "taps": 6,
+  "fields": 1,
+  "keys": 0,
+  "decisions": 2,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 15,
+    "controlsOnPage": 16,
+    "wordsOnScreen": 57,
+    "wordsOnPage": 63,
+    "wordsInnerText": 84
+  },
+  "startSentences": [],
+  "checkpoints": [
+    {
+      "label": "row-open",
+      "controlsOnScreen": 19,
+      "controlsOnPage": 20,
+      "wordsOnScreen": 55,
+      "wordsOnPage": 57,
+      "wordsInnerText": 147,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    {
+      "label": "over-limit",
+      "controlsOnScreen": 20,
+      "controlsOnPage": 25,
+      "wordsOnScreen": 65,
+      "wordsOnPage": 74,
+      "wordsInnerText": 165,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    {
+      "label": "approvals",
+      "controlsOnScreen": 4,
+      "controlsOnPage": 4,
+      "wordsOnScreen": 21,
+      "wordsOnPage": 21,
+      "wordsInnerText": 29,
+      "sentences": 0,
+      "sentenceText": []
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Open the order sheet",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Open the Thai massage row",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Discount 15%",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Reason chip: Service delay",
+      "scrolled": false,
+      "decision": true,
+      "choices": 20
+    },
+    {
+      "kind": "tap",
+      "label": "Send 15% (฿180) to manager",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approvals",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Manager: Approve",
+      "scrolled": false,
+      "decision": true,
+      "choices": 4
+    }
+  ],
+  "notes": [
+    "Approvals button uncovered after the role switch: true.",
+    "Cashier steps: 5; manager steps: 2. The panel closes itself after the last decision."
+  ],
+  "shots": [
+    "c-discount-over-limit-approval-phone-00-start.png",
+    "c-discount-over-limit-approval-phone-01-row-open.png",
+    "c-discount-over-limit-approval-phone-02-over-limit.png",
+    "c-discount-over-limit-approval-phone-03-waiting.png",
+    "c-discount-over-limit-approval-phone-04-approvals.png",
+    "c-discount-over-limit-approval-phone-05-approved.png"
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "task": "h2b-staff-appointment-desk",
+  "viewport": "ipad",
+  "taps": 4,
+  "fields": 1,
+  "keys": 0,
+  "decisions": 2,
+  "scrolls": 1,
+  "start": {
+    "controlsOnScreen": 17,
+    "controlsOnPage": 23,
+    "wordsOnScreen": 90,
+    "wordsOnPage": 117,
+    "wordsInnerText": 121
+  },
+  "startSentences": [
+    "BookedArrivedIn serviceCompletedUnpaidNo-showCancelledBreak / turnaround / time offDrag a booking or break to propose a change; you confirm before it saves.",
+    "Times are Bangkok time."
+  ],
+  "checkpoints": [
+    {
+      "label": "dialog",
+      "controlsOnScreen": 15,
+      "controlsOnPage": 19,
+      "wordsOnScreen": 65,
+      "wordsOnPage": 92,
+      "wordsInnerText": 97,
+      "sentences": 4,
+      "sentenceText": [
+        "Record a service at its actual date and time.",
+        "Current and future availability is checked before saving.",
+        "Leave guest details blank to reserve the time.",
+        "You can add them later."
+      ]
+    },
+    {
+      "label": "filled",
+      "controlsOnScreen": 14,
+      "controlsOnPage": 19,
+      "wordsOnScreen": 60,
+      "wordsOnPage": 92,
+      "wordsInnerText": 97,
+      "sentences": 4,
+      "sentenceText": [
+        "Record a service at its actual date and time.",
+        "Current and future availability is checked before saving.",
+        "Leave guest details blank to reserve the time.",
+        "You can add them later."
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "New appointment",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Hot stone 60",
+      "scrolled": false,
+      "decision": true,
+      "choices": 16
+    },
+    {
+      "kind": "tap",
+      "label": "3:00 PM",
+      "scrolled": false,
+      "decision": true,
+      "choices": 16
+    },
+    {
+      "kind": "type",
+      "label": "Guest name",
+      "scrolled": true,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Book appointment",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Book enabled after service, time and name: true."
+  ],
+  "shots": [
+    "h2b-staff-appointment-desk-ipad-00-start.png",
+    "h2b-staff-appointment-desk-ipad-01-dialog.png",
+    "h2b-staff-appointment-desk-ipad-02-filled.png"
+  ]
+}

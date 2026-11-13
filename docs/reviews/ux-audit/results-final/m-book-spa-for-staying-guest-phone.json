@@ -1,0 +1,82 @@
+{
+  "task": "m-book-spa-for-staying-guest",
+  "viewport": "phone",
+  "taps": 5,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 3,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 21,
+    "controlsOnPage": 21,
+    "wordsOnScreen": 121,
+    "wordsOnPage": 121,
+    "wordsInnerText": 125
+  },
+  "startSentences": [],
+  "checkpoints": [
+    {
+      "label": "popover",
+      "controlsOnScreen": 5,
+      "controlsOnPage": 5,
+      "wordsOnScreen": 24,
+      "wordsOnPage": 24,
+      "wordsInnerText": 24,
+      "sentences": 0,
+      "sentenceText": []
+    },
+    {
+      "label": "book-spa",
+      "controlsOnScreen": 15,
+      "controlsOnPage": 16,
+      "wordsOnScreen": 58,
+      "wordsOnPage": 64,
+      "wordsInnerText": 69,
+      "sentences": 0,
+      "sentenceText": []
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Maya's stay",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Book spa",
+      "scrolled": false,
+      "decision": true,
+      "choices": 26
+    },
+    {
+      "kind": "tap",
+      "label": "Hot stone 60",
+      "scrolled": false,
+      "decision": true,
+      "choices": 16
+    },
+    {
+      "kind": "tap",
+      "label": "3:00 PM",
+      "scrolled": false,
+      "decision": true,
+      "choices": 16
+    },
+    {
+      "kind": "tap",
+      "label": "Book Hot stone 60 · 3:00 PM",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "m-book-spa-for-staying-guest-phone-00-start.png",
+    "m-book-spa-for-staying-guest-phone-01-popover.png",
+    "m-book-spa-for-staying-guest-phone-02-book-spa.png"
+  ]
+}

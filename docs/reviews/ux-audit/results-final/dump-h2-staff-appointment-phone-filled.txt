@@ -1,0 +1,10 @@
+button "Y Yoga 03" @168
+button "Nov 27, 2027" @246
+button "Next day" @348
+button[combobox] "Auto (least busy) · picked once a time is chosen" @422
+input "" @496
+input "" @574
+input "" @648
+button "Cancel" @780
+button "Book appointment" @732
+button "Close" @25

@@ -1,0 +1,38 @@
+{
+  "task": "i2-grant-marketing",
+  "viewport": "phone",
+  "taps": 2,
+  "fields": 0,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 18,
+    "controlsOnPage": 25,
+    "wordsOnScreen": 37,
+    "wordsOnPage": 57,
+    "wordsInnerText": 97
+  },
+  "startSentences": [],
+  "checkpoints": [],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Marketing role for mint (open)",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Marketing role for mint (pick)",
+      "scrolled": false,
+      "decision": true,
+      "choices": 18
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "i2-grant-marketing-phone-00-start.png"
+  ]
+}

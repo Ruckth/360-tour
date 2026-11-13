@@ -1,0 +1,76 @@
+{
+  "task": "h2-staff-appointment",
+  "viewport": "phone",
+  "taps": 2,
+  "fields": 2,
+  "keys": 0,
+  "decisions": 1,
+  "scrolls": 0,
+  "start": {
+    "controlsOnScreen": 11,
+    "controlsOnPage": 11,
+    "wordsOnScreen": 58,
+    "wordsOnPage": 71,
+    "wordsInnerText": 81
+  },
+  "startSentences": [
+    "Record a service at its actual date and time.",
+    "Current and future availability is checked before saving.",
+    "Leave guest details blank to reserve the time.",
+    "You can add them later."
+  ],
+  "checkpoints": [
+    {
+      "label": "filled",
+      "controlsOnScreen": 10,
+      "controlsOnPage": 10,
+      "wordsOnScreen": 56,
+      "wordsOnPage": 69,
+      "wordsInnerText": 80,
+      "sentences": 4,
+      "sentenceText": [
+        "Record a service at its actual date and time.",
+        "Current and future availability is checked before saving.",
+        "Leave guest details blank to reserve the time.",
+        "You can add them later."
+      ]
+    }
+  ],
+  "steps": [
+    {
+      "kind": "tap",
+      "label": "Service (open)",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "type",
+      "label": "Search services",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    },
+    {
+      "kind": "tap",
+      "label": "Yoga 03",
+      "scrolled": false,
+      "decision": true,
+      "choices": 2
+    },
+    {
+      "kind": "type",
+      "label": "Guest name",
+      "scrolled": false,
+      "decision": false,
+      "choices": 0
+    }
+  ],
+  "notes": [
+    "Book appointment enabled: false (no staff, no open times in this fixture; see h2b)."
+  ],
+  "shots": [
+    "h2-staff-appointment-phone-00-start.png",
+    "h2-staff-appointment-phone-01-filled.png"
+  ]
+}

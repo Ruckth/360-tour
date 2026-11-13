@@ -1,0 +1,21 @@
+button "Arriving 2" @80
+button "Leaving 1" @80
+button "In house 1" @80
+button "Balance due ฿44,300" @80
+button "Today" @166
+button "Previous" @166
+button "Next" @166
+button "November 2026, go to date" @166
+button "Month" @215
+button "Villas" @215
+button "List" @215
+input "Search bookings" @281
+button "Villa: All villas" @281
+button "Show cancelled" @281
+button "New booking" @329
+button "More calendar tools" @325
+button "+3 more" @471
+button "+3 more" @471
+button "Anna Schmidt · Lagoon Pool Villa, Nov 9, 2:00 PM - Nov 12, 1" @471
+button "Maya Lin · Garden Villa, Nov 12, 2:00 PM - Nov 15, 11:00 AM," @524
+button "Somchai Prasert · Ocean Suite, Nov 16, 2:00 PM - Nov 18, 11:" @524
