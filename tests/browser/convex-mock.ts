@@ -65,8 +65,12 @@ const client = {
 };
 
 export function useConvex() { return client; }
-export function usePaginatedQuery() {
-  return { results: [], status: "Exhausted", loadMore: () => undefined };
+/** A registered query handler answers the whole list at once; anything else pages empty. */
+export function usePaginatedQuery(query?: Parameters<typeof getFunctionName>[0], args?: unknown) {
+  useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
+  const handler = query && args !== "skip" ? queryHandlers.get(getFunctionName(query)) : undefined;
+  const results = handler ? (handler(args as never) as unknown[]) : [];
+  return { results, status: "Exhausted", isLoading: false, loadMore: () => undefined };
 }
 
 const money = { total: 28900, currency: "THB", gross: 28900, refunded: 0, net: 28900, owed: 0, credit: 0, refundable: 0, refundContext: "credit", legacyRefund: false };

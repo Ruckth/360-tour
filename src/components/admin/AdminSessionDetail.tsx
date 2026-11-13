@@ -8,7 +8,9 @@ import {
   Clock3,
   Hand,
   Info,
+  Mail,
   MessageCircle,
+  Phone,
   Send,
 } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
@@ -45,13 +47,36 @@ export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T
   return [...newestFirst].reverse();
 }
 
-function contactLabel(session: AdminSession) {
-  const app = session.visitorContactApp ? sourceLabel(session.visitorContactApp) : "Contact";
-  return session.visitorContactHandle
-    ? `${app}: ${session.visitorContactHandle}`
-    : session.visitorPhone
-      ? `${sourceLabel("whatsapp")}: ${session.visitorPhone}`
-      : "No contact app";
+/** How to reach the guest, shown in the chat header: a phone or app handle, and an email. */
+function ContactLine({ session }: { session: AdminSession }) {
+  const handle = session.visitorContactHandle;
+  const phone = session.visitorPhone;
+  const email = session.visitorEmail;
+  if (!handle && !phone && !email) return null;
+  const item = "inline-flex min-w-0 max-w-full items-center gap-1 rounded hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return (
+    <address aria-label="Contact" className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs not-italic text-muted-foreground">
+      {handle ? (
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+          {session.visitorContactApp ? <ChannelIcon channel={session.visitorContactApp} className="size-3 shrink-0" /> : null}
+          <span className="sr-only">{session.visitorContactApp ? sourceLabel(session.visitorContactApp) : "Contact"}:</span>
+          <span className="truncate">{handle}</span>
+        </span>
+      ) : null}
+      {phone ? (
+        <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className={item}>
+          <Phone className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{phone}</span>
+        </a>
+      ) : null}
+      {email ? (
+        <a href={`mailto:${email}`} className={item}>
+          <Mail className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{email}</span>
+        </a>
+      ) : null}
+    </address>
+  );
 }
 
 type DeliveryEvent = AdminLineEvent | AdminFacebookEvent | AdminWhatsAppEvent | AdminInstagramEvent;
@@ -287,7 +312,7 @@ export function AdminSessionDetail({
           <h2 className="text-base font-semibold">{emptyList ? "No conversation to open" : "No conversation open"}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {emptyList
-              ? "The list beside this pane is empty for this search and these filters. Change them there to see conversations."
+              ? "Change the search or filters in the list to see conversations."
               : "Choose a conversation from the list to read it and reply."}
           </p>
         </div>
@@ -328,8 +353,9 @@ export function AdminSessionDetail({
     <Sheet>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
-          <div className="flex items-center justify-between gap-2 p-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 items-center gap-3">
+          {/* Wraps the actions under the name when large text or a narrow phone leaves no room. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 flex-[1_1_12rem] items-center gap-3">
               {compact && onBack ? (
                 <Button
                   type="button"
@@ -361,16 +387,17 @@ export function AdminSessionDetail({
                   <span aria-hidden="true">·</span>
                   <span className="truncate">{propertyLabel}</span>
                 </p>
+                <ContactLine session={session} />
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
               <SheetTrigger asChild>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className="size-9 text-muted-foreground"
-                  aria-label="Contact & details"
+                  aria-label="Chat details"
                 >
                   <Info className="size-4" aria-hidden="true" />
                 </Button>
@@ -441,6 +468,8 @@ export function AdminSessionDetail({
                       {author === "ai" ? "AI" : author === "staff" ? "Staff" : guestName}
                     </span>
                     <ChatBubbleMessage
+                      // What the guest and replies said is content, not explanation (sentence budget).
+                      data-sentence-budget="ignore"
                       className={cn("whitespace-pre-wrap text-left shadow-sm", BUBBLE_SURFACE[author])}
                       variant={variant}
                     >
@@ -566,7 +595,7 @@ export function AdminSessionDetail({
       </div>
       <SheetContent className="w-[26rem] overflow-y-auto sm:max-w-[calc(100vw-2rem)]">
         <SheetHeader>
-          <SheetTitle>Contact & details</SheetTitle>
+          <SheetTitle>Chat details</SheetTitle>
           <SheetDescription>
             {guestName} · {sourceLabel(session.channel)}
           </SheetDescription>
@@ -574,12 +603,19 @@ export function AdminSessionDetail({
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
-            <DetailRow label="Email">{session.visitorEmail ?? "None"}</DetailRow>
-            <DetailRow label="Contact">{contactLabel(session)}</DetailRow>
             <DetailRow label="Started">{formatDateTime(session.createdAt)}</DetailRow>
+            <DetailRow label="Presence">
+              {session.isActive ? "Online" : "Offline"} · last seen {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
+            </DetailRow>
+            {session.currentPath ? <DetailRow label="Page">{session.currentPath}</DetailRow> : null}
+          </dl>
+        </div>
+        {/* Support and debugging only: closed by default. */}
+        <details className="mt-4 border-t border-border pt-4 text-xs">
+          <summary className="cursor-pointer font-medium text-muted-foreground">Technical</summary>
+          <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Visitor ID">{session.visitorId ?? "None"}</DetailRow>
             <DetailRow label="Session ID">{session._id}</DetailRow>
-            {session.currentPath ? <DetailRow label="Page">{session.currentPath}</DetailRow> : null}
             {delivery ? (
               <DetailRow label="Delivery">
                 <span className="flex flex-wrap items-center gap-2">
@@ -604,13 +640,6 @@ export function AdminSessionDetail({
               </>
             ) : null}
           </dl>
-        </div>
-        <details className="mt-2 border-t border-border pt-4 text-xs">
-          <summary className="cursor-pointer font-medium text-muted-foreground">Presence</summary>
-          <p className="mt-2 text-muted-foreground">
-            {session.isActive ? "Online" : "Offline"} · Last seen{" "}
-            {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
-          </p>
         </details>
       </SheetContent>
     </Sheet>

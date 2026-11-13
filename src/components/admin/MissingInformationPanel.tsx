@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BusinessFactFormDialog, type FactFormTarget } from "@/components/admin/BusinessFactFormDialog";
-import { DisabledReason } from "@/components/admin/DisabledReason";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import {
   BulkActionBar,
@@ -57,9 +56,9 @@ function statusSummary(group: AdminUnknownGroup): { label: string; tone: Tone } 
 }
 
 /**
- * Reports of information the concierge could not answer, grouped by identical question. Staff
- * resolve a group by linking an approved business fact, pointing to a structured source, or
- * creating a fact prefilled from the question. Groups can also be ignored and reopened.
+ * Reports of information the concierge could not answer, grouped by identical question. Picking an
+ * approved business fact or a structured source resolves the group at once, with Undo; staff can
+ * also create a fact prefilled from the question. Groups can also be ignored and reopened.
  */
 export function MissingInformationPanel({ properties }: { properties: readonly AdminFactProperty[] }) {
   const [status, setStatus] = useState<MissingInfoFilter>("new");
@@ -67,7 +66,6 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
   const search = useDebounced(searchInput.trim());
   const [pendingAction, setPendingAction] = useState("");
   const [actionError, setActionError] = useState("");
-  const [rowResolution, setRowResolution] = useState<Record<string, string>>({});
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
 
   const result = useQuery(api.chatKnowledge.adminListUnknownGroups, { status, search: search || undefined }) as
@@ -128,9 +126,9 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
     });
   }
 
-  /** Resolve one group by the value chosen in its dropdown (an approved fact or a structured source). */
+  /** Resolve one group with the fact or structured source just picked in its dropdown. */
   async function resolve(group: AdminUnknownGroup, value: string) {
-    if (!value) return;
+    if (!value || pendingAction) return;
     const key = group.normalizedQuestion;
     await run(`resolve:${key}`, "Unable to resolve the report.", async () => {
       const args: {
@@ -143,7 +141,12 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
         args.structuredSource = value.slice(STRUCTURED_PREFIX.length) as StructuredSource;
       const done = await resolveGroups(args);
       selection.clear();
-      undo.show(`Resolved ${pluralize(done.resolved, "report")}.`, reopenIds(done.unknownQuestionIds));
+      const factTitle = args.factId ? facts.find((fact) => fact._id === args.factId)?.title : undefined;
+      const answer = factTitle ?? (args.structuredSource ? structuredSourceLabel(args.structuredSource) : undefined);
+      undo.show(
+        `Resolved ${pluralize(done.resolved, "report")}${answer ? ` with “${answer}”` : ""}`,
+        reopenIds(done.unknownQuestionIds),
+      );
       offerRerun(done.remaining, () => void resolve(group, value), done.remainingIsLowerBound);
     });
   }
@@ -171,7 +174,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
             </Button>
           }
         >
-          No new missing-information reports. The concierge answered everything it was asked.
+          No new missing-information reports.
         </EmptyState>
       );
     }
@@ -236,7 +239,14 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
           {actionError}
         </p>
       ) : null}
-      {undo.element}
+      {undo.element ? (
+        // A toast, so Undo is in view wherever the picked row was; it sits above the phone tab bar.
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--admin-tab-bar,0px)+1rem)] z-50 flex justify-center px-4">
+          <div data-testid="undo-toast" className="pointer-events-auto w-full max-w-md overflow-hidden rounded-lg border border-border bg-card shadow-lg">
+            {undo.element}
+          </div>
+        </div>
+      ) : null}
       {leftover ? (
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2 text-sm">
           <span className="text-foreground">
@@ -310,7 +320,6 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                 const question = group.latest;
                 const hasNew = group.counts.new > 0;
                 const reportPropertyId = question.propertyId;
-                const value = rowResolution[key] ?? "";
                 return (
                   <tr key={key} className={cn(STACKED_TABLE.row, STACKED_TABLE.selectableRow)}>
                     <td className={STACKED_TABLE.cell}>
@@ -322,7 +331,8 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                     </td>
                     <td className={cn(STACKED_TABLE.cell, "lg:max-w-[360px]")}>
                       <p className="font-medium text-foreground">
-                        {question.userQuestion}
+                        {/* The guest's own words are content, not explanation (sentence budget). */}
+                        <span data-sentence-budget="ignore">{question.userQuestion}</span>
                         {group.count > 1 ? (
                           <Badge variant="secondary" className="ml-2 rounded-full align-middle">
                             Asked {group.count}×
@@ -362,31 +372,20 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
                       className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "lg:min-w-[280px]")}
                     >
                       {hasNew ? (
-                        <div className="flex flex-wrap gap-2">
-                          <Select
-                            value={value}
-                            onValueChange={(next) => setRowResolution((current) => ({ ...current, [key]: next }))}
+                        // Picking is the decision: it resolves at once, and the toast offers Undo.
+                        <Select
+                          value=""
+                          disabled={pendingAction !== ""}
+                          onValueChange={(next) => void resolve(group, next)}
+                        >
+                          <SelectTrigger
+                            className="h-9 w-full min-w-0 rounded-lg lg:min-w-[180px]"
+                            aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
                           >
-                            <SelectTrigger
-                              className="h-9 min-w-0 flex-1 rounded-lg lg:min-w-[180px]"
-                              aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
-                            >
-                              <SelectValue placeholder="Link a fact or source…" />
-                            </SelectTrigger>
-                            {resolveOptions(reportPropertyId)}
-                          </Select>
-                          <DisabledReason reason={value ? undefined : "Choose a fact or source to resolve with"}>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="secondary"
-                              disabled={!value || pendingAction === `resolve:${key}`}
-                              onClick={() => void resolve(group, value)}
-                            >
-                              Resolve
-                            </Button>
-                          </DisabledReason>
-                        </div>
+                            <SelectValue placeholder="Resolve with a fact…" />
+                          </SelectTrigger>
+                          {resolveOptions(reportPropertyId)}
+                        </Select>
                       ) : (
                         <span className="text-muted-foreground">
                           {question.resolvedFactTitle ??
@@ -451,7 +450,7 @@ export function MissingInformationPanel({ properties }: { properties: readonly A
           </table>
           {result.truncated ? (
             <p className="border-t border-border p-3 text-center text-xs text-muted-foreground">
-              Showing the newest 500 reports. Handle these to see older ones, or search.
+              Showing the newest 500 reports; handle these or search to see older ones.
             </p>
           ) : null}
         </div>

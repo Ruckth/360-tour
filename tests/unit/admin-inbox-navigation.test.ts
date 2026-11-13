@@ -98,12 +98,20 @@ async function render() {
     root.render(createElement(ChatsView));
   });
 }
-async function click(label: string) {
-  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.trim() === label);
-  expect(button).toBeDefined();
+// The ⋯ menu (base-ui) opens on a full pointer sequence and lists its actions as menu items.
+async function press(el: Element) {
   await act(async () => {
-    button!.click();
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
   });
+}
+async function openMenu() {
+  await press(document.querySelector('[aria-label="More conversation actions"]')!);
+}
+async function click(label: string) {
+  const button = [...document.querySelectorAll<HTMLElement>('button, [role="menuitem"]')].find((candidate) => candidate.textContent?.trim() === label);
+  expect(button).toBeDefined();
+  if (button!.getAttribute("role") === "menuitem") await press(button!);
+  else await act(async () => { button!.click(); });
 }
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -260,19 +268,22 @@ describe("inbox navigation", () => {
     expect(document.querySelector('[data-selected="session-a"]')).toBeNull();
   });
 
-  it("keeps a conversation visible after No reply needed", async () => {
+  it.each([true, false])("No reply needed in the header opens the next chat (desktop: %s)", async (desktop) => {
+    mocks.desktop = desktop;
     mocks.detail = { session: { ...session("session-a"), latestGuestMessageId: "guest-a" }, replyWindow: { applies: false } };
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
     mocks.replace.mockClear();
     await click("No reply needed");
     expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved", expectedGuestMessageId: "guest-a" });
-    expect(mocks.replace).not.toHaveBeenCalled();
+    const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
+    expect(destination).toContain("session=session-b");
+    expect(destination).not.toContain("session=session-a");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("No reply needed");
   });
 
   it("shows follow-up save errors inside the open dialog and keeps the task", async () => {
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    await openMenu();
     await click("Add follow-up");
     const input = document.querySelector<HTMLInputElement>('input[id="follow-up-session-a"]')!;
     await act(async () => {
@@ -399,7 +410,7 @@ describe("inbox navigation", () => {
     const pending = deferred();
     mocks.mutation.mockReturnValueOnce(pending.promise);
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
+    await openMenu();
     await click("Archive conversation");
     mocks.search = new URLSearchParams(
       navigation === "selection" ? "view=all&session=session-b" : "view=all&state=done",
@@ -427,9 +438,7 @@ describe("inbox navigation", () => {
       replyWindow: { applies: false },
     };
     await render();
-    await act(async () => {
-      document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click();
-    });
+    await openMenu();
     await click("Archive conversation");
     const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
     expect(destination).toContain("state=done");
