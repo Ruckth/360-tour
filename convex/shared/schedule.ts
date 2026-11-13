@@ -35,7 +35,6 @@ export function mergeRanges(ranges: Range[]): Range[] {
 
 type Pattern = Pick<Doc<'staff'>, 'workingHours' | 'breaks'>;
 
-/** 0 = Sunday, for a "YYYY-MM-DD" date. */
 const byStart = (a: { start: string }, b: { start: string }) => a.start.localeCompare(b.start);
 
 /** The weekly pattern's plan for a date. */
