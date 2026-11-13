@@ -107,7 +107,7 @@ export async function revokeActive(ctx: MutationCtx, tillId: Id<'tills'>) {
 	}
 }
 
-/** A URL's order id, normalized like pos.getOrder: anything that isn't an order shows the welcome screen. */
+/** A URL's order id, normalized like convex/pos/orders.ts:getOrder: anything that isn't an order shows the welcome screen. */
 export function orderIdFrom(ctx: QueryCtx, orderId: string | null) {
 	return (orderId && ctx.db.normalizeId('orders', orderId)) || undefined;
 }

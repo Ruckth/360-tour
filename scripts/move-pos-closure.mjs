@@ -115,7 +115,10 @@ function mergeModelImports(source, file) {
 }
 function correctComments(source) {
   return source.replace(/(?:convex\/)?lib\/(orderLinks|lineLinks|displayView|orderRefunds)\.ts/g, 'convex/pos/private/$1.ts')
-    .replace('pos.ts refuses more', 'convex/pos/private/lineCommands.ts refuses more');
+    .replace('pos.ts refuses more', 'convex/pos/private/lineCommands.ts refuses more')
+    .replace('pos.linkPaidLine, schema', 'convex/pos/commands/linkPaidLine.ts, schema')
+    .replace('normalized like pos.getOrder:', 'normalized like convex/pos/orders.ts:getOrder:')
+    .replace('and customers.ts for the optional customer link.', 'and convex/pos/customers.ts for the optional customer link.');
 }
 function organize(file, source) {
   const host = { getScriptFileNames: () => [file], getScriptVersion: () => '0', getScriptSnapshot: name => name === file ? ts.ScriptSnapshot.fromString(source) : undefined, getCurrentDirectory: () => root, getCompilationSettings: () => ({ target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext }), getDefaultLibFileName: () => 'lib.d.ts', fileExists: () => false, readFile: () => undefined };
@@ -125,7 +128,7 @@ function organize(file, source) {
   for (const node of [...ast(file, source).statements].filter(ts.isImportDeclaration).reverse()) source = source.slice(0, node.getStart()) + node.getText().replace(/\s+/g, ' ') + source.slice(node.end);
   return source.trimEnd() + '\n';
 }
-const helperExports = [...groups].filter(([to]) => to.startsWith('convex/pos/') && to !== 'convex/pos/private/displayModel.ts').map(([to, entries]) => {
+const helperExports = [...groups].filter(([to]) => ['orderLines', 'lineLinks', 'orderLinks'].some(name => to === `convex/pos/private/${name}.ts`)).map(([to, entries]) => {
   const names = entries.filter(({node, exported}) => exported || node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)).map(({node}) => `${ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node) ? 'type ' : ''}${nameOf(node)}`);
   return `export { ${names.join(', ')} } from '${relative('convex/pos/model.ts', to)}';`;
 }).join('\n');

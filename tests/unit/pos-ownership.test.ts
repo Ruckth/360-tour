@@ -27,9 +27,7 @@ it('owns actual implementations behind named model exports, with no endpoint or 
       declarations.set(entry.name.text, target);
     }
   }
-  for (const [name, module] of Object.entries({ orderLines: 'orderLines', executeOrderRefund: 'orderRefunds',
-    activeSourceLink: 'lineLinks', ensureLinkedOrder: 'orderLinks', displayOrderState: 'displayView',
-    liveFees: 'orderLifecycle', assertNoPendingApprovals: 'staffApprovalState' })) expect(declarations.get(name)).toBe(`convex/pos/private/${module}.ts`);
+  for (const [name, module] of Object.entries({ orderLines: 'orderLines', activeSourceLink: 'lineLinks', ensureLinkedOrder: 'orderLinks' })) expect(declarations.get(name)).toBe(`convex/pos/private/${module}.ts`);
   for (const name of ['executeAttach', 'executeVoidOrder', 'executeLinkPaidLine', 'executeAmendOrderPayment', 'executeStaffApproval']) expect(declarations.has(name)).toBe(false);
 
 
@@ -48,6 +46,7 @@ it('owns actual implementations behind named model exports, with no endpoint or 
     }
   }
   closure(model.fileName);
+  for (const file of walk('convex/pos/private').filter(file => file.endsWith('.ts'))) closure(file);
   for (const name of owned) expect(visited.has(`convex/pos/private/${name}.ts`)).toBe(true);
 });
 

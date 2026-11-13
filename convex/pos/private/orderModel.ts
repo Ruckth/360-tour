@@ -25,7 +25,7 @@ import { lineDiscountValidator } from '../../lib/staffTypes';
  *
  * Orders live in the `orders` table (and their rows in `orderLines`) so ids, payments and audit
  * history from before orders had numbers stay valid. See convex/pos/private/orderLinks.ts for how orders relate
- * to bookings and appointments, and customers.ts for the optional customer link.
+ * to bookings and appointments, and convex/pos/customers.ts for the optional customer link.
  */
 
 export const FREQUENT_SCAN = 300;

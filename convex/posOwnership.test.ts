@@ -4,7 +4,8 @@ import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import { requireStaff } from './auth/model';
-import { ensureLinkedOrder, executeOrderRefund, orderLines, orderRefunds } from './pos/model';
+import { ensureLinkedOrder, orderLines } from './pos/model';
+import { executeOrderRefund, orderRefunds } from './pos/private/orderRefunds';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');

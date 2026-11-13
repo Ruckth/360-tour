@@ -3,7 +3,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 
 /**
  * Reads of orderLineLinks: a paid service or room row applied later to the appointment or stay it
- * paid for (pos.linkPaidLine, schema `orderLineLinks`). Every reader that asks "which order took
+ * paid for (convex/pos/commands/linkPaidLine.ts, schema `orderLineLinks`). Every reader that asks "which order took
  * money for this source" (order lists for a booking, refunds by receipt, corrections and voids)
  * includes these links, not only rows that charged the source at checkout.
  */
