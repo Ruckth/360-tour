@@ -232,7 +232,7 @@ describe("create as confirmed", () => {
       await ctx.db.patch(adminBooking, { createdAt: old });
       await ctx.db.patch(webBooking, { createdAt: old, unpaidHoldExpiresAt: old + 30 * 60_000 });
     });
-    expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
+    expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(1);
     expect((await t.run((ctx) => ctx.db.get(adminBooking)))?.status).toBe("pending");
     expect((await t.run((ctx) => ctx.db.get(webBooking)))?.status).toBe("cancelled");
   });
@@ -587,7 +587,7 @@ describe("historical admin bookings", () => {
       .unique());
     expect(order).toMatchObject({ bookingId, createdBy: adminEmail, hasItems: false, itemCount: 0 });
     expect(await bookedDates(t)).toBe(confirmed ? to - from : 0);
-    await t.mutation(internal.crons.expirePending, {});
+    await t.mutation(internal.bookings.maintenance.expirePending, {});
     expect((await t.run(ctx => ctx.db.get(bookingId)))?.status).toBe(confirmed ? "confirmed" : "pending");
   });
 

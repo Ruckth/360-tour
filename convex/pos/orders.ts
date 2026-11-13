@@ -13,7 +13,7 @@ import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from 
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from '../lib/orderRefunds';
 import { type OrderPromotionView } from '../lib/posCoupons';
 import { canReadCheckoutOrder } from '../auth/model';
-import { MAX_STAY_ROWS } from '../lib/stayCorrections';
+import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
 import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';

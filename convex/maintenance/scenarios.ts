@@ -7,10 +7,10 @@ import { seedReviews } from '../seeds/reviews';
 import { seedTourSnippets } from '../seeds/tourSnippets';
 import { seedStaffServicesData } from '../seeds/staffServices';
 import { recomputeSocialProof } from '../catalog/model';
-import { createBookingRecord } from '../lib/bookingWrites';
-import { recordStayPayment } from '../bookings/model';
-import { blockBookingDates } from '../lib/availabilityWrites';
-import { writeBooking } from '../lib/bookingMoney';
+import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking } from '../bookings/model';
+
+
+
 import { insertOrder } from '../lib/orderLinks';
 import { createGuestToken, hashGuestToken } from '../messaging/model';
 import { DEFAULT_CASHIER_RULES } from '../lib/staffTypes';

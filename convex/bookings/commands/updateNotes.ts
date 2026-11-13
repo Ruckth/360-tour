@@ -1,7 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, writeBooking } from '../../lib/bookingMoney';
-import { loadBooking } from '../model';
+import { assertBookingRevision } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
+import { loadBooking } from '../private/stays';
 
 export const updateNotes = adminMutation({
 	args: { bookingId: v.id('bookings'), notes: v.string(), expectedRevision: v.optional(v.number()) },

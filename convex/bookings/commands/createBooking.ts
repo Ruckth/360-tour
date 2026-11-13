@@ -1,12 +1,13 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
-import { blockBookingDates } from '../../lib/availabilityWrites';
-import { attemptKey, cleanReason, resolveNotify, writeBooking } from '../../lib/bookingMoney';
-import { createBookingRecord } from '../../lib/bookingWrites';
+import { blockBookingDates } from '../private/availabilityWrites';
+import { attemptKey, cleanReason, resolveNotify } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
+import { createBookingRecord } from '../private/bookingWrites';
 import { demoCode } from '../../lib/codes';
 import { resortTodayIso } from '../../lib/dates';
 import { normalizeCouponCode } from '../../lib/offers';
-import { cleanPriceOverride, priceOverrideInput, queueBookingEmails } from '../model';
+import { cleanPriceOverride, priceOverrideInput, queueBookingEmails } from '../private/stays';
 
 /**
  * Manual / phone booking entered by the host. Pending ones are exempt from the 24h expiry.

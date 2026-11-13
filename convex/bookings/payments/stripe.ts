@@ -1,13 +1,14 @@
 import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import { adminMutation, internalMutation, type MutationCtx, publicAction } from '../../auth/model';
-import { blockBookingDates, releaseBookingDates } from '../../lib/availabilityWrites';
-import { assertBookingRevision, writeBooking } from '../../lib/bookingMoney';
+import { blockBookingDates, releaseBookingDates } from '../private/availabilityWrites';
+import { assertBookingRevision } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
 import { stayMoney } from '../../lib/stayMoney';
 import { roundMoney } from '../../lib/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { bookingHoldExpiresAt } from '../../lib/siteSettings';
-import { isDocumentedLiveRefund, recordStayPayment } from '../model';
+import { isDocumentedLiveRefund, recordStayPayment } from '../private/stays';
 
 const CHECKOUT_LIFETIME_SECONDS = 60 * 60;
 
@@ -64,7 +65,7 @@ export const beginCheckout = internalMutation({
     };
     // Stripe requires at least 30 minutes. Starting checkout extends the hold to this
     // one-hour session expiry, including an in-flight request whose response is lost.
-    await ctx.scheduler.runAt(request.expiresAt, internal.crons.expireBookingHold, { bookingId: booking._id, expectedRevision: booking.revision ?? 0 });
+    await ctx.scheduler.runAt(request.expiresAt, internal.bookings.maintenance.expireBookingHold, { bookingId: booking._id, expectedRevision: booking.revision ?? 0 });
     await ctx.db.patch(booking._id, {
       checkoutAttempt: request.attempt,
       checkoutRequest: request,

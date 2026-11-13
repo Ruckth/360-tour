@@ -1,11 +1,12 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { assertBookingRevision, assertNoLiveCheckout, cleanReason, writeBooking } from '../../lib/bookingMoney';
+import { assertBookingRevision, assertNoLiveCheckout, cleanReason } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
 import { stayMoney } from '../../lib/stayMoney';
 import { roundMoney } from '../../lib/orderMath';
-import { paymentCancelBlocker, stayPaymentReversalPatch } from '../../lib/stayCorrections';
-import { loadBooking } from '../model';
+import { paymentCancelBlocker, stayPaymentReversalPatch } from '../private/stayCorrections';
+import { loadBooking } from '../private/stays';
 
 export const cancelPayment = adminMutation({
 	args: {

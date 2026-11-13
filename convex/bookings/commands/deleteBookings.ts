@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { adminMutation } from '../../auth/model';
-import { deleteBlocker, deleteBookingRecord, MAX_BATCH_DELETE, recordsBlocker } from '../model';
+import { deleteBlocker, deleteBookingRecord, MAX_BATCH_DELETE, recordsBlocker } from '../private/stays';
 
 /** Batch delete with the same rules as `deleteBooking`; bookings that can't go are skipped with a reason. */
 export const deleteBookings = adminMutation({

@@ -3,7 +3,7 @@ import type { Id } from '../../_generated/dataModel';
 import { type QueryCtx, adminQuery, publicQuery } from '../../auth/model';
 import { nightsBetween, stayDates } from '../../lib/dates';
 import { readBudget, ReadBudgetExceeded } from '../../lib/readBudget';
-import { blocksNewBookings, findBlockingNight, findOverlappingBookings, MAX_ROWS_PER_NIGHT } from '../../lib/stayOverlap';
+import { blocksNewBookings, findBlockingNight, findOverlappingBookings, MAX_ROWS_PER_NIGHT } from '../private/stayOverlap';
 import { assertValidIsoDate } from '../../lib/validation';
 
 /** Longest date window one read may cover: today plus a year (366 dates). */

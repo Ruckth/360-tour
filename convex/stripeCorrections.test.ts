@@ -3,7 +3,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
-import { stayPaymentReversalPatch } from './lib/stayCorrections';
+import { stayPaymentReversalPatch } from './bookings/private/stayCorrections';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 1, 5);
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
@@ -144,7 +144,7 @@ it('preserves a non-provider deposit after a full provider refund and refuses la
 it('expires pending bookings with an atomic system history and revision', async () => {
   const { t, bookingId, read } = await setup();
   await t.run(ctx => ctx.db.patch(bookingId, { createdAt: now - 2 * 86_400_000, unpaidHoldExpiresAt: now - 1 }));
-  expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
+  expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(1);
   expect(await read()).toMatchObject({ status: 'cancelled', cancelledBy: 'system:expiry', revision: 1 });
   expect((await t.run(ctx => ctx.db.query('recordChanges').take(10))).some(r => r.kind === 'pending_expired')).toBe(true);
 });

@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
 import { cancelAppointmentRecord } from '../lib/appointmentChanges';
 import { appointmentRevision } from '../lib/appointmentWindow';
-import { bookingsByPhone } from '../lib/bookingPhone';
+import { bookingsByPhone } from '../bookings/model';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../lib/chatWriteGuard';
 import { enforceRateLimit } from '../messaging/model';

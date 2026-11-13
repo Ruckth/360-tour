@@ -1,12 +1,13 @@
 import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import { adminMutation } from '../../auth/model';
-import { blockBookingDates, releaseBookingDates } from '../../lib/availabilityWrites';
-import { assertBookingRevision, resolveNotify, writeBooking } from '../../lib/bookingMoney';
-import { assertCapacity, assertStayDates, assertStayFree, cleanGuestDetails, guestLookupFields } from '../../lib/bookingWrites';
+import { blockBookingDates, releaseBookingDates } from '../private/availabilityWrites';
+import { assertBookingRevision, resolveNotify } from '../../lib/bookingMoney';
+import { writeBooking } from '../private/money';
+import { assertCapacity, assertStayDates, assertStayFree, cleanGuestDetails, guestLookupFields } from '../private/bookingWrites';
 import { repriceCouponBooking } from '../../marketing/model';
 import { stayDates } from '../../lib/dates';
-import { archivedVillaPolicy, assertBookingEditable, assertReviewedPrice, loadBooking, planBookingEditPricing, priceOverrideInput } from '../model';
+import { archivedVillaPolicy, assertBookingEditable, assertReviewedPrice, loadBooking, planBookingEditPricing, priceOverrideInput } from '../private/stays';
 
 /**
  * Changes a booking's villa, dates, guest count, guest details or price in one transaction.
@@ -86,7 +87,7 @@ export const editBooking = adminMutation({
 		});
 
 		if (guest.guestEmail && notify && guestFacingChange) {
-			await ctx.scheduler.runAfter(0, internal.emails.sendBookingUpdated, { bookingId: booking._id });
+			await ctx.scheduler.runAfter(0, internal.bookings.emails.sendBookingUpdated, { bookingId: booking._id });
 		}
 	}
 });

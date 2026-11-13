@@ -5,7 +5,8 @@ import type { MutationCtx } from '../../_generated/server';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { recordAppointmentChange } from '../../lib/appointmentChanges';
 import { appointmentMoney } from '../../lib/appointmentFinance';
-import { appendBookingHistory, assertNoLiveCheckout, cleanReason, effectiveTime, writeBooking } from '../../lib/bookingMoney';
+import { appendBookingHistory, writeBooking, orderStayPayment, stayPaymentReversalPatch } from '../../bookings/model';
+import { assertNoLiveCheckout, cleanReason, effectiveTime } from '../../lib/bookingMoney';
 import { stayMoney } from '../../lib/stayMoney';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { resortTodayIso } from '../../lib/dates';
@@ -13,7 +14,7 @@ import { orderLineLinks } from '../../lib/lineLinks';
 import { assertTenders, lineNet, orderTitle, roundMoney } from '../../lib/orderMath';
 import { assertNoPosRefunds } from '../../lib/orderRefunds';
 import { canReadCheckoutOrder, requireCashierAction, type StaffActor } from '../../auth/model';
-import { orderStayPayment, stayPaymentReversalPatch } from '../../lib/stayCorrections';
+
 import { assertCustomerCanLink, assertCustomerReviewed } from './customerModel';
 import { Line, MISSING_PAYMENT_EVIDENCE, Order, amendOrderPaymentArgs, assertCorrectionRevision, cleanTender, correctionReplay, sourceRows, voidUnreceivedOrderArgs } from './orderModel';
 import { linkReversal } from './paidLinkModel';

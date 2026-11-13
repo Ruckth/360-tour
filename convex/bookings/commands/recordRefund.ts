@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertBookingRevision, assertNoLiveCheckout } from '../../lib/bookingMoney';
-import { recordStayRefund, refundReplay } from '../../lib/stayCorrections';
-import { loadBooking, refundInput } from '../model';
+import { recordStayRefund, refundReplay } from '../private/stayCorrections';
+import { loadBooking, refundInput } from '../private/stays';
 
 /**
  * Records a refund given back to the guest. Recording moves no money. A live stay refunds only

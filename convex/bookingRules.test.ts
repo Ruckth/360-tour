@@ -194,17 +194,17 @@ describe('precise unpaid holds', () => {
 		const { t } = await setup({ unpaidHoldMinutes: 20 });
 		const { bookingId } = await t.mutation(api.bookings.bookings.create, webStay);
 		const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
-		expect(jobs.some((job) => job.name === 'crons:expireBookingHold' && job.scheduledTime === now + 20 * minute)).toBe(
+		expect(jobs.some((job) => job.name === 'bookings/maintenance:expireBookingHold' && job.scheduledTime === now + 20 * minute)).toBe(
 			true
 		);
 		await expect(t.mutation(api.bookings.bookings.create, { ...webStay, guestEmail: 'other@example.com' })).rejects.toThrow(
 			/no longer available|blocked/
 		);
 		vi.setSystemTime(now + 20 * minute - 1);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('pending');
 		vi.setSystemTime(now + 20 * minute);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('cancelled');
 		expect(await t.run((ctx) => ctx.db.query('availability').take(10))).toHaveLength(0);
 	});
@@ -222,11 +222,11 @@ describe('precise unpaid holds', () => {
 			vi.setSystemTime(now + 9 * minute);
 			const request = await startCheckout(t, booking, saved);
 			vi.setSystemTime(now + 10 * minute);
-			await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
-			expect(await t.mutation(internal.crons.expirePending, {})).toBe(0);
+			await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
+			expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(0);
 			expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('pending');
 			vi.setSystemTime(request.expiresAt);
-			await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
+			await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
 			expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('cancelled');
 		}
 	);
@@ -244,7 +244,7 @@ describe('precise unpaid holds', () => {
 		await t.run((ctx) => ctx.db.patch(changed.bookingId, { revision: 1 }));
 		vi.setSystemTime(now + 120 * minute);
 		for (const bookingId of [booking.bookingId, hostId, changed.bookingId])
-			await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
+			await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('confirmed');
 		expect((await t.run((ctx) => ctx.db.get(hostId)))?.status).toBe('pending');
 		expect((await t.run((ctx) => ctx.db.get(changed.bookingId)))?.status).toBe('cancelled');
@@ -259,7 +259,7 @@ describe('precise unpaid holds', () => {
 		});
 		vi.setSystemTime(now + 21 * minute);
 		await expect(startCheckout(t, booking)).rejects.toThrow('Booking expired');
-		expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
+		expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(1);
 		expect((await t.run((ctx) => ctx.db.get(hostId)))?.status).toBe('pending');
 	});
 	it.each(['hold', 'checkout'] as const)('recovers a delayed paid webhook after %s expiry once', async (kind) => {
@@ -268,7 +268,7 @@ describe('precise unpaid holds', () => {
 		const request = await startCheckout(t, booking);
 		vi.setSystemTime(request.expiresAt + 1);
 		if (kind === 'hold')
-			await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
+			await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
 		else await t.mutation(internal.bookings.payments.stripe.expireCheckout, { bookingId: booking.bookingId, sessionId: 'cs_test' });
 		await complete(t, booking.bookingId);
 		await complete(t, booking.bookingId);
@@ -308,10 +308,10 @@ describe('hold rollout and staff edits', () => {
 		const { bookingId } = await t.mutation(api.bookings.bookings.create, webStay);
 		await admin.mutation(api.settings.settings.update, { bookingRules: { unpaidHoldMinutes: updated } });
 		vi.setSystemTime(now + initial * minute - 1);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('pending');
 		vi.setSystemTime(now + initial * minute);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('cancelled');
 	});
 	it('keeps a legacy booking for its original 24 hours after rollout', async () => {
@@ -323,10 +323,10 @@ describe('hold rollout and staff edits', () => {
 			paymentStatus: 'pending', status: 'pending', source: 'web', createdAt: now
 		}));
 		vi.setSystemTime(now + 60 * minute);
-		expect(await t.mutation(internal.crons.expirePending, {})).toBe(0);
+		expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(0);
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('pending');
 		vi.setSystemTime(now + 24 * 60 * minute + 1);
-		expect(await t.mutation(internal.crons.expirePending, {})).toBe(1);
+		expect(await t.mutation(internal.bookings.maintenance.expirePending, {})).toBe(1);
 		expect((await t.run((ctx) => ctx.db.get(bookingId)))?.status).toBe('cancelled');
 	});
 	it('allows a legacy booking to start checkout inside its original 24 hour window', async () => {
@@ -347,10 +347,10 @@ describe('hold rollout and staff edits', () => {
 		const request = await startCheckout(t, booking);
 		await admin.mutation(api.settings.settings.update, { bookingRules: { unpaidHoldMinutes: 120 } });
 		vi.setSystemTime(request.expiresAt - 1);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('pending');
 		vi.setSystemTime(request.expiresAt);
-		await t.mutation(internal.crons.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
+		await t.mutation(internal.bookings.maintenance.expireBookingHold, { bookingId: booking.bookingId, expectedRevision: 0 });
 		expect((await t.run((ctx) => ctx.db.get(booking.bookingId)))?.status).toBe('cancelled');
 	});
 	it('keeps a pending guest hold when staff correct contact details', async () => {
@@ -550,8 +550,8 @@ it('follows configured pre-arrival and review windows, with catch-up and one-tim
 			result.push(await insertFixture(ctx, 'bookings', { ...base, checkIn: day(offset), checkOut: day(offset) }));
 		return result;
 	});
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today: day(0) })).toBe(3);
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today: day(0) })).toBe(3);
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival', today: day(0) })).toBe(3);
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review', today: day(0) })).toBe(3);
 	const rows = await t.run(async (ctx) => Promise.all(ids.map((id) => ctx.db.get(id))));
 	expect(rows.filter((row) => row?.preArrivalEmailQueuedAt).map((row) => row!.checkIn)).toEqual([
 		day(1),
@@ -563,5 +563,5 @@ it('follows configured pre-arrival and review windows, with catch-up and one-tim
 		day(-4),
 		day(-3)
 	]);
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today: day(0) })).toBe(0);
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review', today: day(0) })).toBe(0);
 });

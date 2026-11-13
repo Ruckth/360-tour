@@ -2,7 +2,7 @@ import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { MutationCtx } from '../../_generated/server';
 import { syncAffiliateCredit } from '../../marketing/model';
-import { appendBookingHistory } from '../../lib/bookingMoney';
+import { appendBookingHistory } from '../../bookings/model';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from '../../lib/lineLinks';
 import { orderLines } from '../../lib/orderLines';

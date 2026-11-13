@@ -1,8 +1,8 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
 import { assertBookingRevision } from '../../lib/bookingMoney';
-import { cancelStayRecord, refundReplay } from '../../lib/stayCorrections';
-import { loadBooking, refundInput } from '../model';
+import { cancelStayRecord, refundReplay } from '../private/stayCorrections';
+import { loadBooking, refundInput } from '../private/stays';
 
 /**
  * Cancels a stay. Paid money is kept unless `refund` records a refund of any part of it in the
