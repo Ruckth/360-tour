@@ -28,6 +28,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useOrder: (orderId) => useQuery(api.pos.getOrder, orderId ? { orderId } : SKIP),
   useOrderHistory: (orderId) => usePaginatedQuery(api.pos.orderHistory, { orderId }, { initialNumItems: 20 }),
   useOrders: (filter) => usePaginatedQuery(api.pos.listOrders, { filter }, { initialNumItems: 20 }),
+  useOpenOrders: () => usePaginatedQuery(api.pos.listOpenOrders, {}, { initialNumItems: 20 }),
   useCustomerSearch: (query) => {
     const text = query.trim();
     const results = useQuery(api.customers.searchCustomers, text.length >= 2 ? { query: text } : SKIP);
