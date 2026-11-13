@@ -1,6 +1,22 @@
 import hi from "../../messages/hi.json" with { type: "json" };
-import { seedTranscript, serverTranscript, expectServerReplies } from './backend';
+import { seedTranscript, serverTranscript, expectServerReplies, expectInitialSuggestionsTracked } from './backend';
 import { expect, test, type Locator, type Page } from "./fixtures";
+
+async function initialChipTexts(page: Page) {
+  const chips = page.getByTestId("chat-messages").getByTestId("chat-suggestions").getByRole("button");
+  await expect(chips).toHaveCount(6);
+  await expectInitialSuggestionsTracked(page);
+  return chips.allTextContents();
+}
+
+async function expectFreshFollowUpChips(page: Page, initial: string[]) {
+  const messages = page.getByTestId("chat-messages");
+  const chips = messages.getByTestId("chat-suggestions").getByRole("button");
+  await expect(chips).toHaveCount(2);
+  for (const text of initial)
+    await expect(messages.getByRole("button", { name: text, exact: true })).toHaveCount(0);
+  expect(new Set(await chips.allTextContents()).size).toBe(2);
+}
 
 
 const localizedSmoke = [
@@ -155,12 +171,13 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
     chatFooter.getByRole("button", { name: /Can I check my dates/i }),
   ).toHaveCount(0);
 
+  const initial = await initialChipTexts(page);
   await page.getByRole("button", { name: /How many guests can each villa sleep/i }).click();
   await expectServerReplies(page, 1);
   await expect(
     messages.getByRole("button", { name: /Which villa is best for a family or group/i }),
   ).toBeVisible();
-  await expect(messages.getByRole("button", { name: /Can I check my dates/i })).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
   await expect(
     messages.getByRole("button", { name: /How many guests can each villa sleep/i }),
   ).toHaveCount(0);
@@ -170,16 +187,14 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   await expect(page.getByRole("status").filter({ hasText: "A team member will reply here shortly." })).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
+  const bookingInitial = await initialChipTexts(page);
   await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
   await page.getByRole("button", { name: "Send message" }).click();
   // A booking-intent question still surfaces the booking card via the action hint,
   // but the reply is the booking prompt (no retired "saves 15%" policy claim).
   await expectServerReplies(page, 1);
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(messages.getByRole("button", { name: /What will my stay cost/i })).toBeVisible();
-  await expect(
-    messages.getByRole("button", { name: /Can I check my dates/i }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, bookingInitial);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
@@ -1006,6 +1021,7 @@ test("thai chat initializes with six question chips before regular chat", async 
   expect(firstInitialChipBox).not.toBeNull();
   expect(firstInitialChipBox!.height).toBeGreaterThanOrEqual(44);
 
+  const initial = await initialChipTexts(page);
   await initialSuggestions.getByRole("button", { name: "แต่ละวิลล่าพักได้กี่คน?" }).click();
   await expect(messages.getByText("แต่ละวิลล่าพักได้กี่คน?")).toBeVisible();
   await expectServerReplies(page, 1);
@@ -1013,9 +1029,7 @@ test("thai chat initializes with six question chips before regular chat", async 
   await expect(
     messages.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" }),
   ).toBeVisible();
-  await expect(
-    messages.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
   await expect(chatFooter.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" })).toHaveCount(0);
 });
 
@@ -1033,18 +1047,14 @@ test("german chat suggestions float under assistant messages and update", async 
     chatFooter.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toHaveCount(0);
 
+  const initial = await initialChipTexts(page);
   await page.getByRole("button", { name: "Welche Vorteile habe ich bei Direktbuchung?" }).click();
   // Question-only chip: the direct-booking chip still surfaces the booking card
   // through its action hint, but the reply is the booking prompt — no retired
   // "Direktbuchung spart etwa 15%" discount claim.
   await expectServerReplies(page, 1);
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(
-    messages.getByRole("button", { name: "Was kostet mein Aufenthalt?" }),
-  ).toBeVisible();
-  await expect(
-    messages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
 });
 
 test("all visible translated locales render localized nav and chat UI", async ({ page }) => {

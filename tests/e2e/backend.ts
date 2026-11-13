@@ -90,6 +90,11 @@ export async function seedTranscript(
   }
 }
 export async function serverTranscript(page: Page) {
+  const credentials = await storedGuestCredentials(page);
+  return localBackend().query(api.messaging.chat.getMessages, credentials);
+}
+
+async function storedGuestCredentials(page: Page) {
   const credentials = await page.evaluate(() => {
     const sessionId = localStorage.getItem("sv_chat_session_id")!;
     return {
@@ -99,10 +104,24 @@ export async function serverTranscript(page: Page) {
       )!,
     };
   });
-  return localBackend().query(api.messaging.chat.getMessages, {
+  return {
     ...credentials,
     sessionId: credentials.sessionId as Id<"conversations">,
+  };
+}
+
+/** Wait for persisted impressions so follow-up checks cannot accidentally pass on untracked fallback chips. */
+export async function expectInitialSuggestionsTracked(page: Page) {
+  await page.waitForFunction(() => {
+    const id = localStorage.getItem("sv_chat_session_id");
+    return id && localStorage.getItem(`sv_chat_session_id:token:${id}`);
   });
+  const credentials = await storedGuestCredentials(page);
+  for (const batch of [["availability", "totalPrice", "direct", "tour", "guests"], ["contact"]] as const) {
+    await expect.poll(() => localBackend().query(api.messaging.chatSuggestions.nextForSession, {
+      ...credentials, candidateSuggestionIds: [...batch], limit: 5,
+    })).toEqual([]);
+  }
 }
 
 export async function expectServerReplies(page: Page, count: number) {

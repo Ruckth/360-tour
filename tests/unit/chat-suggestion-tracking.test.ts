@@ -27,7 +27,7 @@ function Harness({ sessionId }: { sessionId: Id<"conversations"> }) {
   return createElement("div", { "data-candidates": suggestions.length },
     visibleSuggestions.map((suggestion) => createElement("button", { key: suggestion.id }, suggestion.id)));
 }
-it("records the first suggestion set from twelve candidates within the actual backend's five-chip tracking limit", async () => {
+it("records all six initial chips from twelve candidates in valid five-chip batches", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const t = createHarness(convexTest);
   const credentials = await t.mutation(api.messaging.chat.createSession, { channel: "web" });
@@ -41,15 +41,16 @@ it("records the first suggestion set from twelve candidates within the actual ba
   await act(async () => {
     await vi.waitFor(async () => {
       const rows = await t.run((ctx) => ctx.db.query("chatStaticSuggestionInteractions").collect());
-      expect(rows).toHaveLength(5);
+      expect(rows).toHaveLength(6);
     });
   });
   expect(node.firstElementChild?.getAttribute("data-candidates")).toBe("12");
-  expect(node.querySelectorAll("button")).toHaveLength(5);
+  expect(node.querySelectorAll("button")).toHaveLength(6);
   const tracked = await t.run((ctx) => ctx.db.query("chatStaticSuggestionInteractions").collect());
-  expect(tracked).toHaveLength(5);
+  expect(tracked).toHaveLength(6);
   expect(tracked.every((row) => row.shownAt !== undefined)).toBe(true);
-  expect(new Set(tracked.map((row) => row.suggestionKey)).size).toBe(5);
+  expect(new Set(tracked.map((row) => row.suggestionKey)).size).toBe(6);
+  expect(transport.mutation.mock.calls.map(([, args]) => args.suggestions.length)).toEqual([5, 1]);
   for (const [, args] of transport.query.mock.calls) {
     expect(args.candidateSuggestionIds.length).toBeLessThanOrEqual(5);
     expect(args.limit).toBeLessThanOrEqual(5);

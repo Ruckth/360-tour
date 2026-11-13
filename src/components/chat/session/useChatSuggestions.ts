@@ -120,25 +120,27 @@ export function useChatSuggestions(sessionId: Id<"conversations"> | null, active
 
       try {
         const candidateIds = [...new Set(orderedStaticSuggestions.map(suggestion => suggestion.id))];
-        const selectionLimit = Math.min(visibleSuggestionLimit, 5);
+        const selectionLimit = visibleSuggestionLimit;
         const nextSuggestions: FunctionReturnType<typeof api.messaging.chatSuggestions.nextForSession> = [];
         // The public query admits five candidates; retain ranking across all candidates.
         for (let offset = 0; offset < candidateIds.length && nextSuggestions.length < selectionLimit; offset += 5) {
           nextSuggestions.push(...await convex.query(api.messaging.chatSuggestions.nextForSession, {
             sessionId, guestToken: getStoredGuestToken(sessionId),
             candidateSuggestionIds: candidateIds.slice(offset, offset + 5),
-            limit: selectionLimit - nextSuggestions.length,
+            limit: Math.min(selectionLimit - nextSuggestions.length, 5),
           }));
         }
         if (cancelled) return;
 
         if (nextSuggestions.length > 0) {
-          await convex.mutation(api.messaging.chatSuggestions.markShown, {
-            sessionId,
-            suggestions: nextSuggestions,
-            guestToken: getStoredGuestToken(sessionId)!,
-          }).catch(() => null);
-          if (cancelled) return;
+          for (let offset = 0; offset < nextSuggestions.length; offset += 5) {
+            await convex.mutation(api.messaging.chatSuggestions.markShown, {
+              sessionId,
+              suggestions: nextSuggestions.slice(offset, offset + 5),
+              guestToken: getStoredGuestToken(sessionId)!,
+            }).catch(() => null);
+            if (cancelled) return;
+          }
         }
 
         const validIds = new Set(
