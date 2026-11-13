@@ -3,3 +3,6 @@
 export function useOptionalConvex() {
   return null;
 }
+export function useOptionalConvexAuth() {
+  return { isConfigured: false, isAuthEnabled: false, isLoading: false, isAuthenticated: false };
+}

@@ -125,17 +125,18 @@ test.describe("manager approvals", () => {
     await expect(page.getByRole("tooltip")).toHaveText("Works once, for this order as it is now.");
     await page.keyboard.press("Escape");
     await first.getByRole("button", { name: "Approve" }).click();
-    await expect(panel.getByRole("status").first()).toHaveText("Approved · Order #1043");
+    // Another request waits, so the panel stays open with the result.
+    await expect(panel.getByRole("status").first()).toHaveText("Approved 15% discount on #1043");
     await expect(requests).toHaveCount(1);
 
     const second = requests.filter({ hasText: "Regular guest" });
     await expect(second).toContainText("Mint asks for a ฿100 discount");
     await second.getByRole("button", { name: "Decline" }).click();
-    await expect(panel.getByRole("status").first()).toHaveText("Declined · Order #1044");
-    await expect(panel.getByText("No requests waiting.")).toBeVisible();
-
-    await page.keyboard.press("Escape");
-    await expect(page.getByTestId("approvals-button")).toHaveCount(0);
+    // The last decision closes the panel and says what happened.
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByTestId("toast")).toHaveText("Declined ฿100 discount on #1044");
+    await expect(page.getByTestId("approvals-button")).toHaveText("Approvals");
+    await expect(page.getByTestId("approvals-button")).toBeFocused();
     // The approved discount is on the order; owners and managers get no limit hint.
     const order = orderPanel(page);
     await expect(order.getByTestId("order-due")).toHaveText("฿1,020");
@@ -220,7 +221,8 @@ test.describe("Settings › Team", () => {
 });
 
 test.describe("navigation by role", () => {
-  test("a cashier's sidebar, rail and tab bar show only Checkout", async ({ page }) => {
+  test("a cashier's sidebar and rail show only Checkout", async ({ page }) => {
+    // The shell shows a cashier no navigation at all (admin-shell.spec.ts); the lists still filter.
     await page.setViewportSize({ width: 1360, height: 900 });
     await open(page, "?view=nav&role=cashier");
     const sidebar = page.locator('[data-sidebar="sidebar"]').getByRole("navigation", { name: "Admin sections" });
@@ -231,19 +233,20 @@ test.describe("navigation by role", () => {
     await page.setViewportSize({ width: 1024, height: 900 });
     const rail = page.locator("nav.xl\\:hidden:not(.md\\:hidden)");
     await expect(rail.getByRole("link")).toHaveText(["Checkout"]);
-
-    await page.setViewportSize({ width: 390, height: 844 });
-    const tabBar = page.locator("nav.md\\:hidden");
-    await expect(tabBar.locator("a, button")).toHaveText(["Checkout", "Search", "Menu"]);
   });
 
-  test("a manager sees every section but Team, with the approvals badge on Checkout", async ({ page }) => {
+  test("a manager sees every section but Team, with no approvals badge, and Checkout on the phone tab bar", async ({ page }) => {
     await page.setViewportSize({ width: 1360, height: 900 });
-    await open(page, "?view=nav&role=manager&pending=2&path=/admin/settings");
+    await open(page, "?view=nav&role=manager&path=/admin/settings");
     const sidebar = page.locator('[data-sidebar="sidebar"]').getByRole("navigation", { name: "Admin sections" });
-    await expect(sidebar.getByRole("link", { name: /^Checkout/ })).toHaveText("Checkout2 approvals waiting");
+    await expect(sidebar.getByRole("link", { name: "Checkout", exact: true })).toHaveText("Checkout");
+    await expect(page.locator("[data-approval-count]")).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "Business", exact: true })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole("link", { name: "Marketing" })).toHaveCount(0);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    const tabBar = page.locator("nav.md\\:hidden");
+    await expect(tabBar.locator("a, button")).toHaveText(["Chats", "Hotel (Hotel bookings)", "Spa (Staff bookings)", "Checkout", "Menu"]);
   });
 });

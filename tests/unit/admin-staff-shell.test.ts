@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 // The real shell with staff access from staffAccess.myAccess; auth, transport and router are mocked.
 import type { Window as HappyDOMWindow } from 'happy-dom';
-import { act, createElement } from 'react';
+import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
@@ -16,7 +16,12 @@ const state = vi.hoisted(() => ({
   replace: vi.fn(),
   claim: vi.fn(async () => null),
 }));
-vi.mock('@clerk/nextjs', () => ({ useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }), UserButton: () => null, SignInButton: () => null }));
+vi.mock('@clerk/nextjs', () => ({
+  useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
+  UserButton: () => null,
+  SignInButton: () => null,
+  SignOutButton: ({ children }: { children: ReactNode }) => children,
+}));
 vi.mock('@/lib/react/convex', () => ({ useOptionalConvex: () => ({}), useOptionalConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }) }));
 vi.mock('convex/react', () => ({
   useQuery: (ref: FunctionReference<'query'>, args: unknown) => {
@@ -40,6 +45,8 @@ const initialViewport = { width: window.innerWidth, height: window.innerHeight }
 const render = () => act(async () => root.render(createElement(AdminShell, null, createElement('p', { id: 'page' }, 'Page'))));
 const as = (role: ShellRole) => { state.access = staffAccessFor(role); };
 const sidebarLinks = () => [...document.querySelectorAll('[data-sidebar="sidebar"] a')].map((a) => a.textContent?.trim());
+const navs = () => document.querySelectorAll('nav[aria-label="Admin sections"], [data-sidebar="sidebar"]');
+const approvals = () => document.querySelector('header [data-testid="approvals-button"]');
 const button = (text: string) => [...document.querySelectorAll('button')].find((b) => b.textContent?.trim() === text);
 
 beforeEach(() => {
@@ -69,33 +76,49 @@ it('sends a cashier from another admin page to checkout without rendering it', a
   await render();
   expect(state.replace).toHaveBeenCalledWith('/admin/checkout');
   expect(document.getElementById('page')).toBeNull();
-  expect(sidebarLinks()).toEqual(['Checkout']);
 });
 
-it('renders checkout for a cashier, with the Cashier badge in the header', async () => {
+it('gives a cashier the till alone: no navigation or approvals, Sign out in the header', async () => {
   as('cashier');
   state.pathname = '/admin/checkout';
   await render();
   expect(state.replace).not.toHaveBeenCalled();
   expect(document.getElementById('page')).not.toBeNull();
   expect(document.querySelector('header [data-testid="cashier-badge"]')?.textContent).toBe('Cashier');
+  expect(navs()).toHaveLength(0);
+  expect(approvals()).toBeNull();
+  expect(document.querySelector('header')?.textContent).toContain('Sign out');
+  expect(document.querySelector('header')?.textContent).not.toContain('Concierge operations');
 });
 
-it('sends a manager from Settings › Team to Settings, and badges Checkout with waiting approvals', async () => {
+it('sends a manager from Settings › Team to Settings, with Approvals and the count in the header', async () => {
   as('manager');
   state.pending = 3;
   state.pathname = '/admin/settings';
   state.tab = 'team';
   await render();
   expect(state.replace).toHaveBeenCalledWith('/admin/settings');
-  expect(document.querySelector('[data-sidebar="sidebar"] [data-approval-count]')?.textContent).toBe('3 approvals waiting');
+  expect(approvals()?.textContent).toBe('Approvals3 waiting');
+  // The nav badge is gone.
+  expect(document.querySelector('[data-sidebar="sidebar"] [data-approval-count]')).toBeNull();
+  expect(document.querySelector('header')?.textContent).not.toContain('Sign out');
 });
 
-it('shows owners the admin as before: every section, no badge or redirect', async () => {
+it('shows a manager Approvals on every page, not only checkout', async () => {
+  as('manager');
+  for (const path of ['/admin/chats', '/admin/hotel', '/admin/questions']) {
+    state.pathname = path;
+    await render();
+    expect(approvals(), path).not.toBeNull();
+  }
+});
+
+it('shows owners every section and Approvals without a count when nothing waits', async () => {
   as('owner');
   await render();
   expect(state.replace).not.toHaveBeenCalled();
   expect(sidebarLinks()).toEqual(['Chats', 'Hotel bookings', 'Staff bookings', 'Checkout', 'Business facts', 'Properties', 'Leads', 'Marketing', 'Settings']);
+  expect(approvals()?.textContent).toBe('Approvals');
   expect(document.querySelector('[data-approval-count]')).toBeNull();
 });
 

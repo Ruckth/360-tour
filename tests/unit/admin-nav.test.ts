@@ -47,13 +47,13 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('puts the daily sections, Search and Menu on the phone tab bar, marking the current one', async () => {
+it('puts the daily sections, Checkout and Menu on the phone tab bar, marking the current one', async () => {
   viewport(360);
   route.pathname = '/admin/hotel';
   await render();
   const labels = [...tabBar().children].map((el) => el.textContent?.trim());
-  expect(labels).toEqual(['Chats', 'Hotel (Hotel bookings)', 'Spa (Staff bookings)', 'Search', 'Menu']);
-  expect(ADMIN_TAB_BAR.map((item) => item.href)).toEqual(['/admin/chats', '/admin/hotel', '/admin/staff/calendar']);
+  expect(labels).toEqual(['Chats', 'Hotel (Hotel bookings)', 'Spa (Staff bookings)', 'Checkout', 'Menu']);
+  expect(ADMIN_TAB_BAR.map((item) => item.href)).toEqual(['/admin/chats', '/admin/hotel', '/admin/staff/calendar', '/admin/checkout']);
   expect(tile(tabBar(), 'Hotel (Hotel bookings)').getAttribute('aria-current')).toBe('page');
   expect(tile(tabBar(), 'Chats').getAttribute('aria-current')).toBeNull();
 });
@@ -66,7 +66,7 @@ it('marks Menu as the way back on sections that are not on the tab bar', async (
   expect(tile(tabBar(), 'Chats').className).not.toContain('bg-sidebar-accent ');
 });
 
-it('opens the full sidebar from Menu, and from Search with its field focused', async () => {
+it('opens the full sidebar from Menu, with search inside it', async () => {
   viewport(360);
   await render();
   await act(async () => tile(tabBar(), 'Menu').click());
@@ -75,10 +75,10 @@ it('opens the full sidebar from Menu, and from Search with its field focused', a
     [...drawer()!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.trim() === 'Close')!.click();
   });
   expect(drawer()).toBeNull();
-  await act(async () => tile(tabBar(), 'Search').click());
-  expect(drawer()).toBeTruthy();
-  // The field is focused two animation frames after the drawer opens.
-  await vi.waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Search admin pages'));
+  // Search left the tab bar for Checkout; the drawer still has the field.
+  expect(tile(tabBar(), 'Search')).toBeUndefined();
+  await act(async () => tile(tabBar(), 'Menu').click());
+  expect(drawer()!.querySelector('[aria-label="Search admin pages"]')).toBeTruthy();
 });
 
 it('lists every section, in sidebar order, on the iPad rail', async () => {

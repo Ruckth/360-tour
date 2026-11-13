@@ -115,8 +115,9 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   await expect(card).toContainText("“Shortened treatment”");
   await expect(card).toContainText("Order #1043 · Net received ฿1,800 → ฿1,500");
   await card.getByRole("button", { name: "Approve" }).click();
-  await expect(panel.getByRole("status").first()).toHaveText("Approved · Order #1043");
-  await page.keyboard.press("Escape");
+  // The last request: the panel closes and the toast says what happened.
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByTestId("toast")).toHaveText("Approved refund ฿300 · Thai massage 60 on #1043");
 
   await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
   await expect(receipt(page).getByTestId("receipt-net")).toHaveText("Net฿1,500");
