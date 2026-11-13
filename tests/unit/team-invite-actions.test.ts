@@ -61,10 +61,16 @@ const pick = (node: HTMLSelectElement, value: string) =>
     node.dispatchEvent(new Event("change", { bubbles: true }));
   });
 const render = () => act(async () => root.render(createElement(TeamSettings)));
+/** Roles show as text; Change opens the person's two selects. */
+const change = (el: HTMLElement) => act(async () => el.querySelector<HTMLButtonElement>('button[aria-label^="Change roles for"]')!.click());
 
 it("gives each person a Desk and a Marketing role, with Marketing Manager shown as Lead", async () => {
   await render();
   const sun = row(marketer.email);
+  expect(sun.querySelector("select")).toBeNull();
+  expect(sun.querySelector('[data-testid="team-roles"]')!.textContent).toBe("Marketing Lead");
+  expect(row(active.email).querySelector('[data-testid="team-roles"]')!.textContent).toBe("Cashier");
+  await change(sun);
   expect(select(sun, "Desk role").value).toBe("");
   expect(select(sun, "Marketing role").value).toBe("manager");
   expect([...select(sun, "Marketing role").options].map((o) => o.text)).toEqual(["Lead", "Marketer", "Finance", "Viewer", "None"]);
@@ -76,30 +82,33 @@ it("gives each person a Desk and a Marketing role, with Marketing Manager shown 
 
 it("grants Marketing access from the row, through the unchanged Marketing mutation", async () => {
   await render();
+  await change(row(active.email));
   await pick(select(row(active.email), "Marketing role"), "marketer");
   expect(mocks.calls).toEqual([["marketingAccess:setGrant", { email: active.email, role: "marketer" }]]);
-  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited mint@auraliscove.co to Marketing as Marketer.");
+  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited Mint to Marketing as Marketer.");
   expect(mocks.confirm).not.toHaveBeenCalled();
 });
 
 it("asks before removing either role, and leaves the other alone", async () => {
   await render();
   mocks.confirm.mockResolvedValueOnce(false);
+  await change(row(marketer.email));
   await pick(select(row(marketer.email), "Marketing role"), "");
   expect(mocks.calls).toEqual([]);
+  await change(row(active.email));
   await pick(select(row(active.email), "Desk role"), "");
-  expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Remove mint@auraliscove.co from the desk?", destructive: true }));
+  expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Remove Mint from the desk?", cancelLabel: "Keep access", destructive: true }));
   expect(mocks.calls).toEqual([["staffAccess:setGrant", { email: active.email, role: null }]]);
 });
 
 it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
   await render();
-  expect(buttonsIn(row(pending.email))).toEqual(["More for lek@auraliscove.co"]);
-  expect(buttonsIn(row(expired.email))).toEqual(["Renew"]);
-  expect(buttonsIn(row(active.email))).toEqual([]);
+  expect(buttonsIn(row(pending.email))).toEqual(["Change roles for Lek", "More for Lek"]);
+  expect(buttonsIn(row(expired.email))).toEqual(["Renew", "Change roles for May"]);
+  expect(buttonsIn(row(active.email))).toEqual(["Change roles for Mint"]);
   await act(async () => [...row(expired.email).querySelectorAll("button")][0].click());
   expect(mocks.calls).toEqual([["staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
-  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for may@auraliscove.co.");
+  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for May.");
 });
 
 it("invites with a Desk role, a Marketing role, or both", async () => {

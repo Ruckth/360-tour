@@ -15,6 +15,13 @@ const SIZES = { ipad: { width: 1180, height: 820 }, phone: { width: 390, height:
  */
 const BEFORE_GRANT_MARKETING = { taps: 4, fields: 1, pageChanges: 1 } as const;
 
+/**
+ * Round 2 (docs/reviews/ux-audit/r2-admin.md), measured on the same fixture before the change:
+ * People held 8 native selects (2 per person) and 11 controls; on the phone the discount limit
+ * started below the fold (1 scroll to reach it, 1 more to reach Save).
+ */
+const BEFORE_R2 = { selects: 8, peopleControls: 11, phoneLimitScrolls: 2 } as const;
+
 async function open(page: Page, query: string) {
   await page.goto(`/tests/browser/staff-roles.html${query}`);
   await page.locator("[data-fixture-ready]").waitFor();
@@ -47,18 +54,59 @@ for (const [size, viewport] of Object.entries(SIZES)) {
   test.describe(`Settings › Team (${size})`, () => {
     test.use({ viewport });
 
-    test("grant Marketing access: 2 taps, no typing, same page", async ({ page }) => {
+    test("grant Marketing access: Change, then the role (3 taps), no typing, same page", async ({ page }) => {
       await open(page, "?view=settings&tab=team");
       const people = page.getByRole("region", { name: "People" });
       const run = recorder(page);
-      await run.pick(people.getByRole("combobox", { name: "Marketing role for mint@auraliscove.co" }), "marketer");
-      await expect(people.getByRole("status")).toHaveText("Invited mint@auraliscove.co to Marketing as Marketer.");
+      await run.tap(people.getByRole("button", { name: "Change roles for Mint" }));
+      await run.pick(people.getByRole("combobox", { name: "Marketing role for Mint" }), "marketer");
+      await expect(people.getByRole("status")).toHaveText("Invited Mint to Marketing as Marketer.");
       expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "marketer" });
-      await expect(people.getByRole("combobox", { name: "Marketing role for mint@auraliscove.co" })).toHaveValue("marketer");
-      await expect(people.getByTestId("team-person").filter({ hasText: "mint@" })).toContainText("Marketing: Invited · expires");
+      const mint = people.getByTestId("team-person").filter({ hasText: "mint@" });
+      await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Marketer");
+      await expect(mint).toContainText("Marketing: Invited · expires");
       expect(await page.locator("body").getAttribute("data-navigation")).toBeNull();
-      expect(run.counts).toEqual({ taps: 2, fields: 0, scrolls: 0 });
+      expect(run.counts).toEqual({ taps: 3, fields: 0, scrolls: 0 });
       expect(run.counts.taps).toBeLessThan(BEFORE_GRANT_MARKETING.taps);
+    });
+
+    test("people show names, roles as text and one Change each; no selects until asked", async ({ page }) => {
+      await open(page, "?view=settings&tab=team");
+      const people = page.getByRole("region", { name: "People" });
+      await expect(people.getByTestId("team-person")).toHaveCount(5);
+      await expect(people.getByRole("combobox")).toHaveCount(0);
+      expect(BEFORE_R2.selects).toBe(8);
+      await expect(people.getByRole("button", { name: /^Change roles for / })).toHaveText(Array(4).fill("Change"));
+      // ⓘ, Invite, 4 × Change and the pending invite's ⋯ (was ⓘ, Invite, 8 selects and ⋯ = 11).
+      const controls = await people.evaluate((el) => el.querySelectorAll("button, select, a[href], input:not([type=hidden])").length);
+      expect(controls).toBe(7);
+      expect(controls).toBeLessThan(BEFORE_R2.peopleControls);
+      const lek = people.getByTestId("team-person").first().locator("p");
+      await expect(lek.nth(0)).toHaveText("Lek");
+      await expect(lek.nth(1)).toHaveText("lek@auraliscove.co");
+      await people.getByRole("button", { name: "Change roles for Ploy" }).click();
+      await expect(people.getByRole("combobox")).toHaveCount(2);
+      await expect(people.getByRole("combobox", { name: "Desk role for Ploy" })).toHaveValue("manager");
+      await expect(people.getByRole("combobox", { name: "Marketing role for Ploy" })).toHaveValue("viewer");
+    });
+
+    test("the discount limit and its Save are on screen at the start, no scroll", async ({ page }) => {
+      await open(page, "?view=settings&tab=team");
+      const rules = page.getByRole("form", { name: "Rules for all cashiers" });
+      const run = recorder(page);
+      const limit = rules.getByRole("textbox", { name: "Discount without approval" });
+      await expect(limit).toBeInViewport({ ratio: 1 });
+      await limit.fill("15");
+      await run.tap(rules.getByRole("button", { name: "Save", exact: true }));
+      await expect(rules.getByRole("status")).toHaveText("Saved");
+      expect(run.counts.scrolls).toBe(0);
+      if (size === "phone") expect(run.counts.scrolls).toBeLessThan(BEFORE_R2.phoneLimitScrolls);
+    });
+
+    test("cashier rules are named like the actions they gate", async ({ page }) => {
+      await open(page, "?view=settings&tab=team");
+      const names = await page.getByRole("form", { name: "Rules for all cashiers" }).getByRole("switch").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")));
+      expect(names).toEqual(["Refund needs manager", "Void needs manager", "Custom price needs manager", "Correct payment needs manager"]);
     });
 
     test("the Team tab starts on screen", async ({ page }) => {
@@ -74,11 +122,12 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const rules = page.getByRole("form", { name: "Rules for all cashiers" });
       // Scroll so only the first rows of the rules show at the bottom of the screen.
       await rules.evaluate((el) => window.scrollBy({ top: el.getBoundingClientRect().top - window.innerHeight + 200, behavior: "instant" }));
-      const formTop = (await rules.boundingBox())!.y;
-      expect(formTop).toBeGreaterThan(viewport.height - 260);
+      // With the roles as text the page may be too short to push the rules that far down; when it can, it does.
+      const scrollable = await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight > 200);
+      if (scrollable) expect((await rules.boundingBox())!.y).toBeGreaterThan(viewport.height - 260);
       const bar = (await rules.getByTestId("rules-save-bar").boundingBox())!;
       expect(bar.y + bar.height).toBeLessThanOrEqual(viewport.height + 1);
-      await expect(rules.getByRole("button", { name: "Save rules" })).toBeInViewport();
+      await expect(rules.getByRole("button", { name: "Save", exact: true })).toBeInViewport();
     });
   });
 }
@@ -97,7 +146,9 @@ test.describe("Settings panels", () => {
       await open(page, `?view=settings&tab=${tab}`);
       const panel = page.getByRole("region", { name: title });
       await expectAtMostSentences(panel, 1);
-      const save = panel.getByRole("button", { name: `Save ${title.toLowerCase()}` });
+      const save = panel.getByRole("button", { name: "Save", exact: true });
+      // Deleted villa history lives on Properties, not under every Settings tab.
+      await expect(page.getByText("Deleted villa history")).toHaveCount(0);
       await expect(save).toBeDisabled();
       const field = panel.locator("input:not([type=hidden]), textarea").first();
       const value = await field.inputValue();

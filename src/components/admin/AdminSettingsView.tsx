@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
-import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
+import { HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
 import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
@@ -32,6 +32,7 @@ import { StatusBadge } from "./StatusBadge";
 import { useStaffAccess } from "./staff-access";
 import { TeamSettings } from "./TeamSettings";
 import { sourceLabel } from "./labels";
+import { personLabel } from "./person-label";
 import { TONES, statusMeta, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
@@ -104,7 +105,6 @@ export function AdminSettingsView() {
           <SettingsForm key={tab} section="email" settings={settings} readOnly={readOnly} />
         )}
       </div>
-      <HistoryDisclosure label="Deleted villa history"><ConfigurationHistoryRecords /></HistoryDisclosure>
     </div>
   );
 }
@@ -379,7 +379,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
           {readOnly ? null : (
             <Button type="submit" disabled={state.saving || !dirty}>
               {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
-              Save {config.title.toLowerCase()}
+              Save
             </Button>
           )}
           <span role="status" className="text-sm text-muted-foreground">
@@ -389,7 +389,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
                 Saved
               </span>
             ) : settings.updatedAt ? (
-              `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${settings.updatedByEmail}` : ""}`
+              `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}`
             ) : (
               "Using built-in defaults"
             )}
