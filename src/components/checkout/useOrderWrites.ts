@@ -6,7 +6,7 @@ import type { OrderId } from "./backend";
 
 /**
  * Runs an order write in order; the task gets its sale's order id (undefined before the first item).
- * `then` runs after it succeeds, only if that sale is still on screen (e.g. leaving an order after Save & close).
+ * `then` runs after it succeeds, only if that sale is still on screen (e.g. closing the customer dialog after a link).
  */
 export type Run = (task: (orderId: OrderId | undefined) => Promise<unknown>, then?: () => void) => Promise<boolean>;
 

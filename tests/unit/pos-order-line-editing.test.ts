@@ -110,11 +110,11 @@ describe("editing a changed price", () => {
 describe("write errors and order switches", () => {
   it("drops a failed write's banner when the cashier moves on to a new order", async () => {
     const base = createFixtureBackend();
-    const actions = { ...base.useActions(), saveOrder: () => Promise.reject(new Error("Network down")) };
+    const actions = { ...base.useActions(), addItem: () => Promise.reject(new Error("Network down")) };
     const backend: CheckoutBackend = { ...base, useActions: () => actions };
     await show(backend, await orderWithGift(base));
 
-    await click(inPanel("Save & close"));
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent?.trim().startsWith("Foot spa 45")));
     await settle();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("Network down");
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, Save, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
+import { ChevronDown, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -77,7 +77,6 @@ export function OrderPanel({
   catalog,
   run,
   busy = false,
-  onSaved,
   onPaid,
   onClose,
 }: {
@@ -87,8 +86,6 @@ export function OrderPanel({
   run: Run;
   /** Order writes are still saving (the coupon field waits for them). */
   busy?: boolean;
-  /** After Save & close, with the saved order's title. */
-  onSaved: (title: string) => void;
   onPaid: (orderId: OrderId) => void;
   onClose?: () => void;
 }) {
@@ -116,12 +113,6 @@ export function OrderPanel({
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
   const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
   const staffDiscount = round2(totals.discount - totals.coupon);
-
-  async function saveAndClose() {
-    if (!orderId) return;
-    // Leaves the order only if it is still the one on screen when saving finishes.
-    await run(() => actions.saveOrder({ orderId }), () => onSaved(title));
-  }
 
   async function clear() {
     setConfirm(null);
@@ -163,16 +154,13 @@ export function OrderPanel({
                 <TicketPercent aria-hidden className="size-4" />
               </Button>
             ) : null}
-            <Button variant="outline" className="h-auto min-h-10 max-w-full rounded-xl whitespace-normal" onClick={saveAndClose} disabled={!itemCount} title="Keep this unpaid order and start a new one. Reopen it from Orders.">
-              <Save aria-hidden className="size-3.5" /> Save &amp; close
-            </Button>
             <MoreMenu
               label="More order actions"
               className="size-9 rounded-xl"
               disabled={!orderId || !itemCount}
               items={[
                 { label: "Clear order", onSelect: () => setConfirm("clear") },
-                // Cashiers can't list orders, so they couldn't restore one they discard.
+                // Cashiers' Orders list only open orders, so they couldn't restore one they discard.
                 { label: "Discard order…", destructive: true, hidden: !access.capabilities.orders, onSelect: () => setConfirm("discard") },
               ]}
             />

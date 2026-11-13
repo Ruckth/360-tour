@@ -66,7 +66,6 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const updateSourceLine = useMutation(api.pos.updateSourceLine);
     const linkCustomer = useMutation(api.pos.linkCustomer);
     const unlinkCustomer = useMutation(api.pos.unlinkCustomer);
-    const saveOrder = useMutation(api.pos.saveOrder);
     const clearOrder = useMutation(api.pos.clearOrder);
     const settleOrder = useMutation(api.pos.settleOrder);
     const amendOrderPayment = useMutation(api.pos.amendOrderPayment);
@@ -91,11 +90,11 @@ export const convexCheckoutBackend: CheckoutBackend = {
     return useMemo(
       () => ({
         noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
-        linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
+        linkCustomer, unlinkCustomer, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
         applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, linkPaidLine, unlinkPaidLine, refundLine,
         createOrder, createApproval, approveApproval, rejectApproval, cancelApproval,
       }),
-      [createOrder, createApproval, approveApproval, rejectApproval, cancelApproval, noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine, refundLine],
+      [createOrder, createApproval, approveApproval, rejectApproval, cancelApproval, noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine, refundLine],
     );
   },
 };

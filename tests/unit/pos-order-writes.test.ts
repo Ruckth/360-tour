@@ -83,17 +83,18 @@ describe("checkout order screen", () => {
     expect(document.body.textContent).not.toMatch(/walk-?in/i);
   });
 
-  it("saves and closes an order, then reopens it from Orders with its items", async () => {
+  it("keeps an order when New order starts the next one, and reopens it from Orders with its items", async () => {
     vi.useFakeTimers();
     const backend = createFixtureBackend();
     await showPage(backend);
     await act(async () => buttonStarting("Foot spa 45").click());
     await settle();
     const saved = shown.orderId!;
-    await act(async () => button("Save & close").click());
+    // Every change is saved as it is made, so there is no separate Save & close.
+    expect(button("Save & close")).toBeUndefined();
+    await act(async () => button("New order").click());
     await settle();
     expect(shown.orderId).toBeNull();
-    expect(document.querySelector('[role="status"]')?.textContent).toContain("Order #1043 saved");
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
 
     await act(async () => button("Orders").click());
@@ -203,8 +204,8 @@ describe("checkout order screen", () => {
     expect(byLabel("Unpaid orders").textContent).not.toContain("Order #1041");
     await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 
-    // Save & close, reopen from Orders: same order, same booking.
-    await act(async () => button("Save & close").click());
+    // Start a new order, reopen this one from Orders: same order, same booking.
+    await act(async () => button("New order").click());
     await settle();
     expect(shown.orderId).toBeNull();
     await act(async () => button("Orders").click());
@@ -284,24 +285,6 @@ describe("checkout order screen", () => {
     await settle();
     expect(settleOrder).toHaveBeenCalledOnce();
     expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: change === "total" ? 1050 : 1000, expectedRevision: 2 }));
-  });
-
-  it("doesn't re-arm an open payment when the order is only saved elsewhere", async () => {
-    vi.useFakeTimers();
-    const backend = createFixtureBackend();
-    const actions = backend.useActions();
-    const { orderId } = await create(backend);
-    const settleOrder = vi.spyOn(actions, "settleOrder");
-    await showOrder(backend, orderId);
-    await act(async () => button("Card").click());
-    const save = actions.saveOrder({ orderId });
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); await save; });
-    // Saving changed nothing on the order, so the payment the cashier reviewed is still valid.
-    expect(document.querySelector('[role="alert"]')).toBeNull();
-    await act(async () => button("Confirm ฿1,000 received").click());
-    await settle();
-    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1, expectedDue: 1000 }));
-    await expect(settleOrder.mock.results[0].value).resolves.toMatchObject({ replayed: false });
   });
 
   it("starts a fresh payment when another order with the same total is opened (C5-01)", async () => {
@@ -405,7 +388,7 @@ describe("checkout order writes", () => {
     expect(seen).toEqual([B]);
   });
 
-  it("doesn't leave the order opened while Save & close was still saving (C4-08)", async () => {
+  it("doesn't run a write's follow-up once another order was opened while it was saving (C4-08)", async () => {
     const B = "order-b" as OrderId;
     await render(A);
     const saving = deferred<null>();
@@ -417,7 +400,7 @@ describe("checkout order writes", () => {
     await act(async () => { await save; });
     expect(left).toEqual([]);
     expect(changes).toEqual([B]);
-    // Saving the order that is still on screen does leave it.
+    // A write on the order still on screen runs its follow-up.
     await act(async () => { await writes.run(async () => null, () => left.push("B")); });
     expect(left).toEqual(["B"]);
   });
