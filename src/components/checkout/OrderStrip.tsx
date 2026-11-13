@@ -278,7 +278,7 @@ function CustomerPicker({
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {/* A failed search stays in this dialog with a retry; the order on screen is untouched. */}
       <InlineErrorBoundary resetKey={deferred.trim()} message={SEARCH_FAILED}>
-        <CustomerResults query={deferred} currentId={current?._id} disabled={linking} onPick={pick} />
+        <CustomerResults query={deferred} currentId={current?._id} disabled={linking} onPick={pick} onOpenArchived={cashier ? undefined : setProfileId} />
       </InlineErrorBoundary>
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" onClick={() => setForm(fromQuery())}>
@@ -294,8 +294,11 @@ function CustomerPicker({
   );
 }
 
-/** Active customers only; tapping one links them. Archived profiles stay linked to their orders. */
-function CustomerResults({ query, currentId, disabled, onPick }: { query: string; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void }) {
+/**
+ * Active customers; tapping one links them. When nothing active matches, managers also see archived
+ * matches, which open the profile to restore (so nobody adds the same guest twice).
+ */
+function CustomerResults({ query, currentId, disabled, onPick, onOpenArchived }: { query: string; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpenArchived?: (id: CustomerId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, false);
   const typed = query.trim();
   return (
@@ -315,7 +318,25 @@ function CustomerResults({ query, currentId, disabled, onPick }: { query: string
       ))}
       {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : "Type a name, phone or email."}</li> : null}
     </ul>
-    {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}</>
+    {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}
+    {onOpenArchived && status === "Exhausted" && results.length === 0 && typed.length >= 2 ? <ArchivedMatches query={query} disabled={disabled} onOpen={onOpenArchived} /> : null}</>
+  );
+}
+
+function ArchivedMatches({ query, disabled, onOpen }: { query: string; disabled: boolean; onOpen: (id: CustomerId) => void }) {
+  const { results } = useCheckoutBackend().useCustomerPage(query, true);
+  if (!results.length) return null;
+  return (
+    <ul className="grid gap-1" aria-label="Archived customers">
+      {results.slice(0, 5).map((customer) => (
+        <li key={customer._id}>
+          <button type="button" disabled={disabled} onClick={() => onOpen(customer._id)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-muted disabled:opacity-60">
+            <CustomerLabel customer={customer} />
+            <span className="shrink-0 text-xs text-muted-foreground">Archived · Restore…</span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
