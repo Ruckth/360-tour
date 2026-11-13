@@ -1,3 +1,4 @@
+import { displaysClaimLinkResult, displaysStartPairingResult, displaysReleaseDisplayResult, displaysCurrentResult, displaysHeartbeatResult } from './validators';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -38,6 +39,7 @@ export const createPairLink = staffMutation({
  * deleted on a successful claim if it is still pending (as in startPairing; an active row is never touched).
  */
 export const claimLink = publicMutation({
+  returns: displaysClaimLinkResult,
   reason: "One-use expiring pairing link; generation, replay and rate-limit checks stay in the handler.",
 	args: { secret: v.string(), deviceName: v.optional(v.string()), previousToken: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ ok: true; token: string } | { ok: false; code: 'LINK_INVALID' }> => {
@@ -66,6 +68,7 @@ export const claimLink = publicMutation({
  * (`status: 'active'`); if still pending, its row is replaced, so refreshes leave no orphans.
  */
 export const startPairing = publicMutation({
+  returns: displaysStartPairingResult,
   reason: "Anonymous pairing bootstrap; rate limited, no order data returned.",
 	args: { deviceName: v.optional(v.string()), previousToken: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ status: 'active' } | { status: 'pending'; token: string; code: string; expiresAt: number }> => {
@@ -174,6 +177,7 @@ export const renewDriverLease = staffMutation({
  * newer publish or another tab's take-over.
  */
 export const releaseDisplay = publicMutation({
+  returns: displaysReleaseDisplayResult,
   reason: "Sign-out cleanup capability; matching driver and lease may only clear the display.",
 	args: { clientId: v.string(), leaseId: v.string() },
 	handler: async (ctx, args) => {
@@ -203,6 +207,7 @@ export const expireLease = internalMutation({
 
 /** Public: what the display shows. Read-only, and returns only the customer-facing projection. */
 export const current = deviceQuery({
+  returns: displaysCurrentResult,
 	args: { token: v.string() },
 	handler: async (ctx): Promise<DisplayState> => {
 		const display = ctx.device;
@@ -216,6 +221,7 @@ export const current = deviceQuery({
 
 /** Public: every 30s from an active display. Writes only `displayPresence`. */
 export const heartbeat = deviceMutation({
+  returns: displaysHeartbeatResult,
 	args: { token: v.string() },
 	handler: async (ctx) => {
 		const display = ctx.device;

@@ -1,3 +1,4 @@
+import { leadsSaveResult } from './validators';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { adminMutation, adminQuery, publicMutation } from '../auth/model';
@@ -14,6 +15,7 @@ const leadSource = v.union(
 const EXPORT_LIMIT = 5000;
 
 export const save = publicMutation({
+  returns: leadsSaveResult,
   reason: "Anonymous contact capture with validated email and rate limits.",
 	args: {
 		propertyId: v.optional(v.id('properties')),

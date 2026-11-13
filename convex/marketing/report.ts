@@ -1,3 +1,4 @@
+import { reportNoteCouponRefusalResult } from './validators';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { marketingMutation, marketingQuery, publicMutation } from '../auth/model';
@@ -97,6 +98,7 @@ export const couponRefusals = marketingQuery({
 
 /** Public diagnostics: invalid inputs, unauthorised staff surfaces and excess traffic are dropped. */
 export const noteCouponRefusal = publicMutation({
+  returns: reportNoteCouponRefusalResult,
   reason: "Anonymous booking diagnostics; staff surfaces separately authorize and otherwise drop.",
 	args: { code: v.string(), problem: couponRefusalProblemValidator, surface: couponRefusalSurfaceValidator },
 	handler: async (ctx, args): Promise<null> => {

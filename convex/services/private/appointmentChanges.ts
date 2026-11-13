@@ -1,3 +1,6 @@
+import { mergedStream, stream, type QueryStream } from 'convex-helpers/server/stream';
+import type { PaginationOptions } from 'convex/server';
+import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { appointmentRevision } from '../../shared/appointmentWindow';
@@ -58,14 +61,14 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 		guestEmail: 'guestEmail' in patch ? patch.guestEmail : appointment.guestEmail
 	});
 	await ctx.db.patch(appointment._id, { ...patch, ...lookup, revision: appointmentRevision(appointment) + 1 });
-	await ctx.db.insert('appointmentChanges', {
+	const audit = {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
 		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,
 		...(entry.reason ? { reason: entry.reason } : {}), changes: [...changes,
 			...(entry.effectiveAt !== undefined ? [{ field: 'effectiveAt', from: null, to: effectiveAt }] : []),
 			...(entry.warnings ?? []).map(warning => ({ field: 'warning', from: null, to: warning }))]
-	});
-	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: appointment._id, actor: entry.actor, kind: entry.kind, effectiveAt,
+	};
+	await appendRecordHistory(ctx, { appointmentAudit: audit, entityType: 'appointment', entityId: appointment._id, actor: entry.actor, kind: entry.kind, effectiveAt,
 		...(entry.reason ? { reason: entry.reason } : {}),
 		before: Object.fromEntries(changes.map(change => [change.field, change.from])),
 		after: { ...Object.fromEntries(changes.map(change => [change.field, change.to])), ...(entry.warnings?.length ? { warnings: entry.warnings } : {}) }
@@ -83,17 +86,29 @@ export async function cancelAppointmentRecord(ctx: MutationCtx, appointment: App
 
 /** Notes on the original that it was booked again; the original record itself is left as it was. */
 export async function recordRebooked(ctx: MutationCtx, original: Appointment, confirmationCode: string, actor: string) {
-	await ctx.db.insert('appointmentChanges', {
-		appointmentId: original._id, at: Date.now(), actor, kind: 'rebooked',
+	const audit = {
+		appointmentId: original._id, at: Date.now(), actor, kind: 'rebooked' as const,
 		currencyBefore: original.currency, currencyAfter: original.currency,
 		changes: [{ field: 'rebookedAs', from: null, to: confirmationCode }]
-	});
-	await appendRecordHistory(ctx, { entityType: 'appointment', entityId: original._id, actor, kind: 'rebooked', after: { rebookedAs: confirmationCode } });
+	};
+	await appendRecordHistory(ctx, { appointmentAudit: audit, entityType: 'appointment', entityId: original._id, actor, kind: 'rebooked', after: { rebookedAs: confirmationCode } });
+}
+
+export type AppointmentHistoryEntry = Omit<Doc<'appointmentChanges'>, '_id'> & { _id: Id<'appointmentChanges'> | Id<'recordChanges'> };
+
+function historyStream(ctx: QueryCtx | MutationCtx, appointmentId: Id<'appointments'>) {
+  const historical: QueryStream<AppointmentHistoryEntry> = stream(ctx.db, schema).query('appointmentChanges')
+    .withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).order('desc');
+  const canonical: QueryStream<AppointmentHistoryEntry> = stream(ctx.db, schema).query('recordChanges')
+    .withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).order('desc')
+    .map(async row => row.appointmentAudit ? { ...row.appointmentAudit, _id: row._id, _creationTime: row._creationTime } : null);
+  return mergedStream([historical, canonical], ['at']);
 }
 
 export async function appointmentHistory(ctx: QueryCtx | MutationCtx, appointmentId: Id<'appointments'>) {
-	return await ctx.db.query('appointmentChanges')
-		.withIndex('by_appointmentId_and_at', (q) => q.eq('appointmentId', appointmentId))
-		.order('desc')
-		.take(HISTORY_LIMIT);
+  return await historyStream(ctx, appointmentId).take(HISTORY_LIMIT);
+}
+
+export async function appointmentHistoryPage(ctx: QueryCtx | MutationCtx, appointmentId: Id<'appointments'>, options: PaginationOptions) {
+  return await historyStream(ctx, appointmentId).paginate(options);
 }

@@ -1,3 +1,4 @@
+import { patchChannelEvent } from './inboxProjection';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -34,7 +35,7 @@ export async function scheduleNext(ctx: MutationCtx, sessionId?: Id<'conversatio
 }
 
 export async function reconcile(ctx: MutationCtx, event: Doc<'channelEvents'>, reason: string) {
-  await ctx.db.patch(event._id, { status: 'reconciliation', dispatchState: event.deliveryStartedAt ? 'uncertain' : event.dispatchState,
+  await patchChannelEvent(ctx, event._id, { status: 'reconciliation', dispatchState: event.deliveryStartedAt ? 'uncertain' : event.dispatchState,
     error: reason, processedAt: Date.now(), updatedAt: Date.now(), claimToken: undefined, leaseExpiresAt: undefined });
   if (event.sessionId) {
     await sendFailed(ctx, event.sessionId, event.userMessageId, reason);

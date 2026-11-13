@@ -6,7 +6,6 @@ import { seedRooms } from './seeds/rooms';
 import { seedReviews } from './seeds/reviews';
 import { seedTourSnippets } from './seeds/tourSnippets';
 import { seedStaffServicesData } from './seeds/staffServices';
-import { recomputeSocialProof } from '../catalog/model';
 import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking } from '../bookings/model';
 
 
@@ -35,7 +34,6 @@ export async function seedScenario(ctx: MutationCtx, name: ScenarioName) {
   await seedRooms(ctx, properties);
   await seedReviews(ctx, properties);
   await seedTourSnippets(ctx, properties);
-  for (const propertyId of Object.values(properties)) await recomputeSocialProof(ctx, propertyId);
   await seedStaffServicesData(ctx);
   const { revision, ...rules } = DEFAULT_CASHIER_RULES;
   await ctx.db.insert('cashierRules', { key: 'default', ...rules, revision, updatedAt: now, updatedByEmail: 'system:seed' });

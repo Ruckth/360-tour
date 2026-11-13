@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
-import { appointmentHistory } from './private/appointmentChanges';
+import { appointmentHistory, appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
 import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, findOpenSlots as openSlots, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
@@ -186,7 +186,7 @@ export const listAppointmentHistoryPage = adminQuery({
 	args: { appointmentId: v.id('appointments'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		assertPageSize(args.paginationOpts.numItems);
-		return await ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', args.appointmentId)).order('desc').paginate(args.paginationOpts);
+		return await appointmentHistoryPage(ctx, args.appointmentId, args.paginationOpts);
 	}
 });
 

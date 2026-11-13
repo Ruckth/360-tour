@@ -1,3 +1,4 @@
+import { publicPropertiesListResult, publicPropertiesGetBySlugResult, publicPropertiesFeaturedReviewsResult } from './validators';
 import { type QueryCtx, publicQuery } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
@@ -61,6 +62,7 @@ function publicReview(review: Doc<'reviews'>, propertySlug: string) {
  * database, which is when the site falls back to its bundled demo content.
  */
 export const list = publicQuery({
+  returns: publicPropertiesListResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: {},
 	handler: async (ctx) => {
@@ -78,6 +80,7 @@ export const list = publicQuery({
 
 /** One active villa with its newest reviews, or null for unknown, draft and archived villas. */
 export const getBySlug = publicQuery({
+  returns: publicPropertiesGetBySlugResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { slug: v.string() },
 	handler: async (ctx, args) => {
@@ -99,6 +102,7 @@ export const getBySlug = publicQuery({
 
 /** Highest-rated reviews across active villas, for the home page. */
 export const featuredReviews = publicQuery({
+  returns: publicPropertiesFeaturedReviewsResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {

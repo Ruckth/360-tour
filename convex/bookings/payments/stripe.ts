@@ -1,3 +1,4 @@
+import { stripeCreateCheckoutResult } from '../validators';
 import { v } from 'convex/values';
 import { internal } from '../../_generated/api';
 import { adminMutation, internalMutation, type MutationCtx, publicAction } from '../../auth/model';
@@ -152,6 +153,7 @@ export const expireCheckout = internalMutation({
 });
 
 export const createCheckout = publicAction({
+  returns: stripeCreateCheckoutResult,
   reason: "Booking access-token capability; internal beginCheckout validates the specific payable booking.",
   args: { bookingId: v.id('bookings'), accessToken: v.string() },
   handler: async (ctx, args): Promise<{ url: string }> => {

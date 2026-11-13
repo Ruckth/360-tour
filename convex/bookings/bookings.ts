@@ -1,3 +1,4 @@
+import { bookingsQuoteStayResult, bookingsCreateResult, bookingsGetByIdResult, bookingsGetConfirmProposalResult, bookingsConfirmProposalResult } from './validators';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -56,6 +57,7 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 }
 
 export const quoteStay = publicQuery({
+  returns: bookingsQuoteStayResult,
   reason: "Anonymous booking quote from the public property catalogue.",
 	args: {
 		propertySlug: v.string(),
@@ -86,6 +88,7 @@ export const quoteStay = publicQuery({
 });
 
 export const create = publicMutation({
+  returns: bookingsCreateResult,
   reason: "Anonymous booking form; validated contact details and booking rate limits.",
 	args: {
 		propertySlug: v.string(),
@@ -147,6 +150,7 @@ export const markPaidFromTrustedWebhook = internalMutation({
 });
 
 export const getById = publicQuery({
+  returns: bookingsGetByIdResult,
   reason: "Booking capability token or operations identity; handler checks the specific booking.",
 	args: { id: v.id('bookings'), accessToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
@@ -441,6 +445,7 @@ async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
 }
 
 export const getConfirmProposal = publicQuery({
+  returns: bookingsGetConfirmProposalResult,
   reason: "Signed, expiring proposal link; handler verifies signature and live proposal.",
 	args: { token: v.string() },
 	handler: async (ctx, args) => {
@@ -471,6 +476,7 @@ export const getConfirmProposal = publicQuery({
 });
 
 export const confirmProposal = publicMutation({
+  returns: bookingsConfirmProposalResult,
   reason: "Signed, expiring proposal link; handler revalidates quote and proposal before confirmation.",
 	args: {
 		token: v.string(),

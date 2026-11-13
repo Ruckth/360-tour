@@ -1,9 +1,11 @@
+import { publicServicesCategoriesResult, publicServicesListResult, publicServicesGetBySlugResult } from './validators';
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internalQuery, publicQuery } from '../auth/model';
 import { catalogCategory, catalogFilter, publicService, serviceCategories, serviceQuery } from './private/serviceCatalog';
 
 export const categories = publicQuery({
+  returns: publicServicesCategoriesResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
   args: { after: v.optional(v.string()) },
   handler: (ctx, args) =>
@@ -11,6 +13,7 @@ export const categories = publicQuery({
 });
 
 export const list = publicQuery({
+  returns: publicServicesListResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
   args: {
     category: v.optional(v.string()),
@@ -27,6 +30,7 @@ export const list = publicQuery({
 });
 
 export const getBySlug = publicQuery({
+  returns: publicServicesGetBySlugResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {

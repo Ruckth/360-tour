@@ -60,15 +60,11 @@ export async function blockBookingDates(
 }
 
 export async function releaseBookingDates(ctx: MutationCtx, booking: Doc<'bookings'>): Promise<void> {
-	// Every row in range: other feeds' rows on the same nights must not hide this booking's.
-	const maxRows = Math.max(1, nightsBetween(booking.checkIn, booking.checkOut)) * MAX_ROWS_PER_NIGHT;
-	let read = 0;
-	for await (const row of ctx.db.query('availability').withIndex('by_property_date', (q) =>
-		q.eq('propertyId', booking.propertyId).gte('date', booking.checkIn).lt('date', booking.checkOut)
-	)) {
-		if (++read > maxRows) throw new Error(NIGHT_ROWS_ERROR);
-		if (row.bookingId === booking._id) await ctx.db.delete(row._id);
-	}
+	// The owner index includes existing rows automatically; OTA and host blocks are untouched.
+    const maxRows = Math.max(1, nightsBetween(booking.checkIn, booking.checkOut)) * MAX_ROWS_PER_NIGHT;
+    const rows = await ctx.db.query('availability').withIndex('by_bookingId', q => q.eq('bookingId', booking._id)).take(maxRows + 1);
+    if (rows.length > maxRows) throw new Error(NIGHT_ROWS_ERROR);
+    for (const row of rows) await ctx.db.delete(row._id);
 }
 
 /**

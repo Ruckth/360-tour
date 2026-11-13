@@ -1,3 +1,4 @@
+import { usersCurrentResult } from './validators';
 import { authenticatedMutation, publicQuery } from '../auth/model';
 
 export const store = authenticatedMutation({
@@ -42,6 +43,7 @@ export const store = authenticatedMutation({
 });
 
 export const current = publicQuery({
+  returns: usersCurrentResult,
   reason: "Self lookup by authenticated tokenIdentifier, or null when signed out.",
 	args: {},
 	handler: async (ctx) => {
@@ -50,11 +52,13 @@ export const current = publicQuery({
 			return null;
 		}
 
-		return await ctx.db
+		const user = await ctx.db
 			.query("users")
 			.withIndex("by_token", (q) =>
 				q.eq("tokenIdentifier", identity.tokenIdentifier)
 			)
 			.unique();
+        if (!user) return null;
+        return { _id: user._id, _creationTime: user._creationTime, clerkId: user.clerkId, tokenIdentifier: user.tokenIdentifier, email: user.email, name: user.name, imageUrl: user.imageUrl };
 	},
 });

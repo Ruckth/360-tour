@@ -1,3 +1,4 @@
+import { chatSuggestionsNextForSessionResult, chatSuggestionsMarkShownResult, chatSuggestionsMarkClickedResult } from './validators';
 import { ConvexError, v } from 'convex/values';
 import { guestMutation, guestQuery } from '../auth/model';
 import { STATIC_SUGGESTION_KEYS } from '../shared/chatSuggestions';
@@ -12,6 +13,7 @@ const staticSuggestionRefValidator = v.object({
 });
 
 export const nextForSession = guestQuery({
+  returns: chatSuggestionsNextForSessionResult,
 	args: {
 		sessionId: v.id('conversations'),
 		guestToken: v.optional(v.string()),
@@ -48,6 +50,7 @@ export const nextForSession = guestQuery({
 });
 
 export const markShown = guestMutation({
+  returns: chatSuggestionsMarkShownResult,
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestions: v.array(staticSuggestionRefValidator) },
  handler: async (ctx, args) => {
   if (args.suggestions.length > 5) throw new ConvexError('At most 5 suggestions may be tracked per call');
@@ -64,6 +67,7 @@ export const markShown = guestMutation({
 });
 
 export const markClicked = guestMutation({
+  returns: chatSuggestionsMarkClickedResult,
  args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()), suggestion: staticSuggestionRefValidator },
  handler: async (ctx, args) => {
   const now = Date.now();

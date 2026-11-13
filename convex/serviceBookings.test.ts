@@ -196,7 +196,7 @@ describe('AI service booking', () => {
 		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, { ...args, turnStartedAt: Date.now() })).toMatchObject({ state: 'cancelled' });
 		const [cancelled] = await appointments(s.t);
 		expect(cancelled).toMatchObject({ status: 'cancelled', cancelledBy: 'guest', cancelledAt: Date.now(), paymentStatus: 'unpaid', revision: 1 });
-		const history = await s.t.run(async (ctx) => await ctx.db.query('appointmentChanges').take(10));
+		const history = await s.t.run(async (ctx) => (await ctx.db.query('recordChanges').take(10)).flatMap(row => row.appointmentAudit ? [row.appointmentAudit] : []));
 		expect(history).toHaveLength(2);
 		expect(history[0]).toMatchObject({ appointmentId: cancelled._id, actor: 'system:whatsapp', changes: expect.arrayContaining([
 			{ field: 'created', from: null, to: booked.confirmationCode }

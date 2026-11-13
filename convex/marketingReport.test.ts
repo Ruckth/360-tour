@@ -636,12 +636,12 @@ it('keeps session-cohort conversion after the raw session is deleted, using the 
 it.each(['cohort', 'cash'] as const)('skips financial reads for checkout payment changes (%s)', async basis => {
 	const s = await setup();
 	const count = 8;
-	const changeIds: Id<'appointmentChanges'>[] = [];
+	const changeIds: Id<'recordChanges'>[] = [];
 	for (let i = 0; i < count; i++) {
 		const appointmentId = await s.appointment(now - (i + 1) * day);
 		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
 		await s.payOrder(orderId, now - day);
-		const changes = await s.t.run(ctx => ctx.db.query('appointmentChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).collect());
+		const changes = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).collect());
 		const change = changes.find(c => c.kind === 'payment')!;
 		changeIds.push(change._id);
 		await s.t.run(ctx => ctx.db.patch(change._id, { at: now - day }));

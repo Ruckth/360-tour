@@ -1,9 +1,9 @@
 import { adminQuery, adminMutation } from '../auth/model';
 import { v, type Infer } from 'convex/values';
-import { recomputeSocialProof } from './model';
+import { adjustReviewStats } from './reviewStats';
 import { amount, imageUrl, required } from '../shared/validation';
 
-// Real guest reviews, entered by the admin. Every change rebuilds the villa's reviewStats row.
+// Review changes and their exact aggregate commit in the same transaction.
 
 const reviewInput = v.object({
 	authorName: v.string(),
@@ -63,8 +63,9 @@ export const create = adminMutation({
 	args: { propertyId: v.id('properties'), ...reviewInput.fields },
 	handler: async (ctx, { propertyId, ...fields }) => {
 		if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
-		const reviewId = await ctx.db.insert('reviews', { propertyId, authorAvatarUrl: '', ...clean(fields) });
-		await recomputeSocialProof(ctx, propertyId);
+		const fieldsToSave = clean(fields);
+        await adjustReviewStats(ctx, propertyId, 1, fieldsToSave.rating);
+        const reviewId = await ctx.db.insert('reviews', { propertyId, authorAvatarUrl: '', ...fieldsToSave });
 		return reviewId;
 	}
 });
@@ -74,8 +75,9 @@ export const update = adminMutation({
 	handler: async (ctx, { reviewId, ...fields }) => {
 		const review = await ctx.db.get(reviewId);
 		if (!review) throw new Error('Review not found');
-		await ctx.db.patch(reviewId, clean(fields));
-		await recomputeSocialProof(ctx, review.propertyId);
+		const next = clean(fields);
+        await adjustReviewStats(ctx, review.propertyId, 0, next.rating - review.rating);
+        await ctx.db.patch(reviewId, next);
 	}
 });
 
@@ -84,7 +86,7 @@ export const remove = adminMutation({
 	handler: async (ctx, args) => {
 		const review = await ctx.db.get(args.reviewId);
 		if (!review) return;
-		await ctx.db.delete(review._id);
-		await recomputeSocialProof(ctx, review.propertyId);
+		await adjustReviewStats(ctx, review.propertyId, -1, -review.rating);
+        await ctx.db.delete(review._id);
 	}
 });

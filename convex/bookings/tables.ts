@@ -1,3 +1,4 @@
+import { availabilityStatus } from './validators';
 import { affiliateSnapshot } from '../shared/affiliateTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
@@ -249,7 +250,7 @@ export const bookingsTables = {
 	availability: defineTable({
 		propertyId: v.id('properties'),
 		date: v.string(),
-		status: v.union(v.literal('available'), v.literal('booked'), v.literal('blocked')),
+		status: availabilityStatus,
 		source: v.union(
 			v.literal('direct'),
 			v.literal('airbnb'),
@@ -264,5 +265,6 @@ export const bookingsTables = {
 		.index('by_property', ['propertyId'])
 		.index('by_icalSourceId', ['icalSourceId'])
 		.index('by_dateBlockId', ['dateBlockId'])
-		.index('by_property_date', ['propertyId', 'date'])
+		.index('by_bookingId', ['bookingId'])
+        .index('by_property_date', ['propertyId', 'date'])
 };
