@@ -142,6 +142,9 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(form.getByRole("button", { name: "Add another tender" })).toBeVisible();
       await expect(form.getByLabel("Customer")).toBeVisible();
       await form.getByRole("textbox", { name: "Own reason" }).fill("Guest paid by QR at the desk");
+      // Nothing differs from the recorded payment yet, so there is nothing to save.
+      await expect(form.getByRole("button", { name: "Save correction" })).toBeDisabled();
+      await form.getByRole("textbox", { name: "Corrected payment 1 amount" }).fill("1700");
       await expect(form.getByRole("button", { name: "Save correction" })).toBeEnabled();
       await expectAtMostSentences(view(page), 1);
       // Close puts the ⋯ back; nothing was saved.
@@ -223,8 +226,8 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await more(page).click();
       await page.getByRole("menuitem", { name: "Void…" }).click();
       const panel = page.getByTestId("void-panel");
-      await expect(panel.locator('[data-void-choice="received"]')).toHaveText("YesVoid the sale · booking stays paid");
-      await expect(panel.locator('[data-void-choice="unreceived"]')).toHaveText("NoEntered by mistake · balance reopens ฿1,600");
+      await expect(panel.locator('[data-void-choice="received"]')).toHaveText("YesVoid the sale · bookings and appointments stay paid");
+      await expect(panel.locator('[data-void-choice="unreceived"]')).toHaveText("NoEntered by mistake · their balances reopen");
     });
 
     test("Void… · No voids it as entered by mistake", async ({ page }) => {

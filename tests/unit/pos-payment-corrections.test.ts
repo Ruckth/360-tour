@@ -159,8 +159,9 @@ it("says Saving… while the first correction save runs, and offers Retry only a
   let fail!: (err: Error) => void;
   vi.spyOn(actions, "amendOrderPayment").mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
   await receipt(backend, orderId); await correctPayment();
+  await click("Transfer");
   await click("Wrong method picked");
-  await click("Save correction");
+  await click("Save · Transfer ฿100");
   expect(button("Saving…")).toBeTruthy();
   expect(button("Saving…").disabled).toBe(true);
   expect(button("Retry correction")).toBeUndefined();
@@ -273,8 +274,9 @@ it("locks correction controls during a pending write and prevents duplicate subm
   let done!: (value: { sequence: number; replayed: boolean }) => void;
   const amendment = vi.spyOn(actions, "amendOrderPayment").mockReturnValueOnce(new Promise(resolve => { done = resolve; }));
   await receipt(backend, orderId); await correctPayment();
-  await click("Wrong amount typed");
-  await click("Save correction");
+  await click("Cash");
+  await click("Wrong method picked");
+  await click("Save · Cash ฿100");
   // The toolbar's Close waits for the write.
   expect(document.querySelector<HTMLButtonElement>('[aria-label="Close Correct payment"]')!.disabled).toBe(true);
   expect(document.querySelector("#payment-correction-reason")?.closest("fieldset")?.disabled).toBe(true);

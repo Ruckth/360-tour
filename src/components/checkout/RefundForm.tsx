@@ -116,7 +116,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
     <button
       type="button"
       aria-pressed={chosen === value}
-      disabled={saving || satangValue <= 0}
+      disabled={saving || uncertain || satangValue <= 0}
       onClick={() => setAmount(value === "all" ? null : satangInput(satangValue))}
       className={cn(
         "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
@@ -163,7 +163,8 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
             autoComplete="off"
             onFocus={(event) => event.currentTarget.select()}
             value={amount}
-            disabled={saving}
+            // After a lost answer the retry must send the same amount.
+            disabled={saving || uncertain}
             onChange={(event) => setAmount(amountInput(event.target.value))}
             aria-invalid={amountProblem ? true : undefined}
             aria-describedby={`${id}-amount-hint`}

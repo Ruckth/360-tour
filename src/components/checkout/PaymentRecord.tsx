@@ -29,7 +29,7 @@ import {
 import { TOUCH_TARGETS, amountInput, TENDER_LABELS } from "./checkout-ui";
 import { useSendApproval } from "./ApprovalRequest";
 import { needsApproval } from "./staff-approvals";
-import { checkoutErrorText } from "./refunds";
+import { answeredRefusal, checkoutErrorText } from "./refunds";
 import { historyTime } from "./OrderHistory";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
 import { InlineErrorBoundary } from "./ErrorBoundary";
@@ -147,7 +147,8 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
   const [revision] = useState(view.paymentRecord.correctionRevision);
   const recorded = reviewedRecord.tenders[0]?.method ?? null;
   const single = reviewedRecord.tenders.length === 1;
-  const [date, setDate] = useState(() => paymentDateInput(view.paymentRecord.effectiveAt ?? Date.now()));
+  const [initialDate] = useState(() => paymentDateInput(view.paymentRecord.effectiveAt ?? Date.now()));
+  const [date, setDate] = useState(initialDate);
   const [tenders, setTenders] = useState<TenderRow[]>(() =>
     view.paymentRecord.tenders.map((t) => ({ ...t, amountInput: String(t.amount), receivedInput: t.received === undefined ? "" : String(t.received) })),
   );
@@ -163,6 +164,15 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
   const chips = single && tenders.length === 1 && recorded;
   const picked = chips && tenders[0].method !== recorded ? tenders[0] : null;
   const locked = saving || attempted;
+  // Save only once something differs from the recorded payment: the server refuses "Nothing changed."
+  const changed =
+    payer !== undefined ||
+    date !== initialDate ||
+    tenders.length !== reviewedRecord.tenders.length ||
+    tenders.some((row, i) => {
+      const was = reviewedRecord.tenders[i];
+      return row.method !== was.method || Number(row.amountInput) !== was.amount || (row.receivedInput === "" ? undefined : Number(row.receivedInput)) !== was.received;
+    });
 
   async function submit() {
     if (lock.current) return;
@@ -216,6 +226,11 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
         setRefused(true);
         setError("This needs a manager. Send it as a request.");
         return;
+      }
+      // A clear refusal (e.g. nothing changed) wrote nothing: let them fix it instead of retrying.
+      if (answeredRefusal(err)) {
+        attempt.current = null;
+        setAttempted(false);
       }
       setError(checkoutErrorText(err, "Couldn't save the correction. Retry this attempt or close and review the latest recording."));
     } finally {
@@ -317,7 +332,7 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
       </fieldset>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {attempted && !saving ? <p className="text-xs text-muted-foreground">Retry sends this same correction; close to start over.</p> : null}
-      <Button type="submit" disabled={saving || (!attempted && !reason.trim())}>
+      <Button type="submit" disabled={saving || (!attempted && (!reason.trim() || !changed))}>
         {saving ? <Spinner /> : null}
         {label}
       </Button>
@@ -399,7 +414,7 @@ export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & {
   const [frozen, setFrozen] = useState(false);
   const lock = useRef(false);
   useEffect(() => onBusyChange(busy !== null), [busy, onBusyChange]);
-  const { attached, amount } = voidReopens(view);
+  const { attached } = voidReopens(view);
   const receipt = `${formatReceiptNumber(view.order.receiptNumber ?? 0)} · ${formatMoney(view.totals.total)}`;
 
   async function choose(choice: VoidChoice) {
@@ -421,13 +436,13 @@ export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & {
       }
       if (choice === "received") {
         await actions.voidOrder({ orderId: view.order._id, reason: clean });
-        onDone(attached ? "Sale voided · booking stays paid" : "Sale voided · no refund sent");
+        onDone(attached ? "Sale voided · bookings stay paid" : "Sale voided · no refund sent");
         return;
       }
       unreceived.current ??= { orderId: view.order._id, idempotencyKey: newAttemptKey(), expectedCorrectionRevision: revision, reason: clean };
       setFrozen(true);
       await actions.voidUnreceivedOrder(unreceived.current);
-      onDone(attached ? `Entered by mistake · balance reopens ${formatMoney(amount)}` : "Entered by mistake · voided, nothing received");
+      onDone(attached ? "Entered by mistake · their balances reopen" : "Entered by mistake · voided, nothing received");
     } catch (err) {
       if (cashier && needsApproval(err)) {
         // Nothing was written; this choice becomes a request.
@@ -468,8 +483,8 @@ export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & {
       <ReasonField value={reason} onChange={setReason} chips={REASON_CHIPS.void} disabled={busy !== null || frozen} id="void-reason" />
       <div role="group" aria-labelledby="void-question" className="grid gap-2">
         <p id="void-question" className="text-sm font-semibold">Was money received?</p>
-        {option("received", ask("received") ? "Yes · ask a manager" : "Yes", attached ? "Void the sale · booking stays paid" : "Void the sale · no refund sent")}
-        {option("unreceived", ask("unreceived") ? "No · ask a manager" : "No", attached ? `Entered by mistake · balance reopens ${formatMoney(amount)}` : "Entered by mistake · nothing was received")}
+        {option("received", ask("received") ? "Yes · ask a manager" : "Yes", attached ? "Void the sale · bookings and appointments stay paid" : "Void the sale · no refund sent")}
+        {option("unreceived", ask("unreceived") ? "No · ask a manager" : "No", attached ? "Entered by mistake · their balances reopen" : "Entered by mistake · nothing was received")}
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : (ask("received") || ask("unreceived")) && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
     </section>
