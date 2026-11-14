@@ -20,3 +20,7 @@ Taste calls that fresh graders reversed between rounds. They are settled; grader
 | Line discount placeholder | "0%". | Settled. |
 | Cash quick chips (Exact / notes) | Pressed = `ring-2 ring-foreground bg-foreground/5`. | Must never outweigh Confirm. |
 | Chat status | One "Needs you" badge while a reply is needed; the automation chip appears only for "AI paused" or "AI replying". | Removes the duplicated "Waiting for staff". |
+| Strong selection scope (clarified) | Only the checkout tender/mode track. Therapist chips, discount-request reason chips and every other chip use the subtle selected style. | Graders flagged the leftover strong chips as violating the tone rule. |
+| Team panel width | `max-w-4xl` on iPad/desktop, left-aligned with the tab rule. | Graders alternately asked to add and remove the cap. |
+| Refund methods on phone | One five-option subtle track (`text-[13px]` on phone). | Graders alternately asked for one track and a 3-column grid. |
+| "Split" in the payment track | Inside the strong track as its fifth option. | Graders alternately asked inside and outside. |
