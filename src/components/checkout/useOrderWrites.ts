@@ -18,7 +18,7 @@ type Sale = { orderId: OrderId | null };
  * Switching orders starts a new sale: writes tapped earlier still land on their own order, and
  * when they finish they no longer move the screen back to it.
  */
-export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId: OrderId | null) => void, onError: (message: string) => void) {
+export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId: OrderId | null) => void, onError: (message: string) => void, onEarlierError?: (message: string) => void) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   // Writes queued or running, so controls that must see the settled order (the coupon field) can wait.
   const [pending, setPending] = useState(0);
@@ -43,7 +43,9 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
           if (then && sale.current === mine) then();
           return true;
         } catch (err) {
-          if (sale.current === mine) onError(errorText(err, "That didn't save. Try again."));
+          const message = errorText(err, "That didn't save. Try again.");
+          if (sale.current === mine) onError(message);
+          else (onEarlierError ?? onError)(`A change on the previous order did not save: ${message}`);
           return false;
         } finally {
           setPending((n) => n - 1);
@@ -52,7 +54,7 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
       queue.current = next;
       return next;
     },
-    [onOrderChange, onError],
+    [onOrderChange, onError, onEarlierError],
   );
 
   const switchTo = useCallback(

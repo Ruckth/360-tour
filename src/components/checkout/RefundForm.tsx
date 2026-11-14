@@ -72,7 +72,9 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
 
   // Reveal the form in the page; the receipt paper stays alongside on wide screens.
   useLayoutEffect(() => {
-    formRef.current?.scrollIntoView?.({ block: "nearest" });
+    const form = formRef.current;
+    const target = window.matchMedia("(width < 640px)").matches ? form?.closest("li") : form;
+    target?.scrollIntoView?.({ block: "nearest" });
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 

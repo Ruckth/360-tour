@@ -11,18 +11,21 @@ let root: Root;
 let writes: ReturnType<typeof useOrderWrites>;
 let visible: OrderId | null;
 let banner: string;
+let earlierBanner: string;
 let setBanner: (message: string) => void;
 
 function Harness({ initial }: { initial: OrderId | null }) {
   const [id, setId] = useState(initial);
   const [error, setError] = useState("");
-  const current = useOrderWrites(id, setId, setError);
+  const [earlierError, setEarlierError] = useState("");
+  const current = useOrderWrites(id, setId, setError, setEarlierError);
   useEffect(() => {
     writes = current;
     visible = id;
     banner = error;
+    earlierBanner = earlierError;
     setBanner = setError;
-  }, [current, id, error]);
+  }, [current, id, error, earlierError]);
   return createElement("p", { role: "alert" }, error);
 }
 function deferred<T>() {
@@ -43,7 +46,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it.each([A, null])("keeps a late failed write from sale %s off the current order", async (initial) => {
+it.each([A, null])("reports a late failed write from sale %s as belonging to the previous order", async (initial) => {
   await show(initial);
   const pending = deferred<{ orderId: OrderId }>();
   let running!: Promise<boolean>;
@@ -52,6 +55,7 @@ it.each([A, null])("keeps a late failed write from sale %s off the current order
   await act(async () => { pending.reject(new Error("Earlier sale failed")); await running; });
   expect(visible).toBe(B);
   expect(banner).toBe("");
+  expect(earlierBanner).toBe("A change on the previous order did not save: Earlier sale failed");
   await expect(running).resolves.toBe(false);
 });
 
@@ -91,6 +95,7 @@ it("keeps a queued retry on the original new sale after creation fails and anoth
   expect(next).toHaveBeenCalledWith(A);
   expect(visible).toBe(B);
   expect(banner).toBe("B error");
+  expect(earlierBanner).toBe("A change on the previous order did not save: Creation failed");
 });
 
 it("still reports and clears errors for writes on the visible sale", async () => {

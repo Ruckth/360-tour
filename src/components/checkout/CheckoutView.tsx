@@ -14,7 +14,7 @@ import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
-import { CheckoutDraftProvider, useCheckoutDraft } from "./CheckoutDrafts";
+import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDiscountNotice } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
@@ -52,16 +52,18 @@ function CheckoutContent({
   displayControl,
 }: CheckoutViewProps) {
   const { confirmDiscard } = useCheckoutDraft();
+  const { discountNotice, setDiscountNotice } = useCheckoutDiscountNotice();
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
   const view = backend.useOrder(orderId);
   const actions = backend.useActions();
   const [error, setError] = useState("");
+  const [earlierError, setEarlierError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const narrow = useIsMobile(1024);
   // Set by the phone bar's Cash: the sheet opens on the cash panel instead of the rows.
   const [payOnOpen, setPayOnOpen] = useState<"cash" | undefined>();
-  const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
+  const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError, setEarlierError);
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
   // Approvers keep the header's Approvals usable over the phone order sheet, so for them the sheet
@@ -173,33 +175,50 @@ function CheckoutContent({
     setPayOnOpen(undefined);
   }
 
+  const discountAlert = discountNotice ? (
+    <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+      <span className="flex-1 basis-40">{discountNotice.message}</span>
+      <button type="button" className="min-h-11 rounded px-2 font-medium underline" onClick={() => {
+        void confirmDiscard().then((discard) => {
+          if (!discard) return;
+          if (orderId !== discountNotice.orderId) switchTo(discountNotice.orderId);
+          setPayOnOpen(undefined);
+          if (narrow) setSheetOpen(true);
+          setDiscountNotice({ ...discountNotice, review: true });
+        });
+      }}>Review discount</button>
+      <button type="button" aria-label="Dismiss discount notice" className="grid size-11 place-items-center rounded" onClick={() => setDiscountNotice(null)}><X aria-hidden className="size-4" /></button>
+    </div>
+  ) : null;
+
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void, initialPay?: "cash") => (
-    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} initialPay={initialPay} />
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} initialPay={initialPay} discountNotice={discountAlert} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).
   const alert = (message: string) => (
     <div role="alert" className="flex items-start gap-2 border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 sm:px-6 dark:border-red-400/30 dark:bg-red-400/15 dark:text-red-300">
       <span className="flex-1 self-center">{message}</span>
-      {!error && onNoticeRetry ? (
+      {!error && !earlierError && onNoticeRetry ? (
         <button type="button" onClick={onNoticeRetry} className="shrink-0 rounded px-2 py-1 font-medium underline">Try again</button>
       ) : null}
-      {error ? (
-        <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="grid place-items-center rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-400/20">
+      {error || earlierError ? (
+        <button type="button" onClick={() => { if (error) setError(""); else setEarlierError(""); }} aria-label="Dismiss" className="grid place-items-center rounded p-0.5 hover:bg-red-100 dark:hover:bg-red-400/20">
           <X aria-hidden className="size-4" />
         </button>
       ) : null}
     </div>
   );
   // A cashier can't open older receipts; the server answers those as missing too.
-  const message = error || notice || (missing ? (cashier ? "Not available." : "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders.") : "");
+  const message = error || earlierError || notice || (missing ? (cashier ? "Not available." : "That order link is invalid or the order no longer exists. Start a new order or choose one from Orders.") : "");
 
   return (
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
+      {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">
         {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
@@ -265,7 +284,7 @@ function CheckoutContent({
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
           {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
-          {error ? alert(error) : null}
+          {error || earlierError ? alert(error || earlierError) : null}
           {panel(() => { void closeSheet(); }, payOnOpen)}
         </CheckoutSheetContent>
       </Sheet>

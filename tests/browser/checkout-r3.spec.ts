@@ -217,6 +217,83 @@ for (const width of [390, 1180]) {
       await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
     });
 
+    test("a late discount refusal survives a row switch and reopens the request", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa&serverLimit=5");
+      await page.getByRole("button", { name: /^Foot spa 45.*Add to order/ }).click();
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      await panel.getByLabel("Discount", { exact: true }).fill("10%");
+      await panel.getByRole("button", { name: /^Foot spa 45/ }).click();
+      await expect(panel.getByRole("button", { name: /^Foot spa 45/ })).toHaveAttribute("aria-expanded", "true");
+      await page.evaluate(() => window.fixture.finishDiscountWrite());
+      await expect(panel.getByRole("alert")).toContainText("10% off Thai massage 60 needs a manager — not applied.");
+      await panel.getByRole("button", { name: "Review discount", exact: true }).click();
+      await expect(panel.getByLabel("Discount", { exact: true })).toHaveValue("10%");
+      await expect(panel.getByRole("group", { name: "Ask a manager", exact: true })).toBeVisible();
+      await panel.getByRole("group", { name: "Ask a manager", exact: true }).getByLabel("Reason", { exact: true }).fill("Guest waited");
+      await panel.getByRole("button", { name: "Send 10% (฿120) to manager", exact: true }).click();
+      await expect(panel.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager");
+      await expect(panel.getByTestId("order-due")).toHaveText("฿1,800");
+    });
+
+    test("a discount reply reaches the editor reopened during the save", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa&serverLimit=5");
+      await page.getByRole("button", { name: /^Foot spa 45.*Add to order/ }).click();
+      const panel = await orderPanel(page, width);
+      const row = panel.getByRole("button", { name: /^Thai massage 60/ });
+      await row.click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      await panel.getByLabel("Discount", { exact: true }).fill("10%");
+      await panel.getByRole("button", { name: /^Foot spa 45/ }).click();
+      await row.click();
+      await expect(discardDialog(page)).toHaveCount(0);
+      await expect(panel.getByLabel("Discount", { exact: true })).toHaveAttribute("readonly");
+      await page.evaluate(() => window.fixture.finishDiscountWrite());
+      await expect(panel.getByRole("group", { name: "Ask a manager", exact: true })).toBeVisible();
+      await expect(panel.getByLabel("Discount", { exact: true })).toHaveValue("10%");
+    });
+
+    test("Enter keeps discount focus while the save is pending", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa");
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      const discount = panel.getByLabel("Discount", { exact: true });
+      await discount.fill("10%");
+      await discount.press("Enter");
+      await expect(discount).toBeFocused();
+      await expect(discount).toHaveAttribute("aria-busy", "true");
+      await page.evaluate(() => window.fixture.finishDiscountWrite());
+      await expect(panel.getByTestId("order-due")).toHaveText("฿1,080");
+      await expect(discount).toBeFocused();
+    });
+
+    for (const refusal of [false, true]) test(`a late discount ${refusal ? "refusal" : "failure"} stays visible after New order`, async ({ page }) => {
+      await open(page, "staff-roles", `?role=cashier&scenario=spa${refusal ? "&serverLimit=5" : ""}`);
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      await panel.getByLabel("Discount", { exact: true }).fill("10%");
+      if (width === 390) {
+        await panel.getByRole("button", { name: "Close order", exact: true }).click();
+        await page.getByRole("button", { name: "More checkout actions", exact: true }).click();
+        await page.getByRole("menuitem", { name: "New order", exact: true }).click();
+      } else await page.getByRole("button", { name: "New order", exact: true }).click();
+      await expect(page.getByTestId("order-title")).toHaveText("New order");
+      await page.evaluate((fail) => window.fixture.finishDiscountWrite(fail), !refusal);
+      await expect(page.getByRole("alert")).toContainText(refusal
+        ? "10% off Thai massage 60 needs a manager — not applied."
+        : "A change on the previous order did not save: Discount write failed");
+      if (refusal) {
+        await page.getByRole("button", { name: "Review discount", exact: true }).click();
+        const recovered = width === 390 ? page.getByRole("dialog") : panel;
+        await expect(recovered.getByTestId("order-panel-title")).toHaveText("Order #1043");
+        await expect(recovered.getByLabel("Discount", { exact: true })).toHaveValue("10%");
+        await expect(recovered.getByRole("group", { name: "Ask a manager", exact: true })).toBeVisible();
+      }
+    });
+
     test("payment rechecks the lock after a discard confirmation", async ({ page }) => {
       await open(page, "staff-roles", "?role=cashier&scenario=spa");
       const panel = await orderPanel(page, width);
@@ -311,19 +388,20 @@ for (const width of [390, 1180]) {
   });
 }
 
-test("rotation removes the hidden side editor and Discard clears the visible sheet draft", async ({ page }) => {
+test("rotation preserves the side editor price and reason in the sheet", async ({ page }) => {
   await page.setViewportSize({ width: 1180, height: 820 });
   await open(page, "staff-roles", "?role=cashier&scenario=spa");
   const side = await orderPanel(page, 1180);
   await side.getByRole("button", { name: /^Thai massage 60/ }).click();
   await side.getByRole("button", { name: /^Price ฿1,200$/ }).click();
   await side.getByLabel("New unit price").fill("1100");
+  await side.getByLabel("Reason for the price change").fill("Guest waited");
   await page.setViewportSize({ width: 820, height: 1180 });
   await expect(side).toHaveCount(0);
   const sheet = await orderPanel(page, 820);
-  await sheet.getByRole("button", { name: /^Thai massage 60/ }).click();
-  await sheet.getByRole("button", { name: /^Price ฿1,200$/ }).click();
-  await expect(sheet.getByLabel("New unit price")).toHaveValue("");
+  await expect(sheet.getByRole("button", { name: /^Thai massage 60/ })).toHaveAttribute("aria-expanded", "true");
+  await expect(sheet.getByLabel("New unit price")).toHaveValue("1100");
+  await expect(sheet.getByLabel("Reason for the price change")).toHaveValue("Guest waited");
   await sheet.getByLabel("New unit price").fill("1000");
   await sheet.getByRole("button", { name: /^Cash ฿1,200$/ }).click();
   await discard(page);
@@ -346,6 +424,26 @@ test("an iPad lower-line refund reveals its form and keeps the line header below
   await expect(form.getByText("Refund", { exact: true })).toBeInViewport();
   const rowTop = await form.locator("xpath=ancestor::li").evaluate((row) => row.getBoundingClientRect().top);
   expect(rowTop).toBeGreaterThanOrEqual(64);
+});
+
+test("a phone refund keeps a tall line header below the app bar", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "staff-roles", "?role=manager&scenario=refund");
+  const trigger = page.getByRole("button", { name: "Refund Foot spa 45", exact: true });
+  await trigger.evaluate((button) => {
+    const row = button.closest("li")!;
+    const header = document.createElement("p");
+    header.textContent = "Appointment details for a guest with a long service and therapist name";
+    header.style.height = "130px";
+    row.prepend(header);
+    button.scrollIntoView({ block: "end" });
+  });
+  await trigger.click();
+  const form = page.getByRole("form", { name: "Refund", exact: true });
+  await expect(form.getByText("Refund", { exact: true })).toBeInViewport();
+  const rowTop = await form.locator("xpath=ancestor::li").evaluate((row) => row.getBoundingClientRect().top);
+  const headerBottom = await page.locator("header").first().evaluate((header) => header.getBoundingClientRect().bottom);
+  expect(rowTop).toBeGreaterThanOrEqual(headerBottom);
 });
 
 for (const outcome of ["withdraw", "decline"]) test(`a phone empty-order request stays accessible to ${outcome}`, async ({ page }) => {

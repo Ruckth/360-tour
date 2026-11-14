@@ -36,7 +36,7 @@ import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { DiscardOrderDialog } from "./OrderLifecycle";
-import { useCheckoutDraft } from "./CheckoutDrafts";
+import { useCheckoutDraft, useCheckoutDraftState, useCheckoutDiscountNotice } from "./CheckoutDrafts";
 import { PayPanel } from "./PayPanel";
 import { discountOverLimit, formatPercent, needsApproval, shownRequest } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
@@ -97,6 +97,7 @@ export function OrderPanel({
   onPaid,
   onClose,
   initialPay,
+  discountNotice,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -108,6 +109,7 @@ export function OrderPanel({
   onClose?: () => void;
   /** Open on this tender's panel instead of the rows (the phone's "Cash ฿X"). */
   initialPay?: TenderMethod;
+  discountNotice?: ReactNode;
 }) {
   const { confirmDiscard } = useCheckoutDraft();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -117,7 +119,8 @@ export function OrderPanel({
   const actions = backend.useActions();
   const access = useStaffAccess();
   const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useCheckoutDraftState<string | null>(`${view?.order._id ?? "new"}:expanded`, null);
+  const { discountNotice: pendingDiscount, setDiscountNotice } = useCheckoutDiscountNotice();
   const [couponOpen, setCouponOpen] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const lines = view?.lines ?? [];
@@ -132,6 +135,12 @@ export function OrderPanel({
   useLayoutEffect(() => { payLockedRef.current = payLocked; }, [payLocked]);
   // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !payLocked && totals.due > 0 ? initialPay : null));
+  useEffect(() => {
+    if (!pendingDiscount?.review || pendingDiscount.orderId !== orderId) return;
+    setExpanded(pendingDiscount.lineId);
+    setPaying(null);
+    setDiscountNotice(null);
+  }, [pendingDiscount, orderId, setExpanded, setDiscountNotice]);
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
   const shown = shownRequest(approvals, now);
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
@@ -243,6 +252,7 @@ export function OrderPanel({
         </div>
       </div>
 
+      {discountNotice}
       {paying && view ? (
         <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onSubmittingChange={setPaymentSubmitting} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
@@ -678,9 +688,10 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const cashier = access.role === "cashier";
   const send = useSendApproval();
   const [ask, setAsk] = useState<Ask | null>(null);
-  const [priceOpen, setPriceOpen] = useState(false);
-  const [price, setPrice] = useState("");
-  const [note, setNote] = useState("");
+  const draftKey = `${line.billId}:${line._id}:price`;
+  const [priceOpen, setPriceOpen] = useCheckoutDraftState(`${draftKey}:open`, false);
+  const [price, setPrice] = useCheckoutDraftState(draftKey, "");
+  const [note, setNote] = useCheckoutDraftState(`${draftKey}:reason`, "");
   const [approvalDirty, setApprovalDirty] = useState(false);
   const priceDirty = priceOpen && (price !== (line.priceOverride ? String(line.priceOverride.price) : "") || note !== (line.priceOverride?.note ?? ""));
   const { confirmDiscard } = useCheckoutDraft(priceDirty || approvalDirty, () => {
@@ -689,7 +700,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
     setNote("");
     setAsk(null);
     setApprovalDirty(false);
-  });
+  }, draftKey);
   const lineId = line._id;
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
@@ -822,14 +833,16 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const cashier = access.role === "cashier";
   const send = useSendApproval();
   const id = useId();
-  const [text, setText] = useState(discountText(line.discount));
-  const [syncedText, setSyncedText] = useState(text);
-  const [observedText, setObservedText] = useState(text);
+  const draftKey = `${line.billId}:${line._id}:discount`;
+  const { setDiscountNotice } = useCheckoutDiscountNotice();
+  const [text, setText] = useCheckoutDraftState(draftKey, discountText(line.discount));
+  const [syncedText, setSyncedText] = useCheckoutDraftState(`${draftKey}:synced`, discountText(line.discount));
+  const [observedText, setObservedText] = useCheckoutDraftState(`${draftKey}:observed`, discountText(line.discount));
   // The server asked for a manager although the limit here allowed it (its rules are newer).
-  const [serverAsk, setServerAsk] = useState(false);
-  const [reason, setReason] = useState("");
+  const [serverAsk, setServerAsk] = useCheckoutDraftState(`${draftKey}:serverAsk`, false);
+  const [reason, setReason] = useCheckoutDraftState(`${draftKey}:reason`, "");
   const [sending, setSending] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useCheckoutDraftState(`${draftKey}:saving`, false);
   const [error, setError] = useState("");
   const lock = useRef(false);
   const applying = useRef(false);
@@ -843,13 +856,15 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const currentText = discountText(line.discount);
   // A subscription update is not typing. Follow it while untouched, but retain a cashier's
   // draft (and its original baseline) if another till changes the line in the meantime.
-  if (observedText !== currentText) {
-    setObservedText(currentText);
-    if (text === syncedText || applied) {
-      setSyncedText(currentText);
-      setText(currentText);
+  useLayoutEffect(() => {
+    if (observedText !== currentText) {
+      setObservedText(currentText);
+      if (text === syncedText || applied) {
+        setSyncedText(currentText);
+        setText(currentText);
+      }
     }
-  }
+  }, [observedText, currentText, text, syncedText, applied, setObservedText, setSyncedText, setText]);
   // A cashier's limit, worked out as the server will (owners and managers have none).
   const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
   const asking = Boolean(parsed?.ok && !applied && (over || serverAsk));
@@ -859,7 +874,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
     setReason("");
     setServerAsk(false);
     setError("");
-  });
+  }, draftKey);
 
   // The reason and Send appear under the field; keep them (and the field, if it fits) on screen.
   useEffect(() => {
@@ -873,7 +888,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   }
 
   async function apply() {
-    if (!typed || applied || asking || applying.current) return;
+    if (!typed || applied || asking || saving || applying.current) return;
     applying.current = true;
     // Blur runs before the next row/close action. This is now a save, not a discardable draft.
     flushSync(() => setSaving(true));
@@ -886,6 +901,11 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           if (!cashier || !needsApproval(err)) throw err;
           refused = true;
           setServerAsk(true);
+          if (!document.getElementById(`checkout-discount-${lineId}`)) setDiscountNotice({
+            orderId: line.billId,
+            lineId,
+            message: `${discountText(typed)}${typed.type === "amount" ? " baht" : ""} off ${line.name} needs a manager — not applied.`,
+          });
           return null;
         }
       });
@@ -920,7 +940,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
 
   const status = parsed ? (parsed.ok ? parsed.echo : parsed.error) : "";
   return (
-    <div ref={root} className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
+    <div ref={root} id={`checkout-discount-${lineId}`} className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
       <div className="grid gap-0.5 py-2 text-xs font-medium text-muted-foreground">
         <Label htmlFor={`${id}-discount`} className="text-sm font-normal text-foreground">Discount</Label>
         {/* A cashier's limit in plain sight, so learning it costs no tap. */}
@@ -941,10 +961,11 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           placeholder="0%"
           aria-describedby={cashier ? `${id}-limit ${id}-echo` : `${id}-echo`}
           aria-invalid={parsed && !parsed.ok ? true : undefined}
-          disabled={sending || saving}
+          readOnly={sending || saving}
+          aria-busy={sending || saving}
           onChange={(e) => change(e.target.value)}
           onBlur={() => void apply()}
-          onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void apply(); } }}
         />
         {/* Shown once there is a new discount to apply; over the limit, Send takes its place. */}
         {parsed?.ok && !applied && !asking ? (

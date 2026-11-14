@@ -12,7 +12,6 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
@@ -76,6 +75,15 @@ const noSubscription = () => () => undefined;
 const useCanShare = () =>
   useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
 
+const receiptMedia = () => window.matchMedia("(width < 640px)");
+const subscribeReceiptViewport = (changed: () => void) => {
+  const media = receiptMedia();
+  media.addEventListener("change", changed);
+  return () => media.removeEventListener("change", changed);
+};
+const receiptViewport = () => receiptMedia().matches ? "phone" : "wide";
+const serverReceiptViewport = () => "pending";
+
 /**
  * Receipt after payment. The toolbar is Print · New sale; Share, the paper width (remembered on
  * this device), Correct payment and Void… sit in ⋯, and while one of those is open the toolbar is
@@ -107,7 +115,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [taskBusy, setTaskBusy] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLElement>(null);
-  const phone = useIsMobile(640);
+  const viewport = useSyncExternalStore(subscribeReceiptViewport, receiptViewport, serverReceiptViewport);
+  const phone = viewport === "phone";
   const printPreview = useRef<{ element: HTMLDetailsElement; open: boolean } | null>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
@@ -127,7 +136,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     if (wasClosed) preview.open = false;
     setPageLengthMm(Math.ceil(height / PX_PER_MM) + PAGE_SLACK_MM);
   }, []);
-  useLayoutEffect(measure, [measure, paper, view, business, phone]);
+  useLayoutEffect(measure, [measure, paper, view, business, viewport]);
   // Native closed details hide their contents even in print on older browsers. Open the
   // disclosure before measuring/printing, then restore exactly how the cashier left it.
   const beforePrint = useCallback(() => {
@@ -312,7 +321,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </header>
 
       <div className={cn("grid w-full min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6 lg:justify-items-start lg:self-start", shownTask && "max-sm:hidden")}>
-        <Disclosure label="Receipt preview" open={!phone} className="receipt-preview sm:[&>summary]:hidden print:[&>summary]:hidden" contentClassName="flex justify-center pb-0 lg:justify-start">
+        <Disclosure label="Receipt preview" open={!phone} className={cn("receipt-preview sm:[&>summary]:hidden print:[&>summary]:hidden", viewport === "pending" && "max-sm:[&>div:not(:has([data-print-measure]))]:hidden")} contentClassName="flex justify-center pb-0 lg:justify-start">
         <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
@@ -431,7 +440,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
               const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
               const note = lineNotes[line._id];
               const unscheduled = line.kind === "service" && !line.schedule?.date && !line.startAt && !view.links.some((l) => l.lineId === line._id && l.status === "active");
-              return <li key={line._id} className="scroll-mt-14 px-4 py-3 sm:px-5 sm:py-4">
+              return <li key={line._id} className="scroll-mt-[calc(var(--admin-header,3.5rem)+0.5rem)] px-4 py-3 sm:px-5 sm:py-4">
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-[15px] font-medium">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</p>
                   <p className="shrink-0 text-[15px] font-medium font-sans tabular-nums">{formatMoney(line.net)}</p>
