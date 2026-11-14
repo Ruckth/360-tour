@@ -15,7 +15,7 @@ for (const { width, font } of [
       await page.getByRole("button", { name: "Chat details", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Chat details", exact: true }).getByText("AI paused", { exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
-    } else await expect(page.getByText("AI paused", { exact: true })).toBeVisible();
+    } else await expect(page.getByText("AI paused", { exact: true }).locator("visible=true")).toBeVisible();
     await expect(page.getByText("AI on", { exact: true })).toHaveCount(0);
     await expect(page.getByText(initialTask, { exact: false })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Message could not be delivered");
