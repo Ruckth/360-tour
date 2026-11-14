@@ -239,6 +239,12 @@ function StaffCalendar() {
 
   const visibleStarts = appointments.filter(a => a.start < range.to && a.end > range.from && a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
   const firstAppointmentHour = visibleStarts.length ? Math.min(...visibleStarts) : 8;
+  // Scroll to the earliest appointment once per range, when data first arrives — never again while staff
+  // search, filter or another device books an earlier slot.
+  const scrollKey = `${range.from}:${range.to}`;
+  const [initialScroll, setInitialScroll] = useState<{ key: string; hour: number } | null>(null);
+  if (data && initialScroll?.key !== scrollKey) setInitialScroll({ key: scrollKey, hour: firstAppointmentHour });
+  const scrollToHour = initialScroll?.key === scrollKey ? initialScroll.hour : firstAppointmentHour;
   const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show" && a.start < range.to && a.end > range.from).length;
   const countByStaff = useMemo(() => {
     const counts = new Map<string, number>();
@@ -468,7 +474,7 @@ function StaffCalendar() {
           dayEndHour={23}
           interval={60}
           snapDuration={15}
-          scrollToHour={Math.max(6, Math.min(22, firstAppointmentHour))}
+          scrollToHour={Math.max(6, Math.min(22, scrollToHour))}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: false }}
           classNames={{ dayColumn: "[&>div:has([data-calendar-off])]:w-full! [&>div:has([data-calendar-off])]:left-0!" }}

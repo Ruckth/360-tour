@@ -191,7 +191,8 @@ export function ChatsView() {
       // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
       const params = new URLSearchParams(navigationQueryRef.current);
       // A filter change must not leave a conversation from the previous queue open.
-      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS))
+      // Search is the exception: typing in it keeps the open chat (and its reply draft) where it is.
+      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS && key !== "q"))
         params.delete("session");
       for (const [key, value] of Object.entries(patch)) {
         const fallback = key in FILTER_DEFAULTS ? FILTER_DEFAULTS[key as FilterParam] : "";

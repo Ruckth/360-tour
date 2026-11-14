@@ -63,8 +63,9 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
 
   const [initialMethod] = useState(method);
   const dirty = typed !== null || method !== initialMethod || Boolean(reason.trim());
-  useEffect(() => { onDraftChange(dirty); }, [dirty, onDraftChange]);
-  useEffect(() => { onBusyChange(saving); }, [saving, onBusyChange]);
+  // Cleared on unmount too (e.g. the order is voided on another till while the form is open).
+  useEffect(() => { onDraftChange(dirty); return () => onDraftChange(false); }, [dirty, onDraftChange]);
+  useEffect(() => { onBusyChange(saving); return () => onBusyChange(false); }, [saving, onBusyChange]);
 
   // iPad scrolls inside the Items card; phone reveals the inline form in the page.
   useLayoutEffect(() => {

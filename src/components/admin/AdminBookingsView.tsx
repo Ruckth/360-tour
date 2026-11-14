@@ -288,6 +288,11 @@ function HotelBookings() {
             openNew(checkIn, end > checkIn ? end : addDaysIso(checkIn, 1), slot.resourceId);
           }}
           onSlotClick={(slot) => {
+            // The tap that dismisses a booking's quick actions only closes them; it never starts a booking underneath.
+            if (quick) {
+              setQuick(null);
+              return;
+            }
             // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
             const checkIn = isoDate(slot.date);
             if (slot.view === "month") openNew(checkIn, addDaysIso(checkIn, 1));
