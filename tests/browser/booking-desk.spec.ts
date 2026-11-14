@@ -226,7 +226,8 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       expect(await calls(page)).toEqual([{ name: "openStayCheckout", args: { bookingId: "fxbkg000001" } }]);
       if (size === "phone") await t.tap(page.getByRole("button", { name: /^View order/ }), "View order");
       await expect(page.getByText("Hot stone 60").first()).toBeVisible();
-      await t.tap(page.getByRole("button", { name: "Cash", exact: true }), "Cash");
+      const checkoutOrder = size === "phone" ? page.getByRole("dialog") : page.getByRole("complementary", { name: "Order", exact: true });
+      await t.tap(checkoutOrder.getByRole("button", { name: /^Cash ฿[\d,.]+$/, exact: true }), "Cash");
       await t.tap(page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }), "Confirm cash");
       await t.tap(page.getByRole("button", { name: "Print", exact: true }), "Print");
       await expect(page.locator("body")).toHaveAttribute("data-printed", "1");

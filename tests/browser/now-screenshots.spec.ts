@@ -74,7 +74,7 @@ async function scene(page: Page, name: string, phone: boolean) {
           .click();
         await panel.getByLabel("Payment 1 amount").fill("500");
       } else {
-        await panel.getByRole("button", { name: "Cash", exact: true }).click();
+        await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
         if (name === "cash-1500")
           await panel
             .getByRole("button", { name: "฿1,500", exact: true })

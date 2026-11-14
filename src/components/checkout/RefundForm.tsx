@@ -1,11 +1,10 @@
 "use client";
 
-import { useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { REASON_CHIPS } from "@/components/ui/reason-chips";
 import { ReasonField } from "@/components/ui/reason-field";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -23,13 +22,15 @@ import { needsApproval } from "./staff-approvals";
  * managers sends the same refund as a request (staffApprovals.create). One attempt key per opened
  * form, reused by every retry, so a lost response never records the refund twice.
  */
-export function RefundForm({ view, line, waiting, onDone, onCancel }: {
+export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChange, onBusyChange }: {
   view: OrderView;
   line: OrderLine;
   /** A request is already waiting on this order, so a cashier can't send another. */
   waiting: boolean;
   onDone: (notice: string) => void;
   onCancel: () => void;
+  onDraftChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const id = useId();
   const actions = useCheckoutBackend().useActions();
@@ -60,9 +61,14 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
   const formRef = useRef<HTMLFormElement>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
 
-  // The form opens inside the Items card: bring all of it, its button included, into view.
+  const [initialMethod] = useState(method);
+  const dirty = typed !== null || method !== initialMethod || Boolean(reason.trim());
+  useEffect(() => { onDraftChange(dirty); }, [dirty, onDraftChange]);
+  useEffect(() => { onBusyChange(saving); }, [saving, onBusyChange]);
+
+  // iPad scrolls inside the Items card; phone reveals the inline form in the page.
   useLayoutEffect(() => {
-    formRef.current?.scrollIntoView?.({ block: "nearest" });
+    formRef.current?.closest("li")?.scrollIntoView?.({ block: "nearest" });
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 
@@ -123,11 +129,11 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
       disabled={saving || uncertain || satangValue <= 0}
       onClick={() => setAmount(value === "all" ? null : satangInput(satangValue))}
       className={cn(
-        "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap font-sans tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex min-h-11 justify-center items-center rounded-full border px-2 text-sm font-semibold whitespace-nowrap font-sans tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
         chosen === value ? "border-foreground bg-foreground text-background" : "border-border bg-muted text-foreground hover:border-input",
       )}
     >
-      {label} {satangMoney(satangValue, line.currency)}
+      {label}
     </button>
   );
 
@@ -155,7 +161,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
       <p id={`${id}-title`} ref={titleRef} tabIndex={-1} className="rounded text-[15px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">{ask ? "Ask a manager" : "Refund"}</p>
       <p className="text-sm text-muted-foreground">Records money already returned to the guest.</p>
       <div className="grid gap-2">
-        <div role="group" aria-label="Refund amount" className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="Refund amount" className="grid grid-cols-[1fr_1fr_6rem] items-center gap-2">
           {chip("all", "All", all)}
           {half > 0 && half < all ? chip("half", "Half", half) : null}
           <Label htmlFor={`${id}-amount`} className="sr-only">Amount (฿)</Label>
@@ -172,7 +178,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
               onChange={(event) => setAmount(amountInput(event.target.value))}
               aria-invalid={amountProblem ? true : undefined}
               aria-describedby={`${id}-amount-hint`}
-              className="h-11 w-28 bg-background pl-7 text-right font-sans tabular-nums"
+              className="h-11 w-full bg-background pl-7 text-right font-sans tabular-nums"
             />
           </div>
         </div>
@@ -182,23 +188,22 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
       </div>
       <div className="grid gap-1.5">
         <p id={`${id}-method`} className="text-xs text-muted-foreground">Refund to</p>
-        <div role="group" aria-labelledby={`${id}-method`} className="flex flex-wrap rounded-xl bg-muted p-1 sm:rounded-full">
+        <div role="group" aria-labelledby={`${id}-method`} className="grid grid-cols-3 gap-2">
           {REFUND_METHODS.map((option) => (
-            <Button key={option.value} type="button" variant="ghost" aria-pressed={method === option.value} disabled={saving || uncertain} onClick={() => setMethod(option.value)} className={cn("h-11 min-w-0 flex-1 basis-20 rounded-full px-2 text-xs", method === option.value && "bg-foreground text-background hover:bg-foreground hover:text-background")}>
+            <Button key={option.value} type="button" variant="outline" aria-pressed={method === option.value} disabled={saving || uncertain} onClick={() => setMethod(option.value)} className={cn("h-11 min-w-0 rounded-full px-2 text-sm", method === option.value && "bg-foreground text-background hover:bg-foreground hover:text-background")}>
               {option.label}
             </Button>
           ))}
         </div>
       </div>
-      <ReasonField label="Reason (required)" value={reason} onChange={setReason} chips={REASON_CHIPS.refund} disabled={saving || uncertain} id={`${id}-reason`} className="[&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background" />
-      {!reason.trim() ? <p className="text-xs text-muted-foreground">Pick or type a reason to record the refund.</p> : null}
+      <ReasonField label="Reason" placeholder="Or type a reason" value={reason} onChange={setReason} chips={["Short treatment", "Guest complaint", "Wrong charge"]} disabled={saving || uncertain} id={`${id}-reason`} className="[&_label]:text-xs [&_label]:text-muted-foreground [&_button]:font-medium [&_[role=group]]:grid [&_[role=group]]:grid-cols-2 [&_button]:min-h-11 [&_button]:whitespace-normal [&_button]:px-2 [&_button]:text-left [&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background" />
       {uncertain ? <p role="status" className="text-xs text-muted-foreground">Retry sends the same refund, so it is never recorded twice.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
       <div className="grid grid-cols-[auto_1fr] gap-2">
         <Button type="button" variant="ghost" className="h-11" disabled={saving} onClick={onCancel}>Cancel</Button>
         <Button type="submit" variant="outline" className="h-auto min-h-11 w-full whitespace-normal border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive disabled:opacity-100 disabled:border-border disabled:text-muted-foreground" disabled={!ready || saving}>
           {saving ? <Spinner label={ask ? "Sending" : "Recording"} className="text-current" /> : null}
-          {uncertain ? "Retry same refund" : refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
+          {uncertain ? "Retry same refund" : !reason.trim() ? "Pick a reason" : refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
         </Button>
       </div>
     </form>

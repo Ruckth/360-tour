@@ -142,7 +142,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
       expect.soft(width.scroll, "sheet has no horizontal overflow").toBeLessThanOrEqual(width.client + 1);
 
       for (const label of ["Close order", "More order actions"]) {
-        await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
+        await expectReachable(page, sheet.getByRole("button", { name: label === "Cash" ? /^Cash(?: ฿[\d,.]+)?$/ : label, exact: true }), label);
       }
 
       const rows = await rowsViewport(sheet);
@@ -152,7 +152,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
       // The last row can be brought into view and tapped.
       await expectReachable(page, sheet.locator("li button[aria-expanded]").last(), "last order row");
 
-      const tenders = TENDERS.map((label) => sheet.getByRole("button", { name: label, exact: true }));
+      const tenders = TENDERS.map((label) => sheet.getByRole("button", { name: label === "Cash" ? /^Cash(?: ฿[\d,.]+)?$/ : label, exact: true }));
       for (const [index, button] of tenders.entries()) await expectReachable(page, button, TENDERS[index]);
       const boxes = await boxesOf(tenders);
       for (let i = 0; i < boxes.length; i += 1) {
@@ -170,14 +170,14 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     const sheet = await openOrderSheet(page);
     await setRootFont(page, ENLARGED);
 
-    await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+    await sheet.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
     await sheet.getByRole("button", { name: "Edit payment time" }).click();
     await expectReachable(page, sheet.getByLabel("Money received date · Bangkok time"), "payment business date");
     await expectReachable(page, sheet.getByLabel("Money received time · Bangkok time"), "payment business time");
     const paymentWidth = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
     expect.soft(paymentWidth.scroll, "payment sheet has no horizontal overflow").toBeLessThanOrEqual(paymentWidth.client + 1);
     // The tender row stays on top of the panel and does Back's job.
-    for (const label of TENDERS) await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
+    for (const label of TENDERS) await expectReachable(page, sheet.getByRole("button", { name: label === "Cash" ? /^Cash(?: ฿[\d,.]+)?$/ : label, exact: true }), label);
     const notes = sheet.getByRole("group", { name: "Notes handed over" }).getByRole("button");
     await expect(notes).toHaveCount(3);
     for (const index of [0, 1, 2]) await expectReachable(page, notes.nth(index), `note chip ${index + 1}`);
@@ -189,7 +189,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
 
     await sheet.getByRole("button", { name: "Split payment", exact: true }).click();
     const controls = [
-      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: "Cash", exact: true }),
+      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }),
       sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: "Transfer", exact: true }),
       sheet.getByLabel("Payment 1 amount"),
       sheet.getByRole("group", { name: "Payment 2 method" }).getByRole("button", { name: "Card", exact: true }),
@@ -204,7 +204,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     }
     // The summary appears once every payment has an amount.
     await sheet.getByLabel("Payment 1 amount").fill("500");
-    await expectOneLine(sheet.getByTestId("split-remaining"), "remaining amount");
+    await expect(sheet.getByTestId("split-remaining")).toContainText(/Covered · ฿[\d,.]+ in 2 payments/);
     const amount = await sheet.getByLabel("Payment 1 amount").boundingBox();
     expect.soft(amount!.width, "amount field keeps room to type").toBeGreaterThanOrEqual(96);
     await shot(page, "pay-split-text200");
@@ -214,7 +214,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
 test("phone cash entry and confirmation stay visible above a reduced keyboard viewport", async ({ page }) => {
   await open(page, { width: 360, height: 800 }, "?lines=13");
   const sheet = await openOrderSheet(page);
-  await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+  await sheet.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
   const input = sheet.getByLabel("Cash received");
   await input.focus();
   await page.setViewportSize({ width: 360, height: 464 });
@@ -227,16 +227,17 @@ test("phone cash entry and confirmation stay visible above a reduced keyboard vi
   }).toBe(true);
 });
 
-/** Four tender segments share a track; Split is a ghost at the end, wrapping at narrow widths. */
+/** Cash spans the pane; secondary tenders form equal columns at the pane’s container width. */
 async function expectFullTenderRow(scope: Locator) {
-  const segments = await boxesOf(["Cash", "PromptPay", "Card", "Transfer"].map((name) => scope.getByRole("button", { name, exact: true })));
-  for (const box of segments) {
-    expect(box.y).toBeCloseTo(segments[0].y, 0);
-    expect(box.width).toBeCloseTo(segments[0].width, 0);
+  const cash = (await scope.getByRole("button", { name: /^Cash ฿[\d,.]+$/, exact: true }).boundingBox())!;
+  const secondary = await boxesOf(TENDERS.slice(1).map((label) => scope.getByRole("button", { name: label, exact: true })));
+  const columns = cash.width >= 448 ? 4 : 2;
+  expect(cash.height, "primary cash target").toBeGreaterThanOrEqual(56);
+  for (const [index, box] of secondary.entries()) {
+    expect(box.y, "secondary actions below Cash").toBeGreaterThanOrEqual(cash.y + cash.height);
+    expect(box.width, "equal secondary columns").toBeCloseTo((cash.width - (columns - 1) * 8) / columns, 0);
+    expect(box.y, "secondary row alignment").toBeCloseTo(secondary[Math.floor(index / columns) * columns].y, 0);
   }
-  const [split] = await boxesOf([scope.getByRole("button", { name: "Split payment", exact: true })]);
-  const transfer = segments[3];
-  expect(split.y >= transfer.y + transfer.height || split.x >= transfer.x + transfer.width).toBe(true);
 }
 
 test.describe("order panel at normal text keeps its compact layout", () => {
@@ -247,17 +248,15 @@ test.describe("order panel at normal text keeps its compact layout", () => {
       const tops: number[] = [];
       for (const label of [...TENDERS, "Close order", "More order actions"]) {
         // Visible as laid out, without any scrolling.
-        const box = (await sheet.getByRole("button", { name: label, exact: true }).boundingBox())!;
+        const box = (await sheet.getByRole("button", { name: label === "Cash" ? /^Cash(?: ฿[\d,.]+)?$/ : label, exact: true }).boundingBox())!;
         expect(box.y, `${label} top`).toBeGreaterThanOrEqual(0);
         expect(box.y + box.height, `${label} bottom`).toBeLessThanOrEqual(viewport.height + 0.5);
         expect(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 0.5);
         tops.push(box.y + box.height / 2);
       }
-      // Four payment actions share a row; Split is a secondary action beneath.
-      const tenderRow = viewport.height < 512 ? 5 : 4;
-      for (let i = 1; i < tenderRow; i += 1) expect(tops[i]).toBeCloseTo(tops[0], 0);
+      // Cash spans the pane; secondary tenders use four columns or a deliberate 2×2 grid.
       expect(tops[5]).toBeCloseTo(tops[6], 0);
-      if (tenderRow === 4) await expectFullTenderRow(sheet);
+      await expectFullTenderRow(sheet);
       // Only the rows scroll; the panel itself does not.
       const panelScrolls = await sheet.getByTestId("order-panel-title").evaluate((title) => {
         let node = title.parentElement;
@@ -275,10 +274,7 @@ test.describe("order panel at normal text keeps its compact layout", () => {
     await open(page, { width: 1440, height: 900 }, "?lines=13");
     await expect(page.getByRole("complementary", { name: "Order" })).toBeVisible();
     await expect(page.getByRole("button", { name: /open the order/ })).toBeHidden();
-    await expect(page.getByRole("button", { name: "Cash", exact: true })).toHaveCount(1);
-    const tops: number[] = [];
-    for (const label of TENDERS.slice(0, 4)) tops.push((await page.getByRole("button", { name: label, exact: true }).boundingBox())!.y);
-    for (const top of tops) expect(top).toBeCloseTo(tops[0], 0);
+    await expect(page.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toHaveCount(1);
     await expectFullTenderRow(page.getByRole("complementary", { name: "Order" }));
     await shot(page, "order-panel-desktop-1440");
   });
@@ -337,7 +333,7 @@ test.describe("receipt print page size (PM-01)", () => {
   for (const paper of [58, 80] as const) {
     test(`${paper} mm: the browser accepts the page size and prints one page that wide`, async ({ page }) => {
       await open(page, { width: 1280, height: 800 }, "?lines=3");
-      await page.getByRole("button", { name: "Cash", exact: true }).click();
+      await page.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       await page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }).click();
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();

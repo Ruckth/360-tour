@@ -27,7 +27,7 @@ import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTo
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
+import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { discountText, parseDiscount } from "./discount-input";
@@ -75,7 +75,7 @@ export function usePayState(view: OrderView | null | undefined) {
   // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
   const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
   const approvals = useCheckoutBackend().useOrderApprovals(view?.order._id ?? null);
-  const waiting = approvals?.some((request) => request.status === "pending" && request.expiresAt > now) ?? false;
+  const waiting = approvals?.some((request) => request.status === "pending") ?? false;
   const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
   return { now, stale, couponBlocked, approvals, waiting, cannotPay };
 }
@@ -123,7 +123,7 @@ export function OrderPanel({
   // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
   const payLocked = cannotPay || busy;
   // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
-  const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !cannotPay && totals.due > 0 ? initialPay : null));
+  const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !payLocked && totals.due > 0 ? initialPay : null));
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
   const shown = shownRequest(approvals, now);
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
@@ -169,7 +169,7 @@ export function OrderPanel({
             const active = panelRef.current?.querySelector<HTMLButtonElement>('[aria-label="Take payment by"] [aria-pressed="true"]');
             const label = active?.getAttribute("aria-label") ?? active?.textContent?.trim();
             setPaying(null);
-            setTimeout(() => [...(panelRef.current?.querySelectorAll("button") ?? [])].find((button) => getComputedStyle(button).display !== "none" && (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label)?.focus());
+            setTimeout(() => [...(panelRef.current?.querySelectorAll("button") ?? [])].find((button) => getComputedStyle(button).display !== "none" && ((button.getAttribute("aria-label") ?? button.textContent?.trim()) === label || (label === "Cash" && button.textContent?.trim().startsWith("Cash ฿"))))?.focus());
           }}><ArrowLeft aria-hidden className="size-4" /> Order</Button>
         ) : (
           <>
@@ -220,10 +220,10 @@ export function OrderPanel({
       ) : (
         <>
           {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
-          <div className="flex min-h-[min(14rem,28dvh)] flex-1 flex-col overflow-y-auto [@media(max-height:36rem)]:min-h-[24dvh]">
+          <div className="flex min-h-[min(14rem,28dvh)] flex-1 flex-col overflow-y-auto [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]">
             {lines.length === 0 ? (
               <div className="grid flex-1 place-items-center px-6 py-8 text-center text-sm text-muted-foreground">
-                <p>Tap an item to add it to the order.</p>
+                <div className="grid justify-items-center gap-2"><ReceiptText aria-hidden className="size-8 text-muted-foreground/60" /><p className="text-[15px] font-medium text-foreground">No items yet</p><p className="text-[13px] text-pretty">Tap an item to add it.</p></div>
               </div>
             ) : (
               <ul className="divide-y divide-border/70 px-1">
@@ -290,19 +290,16 @@ export function OrderPanel({
                 <CloseNothingDue view={view!} disabled={payLocked} onPaid={onPaid} onReview={() => setPaying("none")} />
               ) : (
                 <>
-                  <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Pay <span className="font-sans tabular-nums">{formatMoney(totals.due)}</span> by</p>
-                  <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
-                    {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                      <Button key={method} className="h-12 min-w-0 rounded-xl px-1 text-sm" variant={method === "cash" ? "default" : "outline"} disabled={payLocked} onClick={() => setPaying(method)}>
-                        {TENDER_LABELS[method].short}
-                      </Button>
+                  <Button className="h-auto min-h-14 w-full whitespace-normal py-3 text-base font-sans tabular-nums" disabled={payLocked} onClick={() => setPaying("cash")}>Cash {formatMoney(totals.due)}</Button>
+                  <div className="mt-2 grid grid-cols-2 gap-2 @min-[28rem]:grid-cols-4">
+                    {(["promptpay", "card", "transfer"] as const).map((method) => (
+                      <Button key={method} className="h-auto min-h-11 min-w-0 whitespace-normal px-3 py-2 text-sm text-balance" variant="outline" disabled={payLocked} onClick={() => setPaying(method)}>{TENDER_LABELS[method].short}</Button>
                     ))}
-                  <Button variant="ghost" aria-label="Split payment" className="hidden h-12 text-sm [@media(max-height:32rem)]:inline-flex" disabled={payLocked} onClick={() => setPaying("split")}>Split</Button>
+                    <Button variant="outline" className="h-auto min-h-11 min-w-0 whitespace-normal px-3 py-2 text-sm text-balance" disabled={payLocked} onClick={() => setPaying("split")}>Split payment</Button>
                   </div>
-                  <Button variant="ghost" aria-label="Split payment" className="mt-1 ml-auto flex h-11 px-2 text-sm [@media(max-height:32rem)]:hidden" disabled={payLocked} onClick={() => setPaying("split")}>Split</Button>
                 </>
               )}
-            </> : <p className="py-2 text-sm text-muted-foreground">Add an item to take payment.</p>}
+            </> : null}
           </div>
         </>
       )}
@@ -388,7 +385,7 @@ function scheduleSummary(line: OrderLine, now: number) {
 
 function lineSubtitle(line: OrderLine, now: number) {
   const parts = [line.detail];
-  if (line.kind === "service" || line.kind === "appointment") parts.push(scheduleSummary(line, now));
+  if (line.kind === "service" || line.kind === "appointment") parts.push(scheduleLabel(line.schedule, now) === "Not scheduled" ? line.staffName ?? "Any therapist" : scheduleSummary(line, now));
   if (MERGES_QTY[line.kind] && line.qty > 1) parts.push(`${formatMoney(line.priceOverride?.price ?? line.unitPrice)} each`);
   return parts.filter(Boolean).join(" · ");
 }
@@ -427,7 +424,8 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
           <span className="block text-[15px] font-medium [overflow-wrap:anywhere]">
             {line.name}
           </span>
-          <span className="block line-clamp-2 text-xs leading-4 text-muted-foreground">{lineSubtitle(line, now)}</span>
+          <span className="block text-pretty text-xs leading-4 text-muted-foreground">{lineSubtitle(line, now)}</span>
+          {line.kind === "service" && scheduleLabel(line.schedule, now) === "Not scheduled" ? <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">Not scheduled</span> : null}
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid in advance</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
           {line.stayCoupon ? (
@@ -860,7 +858,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           value={text}
           autoComplete="off"
           enterKeyHint="done"
-          placeholder="10% or ฿120"
+          placeholder="0%"
           aria-describedby={cashier ? `${id}-limit ${id}-echo` : `${id}-echo`}
           aria-invalid={parsed && !parsed.ok ? true : undefined}
           disabled={sending}

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -40,7 +42,7 @@ function Probe({ backend, orderId }: { backend: CheckoutBackend; orderId: OrderI
 }
 const probe = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(Probe, { backend, orderId }))));
 const receipt = (backend: CheckoutBackend, orderId: OrderId, onNewSale = () => {}) =>
-  act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale, onOpenOrder: () => {} }))));
+  act(async () => root.render(provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale, onOpenOrder: () => {} }))));
 const record = () => document.querySelector<HTMLElement>('[aria-label="Payment record"]')!;
 const paper = () => document.querySelector<HTMLElement>(".pos-receipt")!;
 /** A fact in the visible record, by its label. */
@@ -227,9 +229,9 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   const refund = vi.spyOn(actions, "refundLine").mockRejectedValueOnce(new Error("Connection lost"));
   await receipt(backend, orderId);
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All ฿100")?.getAttribute("aria-pressed")).toBe("true");
-  expect(button("Record refund ฿100")?.disabled).toBe(true);
-  await click("Charged by mistake");
+  expect(button("All")?.getAttribute("aria-pressed")).toBe("true");
+  expect(button("Pick a reason")?.disabled).toBe(true);
+  await click("Wrong charge");
   await click("Record refund ฿100"); await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
   const form = document.querySelector('[data-refund-form]')!;
@@ -239,8 +241,8 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   await click("Retry same refund"); await tick();
   expect(refund).toHaveBeenCalledTimes(2);
   expect(refund.mock.calls[1][0]).toEqual(refund.mock.calls[0][0]);
-  expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10_000, method: "card", reason: "Charged by mistake" });
-  expect(document.querySelector("[data-line-note]")?.textContent?.trim()).toBe("Refunded ฿100 · Charged by mistake");
+  expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10_000, method: "card", reason: "Wrong charge" });
+  expect(document.querySelector("[data-line-note]")?.textContent?.trim()).toBe("Refunded ฿100 · Wrong charge");
 });
 
 it("Half refunds half of what is left; a new form is a new key", async () => {
@@ -248,12 +250,12 @@ it("Half refunds half of what is left; a new form is a new key", async () => {
   const refund = vi.spyOn(actions, "refundLine");
   await receipt(backend, orderId);
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  await click("Half ฿50");
+  await click("Half");
   await click("Guest complaint");
   await click("Record refund ฿50"); await tick();
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All ฿50")?.getAttribute("aria-pressed")).toBe("true");
-  await click("Shortened treatment");
+  expect(button("All")?.getAttribute("aria-pressed")).toBe("true");
+  await click("Short treatment");
   await click("Record refund ฿50"); await tick();
   expect(refund.mock.calls.map(c => c[0].amount)).toEqual([5_000, 5_000]);
   expect(refund.mock.calls[1][0].idempotencyKey).not.toBe(refund.mock.calls[0][0].idempotencyKey);
@@ -265,9 +267,11 @@ it("shows cashiers no History; Correct payment and Void… stay, as requests", a
     email: "mint@example.com", role: "cashier", pendingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
     capabilities: { checkout: true, approve: false, operations: false, manageTeam: false, settings: false, bookings: false, services: false, customers: false, orders: false, chats: false, properties: false, roster: false, reports: false, marketing: false },
   };
-  await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));
+  await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));
   expect(document.querySelector('[data-testid="receipt-history"]')).toBeNull();
   expect(document.querySelector("summary")).toBeNull();
   expect(button("Link appointment")).toBeUndefined();
   expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper", "Correct payment", "Void…"]);
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

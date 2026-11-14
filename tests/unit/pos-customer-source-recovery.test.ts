@@ -48,7 +48,7 @@ it("keeps an invalid phone draft recoverable, then saves the corrected phone", a
   const backend = createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
-  await click("Add customer");
+  await click("Customer");
   await click("New customer");
   await type("#customer-name", "Payer");
   await type("#customer-phone", "not-a-phone");
@@ -70,7 +70,7 @@ it("allows creating a customer with no phone", async () => {
   const backend = createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
-  await click("Add customer");
+  await click("Customer");
   await click("New customer");
   await type("#customer-name", "Payer without phone");
   await submit();

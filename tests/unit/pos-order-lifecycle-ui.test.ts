@@ -18,7 +18,7 @@ let root: Root, current: OrderView, review: RestoreReview | undefined;
 const saved = 'fxbill000002' as OrderId;
 const appt = 'fxappt000002' as Id<'serviceAppointments'>;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
-const button = (text: string) => buttons().find(b => b.textContent?.trim() === text)!;
+const button = (text: string) => buttons().find(b => (b.textContent?.trim() === text || (text === 'Cash' && b.textContent?.trim().startsWith('Cash ฿'))))!;
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text).click(); });
 /** Discard in the open confirm. */
 const confirmDiscard = async () => {

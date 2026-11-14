@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -34,7 +36,7 @@ function Probe({ backend, orderId, paying = false, onPaid = () => {} }: { backen
   return paying ? createElement(PayPanel, { view, mode: "card", onBack: () => {}, onPaid }) : null;
 }
 const show = (backend: CheckoutBackend, orderId: OrderId, paying = false, onPaid?: () => void) => act(async () => root.render(provide(backend, createElement(Probe, { backend, orderId, paying, onPaid }))));
-const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
+const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
 async function sale(link = false, backend = createFixtureBackend()) {
   const actions = backend.useActions();
   const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 100 } }));
@@ -302,3 +304,5 @@ it("reopens only the fixture order’s proven linked payment on a mistaken entry
   await show(backend, replacement.orderId);
   expect(current.totals).toMatchObject({ deposit: 10000, due: 26000, total: 36000 });
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

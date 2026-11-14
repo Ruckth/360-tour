@@ -51,13 +51,13 @@ test.describe("cashier checkout", () => {
     await expect(order.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager · ฿180 discount");
     // Waiting shows once, on the bar; the tenders stay off until it is decided.
     await expect(order.getByTestId("waiting-for-approval")).toHaveCount(0);
-    await expect(order.getByRole("button", { name: "Cash", exact: true })).toBeDisabled();
+    await expect(order.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeDisabled();
     // Nothing changed on the order before approval.
     await expect(order.getByTestId("order-due")).toHaveText("฿1,200");
 
     await order.locator('[data-approval-status="pending"]').getByRole("button", { name: "Withdraw" }).click();
     await expect(order.locator('[data-approval-status="cancelled"]')).toHaveText("Request withdrawn.");
-    await expect(order.getByRole("button", { name: "Cash", exact: true })).toBeEnabled();
+    await expect(order.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeEnabled();
   });
 
   test("a discount already on the line is not treated as a new over-limit request", async ({ page }) => {
@@ -129,7 +129,8 @@ test.describe("manager approvals", () => {
     await expect(requests).toHaveCount(2);
 
     const first = requests.filter({ hasText: "Guest waited 40 minutes" });
-    await expect(first).toContainText("Mint asks for a ฿180 discount (15%)");
+    await expect(first.locator("p").first()).toHaveText("Thai massage 60");
+    await expect(first).toContainText("Mint · asks for a ฿180 discount (15%)");
     await expect(first).toContainText("“Guest waited 40 minutes”");
     await expect(first).toContainText("Order #1043 · Total ฿1,200 → ฿1,020");
     await expect(first).toContainText("Expires in 5 min");
@@ -142,7 +143,7 @@ test.describe("manager approvals", () => {
     await expect(requests).toHaveCount(1);
 
     const second = requests.filter({ hasText: "Regular guest" });
-    await expect(second).toContainText("Mint asks for a ฿100 discount");
+    await expect(second).toContainText("Mint · asks for a ฿100 discount");
     await second.getByRole("button", { name: "Decline" }).click();
     // The last decision closes the panel and says what happened.
     await expect(panel).toHaveCount(0);

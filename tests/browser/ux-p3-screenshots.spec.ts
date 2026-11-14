@@ -33,7 +33,7 @@ for (const [size, viewport] of Object.entries(UX_VIEWPORTS)) {
 
     await open(page, "?role=cashier&scenario=spa");
     let panel = await orderPanel(page, size);
-    await panel.getByRole("button", { name: "Cash", exact: true }).click();
+    await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
     await page.waitForTimeout(300);
     const cash = phase === "after" ? panel.getByRole("group", { name: "Cash payment" }) : panel;
     counts.cashPanel = await controlsOnScreen(page, cash);

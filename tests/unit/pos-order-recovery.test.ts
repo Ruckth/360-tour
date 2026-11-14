@@ -34,7 +34,7 @@ async function setup() {
   return { backend, actions: backend.useActions(), orderId: (await adding).orderId };
 }
 async function openNewCustomerForm(name: string, phone = "") {
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Add customer"]')!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Customer"]')!.click());
   await click("New customer");
   await typeInto("#customer-name", name);
   if (phone) await typeInto("#customer-phone", phone);
@@ -115,7 +115,7 @@ describe("new customer writes", () => {
     const { backend, actions, orderId } = await setup();
     vi.spyOn(actions, "linkCustomer").mockRejectedValueOnce(new Error("Link failed"));
     await render(backend, orderId);
-    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Add customer"]')!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Customer"]')!.click());
     await typeInto('[aria-label="Search customers"]', "Somchai");
     const pick = () => act(async () => [...document.querySelectorAll('[aria-label="Customers"] button')][0]!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     await pick();
@@ -135,7 +135,7 @@ describe("lookup failures stay in their dialog", () => {
     let down = true;
     const flaky: CheckoutBackend = { ...backend, useCustomerSearch: (query) => { if (down && query.trim().length >= 2) throw new Error("Search unavailable"); return backend.useCustomerSearch(query); } };
     await render(flaky, orderId);
-    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Add customer"]')!.click());
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Customer"]')!.click());
     await typeInto('[aria-label="Search customers"]', "Somchai");
     expect(alertText()).toContain("Couldn't search customers");
     expect(input('[aria-label="Search customers"]').value).toBe("Somchai");

@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,7 +40,7 @@ async function paidMassage() {
   await pending(actions.linkCustomer({ orderId, customerId: SOMCHAI }));
   await pending(actions.settleOrder({ orderId, idempotencyKey: "paid-massage-01", expectedDue: 1600, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "cash", amount: 1600 }] }));
   const provider = { backend: backend as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>;
-  await act(async () => root.render(createElement(CheckoutBackendProvider, provider, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
+  await act(async () => root.render(createElement(CheckoutBackendProvider, provider, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
   return { backend, orderId };
 }
 
@@ -53,7 +55,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it("pays an unscheduled service, links it from its receipt line to the guest's appointment and unlinks it, leaving the receipt as issued", async () => {
   const { backend } = await paidMassage();
   const issued = printed();
-  expect(issued).toContain("Not scheduled");
+  expect(issued).not.toContain("Not scheduled");
   expect(document.querySelector('section[aria-label="After payment"]')).toBeNull();
   // Link sits on the line, inside the paper but screen-only.
   expect(button("Link appointment")?.closest("[data-screen-only]")).toBeTruthy();
@@ -123,3 +125,5 @@ it("retries a link whose answer was lost with the same attempt key, and links on
   await expect(link.mock.results[1].value).resolves.toMatchObject({ replayed: true });
   expect(document.querySelector('[data-testid="line-link"]')?.textContent?.trim()).toBe("Linked · SVC-0002");
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

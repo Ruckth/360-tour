@@ -285,7 +285,7 @@ async function main() {
   const initial = await seedCheckout();
   root.render(
     <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
-      <CheckoutHarness initial={initial} />
+      <ConfirmProvider><CheckoutHarness initial={initial} /></ConfirmProvider>
     </NextIntlClientProvider>,
   );
 }

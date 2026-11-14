@@ -42,7 +42,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const buttons = () => [...document.querySelectorAll("button")];
-const button = (text: string) => buttons().find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text)!;
+const button = (text: string) => buttons().find((el) => ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))))!;
 const buttonStarting = (text: string) => buttons().find((el) => el.textContent?.trim().startsWith(text))!;
 const byLabel = (label: string) => document.querySelector<HTMLElement>(`[aria-label="${label}"]`)!;
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
@@ -76,7 +76,7 @@ describe("checkout order screen", () => {
     await showPage(backend);
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
     expect(document.body.textContent).not.toContain("No booking");
-    expect(byLabel("Add customer")).toBeTruthy();
+    expect(byLabel("Customer")).toBeTruthy();
     await act(async () => buttonStarting("Thai massage 60").click());
     await settle();
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1043");
@@ -124,7 +124,7 @@ describe("checkout order screen", () => {
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1041");
     expect(document.body.textContent).toContain("Guest: Anna Schmidt");
 
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => type(byLabel("Search customers") as HTMLInputElement, "Somchai"));
     await act(async () => buttonStarting("Somchai Prasert").click());
     await settle();
@@ -134,7 +134,7 @@ describe("checkout order screen", () => {
     await act(async () => byLabel("Customer: Somchai Prasert. Change customer").click());
     await act(async () => button("Remove").click());
     await settle();
-    expect(byLabel("Add customer")).toBeTruthy();
+    expect(byLabel("Customer")).toBeTruthy();
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1041");
   });
 
@@ -143,7 +143,7 @@ describe("checkout order screen", () => {
     const backend = createFixtureBackend();
     const { orderId } = await create(backend);
     await showOrder(backend, orderId);
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => type(byLabel("Search customers") as HTMLInputElement, "Anna Schmidt"));
     const results = byLabel("Customers");
     expect([...results.querySelectorAll("button")].filter((el) => el.textContent?.includes("Anna Schmidt"))).toHaveLength(2);
@@ -177,7 +177,7 @@ describe("checkout order screen", () => {
     expect(header()).not.toContain("No booking");
 
     // A separate payer, then Add booking → Anna → her stay (it already has Order #1041, empty).
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => button("New customer").click());
     await act(async () => type(document.querySelector<HTMLInputElement>("#customer-name")!, "Payer Pat"));
     await act(async () => button("Add and link").click());

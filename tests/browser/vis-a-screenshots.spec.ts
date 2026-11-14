@@ -20,7 +20,7 @@ for (const [size, viewport] of Object.entries({ ipad: { width: 1180, height: 820
           await panel.getByRole("button", { name: "Split payment", exact: true }).click();
           await panel.getByLabel("Payment 1 amount").fill("500");
         } else {
-          await panel.getByRole("button", { name: "Cash", exact: true }).click();
+          await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
           if (state === "cash-1500") await panel.getByRole("button", { name: "฿1,500", exact: true }).click();
         }
       }

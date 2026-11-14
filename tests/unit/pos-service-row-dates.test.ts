@@ -35,7 +35,7 @@ describe("optional service date and time", () => {
     // Legacy rows keep their own label.
     expect(scheduleLabel(undefined, NOW)).toBeNull();
     expect(receiptSchedule(undefined)).toBeNull();
-    expect(receiptSchedule({})).toBe("Not scheduled");
+    expect(receiptSchedule({})).toBeNull();
     expect(receiptSchedule({ date: "2026-11-12" })).toBe("Thu 12 Nov 2026 · time to be confirmed");
     expect(receiptSchedule({ time: "14:30" })).toBe("14:30 · date to be confirmed");
   });
@@ -64,7 +64,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); }
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
-const subtitle = (name: string) => row(name).querySelector("button span span:nth-child(2)")?.textContent ?? "";
+const subtitle = (name: string) => row(name).querySelector("button > span:not([aria-hidden])")?.textContent ?? "";
 const timeInput = () => panel().querySelector<HTMLInputElement>('input[aria-label="Service time"]')!;
 const dateButton = () => panel().querySelector<HTMLButtonElement>('button[aria-label="Service date"]')!;
 const day = (iso: string) => document.querySelector<HTMLElement>(`[data-day="${iso}"]:not([data-outside])`);

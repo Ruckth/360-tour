@@ -8,6 +8,7 @@ type Props = {
   children: ReactNode;
   /** When this changes (e.g. the search text), a failed part tries again by itself. */
   resetKey?: string;
+  retryLabel?: string;
 };
 
 /**
@@ -32,7 +33,7 @@ export class InlineErrorBoundary extends Component<Props, { failed: boolean }> {
       <div role="alert" className="grid gap-3 text-sm">
         <p className="text-destructive">{this.props.message}</p>
         <Button type="button" variant="outline" className="justify-self-start" onClick={() => this.setState({ failed: false })}>
-          Try again
+          {this.props.retryLabel ?? "Try again"}
         </Button>
       </div>
     );

@@ -16,7 +16,7 @@ test('discard from the order\'s ⋯ asks first, keeps the order read only and re
   await expect(confirm).toHaveCount(0);
   await expect(order.getByText(/^Read only\./)).toBeVisible();
   const dialog = page.getByRole('dialog');
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add booking', exact: true })).toBeDisabled();
   await expect(page.getByRole("complementary", { name: "Order", exact: true }).locator("li").filter({ has: page.locator("p.font-medium") }).getByText(/^Layout check item 1/)).toBeVisible();
   await page.getByRole('button', { name: 'Orders', exact: true }).click();
@@ -24,7 +24,7 @@ test('discard from the order\'s ⋯ asks first, keeps the order read only and re
   await dialog.getByRole('button', { name: /^Restore Order/ }).click();
   await dialog.getByRole('button', { name: 'Restore order', exact: true }).click();
   await dialog.getByRole('button', { name: 'Open restored order' }).click();
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeEnabled();
 });
 test('restore reviews competing sources and removes only explicitly selected conflicts', async ({ page }) => {
   await open(page, '?scenario=source-conflict');
@@ -81,12 +81,13 @@ test('a service row takes an optional date and time, each cleared on its own, an
   await order.getByRole('button', { name: 'Clear service time' }).click();
   await expect(schedule).toContainText('Not scheduled');
   await expect(order.getByLabel('Service time')).toHaveValue('');
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeEnabled();
 });
 test('a paid unscheduled service is linked to its appointment from the receipt, which stays as issued', async ({ page }) => {
   await open(page, '?scenario=unscheduled-paid');
   const receipt = page.locator('.pos-receipt');
-  await expect(receipt).toContainText('Not scheduled');
+  await expect(receipt).not.toContainText('Not scheduled');
+  await expect(page.getByTestId('receipt-items')).toContainText('Not scheduled');
   // What prints: screen-only controls (a line's Refund, which a linked row loses) are left out.
   const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
   const issued = await printed();
