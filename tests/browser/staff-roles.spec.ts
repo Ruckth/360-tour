@@ -165,6 +165,20 @@ test.describe("manager approvals", () => {
 test.describe("Settings › Team", () => {
   test.use({ viewport: { width: 1280, height: 950 } });
 
+  test("built-in business defaults can be saved and invalid saves focus the first field", async ({ page }) => {
+    await open(page, "?view=settings&tab=business");
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await expect(page.getByRole("status")).toHaveText("Using built-in defaults");
+    await expect(save).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
+    const name = page.getByRole("textbox", { name: "Business name", exact: true });
+    await name.fill("");
+    await save.click();
+    await expect(name).toHaveAttribute("aria-invalid", "true");
+    await expect(name).toBeFocused();
+    await expect(page.getByRole("alert")).toContainText("Fix the highlighted fields and save again.");
+  });
+
   test("an owner invites, changes a role and saves the cashier rules", async ({ page }) => {
     await open(page, "?view=settings&tab=team");
     const people = page.getByRole("region", { name: "People" });
@@ -187,7 +201,7 @@ test.describe("Settings › Team", () => {
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
-    await expect(fon).toContainText(/Invited · until/);
+    await expect(fon).toContainText(/Invited · expires/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
 
     await people.getByRole("button", { name: "Change roles for Mint" }).click();
@@ -206,7 +220,7 @@ test.describe("Settings › Team", () => {
     await expect(rules.getByText("Use 0–100, up to two decimals.")).toBeVisible();
     await expect(save).toBeDisabled();
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("12.5");
-    await rules.getByRole("radiogroup", { name: "Void permission", exact: true }).getByRole("radio", { name: "Cashier", exact: true }).click();
+    await rules.getByRole("radiogroup", { name: "Void permission", exact: true }).getByRole("radio", { name: "Any cashier", exact: true }).click();
     await save.click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
     await expect(save).toHaveCount(0);
@@ -219,18 +233,21 @@ test.describe("Settings › Team", () => {
     await open(page, "?view=settings&tab=team");
     const rules = page.getByRole("form", { name: "Rules for all cashiers" });
     await expect(rules.getByRole("combobox")).toHaveCount(0);
-    await expect(rules.locator("label")).toHaveText(["Discount without approval", "Refund", "Void", "Custom price", "Correct payment"]);
-    await expect(rules.getByRole("radio", { name: "Manager", exact: true })).toHaveCount(4);
-    for (const one of await rules.getByRole("radio", { name: "Manager", exact: true }).all()) await expect(one).toHaveAttribute("aria-checked", "true");
+    await expect(rules.locator("label")).toHaveText(["Discount without approval"]);
+    await expect(rules.getByRole("radiogroup")).toHaveCount(4);
+    for (const label of ["Refund", "Void", "Custom price", "Correct payment"])
+      await expect(rules.getByRole("radiogroup", { name: `${label} permission`, exact: true })).toBeVisible();
+    await expect(rules.getByRole("radio", { name: "Manager only", exact: true })).toHaveCount(4);
+    for (const one of await rules.getByRole("radio", { name: "Manager only", exact: true }).all()) await expect(one).toHaveAttribute("aria-checked", "true");
     const refund = rules.getByRole("radiogroup", { name: "Refund permission", exact: true });
-    await refund.getByRole("radio", { name: "Cashier", exact: true }).click();
-    await expect(refund.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
-    await refund.getByRole("radio", { name: "Manager", exact: true }).click();
+    await refund.getByRole("radio", { name: "Any cashier", exact: true }).click();
+    await expect(refund.getByRole("radio", { name: "Any cashier", exact: true })).toHaveAttribute("aria-checked", "true");
+    await refund.getByRole("radio", { name: "Manager only", exact: true }).click();
     await expect(rules.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-    await refund.getByRole("radio", { name: "Cashier", exact: true }).click();
+    await refund.getByRole("radio", { name: "Any cashier", exact: true }).click();
     await rules.getByRole("button", { name: "Save", exact: true }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
-    await expect(refund.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(refund.getByRole("radio", { name: "Any cashier", exact: true })).toHaveAttribute("aria-checked", "true");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 0, refund: "cashier" });
   });
 

@@ -11,6 +11,8 @@
 	--background: oklch(0.985 0.003 80);
 	--foreground: oklch(0.18 0.02 260);
 	--card: oklch(1 0 0);
+	/* Staff-entered chart marks: 3.9:1 against white, distinct from Not tracked. */
+	--chart-s0b: #7d827b;
 	--card-foreground: oklch(0.18 0.02 260);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.18 0.02 260);
@@ -48,6 +50,7 @@
 }
 
 .dark {
+	--chart-s0b: #9ba497;
 	--background: oklch(0.16 0.015 260);
 	--foreground: oklch(0.94 0.005 80);
 	--card: oklch(0.22 0.015 260);
@@ -221,4 +224,11 @@
 @utility money {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
+}
+
+/* Shared calendar tools may need another row as touch-sized labels grow. */
+@media (width < 40rem) {
+	[data-testid="calendar-toolbar"] > .border-t {
+		flex-wrap: wrap;
+	}
 }

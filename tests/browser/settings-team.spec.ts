@@ -65,7 +65,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "marketer" });
       const mint = people.getByTestId("team-person").filter({ hasText: "mint@" });
       await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Editor");
-      await expect(mint).toContainText("Marketing: Invited · until");
+      await expect(mint).toContainText("Marketing: Invited · expires");
       expect(await page.locator("body").getAttribute("data-navigation")).toBeNull();
       expect(run.counts).toEqual({ taps: 3, fields: 0, scrolls: 0 });
       expect(run.counts.taps).toBeLessThan(BEFORE_GRANT_MARKETING.taps);
@@ -145,21 +145,21 @@ test.describe("Settings panels", () => {
   });
 
   for (const [tab, title] of [["business", "Business profile"], ["bookingRules", "Booking rules"], ["ai", "AI assistant"], ["email", "Email"]] as const) {
-    test(`${title}: visible context, Save only after a change, history one closed section`, async ({ page }) => {
+    test(`${title}: visible context, defaults can be saved on Business, history one closed section`, async ({ page }) => {
       await open(page, `?view=settings&tab=${tab}`);
       const panel = page.getByRole("region", { name: title });
-      await expectAtMostSentences(panel, tab === "business" ? 2 : 1);
+      await expectAtMostSentences(panel, tab === "business" ? 4 : 1);
       const save = panel.getByRole("button", { name: "Save", exact: true });
       // Deleted villa history lives on Properties, not under every Settings tab.
       await expect(page.getByText("deleted villas")).toHaveCount(0);
-      await expect(save).toHaveCount(0);
+      await expect(save).toHaveCount(tab === "business" ? 1 : 0);
       const field = panel.locator("input:not([type=hidden]), textarea").first();
       const value = await field.inputValue();
       await field.fill(`${value}1`);
       await expect(save).toBeEnabled();
       await field.fill(value);
-      await expect(save).toHaveCount(0);
-      const history = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^History$/ }) });
+      await expect(save).toHaveCount(tab === "business" ? 1 : 0);
+      const history = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^History(?: ·|$)/ }) });
       await expect(history).toHaveCount(1);
       await expect(history).not.toHaveAttribute("open", /.*/);
     });
@@ -183,7 +183,7 @@ test.describe("Settings panels", () => {
   test("a manager's read-only banner is the page's one sentence", async ({ page }) => {
     await open(page, "?view=settings&role=manager&tab=business");
     await expect(page.getByTestId("read-only-banner")).toBeVisible();
-    await expectAtMostSentences(page.getByRole("region", { name: "Business profile" }), 2);
+    await expectAtMostSentences(page.getByRole("region", { name: "Business profile" }), 3);
   });
 });
 
@@ -241,12 +241,12 @@ test.describe("Round 1 settings drafts", () => {
   test("rules draft uses the same tab guard and Discard restores the approval requirements", async ({ page }) => {
     await open(page, "?view=settings&tab=team");
     const rule = page.getByRole("radiogroup", { name: "Refund permission", exact: true });
-    await rule.getByRole("radio", { name: "Cashier", exact: true }).click();
+    await rule.getByRole("radio", { name: "Any cashier", exact: true }).click();
     await page.getByRole("tab", { name: "Business", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Keep editing" }).click();
-    await expect(rule.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(rule.getByRole("radio", { name: "Any cashier", exact: true })).toHaveAttribute("aria-checked", "true");
     await page.getByRole("button", { name: "Discard", exact: true }).click();
-    await expect(rule.getByRole("radio", { name: "Manager", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(rule.getByRole("radio", { name: "Manager only", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("rules-save-bar")).toHaveCount(0);
   });
 });

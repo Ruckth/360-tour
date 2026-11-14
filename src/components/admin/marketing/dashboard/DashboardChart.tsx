@@ -103,7 +103,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
           </Button>
         </div>
       </header>
-      <p className="px-4 pt-3 text-xs text-muted-foreground">Tap a source to hide or show it</p>
+      <p className="px-4 pt-3 text-xs text-muted-foreground"><span className="pointer-coarse:hidden">Select a source to hide or show it</span><span className="hidden pointer-coarse:inline">Tap a source to hide or show it</span></p>
       <div role="group" aria-label="Series (select to hide or show)" className="flex flex-wrap gap-1 px-3 pt-3">
         {data.series.map((s) => {
           const on = !hidden.has(s.key);

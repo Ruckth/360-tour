@@ -45,6 +45,10 @@ for (const [name, size] of Object.entries(SIZES)) {
     expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
     await expect(page.getByRole("radio", { name: "% percent" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "e.g. 20");
+    const discountBox = (await page.getByRole("textbox", { name: "Discount", exact: true }).boundingBox())!;
+    const unitBox = (await page.getByRole("radiogroup", { name: "Discount unit", exact: true }).boundingBox())!;
+    expect(unitBox.y).toBe(discountBox.y);
+    expect(unitBox.height).toBe(discountBox.height);
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
     // Dates, minimums and terms are folded away; a quote can't run before the first save.
@@ -73,7 +77,7 @@ for (const [name, size] of Object.entries(SIZES)) {
 
     await fill(page.getByRole("textbox", { name: "Code", exact: true }), "SPA20");
     await fill(page.getByRole("textbox", { name: "Discount", exact: true }), "20%");
-    await tap(page.getByRole("radio", { name: /^Spa services/ }));
+    await tap(page.getByRole("radio", { name: /^Spa$/ }));
     await tap(visible(page, "Save & publish"));
     const confirm = page.getByRole("alertdialog");
     await expect(confirm).toContainText("Publish SPA20?");
@@ -251,4 +255,24 @@ test("unsaved coupons guard every in-app link and retain the draft", async ({ pa
   await page.getByRole("link", { name: "Dashboard navigation" }).click();
   await dialog.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(page.locator("body")).toHaveAttribute("data-left", "yes");
+});
+
+test("a valid discount reveals a summary below the stable single-column form", async ({ page }) => {
+  await open(page, SIZES.desktop);
+  const form = editor(page).locator("form");
+  const before = (await form.boundingBox())!;
+  const summary = page.getByRole("region", { name: "Summary", exact: true });
+  await expect(summary).toHaveCount(0);
+  const discount = page.getByRole("textbox", { name: "Discount", exact: true });
+  await discount.fill("20");
+  await expect(summary).toBeVisible();
+  const after = (await form.boundingBox())!;
+  expect(after.x).toBe(before.x);
+  expect(after.width).toBe(before.width);
+  expect((await summary.boundingBox())!.y).toBeGreaterThanOrEqual(after.y + after.height);
+  await discount.fill("101");
+  await expect(summary).toHaveCount(0);
+  await page.setViewportSize(SIZES.phone);
+  await discount.fill("20");
+  await expect(page.locator('[data-admin-bottom-bar="sm"]')).toContainText("20% off · Villa nights");
 });

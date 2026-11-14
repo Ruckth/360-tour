@@ -137,7 +137,11 @@ async function scene(page: Page, name: string, phone: boolean) {
       "staff-roles",
       `?view=settings&tab=${name === "settings-team" ? "team" : "business"}`,
     );
-  else if (name === "new-coupon") await open(page, "marketing-coupon");
+  else if (name === "new-coupon" || name === "new-coupon-filled") {
+    await open(page, "marketing-coupon");
+    if (name === "new-coupon-filled")
+      await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20");
+  }
   else if (name === "marketing-dashboard")
     await open(page, "marketing-dashboard");
 }
@@ -163,6 +167,13 @@ const pairs: Array<
   ["ux-p7-business-desktop", "settings-business", "business-desktop", true],
   ["ux-p8-new-coupon-phone", "new-coupon", "phone", true],
   ["ux-p8-dashboard-desktop", "marketing-dashboard", "dashboard-desktop"],
+  ["extra-settings-team-desktop", "settings-team", "business-desktop", true],
+  ["extra-new-coupon-desktop", "new-coupon", "business-desktop", true],
+  ["extra-new-coupon-filled-desktop", "new-coupon-filled", "business-desktop", true],
+  ["extra-new-coupon-filled-phone", "new-coupon-filled", "phone", true],
+  ["extra-new-coupon-filled-ipad", "new-coupon-filled", "ipad", true],
+  ["extra-settings-team-phone-full", "settings-team", "phone", true],
+  ["extra-settings-team-ipad-full", "settings-team", "ipad", true],
 ];
 const isDesktop = (size: string) => size.endsWith("-desktop");
 for (const desktop of [false, true])

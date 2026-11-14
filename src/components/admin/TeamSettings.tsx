@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
-import { FieldLabel as Label } from "@/components/ui/label";
+import { FieldLabel as Label, Label as RuleLabel } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -25,6 +25,7 @@ import { useConfirm } from "./ConfirmDialog";
 import { personLabel } from "./person-label";
 import { ROLE_LABELS } from "./staff-access";
 import { TONES } from "./status-tones";
+import { NumberField } from "./marketing/MarketingBits";
 
 type Person = FunctionReturnType<typeof api.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
@@ -83,7 +84,7 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
   const people = useQuery(api.staffAccess.listPeople, {});
   return (
     <>
-      <header className="px-1 pt-1"><h2 className="font-serif text-3xl">Team</h2></header>
+      <header className="px-1 pt-1"><h2 className="font-serif text-3xl">Team</h2><p className="mt-1 text-pretty text-[13px] text-muted-foreground">Sign-in access and cashier permissions.</p></header>
       <PeoplePanel people={people} inviteDirty={inviteDirty} onDirtyChange={setInviteDirty} confirmDiscard={confirmDiscard ?? localGuard.confirmDiscard} />
       <CashierRulesPanel onDirtyChange={setRulesDirty} hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
     </>
@@ -291,7 +292,7 @@ type Grant = NonNullable<Person["staffGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
-  return grant.expiresAt ? `${prefix}Invited · until ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
+  return grant.expiresAt ? `${prefix}Invited · expires ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */
@@ -323,19 +324,19 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
   return (
-    <li className="grid gap-2 py-1.5 first:pt-0 last:pb-0" data-testid="team-person">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5">
+    <li className="grid gap-2 py-1 first:pt-0 last:pb-0" data-testid="team-person">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0">
         <div className="min-w-0">
           <p className="text-[15px] font-medium text-foreground">{name}</p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-[13px] break-all text-muted-foreground">{person.email}</p>{states.map((state) => <Badge key={state} variant="muted" className={cn("rounded-full text-xs font-medium", state?.includes("Invite expired") && [TONES.danger.bg, TONES.danger.text, TONES.danger.border])}>{state}</Badge>)}</div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-[13px] break-all text-muted-foreground">{person.email}</p>{states.map((state) => { const tone = state?.includes("Invite expired") ? TONES.danger : TONES.warning; return <Badge key={state} variant="muted" className={cn("rounded-full text-xs font-medium", tone.bg, tone.text, tone.border)}>{state}</Badge>; })}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 max-sm:col-span-2">
-          <Badge variant="muted" className="mr-auto max-w-full rounded-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
+          <Badge variant="muted" className="max-sm:mr-auto max-w-full rounded-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
           {owner ? <span aria-hidden className="w-[7.25rem] max-sm:hidden" /> : (
             <div className="flex shrink-0 items-center gap-1">
               {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
               {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
-              <Button size="sm" variant="outline" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
+              <Button size="sm" variant="ghost" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
               {linkWorks ? <MoreMenu
@@ -345,7 +346,7 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew
                   { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
                   { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
                 ]}
-              /> : <span aria-hidden className="size-11 max-sm:hidden" />}
+              /> : <span aria-hidden className="size-11" />}
             </div>
           )}
         </div>
@@ -449,29 +450,29 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
 
   return (
     <form onSubmit={submit} noValidate className={cn("grid", dirty && "pb-20")} aria-label="Rules for all cashiers">
-      <div className="grid grid-cols-[minmax(0,1fr)_11rem] items-center gap-3 border-b border-border py-2.5">
-        <Label htmlFor={`${id}-limit`}>Discount without approval</Label>
-        <span className="flex w-44 items-center gap-1.5">
-          <Input
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border py-2.5">
+        <RuleLabel htmlFor={`${id}-limit`} className="whitespace-nowrap text-sm font-normal text-foreground">Discount without approval</RuleLabel>
+        <div className="w-28">
+          <NumberField
             id={`${id}-limit`}
             inputMode="decimal"
-            className={cn("h-10 min-w-0 flex-1 text-right tabular-nums", problem && "border-destructive")}
+            suffix="%"
+            className={cn("h-10 min-w-0 text-right", problem && "border-destructive")}
             value={draft.limit}
             disabled={state.saving}
             aria-invalid={problem ? true : undefined}
             aria-describedby={problem ? `${id}-limit-error` : undefined}
             onChange={(e) => set({ limit: e.target.value.replace(/[^\d.]/g, "") })}
           />
-          <span aria-hidden className="text-sm text-muted-foreground">%</span>
-        </span>
+        </div>
         {problem ? <p id={`${id}-limit-error`} className="col-span-2 text-right text-xs text-destructive">{problem}</p> : null}
       </div>
-      <p className="pt-4 pb-1 text-[13px] font-medium text-foreground">Without approval</p>
+      <p className="pt-5 pb-1 text-xs font-medium text-muted-foreground">Who can do this without asking</p>
       {RULES.map(({ key, label }) => (
-        <div key={key} className="flex items-center justify-between gap-3 border-b border-border py-2.5">
-          <Label htmlFor={`${id}-${key}`}>{label}</Label>
-          <ToggleGroup id={`${id}-${key}`} variant="segmented" tone="subtle" className="w-44 shrink-0" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
-            <ToggleGroupItem value="cashier">Cashier</ToggleGroupItem><ToggleGroupItem value="manager">Manager</ToggleGroupItem>
+        <div key={key} className="grid grid-cols-1 items-center gap-2 border-b border-border py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3">
+          <span id={`${id}-${key}-label`} className="text-sm text-foreground">{label}</span>
+          <ToggleGroup id={`${id}-${key}`} variant="segmented" tone="subtle" className="w-full sm:w-64" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
+            <ToggleGroupItem value="cashier">Any cashier</ToggleGroupItem><ToggleGroupItem value="manager">Manager only</ToggleGroupItem>
           </ToggleGroup>
         </div>
       ))}

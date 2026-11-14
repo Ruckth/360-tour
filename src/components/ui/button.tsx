@@ -21,7 +21,7 @@ export const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-4 py-2 text-sm",
-        sm: "h-9 px-3 text-xs",
+        sm: "h-9 px-3 text-[13px] pointer-coarse:text-sm",
         md: "h-10 px-4 py-2.5 text-sm",
         lg: "h-12 px-6 text-sm md:text-base",
         nav: "h-9 px-4 text-sm",

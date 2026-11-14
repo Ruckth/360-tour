@@ -66,7 +66,7 @@ const RESTORE = "Restore settings to before this";
 /** Settings history is one closed History section; open it. */
 const openHistory = () =>
   act(async () => {
-    const details = [...document.querySelectorAll("details")].find((node) => node.querySelector("summary")?.textContent === "History")!;
+    const details = [...document.querySelectorAll("details")].find((node) => node.querySelector("summary")?.textContent?.startsWith("History"))!;
     details.open = true;
     details.dispatchEvent(new Event("toggle"));
   });
@@ -78,7 +78,7 @@ const change = (value: string) =>
   });
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  state.settings = { ...mergeSiteSettings(null), revision: 4 };
+  state.settings = { ...mergeSiteSettings(null), revision: 4, updatedAt: event.recordedAt };
   state.tab = "";
   state.history = [event];
   state.records = [];
@@ -136,6 +136,16 @@ it("disables applying history while a draft is dirty and retains that draft afte
   expect(input().value).toBe("Unsaved draft");
   expect(document.body.textContent).toContain("Settings changed");
   expect(button(RESTORE).disabled).toBe(true);
+});
+it("saves built-in defaults without requiring an edit, using the live revision", async () => {
+  state.settings = { ...mergeSiteSettings(null), revision: 4 };
+  await render(createElement(AdminSettingsView));
+  expect(document.body.textContent).toContain("Using built-in defaults");
+  expect(button("Discard")).toBeUndefined();
+  expect(button("Save").disabled).toBe(false);
+  await click("Save");
+  expect(state.update).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 4, business: expect.objectContaining({ businessName: mergeSiteSettings(null).businessName }) }));
+  expect(button("Save")).toBeUndefined();
 });
 it("applies history with the live revision, prevents duplicate pending writes and reports a rejected restore", async () => {
   let reject!: (error: Error) => void;
