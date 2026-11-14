@@ -837,7 +837,7 @@ export function ChatsView() {
                     key={session._id}
                     data-session-id={session._id}
                     className={cn(
-                      "group relative mb-0.5 flex items-center rounded-lg border border-transparent transition hover:bg-muted/60",
+                      "group relative mb-0.5 flex items-center rounded-xl border border-transparent transition hover:bg-muted/60",
                       selected &&
                         "border-gold/15 bg-gold/10 before:absolute before:inset-y-4 before:left-0 before:w-0.5 before:rounded-full before:bg-gold-text",
                     )}
@@ -846,13 +846,13 @@ export function ChatsView() {
                       type="button"
                       onClick={() => selectSession(session._id)}
                       aria-current={selected ? "true" : undefined}
-                      className="min-w-0 flex-1 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="min-w-0 flex-1 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       {/* Two lines, so the landscape iPad shows about ten: who, where and how long; then what they said. */}
                       <span className="flex min-w-0 items-center gap-1.5">
                         <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
                         <span className="sr-only">{sourceLabel(session.channel)} ·</span>
-                        <span className="min-w-0 truncate text-sm font-semibold text-foreground" title={visitorLabel(session)}>
+                        <span className="min-w-0 truncate text-[15px] font-medium text-foreground" title={visitorLabel(session)}>
                           {visitorLabel(session)}
                         </span>
                         {place ? (

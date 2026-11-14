@@ -328,7 +328,8 @@ export function MissingInformationPanel({
   }
 
   return (
-    <div>
+    // The tab panel supplies the border; round it too so there is only one surface.
+    <div className="overflow-hidden rounded-xl bg-card [section:has(>&)]:overflow-hidden [section:has(>&)]:rounded-xl">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <SearchBox
           value={searchInput}
@@ -429,7 +430,7 @@ export function MissingInformationPanel({
       ) : groups.length === 0 ? (
         emptyState()
       ) : (
-        <div className="lg:overflow-x-auto">
+        <div className="lg:overflow-x-auto [&_tbody_td]:lg:align-middle [&_tbody_td]:lg:py-3">
           <table className={STACKED_TABLE.table}>
             <thead className={STACKED_TABLE.head}>
               <tr>
@@ -463,7 +464,8 @@ export function MissingInformationPanel({
                     className={cn(
                       STACKED_TABLE.row,
                       STACKED_TABLE.selectableRow,
-                      hasNew && "relative max-lg:pr-14",
+                      "relative min-h-16 gap-y-2",
+                      hasNew && "max-lg:pr-12",
                     )}
                   >
                     <td className={STACKED_TABLE.cell}>
@@ -473,8 +475,8 @@ export function MissingInformationPanel({
                         label={`Select "${question.userQuestion}"`}
                       />
                     </td>
-                    <td className={cn(STACKED_TABLE.cell, "lg:max-w-[360px]")}>
-                      <p className="font-medium text-foreground">
+                    <td className={cn(STACKED_TABLE.cell, "lg:w-full lg:max-w-[480px]")}>
+                      <p className="text-[15px] font-medium leading-5 text-foreground">
                         {/* The guest's own words are content, not explanation (sentence budget). */}
                         <span data-sentence-budget="ignore">
                           {question.userQuestion}
@@ -482,7 +484,7 @@ export function MissingInformationPanel({
                         {group.count > 1 ? (
                           <Badge
                             variant="secondary"
-                            className="ml-2 rounded-full align-middle"
+                            className="ml-2 rounded-full px-2 py-0 text-[11px] align-middle"
                           >
                             Asked {group.count}×
                           </Badge>
@@ -525,18 +527,18 @@ export function MissingInformationPanel({
                         ) : null}
                       </p>
                     </td>
-                    <td className={cn(STACKED_TABLE.cell, "lg:min-w-[280px]")}>
+                    <td className={cn(STACKED_TABLE.cell, "max-lg:col-span-full max-lg:pl-7")}>
                       {hasNew ? (
                         // Picking is the decision: it resolves at once, and the toast offers Undo. Most
                         // reports need a new fact, so Create fact stays one tap beside it.
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-2">
                           <Select
                             value=""
                             disabled={pendingAction !== ""}
                             onValueChange={(next) => void resolve(group, next)}
                           >
                             <SelectTrigger
-                              className="h-9 w-full min-w-0 rounded-lg border-primary/60 font-medium lg:min-w-[180px]"
+                              className="h-9 w-auto min-w-0 flex-1 rounded-lg font-normal lg:w-64 lg:flex-none"
                               aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
                             >
                               <SelectValue placeholder="Resolve with a fact…" />
@@ -546,8 +548,8 @@ export function MissingInformationPanel({
                           <Button
                             type="button"
                             size="sm"
-                            variant="outline"
-                            className="h-9"
+                            variant="ghost"
+                            className="h-9 shrink-0 px-2"
                             disabled={pendingAction !== ""}
                             onClick={() => createFact(question)}
                           >

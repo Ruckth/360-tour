@@ -117,9 +117,9 @@ export function BookingQuickActions({
       <PopoverAnchor asChild>
         <span aria-hidden className="pointer-events-none fixed" style={rect} />
       </PopoverAnchor>
-      <PopoverContent align="start" className="grid w-80 gap-3 overflow-visible p-3" aria-label={`Booking for ${booking.guestName}`}>
+      <PopoverContent align="start" className="grid w-80 gap-4 overflow-visible rounded-xl p-4 font-sans tabular-nums" aria-label={`Booking for ${booking.guestName}`}>
         <div>
-          <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
+          <p className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-foreground">
             {booking.guestName}
             <StatusBadge {...status} />
           </p>
@@ -132,6 +132,7 @@ export function BookingQuickActions({
           {editable && booking.status === "pending" ? (
             <Button
               size="sm"
+              variant={due > 0 ? "outline" : "default"}
               onClick={() =>
                 run(() => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), `${booking.guestName}: confirmed.`)
               }

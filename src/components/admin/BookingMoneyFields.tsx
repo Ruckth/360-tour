@@ -51,7 +51,7 @@ export function ReceivedAtField({
     <div className="grid min-w-0 gap-2">
       <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-sm">
         <span className="text-muted-foreground">
-          {value.edited ? <>{verb} <span className="tabular-nums">{value.date} · {value.time}</span> Bangkok</> : `${verb} now`}
+          {value.edited ? <>{verb} <span className="font-sans tabular-nums">{value.date} · {value.time}</span> Bangkok</> : `${verb} now`}
         </span>
         <span aria-hidden className="text-muted-foreground">·</span>
         <Button
@@ -120,9 +120,9 @@ export function MethodPicker<T extends string>({
   return (
     <div className="grid gap-2">
       <span className="text-sm font-medium" id={`method-${label}`}>{label}</span>
-      <ToggleGroup value={value} onValueChange={onChange} aria-labelledby={`method-${label}`} className="flex-wrap">
+      <ToggleGroup value={value} onValueChange={onChange} aria-labelledby={`method-${label}`} className="flex-wrap gap-1 rounded-full bg-muted p-1">
         {methods.map((method) => (
-          <ToggleGroupItem key={method} value={method} className="min-h-9">
+          <ToggleGroupItem key={method} value={method} className="min-h-11 rounded-full border-0 bg-transparent px-4 data-[state=on]:bg-foreground data-[state=on]:text-background">
             {MONEY_METHOD_LABELS[method] ?? method}
           </ToggleGroupItem>
         ))}
