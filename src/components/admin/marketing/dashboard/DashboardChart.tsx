@@ -89,7 +89,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup variant="segmented" value={metric} onValueChange={setMetric} aria-label="Measure" className="p-[3px]">
+          <ToggleGroup variant="segmented" tone="subtle" value={metric} onValueChange={setMetric} aria-label="Measure">
             <ToggleGroupItem value="net" className="whitespace-nowrap py-1.5">
               {p.cash ? "Collected" : "Net collected"}
             </ToggleGroupItem>
@@ -97,7 +97,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
               {p.cash ? "First paid" : "Paid bookings"}
             </ToggleGroupItem>
           </ToggleGroup>
-          <Button type="button" variant="ghost" size="sm" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)} className="aria-pressed:bg-muted">
+          <Button type="button" variant="ghost" size="sm" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)} className="h-10 pointer-coarse:h-12 aria-pressed:bg-muted">
             {asTable ? <BarChart3 aria-hidden className="size-4" /> : <Table2 aria-hidden className="size-4" />}
             {asTable ? "Show chart" : "Show as table"}
           </Button>

@@ -186,7 +186,7 @@ test.describe("Settings › Team", () => {
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
-    await expect(fon).toContainText(/Invite expires/);
+    await expect(fon).toContainText(/Invited · until/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
 
     await people.getByRole("button", { name: "Change roles for Mint" }).click();
@@ -233,13 +233,20 @@ test.describe("Settings › Team", () => {
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 0, refund: "cashier" });
   });
 
-  test("a rules conflict reloads the latest rules", async ({ page }) => {
+  test("a rules conflict preserves the draft until Reload latest", async ({ page }) => {
     await open(page, "?view=settings&tab=team&stale=1");
     const rules = page.getByRole("form", { name: "Rules for all cashiers" });
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("20");
     await rules.getByRole("button", { name: "Save", exact: true }).click();
-    await expect(rules.getByRole("status")).toHaveText("Rules changed on another device. Reloaded.");
+    await expect(rules.getByRole("status")).toContainText("Rules changed on another device. Review latest before saving.");
+    await expect(rules.getByRole("textbox", { name: "Discount without approval" })).toHaveValue("20");
+    await expect(rules.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await rules.getByRole("button", { name: "Reload latest", exact: true }).click();
     await expect(rules.getByRole("textbox", { name: "Discount without approval" })).toHaveValue("12");
+    await rules.getByRole("textbox", { name: "Discount without approval" }).fill("25");
+    await rules.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(rules.getByRole("status")).toHaveText("Saved");
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 1, discountLimitPercent: 25 });
   });
 
   test("managers don't see Team, get a read-only banner and read settings without saving", async ({ page }) => {

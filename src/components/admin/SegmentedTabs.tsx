@@ -125,7 +125,7 @@ export function SegmentedTabs<T extends string>({
               tabIndex={selected ? 0 : -1}
               onClick={() => onValueChange(tab.value)}
               className={cn(
-                "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-1 pb-2.5 text-sm font-medium pointer-coarse:min-h-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap border-b-2 px-1 pb-2.5 text-sm font-medium pointer-coarse:min-h-11 pointer-coarse:min-w-11 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 fill && "flex-1 pt-1",
                 selected
                   ? "border-foreground text-foreground"
@@ -138,9 +138,9 @@ export function SegmentedTabs<T extends string>({
         })}
       </div>
       {overflow ? (
-        <div className="pointer-events-none absolute inset-y-0 right-0 flex w-10 items-center justify-end bg-gradient-to-l from-background via-background/90 to-transparent">
-          <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
-        </div>
+        <button type="button" aria-label="More tabs" onClick={() => listRef.current?.scrollBy({ left: Math.max(160, listRef.current.clientWidth - 80), behavior: "smooth" })} className="absolute right-0 top-0 flex size-11 items-center justify-center bg-gradient-to-l from-background via-background/95 to-background/70 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRight aria-hidden className="size-4" />
+        </button>
       ) : null}
     </div>
   );

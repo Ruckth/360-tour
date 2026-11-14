@@ -146,7 +146,7 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
       type="button"
       onClick={() => onOpen(row)}
       className={cn(
-        "group flex w-full min-w-0 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex w-full min-w-0 pointer-coarse:min-h-11 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         card && "after:absolute after:inset-0 after:content-['']",
       )}
     >
@@ -219,7 +219,7 @@ export function DashboardBreakdown({
         aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
         className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-52 px-4 text-left", TINT) : "px-2.5 text-right")}
       >
-        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
+        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
           {col.label}
           <Icon aria-hidden className={cn("size-3.5", !active && "opacity-50")} />
         </button>
@@ -290,7 +290,7 @@ export function DashboardBreakdown({
 
   const crumbs = b.path.length ? (
     <nav aria-label="Drill-down" className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/20 px-4 py-2 text-sm">
-      <button type="button" onClick={() => onPath([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+      <button type="button" onClick={() => onPath([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
         All {b.view === "source" ? "sources" : "campaigns"}
       </button>
       {b.path.map((step, i) => (
@@ -301,7 +301,7 @@ export function DashboardBreakdown({
               {stepName(p, step)}
             </span>
           ) : (
-            <button type="button" onClick={() => onPath(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+            <button type="button" onClick={() => onPath(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
               {stepName(p, step)}
             </button>
           )}
@@ -340,7 +340,7 @@ export function DashboardBreakdown({
                 id="breakdown-sort"
                 value={sort.key}
                 onChange={(event) => onSort({ key: event.target.value as SortKey, dir: event.target.value === "name" ? "asc" : "desc" })}
-                className="h-10 appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:[color-scheme:dark]"
+                className="h-10 pointer-coarse:min-h-11 appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:[color-scheme:dark]"
               >
                 {cols.map((col) => (
                   <option key={col.key} value={col.key}>
@@ -353,7 +353,7 @@ export function DashboardBreakdown({
             <button
               type="button"
               onClick={() => onSort({ ...sort, dir: sort.dir === "asc" ? "desc" : "asc" })}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-10 pointer-coarse:min-h-11 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {sort.dir === "asc" ? <ArrowUp aria-hidden className="size-4" /> : <ArrowDown aria-hidden className="size-4" />}
               {sortLabel}
