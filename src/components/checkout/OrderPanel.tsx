@@ -2,6 +2,7 @@
 
 import { ArrowLeft, ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
@@ -127,6 +128,8 @@ export function OrderPanel({
   const { now, stale, couponBlocked, approvals, waiting, cannotPay } = usePayState(view);
   // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
   const payLocked = cannotPay || busy;
+  const payLockedRef = useRef(payLocked);
+  useLayoutEffect(() => { payLockedRef.current = payLocked; }, [payLocked]);
   // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !payLocked && totals.due > 0 ? initialPay : null));
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
@@ -149,7 +152,7 @@ export function OrderPanel({
   }, [paying, lines.length]);
 
   async function openPayment(mode: TenderMethod | "split" | "none") {
-    if (payLocked || !await confirmDiscard()) return;
+    if (payLockedRef.current || !await confirmDiscard() || payLockedRef.current) return;
     setPaying(mode);
   }
 
@@ -184,8 +187,8 @@ export function OrderPanel({
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
               {onClose && view?.customer ? ` · ${view.customer.name}` : ""}
+              {busy ? <span role="status" className="ml-2 text-xs">Saving…</span> : null}
             </p>
-            {busy ? <span role="status" className="text-xs text-muted-foreground">Saving…</span> : null}
           </div>
         </div>
         <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
@@ -680,7 +683,13 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const [note, setNote] = useState("");
   const [approvalDirty, setApprovalDirty] = useState(false);
   const priceDirty = priceOpen && (price !== (line.priceOverride ? String(line.priceOverride.price) : "") || note !== (line.priceOverride?.note ?? ""));
-  const { confirmDiscard } = useCheckoutDraft(priceDirty || approvalDirty);
+  const { confirmDiscard } = useCheckoutDraft(priceDirty || approvalDirty, () => {
+    setPriceOpen(false);
+    setPrice("");
+    setNote("");
+    setAsk(null);
+    setApprovalDirty(false);
+  });
   const lineId = line._id;
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
@@ -814,10 +823,13 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const send = useSendApproval();
   const id = useId();
   const [text, setText] = useState(discountText(line.discount));
+  const [syncedText, setSyncedText] = useState(text);
+  const [observedText, setObservedText] = useState(text);
   // The server asked for a manager although the limit here allowed it (its rules are newer).
   const [serverAsk, setServerAsk] = useState(false);
   const [reason, setReason] = useState("");
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
   const applying = useRef(false);
@@ -828,10 +840,26 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const typed = parsed?.ok ? parsed.discount : null;
   // The discount already on the line (e.g. a manager approved it) is not a new request.
   const applied = typed !== null && line.discount?.type === typed.type && line.discount.value === typed.value;
+  const currentText = discountText(line.discount);
+  // A subscription update is not typing. Follow it while untouched, but retain a cashier's
+  // draft (and its original baseline) if another till changes the line in the meantime.
+  if (observedText !== currentText) {
+    setObservedText(currentText);
+    if (text === syncedText || applied) {
+      setSyncedText(currentText);
+      setText(currentText);
+    }
+  }
   // A cashier's limit, worked out as the server will (owners and managers have none).
   const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
   const asking = Boolean(parsed?.ok && !applied && (over || serverAsk));
-  useCheckoutDraft((text !== discountText(line.discount) && !applied) || Boolean(reason.trim()));
+  useCheckoutDraft(!saving && ((text !== syncedText && !applied) || Boolean(reason.trim())), () => {
+    setText(currentText);
+    setSyncedText(currentText);
+    setReason("");
+    setServerAsk(false);
+    setError("");
+  });
 
   // The reason and Send appear under the field; keep them (and the field, if it fits) on screen.
   useEffect(() => {
@@ -847,18 +875,29 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   async function apply() {
     if (!typed || applied || asking || applying.current) return;
     applying.current = true;
+    // Blur runs before the next row/close action. This is now a save, not a discardable draft.
+    flushSync(() => setSaving(true));
+    let refused = false;
     try {
-      await run(async () => {
+      const saved = await run(async () => {
         try {
           return await actions.updateLine({ lineId, discount: typed });
         } catch (err) {
           if (!cashier || !needsApproval(err)) throw err;
+          refused = true;
           setServerAsk(true);
           return null;
         }
       });
+      if (saved && !refused) {
+        const savedText = discountText(typed);
+        setText(savedText);
+        setSyncedText(savedText);
+        setReason("");
+      }
     } finally {
       applying.current = false;
+      setSaving(false);
     }
   }
 
@@ -902,7 +941,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           placeholder="0%"
           aria-describedby={cashier ? `${id}-limit ${id}-echo` : `${id}-echo`}
           aria-invalid={parsed && !parsed.ok ? true : undefined}
-          disabled={sending}
+          disabled={sending || saving}
           onChange={(e) => change(e.target.value)}
           onBlur={() => void apply()}
           onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}

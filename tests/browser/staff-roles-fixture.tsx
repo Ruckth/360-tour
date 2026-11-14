@@ -75,11 +75,15 @@ const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent
 const refundScenario = scenario.startsWith("refund");
 const backend = createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
+let spaLineId: Id<"billLines"> | undefined;
+let spaOrderId: OrderId | undefined;
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
   const actions = backend.useActions();
   if (scenario === "spa" || scenario === "paid") {
-    const { orderId } = await actions.addItem({ item: service(1) });
+    const { orderId, lineId } = await actions.addItem({ item: service(1) });
+    spaLineId = lineId;
+    spaOrderId = orderId;
     if (scenario === "paid") {
       await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 1200 }] });
       return { orderId, receipt: true };
@@ -156,9 +160,27 @@ declare global {
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
       refundFromAnotherTill: (lineName: string, satang: number) => void;
+      holdNextDiscountWrite: () => void;
+      finishDiscountWrite: (fail?: boolean) => void;
+      discountFromAnotherTill: (value: number) => Promise<unknown>;
+      requestFromAnotherTill: () => Promise<unknown>;
     };
   }
 }
+// Hold a blur write across the following tap, independently of browser/machine speed.
+const fixtureActions = backend.useActions();
+const updateLine = fixtureActions.updateLine;
+let holdDiscount = false;
+let finishDiscount: ((fail?: boolean) => void) | undefined;
+fixtureActions.updateLine = async (args) => {
+  if (holdDiscount && args.discount !== undefined) {
+    holdDiscount = false;
+    await new Promise<void>((resolve, reject) => {
+      finishDiscount = (fail) => { finishDiscount = undefined; if (fail) reject(new Error("Discount write failed")); else resolve(); };
+    });
+  }
+  return updateLine(args);
+};
 window.fixture = {
   setRole: (next) => {
     backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
@@ -169,6 +191,16 @@ window.fixture = {
   loseNextRefundResponse: () => backend.loseNextRefundResponse(),
   lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
   refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),
+  holdNextDiscountWrite: () => { holdDiscount = true; },
+  finishDiscountWrite: (fail) => { if (!finishDiscount) throw new Error("No discount write is waiting"); finishDiscount(fail); },
+  discountFromAnotherTill: (value) => {
+    if (!spaLineId) throw new Error("No seeded spa line");
+    return updateLine({ lineId: spaLineId, discount: { type: "percent", value } });
+  },
+  requestFromAnotherTill: () => {
+    if (!spaLineId || !spaOrderId) throw new Error("No seeded spa line");
+    return backend.seedApproval({ orderId: spaOrderId, requesterEmail: EMAILS.cashier, reason: "Other till request", payload: { kind: "discount", lineId: spaLineId, discount: { type: "percent", value: 15 } } });
+  },
 };
 
 // ---------- Settings › Team ----------

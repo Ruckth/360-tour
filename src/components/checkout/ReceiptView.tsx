@@ -12,6 +12,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
@@ -58,7 +59,6 @@ function printCss(paper: Paper, lengthMm: number) {
       body *:has(.pos-receipt) { display: block !important; position: static !important; width: auto !important; height: auto !important;
         min-height: 0 !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
         overflow: visible !important; background: none !important; box-shadow: none !important; transform: none !important; }
-      .receipt-preview::details-content { content-visibility: visible !important; display: block !important; height: auto !important; }
       .pos-receipt { ${printBox(paper)} position: static !important; box-shadow: none !important; border-radius: 0 !important;
         background: #fff !important; color: #000 !important; }
       .pos-receipt * { color: #000 !important; }
@@ -107,6 +107,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [taskBusy, setTaskBusy] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLElement>(null);
+  const phone = useIsMobile(640);
+  const printPreview = useRef<{ element: HTMLDetailsElement; open: boolean } | null>(null);
   // Starts as an A4 length until the receipt has been measured.
   const [pageLengthMm, setPageLengthMm] = useState(297);
 
@@ -125,13 +127,36 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     if (wasClosed) preview.open = false;
     setPageLengthMm(Math.ceil(height / PX_PER_MM) + PAGE_SLACK_MM);
   }, []);
-  useLayoutEffect(measure, [measure, paper, view, business]);
-  // Measure again as printing starts (fonts may have loaded since), committed before print layout.
-  useEffect(() => {
-    const beforePrint = () => flushSync(measure);
-    window.addEventListener("beforeprint", beforePrint);
-    return () => window.removeEventListener("beforeprint", beforePrint);
+  useLayoutEffect(measure, [measure, paper, view, business, phone]);
+  // Native closed details hide their contents even in print on older browsers. Open the
+  // disclosure before measuring/printing, then restore exactly how the cashier left it.
+  const beforePrint = useCallback(() => {
+    const preview = receiptRef.current?.closest("details");
+    if (preview && !printPreview.current) {
+      printPreview.current = { element: preview, open: preview.open };
+      preview.open = true;
+    }
+    flushSync(measure);
   }, [measure]);
+  const afterPrint = useCallback(() => {
+    if (!printPreview.current) return;
+    printPreview.current.element.open = printPreview.current.open;
+    printPreview.current = null;
+  }, []);
+  useEffect(() => {
+    // Also handles browser print emulation and engines that signal print media separately.
+    const media = window.matchMedia("print");
+    const onMedia = () => { if (media.matches) beforePrint(); else afterPrint(); };
+    window.addEventListener("beforeprint", beforePrint);
+    window.addEventListener("afterprint", afterPrint);
+    media.addEventListener("change", onMedia);
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint);
+      window.removeEventListener("afterprint", afterPrint);
+      media.removeEventListener("change", onMedia);
+      afterPrint();
+    };
+  }, [beforePrint, afterPrint]);
   // Another order: nothing from the last one stays open.
   useEffect(() => { setTask(null); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); }, [orderId]);
 
@@ -262,7 +287,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           {/* While Correct payment or Void… is open, the toolbar is only its Close. */}
           {shownTask ? null : (
             <>
-              <Button variant="outline" className="max-sm:size-11 max-sm:p-0 sm:px-4" aria-label="Print" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span className="max-sm:sr-only">Print</span></Button>
+              <Button variant="outline" className="max-sm:size-11 max-sm:p-0 sm:px-4" aria-label="Print" onClick={() => { beforePrint(); window.print(); }} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span className="max-sm:sr-only">Print</span></Button>
               <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
               <Button className="px-3 max-sm:h-12 max-sm:flex-1 sm:px-4" disabled={refundBusy} onClick={() => { void confirmDiscard().then((discard) => { if (discard) onNewSale(); }); }}><Plus aria-hidden className="size-4" /> New sale</Button>
             </>
@@ -287,7 +312,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </header>
 
       <div className={cn("grid w-full min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6 lg:justify-items-start lg:self-start", shownTask && "max-sm:hidden")}>
-        <Disclosure label="Receipt preview" className="receipt-preview sm:[&>summary]:hidden sm:[&>div]:block sm:[&::details-content]:[content-visibility:visible] print:[&>summary]:hidden" contentClassName="flex justify-center pb-0 lg:justify-start">
+        <Disclosure label="Receipt preview" open={!phone} className="receipt-preview sm:[&>summary]:hidden print:[&>summary]:hidden" contentClassName="flex justify-center pb-0 lg:justify-start">
         <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">

@@ -270,7 +270,8 @@ it("shows cashiers no History; Correct payment and Void… stay, as requests", a
   await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));
   expect(document.querySelector('[data-testid="receipt-history"]')).toBeNull();
   expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["Receipt preview"]);
-  expect(document.querySelector<HTMLDetailsElement>("details.receipt-preview")?.open).toBe(false);
+  // Happy DOM's default viewport is wide: the paper must be natively open there.
+  expect(document.querySelector<HTMLDetailsElement>("details.receipt-preview")?.open).toBe(true);
   expect(button("Link appointment")).toBeUndefined();
   expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper", "Correct payment", "Void…"]);
 });

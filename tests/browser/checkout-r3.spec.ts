@@ -147,6 +147,117 @@ for (const width of [390, 1180]) {
       await expect(panel.getByRole("button", { name: /^Cash ฿1,200$/ })).toBeDisabled();
     });
 
+    for (const action of ["switch row", "remove item", "new sale", ...(width === 390 ? ["close order"] : [])]) {
+      test(`a blur-saving discount is no longer a draft when tapping ${action}`, async ({ page }) => {
+        await open(page, "staff-roles", "?role=cashier&scenario=spa");
+        await page.getByRole("button", { name: /^Foot spa 45.*Add to order/ }).click();
+        let panel = await orderPanel(page, width);
+        await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+        await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+        await panel.getByLabel("Discount", { exact: true }).fill("10%");
+        if (action === "switch row") await panel.getByRole("button", { name: /^Foot spa 45/ }).click();
+        if (action === "remove item") await panel.getByRole("button", { name: "Remove item", exact: true }).click();
+        if (action === "close order") await panel.getByRole("button", { name: "Close order", exact: true }).click();
+        if (action === "new sale") {
+          // The phone header is behind the modal sheet: closing it also blurs the field.
+          if (width === 390) {
+            await panel.getByRole("button", { name: "Close order", exact: true }).click();
+            await page.getByRole("button", { name: "More checkout actions", exact: true }).click();
+            await page.getByRole("menuitem", { name: "New order", exact: true }).click();
+          } else await page.getByRole("button", { name: "New order", exact: true }).click();
+        }
+        await expect(discardDialog(page)).toHaveCount(0);
+        await page.evaluate(() => window.fixture.finishDiscountWrite());
+        if (action === "new sale") {
+          await page.getByRole("button", { name: "Orders", exact: true }).click();
+          await page.getByRole("dialog").getByRole("button", { name: /Order #1043/ }).click();
+        }
+        if (action === "close order" || action === "new sale") panel = await orderPanel(page, width);
+        await expect(panel.getByTestId("order-due")).toHaveText(action === "remove item" ? "฿600" : "฿1,680");
+        await expect(discardDialog(page)).toHaveCount(0);
+      });
+    }
+
+    test("a failed blur save becomes a draft again and Discard clears it", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa");
+      const panel = await orderPanel(page, width);
+      const row = panel.getByRole("button", { name: /^Thai massage 60/ });
+      await row.click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      const discount = panel.getByLabel("Discount", { exact: true });
+      await discount.fill("10%");
+      await discount.press("Tab");
+      await page.evaluate(() => window.fixture.finishDiscountWrite(true));
+      await expect(discount).toBeEnabled();
+      await expect(page.getByRole("alert").first()).toContainText("Discount write failed");
+      await row.click();
+      await keep(page);
+      await expect(discount).toHaveValue("10%");
+      await row.click();
+      await discard(page);
+      await row.click();
+      await expect(discount).toHaveValue("");
+      await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
+    });
+
+    test("a server approval refusal restores the unsaved discount and its reason path", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa&serverLimit=5");
+      const panel = await orderPanel(page, width);
+      const row = panel.getByRole("button", { name: /^Thai massage 60/ });
+      await row.click();
+      await panel.getByLabel("Discount", { exact: true }).fill("10%");
+      await panel.getByLabel("Discount", { exact: true }).press("Tab");
+      const ask = panel.getByRole("group", { name: "Ask a manager", exact: true });
+      await expect(ask).toBeVisible();
+      await row.click();
+      await keep(page);
+      await ask.getByLabel("Reason", { exact: true }).fill("Guest waited");
+      await ask.getByRole("button", { name: "Send 10% (฿120) to manager", exact: true }).click();
+      await expect(panel.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager");
+      await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
+    });
+
+    test("payment rechecks the lock after a discard confirmation", async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa");
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+      await panel.getByRole("button", { name: /^Price ฿1,200$/ }).click();
+      await panel.getByLabel("New unit price").fill("1100");
+      await panel.getByRole("button", { name: /^Cash ฿1,200$/ }).click();
+      await expect(discardDialog(page)).toBeVisible();
+      await page.evaluate(() => window.fixture.requestFromAnotherTill());
+      // The confirmation makes the underlying panel aria-hidden while the live order updates.
+      await expect(page.locator('[data-approval-status="pending"]')).toHaveCount(1);
+      await discard(page);
+      await expect(panel.getByTestId("pay-panel")).toHaveCount(0);
+      await expect(panel.getByRole("button", { name: /^Cash ฿1,200$/ })).toBeDisabled();
+      await expect(panel.getByLabel("New unit price")).toHaveCount(0);
+    });
+
+    test("a live discount sync stays clean but preserves a typed draft", async ({ page }) => {
+      await open(page, "staff-roles", "?role=manager&scenario=spa");
+      const panel = await orderPanel(page, width);
+      const row = panel.getByRole("button", { name: /^Thai massage 60/ });
+      await row.click();
+      const discount = panel.getByLabel("Discount", { exact: true });
+      await page.evaluate(() => window.fixture.discountFromAnotherTill(5));
+      await expect(discount).toHaveValue("5%");
+      await row.click();
+      await expect(row).toHaveAttribute("aria-expanded", "false");
+      await expect(discardDialog(page)).toHaveCount(0);
+      await row.click();
+      await discount.fill("invalid draft");
+      await page.evaluate(() => window.fixture.discountFromAnotherTill(10));
+      await expect(discount).toHaveValue("invalid draft");
+      await row.click();
+      await keep(page);
+      await expect(discount).toHaveValue("invalid draft");
+      await row.click();
+      await discard(page);
+      await row.click();
+      await expect(discount).toHaveValue("10%");
+    });
+
     test("link and unlink drafts guard Escape, outside, Back and Cancel without changing the receipt", async ({ page }) => {
       await open(page, "checkout", "?scenario=unscheduled-paid");
       const paper = page.locator(".pos-receipt");
@@ -200,6 +311,75 @@ for (const width of [390, 1180]) {
   });
 }
 
+test("rotation removes the hidden side editor and Discard clears the visible sheet draft", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await open(page, "staff-roles", "?role=cashier&scenario=spa");
+  const side = await orderPanel(page, 1180);
+  await side.getByRole("button", { name: /^Thai massage 60/ }).click();
+  await side.getByRole("button", { name: /^Price ฿1,200$/ }).click();
+  await side.getByLabel("New unit price").fill("1100");
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(side).toHaveCount(0);
+  const sheet = await orderPanel(page, 820);
+  await sheet.getByRole("button", { name: /^Thai massage 60/ }).click();
+  await sheet.getByRole("button", { name: /^Price ฿1,200$/ }).click();
+  await expect(sheet.getByLabel("New unit price")).toHaveValue("");
+  await sheet.getByLabel("New unit price").fill("1000");
+  await sheet.getByRole("button", { name: /^Cash ฿1,200$/ }).click();
+  await discard(page);
+  await expect(sheet.getByTestId("pay-panel")).toBeVisible();
+  await sheet.getByRole("button", { name: "Order", exact: true }).click();
+  await sheet.getByRole("button", { name: /^Price ฿1,200$/ }).click();
+  await expect(sheet.getByLabel("New unit price")).toHaveValue("");
+  await sheet.getByRole("button", { name: "Close order", exact: true }).click();
+  await expect(discardDialog(page)).toHaveCount(0);
+  await expect(sheet).toHaveCount(0);
+});
+
+test("an iPad lower-line refund reveals its form and keeps the line header below the app bar", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 600 });
+  await open(page, "staff-roles", "?role=manager&scenario=refund");
+  const trigger = page.getByRole("button", { name: "Refund Foot spa 45", exact: true });
+  await trigger.evaluate((button) => button.scrollIntoView({ block: "end" }));
+  await trigger.click();
+  const form = page.getByRole("form", { name: "Refund", exact: true });
+  await expect(form.getByText("Refund", { exact: true })).toBeInViewport();
+  const rowTop = await form.locator("xpath=ancestor::li").evaluate((row) => row.getBoundingClientRect().top);
+  expect(rowTop).toBeGreaterThanOrEqual(64);
+});
+
+for (const outcome of ["withdraw", "decline"]) test(`a phone empty-order request stays accessible to ${outcome}`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await open(page, "staff-roles", "?role=cashier");
+  await page.getByRole("tab", { name: "Extras", exact: true }).click();
+  await page.getByRole("button", { name: "Custom item", exact: true }).click();
+  const custom = page.getByRole("dialog");
+  await custom.getByLabel("Name", { exact: true }).fill("Guest transfer");
+  await custom.getByLabel("Price (฿, VAT included)", { exact: true }).fill("500");
+  await custom.getByRole("button", { name: "Ask manager", exact: true }).click();
+  const ask = page.getByRole("group", { name: /^Ask a manager/ });
+  await ask.getByLabel("Reason", { exact: true }).fill("Extra stop");
+  await ask.getByRole("button", { name: "Send request", exact: true }).click();
+  const bar = page.getByRole("button", { name: /Request waiting · View/ });
+  await expect(bar).toBeVisible();
+  await bar.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText("No items yet");
+  await expect(sheet.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager");
+  if (outcome === "withdraw") {
+    await sheet.getByRole("button", { name: "Withdraw", exact: true }).click();
+    await expect(sheet.locator('[data-approval-status="cancelled"]')).toContainText("Request withdrawn.");
+  } else {
+    await sheet.getByRole("button", { name: "Close order", exact: true }).click();
+    await page.evaluate(() => window.fixture.setRole("manager"));
+    await page.getByTestId("approvals-button").click();
+    await page.getByRole("dialog", { name: "Approvals", exact: true }).getByRole("button", { name: "Decline", exact: true }).click();
+    await page.evaluate(() => window.fixture.setRole("cashier"));
+    await page.getByRole("button", { name: /Request update · View/ }).click();
+    await expect(sheet.locator('[data-approval-status="rejected"]')).toContainText("Declined. Nothing changed.");
+  }
+});
+
 for (const paperWidth of [58, 80]) test(`a closed phone receipt preview prints every line on one full-length ${paperWidth} mm page`, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page, "staff-roles", "?role=manager&scenario=refund");
@@ -230,4 +410,12 @@ for (const paperWidth of [58, 80]) test(`a closed phone receipt preview prints e
   expect(pdf.getPage(0).getHeight() * 96 / 72).toBeGreaterThanOrEqual(printed!.height);
   await page.emulateMedia({ media: "screen" });
   await expect(preview).not.toHaveAttribute("open");
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await expect(preview).toHaveAttribute("open");
+  await expect(paper).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await expect(preview).not.toHaveAttribute("open");
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await expect(preview).toHaveAttribute("open");
+  await expect(paper).toBeVisible();
 });
