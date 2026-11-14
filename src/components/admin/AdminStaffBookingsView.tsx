@@ -5,7 +5,7 @@ import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/lib/appointmentWindow";
-import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Filter, Play, PlusIcon, UserCheck, UserX, Users } from "lucide-react";
+import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -358,8 +358,8 @@ function StaffCalendar() {
       if (eventData.kind !== "appointment") {
         if (currentView === "agenda") return <span className="text-sm">{occurrence.event.title}</span>;
         return (
-          <span className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs font-medium text-muted-foreground">
-            <Clock aria-hidden className="size-3.5 shrink-0" />
+          <span className={cn("absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] text-xs font-medium text-muted-foreground", eventData.kind === "turnaround" ? "border border-dashed border-border bg-muted/60" : "bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)]")}>
+            {eventData.kind === "turnaround" ? <Timer aria-hidden className="size-3.5 shrink-0" /> : <Coffee aria-hidden className="size-3.5 shrink-0" />}
             <span className="truncate">{eventData.kind === "turnaround" ? "Turnaround" : eventData.block.label}</span>
           </span>
         );
@@ -637,9 +637,10 @@ function StaffCalendar() {
             </span>;
           })}
           <span className="flex items-center gap-1.5">
-            <Clock aria-hidden className="size-3" />
+            <Coffee aria-hidden className="size-3" />
             Break or time off
           </span>
+          <span className="flex items-center gap-1.5"><Timer aria-hidden className="size-3 rounded-sm border border-dashed border-border bg-muted/60" />Turnaround</span>
           <span className="flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" />Not working</span>
           <span className="ms-auto hidden sm:inline pointer-coarse:hidden">
             Drag a booking or break to propose a change · Bangkok time

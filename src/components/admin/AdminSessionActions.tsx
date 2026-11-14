@@ -132,7 +132,7 @@ export function AdminSessionActions({
           onClick={() => void run(() => changeStatus("resolved"))}
         >
           <CheckCheck aria-hidden="true" className="size-4" />
-          <span className="hidden sm:inline">No reply needed</span>
+          <span>No reply needed</span>
         </Button>
       ) : (
         <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run(() => changeStatus("open"))}>

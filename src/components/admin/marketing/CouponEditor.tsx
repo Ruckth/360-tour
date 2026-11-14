@@ -671,13 +671,13 @@ function CouponBuilder({
 
         <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
           {validDiscount ? <Card role="region" aria-labelledby={`${id}-summary`}>
-            <header className="flex items-center gap-2 px-4 pt-4">
+            <header className="flex items-center gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
                 Summary
               </h3>
               {state ? <StatusBadge {...COUPON_STATE[state]} /> : <StatusBadge tone="neutral" label="Not saved" />}
             </header>
-            <div className="grid gap-3 p-4">
+            <div className="grid gap-3 p-5 sm:p-6">
               <div>
                 <p className="money text-[28px] leading-tight font-semibold tracking-tight">{benefitLabel(rules.benefit)}</p>
                 {code ? <p className="mt-2 break-all font-mono text-sm font-semibold tracking-wide text-muted-foreground">{code}</p> : null}

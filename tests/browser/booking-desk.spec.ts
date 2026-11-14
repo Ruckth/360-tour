@@ -449,7 +449,7 @@ test.describe("phone agenda touch scrolling", () => {
   test("a finger can scroll from a guest row without starting a drag", async ({ page, context }) => {
     await openDesk(page);
     const agenda = page.locator('[data-slot="event-calendar-agenda-view"]');
-    const viewport = agenda.locator('[data-slot="scroll-area-viewport"]');
+    await expect(agenda.locator('[data-slot="scroll-area-viewport"]')).toHaveCount(0);
     const row = agenda.locator('[data-slot="event-calendar-event"]').first();
     const box = (await row.boundingBox())!;
     const touch = await context.newCDPSession(page);
@@ -461,7 +461,7 @@ test.describe("phone agenda touch scrolling", () => {
       await page.waitForTimeout(16);
     }
     await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-    await expect.poll(() => viewport.evaluate(el => el.scrollTop)).toBeGreaterThan(60);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(60);
     expect(await calls(page)).toHaveLength(0);
     await openDesk(page, "?view=staff");
     await expect(page.locator('[data-slot="event-calendar-event"]').first()).toHaveCSS("touch-action", "pan-y");

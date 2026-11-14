@@ -120,6 +120,18 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
   const setMarketingGrant = useMutation(api.marketingAccess.setGrant);
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
+  const peopleList = useRef<HTMLUListElement>(null);
+  const inviteButton = useRef<HTMLButtonElement>(null);
+  function restoreRoleFocus(email: string) {
+    // A removed person's next row (or Invite) remains a useful keyboard destination.
+    const index = people?.findIndex((person) => person.email === email) ?? -1;
+    const candidates = [email, ...(people?.slice(index + 1).map((person) => person.email) ?? [])];
+    requestAnimationFrame(() => {
+      const rows = Array.from(peopleList.current?.querySelectorAll<HTMLElement>("[data-person-email]") ?? []);
+      const target = candidates.flatMap((candidate) => rows.find((row) => row.dataset.personEmail === candidate)?.querySelector<HTMLButtonElement>("[data-change-role]") ?? [])[0];
+      (target ?? inviteButton.current)?.focus();
+    });
+  }
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
 
@@ -142,24 +154,22 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
   async function setDesk(person: Person, role: StaffRole | null) {
     const name = personLabel(person.email);
     if (role === null) {
-      if (!(await confirm({ title: `Remove ${name} from the desk?`, description: "Their desk access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return;
-      await save(person.email, () => setStaffGrant({ email: person.email, role: null }), `Removed ${name} from the desk.`);
-      return;
+      if (!(await confirm({ title: `Remove ${name} from the desk?`, description: "Their desk access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
+      return save(person.email, () => setStaffGrant({ email: person.email, role: null }), `Removed ${name} from the desk.`);
     }
     const done = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
-    await save(person.email, () => setStaffGrant({ email: person.email, role }), done);
+    return save(person.email, () => setStaffGrant({ email: person.email, role }), done);
   }
 
   async function setMarketing(person: Person, role: MarketingRole | null) {
     const name = personLabel(person.email);
     if (role === null) {
-      if (!(await confirm({ title: `Remove ${name} from Marketing?`, description: "Their Marketing access ends now. Desk access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return;
-      await save(person.email, () => setMarketingGrant({ email: person.email, role: null }), `Removed ${name} from Marketing.`);
-      return;
+      if (!(await confirm({ title: `Remove ${name} from Marketing?`, description: "Their Marketing access ends now. Desk access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
+      return save(person.email, () => setMarketingGrant({ email: person.email, role: null }), `Removed ${name} from Marketing.`);
     }
     const label = MARKETING_ROLE_LABELS[role];
     const done = person.marketingGrant ? `${name} is now Marketing ${label}.` : `Invited ${name} to Marketing as ${label}.`;
-    await save(person.email, () => setMarketingGrant({ email: person.email, role }), done);
+    return save(person.email, () => setMarketingGrant({ email: person.email, role }), done);
   }
 
   return (
@@ -168,7 +178,7 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
       label="People"
       tip={ROLES_TIP}
       action={
-        <Button size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); }}>
+        <Button ref={inviteButton} size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); }}>
           <UserPlus aria-hidden className="size-4" /> Invite
         </Button>
       }
@@ -198,16 +208,17 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
       {people === undefined ? (
         <div className="grid place-items-center py-8"><Spinner label="Loading people" /></div>
       ) : (
-        <ul className="divide-y divide-border" aria-label="People with access">
+        <ul ref={peopleList} className="divide-y divide-border" aria-label="People with access">
           {people.map((person) => (
             <PersonRow
-              key={`${person.email}:${person.staffGrant?.role ?? ""}:${person.marketingGrant?.role ?? ""}`}
+              key={person.email}
               person={person}
               busy={busy !== null}
               saving={busy === person.email}
               message={message?.email === person.email ? message : null}
-              onDesk={(role) => void setDesk(person, role)}
-              onMarketing={(role) => void setMarketing(person, role)}
+              onDesk={(role) => setDesk(person, role)}
+              onRoleSaved={() => restoreRoleFocus(person.email)}
+              onMarketing={(role) => setMarketing(person, role)}
               onRenew={() => {
                 const staff = person.staffGrant && !person.staffGrant.claimed ? person.staffGrant : null;
                 const marketing = person.marketingGrant && !person.marketingGrant.claimed ? person.marketingGrant : null;
@@ -303,18 +314,24 @@ function rolesText(person: Person) {
   return [desk, marketing].filter(Boolean).join(" · ") || "No access";
 }
 
-function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew, onCopyLink }: {
+function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRoleSaved, onRenew, onCopyLink }: {
   person: Person;
   busy: boolean;
   saving: boolean;
   message: { text: string; error?: boolean } | null;
-  onDesk: (role: StaffRole | null) => void;
-  onMarketing: (role: MarketingRole | null) => void;
+  onDesk: (role: StaffRole | null) => Promise<boolean>;
+  onMarketing: (role: MarketingRole | null) => Promise<boolean>;
+  onRoleSaved: () => void;
   onRenew: () => void;
   onCopyLink: () => Promise<void>;
 }) {
   const id = useId();
-  // The row remounts after a role change (its key holds the roles), so the selects close on their own.
+  async function changeRole(task: () => Promise<boolean>) {
+    if (await task()) {
+      setChanging(false);
+      onRoleSaved();
+    }
+  }
   const [changing, setChanging] = useState(false);
   const grant = person.staffGrant;
   const marketing = person.marketingGrant;
@@ -325,7 +342,7 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
   return (
-    <li className="grid gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person">
+    <li className="grid gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0">
         <div className="min-w-0">
           <p className="text-[15px] font-medium text-foreground">{name}</p>
@@ -337,7 +354,7 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew
             <div className="flex w-32 shrink-0 flex-wrap items-center justify-end gap-1">
               {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
               {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
-              <Button size="sm" variant="ghost" className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
+              <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
               {linkWorks ? <MoreMenu
@@ -359,11 +376,11 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew
           <p className="w-full text-[13px] text-muted-foreground">Role changes apply immediately.</p>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
-            <RoleSelect id={`${id}-desk`} label={`Desk role for ${name}`} value={(grant?.role ?? "") as StaffRole | ""} disabled={busy} onChange={(value) => onDesk(value || null)} options={DESK_OPTIONS} empty="None" />
+            <RoleSelect id={`${id}-desk`} label={`Desk role for ${name}`} value={(grant?.role ?? "") as StaffRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onDesk(value || null))} options={DESK_OPTIONS} empty="None" />
           </div>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
-            <RoleSelect id={`${id}-marketing`} label={`Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => onMarketing(value || null)} options={MARKETING_OPTIONS} empty="None" />
+            <RoleSelect id={`${id}-marketing`} label={`Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
           </div>
         </div>
       ) : null}

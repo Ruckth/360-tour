@@ -422,7 +422,7 @@ export function MissingInformationPanel({
       ) : (
         <div className="lg:overflow-x-auto [&_tbody_td]:lg:align-middle [&_tbody_td]:lg:py-2">
           <table className={STACKED_TABLE.table}>
-            <thead className="hidden border-b border-border bg-muted/40 text-xs font-normal text-muted-foreground lg:table-header-group [&_th]:py-0 [&_th]:font-normal [&_label]:pointer-fine:size-8">
+            <thead className="hidden border-b border-border bg-muted/40 text-xs font-normal text-muted-foreground lg:table-header-group [&_th]:py-0 [&_th]:font-normal">
               <tr>
                 <th className={cn(STACKED_TABLE.th, "w-10")}>
                   <SelectCheckbox
@@ -480,7 +480,7 @@ export function MissingInformationPanel({
                           </Badge>
                         ) : null}
                       </p>
-                      <p className="mt-1 flex min-w-0 flex-nowrap items-center gap-2 text-xs text-muted-foreground">
+                      <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                         <span className="shrink-0">{formatDateTime(group.latestAt)}</span>
                         {group.channels.map((channel) => (
                           <span
@@ -498,7 +498,7 @@ export function MissingInformationPanel({
                           </span>
                         ))}
                         {question.propertyName ? (
-                          <span className="min-w-0 truncate">{question.propertyName}</span>
+                          <span className="min-w-0 basis-full whitespace-normal break-words sm:basis-auto">{question.propertyName}</span>
                         ) : null}
                         {question.detectedTopic ? (
                           <Badge variant="outline" className="shrink-0 text-xs font-normal">{question.detectedTopic}</Badge>

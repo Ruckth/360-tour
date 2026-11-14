@@ -283,3 +283,35 @@ test("extra-approvals-phone", async ({ page }) => {
   await page.getByTestId("approvals-button").click();
   await shot(page, "extra-approvals-phone");
 });
+
+// Round 5 checks the changed desk and settings screens on desktop as well as touch sizes.
+test.describe("round 5 desktop defects", () => {
+  test.use({ hasTouch: false, isMobile: false, viewport: { width: 1440, height: 900 } });
+  for (const state of ["hotel-calendar", "staff-calendar", "new-booking", "chats", "missing-information", "settings-bookingRules", "settings-email", "settings-channels"]) {
+    test(`extra-${state}-desktop`, async ({ page }) => {
+      await scene(page, state, false);
+      await shot(page, `extra-${state}-desktop`);
+    });
+  }
+});
+
+// Inspect the two subtle selections that were previously outside the locked scope.
+for (const [size, viewport] of Object.entries({ ...sizes, desktop: { width: 1440, height: 900 } })) {
+  test.describe(`round 5 checkout chips ${size}`, () => {
+    test.use({ viewport, hasTouch: size !== "desktop", isMobile: size !== "desktop" });
+    test(`extra-therapist-chips-${size}`, async ({ page }) => {
+      await scene(page, "line-open", size === "phone");
+      const panel = size === "phone" ? page.getByRole("dialog") : page.getByRole("complementary", { name: "Order", exact: true });
+      await panel.getByRole("button", { name: /^Schedule/ }).click();
+      await panel.getByRole("button", { name: "Any", exact: true }).scrollIntoViewIfNeeded();
+      await shot(page, `extra-therapist-chips-${size}`);
+    });
+    test(`extra-discount-reason-${size}`, async ({ page }) => {
+      await scene(page, "line-open", size === "phone");
+      const panel = size === "phone" ? page.getByRole("dialog") : page.getByRole("complementary", { name: "Order", exact: true });
+      await panel.getByLabel("Discount", { exact: true }).fill("15%");
+      await panel.getByRole("group", { name: "Quick reason", exact: true }).getByRole("button").first().click();
+      await shot(page, `extra-discount-reason-${size}`);
+    });
+  });
+}

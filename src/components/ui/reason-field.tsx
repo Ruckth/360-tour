@@ -66,7 +66,7 @@ export function ReasonField({
                   "inline-flex items-center rounded-full border font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
                   compact ? "min-h-8 px-3 text-xs" : "min-h-10 px-3.5 text-sm",
                   pressed
-                    ? "border-primary bg-primary text-primary-foreground"
+                    ? "border-input bg-background text-foreground shadow-sm"
                     : "border-border bg-muted text-foreground hover:border-input",
                 )}
               >

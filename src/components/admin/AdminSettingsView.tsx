@@ -36,6 +36,7 @@ import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type Admin
 import { SetupChecklistCard } from "./SetupChecklist";
 import { StatusBadge } from "./StatusBadge";
 import { useStaffAccess } from "./staff-access";
+import { NumberField } from "./marketing/MarketingBits";
 import { TeamSettings } from "./TeamSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
@@ -127,6 +128,7 @@ type FieldDef = {
   type?: "text" | "email" | "time" | "number" | "url" | "textarea";
   placeholder?: string;
   hint?: string;
+  unit?: string;
   wide?: boolean;
   required?: boolean;
 };
@@ -141,12 +143,12 @@ const SECTIONS: Record<
     title: "Booking rules",
     description: "Timing and stay limits for online villa bookings; staff-created bookings are exempt from stay limits and unpaid expiry.",
     fields: () => [
-      { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
-      { name: "chatQuoteValidityMinutes", label: "Chat summary valid for", type: "number", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
-      { name: "preArrivalDaysBefore", label: "Pre-arrival email days before check-in", type: "number", hint: "Includes late bookings up to the day before arrival." },
-      { name: "reviewDaysAfter", label: "Review email days after check-out", type: "number", hint: "Catches up through 7 days after check-out." },
-      { name: "minNights", label: "Minimum nights", type: "number" },
-      { name: "maxAdvanceDays", label: "Maximum advance booking days", type: "number" },
+      { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", unit: "min", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
+      { name: "chatQuoteValidityMinutes", label: "Chat summary valid for", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
+      { name: "preArrivalDaysBefore", label: "Pre-arrival email days before check-in", type: "number", unit: "days", hint: "Includes late bookings up to the day before arrival." },
+      { name: "reviewDaysAfter", label: "Review email days after check-out", type: "number", unit: "days", hint: "Catches up through 7 days after check-out." },
+      { name: "minNights", label: "Minimum nights", type: "number", unit: "nights" },
+      { name: "maxAdvanceDays", label: "Maximum advance booking days", type: "number", unit: "days" },
       { name: "sameDayCutoff", label: "Same-day booking cutoff", type: "time", hint: "Resort time (Asia/Bangkok). Leave blank for no cutoff." },
     ],
     values: (s) => Object.fromEntries(Object.entries(s.bookingRules).map(([key, value]) => [key, String(value)])),
@@ -215,11 +217,11 @@ const SECTIONS: Record<
   email: {
     title: "Email",
     description: "Booking confirmations, lifecycle emails and staff alerts.",
-    fields: (s) => [
+    fields: () => [
       {
         name: "fromName",
         label: "Sender name",
-        placeholder: s.businessName,
+        placeholder: "Same as business name",
         hint: "Name shown on guest emails; the sender address is managed separately.",
       },
       {
@@ -328,7 +330,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   const renderField = (field: FieldDef) => {
     const id = `settings-${section}-${field.name}`;
     const error = errorFor(field.name);
-    const describedBy = error ? `${id}-error` : undefined;
+    const describedBy = [field.unit && `${id}-unit`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
     const common = {
       id,
       name: field.name,
@@ -344,7 +346,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
       onBlur: () => setTouched((current) => new Set(current).add(field.name)),
     };
     return (
-      <div key={field.name} className={cn("grid content-start gap-2", field.wide && "sm:col-span-2")}>
+      <div key={field.name} className={cn("grid content-start gap-2", field.unit && "gap-3", field.wide && "sm:col-span-2")}>
         <span className="flex items-center gap-1.5">
           <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
             {field.label}
@@ -377,7 +379,13 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             disabled={state.saving || readOnly}
             variant="compact"
             allowEmpty={!field.required}
+            placeholder={field.name === "sameDayCutoff" ? "No cutoff" : undefined}
           />
+        ) : field.unit ? (
+          <>
+            <NumberField {...common} suffix={field.unit} className={cn("pr-16", error && "border-destructive")} />
+            <span id={`${id}-unit`} className="sr-only">{field.unit === "min" ? "minutes" : field.unit}</span>
+          </>
         ) : (
           <Input
             {...common}
@@ -452,74 +460,79 @@ function ChannelsPanel() {
   const config = useChannelConfig();
 
   return (
-    <>
-      <Panel title="Messaging channels" description="Webhook activity from the last events received. Failure counts cover the last 24 hours and 7 days.">
-        {config.state === "error" ? (
-          <Alert variant="warning" className="mb-4">
-            <AlertDescription className="flex flex-wrap items-center gap-3">
-              <span className="min-w-0 flex-1">Could not check website environment variables: {config.message}</span>
+    <Panel title="Channels" description="Messages coming in from LINE, WhatsApp, Messenger and Instagram." grouped>
+      <div className="grid gap-5">
+        <Panel title="Messaging channels" description="Webhook activity from the last events received. Failure counts cover the last 24 hours and 7 days.">
+          {config.state === "error" ? (
+            <Alert variant="warning" className="mb-4 flex flex-wrap items-center gap-3 leading-relaxed">
+              <div className="min-w-0 flex-1">
+                <p>Couldn&apos;t check channel setup. Recent message activity is still shown.</p>
+                <details className="mt-1 text-xs">
+                  <summary className="min-h-11 cursor-pointer content-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Technical details</summary>
+                  <p className="break-words py-2">{config.message}</p>
+                </details>
+              </div>
               <Button type="button" size="sm" variant="outline" onClick={config.retry}>
                 <RotateCw aria-hidden="true" className="size-4" />
                 Retry
               </Button>
-            </AlertDescription>
-          </Alert>
-        ) : null}
-        {health === undefined ? (
-          <PanelSpinner label="Loading channel health" />
-        ) : (
-          <ul className="grid gap-3">
-            {health.channels.map((channel) => {
-              const env = config.state === "ready" ? config.channels[channel.channel] : null;
-              const missing = env ? Object.entries(env.vars).filter(([, set]) => !set).map(([name]) => name) : [];
-              return (
-                <li key={channel.channel} className="rounded-lg border border-border p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="flex-1 text-sm font-semibold text-foreground">{sourceLabel(channel.channel)}</h3>
-                    <StatusBadge {...channelHealthMeta(config, env?.configured, channel)} />
-                  </div>
-                  {missing.length ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.join(", ")}</p>
-                  ) : null}
-                  <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-                    <Stat label="Last event" value={channel.lastEventAt ? formatTime(channel.lastEventAt) : "Never"} />
-                    <Stat label="Last reply" value={channel.lastRepliedAt ? formatTime(channel.lastRepliedAt) : "Never"} />
-                    <Stat label="Failed (24 h)" value={String(channel.failed24h)} alert={channel.failed24h > 0} />
-                    <Stat
-                      label="Failed (7 d)"
-                      value={`${channel.failed7d}${channel.failedCapped ? "+" : ""}`}
-                      alert={channel.failed7d > 0}
-                    />
-                  </dl>
-                  {channel.latestError ? (
-                    <p className="mt-3 break-words rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground">Latest error ({formatTime(channel.latestError.at)}):</span>{" "}
-                      {channel.latestError.message}
-                    </p>
-                  ) : null}
+            </Alert>
+          ) : null}
+          {health === undefined ? (
+            <PanelSpinner label="Loading channel health" />
+          ) : (
+            <ul className="divide-y divide-border">
+              {health.channels.map((channel) => {
+                const env = config.state === "ready" ? config.channels[channel.channel] : null;
+                const missing = env ? Object.entries(env.vars).filter(([, set]) => !set).map(([name]) => name) : [];
+                return (
+                  <li key={channel.channel} className="py-4 first:pt-0 last:pb-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="flex-1 text-[15px] font-medium text-foreground">{sourceLabel(channel.channel)}</h3>
+                      <StatusBadge {...channelHealthMeta(config, env?.configured, channel)} />
+                    </div>
+                    {missing.length ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.map(channelSetupLabel).join(", ")}</p>
+                    ) : null}
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                      <Stat label="Last event" value={channel.lastEventAt ? formatTime(channel.lastEventAt) : "Never"} />
+                      <Stat label="Last reply" value={channel.lastRepliedAt ? formatTime(channel.lastRepliedAt) : "Never"} />
+                      <Stat label="Failed (24 h)" value={String(channel.failed24h)} alert={channel.failed24h > 0} />
+                      <Stat
+                        label="Failed (7 d)"
+                        value={`${channel.failed7d}${channel.failedCapped ? "+" : ""}`}
+                        alert={channel.failed7d > 0}
+                      />
+                    </dl>
+                    {channel.latestError ? (
+                      <p className="mt-3 break-words rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                        <span className="font-semibold text-foreground">Latest error ({formatTime(channel.latestError.at)}):</span>{" "}
+                        {channel.latestError.message}
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Backend services" description="Setup for payments, email and the AI assistant. Secret values are never shown.">
+          {server === undefined ? (
+            <PanelSpinner label="Loading backend services" />
+          ) : (
+            <ul className="divide-y divide-border">
+              {Object.entries(server).map(([name, set]) => (
+                <li key={name} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <span className="text-sm">{channelSetupLabel(name)}</span>
+                  <StatusBadge tone={set ? "success" : "muted"} label={set ? "Set" : "Not set"} />
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </Panel>
-
-      <Panel title="Backend services" description="Convex environment variables. Values are never shown, only whether they are set.">
-        {server === undefined ? (
-          <PanelSpinner label="Loading backend services" />
-        ) : (
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {Object.entries(server).map(([name, set]) => (
-              <li key={name} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
-                <code className="truncate text-xs">{name}</code>
-                <StatusBadge tone={set ? "success" : "muted"} label={set ? "Set" : "Not set"} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Panel>
-
-    </>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+    </Panel>
   );
 }
 
@@ -551,19 +564,36 @@ function Stat({ label, value, alert }: { label: string; value: string; alert?: b
   );
 }
 
+/** Human names for setup requirements; never expose credential values. */
+function channelSetupLabel(name: string) {
+  const services: Record<string, string> = {
+    AI_API_KEY: "AI assistant", OPENAI_API_KEY: "AI assistant", RESEND_API_KEY: "Email sending",
+    EMAIL_FROM: "Sender address", OWNER_NOTIFICATION_EMAIL: "Staff notification address",
+    STRIPE_SECRET_KEY: "Stripe payments", STRIPE_WEBHOOK_SECRET: "Stripe payment notifications",
+    CONVEX_SERVER_SECRET: "Website connection", LINE_CHANNEL_SECRET: "LINE message verification",
+  };
+  if (services[name]) return services[name];
+  if (name.includes("SECRET")) return "Message verification";
+  if (name.includes("VERIFY_TOKEN")) return "Webhook verification";
+  if (name.includes("ACCESS_TOKEN")) return "Message sending";
+  return name.toLowerCase().replaceAll("_", " ");
+}
+
 /** Channel status from the website env check plus recent webhook failures. */
 function channelHealthMeta(
   config: ChannelConfig,
   configured: boolean | undefined,
   channel: { failed24h: number; failed7d: number; lastEventAt?: number | null },
 ): StatusMeta {
-  if (config.state === "loading") return { tone: "muted", label: "Checking…" };
-  if (configured === undefined) return { tone: "muted", label: "Unknown" };
-  if (!configured) return statusMeta("channelHealth", "not_configured");
   if (channel.failed24h > 0) return statusMeta("channelHealth", "failing");
   if (channel.failed7d > 0) return statusMeta("channelHealth", "warning");
+  if (configured === undefined) {
+    if (channel.lastEventAt) return { tone: "success", label: "Receiving" };
+    return { tone: "muted", label: config.state === "loading" ? "Checking…" : "Not checked" };
+  }
+  if (!configured) return statusMeta("channelHealth", "not_configured");
   if (!channel.lastEventAt) return { tone: "neutral", label: "No messages yet" };
-  return statusMeta("channelHealth", "ok");
+  return { tone: "success", label: "Receiving" };
 }
 
 function formatTime(timestamp: number) {
