@@ -23,7 +23,7 @@ async function shot(page: Page, name: string, fullPage = false) {
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
   await page.screenshot({
-    path: `docs/screenshots/now/${name}.png`,
+    path: `docs/screenshots/${process.env.CAPTURE_DIR ?? "now"}/${name}.png`,
     fullPage,
     animations: "disabled",
   });
