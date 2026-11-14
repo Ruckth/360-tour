@@ -34,7 +34,8 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const dialog = page.getByRole("dialog", { name: "Orders" });
       const list = dialog.getByRole("list", { name: "Open orders" });
       await expect(list.getByRole("button")).toHaveCount(2);
-      await expect(list.getByRole("listitem").first()).toContainText("Order #1043 · on screen");
+      await expect(list.getByRole("listitem").first()).toContainText("Order #1043");
+      await expect(list.getByRole("listitem").first().getByText("Current", { exact: true })).toBeVisible();
       const earlier = list.getByRole("button", { name: /^Order #1042/ });
       await expect(earlier).toContainText("Somchai Prasert · 3 items");
       await expect(earlier).toContainText("฿780");

@@ -82,12 +82,14 @@ describe("open orders list", () => {
     ];
     const onOpen = await showList({ results: rows, status: "Exhausted", loadMore: vi.fn() }, rows[1]._id);
     const items = [...list()!.querySelectorAll("li")];
-    expect(items.map((li) => li.querySelector("span span")?.textContent)).toEqual(["Order #1045", "Order #1044 · on screen", "Order #1043"]);
+    expect(items.map((li) => li.querySelector("span span")?.textContent)).toEqual(["Order #1045", "Order #1044Current", "Order #1043"]);
     expect(items[0].textContent).toContain("Somchai Prasert · 3 items");
     expect(items[0].textContent).toContain("฿780");
     expect(items[1].textContent).toContain("CONF-B +1 · 1 item");
     expect(items[1].textContent).toContain("฿26,000");
     expect(items[1].querySelector("button")?.getAttribute("aria-current")).toBe("true");
+    expect(items[0].querySelector("button")?.getAttribute("aria-label")).toBe("Order #1045, Somchai Prasert, 3 items, ฿780 due");
+    expect(items[1].querySelector("button")?.getAttribute("aria-label")).toContain("1 item, ฿26,000 due, current order");
     expect(items[2].textContent).toContain("No customer · 2 items");
     expect(button("Load more")).toBeUndefined();
 
@@ -129,7 +131,7 @@ describe("a cashier's checkout", () => {
     // No status filters: those are the managers' Orders.
     expect(button("Paid", dialog)).toBeUndefined();
     const rows = [...list()!.querySelectorAll("li")].map((li) => li.querySelector("span span")?.textContent);
-    expect(rows).toEqual(["Order #1043 · on screen", "Order #1042"]);
+    expect(rows).toEqual(["Order #1043Current", "Order #1042"]);
 
     await act(async () => buttons(list()!).find((el) => el.textContent?.startsWith("Order #1042"))!.click());
     await settle();

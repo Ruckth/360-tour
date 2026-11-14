@@ -211,8 +211,8 @@ export function OrderPanel({
         ) : (
           <>
             {canAddCoupon(view) && !couponOpen ? (
-              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", !editingLine && SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
-                <TicketPercent aria-hidden className="size-4" />
+              <Button variant="ghost" className={cn("size-9 rounded-xl sm:w-auto sm:px-2", !editingLine && SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Coupon: code, QR or link">
+                <TicketPercent aria-hidden className="size-4" /><span className="max-sm:sr-only">Coupon</span>
               </Button>
             ) : null}
             <MoreMenu
@@ -337,7 +337,7 @@ export function OrderPanel({
                     {(["promptpay", "card", "transfer"] as const).map((method) => (
                       <Button key={method} className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2 text-sm text-balance lg:px-1 lg:text-[13px]" variant="outline" disabled={payLocked} onClick={() => { void openPayment(method); }}>{TENDER_LABELS[method].short}</Button>
                     ))}
-                    <Button variant="outline" className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2 text-sm text-balance lg:px-1 lg:text-[13px]" disabled={payLocked} onClick={() => { void openPayment("split"); }}>Split payment</Button>
+                    <Button variant="outline" aria-label="Split payment" className="h-auto min-h-11 min-w-0 px-2 py-2 text-sm lg:px-1 lg:text-[13px]" disabled={payLocked} onClick={() => { void openPayment("split"); }}>Split</Button>
                   </div>
                 </>
               )}

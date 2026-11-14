@@ -284,10 +284,10 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             Receipt {receiptNumber}
             {paid && view.fullyRefunded ? (
               <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
-            ) : paid ? <span data-testid="receipt-status" className="rounded-full bg-emerald-50 px-2 py-0.5 font-sans text-xs font-medium tracking-normal text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300">Paid</span> : null}
+            ) : paid ? <span data-testid="receipt-status" className="inline-flex h-6 items-center gap-1 rounded-full bg-emerald-50 px-2.5 font-sans text-[13px] font-medium tracking-normal text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300"><Check aria-hidden className="size-3.5" />Paid</span> : null}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith}` : ""}`}
+            {order.title} · <span className="font-medium text-foreground font-sans tabular-nums">{formatMoney(totals.total)}</span> · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith}` : ""}`}
             {!isVoid && view.paymentRecord.tendersAmended ? " · corrected" : ""}
           </p>
           {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="mt-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{notice}</p> : null}

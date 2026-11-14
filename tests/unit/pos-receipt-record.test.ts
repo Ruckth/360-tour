@@ -242,7 +242,7 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   const refund = vi.spyOn(actions, "refundLine").mockRejectedValueOnce(new Error("Connection lost"));
   await receipt(backend, orderId);
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All")?.getAttribute("aria-pressed")).toBe("true");
+  expect(button("All")?.getAttribute("aria-checked")).toBe("true");
   expect(button("Pick a reason")?.disabled).toBe(true);
   await click("Wrong charge");
   await click("Record refund ฿100"); await tick();
@@ -267,7 +267,7 @@ it("Half refunds half of what is left; a new form is a new key", async () => {
   await click("Guest complaint");
   await click("Record refund ฿50"); await tick();
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All")?.getAttribute("aria-pressed")).toBe("true");
+  expect(button("All")?.getAttribute("aria-checked")).toBe("true");
   await click("Short treatment");
   await click("Record refund ฿50"); await tick();
   expect(refund.mock.calls.map(c => c[0].amount)).toEqual([5_000, 5_000]);

@@ -5,6 +5,7 @@ import { CalendarDays, ChevronRight, Link2, ListOrdered, Plus, Search, UserRound
 import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -191,7 +192,7 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>Find a paid order by its order number (#).</DialogDescription>
+              <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order number." : "Browse orders on every till, including paid receipts."}</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
@@ -584,6 +585,7 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
 export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
   return (
     <div className="grid gap-4">
+      <p className="text-xs text-muted-foreground">Open</p>
       <InlineErrorBoundary message="Couldn't load orders. Check your connection and try again.">
         <OpenOrdersList currentId={currentId} onOpen={onOpen} />
       </InlineErrorBoundary>
@@ -605,13 +607,13 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               type="button"
               onClick={() => onOpen(row._id)}
               aria-current={row._id === currentId ? "true" : undefined}
-              aria-label={`${row.title}, ${formatMoney(row.due, row.currency)} due${row._id === currentId ? ", on screen" : ""}`}
+              aria-label={`${row.title}, ${row.customerName ?? "No customer"}, ${row.itemCount} ${row.itemCount === 1 ? "item" : "items"}, ${formatMoney(row.due, row.currency)} due${row._id === currentId ? ", current order" : ""}`}
               className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">
                   {row.title}
-                  {row._id === currentId ? <span className="font-normal text-muted-foreground"> · on screen</span> : null}
+                  {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {row.customerName ?? (row.bookingReference ? (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference) : "No customer")}
@@ -737,7 +739,7 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">
                   {row.title}
-                  {row._id === currentId ? <span className="font-normal text-muted-foreground"> · on screen</span> : null}
+                  {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
                 <span className="block truncate text-xs text-muted-foreground">
                   {[row.customerName ?? "No customer", row.bookingReference && (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference)]

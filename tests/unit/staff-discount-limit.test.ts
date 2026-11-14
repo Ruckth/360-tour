@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { LineDiscount } from "convex/lib/billMath";
 import { assertCashierDiscount, type StaffActor } from "convex/lib/staffAccess";
 import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
-import { discountOverLimit } from "@/components/checkout/staff-approvals";
+import { approvalAsk, discountOverLimit, formatPercent, type ApprovalView } from "@/components/checkout/staff-approvals";
 
 const cashier = { role: "cashier", email: "mint@example.com", tokenIdentifier: "mint" } as StaffActor;
 /** A query context whose only read is the cashier rules row. */
@@ -78,4 +78,18 @@ describe("cashier discount limit hint", () => {
   it("ignores a value that isn't a discount yet", () => {
     expect(discountOverLimit(massage, { type: "amount", value: Number.NaN }, { discountLimitPercent: 10 })).toBeNull();
   });
+});
+
+
+it("rounds the approval ask to one decimal without changing the discount or its exact limit display", () => {
+  const request: Pick<ApprovalView, "payload" | "amount" | "percent"> = {
+    payload: { kind: "discount", lineId: "line" as Extract<ApprovalView["payload"], { kind: "discount" }>["lineId"], discount: { type: "percent", value: 16.67 } },
+    amount: 100,
+    percent: 16.67,
+  };
+  expect(approvalAsk(request)).toBe("asks for a ฿100 discount (16.7%)");
+  expect(approvalAsk({ ...request, percent: 15 })).toBe("asks for a ฿100 discount (15%)");
+  expect(request.payload).toMatchObject({ discount: { value: 16.67 } });
+  expect(request.percent).toBe(16.67);
+  expect(formatPercent(16.67)).toBe("16.67");
 });

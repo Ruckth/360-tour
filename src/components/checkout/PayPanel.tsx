@@ -649,10 +649,12 @@ function SplitForm({
           return (
             <li key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-y-2 @min-[18rem]:grid-cols-[minmax(0,1fr)_minmax(6rem,8rem)_auto] rounded-xl bg-muted/40 p-3">
               <div className="col-start-1 row-start-1 grid gap-1">
-                <h3 className="text-sm font-medium">Payment {index + 1}</h3>
-                <Label htmlFor={`split-${validationId}-${index}`} className="text-xs text-muted-foreground">{isLast ? "Rest" : "Amount"}</Label>
+                <h3 className="text-sm font-medium">Payment {index + 1}{isLast ? " · rest" : ""}</h3>
+                <Label htmlFor={`split-${validationId}-${index}`} className="sr-only">Amount</Label>
               </div>
-              {isLast ? <output id={`split-${validationId}-${index}`} aria-label={`Payment ${index + 1} amount`} className="col-span-2 row-start-2 flex h-11 items-center justify-end rounded-lg border border-dashed border-input px-3 font-sans text-sm tabular-nums @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">{formatMoney(Math.max(0, rest))}</output> : (
+              {isLast ? <div className="relative col-span-2 row-start-2 min-w-0 @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">
+                <output id={`split-${validationId}-${index}`} aria-label={`Payment ${index + 1} amount`} className="relative flex h-11 items-center justify-end rounded-lg border border-dashed border-input pr-3 pl-7 font-sans text-sm tabular-nums"><span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>{formatMoney(Math.max(0, rest)).replace(/^฿/, "")}</output>
+              </div> : (
                 <div className="relative col-span-2 row-start-2 min-w-0 @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">
                   <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>
                   <Input id={`split-${validationId}-${index}`} inputMode="decimal" autoComplete="off" aria-label={`Payment ${index + 1} amount`} className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums" aria-invalid={!(Number(row.amount) > 0) || remaining < 0 ? true : undefined} aria-describedby={validationId} value={row.amount} {...selectAll} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />

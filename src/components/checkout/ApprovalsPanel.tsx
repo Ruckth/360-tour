@@ -8,13 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
-import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
 import { useNow } from "@/lib/staff-bookings";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
 import { useCheckoutBackend, type ApprovalRequest } from "./backend";
-import { CheckoutSheetContent } from "./CheckoutLayers";
+import { CheckoutDialogContent } from "./CheckoutLayers";
 import { approvalAsk, minutesLeft, personName } from "./staff-approvals";
 
 /**
@@ -71,8 +71,8 @@ function ApprovalsButton() {
 
   return (
     <>
-      <Sheet open={open} onOpenChange={(next) => { setOpen(next); if (!next) setNotice(""); }}>
-        <SheetTrigger asChild>
+      <Dialog open={open} onOpenChange={(next) => { setOpen(next); if (!next) setNotice(""); }}>
+        <DialogTrigger asChild>
           <Button
             variant="outline"
             className="shrink-0 border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text"
@@ -88,10 +88,10 @@ function ApprovalsButton() {
               </span>
             ) : null}
           </Button>
-        </SheetTrigger>
-        <CheckoutSheetContent
-          side="right"
-          className="w-full gap-3 sm:max-w-md"
+        </DialogTrigger>
+        <CheckoutDialogContent
+          panel
+          className="gap-3"
           {...{ [APPROVALS_AREA]: "" }}
           // Focus the title, not the first control: that would open an ⓘ tip or arm Decline.
           onCloseAutoFocus={() => {
@@ -103,10 +103,10 @@ function ApprovalsButton() {
             (event.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>("[data-approvals-title]")?.focus();
           }}
         >
-          <SheetHeader>
-            <SheetTitle data-approvals-title="" tabIndex={-1} className="outline-none">Approvals</SheetTitle>
-            <SheetDescription className="sr-only">Requests from cashiers waiting for a manager.</SheetDescription>
-          </SheetHeader>
+          <DialogHeader>
+            <DialogTitle data-approvals-title="" tabIndex={-1} className="outline-none">Approvals</DialogTitle>
+            <DialogDescription className="sr-only">Requests from cashiers waiting for a manager.</DialogDescription>
+          </DialogHeader>
           <p role="status" className={notice ? "rounded-lg bg-muted/60 px-3 py-2 text-sm" : "sr-only"}>{notice}</p>
           {queue === undefined ? (
             <Spinner label="Loading approvals" />
@@ -117,8 +117,8 @@ function ApprovalsButton() {
           ) : (
             <p className="text-sm text-muted-foreground">Nothing waiting.</p>
           )}
-        </CheckoutSheetContent>
-      </Sheet>
+        </CheckoutDialogContent>
+      </Dialog>
       <Toast {...toast} />
     </>
   );
@@ -138,16 +138,16 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
   return (
     <li data-testid="approval-request">
     <Card className="grid gap-2 p-4">
-      <p className="text-[15px] font-medium text-balance [overflow-wrap:anywhere]">{lineName ?? (request.payload.kind === "customPrice" && request.payload.action === "addCustomItem" ? request.payload.name : title)}</p>
-      <p className="text-[15px] font-semibold text-pretty [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request)}</p>
+      <p className="text-xs text-muted-foreground text-pretty [overflow-wrap:anywhere]">{lineName ?? (request.payload.kind === "customPrice" && request.payload.action === "addCustomItem" ? request.payload.name : null)}{lineName || (request.payload.kind === "customPrice" && request.payload.action === "addCustomItem") ? " · " : ""}{title}</p>
+      <p className="text-[15px] font-semibold text-balance [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request)}</p>
       {/* The cashier's own words, not an explanation. */}
       <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
       <p className="text-sm text-muted-foreground font-sans tabular-nums">
-        {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
+        {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
       <p className={soon ? "flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300" : "flex items-center gap-1.5 text-xs text-muted-foreground"}>
         {expiring ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
-        <InfoTip label="About approvals">Works once, for this order as it is now.</InfoTip>
+        <InfoTip label="About approvals" className="pointer-coarse:-ml-2">Works once, for this order as it is now.</InfoTip>
       </p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <ApprovalDecisionButtons busy={busy} onDecide={(choice) => { void decide(choice).then((result) => { if (result) onResult(result); }); }} />
