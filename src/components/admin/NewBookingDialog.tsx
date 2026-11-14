@@ -381,10 +381,10 @@ export function NewBookingDialog({
             </section>
             <section aria-labelledby="nb-price-title" className="grid gap-4 sm:grid-cols-2 sm:items-start">
               <h3 id="nb-price-title" className="text-base font-semibold sm:col-span-2">Price</h3>
-              <div className="grid gap-2 rounded-xl border border-border bg-card px-3">
-                <button id="nb-custom" type="button" role="switch" aria-labelledby="nb-custom-label" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex h-12 shrink-0 items-center justify-between rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <div className="grid content-start gap-1.5">
+                <Label id="nb-custom-label" htmlFor="nb-custom">Custom price</Label>
+                <button id="nb-custom" type="button" role="switch" aria-labelledby="nb-custom-label" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex h-11 shrink-0 items-center justify-between gap-3 rounded-md border border-input bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="grid min-w-0 gap-0.5 text-left font-normal">
-                    <span id="nb-custom-label">Custom price</span>
                     {!custom && property && dates.checkIn && dates.checkOut && !conflicts ? <span className="font-sans text-xs tabular-nums text-muted-foreground">{formatMoney(property.pricePerNight, property.currency)}/night{property.directDiscountPercent ? ` · direct −${property.directDiscountPercent}%` : ""}</span> : null}
                   </span>
                   <span aria-hidden className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
@@ -435,7 +435,7 @@ export function NewBookingDialog({
                   disabled={saving || custom}
                   aria-invalid={couponInvalid || couponError ? true : undefined}
                   aria-describedby="nb-coupon-status"
-                  className="font-mono font-semibold tracking-wide placeholder:font-sans placeholder:font-normal placeholder:tracking-normal"
+                  className="h-11 font-mono font-semibold tracking-wide placeholder:font-sans placeholder:font-normal placeholder:tracking-normal"
                 />
                 <div id="nb-coupon-status" aria-live="polite" className="grid content-start gap-1.5">
                   {custom && couponTyped ? (
@@ -464,7 +464,7 @@ export function NewBookingDialog({
 
           </fieldset>
           {/* Separate from the scroller: the footer never covers a field. */}
-          <DialogFooter className="-mx-5 shrink-0 flex-col gap-2 border-t border-border bg-card px-5 pt-3 pb-[max(env(safe-area-inset-bottom),1rem)] sm:flex-col sm:items-stretch">
+          <DialogFooter className="-mx-5 shrink-0 flex-col gap-2 border-t border-border bg-card px-5 pt-3 shadow-[0_-8px_12px_-10px_rgb(0_0_0/0.15)] pb-[max(env(safe-area-inset-bottom),1rem)] sm:flex-col sm:items-stretch">
             <div className="flex w-full items-center justify-between gap-3">
               <p className="min-w-0 text-xs" aria-live="polite" data-sentence-budget="ignore">
                 <span className="block font-sans text-lg font-semibold tabular-nums">Total {total !== null ? formatMoney(total, property?.currency ?? "THB") : "—"}</span>{" "}

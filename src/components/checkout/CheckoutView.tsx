@@ -231,7 +231,7 @@ function CheckoutContent({
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         {!narrow && !sheetOpen ? <aside
           aria-label="Order"
-          className="mt-1 mr-4 mb-4 hidden max-h-full lg:w-[420px] shrink-0 overflow-hidden has-[[data-testid=pay-panel]]:self-start rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
+          className="mt-1 mr-4 mb-4 hidden max-h-full lg:w-[420px] shrink-0 overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
         >
           {panel()}
         </aside> : null}

@@ -192,11 +192,14 @@ test.describe("Settings panels", () => {
     await expect(page.getByRole("tooltip")).toHaveText("The AI concierge quotes this to guests. Leave blank to not mention a policy.");
   });
 
-  test("Channels has no duplicate iCal panel, and each panel shows at most one sentence", async ({ page }) => {
+  test("Channels explains an unchecked setup in two plain sentences, with service hints behind info", async ({ page }) => {
     await open(page, "?view=settings&tab=channels");
     await expect(page.getByRole("region", { name: "Messaging channels" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /iCal/ })).toHaveCount(0);
-    for (const title of ["Messaging channels", "Backend services"]) await expectAtMostSentences(page.getByRole("region", { name: title }), 1);
+    const channels = page.getByRole("region", { name: "Messaging channels", exact: true });
+    await expect(channels.getByText("Couldn't check channel setup. Recent message activity is still shown.", { exact: true })).toBeVisible();
+    await expectAtMostSentences(channels, 2);
+    await expectAtMostSentences(page.getByRole("region", { name: "Backend services", exact: true }), 1);
   });
 
   test("a manager's read-only banner is the page's one sentence", async ({ page }) => {

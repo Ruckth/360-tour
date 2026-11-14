@@ -362,10 +362,10 @@ export function AdminSessionDetail({
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
           <div className="grid gap-2 p-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-3">
               {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
-              <div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
-              <div className="flex shrink-0 items-center gap-0 sm:gap-1">
+              <div className="min-w-20 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
+              <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1">
                 <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
                 {actions}
               </div>

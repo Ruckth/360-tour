@@ -348,9 +348,6 @@ export function DashboardView({
           <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "motion-safe:animate-pulse bg-amber-500" : "bg-emerald-500")} />
           {busy ? "Updating… · showing previous figures" : `Updated ${formatStamp(report.asOf)}`}
         </span>
-        <span>
-          {report.basis === "cash" ? "Paid or refunded" : "Sales made"} {formatRange(report.from, report.to)}
-        </span>
         {propertyFilter !== "all" ? (
           <>
             <span>{propertyName}</span>

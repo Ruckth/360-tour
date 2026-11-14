@@ -345,8 +345,8 @@ function HotelBookings() {
             moreIndicator: "mt-auto h-6 pointer-coarse:h-11 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
           }}
           loading={data === undefined}
-          scrollMode={view === "month" ? "page" : "contained"}
-          className={view === "month" ? "[--ec-month-bar-h:2.375rem] w-full" : "[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full"}
+          scrollMode={view === "month" || (phone && view === "agenda") ? "page" : "contained"}
+          className={view === "month" || (phone && view === "agenda") ? "[--ec-month-bar-h:2.375rem] w-full" : "[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full"}
         >
           <AdminCalendarHeader compact primaryAction={<Button size="sm" aria-label="New booking" disabled={!data} onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}><PlusIcon aria-hidden className="size-4" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New booking</span></Button>}>
             <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />

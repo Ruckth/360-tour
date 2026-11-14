@@ -5,7 +5,7 @@ import { Stat } from "@/components/ui/stat";
 import { Disclosure } from "@/components/ui/disclosure";
 import type { ReactNode } from "react";
 import { pluralize } from "../../admin-bulk";
-import { thb } from "../marketing-format";
+import { formatRange, thb } from "../marketing-format";
 import { useMarketingAccess } from "../MarketingAccess";
 import { formatPercent, formatRoas, type BusinessTotals, type Prepared, type Roas } from "./report-model";
 
@@ -107,7 +107,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 id="kpi-title" className="text-base font-semibold text-foreground">{p.cash ? "Money in and out" : "Results from tracked links"}</h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">{p.cash ? "Finance view · by payment, refund and coupon settlement date" : `Sales made in these dates · credited to the ${p.filters.touch === "first" ? "first" : "last"} link clicked`}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{p.cash ? `${formatRange(p.report.from, p.report.to)} · by payment, refund and coupon settlement date` : `${formatRange(p.report.from, p.report.to)} · credited to the ${p.filters.touch === "first" ? "first" : "last"} link clicked`}</p>
         </div>
 
       </header>

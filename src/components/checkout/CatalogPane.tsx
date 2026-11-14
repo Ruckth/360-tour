@@ -122,7 +122,7 @@ export function CatalogPane({
     return next;
   });
 
-  const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[46rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
+  const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
 
   return (
     <section aria-label="Catalog" className={cn("@container flex min-h-0 flex-col", className)}>
@@ -227,7 +227,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
       </span>
       <span className="flex min-w-0 flex-1 flex-col py-0.5">
         <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
-        <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
+        <span className="mt-0.5 line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
         <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
           <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
           {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}

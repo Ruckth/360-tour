@@ -216,8 +216,8 @@ export function OrderPanel({
         ) : (
           <>
             {canAddCoupon(view) && !couponOpen ? (
-              <Button variant="ghost" className={cn("size-9 rounded-xl sm:w-auto sm:px-2", !editingLine && SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Coupon: code, QR or link">
-                <TicketPercent aria-hidden className="size-4" /><span className="max-sm:sr-only">Coupon</span>
+              <Button variant="ghost" className={cn("h-9 rounded-xl px-2", !editingLine && SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Coupon: code, QR or link">
+                <TicketPercent aria-hidden className="size-4" /><span>Coupon</span>
               </Button>
             ) : null}
             <MoreMenu
@@ -605,7 +605,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition", on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}
+      className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition", on ? "border-input bg-background text-foreground shadow-sm" : "border-border hover:bg-muted")}
     >
       {children}
     </button>
@@ -999,7 +999,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
       </p>
       {asking && parsed?.ok ? (
         <div role="group" aria-label="Ask a manager" className="col-span-2 grid gap-2">
-          <ReasonField className="[&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background" compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
+          <ReasonField compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {/* One request at a time per order: a second waits until the first is decided. */}
           <Button className="h-auto min-h-10 w-full whitespace-normal" disabled={!reason.trim() || sending || waiting} onClick={() => void sendRequest()}>

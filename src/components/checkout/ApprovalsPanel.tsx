@@ -147,7 +147,7 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
       </p>
       <p className={soon ? "flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300" : "flex items-center gap-1.5 text-xs text-muted-foreground"}>
         {expiring ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
-        <InfoTip label="About approvals" className="pointer-coarse:-ml-2">Works once, for this order as it is now.</InfoTip>
+        <InfoTip label="About approvals" className="pointer-coarse:-my-3 pointer-coarse:-ml-2">Works once, for this order as it is now.</InfoTip>
       </p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <ApprovalDecisionButtons busy={busy} onDecide={(choice) => { void decide(choice).then((result) => { if (result) onResult(result); }); }} />
