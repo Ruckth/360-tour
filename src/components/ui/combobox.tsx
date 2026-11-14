@@ -30,12 +30,24 @@ export function ComboboxTrigger({
 
 export function ComboboxInput({
   showTrigger = true,
+  containerClassName,
   ...props
-}: Primitive.Input.Props & { showTrigger?: boolean }) {
+}: Primitive.Input.Props & {
+  showTrigger?: boolean;
+  containerClassName?: string;
+}) {
   return (
-    <div className="m-1 flex items-center">
-      <Primitive.Input render={<Input />} {...props} />
-      {showTrigger ? <ComboboxTrigger /> : null}
+    <div className={cn("relative m-1 flex items-center", containerClassName)}>
+      <Primitive.Input
+        render={<Input className={showTrigger ? "pr-12" : undefined} />}
+        {...props}
+      />
+      {showTrigger ? (
+        <ComboboxTrigger
+          aria-label="Show options"
+          className="absolute right-0 inline-flex size-11 items-center justify-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      ) : null}
     </div>
   );
 }

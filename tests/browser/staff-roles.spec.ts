@@ -170,7 +170,7 @@ test.describe("Settings › Team", () => {
     await expect(people.getByTestId("team-person").filter({ hasText: "narin@" })).toContainText("Owner");
     // Roles read as text; the selects open behind each person's Change.
     await expect(people.getByRole("combobox")).toHaveCount(0);
-    await expect(people.getByTestId("team-person").filter({ hasText: "sun@" }).getByTestId("team-roles")).toHaveText("Marketing Marketer");
+    await expect(people.getByTestId("team-person").filter({ hasText: "sun@" }).getByTestId("team-roles")).toHaveText("Marketing Editor");
     await expect(people.getByTestId("team-person").filter({ hasText: "ploy@" }).getByTestId("team-roles")).toHaveText("Manager · Marketing Viewer");
     await expect(people.getByRole("link")).toHaveCount(0);
     const lek = people.getByTestId("team-person").filter({ hasText: "lek@" });
@@ -181,15 +181,17 @@ test.describe("Settings › Team", () => {
 
     await people.getByRole("button", { name: "Invite" }).click();
     await people.getByRole("textbox", { name: "Email" }).fill("Fon@AuralisCove.co");
-    await people.getByRole("combobox", { name: "Desk", exact: true }).selectOption("manager");
+    await people.getByRole("combobox", { name: "Desk", exact: true }).click();
+    await page.getByRole("option", { name: "Manager", exact: true }).click();
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
-    await expect(fon).toContainText(/Invited ·/);
+    await expect(fon).toContainText(/Invite expires/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
 
     await people.getByRole("button", { name: "Change roles for Mint" }).click();
-    await people.getByRole("combobox", { name: "Desk role for Mint" }).selectOption("manager");
+    await people.getByRole("combobox", { name: "Desk role for Mint" }).click();
+    await page.getByRole("option", { name: "Manager", exact: true }).click();
     await expect(people.getByRole("status")).toHaveText("Mint is now Manager.");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "manager" });
     // The change shows as text again.
@@ -203,7 +205,7 @@ test.describe("Settings › Team", () => {
     await expect(rules.getByText("Use 0–100, up to two decimals.")).toBeVisible();
     await expect(save).toBeDisabled();
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("12.5");
-    await rules.getByRole("switch", { name: "Void needs manager" }).click();
+    await rules.getByRole("radiogroup", { name: "Void permission", exact: true }).getByRole("radio", { name: "Cashier", exact: true }).click();
     await save.click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
     await expect(save).toHaveCount(0);
@@ -212,24 +214,22 @@ test.describe("Settings › Team", () => {
     });
   });
 
-  test("cashier rules are Needs manager switches, refunds first and on by default", async ({ page }) => {
+  test("cashier rules name who may act, refunds need a manager by default", async ({ page }) => {
     await open(page, "?view=settings&tab=team");
     const rules = page.getByRole("form", { name: "Rules for all cashiers" });
     await expect(rules.getByRole("combobox")).toHaveCount(0);
     await expect(rules.locator("label")).toHaveText(["Discount without approval", "Refund", "Void", "Custom price", "Correct payment"]);
-    const switches = rules.getByRole("switch");
-    await expect(switches).toHaveCount(4);
-    for (const one of await switches.all()) await expect(one).toHaveAttribute("aria-checked", "true");
-    const refunds = rules.getByRole("switch", { name: "Refund needs manager" });
-    await refunds.click();
-    await expect(refunds).toHaveAttribute("aria-checked", "false");
-    // Switching back is no change, so Save turns off again.
-    await refunds.click();
+    await expect(rules.getByRole("radio", { name: "Manager", exact: true })).toHaveCount(4);
+    for (const one of await rules.getByRole("radio", { name: "Manager", exact: true }).all()) await expect(one).toHaveAttribute("aria-checked", "true");
+    const refund = rules.getByRole("radiogroup", { name: "Refund permission", exact: true });
+    await refund.getByRole("radio", { name: "Cashier", exact: true }).click();
+    await expect(refund.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
+    await refund.getByRole("radio", { name: "Manager", exact: true }).click();
     await expect(rules.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-    await refunds.click();
+    await refund.getByRole("radio", { name: "Cashier", exact: true }).click();
     await rules.getByRole("button", { name: "Save", exact: true }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
-    await expect(refunds).toHaveAttribute("aria-checked", "false");
+    await expect(refund.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 0, refund: "cashier" });
   });
 

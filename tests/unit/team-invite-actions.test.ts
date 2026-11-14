@@ -54,12 +54,13 @@ afterEach(async () => {
 
 const row = (email: string) => [...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]')].find((li) => li.textContent?.includes(email))!;
 const buttonsIn = (el: HTMLElement) => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
-const select = (el: HTMLElement, name: string) => el.querySelector<HTMLSelectElement>(`select[aria-label^="${name}"]`)!;
-const pick = (node: HTMLSelectElement, value: string) =>
-  act(async () => {
-    node.value = value;
-    node.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+const select = (el: HTMLElement, name: string) => el.querySelector<HTMLButtonElement>(`button[role="combobox"][aria-label^="${name}"]`)!;
+const pick = async (node: HTMLButtonElement, value: string) => {
+  await act(async () => { node.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  const label = ({ marketer: "Editor", manager: "Manager", viewer: "Viewer", "": "None" } as Record<string, string>)[value];
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((el) => el.textContent === label || (value === "" && el.textContent?.startsWith("No desk")))!;
+  await act(async () => { option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+};
 const render = () => act(async () => root.render(createElement(TeamSettings)));
 /** Roles show as text; Change opens the person's two selects. */
 const change = (el: HTMLElement) => act(async () => el.querySelector<HTMLButtonElement>('button[aria-label^="Change roles for"]')!.click());
@@ -71,10 +72,9 @@ it("gives each person a Desk and a Marketing role, with Marketing Manager shown 
   expect(sun.querySelector('[data-testid="team-roles"]')!.textContent).toBe("Marketing Lead");
   expect(row(active.email).querySelector('[data-testid="team-roles"]')!.textContent).toBe("Cashier");
   await change(sun);
-  expect(select(sun, "Desk role").value).toBe("");
-  expect(select(sun, "Marketing role").value).toBe("manager");
-  expect([...select(sun, "Marketing role").options].map((o) => o.text)).toEqual(["Lead", "Marketer", "Finance", "Viewer", "None"]);
-  expect([...select(sun, "Desk role").options].map((o) => o.text)).toEqual(["Manager", "Cashier", "None"]);
+  expect(select(sun, "Desk role").textContent).toBe("None");
+  expect(select(sun, "Marketing role").textContent).toBe("Lead");
+  expect(sun.querySelectorAll('[role="combobox"]')).toHaveLength(2);
   expect(row(owner.email).textContent).toContain("Owner");
   expect(row(owner.email).querySelector("select")).toBeNull();
   expect(host.textContent).not.toMatch(/Resend|Expire\b|Revoke|Manage\b/);
@@ -85,7 +85,7 @@ it("grants Marketing access from the row, through the unchanged Marketing mutati
   await change(row(active.email));
   await pick(select(row(active.email), "Marketing role"), "marketer");
   expect(mocks.calls).toEqual([["marketingAccess:setGrant", { email: active.email, role: "marketer" }]]);
-  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited Mint to Marketing as Marketer.");
+  expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited Mint to Marketing as Editor.");
   expect(mocks.confirm).not.toHaveBeenCalled();
 });
 
@@ -120,7 +120,7 @@ it("invites with a Desk role, a Marketing role, or both", async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(email, "Fon@AuralisCove.co");
     email.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  const [desk, marketing] = form.querySelectorAll("select");
+  const [desk, marketing] = form.querySelectorAll<HTMLButtonElement>('[role="combobox"]');
   await pick(desk, "");
   await act(async () => form.requestSubmit());
   expect(form.querySelector('[role="alert"]')!.textContent).toBe("Pick a Desk or Marketing role.");
