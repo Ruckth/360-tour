@@ -105,3 +105,30 @@ it("still reports and clears errors for writes on the visible sale", async () =>
   await act(async () => { await writes.run(async () => null); });
   expect(banner).toBe("");
 });
+
+it('moves a previous-order failure to that order’s own banner when recalled', async () => {
+  await show(A);
+  const pending = deferred<void>();
+  let running!: Promise<boolean>;
+  await act(async () => { running = writes.run(() => pending.promise); });
+  await act(async () => writes.switchTo(B));
+  await act(async () => { pending.reject(new Error('A needs retry')); await running; });
+  expect(earlierBanner).toContain('previous order');
+  await act(async () => writes.switchTo(A));
+  expect(earlierBanner).toBe('');
+  expect(banner).toBe('A needs retry');
+  await act(async () => { await writes.run(async () => null); });
+  expect(banner).toBe('');
+});
+
+it('shows a late failure as the recalled order’s own error if it is already back on screen', async () => {
+  await show(A);
+  const pending = deferred<void>();
+  let running!: Promise<boolean>;
+  await act(async () => { running = writes.run(() => pending.promise); });
+  await act(async () => writes.switchTo(B));
+  await act(async () => writes.switchTo(A));
+  await act(async () => { pending.reject(new Error('Recalled order failed')); await running; });
+  expect(earlierBanner).toBe('');
+  expect(banner).toBe('Recalled order failed');
+});

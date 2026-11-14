@@ -23,9 +23,15 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
   // Writes queued or running, so controls that must see the settled order (the coupon field) can wait.
   const [pending, setPending] = useState(0);
   const sale = useRef<Sale>({ orderId });
+  const earlierFailure = useRef<{ orderId: OrderId | null; message: string } | null>(null);
   useEffect(() => {
     if (sale.current.orderId !== orderId) sale.current = { orderId };
-  }, [orderId]);
+    if (earlierFailure.current?.orderId === orderId) {
+      onError(earlierFailure.current.message);
+      onEarlierError?.("");
+      earlierFailure.current = null;
+    }
+  }, [orderId, onError, onEarlierError]);
 
   const run = useCallback<Run>(
     (task, then) => {
@@ -44,8 +50,11 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
           return true;
         } catch (err) {
           const message = errorText(err, "That didn't save. Try again.");
-          if (sale.current === mine) onError(message);
-          else (onEarlierError ?? onError)(`A change on the previous order did not save: ${message}`);
+          if (sale.current === mine || (mine.orderId !== null && sale.current.orderId === mine.orderId)) onError(message);
+          else {
+            earlierFailure.current = { orderId: mine.orderId, message };
+            (onEarlierError ?? onError)(`A change on the previous order did not save: ${message}`);
+          }
           return false;
         } finally {
           setPending((n) => n - 1);

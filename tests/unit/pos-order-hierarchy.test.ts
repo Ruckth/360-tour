@@ -56,7 +56,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it("lists items before their history and names the customer once beside the catalog, but keeps it in the phone sheet", async () => {
   const backend = createFixtureBackend();
   await showCheckout(backend, saved);
-  expect(historyDetails(panel())).toBeUndefined();
+  expect(historyDetails(panel())?.open).toBe(false);
   await run(backend.useActions().addItem({ orderId: saved, item: { kind: "extra", name: "Recorded item", price: 10 } }));
   const customer = read.view!.customer!.name;
   const items = panel().querySelector("ul")!;
@@ -184,4 +184,20 @@ it("lists unpaid orders without a Discard button and offers Restore… beside ea
   await press(within(document, "Restore order")); await tick();
   expect(restore).toHaveBeenCalledOnce();
   expect(document.body.textContent).toContain("restored. Review retained rows");
+});
+
+it('hides History on an untouched empty order and subscribes only when its first recorded change is expanded', async () => {
+  const backend = createFixtureBackend();
+  const history = vi.spyOn(backend, 'useOrderHistory');
+  const { orderId } = await run(backend.useActions().createOrder({}));
+  await showCheckout(backend, orderId);
+  expect(historyDetails(panel())).toBeUndefined();
+  expect(history).not.toHaveBeenCalled();
+  await run(backend.useActions().addItem({ orderId, item: { kind: 'extra', name: 'First tea', price: 50 } }));
+  const details = historyDetails(panel())!;
+  expect(details.open).toBe(false);
+  expect(history).not.toHaveBeenCalled();
+  await act(async () => { details.open = true; details.dispatchEvent(new Event('toggle')); });
+  expect(history).toHaveBeenCalledWith(orderId);
+  expect(details.textContent).toContain('First tea');
 });

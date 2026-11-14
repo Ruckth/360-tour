@@ -160,6 +160,9 @@ declare global {
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
       refundFromAnotherTill: (lineName: string, satang: number) => void;
+      holdNextPayment: () => void;
+      finishPayment: (loseAnswer?: boolean) => void;
+      paymentAttempts: () => string[];
       holdNextDiscountWrite: () => void;
       finishDiscountWrite: (fail?: boolean) => void;
       discountFromAnotherTill: (value: number) => Promise<unknown>;
@@ -181,6 +184,24 @@ fixtureActions.updateLine = async (args) => {
   }
   return updateLine(args);
 };
+const settleOrder = fixtureActions.settleOrder;
+let holdPayment = false;
+let finishPayment: ((loseAnswer?: boolean) => void) | undefined;
+const paymentAttempts: string[] = [];
+fixtureActions.settleOrder = async (args) => {
+  paymentAttempts.push(args.idempotencyKey);
+  if (holdPayment) {
+    holdPayment = false;
+    await new Promise<void>((resolve, reject) => {
+      finishPayment = (loseAnswer) => {
+        finishPayment = undefined;
+        if (loseAnswer) reject(new Error("Payment answer lost"));
+        else resolve();
+      };
+    });
+  }
+  return settleOrder(args);
+};
 window.fixture = {
   setRole: (next) => {
     backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
@@ -191,6 +212,9 @@ window.fixture = {
   loseNextRefundResponse: () => backend.loseNextRefundResponse(),
   lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
   refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),
+  holdNextPayment: () => { holdPayment = true; },
+  finishPayment: (loseAnswer) => { if (!finishPayment) throw new Error("No payment is waiting"); finishPayment(loseAnswer); },
+  paymentAttempts: () => paymentAttempts,
   holdNextDiscountWrite: () => { holdDiscount = true; },
   finishDiscountWrite: (fail) => { if (!finishDiscount) throw new Error("No discount write is waiting"); finishDiscount(fail); },
   discountFromAnotherTill: (value) => {
