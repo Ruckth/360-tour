@@ -194,10 +194,11 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(page.getByText(/conversation/i)).toHaveCount(0);
     });
 
-    test("an LINE guest shows the app handle in the header", async ({ page }) => {
+    test("a LINE guest keeps the app handle in Chat details", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats&session=chat-somchai&view=needs_reply");
       if (size === "phone") await expect(page.getByTestId("admin-chat-detail-dialog")).toBeVisible();
-      await expect(page.locator('address[aria-label="Contact"]')).toContainText("@somchai.p");
+      await page.getByRole("button", { name: "Chat details", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Chat details", exact: true }).locator('address[aria-label="Contact"]')).toContainText("@somchai.p");
     });
   });
 }

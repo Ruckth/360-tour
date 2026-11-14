@@ -98,6 +98,7 @@ export function MissingInformationPanel({
   const search = useDebounced(searchInput.trim());
   const [pendingAction, setPendingAction] = useState("");
   const [actionError, setActionError] = useState("");
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
 
   const result = useQuery(api.chatKnowledge.adminListUnknownGroups, {
@@ -147,14 +148,17 @@ export function MissingInformationPanel({
     key: string,
     fallback: string,
     action: () => Promise<void>,
+    rowKey?: string,
   ) {
     setPendingAction(key);
     setActionError("");
+    if (rowKey) setRowErrors(current => ({ ...current, [rowKey]: "" }));
     setLeftover(null);
     try {
       await action();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : fallback);
+      if (rowKey) setRowErrors(current => ({ ...current, [rowKey]: "Couldn’t resolve this question. Try again." + (error instanceof Error ? ` ${error.message}` : "") }));
+      else setActionError(error instanceof Error ? error.message : fallback);
     } finally {
       setPendingAction("");
     }
@@ -241,7 +245,7 @@ export function MissingInformationPanel({
         () => void resolve(group, value),
         done.remainingIsLowerBound,
       );
-    });
+    }, key);
   }
 
   function emptyState() {
@@ -329,7 +333,7 @@ export function MissingInformationPanel({
             className="h-9 w-full rounded-lg pointer-coarse:min-h-11 sm:w-40"
             aria-label="Report status"
           >
-            <SelectValue />
+            <span className="flex min-w-0 items-center gap-1"><span className="text-muted-foreground sm:hidden">Status:{" "}</span><SelectValue /></span>
           </SelectTrigger>
           <SelectContent>
             {UNKNOWN_STATUSES.map((option) => (
@@ -449,7 +453,7 @@ export function MissingInformationPanel({
                     key={key}
                     className={cn(
                       STACKED_TABLE.row,
-                      "max-lg:grid-cols-[2.75rem_minmax(0,1fr)] max-lg:[&>td:first-child]:col-start-1 max-lg:[&>td:nth-child(2)]:col-start-2 max-lg:[&>td:nth-child(3)]:col-span-full",
+                      "max-lg:grid-cols-[2.75rem_minmax(0,1fr)] max-lg:[&>td:first-child]:col-start-1 max-lg:[&>td:nth-child(2)]:col-start-2 max-lg:[&>td:nth-child(3)]:col-start-2",
                       "relative min-h-16 gap-y-2",
                       hasNew && "max-lg:pr-4",
                     )}
@@ -476,13 +480,13 @@ export function MissingInformationPanel({
                           </Badge>
                         ) : null}
                       </p>
-                      <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        {formatDateTime(group.latestAt)}
+                      <p className="mt-1 flex min-w-0 flex-nowrap items-center gap-2 text-xs text-muted-foreground">
+                        <span className="shrink-0">{formatDateTime(group.latestAt)}</span>
                         {group.channels.map((channel) => (
                           <span
                             key={channel}
                             title={sourceLabel(channel)}
-                            className="inline-flex"
+                            className="inline-flex shrink-0"
                           >
                             <ChannelIcon
                               channel={channel}
@@ -497,17 +501,17 @@ export function MissingInformationPanel({
                           <span className="min-w-0 truncate">{question.propertyName}</span>
                         ) : null}
                         {question.detectedTopic ? (
-                          <Badge variant="outline" className="text-xs font-normal">{question.detectedTopic}</Badge>
+                          <Badge variant="outline" className="shrink-0 text-xs font-normal">{question.detectedTopic}</Badge>
                         ) : null}
 
                       </p>
 
                     </td>
-                    <td className={cn(STACKED_TABLE.cell, "max-lg:col-span-full")}>
+                    <td className={cn(STACKED_TABLE.cell, "max-lg:col-start-2")}>
                       {hasNew ? (
                         // Picking is the decision: it resolves at once, and the toast offers Undo. Most
                         // reports need a new fact, so Create fact stays one tap beside it.
-                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 lg:flex">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 lg:flex lg:gap-2">
                           <ResolveFactPicker
                             label={`Resolve "${question.userQuestion}" with a fact or source`}
                             facts={compatibleFacts(facts, reportPropertyId)}
@@ -548,6 +552,7 @@ export function MissingInformationPanel({
                               : "Resolved")}
                         </span>
                       )}
+                      {rowErrors[key] ? <p role="alert" className="mt-2 text-sm text-destructive">{rowErrors[key]}</p> : null}
                     </td>
                     {showStatus ? (
                       <td className={STACKED_TABLE.cell}>

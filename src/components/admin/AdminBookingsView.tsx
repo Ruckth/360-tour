@@ -266,12 +266,14 @@ function HotelBookings() {
             const phase = day === b.checkIn ? "Arrives" : day === b.checkOut ? "Leaves" : "In house";
             return <span className="flex w-full min-w-0 items-center justify-between gap-3">
               <span className="grid min-w-0 gap-1 text-left">
-                <span className="text-[15px] font-medium">{b.guestName}</span>
-                <span className="text-pretty text-xs text-muted-foreground">{villaName(b.propertyId)}</span>
-                <span className="text-pretty text-xs text-muted-foreground">{phase} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
-                <StatusBadge {...hotelStatus(statusKey(b))} className="w-fit" />
+                <span className="truncate text-[15px] font-medium">{b.guestName}</span>
+                <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><span className="truncate">{villaName(b.propertyId)}</span><span className="shrink-0">· {phase}</span></span>
+                <span className="text-xs text-muted-foreground">{displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
               </span>
-              <span className={`money shrink-0 font-sans text-sm tabular-nums ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span>
+              <span className="grid shrink-0 justify-items-end gap-1">
+                {b.owed > 0 || statusKey(b) !== "paid" ? <span className={`money font-sans text-[15px] font-medium tabular-nums ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span> : null}
+                <StatusBadge {...hotelStatus(statusKey(b))} />
+              </span>
             </span>;
           }}
           renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No stays in this period.</p><Button onClick={() => setCreating({})} disabled={!data}>New booking</Button></div>}
