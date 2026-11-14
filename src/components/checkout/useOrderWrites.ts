@@ -52,7 +52,8 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
           const message = errorText(err, "That didn't save. Try again.");
           if (sale.current === mine || (mine.orderId !== null && sale.current.orderId === mine.orderId)) onError(message);
           else {
-            earlierFailure.current = { orderId: mine.orderId, message };
+            // A failed write on a sale that never got an order can't be recalled; never pin it onto the next new sale.
+            if (mine.orderId !== null) earlierFailure.current = { orderId: mine.orderId, message };
             (onEarlierError ?? onError)(`A change on the previous order did not save: ${message}`);
           }
           return false;

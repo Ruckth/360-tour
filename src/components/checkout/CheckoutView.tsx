@@ -183,7 +183,10 @@ function CheckoutContent({
       <span className="flex-1 basis-40">{discountNotice.message}</span>
       <button type="button" disabled={paymentSubmitting || busy} className="min-h-11 rounded px-2 font-medium underline disabled:opacity-50" onClick={() => {
         void (async () => {
-          if (reviewLocked.current || !await changeOrder(discountNotice.orderId, () => !reviewLocked.current) || reviewLocked.current) return;
+          if (reviewLocked.current) return;
+          // Only switch sales when the notice is for another order; reviewing the open order keeps its own error and state.
+          const ready = discountNotice.orderId === orderId ? await confirmDiscard() : await changeOrder(discountNotice.orderId, () => !reviewLocked.current);
+          if (!ready || reviewLocked.current) return;
           setPayOnOpen(undefined);
           if (narrow) setSheetOpen(true);
           setDiscountNotice(current => current === discountNotice ? { ...current, review: true } : current);

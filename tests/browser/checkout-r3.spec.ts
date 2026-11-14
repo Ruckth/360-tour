@@ -168,7 +168,8 @@ for (const width of [390, 1180]) {
           } else await page.getByRole("button", { name: "New order", exact: true }).click();
         }
         await expect(discardDialog(page)).toHaveCount(0);
-        await page.evaluate(() => window.fixture.finishDiscountWrite());
+        // The held write starts once the queued add-item write settles; release it as soon as it is waiting.
+        await expect.poll(() => page.evaluate(() => { try { window.fixture.finishDiscountWrite(); return true; } catch { return false; } })).toBe(true);
         if (action === "new sale") {
           await page.getByRole("button", { name: "Orders", exact: true }).click();
           await page.getByRole("dialog").getByRole("button", { name: /Order #1043/ }).click();
