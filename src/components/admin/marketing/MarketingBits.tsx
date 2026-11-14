@@ -2,6 +2,7 @@
 
 import { Check, CircleAlert, CircleCheck, Copy, Info, MoreHorizontal, TicketPercent, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -375,7 +376,7 @@ export function NumberField({
           {prefix}
         </span>
       ) : null}
-      <Input inputMode="numeric" autoComplete="off" className={cn("tabular-nums", prefix && "pl-7", suffix && "pr-9", className)} {...props} />
+      <Input inputMode="numeric" autoComplete="off" className={cn("money", prefix && "pl-7", suffix && "pr-9", className)} {...props} />
       {suffix ? (
         <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
           {suffix}
@@ -513,7 +514,7 @@ export function FirstRunEmpty({ icon: Icon, title, description, children }: { ic
 /** A titled card in the coupon page's side column (status, test a quote, versions, links). */
 export function SideCard({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="border border-border bg-card">
+    <Card role="region" aria-labelledby={id}>
       <header className="border-b border-border px-4 py-3">
         <h3 id={id} className="text-base font-semibold text-foreground">
           {title}
@@ -521,7 +522,7 @@ export function SideCard({ id, title, description, children }: { id: string; tit
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </header>
       {children}
-    </section>
+    </Card>
   );
 }
 

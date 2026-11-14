@@ -7,6 +7,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/lib/staffTypes";
 import { Check, UserPlus } from "lucide-react";
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -78,7 +79,7 @@ export function TeamSettings() {
 
 function Section({ title, tip, action, children, label }: { title: string; tip: ReactNode; action?: ReactNode; children: ReactNode; label: string }) {
   return (
-    <section className="border border-border bg-card" aria-label={label}>
+    <Card role="region" aria-label={label}>
       <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <h2 className="flex items-center gap-1.5 text-base font-semibold text-foreground">
           {title}
@@ -87,7 +88,7 @@ function Section({ title, tip, action, children, label }: { title: string; tip: 
         <div className="ml-auto flex items-center gap-2">{action}</div>
       </header>
       <div className="p-4">{children}</div>
-    </section>
+    </Card>
   );
 }
 
@@ -277,7 +278,7 @@ type Grant = NonNullable<Person["staffGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
-  return grant.expiresAt ? `${prefix}Invited · expires ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
+  return grant.expiresAt ? `${prefix}Invited · ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */
@@ -307,37 +308,36 @@ function PersonRow({ person, busy, onDesk, onMarketing, onRenew, onCopyLink }: {
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
   return (
-    <li className="grid gap-2 py-3 first:pt-0 last:pb-0" data-testid="team-person">
-      <div className="flex min-w-0 items-center gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-muted text-sm font-semibold uppercase text-muted-foreground">{name[0]}</span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">{name}</p>
-          <p className="text-xs break-all text-muted-foreground">{person.email}</p>
-          <p className="flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-            <span data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</span>
-            {states.map((state) => <span key={state}>{state}</span>)}
-          </p>
+    <li className="grid gap-2 py-1.5 first:pt-0 last:pb-0" data-testid="team-person">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5">
+        <div className="min-w-0">
+          <p className="text-[15px] font-medium text-foreground">{name}</p>
+          <p className="text-[13px] break-all text-muted-foreground">{person.email}</p>
         </div>
-        {owner ? null : (
-          <div className="flex shrink-0 items-center gap-1">
-            {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
-            {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
-            <Button size="sm" variant="outline" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
-              Change
-            </Button>
-            <MoreMenu
-              label={`More for ${name}`}
-              disabled={busy}
-              items={[
-                { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
-                { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
-              ]}
-            />
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2 max-sm:col-span-2">
+          <Badge variant="muted" className="mr-auto max-w-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
+          {owner ? null : (
+            <div className="flex shrink-0 items-center gap-1">
+              {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
+              {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
+              <Button size="sm" variant="outline" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
+                Change
+              </Button>
+              <MoreMenu
+                label={`More for ${name}`}
+                disabled={busy}
+                items={[
+                  { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
+                  { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
+                ]}
+              />
+            </div>
+          )}
+        </div>
+        {states.length ? <div className="col-span-2 flex flex-wrap gap-1.5">{states.map((state) => <Badge key={state} className={cn("rounded-full text-xs font-medium", TONES.warning.bg, TONES.warning.text, TONES.warning.border)}>{state}</Badge>)}</div> : null}
       </div>
       {changing && !owner ? (
-        <div id={`${id}-roles`} className="flex flex-wrap gap-2 pl-12">
+        <div id={`${id}-roles`} className="flex flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
           <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
             <select
@@ -476,7 +476,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
   }
 
   return (
-    <form onSubmit={submit} noValidate className="grid" aria-label="Rules for all cashiers">
+    <form onSubmit={submit} noValidate className={cn("grid", dirty && "pb-20")} aria-label="Rules for all cashiers">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2.5">
         <Label htmlFor={`${id}-limit`}>Discount without approval</Label>
         <span className="flex items-center gap-1.5">
@@ -508,16 +508,18 @@ function RulesForm({ rules }: { rules: CashierRules }) {
         </div>
       ))}
       {state.error ? <p role="alert" className="pt-2 text-sm text-destructive">{state.error}</p> : null}
-      {/* Sticky, so Save stays in reach on a phone; above the phone tab bar in the admin shell. */}
-      <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 -mx-4 -mb-4 flex flex-wrap items-center justify-end gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur" data-testid="rules-save-bar">
-        <span role="status" className="text-sm text-muted-foreground">
-          {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="link" className="h-auto p-0" onClick={() => load(rules)}>Load latest</Button></> : ""}
-        </span>
-        <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty}>
-          {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
-          Save
-        </Button>
+      <div role="status" className="pt-3 text-sm text-muted-foreground">
+        {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="outline" size="sm" onClick={() => load(rules)}>Load latest</Button></> : ""}
       </div>
+      {dirty ? (
+        <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 mt-3 rounded-xl flex flex-wrap items-center justify-end gap-3 border border-border bg-card/95 px-4 py-3 backdrop-blur" data-testid="rules-save-bar">
+          <span className="mr-auto text-[13px] text-muted-foreground">Unsaved changes</span>
+          <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty}>
+            {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
+            Save
+          </Button>
+        </div>
+      ) : null}
     </form>
   );
 }

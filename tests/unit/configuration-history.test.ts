@@ -124,7 +124,7 @@ it("renders deleted time off as readable dates and allows discovering its histor
 it("disables applying history while a draft is dirty and retains that draft after a failed save", async () => {
   state.update.mockRejectedValue(new Error("Settings changed. Review the latest configuration and try again."));
   await render(createElement(AdminSettingsView));
-  expect(button("Save").disabled).toBe(true);
+  expect(button("Save")).toBeUndefined();
   await openHistory();
   await change("Unsaved draft");
   expect(button("Save").disabled).toBe(false);
@@ -153,7 +153,7 @@ it("applies history with the live revision, prevents duplicate pending writes an
   expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Restore settings to before this change?", description: expect.stringContaining("every settings tab") }));
   expect(state.restore).toHaveBeenCalledWith({ historyId: event._id, expectedRevision: 4, side: "before" });
   expect(button(RESTORE).disabled).toBe(true);
-  expect(button("Save").disabled).toBe(true);
+  expect(button("Save")).toBeUndefined();
   expect(input().disabled).toBe(true);
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(state.update).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ it("refreshes the edited fields from a successful restoration without overwritin
   expect(input().value).toBe("Restored name");
   expect(document.body.textContent).toContain("Saved");
   expect(button(RESTORE).disabled).toBe(false);
-  expect(button("Save").disabled).toBe(true);
+  expect(button("Save")).toBeUndefined();
 });
 it("does not restore when the confirm is cancelled", async () => {
   state.confirm.mockResolvedValue(false);

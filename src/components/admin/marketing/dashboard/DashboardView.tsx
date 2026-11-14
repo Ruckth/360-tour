@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import type { Id } from "convex/_generated/dataModel";
 import type { ReportBasis, ReportData, SpendDraft } from "convex/lib/marketingReport";
 import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw, SlidersHorizontal } from "lucide-react";
@@ -204,7 +206,7 @@ function LoadingBody() {
   return (
     <div role="status" className="grid gap-4">
       <span className="sr-only">Loading marketing results</span>
-      <section className="border border-border bg-card">
+      <Card>
         <div className="border-b border-border px-4 py-3">
           <Skeleton className="h-4 w-48" />
         </div>
@@ -217,8 +219,8 @@ function LoadingBody() {
             </div>
           ))}
         </div>
-      </section>
-      <section className="border border-border bg-card">
+      </Card>
+      <Card>
         <div className="border-b border-border px-4 py-3">
           <Skeleton className="h-4 w-40" />
         </div>
@@ -227,7 +229,7 @@ function LoadingBody() {
             <div key={i} aria-hidden className="flex-1 animate-pulse rounded-t-[4px] bg-muted" style={{ height: `${h}%` }} />
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }
@@ -394,7 +396,7 @@ export function DashboardView({
   if (state.status === "loading") body = <LoadingBody />;
   else if (state.status === "error")
     body = (
-      <section className="border border-border bg-card p-4 sm:p-6">
+      <Card className="p-4 sm:p-6">
         <Callout
           tone="danger"
           role="alert"
@@ -408,11 +410,11 @@ export function DashboardView({
         >
           {state.message} Bookings and payments aren’t affected; only this report failed to load.
         </Callout>
-      </section>
+      </Card>
     );
   else if (firstRun)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <FirstRunEmpty
           icon={BarChart3}
           title="See which links bring paid bookings"
@@ -429,17 +431,17 @@ export function DashboardView({
             </ButtonLink>
           </div>}
         </FirstRunEmpty>
-      </section>
+      </Card>
     );
   else if (emptyRange && report?.truncated)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <EmptyState>Nothing was counted before this read reached its limit, so these dates may still have sales. Choose fewer days to see the figures.</EmptyState>
-      </section>
+      </Card>
     );
   else if (emptyRange)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <EmptyState
           action={
             request.range.preset !== "last90" ? (
@@ -455,7 +457,7 @@ export function DashboardView({
               ? `No sales for ${propertyName} in these dates.`
               : "No sales or tracked visits in these dates."}
         </EmptyState>
-      </section>
+      </Card>
     );
   else if (p && totals && breakdown)
     body = (

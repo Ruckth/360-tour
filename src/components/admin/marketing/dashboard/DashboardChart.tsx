@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import { Table2, BarChart3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -63,11 +65,11 @@ export function DashboardChart({ p }: { p: Prepared }) {
               {b.long}
             </th>
             {visible.map((s) => (
-              <td key={s.key} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+              <td key={s.key} className="whitespace-nowrap px-3 py-2 text-right font-sans tabular-nums text-muted-foreground">
                 {fmt(b.values[s.key] ?? 0)}
               </td>
             ))}
-            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-foreground">{fmt(totals[i])}</td>
+            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold font-sans tabular-nums text-foreground">{fmt(totals[i])}</td>
           </tr>
         ))}
       </tbody>
@@ -75,7 +77,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
   );
 
   return (
-    <section aria-labelledby="chart-title" className="flex min-w-0 flex-col overflow-hidden border border-border bg-card">
+    <Card role="region" aria-labelledby="chart-title" className="flex min-w-0 flex-col overflow-hidden ">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1 basis-48">
           <h2 id="chart-title" className="text-base font-semibold text-foreground">
@@ -138,7 +140,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             {/* Plot box: y labels on the left, bars on the right, x labels in the 1.5rem below. */}
             <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
-                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
+                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
                   {tick(value, money)}
                 </span>
               ))}
@@ -163,7 +165,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             </div>
             <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
               {data.buckets.map((b, i) => (
-                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] tabular-nums text-muted-foreground">
+                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] font-sans tabular-nums text-muted-foreground">
                   {i % labelEvery === 0 ? (data.interval === "day" ? b.label : b.label.split("–")[0]) : ""}
                 </span>
               ))}
@@ -172,6 +174,6 @@ export function DashboardChart({ p }: { p: Prepared }) {
           <div className="sr-only">{table}</div>
         </>
       )}
-    </section>
+    </Card>
   );
 }
