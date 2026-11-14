@@ -179,8 +179,8 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     // The tender row stays on top of the panel and does Back's job.
     for (const label of TENDERS) await expectReachable(page, sheet.getByRole("button", { name: label, exact: true }), label);
     const notes = sheet.getByRole("group", { name: "Notes handed over" }).getByRole("button");
-    await expect(notes).toHaveCount(2);
-    for (const index of [0, 1]) await expectReachable(page, notes.nth(index), `note chip ${index + 1}`);
+    await expect(notes).toHaveCount(3);
+    for (const index of [0, 1, 2]) await expectReachable(page, notes.nth(index), `note chip ${index + 1}`);
     await expectReachable(page, sheet.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash · no change$/ }), "Confirm cash");
     await expectReachable(page, sheet.getByLabel("Cash received"), "Cash received");
     const confirm = await sheet.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash/ }).evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
@@ -225,11 +225,16 @@ test("phone cash entry and confirmation stay visible above a reduced keyboard vi
   }).toBe(true);
 });
 
-/** Four tenders fill the row exactly: Cash starts and Transfer ends where Split payment does. */
+/** Four tender segments share a track; Split is a ghost at the end, wrapping at narrow widths. */
 async function expectFullTenderRow(scope: Locator) {
-  const [cash, transfer, split] = await boxesOf(["Cash", "Transfer", "Split payment"].map((name) => scope.getByRole("button", { name, exact: true })));
-  expect(cash.x).toBeCloseTo(split.x, 0);
-  expect(transfer.x + transfer.width).toBeCloseTo(split.x + split.width, 0);
+  const segments = await boxesOf(["Cash", "PromptPay", "Card", "Transfer"].map((name) => scope.getByRole("button", { name, exact: true })));
+  for (const box of segments) {
+    expect(box.y).toBeCloseTo(segments[0].y, 0);
+    expect(box.width).toBeCloseTo(segments[0].width, 0);
+  }
+  const [split] = await boxesOf([scope.getByRole("button", { name: "Split payment", exact: true })]);
+  const transfer = segments[3];
+  expect(split.y >= transfer.y + transfer.height || split.x >= transfer.x + transfer.width).toBe(true);
 }
 
 test.describe("order panel at normal text keeps its compact layout", () => {
@@ -384,9 +389,11 @@ test.describe("receipt and orders hierarchy (K1, K8)", () => {
     await open(page, { width: 390, height: 844 }, "?scenario=history");
     await setRootFont(page, ENLARGED);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
-    for (const name of ["Print", "Share", "New sale", "More receipt actions"]) {
+    for (const name of ["Print", "New sale", "More receipt actions"]) {
       await expectReachable(page, page.getByRole("button", { name, exact: true }), name);
     }
+    await page.getByRole("button", { name: "More receipt actions" }).click();
+    await expectReachable(page, page.getByRole("menuitem", { name: "Share", exact: true }), "Share");
   });
 
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 800 }]) {

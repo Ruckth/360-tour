@@ -54,7 +54,7 @@ describe("receipt share and print", () => {
     Reflect.deleteProperty(navigator, "share");
     await paidReceipt();
     expect(button("Copy receipt")).toBeUndefined();
-    await act(async () => button("Share")!.click());
+    await pickReceiptAction("Share");
     expect(writeText).toHaveBeenCalledOnce();
     expect(writeText.mock.calls[0][0]).toContain("Massage");
     expect(status()).toBe("Receipt copied.");
@@ -64,11 +64,11 @@ describe("receipt share and print", () => {
     const share = vi.fn().mockRejectedValueOnce(Object.assign(new Error("cancelled"), { name: "AbortError" })).mockResolvedValueOnce(undefined);
     Object.defineProperty(navigator, "share", { configurable: true, value: share });
     await paidReceipt();
-    await act(async () => button("Share")!.click());
+    await pickReceiptAction("Share");
     expect(share).toHaveBeenCalledOnce();
     expect(writeText).not.toHaveBeenCalled();
     expect(status()).toBe("");
-    await act(async () => button("Share")!.click());
+    await pickReceiptAction("Share");
     expect(share).toHaveBeenCalledTimes(2);
     expect(writeText).not.toHaveBeenCalled();
     expect(status()).toBe("");
@@ -77,7 +77,7 @@ describe("receipt share and print", () => {
   it("copies instead when the share sheet fails", async () => {
     Object.defineProperty(navigator, "share", { configurable: true, value: vi.fn().mockRejectedValue(new Error("NotAllowedError")) });
     await paidReceipt();
-    await act(async () => button("Share")!.click());
+    await pickReceiptAction("Share");
     expect(writeText).toHaveBeenCalledOnce();
     expect(status()).toBe("Receipt copied.");
   });

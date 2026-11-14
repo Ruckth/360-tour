@@ -51,7 +51,7 @@ async function scene(page: Page, name: string, phone: boolean) {
       await page.getByRole("dialog").waitFor();
     } else if (name === "refund")
       await page
-        .getByRole("article", { name: "Receipt" })
+        .getByTestId("receipt-items")
         .getByRole("button", { name: "Refund Foot spa 45" })
         .click();
     else if (["line-open", "cash-panel", "cash-1500", "split"].includes(name)) {

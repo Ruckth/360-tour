@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { REASON_CHIPS } from "@/components/ui/reason-chips";
 import { ReasonField } from "@/components/ui/reason-field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { newAttemptKey, useCheckoutBackend, type OrderLine, type OrderView } from "./backend";
@@ -60,7 +59,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
   const formRef = useRef<HTMLFormElement>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
 
-  // The form opens inside the receipt paper: bring all of it, its button included, into view.
+  // The form opens inside the Items card: bring all of it, its button included, into view.
   useLayoutEffect(() => {
     formRef.current?.scrollIntoView?.({ block: "nearest" });
     titleRef.current?.focus({ preventScroll: true });
@@ -119,7 +118,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
       disabled={saving || uncertain || satangValue <= 0}
       onClick={() => setAmount(value === "all" ? null : satangInput(satangValue))}
       className={cn(
-        "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
+        "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap font-sans tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
         chosen === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground hover:border-input",
       )}
     >
@@ -143,7 +142,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
       data-screen-only=""
       data-refund-form={line._id}
       className={cn(
-        "mt-2 grid scroll-my-4 gap-3 rounded-lg border p-3 font-sans text-sm leading-normal print:hidden",
+        "mt-3 grid scroll-my-4 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
         TOUCH_TARGETS,
         ask ? "border-amber-300 bg-amber-50/70 dark:border-amber-400/40 dark:bg-amber-400/10" : "border-border bg-background",
       )}
@@ -168,7 +167,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
             onChange={(event) => setAmount(amountInput(event.target.value))}
             aria-invalid={amountProblem ? true : undefined}
             aria-describedby={`${id}-amount-hint`}
-            className="h-10 w-28 bg-background text-right tabular-nums"
+            className="h-10 w-28 bg-background text-right font-sans tabular-nums"
           />
         </div>
         <p id={`${id}-amount-hint`} className={cn("text-xs", amountProblem ? "text-destructive" : "sr-only")}>
@@ -176,19 +175,18 @@ export function RefundForm({ view, line, waiting, onDone, onCancel }: {
         </p>
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor={`${id}-method`}>To</Label>
-        <Select value={method} disabled={saving} onValueChange={(value) => setMethod(value as RefundMethod)}>
-          <SelectTrigger id={`${id}-method`} aria-label="Method" className="h-10 w-full bg-background">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className={TOUCH_TARGETS}>
-            {REFUND_METHODS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <p id={`${id}-method`} className="text-xs text-muted-foreground">Refund to</p>
+        <div role="group" aria-labelledby={`${id}-method`} className="grid grid-cols-5 rounded-full bg-muted p-1">
+          {REFUND_METHODS.map((option) => (
+            <Button key={option.value} type="button" variant="ghost" aria-label={option.label} aria-pressed={method === option.value} disabled={saving} onClick={() => setMethod(option.value)} className={cn("h-11 min-w-0 rounded-full px-1 text-xs", method === option.value && "bg-foreground text-background hover:bg-foreground hover:text-background")}>
+              {option.value === "promptpay" ? "QR" : option.label}
+            </Button>
+          ))}
+        </div>
       </div>
       <ReasonField value={reason} onChange={setReason} chips={REASON_CHIPS.refund} disabled={saving} id={`${id}-reason`} compact />
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
-      <Button type="submit" className="w-full" disabled={!ready || saving}>
+      <Button type="submit" variant="outline" className="h-11 w-full border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={!ready || saving}>
         {saving ? <Spinner label={ask ? "Sending" : "Recording"} className="text-current" /> : null}
         {refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
       </Button>

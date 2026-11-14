@@ -41,7 +41,7 @@ for (const [size, viewport] of Object.entries(UX_VIEWPORTS)) {
       counts[role] = await receiptCensus(page);
       await shot(`${role}-receipt`);
 
-      await page.getByRole("article", { name: "Receipt" }).getByRole("button", { name: "Refund Foot spa 45" }).click();
+      await page.getByTestId("receipt-items").getByRole("button", { name: "Refund Foot spa 45" }).click();
       await page.waitForTimeout(400);
       await shot(`${role}-refund`);
     }

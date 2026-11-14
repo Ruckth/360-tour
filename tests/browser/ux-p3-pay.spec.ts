@@ -36,17 +36,17 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
   test.describe(size, () => {
     test.use({ viewport: UX_VIEWPORTS[size] });
 
-    test("the cash panel opens at the amount due with 5 controls and at most one sentence", async ({ page }) => {
+    test("the cash panel opens at the amount due with 6 controls and at most one sentence", async ({ page }) => {
       await open(page, "?role=cashier&scenario=spa");
       const panel = await orderPanel(page, size);
       await panel.getByRole("button", { name: "Cash", exact: true }).click();
       const cash = panel.getByRole("group", { name: "Cash payment" });
       await expect(cash.getByLabel("Cash received")).toHaveValue("1200");
       await expect(cash.getByRole("button", { name: "Confirm ฿1,200 cash · no change" })).toBeEnabled();
-      await expect(cash.getByRole("group", { name: "Notes handed over" }).getByRole("button")).toHaveText(["฿1,500", "฿2,000"]);
+      await expect(cash.getByRole("group", { name: "Notes handed over" }).getByRole("button")).toHaveText(["Exact", "฿1,500", "฿2,000"]);
       await expect(cash.getByText("Received now")).toBeVisible();
-      expect(await controlsOnScreen(page, cash)).toBe(5);
-      for (const gone of ["Exact", "+฿100", "+฿500", "+฿1,000", "Clear", "Back to order"]) {
+      expect(await controlsOnScreen(page, cash)).toBe(6);
+      for (const gone of ["+฿100", "+฿500", "+฿1,000", "Clear", "Back to order"]) {
         await expect(panel.getByRole("button", { name: gone, exact: true })).toHaveCount(0);
       }
       await expectAtMostSentences(panel.getByTestId("pay-panel"), 1);

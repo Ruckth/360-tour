@@ -20,7 +20,7 @@ const saved = "fxbill000002" as OrderId;
 const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 async function run<T>(promise: Promise<T>) { await tick(); return await promise; }
 const press = (el: Element | null | undefined) => act(async () => { expect(el).toBeTruthy(); (el as HTMLElement).click(); });
-const within = (scope: ParentNode, text: string) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.trim() === text);
+const within = (scope: ParentNode, text: string) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find(b => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === text);
 const type = (el: HTMLInputElement | HTMLTextAreaElement | null, value: string) => act(async () => {
   expect(el).toBeTruthy();
   Object.getOwnPropertyDescriptor(el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(el, value);
@@ -112,7 +112,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   expect(line(massage.name)!.discount).toBeUndefined();
 
   // A zero custom price is still a custom price: editable and restorable.
-  await press(within(row(massage.name)!, "Change price"));
+  await press(within(row(massage.name)!, `Price ฿${listPrice.toLocaleString("en-US")}`));
   await type(row(massage.name)!.querySelector<HTMLInputElement>('input[id^="price-"]'), "0");
   await type(row(massage.name)!.querySelector<HTMLTextAreaElement>('textarea[aria-label="Reason for the price change"]'), "Complimentary");
   await press(within(row(massage.name)!, "Apply price")); await tick();

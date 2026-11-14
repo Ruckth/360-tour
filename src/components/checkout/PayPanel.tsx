@@ -28,7 +28,6 @@ import {
 } from "./backend";
 import {
   TENDER_LABELS,
-  UP_TO_FOUR_COLUMNS,
   amountInput,
   cashConfirmLabel,
   cashNotes,
@@ -67,7 +66,7 @@ export function PayPanel({
     const host = root.current?.parentElement;
     const label = mode === "none" ? null : mode === "split" ? "Split payment" : TENDER_LABELS[mode].short;
     onBack();
-    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => el.textContent?.trim() === label)?.focus());
+    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === label)?.focus());
   }
 
   // Escape leaves the panel first, not the phone order sheet around it: this runs before the
@@ -265,7 +264,7 @@ function PayAttempt({
       <fieldset
         aria-label={panelName}
         disabled={submitting || attempted}
-        className="grid min-w-0 grid-cols-1 gap-3 disabled:opacity-70"
+        className="flex min-w-0 flex-1 flex-col gap-4 disabled:opacity-70"
       >
         {view.promotion && !view.promotion.problem && view.totals.coupon ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -376,27 +375,24 @@ function TenderRow({
   disabled: boolean;
   onPick: (mode: PayMode) => void;
 }) {
-  const tender = (mode: PayMode, label: string, className: string) => (
-    <Button
-      key={mode}
-      ref={mode === active ? activeRef : undefined}
-      variant={mode === active ? "default" : "outline"}
-      aria-pressed={mode === active}
-      disabled={disabled}
-      className={cn(
-        "h-auto min-h-11 rounded-xl px-1 text-xs leading-tight whitespace-normal sm:text-sm",
-        mode !== active && "border-border bg-muted/50 hover:bg-muted",
-        className,
-      )}
-      onClick={() => onPick(mode)}
-    >
-      {label}
-    </Button>
-  );
   return (
-    <div role="group" aria-label="Take payment by" className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
-      {TENDER_ROW.map((mode) => tender(mode, TENDER_LABELS[mode as TenderMethod].short, ""))}
-      {tender("split", "Split payment", "col-span-full [@media(max-height:32rem)]:col-span-1")}
+    <div role="group" aria-label="Take payment by" className="flex min-w-0 flex-wrap items-center gap-1">
+      <div className="grid min-w-0 flex-1 basis-[14rem] grid-cols-[repeat(auto-fit,minmax(min(100%,3.5rem),1fr))] rounded-full bg-muted p-1">
+        {TENDER_ROW.map((mode) => (
+          <Button
+            key={mode}
+            ref={mode === active ? activeRef : undefined}
+            variant="ghost"
+            aria-pressed={mode === active}
+            disabled={disabled}
+            className={cn("h-11 min-w-0 rounded-full px-1 text-xs max-[350px]:text-[11px]", mode === active && "bg-foreground text-background hover:bg-foreground hover:text-background")}
+            onClick={() => onPick(mode)}
+          >
+            {TENDER_LABELS[mode as TenderMethod].short}
+          </Button>
+        ))}
+      </div>
+      <Button variant="ghost" aria-label="Split payment" className="h-11 px-2 text-xs" disabled={disabled} onClick={() => onPick("split")}>Split</Button>
     </div>
   );
 }
@@ -421,7 +417,7 @@ function ReceivedAt({
   const [day, time = ""] = value.split("T");
   return (
     <div className="grid min-w-0 gap-2">
-      <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-sm">
+      <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-[13px]">
         <span className="text-muted-foreground">
           {edited ? <>Received <span className="tabular-nums">{day} · {time}</span> Bangkok</> : "Received now"}
         </span>
@@ -432,10 +428,10 @@ function ReceivedAt({
           aria-expanded={open}
           aria-controls="payment-received-at"
           aria-label="Change payment time"
-          className="min-h-11 text-sm"
+          className="min-h-11 px-0 text-[13px] text-muted-foreground underline underline-offset-4"
           onClick={onToggle}
         >
-          Change
+          Edit time
         </Button>
       </p>
       {open ? (
@@ -468,20 +464,23 @@ function PayButton({
   disabled,
   onClick,
   className,
+  label,
   children,
 }: {
   submitting: boolean;
   disabled?: boolean;
   onClick: () => void;
   className?: string;
+  label?: string;
   children: ReactNode;
 }) {
   return (
     <Button
       className={cn(
-        "h-auto min-h-12 w-full text-base whitespace-normal",
+        "mt-auto h-14 min-h-14 w-full text-base font-sans tabular-nums whitespace-normal",
         className,
       )}
+      aria-label={label}
       disabled={submitting || disabled}
       onClick={onClick}
     >
@@ -539,32 +538,36 @@ function CashForm({
   return (
     <>
       <div className="grid gap-2">
-        <Label htmlFor="cash-received">Cash received</Label>
-        <Input
-          disabled={submitting}
-          id="cash-received"
-          ref={inputRef}
-          inputMode="decimal"
-          autoComplete="off"
-          className="h-12 text-lg tabular-nums"
-          {...selectAll}
-          onFocus={(e) => {
-            selectAll.onFocus(e);
-            inputRef.current?.scrollIntoView({ block: "center" });
-          }}
-          value={received}
-          onChange={(e) => setReceived(amountInput(e.target.value))}
-          placeholder="0"
-        />
+        <Label htmlFor="cash-received" className="text-xs text-muted-foreground">Cash received</Label>
+        <div className="relative">
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 left-4 flex items-center font-sans text-2xl text-muted-foreground">฿</span>
+          <Input
+            disabled={submitting}
+            id="cash-received"
+            ref={inputRef}
+            inputMode="decimal"
+            autoComplete="off"
+            className="h-14 pr-3 pl-8 text-right text-2xl font-sans tabular-nums max-md:text-2xl md:text-2xl"
+            {...selectAll}
+            onFocus={(e) => {
+              selectAll.onFocus(e);
+              inputRef.current?.scrollIntoView({ block: "center" });
+            }}
+            value={received}
+            onChange={(e) => setReceived(amountInput(e.target.value))}
+            placeholder="0"
+          />
+        </div>
       </div>
       {notes.length ? (
-        <div role="group" aria-label="Notes handed over" className="grid grid-cols-2 gap-2">
+        <div role="group" aria-label="Notes handed over" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))] gap-2">
+          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
           {notes.map((note) => (
             <Button
               key={note}
-              variant="secondary"
+              variant="outline"
               aria-pressed={value === note}
-              className="px-2 tabular-nums aria-pressed:ring-2 aria-pressed:ring-primary"
+              className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-muted"
               onClick={() => setReceived(String(note))}
             >
               {formatMoney(note)}
@@ -572,16 +575,23 @@ function CashForm({
           ))}
         </div>
       ) : null}
+      {value > due ? (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 p-4">
+          <span className="text-sm">Change</span>
+          <output className="text-[32px] leading-none font-semibold text-emerald-700 font-sans tabular-nums dark:text-emerald-400">{formatMoney(round2(value - due))}</output>
+        </div>
+      ) : null}
       {/* Keep the action in view when the phone keyboard reduces the viewport. */}
-      <div aria-live="polite" className="max-md:[@media(max-height:36rem)]:sticky max-md:[@media(max-height:36rem)]:bottom-0 max-md:[@media(max-height:36rem)]:z-10 max-md:[@media(max-height:36rem)]:bg-card max-md:[@media(max-height:36rem)]:py-2">
+      <div aria-live="polite" className="mt-auto max-md:[@media(max-height:36rem)]:sticky max-md:[@media(max-height:36rem)]:bottom-0 max-md:[@media(max-height:36rem)]:z-10 max-md:[@media(max-height:36rem)]:bg-card max-md:[@media(max-height:36rem)]:py-2">
         <PayButton
           submitting={submitting}
           disabled={!label.ready}
+          label={label.text}
           onClick={() =>
             onPay([{ method: "cash", amount: due, received: value }])
           }
         >
-          <span data-testid="cash-confirm-label" className="tabular-nums">{label.text}</span>
+          <span data-testid="cash-confirm-label" className="font-sans tabular-nums">{label.ready ? "Confirm cash" : label.text}</span>
         </PayButton>
       </div>
     </>
@@ -625,39 +635,31 @@ function SplitForm({
         {rows.map((row, index) => {
           const isLast = index === rows.length - 1;
           return (
-            <li key={index} className="grid min-w-0 gap-2 rounded-xl border border-border/70 p-2">
-              <div role="group" aria-label={`Payment ${index + 1} method`} className={UP_TO_FOUR_COLUMNS}>
+            <li key={index} className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border/70 pb-3">
+              <div role="group" aria-label={`Payment ${index + 1} method`} className="grid min-w-0 flex-1 basis-44 grid-cols-[repeat(auto-fit,minmax(min(100%,3rem),1fr))] rounded-full bg-muted p-1">
                 {TENDER_METHODS.map((method) => (
                   <Button
                     key={method}
                     size="sm"
-                    variant={row.method === method ? "default" : "outline"}
+                    variant="ghost"
+                    aria-label={TENDER_LABELS[method].short}
                     aria-pressed={row.method === method}
-                    className="h-auto min-h-9 px-1 leading-tight whitespace-normal"
+                    className={cn("h-11 rounded-full px-1 text-[11px]", row.method === method && "bg-foreground text-background hover:bg-foreground hover:text-background")}
                     onClick={() => update(index, { method })}
                   >
-                    {TENDER_LABELS[method].short}
+                    {method === "promptpay" ? "QR" : TENDER_LABELS[method].short}
                   </Button>
                 ))}
               </div>
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
                 {isLast ? (
-                  <p className="flex min-h-10 min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-2 px-1" aria-live="polite">
-                    <span className="text-sm text-muted-foreground">{rest < 0 ? "Over by" : "The rest"}</span>
-                    <output
-                      aria-label={`Payment ${index + 1} amount`}
-                      data-testid="split-remaining"
-                      className={cn("ml-auto text-lg font-bold tabular-nums [overflow-wrap:anywhere]", rest < 0 && "text-destructive")}
-                    >
-                      {formatMoney(Math.abs(rest))}
-                    </output>
-                  </p>
+                  <output aria-label={`Payment ${index + 1} amount`} className="flex h-11 w-32 items-center justify-end rounded-lg bg-muted/50 px-3 font-sans text-sm tabular-nums">{formatMoney(rest)}</output>
                 ) : (
                   <Input
                     inputMode="decimal"
                     autoComplete="off"
                     aria-label={`Payment ${index + 1} amount`}
-                    className="h-10 min-w-0 flex-1 tabular-nums"
+                    className="h-11 w-32 min-w-0 text-right font-sans tabular-nums"
                     value={row.amount}
                     {...selectAll}
                     onChange={(e) => update(index, { amount: amountInput(e.target.value) })}
@@ -680,6 +682,10 @@ function SplitForm({
           );
         })}
       </ul>
+      <div className="flex items-baseline justify-between gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
+        <span className="text-sm">{rest < 0 ? "Over by" : "Remaining"}</span>
+        <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", rest < 0 ? "text-destructive" : rest > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>{formatMoney(Math.abs(rest))}</output>
+      </div>
       {rows.length < MAX_TENDERS ? (
         <Button
           variant="ghost"

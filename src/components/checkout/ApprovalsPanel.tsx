@@ -81,7 +81,7 @@ function ApprovalsButton() {
             <ShieldCheck aria-hidden className="size-4" />
             Approvals
             {count ? (
-              <span data-approval-count="" className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-semibold text-navy tabular-nums">
+              <span data-approval-count="" className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-semibold text-navy font-sans tabular-nums">
                 {count}
                 <span className="sr-only"> waiting</span>
               </span>
@@ -136,7 +136,7 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
       <p className="text-sm font-semibold [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request, lineName)}</p>
       {/* The cashier's own words, not an explanation. */}
       <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
-      <p className="text-sm text-muted-foreground tabular-nums">
+      <p className="text-sm text-muted-foreground font-sans tabular-nums">
         {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">

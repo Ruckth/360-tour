@@ -28,7 +28,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(400); }
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const button = (text: string | RegExp, within: ParentNode = panel()) =>
-  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? el.textContent?.trim() === text : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
+  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 const field = () => panel().querySelector<HTMLInputElement>('form[aria-label="Add coupon"] input')!;
 const due = () => panel().querySelector('[data-testid="order-due"]')?.textContent;

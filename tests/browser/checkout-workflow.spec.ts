@@ -91,13 +91,13 @@ test('a paid unscheduled service is linked to its appointment from the receipt, 
   const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
   const issued = await printed();
   // Link sits on the receipt line; the only matching appointment opens straight on its review.
-  await receipt.getByRole('button', { name: 'Link appointment' }).click();
+  await page.getByTestId('receipt-items').getByRole('button', { name: 'Link appointment' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByTestId('link-review')).toContainText('Appointment: unpaid ฿1,600 → paid ฿1,600 by Order #1043');
   await expect(dialog.getByRole('button', { name: 'Confirm link' })).toBeDisabled();
   await dialog.getByRole('textbox', { name: 'Reason' }).fill('Guest booked the prepaid massage');
   await dialog.getByRole('button', { name: 'Confirm link' }).click();
-  await expect(receipt.getByTestId('line-link')).toHaveText('Linked · SVC-0002');
+  await expect(page.getByTestId('receipt-items').getByTestId('line-link')).toHaveText('Linked · SVC-0002');
   const history = page.getByTestId('receipt-history');
   await history.getByText('History', { exact: true }).click();
   await history.getByRole('tab', { name: 'Payments' }).click();

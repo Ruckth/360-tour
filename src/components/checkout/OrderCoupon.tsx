@@ -96,7 +96,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
       <div data-testid="order-coupon" className="mb-2 grid gap-1 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <CouponChip code={promotion.code} />
-          <span className="text-sm font-medium tabular-nums">Saves {formatMoney(promotion.discount)}</span>
+          <span className="text-sm font-medium font-sans tabular-nums">Saves {formatMoney(promotion.discount)}</span>
           {/* The terms are there when asked for; the saving is what the till needs. */}
           {promotion.terms ? <InfoTip label={`Terms of ${promotion.code}`}>{promotion.terms}</InfoTip> : null}
           <Button size="sm" variant="ghost" className="ml-auto h-7 px-2 text-xs" disabled={busy} onClick={remove} aria-label={`Remove coupon ${promotion.code}`}>
