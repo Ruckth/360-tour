@@ -540,8 +540,9 @@ function StaffCalendar() {
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
           loading={data === undefined}
-          scrollMode={view === "agenda" ? "page" : "contained"}
-          className={view === "agenda" ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
+          // Only the phone list grows with the page; from tablet up the calendar fills a fixed-height card and scrolls inside it.
+          scrollMode={view === "agenda" && phone ? "page" : "contained"}
+          className={view === "agenda" && phone ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
           <AdminCalendarHeader primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
                 <Button
@@ -557,7 +558,7 @@ function StaffCalendar() {
             <AdminCalendarSearch label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
-              {bookedCount} {view === "resource" ? "today" : "this week"}
+              {bookedCount} in view
             </span>
             <CheckList
               icon={<Users aria-hidden className="size-4" />}

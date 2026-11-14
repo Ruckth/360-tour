@@ -351,8 +351,8 @@ export function AdminSessionDetail({
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
   const replyHintId = `${replyInputId}-hint`;
   const status = conversationStatus(session);
-  // The server records AI escalations as handoff; staff_reply is a later guest message.
-  const escalatedGuestId = session.needsReply && session.inboxReason === "handoff" ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
+  // An AI escalation stays flagged (inboxHandoff) even after the guest writes again and the reason becomes staff_reply.
+  const escalatedGuestId = session.needsReply && (session.inboxHandoff || session.inboxReason === "handoff") ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
   const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "Waiting for staff" : session.keepWithStaff ? "Waiting for staff" : "AI on";
 
   return (
@@ -369,7 +369,7 @@ export function AdminSessionDetail({
               </div>
             </div>
             <div className="flex min-w-0 items-center gap-2 sm:hidden">
-              <StatusBadge tone={status.tone} label={session.adminStatus === "resolved" || session.adminStatus === "archived" ? status.label : session.needsReply ? "Needs you" : session.aiPaused || session.keepWithStaff ? "Waiting for staff" : automationLabel} className="shrink-0 text-xs" />
+              <StatusBadge tone={status.tone} label={session.adminStatus === "resolved" || session.adminStatus === "archived" ? status.label : session.needsReply ? "Needs you" : automationLabel} className="shrink-0 text-xs" />
               <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
             </div>
             <p className="hidden min-w-0 items-start gap-1.5 sm:flex text-[13px] text-muted-foreground">
