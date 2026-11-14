@@ -1,0 +1,63 @@
+Package C validation — 14 November 2026
+Runtime: Node v24.19.0; pnpm 10.30.3
+The repository requests Node 22.x; pnpm emits an engine warning on this machine.
+
+pnpm typecheck
+Exit status: 0
+> 360-tour@0.0.1 typecheck:app /Users/macbook/.t3/worktrees/360-tour/t3-8e0dc2ea-38519d264fabf783
+> tsc --noEmit -p tsconfig.json
+
+ WARN  Unsupported engine: wanted: {"node":"22.x"} (current: {"node":"v24.19.0","pnpm":"10.30.3"})
+
+> 360-tour@0.0.1 typecheck:tests /Users/macbook/.t3/worktrees/360-tour/t3-8e0dc2ea-38519d264fabf783
+> tsc --noEmit -p tsconfig.tests.json
+
+ WARN  Unsupported engine: wanted: {"node":"22.x"} (current: {"node":"v24.19.0","pnpm":"10.30.3"})
+
+> 360-tour@0.0.1 typecheck:convex /Users/macbook/.t3/worktrees/360-tour/t3-8e0dc2ea-38519d264fabf783
+> tsc --noEmit -p convex/tsconfig.json
+
+
+pnpm lint
+Exit status: 0
+
+
+/Users/macbook/.t3/worktrees/360-tour/t3-8e0dc2ea-38519d264fabf783/scripts/arch-scorecard.mjs
+  104:7  warning  'eq' is assigned a value but never used      @typescript-eslint/no-unused-vars
+  105:7  warning  'atMost' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+✖ 2 problems (0 errors, 2 warnings)
+
+
+pnpm test:unit --maxWorkers=2 --testTimeout=20000
+Exit status: 0
+
+ Test Files  258 passed (258)
+      Tests  3188 passed (3188)
+   Start at  08:51:36
+   Duration  520.39s (transform 33.69s, setup 0ms, import 550.76s, tests 233.74s, environment 96.37s)
+
+
+BOOKING_UI_PORT=4373 pnpm test:booking-ui --workers=4
+Exit status: 0
+  ✓  531 tests/browser/marketing-dashboard.spec.ts:181:3 › controls before the first figure, and attribution in words (390px) (759ms)
+  ✓  532 tests/browser/marketing-dashboard.spec.ts:181:3 › controls before the first figure, and attribution in words (1180px) (574ms)
+
+  130 skipped
+  402 passed (6.2m)
+
+CAPTURE_VIS_C=1 BOOKING_UI_PORT=4373 pnpm exec playwright test -c playwright.booking.config.ts vis-c-screenshots settings-team --workers=1
+Exit status: 0
+  ✓  28 tests/browser/vis-c-screenshots.spec.ts:17:29 › marketing-dashboard-phone (855ms)
+
+  28 passed (20.2s)
+
+CAPTURE_VIS_C=1 BOOKING_UI_PORT=4373 pnpm exec playwright test -c playwright.booking.config.ts vis-c-screenshots --grep new-coupon-phone --workers=1
+Exit status: 0
+  ✓  1 tests/browser/vis-c-screenshots.spec.ts:17:29 › new-coupon-phone (1.7s)
+
+  1 passed (5.4s)
+
+The unit run caps workers and raises the timeout after load-related timeouts in unchanged source-scan and fixture-heavy checks; assertions were retained.
+The successful browser run used frozen application source, avoiding the Vite reloads caused by edits during the earlier run.
+Lint warnings are the existing unused eq and atMost helpers in scripts/arch-scorecard.mjs.

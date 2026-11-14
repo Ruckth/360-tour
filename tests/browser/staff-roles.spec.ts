@@ -185,7 +185,7 @@ test.describe("Settings › Team", () => {
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
-    await expect(fon).toContainText(/Invited · expires/);
+    await expect(fon).toContainText(/Invited ·/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
 
     await people.getByRole("button", { name: "Change roles for Mint" }).click();
@@ -198,7 +198,7 @@ test.describe("Settings › Team", () => {
 
     const rules = page.getByRole("form", { name: "Rules for all cashiers" });
     const save = rules.getByRole("button", { name: "Save", exact: true });
-    await expect(save).toBeDisabled();
+    await expect(save).toHaveCount(0);
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("100.001");
     await expect(rules.getByText("Use 0–100, up to two decimals.")).toBeVisible();
     await expect(save).toBeDisabled();
@@ -206,7 +206,7 @@ test.describe("Settings › Team", () => {
     await rules.getByRole("switch", { name: "Void needs manager" }).click();
     await save.click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
-    await expect(save).toBeDisabled();
+    await expect(save).toHaveCount(0);
     expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({
       expectedRevision: 0, discountLimitPercent: 12.5, voidPaidSale: "cashier", customPrice: "manager", paymentFix: "manager", refund: "manager",
     });
@@ -225,7 +225,7 @@ test.describe("Settings › Team", () => {
     await expect(refunds).toHaveAttribute("aria-checked", "false");
     // Switching back is no change, so Save turns off again.
     await refunds.click();
-    await expect(rules.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+    await expect(rules.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
     await refunds.click();
     await rules.getByRole("button", { name: "Save", exact: true }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");

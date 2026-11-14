@@ -153,9 +153,8 @@ describe("dashboard view", () => {
     expect(text()).toContain("Last touch · 30 days");
     expect(text()).not.toContain("last_touch_30d@1");
     expect(text()).toContain("11,980");
-    expect(text()).toContain("179 paid stays in all · 7 checkout orders count in money only");
-    // The ROAS tile says which campaigns its figure leaves out.
-    expect(text()).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales ha(s|ve) no spend\./);
+    expect(buttons("About paid bookings")).toHaveLength(1);
+    expect(buttons("About ad roas")).toHaveLength(1);
     expect(text()).toContain("1.09%");
     expect(text()).toContain("฿1,091,700");
     expect(text()).toContain("฿1,515,900");
@@ -164,6 +163,11 @@ describe("dashboard view", () => {
     expect(text()).toContain("Tracked total");
     expect(text()).toContain("Business total");
     expect(text()).toContain("Net collected by source");
+    // Explanations moved behind the metric’s information button, without losing the counts.
+    click(buttons("About paid bookings")[0]);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("179 paid stays in all · 7 checkout orders count in money only");
+    click(buttons("About ad roas")[0]);
+    expect([...document.querySelectorAll('[role="tooltip"]')].map(tip => tip.textContent).join(" ")).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales have no spend/);
   });
 
   it("opens the spend dialog for the campaigns of a row without spend", async () => {
@@ -187,7 +191,9 @@ describe("dashboard view", () => {
 
   it("offers Add spend from the ROAS tile when nothing has spend", () => {
     render(ready(dashboardReport({ spend: false })));
-    expect(text()).toContain("No spend entered for these dates.");
+    expect(text()).toContain("No spend entered");
+    click(buttons("About ad roas")[0]);
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("No spend entered for these dates.");
     expect(text()).not.toContain("฿0.00×");
     click(buttons("Add spend")[0]);
     expect(spendDialog.last?.open).toBe(true);
@@ -246,7 +252,7 @@ describe("dashboard view", () => {
 
   it("shows the Finance tiles on a cash read", () => {
     render(ready(dashboardReport({ basis: "cash" })), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
-    for (const label of ["Collected", "Refunds", "First-payment sales", "Money in and out", "Business total · payments, refunds and coupon settlements"]) expect(text()).toContain(label);
+    for (const label of ["Collected", "Refunds", "First-payment sales", "Money in and out", "Business total"]) expect(text()).toContain(label);
     expect(text()).not.toContain("left out of conversion");
     expect(text()).toContain("฿38,400");
     expect(text()).not.toContain("Consented sessions");

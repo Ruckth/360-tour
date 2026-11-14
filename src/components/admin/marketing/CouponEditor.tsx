@@ -7,6 +7,7 @@ import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "luci
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -89,13 +90,13 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
   if (!isNew && detail === null) {
     return (
       <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-        <section className="grid justify-items-center gap-3 border border-border bg-card px-4 py-12 text-center">
+        <Card className="grid justify-items-center gap-3 px-4 py-12 text-center">
           <p className="text-base font-semibold text-foreground">Coupon not found</p>
           <p className="max-w-md text-sm text-muted-foreground">It may have been removed, or the address is wrong.</p>
           <ButtonLink href={listHref} size="sm" variant="outline">
             Back to coupons
           </ButtonLink>
-        </section>
+        </Card>
       </div>
     );
   }
@@ -396,7 +397,7 @@ function CouponBuilder({
           </Button>
         ) : null}
         {canEdit ? (
-          <Button type="submit" form={`${id}-form`} size="sm" variant={canQr && !dirty ? "outline" : "default"} disabled={saving || archived || !dirty}>
+          <Button type="submit" form={`${id}-form`} size="sm" variant={dirty ? "default" : "outline"} disabled={saving || archived || !dirty}>
             {spinner}
             Save
           </Button>
@@ -405,13 +406,13 @@ function CouponBuilder({
     );
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-4 pb-24 sm:px-6 sm:pb-4" data-coupon-editor="">
+    <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6" data-coupon-editor="">
       <ButtonLink href={listHref} variant="ghost" size="sm" className="-ml-2" onClick={(event) => void leave(event)}>
         <ArrowLeft aria-hidden className="size-4" />
         Coupons
       </ButtonLink>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="min-w-0 break-all font-mono text-2xl font-semibold tracking-tight text-foreground">{detail ? detail.code : "New coupon"}</h2>
+        <h2 className={cn("min-w-0 break-all text-3xl tracking-tight text-foreground", detail ? "font-mono font-semibold" : "font-serif")}>{detail ? detail.code : "New coupon"}</h2>
         {state ? <StatusBadge {...COUPON_STATE[state]} /> : null}
         {detail ? <span className="rounded-md border border-border px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground">v{detail.currentVersion}</span> : null}
         <div className="ms-auto hidden items-center gap-2 sm:flex">
@@ -443,7 +444,8 @@ function CouponBuilder({
           }}
           className="grid min-w-0 gap-4"
         >
-          <fieldset disabled={disabled} className="grid min-w-0 gap-5 border border-border bg-card p-4">
+          <Card className="p-5 sm:p-6">
+          <fieldset disabled={disabled} className="grid min-w-0 gap-6">
             <legend className="sr-only">Coupon</legend>
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)] sm:items-start">
               <div className="grid content-start gap-2">
@@ -486,7 +488,7 @@ function CouponBuilder({
                     setDiscountText(event.target.value);
                     setForm((current) => ({ ...current, ...discountFromText(event.target.value, current.kind) }));
                   }}
-                  className="font-semibold tabular-nums"
+                  className="money font-semibold"
                 />
                 {shown("value") ? err("value") : discountEcho(form, properties) ? (
                   <FieldHint id={`${id}-value-hint`}>{discountEcho(form, properties)}</FieldHint>
@@ -677,10 +679,11 @@ function CouponBuilder({
                 </Group>
             </Disclosure>
           </fieldset>
+          </Card>
         </form>
 
         <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
-          <section aria-labelledby={`${id}-summary`} className="border border-border bg-card">
+          {Number(form.value.replace(/,/g, "")) > 0 ? <Card role="region" aria-labelledby={`${id}-summary`}>
             <header className="flex items-center gap-2 border-b border-border px-4 py-3">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
                 Summary
@@ -689,11 +692,9 @@ function CouponBuilder({
             </header>
             <div className="grid gap-3 p-4">
               <div>
-                <p className="break-all font-mono text-xl font-semibold tracking-wide text-foreground">{code || "—"}</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {(rules.benefit.kind === "percent" ? rules.benefit.percent : rules.benefit.amount) > 0 ? benefitLabel(rules.benefit) : "Set the discount"}
-                  {rules.benefit.kind === "percent" && rules.maxSaving ? `, up to ${thb(rules.maxSaving)}` : ""}
-                </p>
+                <p className="money text-[28px] leading-tight font-semibold tracking-tight">{benefitLabel(rules.benefit)}</p>
+                {code ? <p className="mt-2 break-all font-mono text-sm font-semibold tracking-wide text-muted-foreground">{code}</p> : null}
+                {rules.benefit.kind === "percent" && rules.maxSaving ? <p className="money mt-1 text-[13px] text-muted-foreground">Up to {thb(rules.maxSaving)}</p> : null}
               </div>
               <dl className="divide-y divide-border border-t border-border text-sm">
                 {(
@@ -738,7 +739,7 @@ function CouponBuilder({
                 </div>
               ) : null}
             </div>
-          </section>
+          </Card> : null}
 
           {canPublish && detail && STATUS_ACTIONS[detail.status].length ? (
             <SideCard
@@ -752,7 +753,7 @@ function CouponBuilder({
                     key={status}
                     type="button"
                     size="sm"
-                    variant={status === "active" && detail.status === "draft" ? "default" : "outline"}
+                    variant={status === "active" && detail.status === "draft" && !dirty ? "default" : "outline"}
                     disabled={statusBusy}
                     className={cn("flex-1", destructive && "text-destructive")}
                     onClick={() => void changeStatus(status)}
@@ -814,13 +815,13 @@ function CouponBuilder({
             </SideCard>
           ) : null}
 
-          {detail && history ? <div className="border border-border bg-card px-4 [&>details]:border-t-0">{history(detail._id)}</div> : null}
+          {detail && history ? <Card className="px-4 [&>details]:border-t-0">{history(detail._id)}</Card> : null}
         </aside>
       </div>
 
       <div data-admin-bottom-bar="sm" className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          <span className="block truncate font-mono text-sm font-semibold text-foreground">{code || "New coupon"}</span>
+          <span className={cn("block truncate text-foreground", code ? "font-mono text-sm font-semibold" : "font-serif text-lg")}>{code || "New coupon"}</span>
           {saveHint ? <span aria-hidden>{saveHint}</span> : null}
         </p>
         {headerActions()}

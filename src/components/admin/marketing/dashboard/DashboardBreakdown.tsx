@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -233,7 +235,7 @@ export function DashboardBreakdown({
             <NameButton row={row} onOpen={onOpen} />
           </td>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top font-sans tabular-nums">
             <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
           </td>
         ),
@@ -250,7 +252,7 @@ export function DashboardBreakdown({
             {row.note ? <span className="block text-xs font-normal text-muted-foreground">{row.note}</span> : null}
           </th>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right font-semibold tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right font-semibold font-sans tabular-nums">
             {col.key === "roas" && !row.roas ? null : <Cell row={row} col={col.key} />}
           </td>
         ),
@@ -267,7 +269,7 @@ export function DashboardBreakdown({
             <NameButton row={row} onOpen={onOpen} card />
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-base font-semibold tabular-nums text-foreground">{thb(row.net)}</p>
+            <p className="text-base font-semibold font-sans tabular-nums text-foreground">{thb(row.net)}</p>
             <p className="text-xs text-muted-foreground">net</p>
           </div>
           <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-muted-foreground" />
@@ -276,7 +278,7 @@ export function DashboardBreakdown({
           {metricCols.map((col) => (
             <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3")}>
               <dt className="text-muted-foreground">{col.label}</dt>
-              <dd className="font-medium tabular-nums text-foreground">
+              <dd className="font-medium font-sans tabular-nums text-foreground">
                 <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
               </dd>
             </div>
@@ -368,7 +370,7 @@ export function DashboardBreakdown({
             {b.totals.map((row) => (
               <div key={row.key} className="flex items-baseline justify-between gap-3">
                 <dt className="font-semibold text-foreground">{row.name}</dt>
-                <dd className="text-right tabular-nums">
+                <dd className="text-right font-sans tabular-nums">
                   <span className="font-semibold text-foreground">{thb(row.net)}</span>
                   <span className="block text-xs text-muted-foreground">
                     {num(row.paid)} {p.cash ? "first paid" : "paid"}
@@ -386,7 +388,7 @@ export function DashboardBreakdown({
   }
 
   return (
-    <section id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 border border-border bg-card">
+    <Card role="region" id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 ">
       <div className="grid gap-3 border-b border-border px-4 pt-3">
         <div className="min-w-0">
           <h2 id="breakdown-title" className="text-base font-semibold text-foreground">
@@ -403,6 +405,6 @@ export function DashboardBreakdown({
         {p.cash && b.view !== "coupon" ? " First paid counts sales receiving their first payment; coupon-only counts checkout settlements with no own cash received. The Finance view hides sessions and conversion: they belong to visits." : ""}
         {!p.allProperties && b.showSessions ? " Sessions, conversion and ROAS are for All properties only." : ""}
       </p>
-    </section>
+    </Card>
   );
 }

@@ -44,9 +44,11 @@ async function render(sales: ReportSale[], events: ReportData["events"] = [], ac
 
 it("shows zero first-payment sales and one coupon-only settlement in Finance tiles, breakdown and detail", async () => {
   await render([covered]);
-  const tile = [...host.querySelectorAll("p")].find(node => node.textContent === "First-payment sales")!.parentElement!;
+  const info = host.querySelector<HTMLButtonElement>('[aria-label="About first-payment sales"]')!;
+  const tile = info.closest('[data-slot="stat"]')!;
   expect(tile.textContent).toContain("First-payment sales0");
-  expect(tile.textContent).toContain("1 coupon-only checkout settlement");
+  await act(async () => info.click());
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("1 coupon-only checkout settlement");
   expect([...host.querySelectorAll("th")].some(node => node.textContent === "First paid")).toBe(true);
   expect(host.querySelector("tbody tr:last-child")!.children).toHaveLength(7);
   expect(host.querySelector("tbody tr:last-child")!.textContent).toContain("+1 coupon-only");
@@ -60,7 +62,8 @@ it("shows zero first-payment sales and one coupon-only settlement in Finance til
 it("describes a partially paid stay as payment received and counts its first payment", async () => {
   const stay: ReportSale = { ...covered, kind: "stay", id: "partial", label: "Partial stay", channel: "admin", discount: 0, collected: 300, settlementDay: undefined, paidDay: "2026-11-09" };
   await render([stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 300 }]);
-  const tile = [...host.querySelectorAll("p")].find(node => node.textContent === "First-payment sales")!.parentElement!;
+  const info = host.querySelector<HTMLButtonElement>('[aria-label="About first-payment sales"]')!;
+  const tile = info.closest('[data-slot="stat"]')!;
   expect(tile.textContent).toContain("First-payment sales1");
   const detail = document.querySelector('[role="dialog"]')!;
   expect(detail.textContent).toContain("Payment received");

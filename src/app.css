@@ -216,3 +216,9 @@
 		animation: none;
 	}
 }
+
+/* Opt-in money typography; keep the baht symbol and digits in the same sans face. */
+@utility money {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}

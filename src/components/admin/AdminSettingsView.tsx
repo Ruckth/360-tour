@@ -14,6 +14,7 @@ import { Check, RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { TimePicker } from "@/components/ui/time-picker";
@@ -73,7 +74,7 @@ export function AdminSettingsView() {
   }, [tab]);
 
   return (
-    <div className="mx-auto grid w-full max-w-4xl gap-4 px-4 py-4 sm:px-6">
+    <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 sm:px-6 sm:py-6">
       {readOnly ? (
         <Alert data-testid="read-only-banner">
           <AlertDescription><strong className="font-semibold">Read only.</strong> Only owners can change settings.</AlertDescription>
@@ -304,69 +305,87 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
     }
   }
 
+  const fields = config.fields(settings);
+  const renderField = (field: FieldDef) => {
+    const id = `settings-${section}-${field.name}`;
+    const error = errorFor(field.name);
+    const describedBy = error ? `${id}-error` : undefined;
+    const common = {
+      id,
+      name: field.name,
+      disabled: state.saving,
+      value: values[field.name] ?? "",
+      placeholder: field.placeholder,
+      "aria-invalid": error ? true : undefined,
+      "aria-describedby": describedBy,
+      onChange: (event: { target: { value: string } }) => {
+        setValues((current) => ({ ...current, [field.name]: event.target.value }));
+        setState((current) => ({ ...current, saved: false }));
+      },
+      onBlur: () => setTouched((current) => new Set(current).add(field.name)),
+    };
+    return (
+      <div key={field.name} className={cn("grid content-start gap-2", field.wide && "sm:col-span-2")}>
+        <span className="flex items-center gap-1.5">
+          <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+            {field.label}
+            {!field.required && section === "business" ? <span className="text-xs font-normal text-muted-foreground"> (optional)</span> : null}
+          </Label>
+          {field.hint ? <InfoTip label={`About ${field.label.toLowerCase()}`}>{field.hint}</InfoTip> : null}
+        </span>
+        {field.type === "textarea" ? (
+          <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
+        ) : field.type === "time" ? (
+          <TimePicker
+            id={id}
+            name={field.name}
+            label={field.label}
+            value={common.value}
+            onValueChange={(value) => common.onChange({ target: { value } })}
+            onBlur={common.onBlur}
+            aria-invalid={Boolean(error)}
+            aria-describedby={describedBy}
+            disabled={state.saving || readOnly}
+            variant={section === "business" ? "compact" : "default"}
+            allowEmpty
+          />
+        ) : (
+          <Input
+            {...common}
+            type={field.type ?? "text"}
+            inputMode={field.type === "number" ? "numeric" : undefined}
+            className={cn(error && "border-destructive")}
+          />
+        )}
+        {error ? (
+          <p id={`${id}-error`} className="text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    );
+  };
+  const businessGroups = [
+    { title: "Identity", description: "The name and welcome guests see", names: ["businessName", "tagline"] },
+    { title: "Contact", description: "Where guests can reach your team", names: ["contactEmail", "contactPhone", "whatsapp", "lineId", "lineUrl"] },
+    { title: "Location & currency", description: "Your address, local currency and time", names: ["address", "currency", "timezone"] },
+    { title: "Check-in, check-out & policy", description: "Arrival times and cancellation terms", names: ["checkInTime", "checkOutTime", "cancellationPolicy"] },
+  ];
+
   return (
-    <Panel title={config.title} description={config.description}>
-      <form onSubmit={submit} noValidate className="grid gap-4">
+    <Panel title={config.title} description={config.description} grouped={section === "business"}>
+      <form onSubmit={submit} noValidate className={cn("grid gap-5", dirty && !readOnly && "pb-20")}>
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
-        <fieldset disabled={readOnly} className="grid min-w-0 gap-4 sm:grid-cols-2">
-          {config.fields(settings).map((field) => {
-            const id = `settings-${section}-${field.name}`;
-            const error = errorFor(field.name);
-            const describedBy = error ? `${id}-error` : undefined;
-            const common = {
-              id,
-              name: field.name,
-              disabled: state.saving,
-              value: values[field.name] ?? "",
-              placeholder: field.placeholder,
-              "aria-invalid": error ? true : undefined,
-              "aria-describedby": describedBy,
-              onChange: (event: { target: { value: string } }) => {
-                setValues((current) => ({ ...current, [field.name]: event.target.value }));
-                setState((current) => ({ ...current, saved: false }));
-              },
-              onBlur: () => setTouched((current) => new Set(current).add(field.name)),
-            };
-            return (
-              <div key={field.name} className={cn("grid content-start gap-2", field.wide && "sm:col-span-2")}>
-                <span className="flex items-center gap-1.5">
-                  <Label htmlFor={id}>
-                    {field.label}
-                    {field.required ? <span className="text-muted-foreground"> (required)</span> : null}
-                  </Label>
-                  {field.hint ? <InfoTip label={`About ${field.label.toLowerCase()}`}>{field.hint}</InfoTip> : null}
-                </span>
-                {field.type === "textarea" ? (
-                  <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
-                ) : field.type === "time" ? (
-                  <TimePicker
-                    id={id}
-                    name={field.name}
-                    label={field.label}
-                    value={common.value}
-                    onValueChange={(value) => common.onChange({ target: { value } })}
-                    onBlur={common.onBlur}
-                    aria-invalid={Boolean(error)}
-                    aria-describedby={describedBy}
-                    disabled={state.saving || readOnly}
-                    allowEmpty
-                  />
-                ) : (
-                  <Input
-                    {...common}
-                    type={field.type ?? "text"}
-                    inputMode={field.type === "number" ? "numeric" : undefined}
-                    className={cn(error && "border-destructive")}
-                  />
-                )}
-                {error ? (
-                  <p id={`${id}-error`} className="text-xs text-destructive">
-                    {error}
-                  </p>
-                ) : null}
-              </div>
-            );
-          })}
+        <fieldset disabled={readOnly} className={cn("grid min-w-0 gap-5", section !== "business" && "sm:grid-cols-2")}>
+          {section === "business" ? businessGroups.map((group) => (
+            <Card key={group.title} className="grid gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
+              <header>
+                <h3 className="text-[15px] font-semibold">{group.title}</h3>
+                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{group.description}</p>
+              </header>
+              <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
+            </Card>
+          )) : fields.map(renderField)}
         </fieldset>
 
         {state.error ? (
@@ -375,8 +394,8 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
           </Alert>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
-          {readOnly ? null : (
+        <div className={cn("flex flex-wrap items-center gap-3", dirty && !readOnly ? "sticky bottom-[var(--admin-tab-bar,0px)] z-10 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur" : "px-1")}>
+          {readOnly || !dirty ? null : (
             <Button type="submit" disabled={state.saving || !dirty}>
               {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
               Save
@@ -496,17 +515,18 @@ function ChannelsPanel() {
 // ---------- Shared bits ----------
 
 /** A settings panel. Its explanation sits behind the ⓘ beside the title. */
-function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+function Panel({ title, description, children, grouped = false }: { title: string; description: string; children: ReactNode; grouped?: boolean }) {
+  const Surface = grouped ? "section" : Card;
   return (
-    <section className="border border-border bg-card" aria-label={title}>
-      <header className="border-b border-border px-4 py-3">
-        <h2 className="flex items-center gap-1.5 text-base font-semibold text-foreground">
+    <Surface role="region" className={cn(grouped && "grid gap-5")} aria-label={title}>
+      <header className={cn(grouped ? "px-1 pt-1" : "border-b border-border px-5 py-4")}>
+        <h2 className={cn("flex items-center gap-2 text-foreground", grouped ? "font-serif text-3xl" : "text-base font-semibold")}>
           {title}
           <InfoTip label={`About ${title.toLowerCase()}`}>{description}</InfoTip>
         </h2>
       </header>
-      <div className="p-4">{children}</div>
-    </section>
+      <div className={cn(!grouped && "p-5")}>{children}</div>
+    </Surface>
   );
 }
 
