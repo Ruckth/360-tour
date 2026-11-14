@@ -46,6 +46,7 @@ export function SelectCheckbox({
     if (ref.current) ref.current.indeterminate = indeterminate;
   }, [indeterminate]);
   return (
+    <label className="inline-flex size-11 cursor-pointer items-center justify-center rounded focus-within:ring-2 focus-within:ring-ring">
     <input
       ref={ref}
       type="checkbox"
@@ -54,6 +55,7 @@ export function SelectCheckbox({
       onChange={onChange}
       aria-label={label}
     />
+    </label>
   );
 }
 
@@ -144,9 +146,9 @@ export function EmptyState({ children, action }: { children: ReactNode; action?:
 }
 
 /** Search field for list toolbars; grows to fill the space left of the filters. */
-export function SearchBox({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+export function SearchBox({ value, onChange, label, placeholder = label, className = "" }: { value: string; onChange: (value: string) => void; label: string; placeholder?: string; className?: string }) {
   return (
-    <div className="relative min-w-[14rem] flex-1">
+    <div className={`relative min-w-[14rem] flex-1 ${className}`}>
       <Search
         aria-hidden="true"
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -155,7 +157,7 @@ export function SearchBox({ value, onChange, label }: { value: string; onChange:
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={label}
+        placeholder={placeholder}
         aria-label={label}
         className="h-9 pl-9"
       />

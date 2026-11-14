@@ -48,8 +48,8 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await shot(page, "popover");
       await page.getByRole("button", { name: "More stay actions" }).click();
       await shot(page, "popover-more");
-      await page.getByRole("menuitem", { name: "Already paid…" }).click();
-      await page.getByRole("dialog", { name: "Already paid" }).waitFor();
+      await page.getByRole("menuitem", { name: "Record payment…" }).click();
+      await page.getByRole("dialog", { name: "Record a payment taken elsewhere" }).waitFor();
       await shot(page, "already-paid");
       await page.keyboard.press("Escape");
       await chip(page, "Anna Schmidt").click();

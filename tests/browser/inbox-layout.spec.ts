@@ -12,7 +12,7 @@ for (const { width, font } of [
     await page.locator("[data-fixture-ready]").waitFor();
     await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, font);
     await expect(page.getByText("AI paused", { exact: true })).toBeVisible();
-    await expect(page.getByText("Next issue: Staff", { exact: true })).toBeVisible();
+    await expect(page.getByText("AI on", { exact: true })).toHaveCount(0);
     await expect(page.getByText(initialTask, { exact: false })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("Message could not be delivered");
     await expect(page.getByText(/reply window.*(ends|closes)/i)).toBeVisible();

@@ -14,7 +14,9 @@ import { ChangeConfirmDialog } from "./ChangeConfirmDialog";
 import { EffectiveTimeFields, MethodPicker, ReceivedAtField, useEffectiveTime } from "./BookingMoneyFields";
 import { formatMoney } from "./labels";
 import { MONEY_METHOD_LABELS, staffLabel } from "./admin-bookings-shared";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { useRouter } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -58,7 +60,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
 
 /**
  * The money at the top of the appointment sheet: what is due, Take payment (checkout for this
- * appointment, on its stay's order when it has one) and Already paid… (records a desk payment).
+ * appointment, on its stay's order when it has one) and Record payment… (records a desk payment).
  */
 /** What is still due on the appointment (0 while loading), and its financial record. */
 export function useAppointmentOwed(appointment: Appointment) {
@@ -69,17 +71,18 @@ export function useAppointmentOwed(appointment: Appointment) {
 
 export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: Appointment; disabled?: boolean }) {
   const { data, owed } = useAppointmentOwed(appointment);
+  const router = useRouter();
   const [paying, setPaying] = useState(false);
   const headline = owed > 0 ? { label: "Balance due", amount: owed } : data && data.money.net > 0 ? { label: "Paid", amount: data.money.net } : { label: "Nothing due", amount: 0 };
   return <section aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-4 rounded-xl border border-border bg-card p-5">
     <div data-sentence-budget="ignore">
       <h3 id={`appointment-money-${appointment._id}`} className="text-xs font-medium text-muted-foreground">{data ? headline.label : "Balance due"}</h3>
-      <p className="font-sans text-4xl font-semibold tracking-tight tabular-nums">{data ? formatMoney(headline.amount, appointment.currency) : "…"}</p>
+      {data ? <p className="money font-sans text-4xl font-semibold tracking-tight tabular-nums">{formatMoney(headline.amount, appointment.currency)}</p> : <Skeleton className="mt-1 h-10 w-32" />}
     </div>
     <div className="flex flex-wrap items-center gap-2">
-      {owed > 0 ? <ButtonLink href={`/admin/checkout?appointment=${appointment._id}`} aria-disabled={disabled || undefined} className={disabled ? "pointer-events-none opacity-50" : undefined}>Take payment</ButtonLink> : null}
+      {owed > 0 ? <Button disabled={disabled} onClick={() => router.push(`/admin/checkout?appointment=${appointment._id}`)}>Take payment</Button> : null}
       {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
-        <Button variant="outline" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Already paid…</Button>
+        <Button variant="outline" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Record payment…</Button>
       ) : null}
     </div>
     {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}
@@ -102,7 +105,7 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
   const correct = useMutation(api.adminServices.correctAppointmentPaymentEntry);
   const isRefund = dialog.kind === "refund";
   const isCancel = dialog.kind === "cancel" || dialog.kind === "legacyCancel";
-  const title = isRefund ? "Record refund" : dialog.kind === "pay" ? "Already paid" : isCancel ? "Entered by mistake" : "Correct payment";
+  const title = isRefund ? "Record refund" : dialog.kind === "pay" ? "Record a payment taken elsewhere" : isCancel ? "Entered by mistake" : "Correct payment";
   const confirmLabel = attempt ? "Retry same refund" : isRefund ? `Record refund ${formatMoney(Number(amount) || 0, appointment.currency)}` : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)}` : isCancel ? "Void entry" : "Save correction";
   const validAmount = !isRefund || (Number.isFinite(Number(amount)) && Number(amount) > 0 && Number(amount) <= dialog.max && Math.round(Number(amount) * 100) / 100 === Number(amount));
   async function save() {

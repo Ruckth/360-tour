@@ -6,11 +6,10 @@ import { useMutation, useQueries, useQuery, type RequestForQueries } from "conve
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,7 +21,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { DeskSheetContent as SheetContent } from "./DeskSheetContent";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,7 +63,7 @@ type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.get
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
-      <dt className="text-[13px] text-muted-foreground">{label}</dt>
+      <dt className="self-center text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -82,9 +83,12 @@ export function BookingSheet({
   onClose: () => void;
 }) {
   const booking = useQuery(api.adminBookings.getForAdmin, bookingId ? { bookingId } : "skip");
+  const [dirty, setDirty] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+  const close = async () => { if (await confirmDiscard()) onClose(); };
 
   return (
-    <Sheet open={Boolean(bookingId)} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Sheet open={Boolean(bookingId)} onOpenChange={(open) => { if (!open) void close(); }}>
       <SheetContent showCloseButton={false} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
         {booking === undefined || booking === null ? <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" className="absolute right-3 top-3"><X aria-hidden className="size-4" /></Button></SheetClose> : null}
         {booking === undefined ? (
@@ -106,7 +110,7 @@ export function BookingSheet({
             <SheetDescription>It may have been deleted.</SheetDescription>
           </>
         ) : (
-          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} />
+          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} onDirtyChange={setDirty} />
         )}
       </SheetContent>
     </Sheet>
@@ -120,11 +124,13 @@ function BookingDetails({
   initialAction,
   properties,
   onDeleted,
+  onDirtyChange,
 }: {
   booking: BookingDetail;
   initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onDeleted: () => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const updateBooking = useMutation(api.adminBookings.updateBooking);
   const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
@@ -158,7 +164,8 @@ function BookingDetails({
     !booking.hasStripePayment &&
     booking.money.gross === 0;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
-  const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
+  useEffect(() => { onDirtyChange(notesChanged); return () => onDirtyChange(false); }, [notesChanged, onDirtyChange]);
+  const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? (id === booking.propertyId ? booking.propertyName : "Another villa");
 
   async function act(name: string, run: () => Promise<unknown>, done = "") {
     setPending(name);
@@ -224,13 +231,14 @@ function BookingDetails({
     <div className="grid gap-5">
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
+          <p className="mb-1 text-xs text-muted-foreground">Villa stay</p>
           <SheetTitle className="font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
           <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {editable ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
+              <Button variant="ghost" size="icon" aria-label="Edit stay" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
                 <Pencil aria-hidden className="size-4" />
               </Button>
             </DisabledReason>
@@ -307,13 +315,13 @@ function BookingDetails({
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
         </Detail>
-        <Detail label="Phone">{booking.guestPhone}</Detail>
+        <Detail label="Phone"><a className="inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">
-          {booking.guestEmail ?? "—"}
+          {booking.guestEmail ? <a className="inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
           {booking.guestEmail && booking.guestEmailsOff ? <span className="block text-muted-foreground">Entered without guest emails</span> : null}
         </Detail>
         <Detail label="Source">
-          <Badge variant="outline">{sourceLabel(booking.source)}</Badge>
+          {sourceLabel(booking.source)}
           <BookingMarketingSource attribution={booking.marketingAttribution} />
         </Detail>
         <Detail label="Created">
@@ -341,7 +349,8 @@ function BookingDetails({
             if (notesRevision === null) setNotesRevision(booking.revision);
             setNotes(event.target.value);
           }}
-          placeholder="Arrival time, special requests, deposit details…"
+          placeholder="Arrival time, requests…"
+          className="border-0 bg-muted/40 shadow-none"
         />
         {notesError ? (
           <div className="flex flex-wrap items-center gap-2">

@@ -11,7 +11,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
-type ActionSlots = { actions: ReactNode; followUp: ReactNode };
+type ActionSlots = { actions: ReactNode; followUp: ReactNode; actionError: ReactNode };
 
 /**
  * One controller for the header actions and the existing follow-up's direct actions. The header
@@ -158,16 +158,11 @@ export function AdminSessionActions({
           ]}
         />
       </span>
-      {error && !taskOpen ? (
-        <p role="alert" className="basis-full text-right text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 
   return <>
-      {children ? children({ actions, followUp }) : actions}
+      {children ? children({ actions, followUp, actionError: error && !taskOpen ? <p role="alert" className="w-full border-t border-border px-4 py-3 text-sm text-destructive">{error}</p> : null }) : <>{actions}{error && !taskOpen ? <p role="alert" className="w-full text-sm text-destructive">{error}</p> : null}</>}
       <Dialog open={taskOpen} onOpenChange={open => !open && closeTask()}>
         <DialogContent className="sm:max-w-md" showCloseButton={!pending} onCloseAutoFocus={event => {
           const trigger = taskTrigger.current?.isConnected ? taskTrigger.current : menuTrigger();

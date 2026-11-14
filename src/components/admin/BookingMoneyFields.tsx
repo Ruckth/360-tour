@@ -149,11 +149,15 @@ export function NotifyGuestField({
   if (!guestEmail) return <p className="text-xs text-muted-foreground">No guest email on file.</p>;
   return (
     <div className="grid gap-1">
-      <label htmlFor={id} className="flex min-h-11 items-center gap-2 text-sm">
-        <input id={id} type="checkbox" className="size-4 accent-foreground" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-        Email guest about {action}
+      <label htmlFor={id} className="flex min-h-12 items-center justify-between gap-3 text-sm">
+        <span>Email guest about {action}</span>
+        <span className="relative inline-flex h-6 w-10 shrink-0">
+          <input id={id} type="checkbox" role="switch" className="peer absolute inset-0 z-10 cursor-pointer opacity-0" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+          <span aria-hidden className="absolute inset-0 rounded-full bg-muted-foreground/70 peer-checked:bg-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring" />
+          <span aria-hidden className="pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-4" />
+        </span>
       </label>
-      <p className="ps-6 text-xs text-muted-foreground [overflow-wrap:anywhere]">{guestEmail}</p>
+      <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{guestEmail}</p>
     </div>
   );
 }

@@ -198,6 +198,7 @@ export function AdminSessionDetail({
   replyWindow,
   onAddBusinessFact,
   actions,
+  actionError,
   followUp,
   onBack,
   emptyList,
@@ -224,6 +225,7 @@ export function AdminSessionDetail({
   onAddBusinessFact?: (message: AdminMessage) => void;
   /** Primary status action and the occasional-action menu, rendered inside the header. */
   actions?: ReactNode;
+  actionError?: ReactNode;
   /** Set when the list beside this pane is empty: the pane says so instead of "choose one". */
   emptyList?: boolean;
   /** Existing task and its direct actions, owned by the same controller as the menu. */
@@ -349,71 +351,36 @@ export function AdminSessionDetail({
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
   const replyHintId = `${replyInputId}-hint`;
   const status = conversationStatus(session);
+  const latestUnansweredGuestId = session.needsReply ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
+  const automationLabel = session.aiPaused ? "AI paused" : session.keepWithStaff ? "Staff handles next question" : "AI replying";
 
   return (
     <Sheet>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
-          {/* Keep identity, state and tools in one header; long names truncate before the tools. */}
-          <div className="flex items-start justify-between gap-1 p-3 sm:gap-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 flex-1 items-start gap-1 sm:gap-3">
-              {compact && onBack ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-9 shrink-0 -ml-1"
-                  aria-label="Back to chats"
-                  onClick={onBack}
-                >
-                  <ArrowLeft className="size-4" aria-hidden="true" />
-                </Button>
-              ) : null}
-              <span
-                aria-hidden="true"
-                className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground sm:flex"
-              >
-                {guestName
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                  <h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2>
-                  <StatusBadge tone={status.tone} label={status.label} className="text-[11px]" />
-                </div>
-                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
-                  <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
-                  <span className="shrink-0">{sourceLabel(session.channel)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="truncate">{propertyLabel}</span>
-                </p>
-                <ContactLine session={session} handlesOnly />
-                <p className={cn("mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground", !session.aiPaused && !session.keepWithStaff && "max-sm:hidden")}>
-                  {status.reason ? <span>{status.reason}</span> : null}
-                  <span>{session.aiPaused ? "AI paused" : "AI on"}</span>
-                  <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
-                </p>
+          <div className="grid gap-2 p-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 items-center gap-1 sm:gap-3">
+              {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
+              <h2 className="min-w-0 flex-1 break-words text-base font-semibold text-foreground">{guestName}</h2>
+              <div className="flex shrink-0 items-center gap-0 sm:gap-1">
+                <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
+                {actions}
               </div>
             </div>
-            <div className="ml-auto flex shrink-0 items-center justify-end gap-0 sm:gap-1">
-              <SheetTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground"
-                  aria-label="Chat details"
-                >
-                  <Info className="size-4" aria-hidden="true" />
-                </Button>
-              </SheetTrigger>
-              {actions}
+            <p className="flex min-w-0 items-start gap-1.5 text-[13px] text-muted-foreground">
+              <ChannelIcon channel={session.channel} className="mt-1 size-3 shrink-0" />
+              <span className="sr-only sm:not-sr-only sm:shrink-0">{sourceLabel(session.channel)}</span>
+              <span aria-hidden="true" className="hidden sm:inline">·</span>
+              <span className="min-w-0 break-words">{propertyLabel}</span>
+            </p>
+            <ContactLine session={session} handlesOnly />
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <StatusBadge tone={status.tone} label={status.label} className="text-[11px]" />
+              {status.reason ? <span>{status.reason}</span> : null}
+              <span className="rounded-full bg-muted px-2 py-1">{automationLabel}</span>
             </div>
           </div>
+          {actionError}
           {followUp ?? (session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null)}
           {session.inboxSendError ? <p role="alert" className="border-t border-border/40 px-4 py-2 text-xs text-destructive sm:px-6">{session.inboxSendError}</p> : null}
         </div>
@@ -482,7 +449,7 @@ export function AdminSessionDetail({
                         type="button"
                         onClick={() => onAddBusinessFact(message)}
                         // Every guest question keeps a tap route, including earlier messages.
-                        className="mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100"
+                        className={cn("mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100", message._id !== latestUnansweredGuestId && "pointer-coarse:hidden")}
                       >
                         <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
                         Answer as a business fact
@@ -511,8 +478,7 @@ export function AdminSessionDetail({
               <div>
                 <p className="text-sm font-semibold">{sourceLabel(session.channel)} reply window has ended</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Standard replies in this inbox are available for 24 hours after the guest’s last message. Other
-                  messaging options require a separate setup. A new guest message opens the reply window again.
+                  {sourceLabel(session.channel)} allows replies within 24 hours of the guest’s last message. You can reply when they write again.
                 </p>
                 {replyWindow?.applies && replyWindow.lastGuestMessageAt ? (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -601,9 +567,9 @@ export function AdminSessionDetail({
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge tone={status.tone} label={status.label} />
             {status.reason ? <span>{status.reason}</span> : null}
-            <span className="inline-flex items-center gap-1.5">{session.aiPaused ? <Hand aria-hidden className="size-3.5" /> : <Bot aria-hidden className="size-3.5" />}{session.aiPaused ? "AI paused" : "AI on"}</span>
-            <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
+            <span className="inline-flex items-center gap-1.5">{session.aiPaused ? <Hand aria-hidden className="size-3.5" /> : <Bot aria-hidden className="size-3.5" />}{automationLabel}</span>
           </div>
+          {session.aiPaused && session.keepWithStaff ? <p className="text-xs text-muted-foreground">Staff handles the next question.</p> : null}
         </div>
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">

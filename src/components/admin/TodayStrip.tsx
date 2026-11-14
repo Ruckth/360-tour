@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { AdminBooking } from "convex/adminBookings";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
 import { cn } from "@/lib/utils";
@@ -53,15 +54,16 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
             disabled={!groups}
             onClick={() => setOpen((current) => (current === key ? null : key))}
             className={cn(
-              "grid min-h-20 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-3 sm:min-h-24 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+              "grid min-h-0 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-3 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
               open === key && "border-foreground/40 bg-muted",
             )}
           >
-            <span className="text-[11px] leading-tight font-normal text-muted-foreground sm:text-xs">{label}</span>
-            <span className={cn("font-sans text-[28px] leading-none font-semibold tracking-tight tabular-nums", key === "balanceDue" && "text-base tracking-tighter sm:text-[28px]")}>{groups ? key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length : "–"}</span>
+            <span className="flex items-center justify-between gap-1 text-[11px] leading-tight font-normal text-muted-foreground sm:text-xs">{label}<ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open === key && "rotate-180")} /></span>
+            <span className={cn("money font-sans text-xl sm:text-[28px] leading-none font-semibold tracking-tight tabular-nums")}>{groups ? key === "balanceDue" ? <><span className="sm:hidden">฿{owed >= 1000 ? `${(owed / 1000).toFixed(1)}k` : owed.toLocaleString("en-GB")}</span><span className="hidden sm:inline">{formatMoney(owed, "THB")}</span></> : groups[key].length : "–"}</span>
           </button>
         ))}
       </div>
+      {open === "balanceDue" ? <p className="text-xs text-muted-foreground">Due from today’s guests</p> : null}
       {open ? (
         <ul id="today-list" aria-label={GROUPS.find((g) => g.key === open)!.label} className="grid gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-2 lg:grid-cols-3">
           {list.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">No one today.</li> : null}

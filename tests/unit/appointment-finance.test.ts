@@ -6,8 +6,8 @@ import type { Doc } from 'convex/_generated/dataModel';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../../messages/en.json';
-import { AppointmentFinancials, AppointmentMoneyDialog } from '@/components/admin/AppointmentFinancials';
-const mocks = vi.hoisted(() => ({ pay: vi.fn(), refund: vi.fn(), correct: vi.fn(), query: vi.fn() }));
+import { AppointmentFinancials, AppointmentMoneyDialog, AppointmentMoneyBlock } from '@/components/admin/AppointmentFinancials';
+const mocks = vi.hoisted(() => ({ push: vi.fn(), pay: vi.fn(), refund: vi.fn(), correct: vi.fn(), query: vi.fn() }));
 vi.mock('convex/react', () => ({
   useQuery: () => mocks.query(),
   useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
@@ -15,6 +15,7 @@ vi.mock('convex/react', () => ({
     return name.endsWith(':markAppointmentPaid') ? mocks.pay : name.endsWith(':refundAppointment') ? mocks.refund : mocks.correct;
   }
 }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
 const now = Date.UTC(2026,10,1,5);
 const appointment = { _id: 'appointment1', price: 1200, currency: 'THB', status: 'completed', paymentStatus: 'paid', revision: 4 } as Doc<'serviceAppointments'>;
@@ -69,7 +70,7 @@ it('blocks duplicate submits and dismissal while payment is pending, preserving 
   let resolve!: () => void; mocks.pay.mockImplementation(() => new Promise<void>(done => { resolve = done; }));
   const onClose = vi.fn();
   await render(createElement(AppointmentMoneyDialog, { appointment: { ...appointment, paymentStatus: 'unpaid' }, revision: 4, dialog: { kind: 'pay' }, onClose }));
-  expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe('Already paid');
+  expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe('Record a payment taken elsewhere');
   expect(document.body.textContent).toContain('Received now');
   expect(document.body.textContent).not.toContain('This does not charge the guest.');
   await click(button('Record ฿1,200')); await click(button('Record ฿1,200'));
@@ -124,4 +125,14 @@ it.each(['unknown', 'refunded', 'receipt', 'provider'])('does not expose manual 
   mocks.query.mockReturnValue({ revision: 4, legacyManualPayment: null, money: { gross: 1200, refunded: kind === 'refunded' ? 100 : 0, net: 1100, owed: 0 }, unitemised: kind === 'provider' ? 0 : 1200, payments: kind === 'provider' ? [{ ...payment, method: 'provider' }] : [], orders: kind === 'receipt' ? [{ billId: 'order1', charged: 1200, refundable: 1200 }] : [], refunds: [] });
   await render(createElement(AppointmentFinancials, { appointment }));
   expect(button('Entered by mistake…')).toBeUndefined();
+});
+
+it('uses a disabled payment button that cannot route while another action is pending', async () => {
+  mocks.query.mockReturnValue({ money: { net: 0, owed: 1200 } });
+  await render(createElement(AppointmentMoneyBlock, { appointment: { ...appointment, status: 'booked', paymentStatus: 'unpaid' }, disabled: true }));
+  const take = button('Take payment')!;
+  expect(take.disabled).toBe(true);
+  expect(document.querySelector('a')).toBeNull();
+  await click(take);
+  expect(mocks.push).not.toHaveBeenCalled();
 });

@@ -232,7 +232,7 @@ function LoadedBookingFinancials({
           {canPay ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
               <Button variant="outline" className="min-h-10" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
-                Already paid…
+                Record payment…
               </Button>
             </DisabledReason>
           ) : null}
@@ -377,7 +377,7 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
 
   return (
     <ChangeConfirmDialog
-      title="Already paid"
+      title="Record a payment taken elsewhere"
       description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net + reviewed.owed, booking.currency) },

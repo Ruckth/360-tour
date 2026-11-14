@@ -111,7 +111,7 @@ function EventCalendarAgendaView({
             const items = [...(bucket?.allDay ?? []), ...(bucket?.timed ?? [])]
             const zoned = toZoned(day, settings.timeZone)
             const weekday = format(zoned, "EEEE", { locale: settings.locale })
-            const dayDate = format(zoned, "MMMM d, yyyy", {
+            const dayDate = format(zoned, "d MMM yyyy", {
               locale: settings.locale,
             })
             return (
@@ -147,13 +147,13 @@ function EventCalendarAgendaView({
                 >
                   <span
                     className={cn(
-                      "text-foreground font-semibold",
+                      "text-foreground text-sm font-semibold",
                       isToday(day) && "text-primary"
                     )}
                   >
                     {weekday}
                   </span>
-                  <span className="text-muted-foreground font-medium tabular-nums">
+                  <span className="text-muted-foreground text-xs font-medium tabular-nums">
                     {dayDate}
                   </span>
                 </div>
@@ -226,7 +226,7 @@ function EventCalendarAgendaItem({
       segment={segment}
       className={cn(
         // read-only list: hover only, no selected/focused styling on click
-        "hover:bg-accent/40 gap-3 rounded-none border-b px-4 py-2.5 transition-colors",
+        "min-h-11 hover:bg-accent/40 gap-3 rounded-none border-b px-4 py-2.5 transition-colors",
         viewConfig.classNames?.agendaItem
       )}
     />

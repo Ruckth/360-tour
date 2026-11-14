@@ -11,7 +11,7 @@ import {
   turnaroundMinutes,
 } from "convex/lib/appointmentWindow";
 import { Pencil, Repeat, X } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
 import { AppointmentFeeAction } from "@/components/admin/AppointmentFeeAction";
 import { AppointmentFinancials, AppointmentMoneyBlock } from "@/components/admin/AppointmentFinancials";
@@ -25,14 +25,16 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
 import { staffLabel } from "@/components/admin/admin-bookings-shared";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog as Modal, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { DeskSheetContent as SheetContent } from "./DeskSheetContent";
+import { BookingSheet } from "./BookingSheet";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { endTime, timeRange } from "@/lib/schedule-changes";
@@ -52,7 +54,7 @@ type Appointment = Doc<"serviceAppointments">;
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
-      <dt className="text-[13px] text-muted-foreground">{label}</dt>
+      <dt className="self-center text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -104,6 +106,11 @@ export function AppointmentSheet({
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(draftDirty);
+  const [stayOpen, setStayOpen] = useState(false);
+  const stay = useQuery(api.adminBookings.getForAdmin, appointment?.bookingId ? { bookingId: appointment.bookingId } : "skip");
   const now = useNow();
   // Same read as the money block (one subscription): while a balance is due, Take payment is the
   // one filled button and the next step goes outline.
@@ -153,8 +160,8 @@ export function AppointmentSheet({
   return (
     <Sheet
       open={Boolean(appointment)}
-      onOpenChange={(open) => {
-        if (!open && !feePending) {
+      onOpenChange={async (open) => {
+        if (!open && !feePending && !editorSaving && await confirmDiscard()) {
           setError("");
           setEditing(false);
           setDialog(null);
@@ -162,14 +169,22 @@ export function AppointmentSheet({
         }
       }}
     >
-      <SheetContent showCloseButton={false} onEscapeKeyDown={(e) => { if (feePending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (feePending) e.preventDefault(); }} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
+      <SheetContent showCloseButton={false} onEscapeKeyDown={(e) => { if (feePending || editorSaving) e.preventDefault(); }} onPointerDownOutside={(e) => { if (feePending || editorSaving) e.preventDefault(); }} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
         {appointment && status ? (
           <div className="grid gap-5">
             <header className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="mb-1 text-xs text-muted-foreground">Appointment</p>
                 <SheetTitle className="font-serif text-2xl font-semibold"><span className="sr-only">Appointment · </span>{appointment.guestName || "Unnamed guest"}</SheetTitle>
-                <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
+                <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} />                <span className="inline-flex">
+                  {!editing && next ? (
+                    <Button size="sm" variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
+                      {pending === next ? <Spinner className="text-current" /> : null}
+                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
+                    </Button>
+                  ) : null}
+                </span>
+</SheetDescription>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <Button size="icon" variant="ghost" aria-label="Edit appointment" disabled={feePending || pending !== null || editing} onClick={() => setEditing(true)}><Pencil aria-hidden className="size-4" /></Button>
@@ -187,7 +202,7 @@ export function AppointmentSheet({
                     ]}
                   />
                 ) : null}
-                <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" disabled={feePending}><X aria-hidden className="size-4" /></Button></SheetClose>
+                <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" disabled={feePending || editorSaving}><X aria-hidden className="size-4" /></Button></SheetClose>
               </div>
             </header>
             {editing ? (
@@ -196,19 +211,14 @@ export function AppointmentSheet({
                 appointment={appointment}
                 service={service}
                 services={services}
-                onDone={() => setEditing(false)}
+                onDone={() => { setDraftDirty(false); setEditing(false); }}
+                onCancel={async () => { if (await confirmDiscard()) { setDraftDirty(false); setEditing(false); } }}
+                onDirtyChange={setDraftDirty}
+                onBusyChange={setEditorSaving}
               />
             ) : (
               <>
                 <AppointmentMoneyBlock appointment={appointment} disabled={feePending || pending !== null} />
-                <div className="flex flex-wrap items-center gap-2">
-                  {next ? (
-                    <Button variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
-                      {pending === next ? <Spinner className="text-current" /> : null}
-                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
-                    </Button>
-                  ) : null}
-                </div>
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
                 {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
@@ -227,7 +237,7 @@ export function AppointmentSheet({
                   <Detail label="When">
                     {staffDate(appointment.start, { weekday: true })}, {timeRange(appointment.start, appointment.end)}
                     <span className="block text-muted-foreground">
-                      {turnaround ? `Turnaround to ${endTime(appointment.start, appointment.blockedUntil)}` : "No turnaround"}
+                      {turnaround ? `Room ready ${endTime(appointment.start, appointment.blockedUntil)}` : "No turnaround"}
                     </span>
                   </Detail>
                   {appointment.cancelledAt ? (
@@ -239,15 +249,13 @@ export function AppointmentSheet({
                       ) : null}
                     </Detail>
                   ) : null}
-                  <Detail label="Phone">{appointment.guestPhone || "—"}</Detail>
-                  <Detail label="Email">{appointment.guestEmail ?? "—"}</Detail>
-                  <Detail label="Notes">
-                    <span className="whitespace-pre-wrap">{appointment.notes ?? "—"}</span>
-                  </Detail>
-                  <Detail label="Villa stay">{appointment.bookingId ? "On a villa stay" : "—"}</Detail>
+                  {appointment.guestPhone ? <Detail label="Phone"><a className="inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${appointment.guestPhone}`}>{appointment.guestPhone}</a></Detail> : null}
+                  {appointment.guestEmail ? <Detail label="Email"><a className="inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${appointment.guestEmail}`}>{appointment.guestEmail}</a></Detail> : null}
+                  {appointment.notes ? <Detail label="Notes"><span className="whitespace-pre-wrap">{appointment.notes}</span></Detail> : null}
+                  {appointment.bookingId ? <Detail label="Villa stay"><Button variant="ghost" className="h-auto min-h-11 whitespace-normal px-0 text-left" disabled={!stay} onClick={() => setStayOpen(true)}>Open stay · {stay ? `${stay.propertyName} · ${stay.guestName}` : "Loading stay…"}</Button></Detail> : null}
                   {appointment.rebookedFromId ? <Detail label="Booked again">{originalReference === undefined ? "Loading original reference…" : originalReference ? `From ${originalReference}` : "Original appointment unavailable"}</Detail> : null}
                   <Detail label="Source">
-                    <Badge variant="outline">{sourceLabel(appointment.source)}</Badge>
+                    {sourceLabel(appointment.source)}
                   </Detail>
                 </dl>
                 <BookingOrders
@@ -297,6 +305,7 @@ export function AppointmentSheet({
             onClose={() => setDialog(null)}
           />
         ) : null}
+        {stayOpen && appointment?.bookingId ? <BookingSheet bookingId={appointment.bookingId} properties={[]} onClose={() => setStayOpen(false)} /> : null}
       </SheetContent>
     </Sheet>
   );
@@ -350,11 +359,17 @@ function AppointmentEditForm({
   service,
   services,
   onDone,
+  onCancel,
+  onDirtyChange,
+  onBusyChange,
 }: {
   appointment: Appointment;
   service?: Service;
   services: Service[];
   onDone: () => void;
+  onCancel: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
   const [original] = useState(appointment);
@@ -362,7 +377,11 @@ function AppointmentEditForm({
   const revision = appointmentRevision(original);
   const confirm = useConfirm();
   const [serviceId, setServiceId] = useState<Id<"services">>(appointment.serviceId);
+  const [detailsDirty, setDetailsDirty] = useState(false);
+  const dirty = detailsDirty || serviceId !== original.serviceId;
+  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   const [saving, setSaving] = useState(false);
+  useEffect(() => { onBusyChange(saving); return () => onBusyChange(false); }, [saving, onBusyChange]);
   const [error, setError] = useState("");
   const canChangeService =
     (appointment.status === "booked" || appointment.status === "arrived") && appointment.paymentStatus === "unpaid";
@@ -408,7 +427,10 @@ function AppointmentEditForm({
   }
 
   return (
-    <form onSubmit={submit} className="grid gap-4">
+    <form onSubmit={submit} onChange={event => {
+      const form = new FormData(event.currentTarget);
+      setDetailsDirty((["guestName", "guestPhone", "guestEmail", "notes"] as const).some(key => String(form.get(key) ?? "") !== String(original[key] ?? "")));
+    }} className="grid gap-4">
       <fieldset disabled={saving} className="grid gap-4">
         <div className="grid gap-2">
           <Label>Service</Label>
@@ -457,7 +479,7 @@ function AppointmentEditForm({
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onDone}>
+          <Button type="button" variant="outline" onClick={onCancel}>
             Discard changes
           </Button>
           <Button type="submit" disabled={saving}>

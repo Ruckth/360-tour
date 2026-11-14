@@ -8,6 +8,8 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import Link from "next/link";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -329,18 +331,23 @@ export function MissingInformationPanel({
 
   return (
     // The tab panel supplies the border; round it too so there is only one surface.
-    <div className="overflow-hidden rounded-xl bg-card [section:has(>&)]:overflow-hidden [section:has(>&)]:rounded-xl">
+    <Card className="overflow-hidden border-0 shadow-none">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <SearchBox
           value={searchInput}
           onChange={setSearchInput}
           label="Search missing-information reports"
+          placeholder="Search reports"
+          className="basis-full sm:basis-auto"
         />
+        <div className="flex items-center gap-2">
+        <Label htmlFor="missing-status" className="text-xs text-muted-foreground">Status</Label>
         <Select
           value={status}
           onValueChange={(value) => setStatus(value as MissingInfoFilter)}
         >
           <SelectTrigger
+            id="missing-status"
             className="h-9 w-[10rem] rounded-lg"
             aria-label="Report status"
           >
@@ -355,6 +362,7 @@ export function MissingInformationPanel({
             <SelectItem value="all">All</SelectItem>
           </SelectContent>
         </Select>
+        </div>
       </div>
 
       {actionError ? (
@@ -432,7 +440,7 @@ export function MissingInformationPanel({
       ) : (
         <div className="lg:overflow-x-auto [&_tbody_td]:lg:align-middle [&_tbody_td]:lg:py-3">
           <table className={STACKED_TABLE.table}>
-            <thead className={STACKED_TABLE.head}>
+            <thead className="hidden border-b border-border bg-muted/40 text-xs font-normal text-muted-foreground lg:table-header-group [&_th]:font-normal">
               <tr>
                 <th className={cn(STACKED_TABLE.th, "w-10")}>
                   <SelectCheckbox
@@ -516,7 +524,7 @@ export function MissingInformationPanel({
                         {question.sessionId ? (
                           <Link
                             href={`/admin/chats?session=${question.sessionId}`}
-                            className="inline-flex items-center gap-1 rounded font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            className="inline-flex min-h-11 items-center gap-1 rounded font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           >
                             <MessageSquare
                               aria-hidden="true"
@@ -527,7 +535,7 @@ export function MissingInformationPanel({
                         ) : null}
                       </p>
                     </td>
-                    <td className={cn(STACKED_TABLE.cell, "max-lg:col-span-full max-lg:pl-7")}>
+                    <td className={cn(STACKED_TABLE.cell, "max-lg:col-span-full")}>
                       {hasNew ? (
                         // Picking is the decision: it resolves at once, and the toast offers Undo. Most
                         // reports need a new fact, so Create fact stays one tap beside it.
@@ -538,10 +546,10 @@ export function MissingInformationPanel({
                             onValueChange={(next) => void resolve(group, next)}
                           >
                             <SelectTrigger
-                              className="h-9 w-auto min-w-0 flex-1 rounded-lg font-normal lg:w-64 lg:flex-none"
+                              className="h-9 w-auto min-w-[8rem] flex-1 rounded-lg font-normal lg:w-64 lg:flex-none"
                               aria-label={`Resolve "${question.userQuestion}" with a fact or source`}
                             >
-                              <SelectValue placeholder="Resolve with a fact…" />
+                              <SelectValue placeholder="Use a fact" />
                             </SelectTrigger>
                             {resolveOptions(reportPropertyId)}
                           </Select>
@@ -632,6 +640,6 @@ export function MissingInformationPanel({
         properties={properties}
         onClose={() => setFactTarget(null)}
       />
-    </div>
+    </Card>
   );
 }

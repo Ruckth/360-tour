@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays, ChevronDown } from "lucide-react";
+import { format } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   useEventCalendarNavigation,
@@ -15,104 +16,104 @@ import {
   EventCalendarTitle,
 } from "@/components/reui/event-calendar/event-calendar-nav";
 import { TooltipProvider } from "@/components/reui/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toZoned } from "@/components/reui/event-calendar/event-calendar-lib";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-/** Every toolbar control is h-9, matching `Button size="sm"` in the page's own filters and actions. */
-const TOOLBAR = "flex flex-wrap items-center gap-2 px-3 py-3 sm:px-4 sm:py-4";
-
-/**
- * Shared admin calendar header. Row 1: Today, prev/next, the period title (click to jump
- * to any date) and the view buttons. Row 2: the page's filters (left) and actions (right),
- * wrapping on small screens instead of squeezing the navigation.
- *
- * `compact` (the hotel calendar) is one row: prev/next, the title with Today inside its picker,
- * the views as one select, then the page's controls.
- */
-export function AdminCalendarHeader({ children, compact = false }: { children?: ReactNode; compact?: boolean }) {
+/** Phones get date navigation and a compact view picker; tablets share the segmented header. */
+export function AdminCalendarHeader({
+  children,
+  compact = false,
+  primaryAction,
+}: {
+  children?: ReactNode;
+  compact?: boolean;
+  primaryAction?: ReactNode;
+}) {
   const { view, dayCount, availableViews, setView } = useEventCalendarView();
-  const { title } = useEventCalendarNavigation();
-  const { i18n } = useEventCalendarSettings();
-  const viewName = (option: (typeof availableViews)[number]) => (option === "days" ? i18n.viewNames.days(dayCount) : i18n.viewNames[option]);
-
+  const { title, date } = useEventCalendarNavigation();
+  const { i18n, timeZone } = useEventCalendarSettings();
+  const shortTitle = format(toZoned(date, timeZone), compact ? "MMM yyyy" : "d MMM");
+  const viewName = (option: (typeof availableViews)[number]) =>
+    option === "days" ? i18n.viewNames.days(dayCount) : i18n.viewNames[option];
   const picker = (
     <EventCalendarDatePicker
-      aria-label={`${title}, ${i18n.labels.goToDate.toLowerCase()}`}
-      className="h-9 w-auto max-w-full min-w-0 gap-1.5 px-2.5 font-semibold"
-      showToday={compact}
+      aria-label={`${shortTitle}, ${title}, ${i18n.labels.goToDate.toLowerCase()}`}
+      showToday
+      className="h-9 w-auto min-w-0 shrink-0 gap-1 px-1 pointer-coarse:min-h-11"
     >
-      <CalendarDays aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-      <EventCalendarTitle render={<span />} className="text-[15px]" />
-      <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-60" />
+      <span className="text-[13px] font-semibold sm:hidden">{shortTitle}</span>
+      <EventCalendarTitle render={<span />} className="hidden text-[15px] font-semibold sm:inline" />
+      <ChevronDown aria-hidden className="size-3 shrink-0" />
     </EventCalendarDatePicker>
   );
-
-  if (compact) {
-    return (
-      <div className="border-b border-border">
-        <TooltipProvider delay={400}>
-          <div className={TOOLBAR} data-testid="calendar-toolbar">
-            <div className="flex min-w-0 items-center gap-1">
-              <EventCalendarNavPrev className="size-9" />
-              <EventCalendarNavNext className="size-9" />
-              {picker}
-            </div>
-            {availableViews.length > 1 ? (
-              <Select value={view} onValueChange={(next) => setView(next as typeof view)}>
-                <SelectTrigger aria-label="Calendar view" className="h-9 w-auto gap-1.5 rounded-lg px-2.5 text-xs font-semibold">
-                  <SelectValue>{viewName(view)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {availableViews.map((option) => (
-                    <SelectItem key={option} value={option}>{viewName(option)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : null}
-            {children}
-          </div>
-        </TooltipProvider>
-      </div>
-    );
-  }
-
+  const mobileView = (
+    <Select value={view} onValueChange={(next) => setView(next as typeof view)}>
+      <SelectTrigger
+        aria-label="Calendar view"
+        className="h-9 w-auto gap-1 rounded-full px-2 text-xs pointer-coarse:min-h-11"
+      >
+        <SelectValue>{viewName(view)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {availableViews.map((option) => (
+          <SelectItem key={option} value={option}>
+            {viewName(option)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-border" data-testid="calendar-toolbar">
       <TooltipProvider delay={400}>
-        <div className={TOOLBAR}>
-          <div className="flex items-center gap-1">
-            <EventCalendarNavToday className="h-9 px-3 text-xs font-semibold" />
-            <EventCalendarNavPrev className="size-9" />
-            <EventCalendarNavNext className="size-9" />
-          </div>
+        <div className="hidden flex-wrap items-center gap-2 px-4 py-3 sm:flex">
+          <EventCalendarNavToday className="h-9 px-3 pointer-coarse:min-h-11" />
+          <EventCalendarNavPrev className="size-9 pointer-coarse:size-11" />
           {picker}
-          {availableViews.length > 1 ? (
-            <div
-              role="group"
-              aria-label="Calendar view"
-              className="flex min-h-9 w-full rounded-lg border border-border bg-muted p-1 sm:ms-auto sm:w-auto"
-            >
-              {availableViews.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={view === option}
-                  onClick={() => setView(option)}
-                  className={cn(
-                    "min-h-9 flex-1 rounded-md px-3 text-xs font-semibold whitespace-nowrap text-muted-foreground transition outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none",
-                    view === option ? "bg-card text-foreground shadow-sm ring-1 ring-border" : "hover:text-foreground",
-                  )}
-                >
-                  {viewName(option)}
-                </button>
-              ))}
-            </div>
-          ) : null}
+          <EventCalendarNavNext className="size-9 pointer-coarse:size-11" />
+          <ToggleGroup
+            variant="segmented"
+            value={view}
+            onValueChange={setView}
+            aria-label="Calendar view"
+            className={compact ? "" : "ms-auto"}
+          >
+            {availableViews.map((option) => (
+              <ToggleGroupItem key={option} value={option}>
+                {viewName(option)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          {compact ? children : null}
         </div>
+        <div className="flex items-center gap-0.5 px-2 py-2 sm:hidden">
+          <EventCalendarNavPrev className="size-9 shrink-0 pointer-coarse:size-11" />
+          {picker}
+          <EventCalendarNavNext className="size-9 shrink-0 pointer-coarse:size-11" />
+          {compact ? (
+            <>
+              <div className="ms-auto">{mobileView}</div>
+              {children}
+            </>
+          ) : (
+            <div className="ms-auto shrink-0">{primaryAction}</div>
+          )}
+        </div>
+        {!compact ? (
+          <div className="flex items-center gap-2 border-t border-border px-2 py-2 sm:flex-wrap sm:px-4 sm:py-3">
+            <div className="sm:hidden">{mobileView}</div>
+            {children}
+            <div className="ms-auto hidden sm:block">{primaryAction}</div>
+          </div>
+        ) : null}
       </TooltipProvider>
-      {children ? (
-        <div className={`${TOOLBAR} border-t border-border`}>{children}</div>
-      ) : null}
     </div>
   );
 }

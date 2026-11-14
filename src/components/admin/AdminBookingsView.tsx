@@ -115,7 +115,7 @@ export function AdminBookingsView() {
 
 function HotelBookings() {
   const [range, setRange] = useState(initialRange);
-  const [storedView, setView] = useStoredState("admin.hotel.view", "month");
+  const [storedView, setView] = useStoredState("admin.hotel.view", "auto");
   const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [selected, setSelected] = useState<{ id: Id<"bookings">; initialAction?: BookingSheetAction } | null>(null);
@@ -124,6 +124,7 @@ function HotelBookings() {
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [managingCalendars, setManagingCalendars] = useState(false);
   const [managingRates, setManagingRates] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
@@ -141,7 +142,7 @@ function HotelBookings() {
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
   const today = todayIsoLocal();
 
-  const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : "month";
+  const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : phone ? "agenda" : "month";
   // A remembered villa that no longer exists falls back to all villas.
   const villa = storedVilla === "all" || !data || data.properties.some((p) => p._id === storedVilla) ? storedVilla : "all";
   const villaName = (id: string) => data?.properties.find((p) => p._id === id)?.name ?? "Villa";
@@ -229,6 +230,8 @@ function HotelBookings() {
     // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
       <TodayStrip villaName={villaName} onOpen={openQuick} />
+      <Button className="w-full sm:hidden" onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })} disabled={!data}><PlusIcon aria-hidden className="size-4" />New booking</Button>
+      {phone && villa !== "all" ? <Button variant="outline" onClick={() => setVilla("all")} aria-label={`Showing ${villaName(villa)} only. Show all villas`}>{villaName(villa)}<XIcon aria-hidden className="size-4" /></Button> : null}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
@@ -236,6 +239,26 @@ function HotelBookings() {
           onViewChange={setView}
           views={[...VIEWS]}
           resources={resources}
+          fixedWeeks={false}
+          agendaDayCount={14}
+          renderEvent={({ occurrence }) => {
+            const item = occurrence.event.data;
+            const status = item?.kind === "booking" ? item.booking.status : undefined;
+            return <><span aria-hidden className={status === "pending" ? "absolute inset-0 rounded-[inherit] border border-dashed border-current" : undefined} /><span className={status === "cancelled" ? "truncate text-xs line-through" : "truncate text-xs"}>{occurrence.event.title}</span></>;
+          }}
+          renderAgendaEvent={({ occurrence }) => {
+            const item = occurrence.event.data;
+            if (item?.kind !== "booking") return <span className="text-sm">{occurrence.event.title}</span>;
+            const b = item.booking;
+            return <span className="flex w-full min-w-0 items-center justify-between gap-3">
+              <span className="grid min-w-0 gap-1 text-left">
+                <span className="text-[15px] font-medium">{b.guestName}</span>
+                <span className="text-xs text-muted-foreground">{villaName(b.propertyId)} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
+                <span className="text-xs text-muted-foreground">{hotelStatus(statusKey(b)).label}</span>
+              </span>
+              <span className="money shrink-0 font-sans text-sm tabular-nums">{formatMoney(b.owed, b.currency)}</span>
+            </span>;
+          }}
           dayStartHour={8}
           dayEndHour={20}
           interval={60}
@@ -288,24 +311,24 @@ function HotelBookings() {
             }
           }}
           onRangeChange={({ range: visible }) =>
-            setRange({ from: isoDate(visible.start), to: isoDate(addDays(visible.end, 1)) })
+            setRange({ from: isoDate(addDays(visible.start, -1)), to: isoDate(addDays(visible.end, 1)) })
           }
           classNames={{
             monthCellFooter: "absolute left-0 top-1 justify-start pb-0",
-            monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground/50",
+            monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground",
             monthCellContent: "pt-7",
             monthBarOverlay: "pt-7",
-            moreIndicator: "h-4 w-fit max-w-full shrink-0 rounded-full bg-muted px-0.5 text-[10px] leading-4 sm:px-2 sm:text-[11px]",
+            moreIndicator: "mt-auto h-6 pointer-coarse:h-7 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
           }}
           loading={data === undefined}
-          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
+          className="h-[calc(100dvh-13rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
         >
           <AdminCalendarHeader compact>
-            <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
+            <div className="hidden sm:contents"><GuestSearch compact properties={data?.properties ?? []} onPick={openFromSearch} /></div>
             {phone ? (
               villa !== "all" ? (
                 // The villa filter lives in ⋯ on a phone; a filtered calendar says so and clears in one tap.
-                <Button size="sm" variant="secondary" className="max-w-40" aria-label={`Showing ${villaName(villa)} only. Show all villas`} onClick={() => setVilla("all")}>
+                <Button size="sm" variant="secondary" className="hidden max-w-40 sm:inline-flex" aria-label={`Showing ${villaName(villa)} only. Show all villas`} onClick={() => setVilla("all")}>
                   <span className="truncate">{villaName(villa)}</span>
                   <XIcon aria-hidden className="size-3.5" />
                 </Button>
@@ -314,13 +337,14 @@ function HotelBookings() {
               <VillaPicker
                 properties={data?.properties ?? []} value={villa} onChange={setVilla}
                 includeAll compact disabled={!data}
-                className="w-48"
+                className="w-36"
               />
             )}
             {data === undefined ? <Spinner label="Loading bookings" /> : null}
             <div className="ms-auto flex items-center gap-2">
               <Button
                 size="sm"
+                className="hidden sm:inline-flex"
                 onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
                 disabled={!data}
               >
@@ -333,6 +357,7 @@ function HotelBookings() {
                 items={[
                   ...(phone
                     ? [
+                        { label: "Search bookings", onSelect: () => setSearchOpen(true) },
                         { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
                         ...(data?.properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
                       ]
@@ -360,6 +385,7 @@ function HotelBookings() {
               can check. Try a shorter view, or search for the guest.
             </p>
           ) : null}
+      <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Search bookings</DialogTitle><DialogDescription>Find a guest by name, phone or code.</DialogDescription></DialogHeader><GuestSearch forceExpanded properties={data?.properties ?? []} onPick={booking => { setSearchOpen(false); openFromSearch(booking); }} /></DialogContent></Dialog>
           <EventCalendarContent />
         </EventCalendar>
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
@@ -608,7 +634,7 @@ export function MoveBookingDialog({
 }
 
 /** Finds a booking by guest name, phone, email or confirmation code and jumps the calendar to it. */
-function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPick: (booking: AdminBooking) => void }) {
+function GuestSearch({ properties, onPick, forceExpanded = false, compact = false }: { properties: AdminProperty[]; onPick: (booking: AdminBooking) => void; forceExpanded?: boolean; compact?: boolean }) {
   const { goTo } = useEventCalendarNavigation();
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
@@ -620,7 +646,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
   const results = useQuery(api.adminBookings.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
   // On a phone the box folds to an icon until tapped; it folds again when left empty.
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(forceExpanded);
   const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (expanded) input.current?.focus();
@@ -629,11 +655,11 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
   return (
     <>
     {expanded ? null : (
-      <Button type="button" size="icon" variant="outline" className="size-9 sm:hidden" aria-label="Search bookings" onClick={() => setExpanded(true)}>
+      <Button type="button" size="icon" variant="outline" className={compact ? "size-9" : "size-9 sm:hidden"} aria-label="Search bookings" onClick={() => setExpanded(true)}>
         <SearchIcon aria-hidden className="size-4" />
       </Button>
     )}
-    <div className={expanded ? "relative order-last w-full min-w-0 sm:order-none sm:w-64" : "relative hidden min-w-0 sm:block sm:w-64"}>
+    <div className={expanded ? "relative order-last w-full min-w-0 sm:order-none sm:w-48" : compact ? "hidden" : "relative hidden min-w-0 sm:block sm:w-64"}>
       <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         type="search"

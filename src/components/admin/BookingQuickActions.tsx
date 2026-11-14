@@ -38,7 +38,7 @@ const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.
 
 /**
  * Popover on a calendar booking chip: Take payment (the stay's balance with its unpaid spa, at
- * checkout), Book spa and Details; Already paid…, Copy pay link, Copy reference and Cancel stay
+ * checkout), Book spa and Details; Record payment…, Copy pay link, Copy reference and Cancel stay
  * sit in ⋯ and open their own dialogs. Results are reported through
  * `onNotice` because the popover closes before the action runs.
  */
@@ -175,7 +175,7 @@ export function BookingQuickActions({
             className="ms-auto size-9"
             items={[
               {
-                label: "Already paid…",
+                label: "Record payment…",
                 hidden: !canPay || !detail,
                 disabled: checkoutLive,
                 onSelect: () => {

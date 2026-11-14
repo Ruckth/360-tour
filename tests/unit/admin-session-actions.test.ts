@@ -23,8 +23,8 @@ const deleted = vi.fn(), statusChanged = vi.fn();
 async function render(session = initial) {
   const props: ComponentProps<typeof AdminSessionActions> = {
     session, onDeleted: deleted, onStatusChanged: statusChanged,
-    children: ({ actions, followUp }) => createElement(AdminSessionDetail, {
-      selectedSession: session, actions, followUp, messages: [], now: 100, canLoadOlderMessages: false,
+    children: ({ actions, followUp, actionError }) => createElement(AdminSessionDetail, {
+      selectedSession: session, actions, followUp, actionError, messages: [], now: 100, canLoadOlderMessages: false,
       loadOlderMessages: vi.fn(), loadingTranscript: false, loadingOlderMessages: false,
       replyDraft: "Draft stays here", onReplyDraftChange: vi.fn(), onSendReply: vi.fn(),
       replyPending: false, replyError: null, replyStatus: null, replyWindow: { applies: false },
