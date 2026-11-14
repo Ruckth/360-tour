@@ -139,7 +139,7 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
     <li data-testid="approval-request">
     <Card className="grid gap-2 p-4">
       <p className="text-[15px] font-medium text-balance [overflow-wrap:anywhere]">{lineName ?? (request.payload.kind === "customPrice" && request.payload.action === "addCustomItem" ? request.payload.name : title)}</p>
-      <p className="text-sm text-pretty [overflow-wrap:anywhere]">{personName(request.requesterEmail)} · {approvalAsk(request)}</p>
+      <p className="text-[15px] font-semibold text-pretty [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request)}</p>
       {/* The cashier's own words, not an explanation. */}
       <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
       <p className="text-sm text-muted-foreground font-sans tabular-nums">

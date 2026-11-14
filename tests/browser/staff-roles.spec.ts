@@ -130,7 +130,7 @@ test.describe("manager approvals", () => {
 
     const first = requests.filter({ hasText: "Guest waited 40 minutes" });
     await expect(first.locator("p").first()).toHaveText("Thai massage 60");
-    await expect(first).toContainText("Mint · asks for a ฿180 discount (15%)");
+    await expect(first).toContainText("Mint asks for a ฿180 discount (15%)");
     await expect(first).toContainText("“Guest waited 40 minutes”");
     await expect(first).toContainText("Order #1043 · Total ฿1,200 → ฿1,020");
     await expect(first).toContainText("Expires in 5 min");
@@ -143,7 +143,7 @@ test.describe("manager approvals", () => {
     await expect(requests).toHaveCount(1);
 
     const second = requests.filter({ hasText: "Regular guest" });
-    await expect(second).toContainText("Mint · asks for a ฿100 discount");
+    await expect(second).toContainText("Mint asks for a ฿100 discount");
     await second.getByRole("button", { name: "Decline" }).click();
     // The last decision closes the panel and says what happened.
     await expect(panel).toHaveCount(0);

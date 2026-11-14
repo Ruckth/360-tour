@@ -191,7 +191,7 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>{cashier ? "Open orders · find receipts by number." : "Newest first · paid orders open receipts."}</DialogDescription>
+              <DialogDescription>Find a paid order by its order number (#).</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
@@ -704,8 +704,8 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
   return (
     <div className="grid gap-3">
       {restoring ? <InlineErrorBoundary resetKey={restoring} message="Couldn't review this order. Try again."><OrderLifecycle key={restoring} orderId={restoring} onPending={onPending} onDone={() => setRestoring(null)} onOpen={onOpen} /></InlineErrorBoundary> : <>
-      <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start border-transparent bg-muted p-0.5">
-        {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value} className="h-9 pointer-coarse:h-11 data-[state=on]:bg-background data-[state=on]:text-foreground">{f.label}</ToggleGroupItem>)}
+      <ToggleGroup variant="segmented" tone="subtle" value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
+        {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value} >{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
       {filter === "discarded" ? <p className="text-xs text-muted-foreground">Restore… checks for rows now on another order first.</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">

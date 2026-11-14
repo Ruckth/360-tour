@@ -13,6 +13,7 @@ import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
+import { CheckoutDraftProvider, useCheckoutDraft } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
@@ -25,24 +26,31 @@ import { useOrderWrites } from "./useOrderWrites";
  * total (phones). Data comes from the CheckoutBackend in context, so the admin page and the dev
  * preview render the same UI.
  */
-export function CheckoutView({
+export function CheckoutView(props: CheckoutViewProps) {
+  return <CheckoutDraftProvider><CheckoutContent {...props} /></CheckoutDraftProvider>;
+}
+
+type CheckoutViewProps = {
+  orderId: OrderId | null;
+  onOrderChange: (orderId: OrderId | null) => void;
+  /** Paid here, or opened already paid/void: replace this page with its receipt. */
+  onPaid: (orderId: OrderId) => void;
+  /** Shown above the catalog, e.g. a refused `?booking=` link. */
+  notice?: string;
+  onNoticeRetry?: () => void;
+  /** The customer display button; only the admin page has one. */
+  displayControl?: ReactNode;
+};
+
+function CheckoutContent({
   orderId,
   onOrderChange,
   onPaid,
   notice,
   onNoticeRetry,
   displayControl,
-}: {
-  orderId: OrderId | null;
-  onOrderChange: (orderId: OrderId | null) => void;
-  /** The order was paid here, or opened already paid or void: show its receipt. A redirect, so the page replaces this history entry. */
-  onPaid: (orderId: OrderId) => void;
-  /** Shown above the catalog, e.g. a refused `?booking=` link. */
-  notice?: string;
-  onNoticeRetry?: () => void;
-  /** The customer display button for the top strip; only the admin page has one. */
-  displayControl?: ReactNode;
-}) {
+}: CheckoutViewProps) {
+  const { confirmDiscard } = useCheckoutDraft();
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
   const view = backend.useOrder(orderId);
@@ -99,13 +107,16 @@ export function CheckoutView({
 
   const changeOrder = useCallback(
     (next: OrderId | null) => {
-      setSheetOpen(false);
-      setPayOnOpen(undefined);
-      // A failed write belongs to the order it was made on; the next order starts without its banner.
-      setError("");
-      switchTo(next);
+      void confirmDiscard().then((discard) => {
+        if (!discard) return;
+        setSheetOpen(false);
+        setPayOnOpen(undefined);
+        // A failed write belongs to the order it was made on; the next order starts without its banner.
+        setError("");
+        switchTo(next);
+      });
     },
-    [switchTo],
+    [switchTo, confirmDiscard],
   );
 
   // Paying and then seeing the order turn paid both lead to the receipt; go there once.
@@ -135,19 +146,28 @@ export function CheckoutView({
     if (settled && view) toReceipt(view.order._id);
   }, [settled, view, toReceipt]);
 
-  // The order sheet is for narrow screens only. Rotating an iPad to landscape while it is open
-  // would hide the sheet but leave its overlay blocking the page, so close it there.
+  // Rotation closes a clean phone sheet. A dirty editor stays visible until staff agree to
+  // discard it; CSS must not hide that sheet (and leave its overlay trapping focus).
   useEffect(() => {
     const wide = window.matchMedia("(min-width: 64rem)");
     const onChange = () => {
-      if (wide.matches) {
-        setSheetOpen(false);
-        setPayOnOpen(undefined);
+      if (wide.matches && sheetOpen) {
+        void confirmDiscard().then((discard) => {
+          if (!discard) return;
+          setSheetOpen(false);
+          setPayOnOpen(undefined);
+        });
       }
     };
     wide.addEventListener("change", onChange);
     return () => wide.removeEventListener("change", onChange);
-  }, []);
+  }, [confirmDiscard, sheetOpen]);
+
+  async function closeSheet() {
+    if (!await confirmDiscard()) return;
+    setSheetOpen(false);
+    setPayOnOpen(undefined);
+  }
 
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void, initialPay?: "cash") => (
@@ -182,7 +202,7 @@ export function CheckoutView({
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         <aside
           aria-label="Order"
-          className="mt-1 mr-4 mb-4 hidden max-h-full w-[380px] shrink-0 overflow-hidden has-[[data-testid=pay-panel]]:self-start rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
+          className="mt-1 mr-4 mb-4 hidden max-h-full lg:w-[420px] shrink-0 overflow-hidden has-[[data-testid=pay-panel]]:self-start rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
         >
           {panel()}
         </aside>
@@ -205,24 +225,24 @@ export function CheckoutView({
       {/* The pill is the sheet's trigger, so closing the sheet puts focus back on it. Once the
           order can be paid, Cash ฿X beside it opens the sheet on the cash panel, prefilled; its
           Confirm is still the one that takes the money. */}
-      <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setPayOnOpen(undefined); }} modal={!keepHeader}>
+      <Sheet open={sheetOpen} onOpenChange={(open) => { if (open) setSheetOpen(true); else void closeSheet(); }} modal={!keepHeader}>
         <div data-admin-bottom-bar="lg" className={cn("fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl p-1 lg:hidden", count ? "bg-primary text-primary-foreground shadow-xl shadow-navy/25 dark:shadow-black/40" : "border border-border bg-card text-foreground shadow-sm")}>
-          <SheetTrigger asChild>
+          {count ? <SheetTrigger asChild>
             <button
               type="button"
               // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
-              aria-label={count === 0 ? "View order · No items yet · open the order" : `View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
+              aria-label={`View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
               className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
             >
               <ReceiptText aria-hidden className="size-5 shrink-0" />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-sm font-semibold">View order</span>{" "}
-                <span className="block truncate text-xs opacity-80">{count ? `${count} ${count === 1 ? "item" : "items"}` : "No items yet"}</span>{" "}
+                <span className="block truncate text-xs opacity-80">{`${count} ${count === 1 ? "item" : "items"}`}</span>{" "}
               </span>
-              {quickCash || !count ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
+              {quickCash ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
               <ChevronUp aria-hidden className="size-5 shrink-0" />
             </button>
-          </SheetTrigger>
+          </SheetTrigger> : <p className="flex flex-1 items-center justify-center gap-2 px-4 py-2 text-sm text-muted-foreground"><ReceiptText aria-hidden className="size-5 shrink-0" />No items yet</p>}
           {quickCash ? (
             <button
               type="button"
@@ -236,13 +256,13 @@ export function CheckoutView({
           ) : null}
         </div>
         {/* --admin-header is set on <html> by the shell, since the sheet is portaled outside it. */}
-        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "max-h-[calc(100dvh-var(--admin-header,6dvh))]" : "max-h-[94dvh]", "h-auto gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "max-h-[calc(100dvh-var(--admin-header,6dvh))]" : "max-h-[94dvh]", "h-auto gap-0 rounded-t-2xl border-border/80 bg-card p-0")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>
           {/* The page banner sits under the sheet's overlay, so errors repeat here. */}
           {error ? alert(error) : null}
-          {panel(() => { setSheetOpen(false); setPayOnOpen(undefined); }, payOnOpen)}
+          {panel(() => { void closeSheet(); }, payOnOpen)}
         </CheckoutSheetContent>
       </Sheet>
     </div>

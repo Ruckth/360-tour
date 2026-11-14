@@ -132,7 +132,11 @@ describe("adding a coupon at checkout", () => {
     await click(panel().querySelector('button[aria-label="Remove coupon DCNT-SPA-500"]'));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon"]')).toBeNull();
-    expect(button(/^Add coupon/)).toBeDefined();
+    // While a line is open the empty coupon row moves to its compact header trigger.
+    const addCoupon = panel().querySelector<HTMLButtonElement>('[data-add-coupon][aria-label="Add coupon"]');
+    expect(addCoupon).not.toBeNull();
+    await click(addCoupon);
+    expect(field()).not.toBeNull();
     expect(due()).toBe("฿2,200");
   });
 

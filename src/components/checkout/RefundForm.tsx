@@ -15,6 +15,9 @@ import {
 } from "./refunds";
 import { needsApproval } from "./staff-approvals";
 
+// Applied once to all pressed-state chips: amount presets, methods, and ReasonField's buttons.
+const REFUND_CHIPS = "[&_button[aria-pressed]]:h-11 [&_button[aria-pressed]]:min-w-0 [&_button[aria-pressed]]:justify-center [&_button[aria-pressed]]:rounded-full [&_button[aria-pressed]]:border [&_button[aria-pressed=false]]:border-border [&_button[aria-pressed=false]]:bg-background [&_button[aria-pressed]]:px-3 [&_button[aria-pressed]]:text-sm [&_button[aria-pressed]]:font-medium [&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background";
+
 /**
  * The inline refund form under one paid receipt line. It opens ready to send: the amount is what is
  * left (All), the method is the original tender, and a reason chip finishes it, so a refund takes no
@@ -67,9 +70,11 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
   useEffect(() => { onDraftChange(dirty); return () => onDraftChange(false); }, [dirty, onDraftChange]);
   useEffect(() => { onBusyChange(saving); return () => onBusyChange(false); }, [saving, onBusyChange]);
 
-  // iPad scrolls inside the Items card; phone reveals the inline form in the page.
+  // Reveal the form in the page; the receipt paper stays alongside on wide screens.
   useLayoutEffect(() => {
-    formRef.current?.closest("li")?.scrollIntoView?.({ block: "nearest" });
+    if (!window.matchMedia("(min-width: 64rem)").matches) {
+      formRef.current?.closest("li")?.scrollIntoView?.({ block: "nearest" });
+    }
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 
@@ -129,10 +134,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       aria-pressed={chosen === value}
       disabled={saving || uncertain || satangValue <= 0}
       onClick={() => setAmount(value === "all" ? null : satangInput(satangValue))}
-      className={cn(
-        "inline-flex min-h-11 justify-center items-center rounded-full border px-2 text-sm font-semibold whitespace-nowrap font-sans tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
-        chosen === value ? "border-foreground bg-foreground text-background" : "border-border bg-muted text-foreground hover:border-input",
-      )}
+      className="inline-flex items-center font-sans tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45"
     >
       {label}
     </button>
@@ -154,8 +156,9 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       data-screen-only=""
       data-refund-form={line._id}
       className={cn(
-        "mt-3 grid scroll-my-4 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
+        "@container mt-3 grid scroll-mt-28 scroll-mb-4 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
         TOUCH_TARGETS,
+        REFUND_CHIPS,
         ask ? "border-amber-300 bg-amber-50/70 dark:border-amber-400/40 dark:bg-amber-400/10" : "border-border bg-background",
       )}
     >
@@ -189,15 +192,15 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       </div>
       <div className="grid gap-1.5">
         <p id={`${id}-method`} className="text-xs text-muted-foreground">Refund to</p>
-        <div role="group" aria-labelledby={`${id}-method`} className="grid grid-cols-3 gap-2">
+        <div role="group" aria-labelledby={`${id}-method`} className="grid grid-cols-3 gap-2 @md:grid-cols-5">
           {REFUND_METHODS.map((option) => (
-            <Button key={option.value} type="button" variant="outline" aria-pressed={method === option.value} disabled={saving || uncertain} onClick={() => setMethod(option.value)} className={cn("h-11 min-w-0 rounded-full px-2 text-sm", method === option.value && "bg-foreground text-background hover:bg-foreground hover:text-background")}>
+            <button key={option.value} type="button" aria-pressed={method === option.value} disabled={saving || uncertain} onClick={() => setMethod(option.value)} className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45">
               {option.label}
-            </Button>
+            </button>
           ))}
         </div>
       </div>
-      <ReasonField label="Reason" placeholder="Or type a reason" value={reason} onChange={setReason} chips={["Short treatment", "Guest complaint", "Wrong charge"]} disabled={saving || uncertain} id={`${id}-reason`} className="[&_label]:text-xs [&_label]:text-muted-foreground [&_button]:font-medium [&_[role=group]]:grid [&_[role=group]]:grid-cols-2 [&_button]:min-h-11 [&_button]:whitespace-normal [&_button]:px-2 [&_button]:text-left [&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background" />
+      <ReasonField label="Reason" placeholder="Or type a reason" value={reason} onChange={setReason} chips={["Short treatment", "Guest complaint", "Wrong charge"]} disabled={saving || uncertain} id={`${id}-reason`} className="[&_label]:text-xs [&_label]:text-muted-foreground" />
       {uncertain ? <p role="status" className="text-xs text-muted-foreground">Retry sends the same refund, so it is never recorded twice.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
       <div className="grid grid-cols-[auto_1fr] gap-2">

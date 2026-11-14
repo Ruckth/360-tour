@@ -43,7 +43,7 @@ export const canAddCoupon = (view: OrderView | null | undefined): view is OrderV
  * what it saves and its terms; when an edit leaves it not fitting the order, a warning with Remove.
  * Only open orders with items have one. Writes go through `run`, after any edit still saving.
  */
-export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { view: OrderView; run: Run; busy: boolean; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen, hideAdd = false }: { view: OrderView; run: Run; busy: boolean; open: boolean; onOpenChange: (open: boolean) => void; hideAdd?: boolean }) {
   const actions = useCheckoutBackend().useActions();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -108,6 +108,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
   }
 
   if (!open) {
+    if (hideAdd) return null;
     return (
       <button
         type="button"

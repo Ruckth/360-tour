@@ -41,7 +41,7 @@ for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
 
       const count = tapper();
       await count.tap(approvalsButton(page));
-      await expect(panel(page).getByTestId("approval-request")).toContainText("Mint · asks for a ฿180 discount (15%)");
+      await expect(panel(page).getByTestId("approval-request")).toContainText("Mint asks for a ฿180 discount (15%)");
       await expectAtMostSentences(panel(page), 1);
       await count.tap(panel(page).getByRole("button", { name: "Approve" }));
 

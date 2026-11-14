@@ -7,6 +7,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { errorText } from "@/lib/staff-bookings";
@@ -561,13 +562,13 @@ function CashForm({
       </div>
       {notes.length ? (
         <div role="group" aria-label="Notes handed over" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))] gap-2">
-          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
+          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:ring-2 aria-pressed:ring-foreground aria-pressed:bg-foreground/5" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
           {notes.map((note) => (
             <Button
               key={note}
               variant="outline"
               aria-pressed={value === note}
-              className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
+              className="h-11 px-2 font-sans tabular-nums aria-pressed:ring-2 aria-pressed:ring-foreground aria-pressed:bg-foreground/5"
               onClick={() => setReceived(String(note))}
             >
               {formatMoney(note)}
@@ -658,13 +659,11 @@ function SplitForm({
                 </div>
               )}
               {rows.length > 2 ? <Button size="icon" variant="ghost" className="col-start-2 row-start-1 ml-1 size-11 shrink-0 @min-[18rem]:col-start-3" aria-label={`Remove payment ${index + 1}`} onClick={() => setRows(rows.filter((_, i) => i !== index))}><X aria-hidden className="size-4" /></Button> : <span className="col-start-2 row-start-1 @min-[18rem]:col-start-3" />}
-              <div role="group" aria-label={`Payment ${index + 1} method`} className="col-span-2 row-start-3 grid min-w-0 grid-cols-2 @min-[18rem]:col-span-3 @min-[18rem]:row-start-2 rounded-xl border bg-background p-0.5 @min-[18rem]:grid-cols-[1fr_1.5fr_1fr_1.2fr]">
+              <ToggleGroup variant="segmented" tone="subtle" value={row.method} onValueChange={(method: TenderMethod) => update(index, { method })} aria-label={`Payment ${index + 1} method`} className="col-span-2 row-start-3 grid min-w-0 grid-cols-2 @min-[18rem]:col-span-3 @min-[18rem]:row-start-2 @min-[18rem]:grid-cols-[1fr_1.5fr_1fr_1.2fr]">
                 {TENDER_METHODS.map((method) => (
-                  <Button key={method} size="sm" variant="ghost" aria-pressed={row.method === method}
-                    className={cn("h-9 pointer-coarse:h-11 min-w-0 rounded-lg px-1 text-sm", row.method === method && "bg-muted text-foreground ring-1 ring-inset ring-border")}
-                    onClick={() => update(index, { method })}>{TENDER_LABELS[method].short}</Button>
+                  <ToggleGroupItem key={method} value={method} className="min-w-0 px-1 text-sm">{TENDER_LABELS[method].short}</ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </li>
           );
         })}
@@ -686,9 +685,6 @@ function SplitForm({
           <Plus aria-hidden className="size-4" /> Add payment
         </Button>
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        Take all payments before confirming.
-      </p>
       </div>
       <p id={validationId} aria-live="polite" className="text-xs text-amber-800 empty:hidden dark:text-amber-300">{validation}</p>
       <PayButton

@@ -7,6 +7,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import { InfoTip } from "@/components/ui/info-tip";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
@@ -57,6 +58,7 @@ function printCss(paper: Paper, lengthMm: number) {
       body *:has(.pos-receipt) { display: block !important; position: static !important; width: auto !important; height: auto !important;
         min-height: 0 !important; max-height: none !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
         overflow: visible !important; background: none !important; box-shadow: none !important; transform: none !important; }
+      .receipt-preview::details-content { content-visibility: visible !important; display: block !important; height: auto !important; }
       .pos-receipt { ${printBox(paper)} position: static !important; box-shadow: none !important; border-radius: 0 !important;
         background: #fff !important; color: #000 !important; }
       .pos-receipt * { color: #000 !important; }
@@ -112,9 +114,15 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const measure = useCallback(() => {
     const receipt = receiptRef.current;
     if (!receipt) return;
+    // A closed phone disclosure still prints every line. Measure its full paper synchronously,
+    // then restore the staff member's disclosure state before the browser paints.
+    const preview = receipt.closest("details");
+    const wasClosed = preview instanceof HTMLDetailsElement && !preview.open;
+    if (wasClosed) preview.open = true;
     receipt.setAttribute("data-print-measure", "");
     const height = receipt.getBoundingClientRect().height;
     receipt.removeAttribute("data-print-measure");
+    if (wasClosed) preview.open = false;
     setPageLengthMm(Math.ceil(height / PX_PER_MM) + PAGE_SLACK_MM);
   }, []);
   useLayoutEffect(measure, [measure, paper, view, business]);
@@ -278,7 +286,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         </div>
       </header>
 
-      <div className="grid min-w-0 content-start justify-items-center gap-3 lg:justify-items-start lg:self-start">
+      <div className={cn("grid w-full min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6 lg:justify-items-start lg:self-start", shownTask && "max-sm:hidden")}>
+        <Disclosure label="Receipt preview" className="receipt-preview sm:[&>summary]:hidden sm:[&>div]:block sm:[&::details-content]:[content-visibility:visible] print:[&>summary]:hidden" contentClassName="flex justify-center pb-0 lg:justify-start">
         <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
@@ -365,6 +374,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           ) : null}
           <p className="mt-4 text-center text-xs">Thank you</p>
         </article>
+        </Disclosure>
       </div>
 
       <div
@@ -386,8 +396,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
-        <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto", shownTask && "hidden")}>
-          <h3 className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
+        <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
+          <h3 className="border-b border-border bg-card px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
           <ul className="divide-y divide-border">
             {lines.map((line) => {
               const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
@@ -417,7 +427,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                     {showRefund ? (
                       <Button
                         type="button"
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         data-refund-trigger={line._id}
                         aria-label={`Refund ${line.name}`}

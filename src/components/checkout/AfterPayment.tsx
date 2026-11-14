@@ -14,6 +14,7 @@ import { ReasonField } from "@/components/ui/reason-field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { formatReceiptNumber } from "convex/lib/billMath";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";
@@ -100,6 +101,8 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   const [chosen, setChosen] = useState<LinkCandidate | null>(null);
   const [reason, setReason] = useState("");
   const [notifyGuest, setNotifyGuest] = useState(false);
+  const [selectionEdited, setSelectionEdited] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(selectionEdited || Boolean(query.trim() || reason.trim()) || notifyGuest);
   const candidates = backend.useLinkCandidates({ orderId: view.order._id, lineId: line._id, query });
   const cashier = useStaffAccess().role === "cashier";
   // The only appointment or stay that fits opens straight on its review; Back still shows the list.
@@ -113,6 +116,17 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   const { saving, error, save } = useOnceWrite();
   const what = target === "appointment" ? "appointment" : "stay";
 
+  async function close() {
+    if (!saving && await confirmDiscard()) onClose();
+  }
+  async function back() {
+    if (saving || !await confirmDiscard()) return;
+    setChosen(null);
+    setReason("");
+    setNotifyGuest(false);
+    setSelectionEdited(false);
+  }
+
   async function confirm() {
     if (!chosen) return;
     const ok = await save((idempotencyKey) => actions.linkPaidLine({
@@ -125,7 +139,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   }
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
+    <Dialog open onOpenChange={(next) => { if (!next) void close(); }}>
       <CheckoutDialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{chosen ? `Review link · ${line.name}` : `Link ${line.name} to its ${what}`}</DialogTitle>
@@ -162,7 +176,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
                     <span className="block text-xs text-muted-foreground">{candidate.detail} · {candidate.guestName} · {candidate.kind === "booking" ? `owes ${formatMoney(candidate.owed)}` : formatMoney(candidate.price)}</span>
                     {candidate.problem ? <span className="block text-xs text-amber-800 dark:text-amber-300">{candidate.problem}</span> : null}
                   </span>
-                  <Button size="sm" variant="outline" disabled={Boolean(candidate.problem)} onClick={() => setChosen(candidate)}>
+                  <Button size="sm" variant="outline" disabled={Boolean(candidate.problem)} onClick={() => { setChosen(candidate); setSelectionEdited(true); }}>
                     {candidate.problem ? "Can't link" : "Review"}
                   </Button>
                 </li>
@@ -183,7 +197,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
         ) : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          {chosen ? <Button variant="outline" disabled={saving} onClick={() => setChosen(null)}>Back</Button> : <Button variant="outline" onClick={onClose}>Cancel</Button>}
+          {chosen ? <Button variant="outline" disabled={saving} onClick={() => { void back(); }}>Back</Button> : <Button variant="outline" onClick={() => { void close(); }}>Cancel</Button>}
           {chosen ? (
             <Button disabled={!reason.trim() || saving} onClick={confirm}>
               {saving ? <Spinner className="text-current" /> : <Check aria-hidden className="size-4" />} Confirm link
@@ -220,7 +234,11 @@ function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chos
 function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: OrderLine; link: OrderLink; onClose: () => void }) {
   const actions = useCheckoutBackend().useActions();
   const [reason, setReason] = useState("");
+  const { confirmDiscard } = useUnsavedGuard(Boolean(reason.trim()));
   const { saving, error, save } = useOnceWrite();
+  async function close() {
+    if (!saving && await confirmDiscard()) onClose();
+  }
   async function confirm() {
     const ok = await save((idempotencyKey) => actions.unlinkPaidLine({
       orderId: view.order._id, linkId: link._id, expectedCorrectionRevision: view.paymentRecord.correctionRevision, idempotencyKey, reason,
@@ -228,7 +246,7 @@ function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: Or
     if (ok) onClose();
   }
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
+    <Dialog open onOpenChange={(next) => { if (!next) void close(); }}>
       <CheckoutDialogContent role="alertdialog" className="max-w-md">
         <DialogHeader>
           <DialogTitle>Unlink {line.name} from {link.target.reference}?</DialogTitle>
@@ -242,7 +260,7 @@ function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: Or
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          <Button variant="outline" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button variant="outline" disabled={saving} onClick={() => { void close(); }}>Cancel</Button>
           <Button variant="destructive" disabled={!reason.trim() || saving} onClick={confirm}>
             {saving ? <Spinner className="text-current" /> : null} Unlink
           </Button>

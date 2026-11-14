@@ -4,7 +4,7 @@ import { Menu } from "@base-ui/react/menu";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { LogOut, MoreHorizontal, Shield } from "lucide-react";
+import { LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
@@ -225,8 +225,8 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
             <>
               <div className="sm:hidden">
                 <Menu.Root>
-                  <Menu.Trigger aria-label="Account menu" className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
-                    <MoreHorizontal aria-hidden className="size-5" />
+                  <Menu.Trigger aria-label="Account menu" className="inline-flex size-9 items-center justify-center rounded-full bg-muted text-xs font-semibold hover:bg-muted/80 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11">
+                    <span aria-hidden>{(userEmail ?? access.email ?? "Staff").split("@")[0].split(/[.\s_-]+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
                   </Menu.Trigger>
                   <Menu.Portal>
                     <Menu.Positioner align="end" sideOffset={6} className="z-50">

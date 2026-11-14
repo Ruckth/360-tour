@@ -115,7 +115,7 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   const panel = page.getByRole("dialog", { name: "Approvals" });
   const card = panel.getByTestId("approval-request");
   await expect(card.locator("p").first()).toHaveText("Thai massage 60");
-  await expect(card).toContainText("Mint · asks to refund ฿300");
+  await expect(card).toContainText("Mint asks to refund ฿300");
   await expect(card).toContainText("“Short treatment”");
   await expect(card).toContainText("Order #1043 · Net received ฿1,800 → ฿1,500");
   await card.getByRole("button", { name: "Approve" }).click();

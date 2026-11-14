@@ -189,10 +189,10 @@ test.describe("order panel under enlarged text (RA-01)", () => {
 
     await sheet.getByRole("button", { name: "Split payment", exact: true }).click();
     const controls = [
-      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }),
-      sheet.getByRole("group", { name: "Payment 1 method" }).getByRole("button", { name: "Transfer", exact: true }),
+      sheet.getByRole("radiogroup", { name: "Payment 1 method" }).getByRole("radio", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }),
+      sheet.getByRole("radiogroup", { name: "Payment 1 method" }).getByRole("radio", { name: "Transfer", exact: true }),
       sheet.getByLabel("Payment 1 amount"),
-      sheet.getByRole("group", { name: "Payment 2 method" }).getByRole("button", { name: "Card", exact: true }),
+      sheet.getByRole("radiogroup", { name: "Payment 2 method" }).getByRole("radio", { name: "Card", exact: true }),
       sheet.getByLabel("Payment 2 amount"),
       sheet.getByRole("button", { name: "Add payment" }),
       sheet.getByRole("button", { name: "Confirm split" }),
@@ -231,7 +231,7 @@ test("phone cash entry and confirmation stay visible above a reduced keyboard vi
 async function expectFullTenderRow(scope: Locator) {
   const cash = (await scope.getByRole("button", { name: /^Cash ฿[\d,.]+$/, exact: true }).boundingBox())!;
   const secondary = await boxesOf(TENDERS.slice(1).map((label) => scope.getByRole("button", { name: label, exact: true })));
-  const columns = cash.width >= 448 ? 4 : 2;
+  const columns = await scope.evaluate((el) => el.closest("aside") !== null) || cash.width >= 448 ? 4 : 2;
   expect(cash.height, "primary cash target").toBeGreaterThanOrEqual(56);
   for (const [index, box] of secondary.entries()) {
     expect(box.y, "secondary actions below Cash").toBeGreaterThanOrEqual(cash.y + cash.height);
@@ -398,6 +398,12 @@ test.describe("receipt and orders hierarchy (K1, K8)", () => {
     test(`${viewport.width}x${viewport.height}: New sale and ⋯ (Correct payment, Void…) are on screen above the receipt without scrolling`, async ({ page }) => {
       await open(page, viewport, "?scenario=history");
       const receipt = page.getByRole("article", { name: "Receipt" });
+      const preview = page.locator("details.receipt-preview");
+      if (viewport.width === 390) {
+        await expect(preview).not.toHaveAttribute("open");
+        await expect(receipt).toHaveCount(0);
+        await preview.locator("summary").click();
+      }
       await expect(receipt).toBeVisible();
       const [newSale, moreButton, paper] = await boxesOf([page.getByRole("button", { name: "New sale", exact: true }), page.getByRole("button", { name: "More receipt actions", exact: true }), receipt]);
       for (const [label, box] of [["New sale", newSale], ["⋯", moreButton]] as const) {
