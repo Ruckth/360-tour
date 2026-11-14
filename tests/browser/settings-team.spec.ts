@@ -45,7 +45,8 @@ function recorder(page: Page) {
     async pick(target: Locator, value: string) {
       await inView(target);
       counts.taps += 2;
-      await target.selectOption(value);
+      await target.click();
+      await page.getByRole("option", { name: ({ marketer: "Editor", manager: "Manager", viewer: "Viewer" } as Record<string, string>)[value], exact: true }).click();
     },
   };
 }
@@ -60,11 +61,11 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const run = recorder(page);
       await run.tap(people.getByRole("button", { name: "Change roles for Mint" }));
       await run.pick(people.getByRole("combobox", { name: "Marketing role for Mint" }), "marketer");
-      await expect(people.getByRole("status")).toHaveText("Invited Mint to Marketing as Marketer.");
+      await expect(people.getByRole("status")).toHaveText("Invited Mint to Marketing as Editor.");
       expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "marketer" });
       const mint = people.getByTestId("team-person").filter({ hasText: "mint@" });
-      await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Marketer");
-      await expect(mint).toContainText("Marketing: Invited ·");
+      await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Editor");
+      await expect(mint).toContainText("Marketing: Invite expires");
       expect(await page.locator("body").getAttribute("data-navigation")).toBeNull();
       expect(run.counts).toEqual({ taps: 3, fields: 0, scrolls: 0 });
       expect(run.counts.taps).toBeLessThan(BEFORE_GRANT_MARKETING.taps);
@@ -86,8 +87,8 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(lek.nth(1)).toHaveText("lek@auraliscove.co");
       await people.getByRole("button", { name: "Change roles for Ploy" }).click();
       await expect(people.getByRole("combobox")).toHaveCount(2);
-      await expect(people.getByRole("combobox", { name: "Desk role for Ploy" })).toHaveValue("manager");
-      await expect(people.getByRole("combobox", { name: "Marketing role for Ploy" })).toHaveValue("viewer");
+      await expect(people.getByRole("combobox", { name: "Desk role for Ploy" })).toHaveText("Manager");
+      await expect(people.getByRole("combobox", { name: "Marketing role for Ploy" })).toHaveText("Viewer");
     });
 
     test("the discount limit and its Save are on screen at the start, no scroll", async ({ page }) => {
@@ -105,8 +106,8 @@ for (const [size, viewport] of Object.entries(SIZES)) {
 
     test("cashier rules are named like the actions they gate", async ({ page }) => {
       await open(page, "?view=settings&tab=team");
-      const names = await page.getByRole("form", { name: "Rules for all cashiers" }).getByRole("switch").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")));
-      expect(names).toEqual(["Refund needs manager", "Void needs manager", "Custom price needs manager", "Correct payment needs manager"]);
+      const names = await page.getByRole("form", { name: "Rules for all cashiers" }).getByRole("radiogroup").evaluateAll((all) => all.map((el) => el.getAttribute("aria-label")));
+      expect(names).toEqual(["Refund permission", "Void permission", "Custom price permission", "Correct payment permission"]);
     });
 
     test("the Team tab starts on screen", async ({ page }) => {
@@ -144,10 +145,10 @@ test.describe("Settings panels", () => {
   });
 
   for (const [tab, title] of [["business", "Business profile"], ["bookingRules", "Booking rules"], ["ai", "AI assistant"], ["email", "Email"]] as const) {
-    test(`${title}: hints behind ⓘ, Save only after a change, history one closed section`, async ({ page }) => {
+    test(`${title}: visible context, Save only after a change, history one closed section`, async ({ page }) => {
       await open(page, `?view=settings&tab=${tab}`);
       const panel = page.getByRole("region", { name: title });
-      await expectAtMostSentences(panel, 1);
+      await expectAtMostSentences(panel, tab === "business" ? 2 : 1);
       const save = panel.getByRole("button", { name: "Save", exact: true });
       // Deleted villa history lives on Properties, not under every Settings tab.
       await expect(page.getByText("deleted villas")).toHaveCount(0);
@@ -182,6 +183,68 @@ test.describe("Settings panels", () => {
   test("a manager's read-only banner is the page's one sentence", async ({ page }) => {
     await open(page, "?view=settings&role=manager&tab=business");
     await expect(page.getByTestId("read-only-banner")).toBeVisible();
-    await expectAtMostSentences(page.getByRole("region", { name: "Business profile" }), 0);
+    await expectAtMostSentences(page.getByRole("region", { name: "Business profile" }), 2);
+  });
+});
+
+test.describe("Round 1 settings drafts", () => {
+  test.use({ viewport: SIZES.ipad });
+
+  test("tab changes keep drafts until discarded and unload is guarded", async ({ page }) => {
+    await open(page, "?view=settings&tab=business");
+    const name = page.getByRole("textbox", { name: "Business name", exact: true });
+    await name.fill("My unsaved resort");
+    expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(true);
+    await page.getByRole("tab", { name: "Team", exact: true }).click();
+    const dialog = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+    await dialog.getByRole("button", { name: "Keep editing" }).click();
+    await expect(name).toHaveValue("My unsaved resort");
+    await expect(page.locator("body")).not.toHaveAttribute("data-navigation");
+    await page.getByRole("tab", { name: "Team", exact: true }).click();
+    await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(page.locator("body")).toHaveAttribute("data-navigation", /tab=team/);
+  });
+
+  test("Discard resets fields and Save stays visible briefly after success", async ({ page }) => {
+    await open(page, "?view=settings&tab=business");
+    const name = page.getByRole("textbox", { name: "Business name", exact: true });
+    const original = await name.inputValue();
+    await name.fill("Changed name");
+    await expect(page.getByRole("status")).toHaveText("Unsaved changes");
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(name).toHaveValue(original);
+    expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(false);
+    await name.fill("Saved name");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeInViewport();
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toHaveCount(0, { timeout: 5000 });
+  });
+
+  test("currency, searchable time zone and required half-hour times use structured pickers", async ({ page }) => {
+    await open(page, "?view=settings&tab=business");
+    await page.getByRole("combobox", { name: "Currency", exact: true }).click();
+    await page.getByRole("option", { name: "THB", exact: true }).click();
+    const zone = page.getByRole("combobox", { name: "Time zone", exact: true });
+    await zone.fill("Tokyo");
+    await page.getByRole("option", { name: "Asia/Tokyo", exact: true }).click();
+    await expect(zone).toHaveValue("Asia/Tokyo");
+    const checkIn = page.getByRole("combobox", { name: /^Check-in time,/ });
+    await checkIn.click();
+    await expect(page.getByRole("option")).toHaveCount(48);
+    await page.getByRole("option", { name: "15:30", exact: true }).click();
+    await expect(checkIn).toHaveAccessibleName("Check-in time, 15:30");
+    await expect(page.getByRole("button", { name: /Clear check-/ })).toHaveCount(0);
+  });
+
+  test("rules draft uses the same tab guard and Discard restores the approval requirements", async ({ page }) => {
+    await open(page, "?view=settings&tab=team");
+    const rule = page.getByRole("radiogroup", { name: "Refund permission", exact: true });
+    await rule.getByRole("radio", { name: "Cashier", exact: true }).click();
+    await page.getByRole("tab", { name: "Business", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Keep editing" }).click();
+    await expect(rule.getByRole("radio", { name: "Cashier", exact: true })).toHaveAttribute("aria-checked", "true");
+    await page.getByRole("button", { name: "Discard", exact: true }).click();
+    await expect(rule.getByRole("radio", { name: "Manager", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("rules-save-bar")).toHaveCount(0);
   });
 });

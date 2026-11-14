@@ -55,7 +55,7 @@ describe("CSV export", () => {
     const a1 = lines.find((line) => line.startsWith("tracked,/a1,"))!.split(",");
     expect(a1.slice(3)).toEqual(["2310", "24", "0", "0", "24", "1.04", a1[9], "197800", "9600", "188200"]);
     expect(lines.some((line) => /,'-|,-\d/.test(line))).toBe(false);
-    expect(lines.find((line) => line.startsWith("not tracked,Unknown"))).toContain(",352800");
+    expect(lines.find((line) => line.startsWith("not tracked,Not tracked"))).toContain(",352800");
     expect(lines.at(-2)).toMatch(/^total,Tracked total,,11980,132,4,2,130,1\.09,/);
     expect(lines.at(-1)).toBe('total,Business total,"All paid sales, tracked or not",,179,7,2,0,,93700,1554300,38400,1515900');
   });
@@ -148,13 +148,13 @@ describe("dashboard view", () => {
 
   it("renders the tiles, context line and breakdown from the fixture", () => {
     render(ready());
-    expect(text()).toMatch(/As of 7 Nov( 2026)?, 06:00/);
-    expect(text()).toContain("Asia/Bangkok · THB");
-    expect(text()).toContain("Last touch · 30 days");
+    expect(text()).toMatch(/Updated 7 Nov( 2026)?, 06:00/);
+    expect(text()).not.toContain("Asia/Bangkok · THB");
+    expect(text()).not.toContain("Last touch · 30 days");
     expect(text()).not.toContain("last_touch_30d@1");
     expect(text()).toContain("11,980");
     expect(buttons("About paid bookings")).toHaveLength(1);
-    expect(buttons("About ad roas")).toHaveLength(1);
+    expect(buttons("About return on ad spend")).toHaveLength(1);
     expect(text()).toContain("1.09%");
     expect(text()).toContain("฿1,091,700");
     expect(text()).toContain("฿1,515,900");
@@ -166,14 +166,14 @@ describe("dashboard view", () => {
     // Explanations moved behind the metric’s information button, without losing the counts.
     click(buttons("About paid bookings")[0]);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("179 paid stays in all · 7 checkout orders count in money only");
-    click(buttons("About ad roas")[0]);
+    click(buttons("About return on ad spend")[0]);
     expect([...document.querySelectorAll('[role="tooltip"]')].map(tip => tip.textContent).join(" ")).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales have no spend/);
   });
 
   it("opens the spend dialog for the campaigns of a row without spend", async () => {
     render(ready());
     expect(spendDialog.last?.open).toBe(false);
-    click(buttons(/^instagram.*Show campaigns$/)[0]); // drill into instagram
+    click(buttons(/^Instagram.*Show campaigns$/)[0]); // drill into instagram
     // The ROAS tile has its own Add spend link; this is the row's.
     const add = buttons("Add spend").find((b) => b.closest("#breakdown"))!;
     click(add);
@@ -192,7 +192,7 @@ describe("dashboard view", () => {
   it("offers Add spend from the ROAS tile when nothing has spend", () => {
     render(ready(dashboardReport({ spend: false })));
     expect(text()).toContain("No spend entered");
-    click(buttons("About ad roas")[0]);
+    click(buttons("About return on ad spend")[0]);
     expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("No spend entered for these dates.");
     expect(text()).not.toContain("฿0.00×");
     click(buttons("Add spend")[0]);
@@ -202,7 +202,7 @@ describe("dashboard view", () => {
 
   it("drills source → campaign with breadcrumbs, then opens the sales sheet", () => {
     render(ready());
-    click(buttons(/^facebook.*Show campaigns$/)[0]);
+    click(buttons(/^Facebook.*Show campaigns$/)[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("All sources");
     click(buttons(/^Facebook · November escape.*Show links$/)[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("Facebook · November escape");
@@ -221,10 +221,10 @@ describe("dashboard view", () => {
     render(ready());
     expect(text()).toContain("Consented web sessions can also count in overall conversion");
     expect(text()).not.toContain("left out of conversion");
-    click(buttons("Definitions")[0]);
-    const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Paid web stays with a consented session started in range also count in conversion");
-    expect(dialog.textContent).not.toContain("never in conversion");
+    click(buttons("About booked rate")[0]);
+    const tip = document.querySelector('[role="tooltip"]')!;
+    expect(tip.textContent).toContain("Consented direct visits can also book");
+    expect(tip.textContent).not.toContain("never in conversion");
   });
 
   it("links checkout orders to the order", () => {
@@ -390,7 +390,7 @@ describe("dashboard view", () => {
       expect(report.sessions.length).toBeGreaterThan(0);
       render(ready(report));
       expect(text()).not.toContain(onboardingOnly);
-      expect(text()).toContain("Consented sessions3,120");
+      expect(text()).toContain("Tracked visits3,120");
       expect(text()).not.toContain("No sales or tracked visits in these dates.");
       expect(text()).toContain("No campaigns or links yet");
     });

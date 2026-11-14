@@ -17,6 +17,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
+import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,17 +64,21 @@ export function AdminSettingsView() {
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const requested = adminSettingsTab(searchParams.get("tab"));
   const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";
-  const setTab = (next: Tab) => router.replace(adminSettingsTabPath(next), { scroll: false });
+  const [dirty, setDirty] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+  const setTab = async (next: Tab) => {
+    if (next !== tab && await confirmDiscard()) {
+      setDirty(false);
+      router.replace(adminSettingsTabPath(next), { scroll: false });
+    }
+  };
   const legacyTab = searchParams.get("tab") === "admins";
   // Old ?tab=admins links open Team under its own address.
   useEffect(() => {
     if (legacyTab) router.replace(adminSettingsTabPath("team"), { scroll: false });
   }, [legacyTab, router]);
   const settings = useQuery(api.settings.get, {});
-  // A tab opened from a link (?tab=channels) scrolls into view in the tab row on a phone.
-  useEffect(() => {
-    document.getElementById(`settings-tab-${tab}`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-  }, [tab]);
+
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 sm:px-6 sm:py-6">
@@ -93,17 +100,17 @@ export function AdminSettingsView() {
         {tab === "channels" ? (
           <ChannelsPanel />
         ) : tab === "team" ? (
-          <TeamSettings />
+          <TeamSettings onDirtyChange={setDirty} />
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
-          <SettingsForm key={tab} section="business" settings={settings} readOnly={readOnly} />
+          <SettingsForm key={tab} section="business" settings={settings} readOnly={readOnly} onDirtyChange={setDirty} />
         ) : tab === "bookingRules" ? (
-          <SettingsForm key={tab} section="bookingRules" settings={settings} readOnly={readOnly} />
+          <SettingsForm key={tab} section="bookingRules" settings={settings} readOnly={readOnly} onDirtyChange={setDirty} />
         ) : tab === "ai" ? (
-          <SettingsForm key={tab} section="ai" settings={settings} readOnly={readOnly} />
+          <SettingsForm key={tab} section="ai" settings={settings} readOnly={readOnly} onDirtyChange={setDirty} />
         ) : (
-          <SettingsForm key={tab} section="email" settings={settings} readOnly={readOnly} />
+          <SettingsForm key={tab} section="email" settings={settings} readOnly={readOnly} onDirtyChange={setDirty} />
         )}
       </div>
     </div>
@@ -130,7 +137,7 @@ const SECTIONS: Record<
 > = {
   bookingRules: {
     title: "Booking rules",
-    description: "Timing and stay limits for online villa bookings. Staff-created bookings are exempt from stay limits and unpaid expiry.",
+    description: "Timing and stay limits for online villa bookings; staff-created bookings are exempt from stay limits and unpaid expiry.",
     fields: () => [
       { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
       { name: "chatQuoteValidityMinutes", label: "Chat summary valid for", type: "number", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
@@ -240,7 +247,7 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   return { [section]: values };
 }
 
-function SettingsForm({ section, settings, readOnly = false }: { section: Section; settings: EffectiveSettings & { revision: number }; readOnly?: boolean }) {
+function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { section: Section; settings: EffectiveSettings & { revision: number }; readOnly?: boolean; onDirtyChange: (dirty: boolean) => void }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
   const update = useMutation(api.settings.update);
@@ -282,6 +289,12 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
   }
 
   const dirty = JSON.stringify(values) !== JSON.stringify(savedValues);
+  useEffect(() => { onDirtyChange(dirty && !readOnly); return () => onDirtyChange(false); }, [dirty, readOnly, onDirtyChange]);
+  useEffect(() => {
+    if (!state.saved) return;
+    const timer = window.setTimeout(() => setState((current) => ({ ...current, saved: false })), 2500);
+    return () => window.clearTimeout(timer);
+  }, [state.saved]);
   async function applyHistory(entry: HistoryEntry, side: "before" | "after") {
     if (pending.current || dirty) return;
     const ok = await confirm({
@@ -335,6 +348,21 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
         </span>
         {field.type === "textarea" ? (
           <Textarea {...common} className={cn("min-h-24", error && "border-destructive")} />
+        ) : field.name === "currency" ? (
+          <Select value={common.value} onValueChange={(value) => common.onChange({ target: { value } })} disabled={state.saving || readOnly}>
+            <SelectTrigger id={id} aria-label={field.label} aria-invalid={Boolean(error)} aria-describedby={describedBy} onBlur={common.onBlur} className="w-full font-normal"><SelectValue /></SelectTrigger>
+            <SelectContent>{Array.from(new Set([common.value, "THB", "USD", "EUR"].filter(Boolean))).map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}</SelectContent>
+          </Select>
+        ) : field.name === "timezone" ? (
+          <Combobox items={Array.from(new Set([common.value, ...Intl.supportedValuesOf("timeZone")].filter(Boolean)))} value={common.value} onValueChange={(value) => { if (value) common.onChange({ target: { value } }); }} disabled={state.saving || readOnly}>
+            <ComboboxInput containerClassName="m-0" id={id} aria-label={field.label} aria-invalid={Boolean(error)} aria-describedby={describedBy} onBlur={common.onBlur} />
+            <ComboboxContent><ComboboxEmpty className="p-3 text-sm text-muted-foreground">No time zones found.</ComboboxEmpty><ComboboxList>{(zone: string) => <ComboboxItem key={zone} value={zone} className="pointer-coarse:min-h-11">{zone}</ComboboxItem>}</ComboboxList></ComboboxContent>
+          </Combobox>
+        ) : field.type === "time" && section === "business" ? (
+          <Select value={common.value} onValueChange={(value) => common.onChange({ target: { value } })} disabled={state.saving || readOnly}>
+            <SelectTrigger id={id} aria-label={`${field.label}, ${common.value}`} aria-invalid={Boolean(error)} aria-describedby={describedBy} onBlur={common.onBlur} className="w-full font-normal tabular-nums"><SelectValue /></SelectTrigger>
+            <SelectContent>{Array.from(new Set([common.value, ...Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, "0")}:${index % 2 ? "30" : "00"}`)].filter(Boolean))).sort().map((time) => <SelectItem key={time} value={time}>{time}</SelectItem>)}</SelectContent>
+          </Select>
         ) : field.type === "time" ? (
           <TimePicker
             id={id}
@@ -347,7 +375,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
             aria-describedby={describedBy}
             disabled={state.saving || readOnly}
             variant={section === "business" ? "compact" : "default"}
-            allowEmpty
+            allowEmpty={!field.required}
           />
         ) : (
           <Input
@@ -373,10 +401,10 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
   ];
 
   return (
-    <Panel title={config.title} description={config.description} grouped={section === "business"}>
-      <form onSubmit={submit} noValidate className={cn("grid gap-5", dirty && !readOnly && "pb-20")}>
+    <Panel title={config.title} description={config.description} grouped>
+      <form onSubmit={submit} noValidate className={cn("grid gap-5", (dirty || state.saved) && !readOnly && "pb-20")}>
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
-        <fieldset disabled={readOnly} className={cn("grid min-w-0 gap-5", section !== "business" && "sm:grid-cols-2")}>
+        <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
           {section === "business" ? businessGroups.map((group) => (
             <Card key={group.title} className="grid gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
               <header>
@@ -385,7 +413,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
               </header>
               <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
-          )) : fields.map(renderField)}
+          )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
         </fieldset>
 
         {state.error ? (
@@ -394,31 +422,19 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
           </Alert>
         ) : null}
 
-        <div className={cn("flex flex-wrap items-center gap-3", dirty && !readOnly ? "sticky bottom-[var(--admin-tab-bar,0px)] z-10 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur" : "px-1")}>
-          {readOnly || !dirty ? null : (
-            <Button type="submit" disabled={state.saving || !dirty}>
-              {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
-              Save
-            </Button>
-          )}
-          <span role="status" className="text-sm text-muted-foreground">
-            {state.saved ? (
-              <span className={cn("inline-flex items-center gap-1", TONES.success.text)}>
-                <Check aria-hidden className="size-4" />
-                Saved
-              </span>
-            ) : settings.updatedAt ? (
-              `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}`
-            ) : (
-              "Using built-in defaults"
-            )}
-          </span>
-        </div>
+        {!readOnly && (dirty || state.saved) ? <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur">
+          <span role="status" className="mr-auto text-sm text-muted-foreground">{state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" />Saved</span> : "Unsaved changes"}</span>
+          {dirty ? <>
+            <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setValues(savedValues); setTouched(new Set()); setSubmitted(false); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button>
+            <Button type="submit" disabled={state.saving}>{state.saving ? <Spinner label="Saving" className="text-current" /> : null}Save</Button>
+          </> : null}
+        </div> : null}
       </form>
       {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
-      <div className="mt-4">
+      <Card className="mt-4 px-5 py-3">
+        <p className="text-[13px] text-muted-foreground">{settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : "Not saved yet · showing built-in defaults"}</p>
         <HistoryDisclosure>
-          {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or undo your changes first.</p> : null}
+          {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or discard your changes first.</p> : null}
           <RecordHistoryPanel
             entityType="settings"
             entityId="default"
@@ -428,7 +444,7 @@ function SettingsForm({ section, settings, readOnly = false }: { section: Sectio
             disabled={state.saving || dirty || settings.revision > revision}
           />
         </HistoryDisclosure>
-      </div>
+      </Card>
     </Panel>
   );
 }
@@ -522,8 +538,9 @@ function Panel({ title, description, children, grouped = false }: { title: strin
       <header className={cn(grouped ? "px-1 pt-1" : "border-b border-border px-5 py-4")}>
         <h2 className={cn("flex items-center gap-2 text-foreground", grouped ? "font-serif text-3xl" : "text-base font-semibold")}>
           {title}
-          <InfoTip label={`About ${title.toLowerCase()}`}>{description}</InfoTip>
+          {!grouped ? <InfoTip label={`About ${title.toLowerCase()}`}>{description}</InfoTip> : null}
         </h2>
+        {grouped ? <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{description}</p> : null}
       </header>
       <div className={cn(!grouped && "p-5")}>{children}</div>
     </Surface>

@@ -6,7 +6,7 @@ import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/lib/staffTypes";
 import { Check, UserPlus } from "lucide-react";
-import { useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { staffDate } from "@/lib/staff-time";
@@ -40,11 +42,15 @@ const DESK_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: "manager", label: ROLE_LABELS.manager },
   { value: "cashier", label: ROLE_LABELS.cashier },
 ];
-export const MARKETING_ROLE_LABELS: Record<MarketingRole, string> = { manager: "Lead", marketer: "Marketer", finance: "Finance", viewer: "Viewer" };
+export const MARKETING_ROLE_LABELS: Record<MarketingRole, string> = { manager: "Lead", marketer: "Editor", finance: "Finance", viewer: "Viewer" };
 const MARKETING_OPTIONS = (Object.keys(MARKETING_ROLE_LABELS) as MarketingRole[]).map((value) => ({ value, label: MARKETING_ROLE_LABELS[value] }));
 
-/** A native select: reliable on iPad and phones, themed for dark mode. */
-const SELECT = "h-10 min-w-0 rounded-lg border border-input bg-background px-3 text-sm text-foreground disabled:opacity-60 dark:[color-scheme:dark] pointer-coarse:min-h-11";
+function RoleSelect<T extends string>({ id, label, value, disabled, onChange, options, empty }: { id: string; label?: string; value: T | ""; disabled: boolean; onChange: (value: T | "") => void; options: { value: T; label: string }[]; empty: string }) {
+  return <Select value={value || "none"} onValueChange={(next) => onChange(next === "none" ? "" : next as T)} disabled={disabled}>
+    <SelectTrigger id={id} aria-label={label} className="min-w-40 font-normal"><SelectValue /></SelectTrigger>
+    <SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}<SelectItem value="none">{empty}</SelectItem></SelectContent>
+  </Select>;
+}
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Where an invited person signs in: /admin asks them to sign in, then to activate the invite. */
@@ -67,12 +73,13 @@ async function copyText(text: string) {
 }
 
 /** Settings › Team: everyone with a Desk or Marketing role, plus what cashiers may do without a manager. */
-export function TeamSettings() {
+export function TeamSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
   const people = useQuery(api.staffAccess.listPeople, {});
   return (
     <>
+      <header className="px-1 pt-1"><h2 className="font-serif text-3xl">Team</h2></header>
       <PeoplePanel people={people} />
-      <CashierRulesPanel hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
+      <CashierRulesPanel onDirtyChange={onDirtyChange} hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
     </>
   );
 }
@@ -80,14 +87,14 @@ export function TeamSettings() {
 function Section({ title, tip, action, children, label }: { title: string; tip: ReactNode; action?: ReactNode; children: ReactNode; label: string }) {
   return (
     <Card role="region" aria-label={label}>
-      <header className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h2 className="flex items-center gap-1.5 text-base font-semibold text-foreground">
+      <header className="flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5 sm:pt-5">
+        <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
           {title}
           <InfoTip label={`About ${title.toLowerCase()}`}>{tip}</InfoTip>
         </h2>
         <div className="ml-auto flex items-center gap-2">{action}</div>
       </header>
-      <div className="p-4">{children}</div>
+      <div className="p-4 pt-3 sm:p-5">{children}</div>
     </Card>
   );
 }
@@ -95,7 +102,7 @@ function Section({ title, tip, action, children, label }: { title: string; tip: 
 const ROLES_TIP = (
   <span className="grid gap-1 text-left">
     <span><strong>Desk.</strong> Owner: everything. Manager: the desk and approvals. Cashier: Checkout, within the rules below.</span>
-    <span><strong>Marketing.</strong> Lead: draft, publish, spend and partners. Marketer: drafts. Finance: spend and credits. Viewer: read only.</span>
+    <span><strong>Marketing.</strong> Lead: draft, publish, spend and partners. Editor: drafts. Finance: spend and credits. Viewer: read only.</span>
   </span>
 );
 
@@ -106,7 +113,7 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
 
   async function save(email: string, task: () => Promise<unknown>, done: string) {
     if (busy) return false;
@@ -114,10 +121,10 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
     setMessage(null);
     try {
       await task();
-      setMessage({ text: done });
+      setMessage({ text: done, email });
       return true;
     } catch (err) {
-      setMessage({ text: errorText(err, "Couldn’t save. Try again."), error: true });
+      setMessage({ text: errorText(err, "Couldn’t save. Try again."), error: true, email });
       return false;
     } finally {
       setBusy(null);
@@ -176,7 +183,7 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
           }}
         />
       ) : null}
-      {message ? (
+      {message && !people?.some((person) => person.email === message.email) ? (
         <p role={message.error ? "alert" : "status"} className={cn("mb-3 text-sm", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p>
       ) : null}
       {people === undefined ? (
@@ -188,6 +195,7 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
               key={`${person.email}:${person.staffGrant?.role ?? ""}:${person.marketingGrant?.role ?? ""}`}
               person={person}
               busy={busy !== null}
+              message={message?.email === person.email ? message : null}
               onDesk={(role) => void setDesk(person, role)}
               onMarketing={(role) => void setMarketing(person, role)}
               onRenew={() => {
@@ -209,8 +217,8 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
                 const link = staffPending ? staffSignInLink() : marketingSignInLink();
                 setMessage(
                   (await copyText(link))
-                    ? { text: `Sign-in link copied. ${personLabel(person.email)} signs in there with ${person.email} to activate the invite.` }
-                    : { text: `Couldn’t copy. Send ${personLabel(person.email)} this sign-in link: ${link}`, error: true },
+                    ? { email: person.email, text: `Sign-in link copied. ${personLabel(person.email)} signs in there with ${person.email} to activate the invite.` }
+                    : { email: person.email, text: `Couldn’t copy. Send ${personLabel(person.email)} this sign-in link: ${link}`, error: true },
                 );
               }}
             />
@@ -253,17 +261,11 @@ function InviteForm({ busy, onInvite, onCancel }: {
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-desk`}>Desk</Label>
-        <select id={`${id}-desk`} className={SELECT} value={desk} disabled={busy} onChange={(e) => setDesk(e.target.value as StaffRole | "")}>
-          {DESK_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-          <option value="">No desk access</option>
-        </select>
+        <RoleSelect id={`${id}-desk`} value={desk} disabled={busy} onChange={setDesk} options={DESK_OPTIONS} empty="No desk access" />
       </div>
       <div className="grid gap-1.5">
         <Label htmlFor={`${id}-marketing`}>Marketing</Label>
-        <select id={`${id}-marketing`} className={SELECT} value={marketing} disabled={busy} onChange={(e) => setMarketing(e.target.value as MarketingRole | "")}>
-          <option value="">No Marketing access</option>
-          {MARKETING_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-        </select>
+        <RoleSelect id={`${id}-marketing`} value={marketing} disabled={busy} onChange={setMarketing} options={MARKETING_OPTIONS} empty="No Marketing access" />
       </div>
       <div className="flex gap-2 sm:justify-end">
         <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
@@ -278,7 +280,7 @@ type Grant = NonNullable<Person["staffGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
-  return grant.expiresAt ? `${prefix}Invited · ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
+  return grant.expiresAt ? `${prefix}Invite expires ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */
@@ -288,9 +290,10 @@ function rolesText(person: Person) {
   return [desk, marketing].filter(Boolean).join(" · ") || "No access";
 }
 
-function PersonRow({ person, busy, onDesk, onMarketing, onRenew, onCopyLink }: {
+function PersonRow({ person, busy, message, onDesk, onMarketing, onRenew, onCopyLink }: {
   person: Person;
   busy: boolean;
+  message: { text: string; error?: boolean } | null;
   onDesk: (role: StaffRole | null) => void;
   onMarketing: (role: MarketingRole | null) => void;
   onRenew: () => void;
@@ -312,59 +315,40 @@ function PersonRow({ person, busy, onDesk, onMarketing, onRenew, onCopyLink }: {
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5">
         <div className="min-w-0">
           <p className="text-[15px] font-medium text-foreground">{name}</p>
-          <p className="text-[13px] break-all text-muted-foreground">{person.email}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-[13px] break-all text-muted-foreground">{person.email}</p>{states.map((state) => <Badge key={state} className={cn("rounded-full text-xs font-medium", TONES.warning.bg, TONES.warning.text, TONES.warning.border)}>{state}</Badge>)}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 max-sm:col-span-2">
-          <Badge variant="muted" className="mr-auto max-w-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
-          {owner ? null : (
+          <Badge variant="muted" className="mr-auto max-w-full rounded-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
+          {owner ? <span aria-hidden className="w-[7.25rem]" /> : (
             <div className="flex shrink-0 items-center gap-1">
               {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
               {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
               <Button size="sm" variant="outline" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
                 Change
               </Button>
-              <MoreMenu
+              {linkWorks ? <MoreMenu
                 label={`More for ${name}`}
                 disabled={busy}
                 items={[
                   { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
                   { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
                 ]}
-              />
+              /> : <span aria-hidden className="size-11" />}
             </div>
           )}
         </div>
-        {states.length ? <div className="col-span-2 flex flex-wrap gap-1.5">{states.map((state) => <Badge key={state} className={cn("rounded-full text-xs font-medium", TONES.warning.bg, TONES.warning.text, TONES.warning.border)}>{state}</Badge>)}</div> : null}
+
       </div>
+      {message ? <p role={message.error ? "alert" : "status"} className={cn("text-[13px]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
       {changing && !owner ? (
         <div id={`${id}-roles`} className="flex flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
           <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
-            <select
-              id={`${id}-desk`}
-              aria-label={`Desk role for ${name}`}
-              className={SELECT}
-              value={grant?.role ?? ""}
-              disabled={busy}
-              onChange={(e) => onDesk((e.target.value || null) as StaffRole | null)}
-            >
-              {DESK_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-              <option value="">None</option>
-            </select>
+            <RoleSelect id={`${id}-desk`} label={`Desk role for ${name}`} value={(grant?.role ?? "") as StaffRole | ""} disabled={busy} onChange={(value) => onDesk(value || null)} options={DESK_OPTIONS} empty="None" />
           </div>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
-            <select
-              id={`${id}-marketing`}
-              aria-label={`Marketing role for ${name}`}
-              className={SELECT}
-              value={marketing?.role ?? ""}
-              disabled={busy}
-              onChange={(e) => onMarketing((e.target.value || null) as MarketingRole | null)}
-            >
-              {MARKETING_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-              <option value="">None</option>
-            </select>
+            <RoleSelect id={`${id}-marketing`} label={`Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => onMarketing(value || null)} options={MARKETING_OPTIONS} empty="None" />
           </div>
         </div>
       ) : null}
@@ -386,7 +370,7 @@ type Draft = { limit: string } & Record<RuleKey, Permission>;
 const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
 const sameDraft = (a: Draft, b: Draft) => Number(a.limit) === Number(b.limit) && a.limit.trim() !== "" && RULES.every(({ key }) => a[key] === b[key]);
 
-function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }) {
+function CashierRulesPanel({ hasCashiers, onDirtyChange }: { hasCashiers: boolean | undefined; onDirtyChange?: (dirty: boolean) => void }) {
   const rules = useQuery(api.staffAccess.getCashierRules, {});
   return (
     <Section
@@ -395,35 +379,12 @@ function CashierRulesPanel({ hasCashiers }: { hasCashiers: boolean | undefined }
       tip={<>Cashiers can always sell, take payment and apply valid coupons. Anything that needs a manager becomes a request.</>}
       action={hasCashiers === false ? <Badge variant="muted">No cashiers</Badge> : null}
     >
-      {rules === undefined ? <div className="grid place-items-center py-8"><Spinner label="Loading cashier rules" /></div> : <RulesForm rules={rules} />}
+      {rules === undefined ? <div className="grid place-items-center py-8"><Spinner label="Loading cashier rules" /></div> : <RulesForm rules={rules} onDirtyChange={onDirtyChange} />}
     </Section>
   );
 }
 
-/** An on/off switch: on means the action needs a manager. */
-function NeedsManagerSwitch({ id, label, checked, disabled, onChange }: { id: string; label: string; checked: boolean; disabled: boolean; onChange: (checked: boolean) => void }) {
-  return (
-    <button
-      id={id}
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={`${label} needs manager`}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
-      className={cn(
-        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
-        // A 44px touch target without moving the layout.
-        "after:absolute after:-inset-2 after:content-['']",
-        checked ? "bg-primary" : "bg-muted-foreground/30",
-      )}
-    >
-      <span aria-hidden className={cn("inline-block size-5 rounded-full bg-background shadow transition-transform", checked ? "translate-x-6" : "translate-x-1")} />
-    </button>
-  );
-}
-
-function RulesForm({ rules }: { rules: CashierRules }) {
+function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChange?: (dirty: boolean) => void }) {
   const id = useId();
   const update = useMutation(api.staffAccess.updateCashierRules);
   const [revision, setRevision] = useState(rules.revision);
@@ -443,6 +404,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
   }
   const problem = limitProblem(draft.limit);
   const dirty = !sameDraft(draft, base);
+  useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
   const set = (patch: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...patch }));
     setState((current) => ({ ...current, saved: false, notice: "" }));
@@ -494,17 +456,13 @@ function RulesForm({ rules }: { rules: CashierRules }) {
         </span>
         {problem ? <p id={`${id}-limit-error`} className="w-full text-right text-xs text-destructive">{problem}</p> : null}
       </div>
-      <p aria-hidden className="pt-3 pb-1 text-right text-xs font-medium text-muted-foreground">Needs manager</p>
+      <p className="pt-3 pb-1 text-xs text-muted-foreground">Who can do each action without asking for approval</p>
       {RULES.map(({ key, label }) => (
         <div key={key} className="flex items-center justify-between gap-3 border-b border-border py-2.5">
           <Label htmlFor={`${id}-${key}`}>{label}</Label>
-          <NeedsManagerSwitch
-            id={`${id}-${key}`}
-            label={label}
-            checked={draft[key] === "manager"}
-            disabled={state.saving}
-            onChange={(on) => set({ [key]: on ? "manager" : "cashier" } as Partial<Draft>)}
-          />
+          <ToggleGroup id={`${id}-${key}`} variant="segmented" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
+            <ToggleGroupItem value="cashier">Cashier</ToggleGroupItem><ToggleGroupItem value="manager">Manager</ToggleGroupItem>
+          </ToggleGroup>
         </div>
       ))}
       {state.error ? <p role="alert" className="pt-2 text-sm text-destructive">{state.error}</p> : null}
@@ -514,6 +472,7 @@ function RulesForm({ rules }: { rules: CashierRules }) {
       {dirty ? (
         <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 mt-3 rounded-xl flex flex-wrap items-center justify-end gap-3 border border-border bg-card/95 px-4 py-3 backdrop-blur" data-testid="rules-save-bar">
           <span className="mr-auto text-[13px] text-muted-foreground">Unsaved changes</span>
+          <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setDraft(base); setState({ saving: false, saved: false, error: "", notice: "" }); }}>Discard</Button>
           <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty}>
             {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
             Save

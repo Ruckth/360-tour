@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -368,7 +369,8 @@ function CouponBuilder({
     "aria-describedby": `${id}-${key}-error ${id}-${key}-hint`,
   });
   const err = (key: keyof CouponFormErrors) => <FieldError id={`${id}-${key}-error`}>{shown(key)}</FieldError>;
-  const disabled = archived || !canEdit;
+  const disabled = archived || !canEdit || saving;
+  const hasAside = Number(form.value.replace(/,/g, "")) > 0 || Boolean(detail);
 
   const spinner = saving ? <Spinner label="Saving" className="text-current" /> : null;
   // One primary action: Save & publish for a new coupon, QR card for a live one with nothing to save.
@@ -376,11 +378,12 @@ function CouponBuilder({
     !detail ? (
       !canEdit ? null : canPublish ? (
         <>
+          <Button type="button" size="sm" variant="outline" className="max-sm:hidden" disabled={saving} onClick={() => void save("save")}>Save as draft</Button>
           <Button type="button" size="sm" disabled={saving} onClick={() => void save("publish")}>
             {spinner}
             Save &amp; publish
           </Button>
-          <MoreMenu label="More save options" disabled={saving} items={[{ label: "Save as draft", onSelect: () => void save("save") }]} />
+          <MoreMenu className="sm:hidden" label="More save options" disabled={saving} items={[{ label: "Save as draft", onSelect: () => void save("save") }]} />
         </>
       ) : (
         <Button type="submit" form={`${id}-form`} size="sm" disabled={saving}>
@@ -406,7 +409,7 @@ function CouponBuilder({
     );
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6" data-coupon-editor="">
+    <div className={cn("mx-auto w-full min-w-0 px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6", hasAside ? "max-w-7xl" : "max-w-3xl")} data-coupon-editor="">
       <ButtonLink href={listHref} variant="ghost" size="sm" className="-ml-2" onClick={(event) => void leave(event)}>
         <ArrowLeft aria-hidden className="size-4" />
         Coupons
@@ -434,7 +437,7 @@ function CouponBuilder({
         </Callout>
       ) : null}
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className={cn("mt-4 grid items-start gap-4", hasAside && "lg:grid-cols-[minmax(0,1fr)_22rem]")}>
         <form
           id={`${id}-form`}
           noValidate
@@ -447,7 +450,7 @@ function CouponBuilder({
           <Card className="p-5 sm:p-6">
           <fieldset disabled={disabled} className="grid min-w-0 gap-6">
             <legend className="sr-only">Coupon</legend>
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,12rem)] sm:items-start">
+            <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
               <div className="grid content-start gap-2">
                 <Label htmlFor={`${id}-code`}>Code</Label>
                 {codeLocked ? (
@@ -465,7 +468,7 @@ function CouponBuilder({
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
-                    className="font-mono font-semibold tracking-wide"
+                    className="font-mono font-semibold tracking-wide placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
                   />
                 )}
                 {codeLocked ? (
@@ -478,18 +481,23 @@ function CouponBuilder({
               </div>
               <div className="grid content-start gap-2">
                 <Label htmlFor={`${id}-value`}>Discount</Label>
+                <div className="flex items-center gap-2">
                 <Input
                   {...field("value")}
                   inputMode="decimal"
                   autoComplete="off"
-                  placeholder="20% or 500"
+                  placeholder={form.kind === "percent" ? "20%" : "฿500"}
                   value={discountText}
                   onChange={(event) => {
                     setDiscountText(event.target.value);
-                    setForm((current) => ({ ...current, ...discountFromText(event.target.value, current.kind) }));
+                    setForm((current) => ({ ...current, ...discountFromText(current.kind === "percent" && event.target.value.trim() && !/[%฿]/.test(event.target.value) ? `${event.target.value}%` : event.target.value, current.kind) }));
                   }}
-                  className="money font-semibold"
+                  className="money min-w-0 font-semibold placeholder:font-normal placeholder:text-muted-foreground"
                 />
+                <ToggleGroup variant="segmented" value={form.kind} onValueChange={(kind: CouponForm["kind"]) => { set("kind", kind); setDiscountText(kind === "percent" && form.value ? `${form.value}%` : form.value); }} aria-label="Discount unit" className="shrink-0">
+                  <ToggleGroupItem value="percent" aria-label="% percent">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="฿ baht">฿</ToggleGroupItem>
+                </ToggleGroup>
+                </div>
                 {shown("value") ? err("value") : discountEcho(form, properties) ? (
                   <FieldHint id={`${id}-value-hint`}>{discountEcho(form, properties)}</FieldHint>
                 ) : null}
@@ -511,16 +519,9 @@ function CouponBuilder({
             {form.scope !== "services" ? (
               <fieldset className="-mt-2 grid gap-3" aria-describedby={`${id}-villas-error`}>
                 <legend className="sr-only">Villas</legend>
-                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                  <label className="flex min-h-10 items-center gap-2">
-                    <input type="radio" name={`${id}-all-villas`} checked={form.allVillas} onChange={() => set("allVillas", true)} className="size-4 accent-foreground" />
-                    All villas
-                  </label>
-                  <label className="flex min-h-10 items-center gap-2">
-                    <input type="radio" name={`${id}-all-villas`} checked={!form.allVillas} onChange={() => set("allVillas", false)} className="size-4 accent-foreground" />
-                    Choose villas
-                  </label>
-                </div>
+                <ToggleGroup variant="segmented" value={form.allVillas ? "all" : "choose"} onValueChange={(value) => set("allVillas", value === "all")} aria-label="Villas" className="w-full sm:w-80">
+                  <ToggleGroupItem value="all">All villas</ToggleGroupItem><ToggleGroupItem value="choose">Choose villas</ToggleGroupItem>
+                </ToggleGroup>
                 {!form.allVillas ? (
                   <div id={`${id}-villas`} tabIndex={-1} className="grid gap-2 outline-none sm:grid-cols-2 xl:grid-cols-3">
                     {properties.map((property) => (
@@ -682,7 +683,7 @@ function CouponBuilder({
           </Card>
         </form>
 
-        <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
+        {hasAside ? <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
           {Number(form.value.replace(/,/g, "")) > 0 ? <Card role="region" aria-labelledby={`${id}-summary`}>
             <header className="flex items-center gap-2 border-b border-border px-4 py-3">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
@@ -816,12 +817,12 @@ function CouponBuilder({
           ) : null}
 
           {detail && history ? <Card className="px-4 [&>details]:border-t-0">{history(detail._id)}</Card> : null}
-        </aside>
+        </aside> : null}
       </div>
 
       <div data-admin-bottom-bar="sm" className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          <span className={cn("block truncate text-foreground", code ? "font-mono text-sm font-semibold" : "font-serif text-lg")}>{code || "New coupon"}</span>
+          <span className={cn("block truncate text-foreground", code ? "font-mono text-sm font-semibold" : "text-[13px]")}>{code || "Not saved"}</span>
           {saveHint ? <span aria-hidden>{saveHint}</span> : null}
         </p>
         {headerActions()}

@@ -89,11 +89,11 @@ export function DashboardChart({ p }: { p: Prepared }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup value={metric} onValueChange={setMetric} aria-label="Measure" className="p-[3px]">
-            <ToggleGroupItem value="net" className="py-1.5">
+          <ToggleGroup variant="segmented" value={metric} onValueChange={setMetric} aria-label="Measure" className="p-[3px]">
+            <ToggleGroupItem value="net" className="whitespace-nowrap py-1.5">
               {p.cash ? "Collected" : "Net collected"}
             </ToggleGroupItem>
-            <ToggleGroupItem value="paid" className="py-1.5">
+            <ToggleGroupItem value="paid" className="whitespace-nowrap py-1.5">
               {p.cash ? "First paid" : "Paid bookings"}
             </ToggleGroupItem>
           </ToggleGroup>
@@ -103,6 +103,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
           </Button>
         </div>
       </header>
+      <p className="px-4 pt-3 text-xs text-muted-foreground">Tap a source to hide or show it</p>
       <div role="group" aria-label="Series (select to hide or show)" className="flex flex-wrap gap-1 px-3 pt-3">
         {data.series.map((s) => {
           const on = !hidden.has(s.key);
@@ -119,7 +120,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
                   return next;
                 })
               }
-              className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[pressed=false]:text-muted-foreground pointer-coarse:min-h-11"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-transparent aria-[pressed=true]:border-border px-2 text-xs font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[pressed=false]:text-muted-foreground pointer-coarse:min-h-11"
             >
               <span aria-hidden className={cn("size-2.5 rounded-sm border", on ? "border-transparent" : "border-muted-foreground bg-transparent")} style={on ? { background: s.color } : undefined} />
               <span className={cn(!on && "line-through")}>{s.label}</span>
@@ -140,7 +141,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             {/* Plot box: y labels on the left, bars on the right, x labels in the 1.5rem below. */}
             <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
-                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
+                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-xs font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
                   {tick(value, money)}
                 </span>
               ))}
@@ -165,7 +166,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             </div>
             <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
               {data.buckets.map((b, i) => (
-                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] font-sans tabular-nums text-muted-foreground">
+                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-xs font-sans tabular-nums text-muted-foreground">
                   {i % labelEvery === 0 ? (data.interval === "day" ? b.label : b.label.split("–")[0]) : ""}
                 </span>
               ))}

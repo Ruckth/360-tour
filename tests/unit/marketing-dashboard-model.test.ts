@@ -114,7 +114,7 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(nov.roas).toMatchObject({ kind: "value", value: 364_600 / 45_000 });
     expect(row(campaigns.rows, "campaign:c-fb-always").roas).toEqual({ kind: "missing", campaignIds: ["c-fb-always"] });
     expect(campaigns.totals).toHaveLength(1);
-    expect(campaigns.totals[0]).toMatchObject({ name: "Total for facebook", net: 513_200, sessions: 4_410 });
+    expect(campaigns.totals[0]).toMatchObject({ name: "Total for Facebook", net: 513_200, sessions: 4_410 });
 
     const links = buildBreakdown(p, "source", [{ level: "source", id: "facebook" }, { level: "campaign", id: "c-fb-nov" }], BY_NET);
     expect(links.rows.map((r) => [r.name, r.paid, r.net, r.refunded])).toEqual([
@@ -386,7 +386,7 @@ describe("chart", () => {
     const labels = chartData(p, "net").series.map((s) => s.label);
     expect(labels).toHaveLength(6);
     expect(labels.slice(-2)).toEqual(["Other sources", "Not tracked"]);
-    expect(labels[0]).toBe("facebook");
+    expect(labels[0]).toBe("Facebook");
   });
 });
 

@@ -42,9 +42,9 @@ for (const [name, size] of Object.entries(SIZES)) {
   test(`new coupon starts with at most 130 words, 14 controls and 1 sentence (${name})`, async ({ page }) => {
     await open(page, size);
     const counts = await census(page);
-    expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(11);
-    await expect(page.getByRole("radio", { name: "Percent" })).toHaveCount(0);
-    await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "20% or 500");
+    expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
+    await expect(page.getByRole("radio", { name: "% percent" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "20%");
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
     // Dates, minimums and terms are folded away; a quote can't run before the first save.
@@ -140,8 +140,7 @@ test("Save as draft skips the confirm and doesn't publish", async ({ page }) => 
   await open(page, SIZES.ipad);
   await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
   await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
-  await page.getByRole("button", { name: "More save options" }).locator("visible=true").click();
-  await page.getByRole("menuitem", { name: "Save as draft" }).click();
+  await visible(page, "Save as draft").click();
   await expect(page.getByRole("status").filter({ hasText: "Saved SPA20 as a draft" })).toBeVisible();
   await expect(page.getByRole("button", { name: "QR card" })).toHaveCount(0);
   expect(await calls(page)).toEqual(["saveCoupon"]);
@@ -211,11 +210,11 @@ test("the discount reads like checkout's: 20% is a percent with its nightly savi
   await expect(page.getByText("20% = ฿840 a night")).toBeVisible();
   await discount.fill("150%");
   await page.getByRole("textbox", { name: "Code", exact: true }).click();
+  await page.getByRole("radio", { name: "฿ baht" }).click();
   await discount.fill("500");
   await expect(page.getByText("฿500 off", { exact: true })).toBeVisible();
   await expect(page.getByText(/a night$/)).toHaveCount(0);
-  await page.getByRole("button", { name: "More save options" }).locator("visible=true").click();
-  await page.getByRole("menuitem", { name: "Save as draft" }).click();
+  await visible(page, "Save as draft").click();
   await expect(page.getByRole("status").filter({ hasText: "Saved STAY20 as a draft" })).toBeVisible();
   const saved = JSON.parse((await page.locator("body").getAttribute("data-calls"))!).find((call: { name: string }) => call.name === "saveCoupon").args;
   expect(saved.benefit).toEqual({ kind: "fixed", amount: 500 });

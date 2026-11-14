@@ -127,7 +127,7 @@ export function TimePicker({
       {variant === "compact" ? (
         <Popover>
           <PopoverTrigger asChild>
-            <Button ref={trigger} id={props.id} type="button" variant="outline" disabled={props.disabled} aria-label={label} aria-invalid={props["aria-invalid"]} aria-describedby={props["aria-describedby"]} onBlur={props.onBlur} className="h-10 w-full justify-between font-normal">
+            <Button ref={trigger} id={props.id} type="button" variant="outline" disabled={props.disabled} aria-label={`${label}, ${field.value || "not set"}`} aria-invalid={props["aria-invalid"]} aria-describedby={props["aria-describedby"]} onBlur={props.onBlur} className="h-10 w-full justify-between font-normal">
               <Clock aria-hidden className="size-4 text-muted-foreground" />
               <span className="flex-1 text-left font-sans tabular-nums">{field.value || "Choose time"}</span>
               <ChevronDown aria-hidden className="size-4 text-muted-foreground" />

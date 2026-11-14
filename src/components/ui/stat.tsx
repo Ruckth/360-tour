@@ -13,13 +13,13 @@ export function Stat({ label, value, info, hint, hero = false, children, classNa
   children?: ReactNode;
 }) {
   return (
-    <Card data-slot="stat" className={cn("grid min-w-0 content-start gap-2 p-4 sm:p-5", hero && "bg-muted/40", className)} {...props}>
+    <Card data-slot="stat" className={cn("grid min-w-0 content-start gap-2 p-4 sm:p-5", hero && "bg-card ring-1 ring-foreground/10", className)} {...props}>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <span>{label}</span>
         <InfoTip label={`About ${label.toLowerCase()}`}>{info}</InfoTip>
       </div>
       <p className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums tracking-tight", hero && "text-[40px]")}>{value}</p>
-      {hint ? <p className="truncate text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
+      {hint ? <p className="text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
       {children}
     </Card>
   );
