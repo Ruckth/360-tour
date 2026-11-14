@@ -232,7 +232,11 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   await click("Charged by mistake");
   await click("Record refund ฿100"); await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
-  await click("Record refund ฿100"); await tick();
+  const form = document.querySelector('[data-refund-form]')!;
+  expect(form.querySelector<HTMLInputElement>('input[id$="-amount"]')?.disabled).toBe(true);
+  expect(form.querySelector<HTMLInputElement>('input[id$="-reason"]')?.disabled).toBe(true);
+  for (const method of form.querySelectorAll<HTMLButtonElement>('[aria-labelledby$="-method"] button')) expect(method.disabled).toBe(true);
+  await click("Retry same refund"); await tick();
   expect(refund).toHaveBeenCalledTimes(2);
   expect(refund.mock.calls[1][0]).toEqual(refund.mock.calls[0][0]);
   expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10_000, method: "card", reason: "Charged by mistake" });

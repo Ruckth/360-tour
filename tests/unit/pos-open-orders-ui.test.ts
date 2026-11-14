@@ -12,7 +12,7 @@ import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
 
 /*
  * P2b: a cashier's Orders is the open orders list (pos.listOpenOrders), one tap per order, plus a
- * small "Go to order #" for today's receipts. Save & close is gone.
+ * small "Order number shown on the receipt" for today's receipts. Save & close is gone.
  */
 
 const CASHIER: StaffAccessView = {
@@ -71,7 +71,7 @@ describe("open orders list", () => {
     expect(list()).toBeNull();
     expect(document.body.textContent).toContain("No open orders.");
     // The receipt lookup stays, for today's paid orders.
-    expect(document.querySelector('label[for="order-lookup"]')?.textContent).toBe("Go to order #");
+    expect(document.querySelector('label[for="order-lookup"]')?.textContent).toBe("Order number shown on the receipt");
   });
 
   it("lists each order with its customer or booking, item count and due, in the order given, and opens one in a tap", async () => {
@@ -84,7 +84,7 @@ describe("open orders list", () => {
     const items = [...list()!.querySelectorAll("li")];
     expect(items.map((li) => li.querySelector("span span")?.textContent)).toEqual(["Order #1045", "Order #1044 · on screen", "Order #1043"]);
     expect(items[0].textContent).toContain("Somchai Prasert · 3 items");
-    expect(items[0].textContent).toContain("Balance due฿780");
+    expect(items[0].textContent).toContain("฿780");
     expect(items[1].textContent).toContain("CONF-B +1 · 1 item");
     expect(items[1].textContent).toContain("฿26,000");
     expect(items[1].querySelector("button")?.getAttribute("aria-current")).toBe("true");

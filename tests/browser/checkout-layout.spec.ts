@@ -171,7 +171,7 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     await setRootFont(page, ENLARGED);
 
     await sheet.getByRole("button", { name: "Cash", exact: true }).click();
-    await sheet.getByRole("button", { name: "Change payment time" }).click();
+    await sheet.getByRole("button", { name: "Edit payment time" }).click();
     await expectReachable(page, sheet.getByLabel("Money received date · Bangkok time"), "payment business date");
     await expectReachable(page, sheet.getByLabel("Money received time · Bangkok time"), "payment business time");
     const paymentWidth = await sheet.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
@@ -181,9 +181,9 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     const notes = sheet.getByRole("group", { name: "Notes handed over" }).getByRole("button");
     await expect(notes).toHaveCount(3);
     for (const index of [0, 1, 2]) await expectReachable(page, notes.nth(index), `note chip ${index + 1}`);
-    await expectReachable(page, sheet.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash · no change$/ }), "Confirm cash");
+    await expectReachable(page, sheet.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received · no change$/ }), "Confirm cash");
     await expectReachable(page, sheet.getByLabel("Cash received"), "Cash received");
-    const confirm = await sheet.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash/ }).evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
+    const confirm = await sheet.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }).evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
     expect.soft(confirm.scroll, "the money button's label wraps inside it").toBeLessThanOrEqual(confirm.client + 1);
     await shot(page, "pay-cash-text200");
 
@@ -218,7 +218,7 @@ test("phone cash entry and confirmation stay visible above a reduced keyboard vi
   await page.setViewportSize({ width: 360, height: 464 });
   await input.fill("1200");
   // Whatever the total, the money button (Confirm, or Short while too little) stays in view.
-  const confirm = sheet.getByRole("button", { name: /^(Confirm ฿[\d,.]+ cash|Short ฿)/ });
+  const confirm = sheet.getByRole("button", { name: /^Confirm cash/ });
   await expect.poll(async () => {
     const [field, action] = await boxesOf([input, confirm]);
     return field.y >= 0 && field.y + field.height <= action.y && action.y + action.height <= 464.5;
@@ -251,7 +251,7 @@ test.describe("order panel at normal text keeps its compact layout", () => {
         expect(box.x + box.width, `${label} right`).toBeLessThanOrEqual(viewport.width + 0.5);
         tops.push(box.y + box.height / 2);
       }
-      // Four tenders in one row (five with Split on a short landscape screen); header in one row.
+      // Four payment actions share a row; Split is a secondary action beneath.
       const tenderRow = viewport.height < 512 ? 5 : 4;
       for (let i = 1; i < tenderRow; i += 1) expect(tops[i]).toBeCloseTo(tops[0], 0);
       expect(tops[5]).toBeCloseTo(tops[6], 0);
@@ -336,7 +336,7 @@ test.describe("receipt print page size (PM-01)", () => {
     test(`${paper} mm: the browser accepts the page size and prints one page that wide`, async ({ page }) => {
       await open(page, { width: 1280, height: 800 }, "?lines=3");
       await page.getByRole("button", { name: "Cash", exact: true }).click();
-      await page.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash/ }).click();
+      await page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }).click();
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();
       // Paper width is a per-device setting in ⋯; 80 mm until changed.

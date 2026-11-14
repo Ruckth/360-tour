@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -27,7 +27,7 @@ import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTo
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
+import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { discountText, parseDiscount } from "./discount-input";
@@ -107,12 +107,14 @@ export function OrderPanel({
   /** Open on this tender's panel instead of the rows (the phone's "Cash ฿X"). */
   initialPay?: TenderMethod;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
   const access = useStaffAccess();
   const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [couponOpen, setCouponOpen] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const lines = view?.lines ?? [];
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
@@ -142,7 +144,7 @@ export function OrderPanel({
   // height (no more than they get at normal text, even in phone landscape) and the panel itself
   // scrolls, so every action stays reachable; at normal text only the rows scroll.
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
+    <div ref={panelRef} className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-2">
         <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
           {paying ? null : <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
@@ -151,15 +153,23 @@ export function OrderPanel({
           <div className="min-w-0 flex-1">
             <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? "Balance due" : title}</h2>
             {paying ? <p className="mt-1 text-[40px] leading-tight font-semibold font-sans tabular-nums">{formatMoney(totals.due)}</p> : null}
-            <p className={cn("truncate text-xs text-muted-foreground", paying && "sr-only")}>
+            <p className="text-[13px] text-muted-foreground">
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
               {onClose && view?.customer ? ` · ${view.customer.name}` : ""}
             </p>
+            {busy ? <span role="status" className="text-xs text-muted-foreground">Saving…</span> : null}
           </div>
         </div>
         <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
-        {paying ? null : (
+        {paying ? (
+          <Button variant="ghost" size="sm" className="min-h-11 text-sm" disabled={paymentSubmitting} onClick={() => {
+            const active = panelRef.current?.querySelector<HTMLButtonElement>('[aria-label="Take payment by"] [aria-pressed="true"]');
+            const label = active?.getAttribute("aria-label") ?? active?.textContent?.trim();
+            setPaying(null);
+            setTimeout(() => [...(panelRef.current?.querySelectorAll("button") ?? [])].find((button) => getComputedStyle(button).display !== "none" && (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label)?.focus());
+          }}><ArrowLeft aria-hidden className="size-4" /> Order</Button>
+        ) : (
           <>
             {canAddCoupon(view) && !couponOpen ? (
               <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
@@ -196,7 +206,7 @@ export function OrderPanel({
           </>
         )}
         {onClose ? (
-          <Button size="icon" variant="ghost" className="size-9" onClick={onClose} aria-label="Close order">
+          <Button size="icon" variant="ghost" className="size-9" onClick={onClose} disabled={paymentSubmitting} aria-label="Close order">
             <X aria-hidden className="size-4" />
           </Button>
         ) : null}
@@ -204,7 +214,7 @@ export function OrderPanel({
       </div>
 
       {paying && view ? (
-        <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onBack={() => setPaying(null)} onPaid={onPaid} />
+        <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onSubmittingChange={setPaymentSubmitting} onBack={() => setPaying(null)} onPaid={onPaid} />
       ) : (
         <>
           {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
@@ -235,61 +245,61 @@ export function OrderPanel({
           </div>
 
           <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
-            {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} /> : null}
-            <dl className="space-y-1 text-sm">
-              <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
-              {staffDiscount ? <TotalRow label="Discounts" value={formatMoney(-staffDiscount)} /> : null}
-              {totals.coupon ? (
-                <div className="flex justify-between gap-3 text-foreground" data-testid="order-coupon-total">
-                  <dt className="flex min-w-0 items-center gap-1.5">
-                    <TicketPercent aria-hidden className="size-3.5 shrink-0 text-gold-text" />
-                    <span className="[overflow-wrap:anywhere]">{couponLabel(view ?? {})}</span>
-                  </dt>
-                  <dd className="text-right font-medium font-sans tabular-nums">{formatMoney(-totals.coupon)}</dd>
-                </div>
-              ) : null}
-              <TotalRow label="VAT 7% included" value={formatMoney(totals.vat)} muted />
-              {totals.deposit ? <TotalRow label="Paid in advance" value={formatMoney(-totals.deposit)} /> : null}
-            </dl>
-            <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-2 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">Balance due</span>
-              {/* Never wider than the panel: shrinks with it, and wraps under "Balance due" if it must. */}
-              <span className="ml-auto min-w-0 text-right text-[min(2.5rem,11cqi)] leading-none font-semibold lining-nums font-sans tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,10cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
-            </div>
-            {stale ? (
-              <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
-                {stale === 1 ? "A booking row changed" : `${stale} booking rows changed`}. Update {stale === 1 ? "it" : "them"} before taking payment.
-              </p>
-            ) : null}
-            {couponBlocked ? (
-              <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
-            ) : null}
-            {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
-            {/* The request sits on its line, which may be scrolled away: say why the tenders are off. */}
-            {waiting && shownLine ? (
-              <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
-                Waiting for a manager · {lines.find((line) => line._id === shownLine)?.name}
-              </p>
-            ) : null}
-            {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
-            {lines.length && totals.due === 0 ? (
-              <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
-            ) : (
-              // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
-              <>
-              <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Take payment by</p>
-              <div className="flex flex-wrap items-center gap-1">
-                <div className="grid min-w-0 flex-1 basis-[14rem] grid-cols-[repeat(auto-fit,minmax(min(100%,3.5rem),1fr))] rounded-full bg-muted p-1">
-                  {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                    <Button key={method} className={cn("h-11 min-w-0 rounded-full px-1 text-xs max-[350px]:text-[11px]", method === "cash" && "bg-foreground text-background hover:bg-foreground hover:text-background")} variant="ghost" disabled={cannotPay} onClick={() => setPaying(method)}>
-                      {TENDER_LABELS[method].short}
-                    </Button>
-                  ))}
-                </div>
-                <Button variant="ghost" aria-label="Split payment" className="h-11 px-2 text-xs" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
+            {lines.length ? <>
+              {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} /> : null}
+              <dl className="space-y-1 text-sm">
+                <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
+                {staffDiscount ? <TotalRow label="Discounts" value={formatMoney(-staffDiscount)} /> : null}
+                {totals.coupon ? (
+                  <div className="flex justify-between gap-3 text-foreground" data-testid="order-coupon-total">
+                    <dt className="flex min-w-0 items-center gap-1.5">
+                      <TicketPercent aria-hidden className="size-3.5 shrink-0 text-gold-text" />
+                      <span className="[overflow-wrap:anywhere]">{couponLabel(view ?? {})}</span>
+                    </dt>
+                    <dd className="text-right font-medium font-sans tabular-nums">{formatMoney(-totals.coupon)}</dd>
+                  </div>
+                ) : null}
+                <TotalRow label="VAT 7% included" value={formatMoney(totals.vat)} muted />
+                {totals.deposit ? <TotalRow label="Paid in advance" value={formatMoney(-totals.deposit)} /> : null}
+              </dl>
+              <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-2 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Balance due</span>
+                {/* Never wider than the panel: shrinks with it, and wraps under "Balance due" if it must. */}
+                <span className="ml-auto min-w-0 text-right text-[min(2.5rem,11cqi)] leading-none font-semibold lining-nums font-sans tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,10cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
               </div>
-              </>
-            )}
+              {stale ? (
+                <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
+                  {stale === 1 ? "A booking row changed" : `${stale} booking rows changed`}. Update {stale === 1 ? "it" : "them"} before taking payment.
+                </p>
+              ) : null}
+              {couponBlocked ? (
+                <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
+              ) : null}
+              {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
+              {/* The request sits on its line, which may be scrolled away: say why the tenders are off. */}
+              {waiting && shownLine ? (
+                <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
+                  Waiting for a manager · {lines.find((line) => line._id === shownLine)?.name}
+                </p>
+              ) : null}
+              {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
+              {lines.length && totals.due === 0 ? (
+                <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
+              ) : (
+                <>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Pay <span className="font-sans tabular-nums">{formatMoney(totals.due)}</span> by</p>
+                  <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
+                    {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
+                      <Button key={method} className="h-12 min-w-0 rounded-xl px-1 text-sm" variant={method === "cash" ? "default" : "outline"} disabled={cannotPay} onClick={() => setPaying(method)}>
+                        {TENDER_LABELS[method].short}
+                      </Button>
+                    ))}
+                  <Button variant="ghost" aria-label="Split payment" className="hidden h-12 text-sm [@media(max-height:32rem)]:inline-flex" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
+                  </div>
+                  <Button variant="ghost" aria-label="Split payment" className="mt-1 ml-auto flex h-11 px-2 text-sm [@media(max-height:32rem)]:hidden" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
+                </>
+              )}
+            </> : <p className="py-2 text-sm text-muted-foreground">Add an item to take payment.</p>}
           </div>
         </>
       )}
@@ -406,15 +416,15 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
   // Already part of `net`: shown so staff can tell it from a line discount.
   const couponShare = line.couponDiscount ? lineCouponDiscount(line) : 0;
   return (
-    <li className={cn("rounded-lg", open && "bg-muted/40", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
+    <li className={cn("rounded-lg", issue && "bg-amber-50/60 dark:bg-amber-400/5")}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex min-h-14 w-full flex-wrap items-start gap-3 rounded-lg px-3 py-3 text-left hover:bg-muted/40 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring sm:px-4">
         <CheckoutPhoto src={line.imageUrl} kind={line.kind} className="size-11 sm:size-12" />
         {/* With enlarged text the name keeps a readable width and the price wraps below it. */}
         <span className="min-w-24 flex-1">
-          <span className="block text-sm font-semibold [overflow-wrap:anywhere]">
+          <span className="block text-[15px] font-medium [overflow-wrap:anywhere]">
             {line.name}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">{lineSubtitle(line, now)}</span>
+          <span className="block line-clamp-2 text-xs leading-4 text-muted-foreground">{lineSubtitle(line, now)}</span>
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid in advance</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
           {line.stayCoupon ? (
@@ -547,7 +557,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition", on ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}
+      className={cn("rounded-full border px-3 py-1.5 text-xs font-medium transition", on ? "border-foreground bg-foreground text-background" : "border-border hover:bg-muted")}
     >
       {children}
     </button>
@@ -590,7 +600,7 @@ function ScheduleRow({ line, eligible, catalogLoaded, run }: { line: OrderLine; 
         className="flex min-h-12 w-full items-center justify-between gap-3 text-left text-sm hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="text-sm">Schedule</span>
-        <span className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">{scheduleSummary(line, now)}</span>
+        <span className="min-w-0 flex-1 text-right text-xs text-muted-foreground">{scheduleSummary(line, now)}</span>
         <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-90")} />
       </button>
       {open ? (
@@ -724,7 +734,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
                 </div>
               </div>
             ) : (
-              <Button size="sm" variant="ghost" aria-label={`Price ${formatMoney(line.priceOverride?.price ?? line.unitPrice)}`} className="h-11 w-full justify-between px-0 font-normal" onClick={editPrice}>
+              <Button size="sm" variant="ghost" aria-label={`Price ${formatMoney(line.priceOverride?.price ?? line.unitPrice)}`} className="h-12 w-full justify-between px-0 text-sm font-normal" onClick={editPrice}>
                 <span>Price</span><span className="ml-auto font-sans tabular-nums">{formatMoney(line.priceOverride?.price ?? line.unitPrice)}</span><ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </Button>
             )}
@@ -748,7 +758,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
         />
       ) : null}
 
-      <Button size="sm" variant="ghost" className="h-12 w-full justify-center rounded-none text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
+      <Button size="sm" variant="ghost" className="h-12 w-full justify-center rounded-none text-sm text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
       </Button>
     </div>
@@ -774,6 +784,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
+  const applying = useRef(false);
   const root = useRef<HTMLDivElement>(null);
   const lineId = line._id;
 
@@ -797,16 +808,21 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   }
 
   async function apply() {
-    if (!typed || applied || asking) return;
-    await run(async () => {
-      try {
-        return await actions.updateLine({ lineId, discount: typed });
-      } catch (err) {
-        if (!cashier || !needsApproval(err)) throw err;
-        setServerAsk(true);
-        return null;
-      }
-    });
+    if (!typed || applied || asking || applying.current) return;
+    applying.current = true;
+    try {
+      await run(async () => {
+        try {
+          return await actions.updateLine({ lineId, discount: typed });
+        } catch (err) {
+          if (!cashier || !needsApproval(err)) throw err;
+          setServerAsk(true);
+          return null;
+        }
+      });
+    } finally {
+      applying.current = false;
+    }
   }
 
   async function sendRequest() {
@@ -824,12 +840,12 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const status = parsed ? (parsed.ok ? parsed.echo : parsed.error) : "";
   return (
     <div ref={root} className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
-      <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
+      <div className="grid gap-0.5 py-2 text-xs font-medium text-muted-foreground">
         <Label htmlFor={`${id}-discount`} className="text-sm font-normal text-foreground">Discount</Label>
         {/* A cashier's limit in plain sight, so learning it costs no tap. */}
         {cashier ? (
           <span id={`${id}-limit`} data-testid="discount-limit" className="font-normal">
-            · up to {formatPercent(access.cashierRules.discountLimitPercent)}%<span className="sr-only"> without a manager; coupons don&apos;t count</span>
+            Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without approval
           </span>
         ) : null}
       </div>
@@ -841,11 +857,12 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           value={text}
           autoComplete="off"
           enterKeyHint="done"
-          placeholder="15% or 150"
+          placeholder="10% or ฿120"
           aria-describedby={cashier ? `${id}-limit ${id}-echo` : `${id}-echo`}
           aria-invalid={parsed && !parsed.ok ? true : undefined}
           disabled={sending}
           onChange={(e) => change(e.target.value)}
+          onBlur={() => void apply()}
           onKeyDown={(e) => { if (e.key === "Enter") void apply(); }}
         />
         {/* Shown once there is a new discount to apply; over the limit, Send takes its place. */}
@@ -873,7 +890,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
       </p>
       {asking && parsed?.ok ? (
         <div role="group" aria-label="Ask a manager" className="col-span-2 grid gap-2">
-          <ReasonField compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
+          <ReasonField className="[&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background" compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {/* One request at a time per order: a second waits until the first is decided. */}
           <Button className="h-auto min-h-10 w-full whitespace-normal" disabled={!reason.trim() || sending || waiting} onClick={() => void sendRequest()}>

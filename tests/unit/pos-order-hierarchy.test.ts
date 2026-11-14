@@ -80,7 +80,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   const { orderId } = await run(actions.addItem({ item: { kind: "service", serviceId: "fxsvc000001" as Id<"services"> } }));
   await run(actions.addItem({ orderId, item: { kind: "extra", name: "Tea", price: 100 } }));
   await showCheckout(backend, orderId);
-  expect(document.body.textContent).toContain("No booking");
+  expect(document.body.textContent).not.toContain("No booking");
   const massage = read.view!.lines[0];
   const listPrice = massage.unitPrice;
 

@@ -17,8 +17,8 @@ test.describe("cashier checkout", () => {
     await order.getByRole("button", { name: /^Thai massage 60/ }).click();
 
     // The limit sits beside the label, no tap needed; screen readers hear the whole rule.
-    await expect(order.getByTestId("discount-limit")).toHaveText("· up to 10% without a manager; coupons don't count");
-    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveAccessibleDescription(/up to 10% without a manager; coupons don't count/);
+    await expect(order.getByTestId("discount-limit")).toHaveText("Up to 10% without approval");
+    await expect(order.getByRole("textbox", { name: "Discount" })).toHaveAccessibleDescription(/Up to 10% without approval/);
 
     const discount = order.getByRole("textbox", { name: "Discount" });
     const echo = order.getByTestId("discount-echo");
@@ -36,7 +36,7 @@ test.describe("cashier checkout", () => {
     await expect(echo).toHaveText("10% = ฿120");
     await expect(ask).toHaveCount(0);
     await discount.fill("15%%");
-    await expect(echo).toHaveText("Type 15% or 150");
+    await expect(echo).toHaveText("Type 10% or ฿120");
     await expect(order.getByRole("button", { name: /^Apply/ })).toHaveCount(0);
     await discount.fill("15 %");
     await expect(echo).toHaveText("15% = ฿180 · Over your 10% limit");
@@ -90,10 +90,10 @@ test.describe("cashier checkout", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("radio", { name: "Paid" })).toHaveCount(0);
     await expect(dialog.getByRole("list", { name: "Open orders" }).getByRole("button")).toHaveCount(2);
-    await dialog.getByRole("textbox", { name: "Go to order #" }).fill("999");
+    await dialog.getByRole("textbox", { name: "Order number shown on the receipt" }).fill("999");
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
-    await expect(dialog.getByText("Not available.")).toBeVisible();
-    await dialog.getByRole("textbox", { name: "Go to order #" }).fill("1042");
+    await expect(dialog.getByText("Not available. Check the number or pick an open order above.")).toBeVisible();
+    await dialog.getByRole("textbox", { name: "Order number shown on the receipt" }).fill("1042");
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(orderPanel(page).getByTestId("order-panel-title")).toHaveText("Order #1042");

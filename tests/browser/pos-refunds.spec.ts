@@ -189,8 +189,13 @@ test("a retry after a lost answer reuses the same attempt key", async ({ page })
   const form = await refund(page, "Thai massage 60", "300", "Shortened treatment");
   await form.getByRole("button", { name: "Record refund ฿300" }).click();
   await expect(form.getByRole("alert")).toHaveText("Connection lost. Try again.");
-  await form.getByRole("button", { name: "Record refund ฿300" }).click();
+  await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toBeDisabled();
+  await expect(form.getByRole("textbox", { name: "Reason (required)" })).toBeDisabled();
+  for (const method of await form.getByRole("group", { name: "Refund to" }).getByRole("button").all()) await expect(method).toBeDisabled();
+  await form.getByRole("button", { name: "Retry same refund" }).click();
   await expect(note(page, "Refunded ฿300")).toBeVisible();
+  const retryAttempts = await page.evaluate(() => window.fixture.refundAttempts());
+  expect(retryAttempts[1]).toEqual(retryAttempts[0]);
   // Recorded once.
   await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
 

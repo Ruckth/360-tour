@@ -33,7 +33,7 @@ export const tenderConfirmLabel = (method: TenderMethod, amount: number) => `Con
 export function cashConfirmLabel(due: number, received: number) {
   if (received < due) return { ready: false, text: `Short ${formatMoney(round2(due - received))}` };
   const change = round2(received - due);
-  return { ready: true, text: `Confirm ${formatMoney(received)} cash · ${change ? `change ${formatMoney(change)}` : "no change"}` };
+  return { ready: true, text: `Confirm cash · ${formatMoney(received)} received · ${change ? `change ${formatMoney(change)}` : "no change"}` };
 }
 
 /** The first round amount strictly above `due` in steps of `step`. */
@@ -111,7 +111,7 @@ export function receiptSchedule(schedule: ServiceSchedule | undefined) {
   if (day && time) return `${day}, ${time}`;
   if (day) return `${day} · time to be confirmed`;
   if (time) return `${time} · date to be confirmed`;
-  return "To be scheduled";
+  return "Not scheduled";
 }
 
 /** How an order correction is titled in its history. */

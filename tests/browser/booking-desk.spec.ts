@@ -236,7 +236,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       if (size === "phone") await t.tap(page.getByRole("button", { name: /^View order/ }), "View order");
       await expect(page.getByText("Hot stone 60").first()).toBeVisible();
       await t.tap(page.getByRole("button", { name: "Cash", exact: true }), "Cash");
-      await t.tap(page.getByRole("button", { name: /^Confirm ฿[\d,.]+ cash/ }), "Confirm cash");
+      await t.tap(page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }), "Confirm cash");
       await t.tap(page.getByRole("button", { name: "Print", exact: true }), "Print");
       await expect(page.locator("body")).toHaveAttribute("data-printed", "1");
       await expect(page.getByRole("article", { name: "Receipt" })).toContainText("27,500");

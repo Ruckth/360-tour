@@ -130,10 +130,10 @@ export function OrderStrip({
 
   return (
     <div ref={strip} className={cn("flex items-center px-4 pt-3 pb-2 sm:px-6", phone ? "gap-2" : "flex-wrap gap-x-3 gap-y-2")}>
-      <div className={cn("min-w-0", phone ? "flex-1" : "max-w-full")}>
+      <div className={cn("min-w-0", phone ? "flex-1" : "max-w-full", !source && !view?.parentOrder && "lg:hidden")}>
         {/* Wide screens name the order once, in the order panel beside the catalog (shown from lg). */}
         <p className="truncate text-sm font-semibold lg:hidden" data-testid="order-title">{title}</p>
-        <p className="truncate text-xs text-muted-foreground">
+        {source || view?.parentOrder ? <p className="truncate text-xs text-muted-foreground">
           {source ? (
             <>
               <CalendarDays aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
@@ -141,11 +141,9 @@ export function OrderStrip({
               {source.guestName ? ` · Guest: ${source.guestName}` : ""}
               {more ? ` · +${more} more ${more === 1 ? "booking" : "bookings"}` : ""}
             </>
-          ) : (
-            "No booking"
-          )}
+          ) : null}
           {view?.parentOrder ? ` · Follows ${view.parentOrder.title}` : ""}
-        </p>
+        </p> : null}
       </div>
 
       {/* Each button is its dialog's trigger, so closing the dialog puts focus back on it. On a
@@ -165,7 +163,7 @@ export function OrderStrip({
       <Dialog open={panel === "booking"} onOpenChange={(open) => changePanel(open ? "booking" : null)}>
         {phone ? null : (
           <DialogTrigger asChild>
-            <Button variant="ghost" disabled={order?.state === "discarded"}>
+            <Button variant="outline" disabled={order?.state === "discarded"}>
               <Link2 aria-hidden className="size-4" /> Add booking
             </Button>
           </DialogTrigger>
@@ -193,7 +191,7 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>Latest first. A paid order opens its receipt.</DialogDescription>
+              <DialogDescription>{cashier ? "Open orders, newest first. For today's receipts, enter the order number." : "Latest first. A paid order opens its receipt."}</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
@@ -203,15 +201,15 @@ export function OrderStrip({
             label={MORE_LABEL}
             items={[
               { label: "Add booking", disabled: order?.state === "discarded", onSelect: () => changePanel("booking") },
-              { label: "New order", disabled: !order && !canStartNew, onSelect: () => onOrderChange(null) },
+              { label: "New order", hidden: !order && !canStartNew, onSelect: () => onOrderChange(null) },
             ]}
           />
-        ) : (
-          <Button variant="outline" onClick={() => onOrderChange(null)} disabled={!order && !canStartNew} aria-label="New order">
+        ) : order || canStartNew ? (
+          <Button variant="outline" onClick={() => onOrderChange(null)} aria-label="New order">
             <Plus aria-hidden className="size-4" />
             <span>New order</span>
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -607,6 +605,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               type="button"
               onClick={() => onOpen(row._id)}
               aria-current={row._id === currentId ? "true" : undefined}
+              aria-label={`${row.title}, ${formatMoney(row.due, row.currency)} due${row._id === currentId ? ", on screen" : ""}`}
               className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <span className="min-w-0">
@@ -622,8 +621,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
-                  <span className="block text-xs text-muted-foreground">Balance due</span>
-                  <span className="block text-sm font-semibold font-sans tabular-nums">{formatMoney(row.due, row.currency)}</span>
+                  <span className="block text-[15px] font-semibold font-sans tabular-nums">{formatMoney(row.due, row.currency)}</span>
                 </span>
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
@@ -645,6 +643,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
 function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   const [text, setText] = useState("");
   const [number, setNumber] = useState<number | null>(null);
+  const [error, setError] = useState("");
   const found = useCheckoutBackend().useFindOrder(number);
   const opened = useRef<number | null>(null);
   useEffect(() => {
@@ -654,19 +653,26 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   }, [number, found, onOpen]);
   function submit(event: FormEvent) {
     event.preventDefault();
-    const value = Number(text.replace(/\D/g, ""));
+    const value = Number(text.trim());
+    if (!/^\d+$/.test(text.trim()) || !Number.isSafeInteger(value) || value <= 0) {
+      setError("Enter a positive whole order number.");
+      setNumber(null);
+      return;
+    }
+    setError("");
     opened.current = null;
     setNumber(Number.isSafeInteger(value) && value > 0 ? value : null);
   }
   return (
     <form onSubmit={submit} className="grid gap-2 border-t border-border pt-3">
-      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Go to order #</Label>
+      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number shown on the receipt</Label>
       <div className="flex gap-2">
-        <Input id="order-lookup" inputMode="numeric" value={text} onChange={(e) => setText(e.target.value)} placeholder="e.g. 1043" />
-        <Button type="submit" variant="outline" disabled={!text.replace(/\D/g, "")}>Go</Button>
+        <Input id="order-lookup" inputMode="numeric" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043" />
+        <Button type="submit" variant="outline" disabled={!text.trim()}>Go</Button>
       </div>
+      {error ? <p id="order-lookup-error" role="alert" className="text-sm text-destructive">{error}</p> : null}
       {number !== null && found === undefined ? <Spinner label="Finding order" /> : null}
-      {number !== null && found === null ? <p role="status" className="text-sm text-muted-foreground">Not available.</p> : null}
+      {number !== null && found === null ? <p role="status" className="text-sm text-muted-foreground">Not available. Check the number or pick an open order above.</p> : null}
     </form>
   );
 }
@@ -732,7 +738,7 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
-                  <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Balance due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
+                  {row.state === "unpaid" ? null : <span className="block text-xs text-muted-foreground">{row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>}
                   <span className={cn("block text-sm font-semibold font-sans tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>

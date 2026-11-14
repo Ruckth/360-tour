@@ -220,16 +220,16 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
       <span className="relative shrink-0">
         <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
         {count ? (
-          <span className="absolute -top-1.5 -left-1.5 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
+          <span className="absolute top-1 left-1 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
             {count}<span className="sr-only"> on the order</span>
           </span>
         ) : null}
       </span>
       <span className="flex min-w-[min(100%,8rem)] flex-1 flex-col py-0.5">
-        <span className="line-clamp-2 text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{tile.name}</span>
+        <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
         <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
         <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
-          <span className="text-sm font-semibold font-sans tabular-nums">{price}</span>
+          <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
           {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
           <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
             <Plus aria-hidden className="size-4" />

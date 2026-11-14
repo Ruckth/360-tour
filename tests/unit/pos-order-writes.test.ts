@@ -75,7 +75,7 @@ describe("checkout order screen", () => {
     const backend = createFixtureBackend();
     await showPage(backend);
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
-    expect(document.body.textContent).toContain("No booking");
+    expect(document.body.textContent).not.toContain("No booking");
     expect(byLabel("Add customer")).toBeTruthy();
     await act(async () => buttonStarting("Thai massage 60").click());
     await settle();
@@ -174,7 +174,7 @@ describe("checkout order screen", () => {
     const sale = shown.orderId!;
     expect(tile().textContent).toContain("12 on the order");
     expect(header()).toContain("Order #1043");
-    expect(header()).toContain("No booking");
+    expect(header()).not.toContain("No booking");
 
     // A separate payer, then Add booking → Anna → her stay (it already has Order #1041, empty).
     await act(async () => byLabel("Add customer").click());
@@ -309,10 +309,10 @@ describe("checkout order screen", () => {
     await step;
     await showOrder(backend, orderId);
     await act(async () => button("Cash").click());
-    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10000000");
+    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10,000,000");
     // No note chip above the till's limit.
     expect(document.querySelector('[aria-label="Notes handed over"]')).toBeNull();
-    expect(button("Confirm ฿10,000,000 cash · no change").disabled).toBe(false);
+    expect(button("Confirm cash · ฿10,000,000 received · no change").disabled).toBe(false);
   });
 
   it("shows no struck-out list price on an undiscounted row with satang (K6-02)", async () => {

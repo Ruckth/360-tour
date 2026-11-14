@@ -86,7 +86,7 @@ test('a service row takes an optional date and time, each cleared on its own, an
 test('a paid unscheduled service is linked to its appointment from the receipt, which stays as issued', async ({ page }) => {
   await open(page, '?scenario=unscheduled-paid');
   const receipt = page.locator('.pos-receipt');
-  await expect(receipt).toContainText('To be scheduled');
+  await expect(receipt).toContainText('Not scheduled');
   // What prints: screen-only controls (a line's Refund, which a linked row loses) are left out.
   const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
   const issued = await printed();

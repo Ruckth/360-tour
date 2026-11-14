@@ -113,14 +113,14 @@ export function useApprovalDecision(request: Pick<ApprovalRequest, "_id" | "payl
 }
 
 /** Decline and Approve, with a spinner on the one running. */
-export function ApprovalDecisionButtons({ busy, onDecide, size, className }: { busy: "approve" | "decline" | null; onDecide: (choice: "approve" | "decline") => void; size?: "sm"; className?: string }) {
+export function ApprovalDecisionButtons({ busy, disabled = false, onDecide, size, className }: { busy: "approve" | "decline" | null; disabled?: boolean; onDecide: (choice: "approve" | "decline") => void; size?: "sm"; className?: string }) {
   return (
     <div className={cn("flex flex-wrap justify-end gap-2", className)}>
-      <Button type="button" size={size} variant="outline" disabled={busy !== null} onClick={() => onDecide("decline")}>
+      <Button type="button" size={size} variant="outline" disabled={disabled || busy !== null} onClick={() => onDecide("decline")}>
         {busy === "decline" ? <Spinner label="Declining" className="text-current" /> : null}
         Decline
       </Button>
-      <Button type="button" size={size} disabled={busy !== null} onClick={() => onDecide("approve")}>
+      <Button type="button" size={size} disabled={disabled || busy !== null} onClick={() => onDecide("approve")}>
         {busy === "approve" ? <Spinner label="Approving" className="text-current" /> : null}
         Approve
       </Button>

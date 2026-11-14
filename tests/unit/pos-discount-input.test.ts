@@ -38,7 +38,7 @@ describe("parseDiscount", () => {
   it("refuses anything ambiguous or out of range instead of guessing", () => {
     const refused = (text: string) => parseDiscount(text, line);
     for (const text of ["15%%", "%15", "-15", "-15%", "15-", "abc", "1,5", "12,34", "1.234", "15.%", ".5", "15 % %", "1 5", "0x10", "1e3"]) {
-      expect(refused(text), text).toEqual({ ok: false, error: "Type 15% or 150" });
+      expect(refused(text), text).toEqual({ ok: false, error: "Type 10% or ฿120" });
     }
     expect(refused("0")).toEqual({ ok: false, error: "Type more than 0" });
     expect(refused("0%")).toEqual({ ok: false, error: "Type more than 0" });

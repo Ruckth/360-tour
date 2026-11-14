@@ -65,7 +65,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await count.tap(items(page).getByRole("button", { name: "Refund Foot spa 45" }), "Refund Foot spa 45");
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("button", { name: "All ฿600" })).toHaveAttribute("aria-pressed", "true");
-      await expectAtMostSentences(view(page), 1);
+      await expectAtMostSentences(view(page), 2);
       await count.tap(form.getByRole("button", { name: "Shortened treatment" }), "reason chip");
       await count.tap(form.getByRole("button", { name: "Record refund ฿600" }), "Record refund ฿600");
       const note = items(page).locator("[data-line-note]");

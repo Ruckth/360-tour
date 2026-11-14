@@ -35,7 +35,7 @@ describe("optional service date and time", () => {
     // Legacy rows keep their own label.
     expect(scheduleLabel(undefined, NOW)).toBeNull();
     expect(receiptSchedule(undefined)).toBeNull();
-    expect(receiptSchedule({})).toBe("To be scheduled");
+    expect(receiptSchedule({})).toBe("Not scheduled");
     expect(receiptSchedule({ date: "2026-11-12" })).toBe("Thu 12 Nov 2026 · time to be confirmed");
     expect(receiptSchedule({ time: "14:30" })).toBe("14:30 · date to be confirmed");
   });

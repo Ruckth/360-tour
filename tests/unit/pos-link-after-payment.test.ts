@@ -53,7 +53,7 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it("pays an unscheduled service, links it from its receipt line to the guest's appointment and unlinks it, leaving the receipt as issued", async () => {
   const { backend } = await paidMassage();
   const issued = printed();
-  expect(issued).toContain("To be scheduled");
+  expect(issued).toContain("Not scheduled");
   expect(document.querySelector('section[aria-label="After payment"]')).toBeNull();
   // Link sits on the line, inside the paper but screen-only.
   expect(button("Link appointment")?.closest("[data-screen-only]")).toBeTruthy();
