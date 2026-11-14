@@ -20,7 +20,7 @@ describe("admin transcript", () => {
       adminStatus: "open", needsReply: true, inboxReason: "send_failed", aiPaused: true, keepWithStaff: true,
       staffTask: "Check the late checkout", inboxSendError: "Provider unavailable",
     }, { replyWindow: { applies: true, closesAt: closed ? 99 : 60_100, lastGuestMessageAt: 1 } }))).replace(/<!--.*?-->/g, "");
-    for (const fact of ["Needs you", "Reply failed", "AI paused", "Next issue: Staff", "Check the late checkout", "Provider unavailable", "Could not send your reply"]) {
+    for (const fact of ["Needs you", "Reply failed", "AI paused", "Check the late checkout", "Provider unavailable", "Could not send your reply"]) {
       expect(html).toContain(fact);
     }
     expect(html.match(/Needs you/g)).toHaveLength(1);
@@ -33,7 +33,7 @@ describe("admin transcript", () => {
       adminStatus: "resolved", resolutionSource: "ai", aiPaused: true, keepWithStaff: false,
     }))).replace(/<!--.*?-->/g, "");
     expect(html).toContain("Done"); expect(html).toContain("AI answered");
-    expect(html).toContain("AI paused"); expect(html).toContain("Next issue: AI");
+    expect(html).toContain("AI paused"); expect(html).not.toContain("AI on");
     expect(html).not.toContain("Staff is replying");
     expect(html).not.toContain("Staff replying");
   });

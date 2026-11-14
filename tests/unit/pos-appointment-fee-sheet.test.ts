@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { getFunctionName } from 'convex/server';
 import type { Doc, Id } from 'convex/_generated/dataModel';
 import { expect, it, vi } from 'vitest';
+import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { AppointmentSheet } from '@/components/admin/AppointmentSheet';
 const mocks = vi.hoisted(() => ({ fee: vi.fn() }));
 vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
@@ -33,7 +34,7 @@ it('mounts the real fee control beside financials and blocks sheet Close, Escape
     el.dispatchEvent(new Event('input', { bubbles: true }));
   });
   try {
-    await act(async () => root.render(createElement(AppointmentSheet, { appointment, services: [], staffById: new Map(), serviceById: new Map(), onBookAgain: vi.fn(), onClose })));
+    await act(async () => root.render(createElement(ConfirmProvider, null, createElement(AppointmentSheet, { appointment, services: [], staffById: new Map(), serviceById: new Map(), onBookAgain: vi.fn(), onClose }))));
     expect(document.body.textContent).toContain('Appointment financials retained');
     await type('input[id^="fee-amount"]', '500'); await type('textarea[id^="fee-reason"]', 'No attendance');
     await act(async () => button('Add fee to checkout').click());

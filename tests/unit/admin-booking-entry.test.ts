@@ -45,6 +45,13 @@ vi.mock("@/components/booking/BookingDatePicker", () => ({
   ),
 }));
 
+vi.mock("@/components/admin/DeskBookingRangePicker", () => ({
+  DeskBookingRangePicker: ({ checkIn, checkOut, onChange }: { checkIn: string; checkOut: string; onChange: (range: { checkIn: string; checkOut: string }) => void }) => createElement("div", null,
+    createElement("input", { id: "test-check-in", type: "date", value: checkIn, onChange: (event: { target: { value: string } }) => onChange({ checkIn: event.target.value, checkOut }) }),
+    createElement("input", { id: "test-check-out", type: "date", value: checkOut, onChange: (event: { target: { value: string } }) => onChange({ checkIn, checkOut: event.target.value }) }),
+  ),
+}));
+
 const NOW = Date.parse("2026-10-28T03:00:00Z");
 const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 10000, directDiscountPercent: 0, currency: "THB" };
 const oldVilla = { ...villa, _id: "p2", slug: "old-villa", name: "Old Villa", status: "archived" };

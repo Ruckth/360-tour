@@ -1153,7 +1153,7 @@ function EventCalendarDayColumn({
             // min-h keeps 15-min chips readable (Google-style: the block may
             // slightly outgrow its true window); hover raises a squeezed
             // cascade chip above its overlapping neighbors
-            className="absolute z-(--ec-z) min-h-(--ec-event-min-h,1.5rem) px-0.5 hover:z-40"
+            className="absolute z-(--ec-z) min-h-(--ec-event-min-h,1.5rem) rounded-sm bg-card pointer-coarse:min-h-11 px-0.5 hover:z-40"
             style={
               {
                 ...minuteBlockStyle(startMin, endMin, boundsStartMin),
@@ -1166,6 +1166,7 @@ function EventCalendarDayColumn({
             <EventCalendarEvent
               segment={segment}
               className={cn(
+                "bg-[color-mix(in_oklab,var(--ec-event-color)_15%,var(--color-card))]",
                 columnCount > 1 && "ring-background ring-1",
                 // short chips: single centered row, exact-fit line height so
                 // the title never slices mid-glyph
@@ -1308,7 +1309,7 @@ function EventCalendarNowIndicator({
   if (viewConfig.renderNowIndicator) {
     return (
       <div
-        className="pointer-events-none absolute inset-x-0 z-40"
+        className="pointer-events-none absolute inset-x-0 z-0"
         style={{ top: `calc(var(--ec-hour-height) * ${top})` }}
       >
         {viewConfig.renderNowIndicator({ time: now })}
@@ -1321,14 +1322,15 @@ function EventCalendarNowIndicator({
   return (
     <div
       data-slot="event-calendar-now-indicator"
-      className="pointer-events-none absolute inset-x-0 z-40"
+      className="pointer-events-none absolute inset-x-0"
       style={{ top: `calc(var(--ec-hour-height) * ${top})` }}
     >
       {/* hairline across the content columns only (clear of the time gutter) */}
-      <div className="bg-destructive/40 absolute start-(--ec-gutter-width,4.5rem) end-0 h-px" />
-      {/* stronger segment + dot over today's column */}
+      <div className="bg-destructive/40 absolute z-0 start-(--ec-gutter-width,4.5rem) end-0 h-px" />
+      <div className="bg-destructive absolute z-60 start-[calc(var(--ec-gutter-width,4.5rem)-0.5rem)] top-0 size-1.5 -translate-y-1/2 rounded-full" />
+      {/* stronger segment over today’s column */}
       <div
-        className="absolute h-px"
+        className="absolute z-0 h-px"
         style={{
           left: `calc(var(--ec-gutter-width, 4.5rem) + (100% - var(--ec-gutter-width, 4.5rem)) * ${(todayIndex * columnWidthPct) / 100})`,
           width: `calc((100% - var(--ec-gutter-width, 4.5rem)) * ${columnWidthPct / 100})`,
@@ -1338,7 +1340,7 @@ function EventCalendarNowIndicator({
         {/* dot leads the line at today's column-start border: pulled 1px left of
             center (-start-1 = -4px vs the 6px/size-1.5 circle) so it reads as a
             distinct bullet instead of merging into the line to its right */}
-        <div className="bg-destructive absolute -start-1 top-0 size-1.5 -translate-y-1/2 rounded-full" />
+
       </div>
     </div>
   )

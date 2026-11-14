@@ -206,6 +206,8 @@ for (const mode of ["villa", "service"]) {
 
 test("historical create loads only bounded months and allows changing past check-in", async ({ page }) => {
   await page.goto("/tests/browser/index.html?checkIn=2025-01-30&checkOut=2025-02-03");
+  await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
+  await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeEnabled();
   await page.getByTestId("booking-check-in").click();
@@ -235,6 +237,8 @@ test("historical conflict in a middle month blocks submission and is marked unav
 
 test("availability loading and failures stay closed until a successful retry", async ({ page }) => {
   await page.goto("/tests/browser/index.html?checkIn=2025-01-30&checkOut=2025-02-03&delay&fail");
+  await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
+  await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeDisabled();
   await expect(page.getByRole("status")).toHaveText("Checking availability…");
@@ -247,6 +251,8 @@ test("availability loading and failures stay closed until a successful retry", a
 
 test("changing villas cannot reuse the prior villa's loaded availability", async ({ page }) => {
   await page.goto("/tests/browser/index.html?checkIn=2025-01-30&checkOut=2025-02-03&delay");
+  await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
+  await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeEnabled();
   await page.getByRole("button", { name: /^Villa / }).click();
@@ -265,7 +271,7 @@ test("overlong historical stays are rejected without loading years of availabili
 
 test("historical edit excludes its booking id and submits changed past dates", async ({ page }) => {
   await page.goto("/tests/browser/index.html?mode=edit");
-  await page.getByRole("button", { name: "Edit", exact: true }).click();
+  await page.getByRole("button", { name: "Edit stay", exact: true }).click();
   const save = page.getByRole("button", { name: "Save changes", exact: true });
   await expect(save).toBeEnabled();
   await page.getByTestId("booking-check-in").click();
@@ -285,7 +291,7 @@ test("country selector changes the example, accepts international phone entry, a
   const phone = page.getByLabel("Phone", { exact: true });
   await expect(phone).toHaveAttribute("placeholder", "081 234 5678");
   await page.getByLabel("Guest name", { exact: true }).fill("Phone Guest");
-  await page.getByRole("button", { name: "Create booking", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Create booking", exact: true })).toBeDisabled();
   await expect(page.locator("body")).not.toHaveAttribute("data-submission");
   await page.getByRole("combobox", { name: "Country: Thailand", exact: true }).click();
   const search = page.getByRole("combobox", { name: "Search countries" });
@@ -338,6 +344,8 @@ test("phone country search handles empty results, keyboard selection and mobile 
 
 test("admin availability updates while the dialog is open", async ({ page }) => {
   await page.goto("/tests/browser/index.html?checkIn=2025-01-30&checkOut=2025-02-03");
+  await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
+  await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeEnabled();
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("fixture-availability", { detail: "2025-02-01" })));
@@ -364,7 +372,7 @@ for (const saved of ["(202) 555-0123", "07700 900123", "081-234-5678 ext 2", "+6
     await page.getByRole("button", { name: /Returning Guest/ }).click();
     await expect(page.getByText(`Saved phone: ${saved}. Select the country and re-enter this number before booking.`)).toBeVisible();
     await expect(page.getByLabel("Phone", { exact: true })).toBeEmpty();
-    await page.getByRole("button", { name: "Create booking", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Create booking", exact: true })).toBeDisabled();
     await expect(page.locator("body")).not.toHaveAttribute("data-submission");
   });
 }

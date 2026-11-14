@@ -5,7 +5,7 @@ import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/lib/appointmentWindow";
-import { CalendarDays, Clock, Filter, History, PlusIcon, Users } from "lucide-react";
+import { CalendarDays, Clock, Filter, PlusIcon, Users } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -29,6 +29,8 @@ import { StaffRosterView } from "@/components/admin/StaffRosterView";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -191,8 +193,9 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 function StaffCalendar() {
   const [range, setRange] = useState(todayRange);
   // This device remembers the view and filters (rule 5); the date always starts today.
-  const [storedView, setView] = useStoredState("admin.staff.view", "resource");
-  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : "resource";
+  const [storedView, setView] = useStoredState("admin.staff.view", "auto");
+  const phone = useIsMobile(640);
+  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
   const [date, setDate] = useState(() => new Date());
   const [hiddenStaff, setHiddenStaff] = useStoredSet("admin.staff.hiddenStaff");
   const [hiddenServices, setHiddenServices] = useStoredSet("admin.staff.hiddenServices");
@@ -219,7 +222,6 @@ function StaffCalendar() {
     [data?.staff, hiddenStaff],
   );
 
-  const cancelledCount = (data?.appointments ?? []).filter((a) => a.status === "cancelled").length;
   const appointments = useMemo(
     () =>
       (data?.appointments ?? []).filter(
@@ -232,7 +234,7 @@ function StaffCalendar() {
     [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled],
   );
 
-  const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length;
+  const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show" && a.start < range.to && a.end > range.from).length;
   const countByStaff = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of appointments) {
@@ -340,9 +342,10 @@ function StaffCalendar() {
       const eventData = occurrence.event.data;
       if (!eventData) return null;
       if (eventData.kind === "off") {
-        return <span aria-label="Not working" className="absolute inset-0 rounded-[inherit] bg-muted" />;
+        return <span data-calendar-off className="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs text-muted-foreground">Not working</span>;
       }
       if (eventData.kind !== "appointment") {
+        if (currentView === "agenda") return <span className="text-sm">{occurrence.event.title}</span>;
         return (
           <span className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs font-medium text-muted-foreground">
             <Clock aria-hidden className="size-3.5 shrink-0" />
@@ -367,14 +370,14 @@ function StaffCalendar() {
       return (
         <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className={cn("truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground")}>
+            <span className={cn(currentView === "agenda" ? "text-[15px] font-medium" : "truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground")}>
               {appointment.guestName || "Unnamed guest"}
             </span>
-            <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
+            <StatusBadge {...appointmentStatus(displayStatus(appointment))} className={currentView === "agenda" ? "shrink-0" : "hidden @[12rem]:inline-flex"} />
           </span>
           {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
-          <span className="truncate text-xs text-muted-foreground">
-            {staffTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
+          <span className={cn("text-xs text-muted-foreground", currentView !== "agenda" && "truncate")}>
+            {staffTime(occurrence.event.start.getTime())}{currentView === "agenda" ? `–${staffTime(occurrence.event.end.getTime())}` : ""} · {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>
@@ -443,7 +446,7 @@ function StaffCalendar() {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -462,7 +465,9 @@ function StaffCalendar() {
           scrollToHour={8}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: false }}
+          classNames={{ dayColumn: "[&>div:has([data-calendar-off])]:w-full! [&>div:has([data-calendar-off])]:left-0!" }}
           renderEvent={renderEvent}
+          renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
           canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
@@ -523,9 +528,19 @@ function StaffCalendar() {
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
           loading={data === undefined}
-          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
+          className="h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
         >
-          <AdminCalendarHeader>
+          <AdminCalendarHeader primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+                <Button
+                  size="sm"
+                  aria-label="New appointment"
+                  disabled={!data || activeServices.length === 0}
+                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
+                >
+                  <PlusIcon aria-hidden className="size-4" />
+                  <span className="sm:hidden">New</span><span className="hidden sm:inline">New appointment</span>
+                </Button>
+              </DisabledReason>}>
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} booked in view
@@ -546,6 +561,7 @@ function StaffCalendar() {
               icon={<Filter aria-hidden className="size-4" />}
               label="Filters"
               count={filterCount}
+              extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
               groups={[
                 {
                   title: "Services",
@@ -561,28 +577,7 @@ function StaffCalendar() {
                 },
               ]}
             />
-            <Button size="sm" variant={showCancelled ? "secondary" : "outline"} aria-pressed={showCancelled} onClick={() => setShowCancelled(!showCancelled)}>
-              <History aria-hidden className="size-4" />
-              {showCancelled ? "Hide cancelled" : "Show cancelled"}
-              {cancelledCount ? (
-                <Badge variant="secondary" className="ms-0.5 h-5 min-w-5 justify-center rounded-full px-1.5">
-                  {cancelledCount}
-                </Badge>
-              ) : null}
-            </Button>
             {data === undefined ? <Spinner label="Loading appointments" /> : null}
-            <div className="sm:ms-auto">
-              <DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
-                <Button
-                  size="sm"
-                  disabled={!data || activeServices.length === 0}
-                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
-                >
-                  <PlusIcon aria-hidden className="size-4" />
-                  New appointment
-                </Button>
-              </DisabledReason>
-            </div>
           </AdminCalendarHeader>
           {data && (data.staff.length === 0 || activeServices.length === 0) ? (
             <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
@@ -614,11 +609,12 @@ function StaffCalendar() {
             <Clock aria-hidden className="size-3" />
             Break / turnaround / time off
           </span>
+          <span className="flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" />Not working</span>
           <span className="ms-auto hidden sm:inline pointer-coarse:hidden">
             Drag a booking or break to propose a change · Bangkok time
           </span>
         </div>
-      </div>
+      </Card>
 
       <AppointmentSheet
         key={selected?._id ?? "closed"}
@@ -692,7 +688,7 @@ type CheckGroup = {
   onChange: (next: Set<string>) => void;
 };
 
-function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: string; count?: number; groups: CheckGroup[] }) {
+function CheckList({ icon, label, count, groups, extra }: { icon: ReactNode; label: string; count?: number; groups: CheckGroup[]; extra?: ReactNode }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -707,6 +703,7 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">
+        {extra}
         {groups.map((group) => (
           <div key={group.title} role="group" aria-label={group.title} className="border-b border-border p-2 last:border-b-0">
             <div className="flex items-center justify-between px-2 pb-1">
@@ -715,14 +712,14 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
               </span>
               <button
                 type="button"
-                className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 rounded-sm px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => group.onChange(new Set())}
               >
                 Show all
               </button>
             </div>
             {group.items.map((item) => (
-              <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+              <label key={item.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md focus-within:ring-2 focus-within:ring-ring px-2 py-1.5 text-sm hover:bg-muted">
                 <input
                   type="checkbox"
                   className="size-4 accent-foreground"

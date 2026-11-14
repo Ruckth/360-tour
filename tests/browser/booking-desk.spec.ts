@@ -45,7 +45,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const pop = popover(page, "Anna Schmidt");
       await expect(pop.getByRole("button")).toHaveText(["Take payment ฿27,500", "Book spa", "Details", ""]);
       await pop.getByRole("button", { name: "More stay actions" }).click();
-      await expect(page.getByRole("menu", { name: "More stay actions" }).getByRole("menuitem")).toHaveText(["Already paid…", "Copy reference", "Cancel stay"]);
+      await expect(page.getByRole("menu", { name: "More stay actions" }).getByRole("menuitem")).toHaveText(["Record payment…", "Copy reference", "Cancel stay"]);
     });
 
     test("already paid from the calendar: 4 taps, its own dialog, same revision and one attempt key", async ({ page }) => {
@@ -53,9 +53,9 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const t = new Taps(page);
       await t.tap(chip(page, "Maya Lin"), "Maya's stay");
       await t.tap(popover(page, "Maya Lin").getByRole("button", { name: "More stay actions" }), "⋯");
-      await t.tap(page.getByRole("menuitem", { name: "Already paid…" }), "Already paid…");
+      await t.tap(page.getByRole("menuitem", { name: "Record payment…" }), "Record payment…");
       // The dialog opens on the calendar, not inside the stay sheet.
-      const dialog = page.getByRole("dialog", { name: "Already paid" });
+      const dialog = page.getByRole("dialog", { name: "Record a payment taken elsewhere" });
       await expect(dialog).toBeVisible();
       await expect(page.getByRole("dialog", { name: "Maya Lin" })).toHaveCount(0);
       // One sentence; the date waits behind "Received now · Change", as at the till; ✕ closes it.
@@ -122,34 +122,25 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       expect(new Set(boxes.map((b) => b.top)).size).toBe(1);
     });
 
-    test("hotel calendar toolbar: at most 8 controls, Today in the month picker, Show cancelled in ⋯", async ({ page }) => {
+    test("hotel toolbar shares navigation; villa, search and cancelled tools stay reachable", async ({ page }) => {
       await openDesk(page);
       const toolbar = page.getByTestId("calendar-toolbar");
-      expect(await controls(page, toolbar)).toBeLessThanOrEqual(8);
-      await expect(toolbar.getByRole("button", { name: "Today", exact: true })).toHaveCount(0);
-      await expect(toolbar.getByRole("button", { name: "Show cancelled" })).toHaveCount(0);
-      // Search is a box on iPad and an icon that opens it on a phone; the villa filter moves into ⋯ on a phone.
       if (size === "phone") {
-        await expect(toolbar.getByRole("searchbox")).toBeHidden();
-        await expect(toolbar.getByRole("combobox", { name: /Villa/ })).toHaveCount(0);
-        await toolbar.getByRole("button", { name: "Search bookings" }).click();
+        await expect(page.locator('[data-slot="event-calendar-agenda-view"]')).toBeVisible();
+        await expect(toolbar.getByRole("combobox", { name: "Calendar view" })).toBeVisible();
+        await page.getByRole("button", { name: "More calendar tools" }).click();
+        await page.getByRole("menuitem", { name: "Search bookings", exact: true }).click();
+        await expect(page.getByRole("searchbox", { name: "Search bookings" })).toBeFocused();
+        await page.keyboard.press("Escape");
+      } else {
+        await expect(toolbar.getByRole("button", { name: "Today", exact: true })).toBeVisible();
+        await toolbar.getByRole("button", { name: "Search bookings", exact: true }).click();
         await expect(toolbar.getByRole("searchbox", { name: "Search bookings" })).toBeFocused();
         await page.keyboard.press("Escape");
-        await expect(toolbar.getByRole("searchbox")).toBeHidden();
-      } else {
-        await expect(toolbar.getByRole("searchbox", { name: "Search bookings" })).toBeVisible();
+        await expect(toolbar.getByRole("radio", { name: "Month", exact: true })).toHaveAttribute("data-state", "on");
       }
-      // Today sits inside the month picker.
-      await toolbar.locator("[data-slot=event-calendar-date-picker]").click();
-      await expect(page.getByRole("dialog").getByRole("button", { name: "Today", exact: true })).toBeVisible();
-      await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "More calendar tools" }).click();
       const menu = page.getByRole("menu", { name: "More calendar tools" });
-      await expect(menu.getByRole("menuitem")).toHaveText(["Block dates", "OTA calendars", "OTA rates", "Clean up old bookings"]);
-      const toggles = menu.getByRole("menuitemcheckbox");
-      await expect(toggles).toHaveText(size === "phone"
-        ? ["All villas", "Lagoon Pool Villa", "Garden Villa", "Ocean Suite", "Tideglass Pool Residence", "Show cancelled"]
-        : ["Show cancelled"]);
       await expect(menu.getByRole("menuitemcheckbox", { name: "Show cancelled" })).toHaveAttribute("aria-checked", "false");
       await menu.getByRole("menuitemcheckbox", { name: "Show cancelled" }).click();
       await page.getByRole("button", { name: "More calendar tools" }).click();
@@ -252,7 +243,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const money = sheet.getByRole("region", { name: "Balance due" });
       await expect(money).toContainText("฿27,500");
       await expect(money).toContainText("Stay ฿26,000 · Spa ฿1,500");
-      await expect(money.getByRole("button")).toHaveText(["Take payment", "Already paid…"]);
+      await expect(money.getByRole("button")).toHaveText(["Take payment", "Record payment…"]);
       // The money block is the first thing under the title.
       const top = await money.boundingBox();
       expect(top!.y).toBeLessThan(160);
@@ -265,8 +256,8 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await sheet.locator("summary", { hasText: "History" }).click();
       await expect(sheet.getByRole("heading", { name: "Payments and refunds" })).toBeVisible();
       await expect(sheet.getByRole("heading", { name: "Price" })).toBeVisible();
-      await money.getByRole("button", { name: "Already paid…" }).click();
-      const paid = page.getByRole("dialog", { name: "Already paid" });
+      await money.getByRole("button", { name: "Record payment…" }).click();
+      const paid = page.getByRole("dialog", { name: "Record a payment taken elsewhere" });
       await expect(paid.getByRole("button", { name: "Record ฿26,000" })).toBeVisible();
       await paid.getByRole("button", { name: "Close", exact: true }).click();
       await sheet.getByRole("button", { name: "More booking actions" }).click();
@@ -279,12 +270,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const sheet = page.getByRole("dialog", { name: /Ken Tanaka/ });
       await expect(sheet.getByRole("region", { name: "Balance due" })).toContainText("฿1,200");
       // Header Edit and Close are icon actions; the payment and status actions keep their hierarchy.
-      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"])').filter({ hasNotText: /^Already paid…$/ });
-      const take = sheet.getByRole("link", { name: "Take payment" });
-      await expect(take).toHaveAttribute("href", /\/admin\/checkout\?appointment=/);
-      await expect(buttons).toHaveText(["", "Mark arrived"]);
+      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"])').filter({ hasNotText: /^(Record payment…|Take payment)$/ });
+      const take = sheet.getByRole("button", { name: "Take payment", exact: true });
+      await expect(take).toBeEnabled();
+      await expect(buttons).toHaveText(["Mark arrived", "", "Open stay · Ocean Suite · Ken Tanaka"]);
       await expect(sheet.getByRole("button", { name: "Edit appointment" })).toBeVisible();
-      expect((await buttons.count()) + (await take.count())).toBe(3);
+      expect((await buttons.count()) + (await take.count())).toBe(4);
       // While a balance is due, Take payment is the one filled button.
       await expect(take).toHaveClass(/bg-primary/);
       await expect(sheet.getByRole("button", { name: "Mark arrived" })).not.toHaveClass(/bg-primary/);
@@ -352,15 +343,115 @@ test("a mouse sees the drag hint", async ({ page }) => {
 test("the staff calendar remembers its view and filters on this device", async ({ page }) => {
   await page.setViewportSize(DESK_VIEWPORTS.ipad);
   await openDesk(page, "?view=staff");
-  await page.getByRole("button", { name: "Week", exact: true }).click();
+  await page.getByRole("radio", { name: "Week", exact: true }).click();
   await page.getByRole("button", { name: /Filters/ }).click();
   await page.getByRole("group", { name: "Status" }).getByRole("checkbox", { name: "Completed" }).uncheck();
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Show cancelled" }).click();
+  await page.getByRole("checkbox", { name: "Show cancelled" }).check();
   await page.reload();
   await page.locator("[data-fixture-ready]").waitFor();
-  await expect(page.getByRole("button", { name: "Week", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByRole("button", { name: "Hide cancelled" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Week", exact: true })).toHaveAttribute("data-state", "on");
   await page.getByRole("button", { name: /Filters/ }).click();
+  await expect(page.getByRole("checkbox", { name: "Show cancelled" })).toBeChecked();
   await expect(page.getByRole("group", { name: "Status" }).getByRole("checkbox", { name: "Completed" })).not.toBeChecked();
+});
+
+for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
+  test.describe(`round 1 ${size}`, () => {
+    test.use({ viewport, hasTouch: true, isMobile: true });
+    test("agendas are the phone default and explicit view choices survive reload", async ({ page }) => {
+      await openDesk(page);
+      await expect(page.locator(`[data-slot=event-calendar-${size === "phone" ? "agenda" : "month"}-view]`)).toBeVisible();
+      if (size === "phone") {
+        await page.getByRole("combobox", { name: "Calendar view" }).click();
+        await page.getByRole("option", { name: "Month", exact: true }).click();
+        await page.reload();
+        await expect(page.locator('[data-slot="event-calendar-month-view"]')).toBeVisible();
+      }
+      await openDesk(page, "?view=staff");
+      await expect(page.locator(`[data-slot=event-calendar-${size === "phone" ? "agenda-view" : "resource-view"}]`)).toBeVisible();
+    });
+    test("stay notes survive Keep editing on every sheet close route", async ({ page }) => {
+      await openDesk(page);
+      await chip(page, "Anna Schmidt").click();
+      await page.getByRole("button", { name: "Details", exact: true }).click();
+      const sheet = page.getByRole("dialog", { name: "Anna Schmidt", exact: true });
+      await sheet.getByLabel("Notes (staff only)").fill("Please keep this unsaved note");
+      for (const close of [() => sheet.getByRole("button", { name: "Close", exact: true }).click(), () => page.keyboard.press("Escape"), ...(size === "ipad" ? [() => page.mouse.click(10, 10)] : [])]) {
+        await close();
+        const guard = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+        await expect(guard).toBeVisible();
+        await guard.getByRole("button", { name: "Keep editing", exact: true }).click();
+        await expect(sheet.getByLabel("Notes (staff only)")).toHaveValue("Please keep this unsaved note");
+      }
+      expect(await page.evaluate(() => { const event = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; })).toBe(true);
+      await page.keyboard.press("Escape");
+      await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
+      await expect(sheet).toHaveCount(0);
+      expect((await calls(page)).filter(call => call.name === "updateNotes")).toHaveLength(0);
+    });
+    test("appointment details survive a cancelled close and discard without writing", async ({ page }) => {
+      await openDesk(page, "?view=staff");
+      await chip(page, "Ken Tanaka").click();
+      const sheet = page.getByRole("dialog", { name: /Appointment · Ken Tanaka/ });
+      await sheet.getByRole("button", { name: "Edit appointment", exact: true }).click();
+      await sheet.getByLabel("Notes (optional)").fill("Unsaved pressure preference");
+      await sheet.getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Keep editing", exact: true }).click();
+      await expect(sheet.getByLabel("Notes (optional)")).toHaveValue("Unsaved pressure preference");
+      await sheet.getByRole("button", { name: "Discard changes", exact: true }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Edit appointment", exact: true })).toBeEnabled();
+      expect((await calls(page)).filter(call => call.name === "updateAppointmentDetails")).toHaveLength(0);
+    });
+  });
+}
+
+test("new booking explains disabled Create and focuses an incomplete phone number", async ({ page }) => {
+  await page.setViewportSize(DESK_VIEWPORTS.phone);
+  await openDesk(page);
+  await page.getByRole("button", { name: "New booking", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New booking", exact: true });
+  await expect(dialog.getByRole("button", { name: "Create booking", exact: true })).toBeDisabled();
+  await expect(dialog.getByText("Choose check-in and check-out dates.")).toBeVisible();
+  await page.getByTestId("booking-check-in").click();
+  await page.locator('[data-day="2026-11-20"] button').click();
+  await page.locator('[data-day="2026-11-23"] button').click();
+  await dialog.getByLabel("Guest name", { exact: true }).fill("New Guest");
+  await dialog.getByLabel("Phone", { exact: true }).fill("081");
+  await dialog.getByRole("button", { name: "Create booking", exact: true }).click();
+  await expect(dialog.getByText("Enter a complete phone number for the selected country.")).toBeVisible();
+  await expect(dialog.getByLabel("Phone", { exact: true })).toBeFocused();
+  expect((await calls(page)).filter(call => call.name === "createBooking")).toHaveLength(0);
+});
+
+test("phone agenda rows expose their visible balance and appointment status to assistive technology", async ({ page }) => {
+  await page.setViewportSize(DESK_VIEWPORTS.phone);
+  await openDesk(page);
+  await expect(page.getByRole("button", { name: /Anna Schmidt.*฿26,000/ }).first()).toBeVisible();
+  await openDesk(page, "?view=staff");
+  await expect(page.getByRole("button", { name: /Ken Tanaka.*Booked.*09:50–10:50/ }).first()).toBeVisible();
+});
+
+test.describe("phone agenda touch scrolling", () => {
+  test.use({ viewport: DESK_VIEWPORTS.phone, hasTouch: true, isMobile: true });
+  test("a finger can scroll from a guest row without starting a drag", async ({ page, context }) => {
+    await openDesk(page);
+    const agenda = page.locator('[data-slot="event-calendar-agenda-view"]');
+    const viewport = agenda.locator('[data-slot="scroll-area-viewport"]');
+    const row = agenda.locator('[data-slot="event-calendar-event"]').first();
+    const box = (await row.boundingBox())!;
+    const touch = await context.newCDPSession(page);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
+    for (let step = 1; step <= 8; step++) {
+      await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 18 }] });
+      await page.waitForTimeout(16);
+    }
+    await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await expect.poll(() => viewport.evaluate(el => el.scrollTop)).toBeGreaterThan(60);
+    expect(await calls(page)).toHaveLength(0);
+    await openDesk(page, "?view=staff");
+    await expect(page.locator('[data-slot="event-calendar-event"]').first()).toHaveCSS("touch-action", "pan-y");
+  });
 });

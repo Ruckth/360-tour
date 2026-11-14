@@ -201,6 +201,7 @@ for (const [size, viewport] of Object.entries(sizes))
     "refund",
     "stay-sheet",
     "appointment-sheet",
+    "new-booking",
     "hotel-calendar",
     "staff-calendar",
     "chats",

@@ -11,7 +11,8 @@ import { nightsBetweenIso } from "@/lib/booking/dates";
 import { UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
-import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
+import { DeskBookingRangePicker as BookingRangePicker } from "./DeskBookingRangePicker";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -76,6 +77,7 @@ export function NewBookingDialog({
   const [guest, setGuest] = useState({ name: "", phone: "", email: "" });
   const [guests, setGuests] = useState("2");
   const [pickedGuest, setPickedGuest] = useState("");
+  const [phoneError, setPhoneError] = useState("");
   const [phoneToCheck, setPhoneToCheck] = useState("");
   const [confirmed, setConfirmed] = useState(true);
   // null = follow the default for the dates (no email for a past stay); set once staff choose.
@@ -149,9 +151,11 @@ export function NewBookingDialog({
     event.preventDefault();
     if (!availability.canSubmit || pending.current || problem || couponProblem || couponWaiting) return;
     if (!isPossiblePhoneNumber(guest.phone)) {
-      setError("Enter a complete phone number for the selected country.");
+      setPhoneError("Enter a complete phone number for the selected country.");
+      document.getElementById("nb-phone")?.focus();
       return;
     }
+    setPhoneError("");
     pending.current = true;
     setSaving(true);
     setError("");
@@ -194,6 +198,17 @@ export function NewBookingDialog({
     }
   }
 
+  const blockingReason = error || couponError || availability.dateError || problem || couponProblem || (
+    couponWaiting ? "Checking the coupon…"
+      : !property ? "Choose a villa."
+      : !nights ? "Choose check-in and check-out dates."
+      : conflicts ? "Choose dates without an existing booking or block."
+      : availability.failed ? "Availability is unavailable. Retry the date check above."
+      : !availability.canSubmit ? "Checking availability for these dates…"
+      : !guest.name.trim() ? "Enter the guest’s name and phone number."
+      : !guest.phone ? "Enter the guest’s phone number." : ""
+  );
+
   const field = (name: keyof typeof guest) => ({
     value: guest[name],
     onChange: (event: { target: { value: string } }) => setGuest((current) => ({ ...current, [name]: event.target.value })),
@@ -201,13 +216,13 @@ export function NewBookingDialog({
 
   return (
     <Dialog open onOpenChange={(next) => (next || saving ? undefined : onClose())}>
-      <DialogContent className="h-[min(56rem,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden p-5 sm:max-w-md" showCloseButton={!saving}>
+      <DialogContent className="h-[min(56rem,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] gap-5 overflow-hidden p-5 sm:max-w-lg" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl font-semibold">{historical ? "Record past stay" : "New booking"}</DialogTitle>
           <DialogDescription className="sr-only">Villa, dates and guest</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden">
-          <div className="-mx-5 grid gap-6 overflow-y-auto px-5 pb-6 [&_label]:text-xs [&_label]:text-muted-foreground">
+          <div className="-mx-5 grid gap-6 overflow-y-auto px-5 pb-6 [mask-image:linear-gradient(to_bottom,black_calc(100%-24px),transparent)] [&_label:not(:has(input))]:text-xs [&_label:not(:has(input))]:text-muted-foreground [&_input]:placeholder:text-muted-foreground/60">
             <section aria-labelledby="nb-stay-title" className="grid gap-3">
               <h3 id="nb-stay-title" className="text-base font-semibold">Stay</h3>
               <div className="grid gap-2">
@@ -246,9 +261,6 @@ export function NewBookingDialog({
                 isDateDisabled={availability.isDateDisabled}
                 unavailableDates={availability.blockedDates}
                 onMonthChange={availability.onMonthChange}
-                markPastUnavailable
-                clearable={false}
-                className="[&>div]:grid-cols-2 [&_button]:px-2 [&_button]:text-[13px]"
               />
               <BookingAvailabilityNotice {...availability} />
               {conflicts ? (
@@ -257,7 +269,7 @@ export function NewBookingDialog({
             </section>
             <section aria-labelledby="nb-guest-title" className="grid gap-3">
               <h3 id="nb-guest-title" className="text-base font-semibold">Guest</h3>
-              <div className="grid grid-cols-[minmax(0,1fr)_96px] gap-3">
+              <div className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-3">
                 <div className="grid gap-2">
                   <Label htmlFor="nb-name">Guest name</Label>
                   <Input id="nb-name" required {...field("name")} />
@@ -272,7 +284,9 @@ export function NewBookingDialog({
                     value={guests}
                     onChange={(event) => setGuests(event.target.value)}
                     required
+                    aria-describedby="nb-guests-hint"
                   />
+                  {property ? <p id="nb-guests-hint" className="text-xs text-muted-foreground">Max {property.maxGuests}</p> : null}
                 </div>
               </div>
               <div className="grid gap-2">
@@ -283,8 +297,12 @@ export function NewBookingDialog({
                   autoComplete="off"
                   required
                   value={guest.phone}
-                  onChange={(phone) => setGuest((current) => ({ ...current, phone: phone ?? "" }))}
+                  onChange={(phone) => { setGuest((current) => ({ ...current, phone: phone ?? "" })); setPhoneError(""); }}
+                  aria-invalid={Boolean(phoneError)}
+                  aria-describedby={phoneError ? "nb-phone-error" : undefined}
+                  className="[&_input]:placeholder:text-muted-foreground/60"
                 />
+                {phoneError ? <p id="nb-phone-error" role="alert" className="text-sm text-destructive">{phoneError}</p> : null}
                 {phoneToCheck ? (
                   <p className="text-sm text-muted-foreground">
                     Saved phone: {phoneToCheck}. Select the country and re-enter this number before booking.
@@ -302,7 +320,7 @@ export function NewBookingDialog({
                     <button
                       key={`${s.guestPhone}|${s.guestEmail ?? ""}`}
                       type="button"
-                      className="flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-background focus-visible:bg-background focus-visible:outline-none"
+                      className="flex min-h-11 items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-background focus-visible:bg-background focus-visible:outline-none"
                       onClick={() => {
                         const e164 = normalizeGuestPhone(s.guestPhone);
                         // Ambiguous saved numbers are shown verbatim for the host to re-enter.
@@ -323,17 +341,8 @@ export function NewBookingDialog({
                   ))}
                 </div>
               ) : null}
-              <label className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 size-4 accent-foreground"
-                  checked={confirmed}
-                  onChange={(event) => setConfirmed(event.target.checked)}
-                />
-                <span>Create as confirmed</span>
-              </label>
               {/* The email choice only matters once there is an email to send to. */}
-              {guest.email.trim() ? (
+              {confirmed && guest.email.trim() ? (
                 <NotifyGuestField
                   id="nb-notify"
                   guestEmail={guest.email.trim()}
@@ -349,17 +358,10 @@ export function NewBookingDialog({
             <section aria-labelledby="nb-price-title" className="grid gap-3">
               <h3 id="nb-price-title" className="text-base font-semibold">Price</h3>
               <div className="grid gap-3 rounded-xl border border-border bg-card p-3">
-                <label htmlFor="nb-custom" className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    id="nb-custom"
-                    type="checkbox"
-                    className="size-4 accent-foreground"
-                    checked={custom}
-                    onChange={(event) => setCustom(event.target.checked)}
-                    disabled={saving}
-                  />
+                <button id="nb-custom" type="button" role="switch" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex min-h-12 items-center justify-between rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   Custom price
-                </label>
+                  <span aria-hidden className={`flex h-6 w-10 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
+                </button>
                 {custom ? (
                   <>
                     <div className="grid gap-2">
@@ -441,6 +443,13 @@ export function NewBookingDialog({
                 </div>
               </div>
             </section>
+            <section className="grid gap-2" aria-labelledby="nb-status-label">
+              <h3 id="nb-status-label" className="text-sm font-medium">Booking status</h3>
+              <ToggleGroup variant="segmented" value={confirmed ? "confirmed" : "pending"} onValueChange={value => setConfirmed(value === "confirmed")} aria-label="Booking status" disabled={saving}>
+                <ToggleGroupItem value="confirmed">Confirmed</ToggleGroupItem><ToggleGroupItem value="pending">Pending</ToggleGroupItem>
+              </ToggleGroup>
+              {!confirmed ? <p className="text-xs text-muted-foreground">Pending holds the dates without emailing the guest.</p> : null}
+            </section>
           {problem ? <p className="text-sm text-destructive">{problem}</p> : null}
           {couponProblem ? <p className="text-sm text-destructive">{couponProblem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
@@ -455,18 +464,19 @@ export function NewBookingDialog({
                 </>
               ) : null}
             </p>
+            <p className="text-xs text-muted-foreground" aria-live="polite">{blockingReason}</p>
             <div className="flex w-full flex-wrap items-center justify-between gap-2">
               {property && dates.checkIn && dates.checkOut ? (
                 <Button
                   type="button"
                   variant="ghost"
-                  className="h-10 justify-self-start px-2 text-xs"
+                  className="h-10 justify-self-start px-2 text-xs font-medium text-muted-foreground"
                   onClick={() => onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut })}
                 >
                   Block these dates instead
                 </Button>
               ) : null}
-              <Button type="submit" className="ms-auto" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting}>
+              <Button type="submit" className="ms-auto disabled:border-border disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting || !guest.name.trim() || !guest.phone.trim()}>
                 {saving ? <Spinner className="text-current" /> : null}
                 Create booking
               </Button>

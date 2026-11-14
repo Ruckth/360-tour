@@ -420,7 +420,7 @@ export function ChatsView() {
   };
 
   function renderDetail(compact = false) {
-    const detail = (actions?: ReactNode, followUp?: ReactNode) => (
+    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode) => (
       <AdminSessionDetail
         key={selectedSession?._id ?? "none"}
         {...detailProps}
@@ -428,6 +428,7 @@ export function ChatsView() {
         emptyList={!loadingSessions && sessions.length === 0}
         onBack={compact ? () => selectSession(null) : undefined}
         actions={actions}
+        actionError={actionError}
         followUp={followUp}
       />
     );
@@ -455,7 +456,7 @@ export function ChatsView() {
           } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
       >
-        {({ actions, followUp }) => detail(actions, followUp)}
+        {({ actions, followUp, actionError }) => detail(actions, followUp, actionError)}
       </AdminSessionActions>
     ) : detail();
   }
@@ -611,7 +612,7 @@ export function ChatsView() {
   return (
     <>
       <div className="min-h-0 flex-1 p-3 sm:p-5">
-        <div className="grid h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="grid h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside
             aria-label="Chat list"
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-card lg:border-r lg:border-border/60"
@@ -624,7 +625,7 @@ export function ChatsView() {
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="hidden h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-fine:inline-flex"
+                  className="hidden h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-fine:inline-flex pointer-coarse:hidden"
                   onClick={() => setShortcutsOpen(true)}
                 >
                   <Keyboard className="size-4" aria-hidden="true" />
@@ -855,15 +856,11 @@ export function ChatsView() {
                         <span className="min-w-0 truncate text-[15px] font-medium text-foreground" title={visitorLabel(session)}>
                           {visitorLabel(session)}
                         </span>
-                        {place ? (
-                          <span className="min-w-0 max-w-[45%] shrink-[2] truncate text-xs text-muted-foreground" title={place}>
-                            · {place}
-                          </span>
-                        ) : null}
-                        <span className={cn("ml-auto shrink-0 pl-2 text-xs", waiting ? cn("font-medium", TONES.warning.text) : "text-muted-foreground")}>
+                        <span className={cn("ml-auto shrink-0 pl-2 text-xs", waiting ? "font-semibold text-amber-800 dark:text-amber-300" : "text-muted-foreground")}>
                           {waiting ? `Waiting ${relativeTime(session.latestMessageAt, now).replace(/ ago$/, "")}` : relativeTime(session.latestMessageAt, now)}
                         </span>
                       </span>
+                      {place ? <span className="mt-1 block text-xs text-muted-foreground">{place}</span> : null}
                       <span className="mt-0.5 flex min-w-0 items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={preview}>
                           {preview}

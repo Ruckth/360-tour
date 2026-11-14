@@ -725,7 +725,7 @@ function EventCalendarResourceColumn({
             // min-h keeps 15-min chips readable (Google-style: the block may
             // slightly outgrow its true window); hover raises a squeezed
             // cascade chip above its overlapping neighbors
-            className="absolute z-(--ec-z) min-h-(--ec-event-min-h,1.5rem) px-0.5 hover:z-40"
+            className="absolute z-(--ec-z) min-h-(--ec-event-min-h,1.5rem) rounded-sm bg-card pointer-coarse:min-h-11 px-0.5 hover:z-40"
             style={
               {
                 ...minuteBlockStyle(startMin, endMin, boundsStartMin),
@@ -738,6 +738,7 @@ function EventCalendarResourceColumn({
             <EventCalendarEvent
               segment={segment}
               className={cn(
+                "bg-[color-mix(in_oklab,var(--ec-event-color)_15%,var(--color-card))]",
                 columnCount > 1 && "ring-background ring-1",
                 // short chips: single centered row, exact-fit line height so
                 // the title never slices mid-glyph

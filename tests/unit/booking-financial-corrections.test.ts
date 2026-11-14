@@ -170,7 +170,7 @@ describe("booking payments and refunds", () => {
   it("keeps Edit and Cancel reachable for a live fully refunded stay", async () => {
     queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", paymentStatus: "refunded", money: { ...money, gross: 17000, refunded: 17000, net: 0, owed: 0, credit: 0, refundable: 0 } });
     await render(createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() }));
-    expect(button("Edit")).toBeDefined();
+    expect(button("Edit stay")).toBeDefined();
     expect(await menuItem("Cancel stay")).toBeDefined();
     expect(button("Reopen")).toBeUndefined();
   });
@@ -186,7 +186,7 @@ describe("booking payments and refunds", () => {
     expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Entered by mistake…")).toHaveLength(1);
     expect(button("Correct…")?.closest("details")?.querySelector("summary")?.textContent).toBe("History");
     expect([...document.querySelectorAll("summary")].map((s) => s.textContent)).toEqual(["History"]);
-    expect(button("Already paid…")).toBeUndefined();
+    expect(button("Record payment…")).toBeUndefined();
   });
 
   it("records a refund with a reason, keeps the input and attempt after a failure, and retries once", async () => {
@@ -229,9 +229,9 @@ describe("booking payments and refunds", () => {
     mutations.recordPayment.mockImplementation(() => new Promise((resolve) => { finish = () => resolve({ paymentId: "p", replayed: false }); }));
     await render(createElement(BookingFinancials, { booking: owing }));
     expect(moneyBlock()).toEqual({ label: "Balance due", amount: "฿4,000" });
-    await click(button("Already paid…"));
+    await click(button("Record payment…"));
     const dialog = document.querySelector('[role="dialog"]')!;
-    expect(dialog.querySelector("h2")?.textContent).toBe("Already paid");
+    expect(dialog.querySelector("h2")?.textContent).toBe("Record a payment taken elsewhere");
     expect(dialog.textContent).toContain("Record ฿4,000 the guest already paid.");
     expect(dialog.textContent).not.toContain("This does not charge the guest.");
     // The date waits behind "Received now · Change", as at the till; ✕ is the only way out.
@@ -488,7 +488,7 @@ describe("calendar booking action intent", () => {
     expect(button("Record ฿17,000")).toBeUndefined();
     await render(createElement(BookingSheet, props));
     expect(button("Record ฿17,000")).toBeUndefined();
-    await click(button("Already paid…"));
+    await click(button("Record payment…"));
     await click(button("Record ฿17,000"));
     expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmount: 17000, expectedRevision: 7 }));
   });
@@ -516,7 +516,7 @@ describe("calendar booking action intent", () => {
     queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
     await render(createElement(BookingSheet, props));
     expect(button("Record ฿17,000")).toBeUndefined();
-    expect(button("Already paid…")).toBeDefined();
+    expect(button("Record payment…")).toBeDefined();
   });
 
   it("opens paid cancellation directly and keeps the booking sheet after backing out", async () => {
@@ -545,9 +545,9 @@ describe("calendar booking action intent", () => {
     await render(createElement(BookingQuickActions, props));
     // The popover keeps Take payment · Book spa · Details; the rest sit in ⋯.
     expect(button("Record payment")).toBeUndefined();
-    expect(button("Already paid…")).toBeUndefined();
+    expect(button("Record payment…")).toBeUndefined();
     expect(button("Cancel stay")).toBeUndefined();
-    await click(await stayItem("Already paid…"));
+    await click(await stayItem("Record payment…"));
     expect(onAction).toHaveBeenLastCalledWith({ kind: "pay", booking: owing });
     const paid = { ...owing, money: { ...owing.money, net: 1000 } };
     queries.getForAdmin.mockReturnValue(paid);
@@ -557,7 +557,7 @@ describe("calendar booking action intent", () => {
     expect(props.onOpenDetails).not.toHaveBeenCalled();
     queries.getForAdmin.mockReturnValue({ ...owing, checkoutLive: true });
     await render(createElement(BookingQuickActions, props));
-    expect((await stayItem("Already paid…"))?.hasAttribute("data-disabled")).toBe(true);
+    expect((await stayItem("Record payment…"))?.hasAttribute("data-disabled")).toBe(true);
     expect((await stayItem("Cancel stay"))?.hasAttribute("data-disabled")).toBe(true);
   });
 });

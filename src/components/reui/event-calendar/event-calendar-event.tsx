@@ -445,7 +445,9 @@ function EventCalendarEvent<TData = unknown>({
     "data-preview": preview || undefined,
     "data-past": occurrence.end.getTime() < Date.now() || undefined,
     title: preview || tooltipOn ? undefined : label,
-    "aria-label":
+    // Custom agenda rows carry their full guest, status and money text. Let
+    // that visible content name the button instead of replacing it with title/time.
+    "aria-label": view === "agenda" && customContent ? undefined :
       settings.i18n.functions.formatEventAriaLabel?.(
         event.title,
         timeLabel,
@@ -484,17 +486,17 @@ function EventCalendarEvent<TData = unknown>({
       settings.onEventDoubleClick?.(occurrence, e)
     },
     className: cn(
-      "group/ec-event text-foreground relative flex w-full min-w-0 cursor-pointer touch-none items-center overflow-hidden text-start select-none",
+      "group/ec-event text-foreground relative flex w-full min-w-0 cursor-pointer items-center overflow-hidden text-start select-none",
       "focus-visible:ring-ring outline-none focus-visible:ring-2",
       preview && "pointer-events-none",
       view === "agenda"
         ? // plain list row: color lives in the dot badge, not a tinted pill;
           // hover AND selection surfaces are owned by the agenda row wrapper
-          "gap-3 rounded-md text-sm"
+          "touch-pan-y gap-3 rounded-md text-sm"
         : cn(
             // @container removes intrinsic sizing; only grid chips are containers
             // py-1: room above/below inline badges (attendee pill etc.)
-            "@container gap-1.5 rounded-sm px-1.5 py-1 leading-normal",
+            "@container touch-none gap-1.5 rounded-sm px-1.5 py-1 leading-normal",
             // soft tint + inset ring, not an accent border: legible on both themes
             "bg-(--ec-event-color)/15 hover:bg-(--ec-event-color)/25",
             // a flat tint reads darker on a dark surface, so lift it there
