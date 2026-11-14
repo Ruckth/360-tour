@@ -7,6 +7,7 @@ import { useStaffAccess } from "@/components/admin/staff-access";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
@@ -17,7 +18,7 @@ import { CheckoutDraftProvider, useCheckoutDraft } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
-import { needsApproval } from "./staff-approvals";
+import { needsApproval, shownRequest } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
 
 /**
@@ -57,6 +58,7 @@ function CheckoutContent({
   const actions = backend.useActions();
   const [error, setError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const narrow = useIsMobile(1024);
   // Set by the phone bar's Cash: the sheet opens on the cash panel instead of the rows.
   const [payOnOpen, setPayOnOpen] = useState<"cash" | undefined>();
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError);
@@ -137,7 +139,9 @@ function CheckoutContent({
   const settled = view && (view.order.state === "paid" || view.order.state === "void");
   const due = view?.totals.due ?? 0;
   // The phone bar offers exact cash once the order could be paid with it.
-  const { cannotPay } = usePayState(missing ? null : view);
+  const { cannotPay, approvals, now } = usePayState(missing ? null : view);
+  const request = shownRequest(approvals, now);
+  const requestLabel = request?.status === "pending" ? "Request waiting" : "Request update";
   // Not while a change is still saving: the panel would open on an order about to change.
   const quickCash = !cannotPay && !busy && due > 0 && view?.order.state !== "discarded";
 
@@ -200,12 +204,12 @@ function CheckoutContent({
         {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
-        <aside
+        {!narrow && !sheetOpen ? <aside
           aria-label="Order"
           className="mt-1 mr-4 mb-4 hidden max-h-full lg:w-[420px] shrink-0 overflow-hidden has-[[data-testid=pay-panel]]:self-start rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
         >
           {panel()}
-        </aside>
+        </aside> : null}
       </div>
 
       <Dialog open={askItem !== null} onOpenChange={(open) => { if (!open) setAskItem(null); }}>
@@ -227,19 +231,19 @@ function CheckoutContent({
           Confirm is still the one that takes the money. */}
       <Sheet open={sheetOpen} onOpenChange={(open) => { if (open) setSheetOpen(true); else void closeSheet(); }} modal={!keepHeader}>
         <div data-admin-bottom-bar="lg" className={cn("fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl p-1 lg:hidden", count ? "bg-primary text-primary-foreground shadow-xl shadow-navy/25 dark:shadow-black/40" : "border border-border bg-card text-foreground shadow-sm")}>
-          {count ? <SheetTrigger asChild>
+          {count || request ? <SheetTrigger asChild>
             <button
               type="button"
               // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
-              aria-label={`View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
+              aria-label={count ? `View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order` : `${requestLabel} · View · open the order`}
               className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
             >
               <ReceiptText aria-hidden className="size-5 shrink-0" />
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-sm font-semibold">View order</span>{" "}
-                <span className="block truncate text-xs opacity-80">{`${count} ${count === 1 ? "item" : "items"}`}</span>{" "}
+                <span className="block truncate text-sm font-semibold">{count ? "View order" : `${requestLabel} · View`}</span>{" "}
+                {count ? <span className="block truncate text-xs opacity-80">{`${count} ${count === 1 ? "item" : "items"}`}</span> : null}{" "}
               </span>
-              {quickCash ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
+              {count && !quickCash ? <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span> : null}
               <ChevronUp aria-hidden className="size-5 shrink-0" />
             </button>
           </SheetTrigger> : <p className="flex flex-1 items-center justify-center gap-2 px-4 py-2 text-sm text-muted-foreground"><ReceiptText aria-hidden className="size-5 shrink-0" />No items yet</p>}

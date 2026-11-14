@@ -72,9 +72,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
 
   // Reveal the form in the page; the receipt paper stays alongside on wide screens.
   useLayoutEffect(() => {
-    if (!window.matchMedia("(min-width: 64rem)").matches) {
-      formRef.current?.closest("li")?.scrollIntoView?.({ block: "nearest" });
-    }
+    formRef.current?.scrollIntoView?.({ block: "nearest" });
     titleRef.current?.focus({ preventScroll: true });
   }, []);
 
@@ -156,7 +154,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       data-screen-only=""
       data-refund-form={line._id}
       className={cn(
-        "@container mt-3 grid scroll-mt-28 scroll-mb-4 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
+        "@container mt-3 grid scroll-mt-[calc(var(--admin-header,4rem)+3rem)] scroll-mb-4 lg:scroll-mb-0 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
         TOUCH_TARGETS,
         REFUND_CHIPS,
         ask ? "border-amber-300 bg-amber-50/70 dark:border-amber-400/40 dark:bg-amber-400/10" : "border-border bg-background",
