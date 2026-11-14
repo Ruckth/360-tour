@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 
 /** Every toolbar control is h-9, matching `Button size="sm"` in the page's own filters and actions. */
-const TOOLBAR = "flex flex-wrap items-center gap-2 px-4 py-3";
+const TOOLBAR = "flex flex-wrap items-center gap-2 px-3 py-3 sm:px-4 sm:py-4";
 
 /**
  * Shared admin calendar header. Row 1: Today, prev/next, the period title (click to jump
@@ -41,8 +41,8 @@ export function AdminCalendarHeader({ children, compact = false }: { children?: 
       className="h-9 w-auto max-w-full min-w-0 gap-1.5 px-2.5 font-semibold"
       showToday={compact}
     >
-      <CalendarDays aria-hidden className="size-4 shrink-0 text-gold-text" />
-      <EventCalendarTitle render={<span />} className="text-sm" />
+      <CalendarDays aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+      <EventCalendarTitle render={<span />} className="text-[15px]" />
       <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-60" />
     </EventCalendarDatePicker>
   );

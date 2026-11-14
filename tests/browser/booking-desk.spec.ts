@@ -106,7 +106,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       expect(t.summary()).toMatchObject({ taps: 3, typed: 0, scrolls: 0 });
     });
 
-    test("Today strip: nothing clipped (2 columns on a phone)", async ({ page }) => {
+    test("Today strip: four compact columns, nothing clipped", async ({ page }) => {
       await openDesk(page);
       const tiles = page.getByRole("region", { name: "Today" }).locator("button[aria-controls=today-list]");
       await expect(tiles).toHaveCount(4);
@@ -119,7 +119,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
         expect(box.right).toBeLessThanOrEqual(viewport.width);
         expect(box.clipped).toBe(false);
       }
-      expect(new Set(boxes.map((b) => b.top)).size).toBe(size === "phone" ? 2 : 1);
+      expect(new Set(boxes.map((b) => b.top)).size).toBe(1);
     });
 
     test("hotel calendar toolbar: at most 8 controls, Today in the month picker, Show cancelled in ⋯", async ({ page }) => {
@@ -278,11 +278,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await page.locator("[data-slot=event-calendar-event]", { hasText: "Ken Tanaka" }).first().click();
       const sheet = page.getByRole("dialog", { name: /Ken Tanaka/ });
       await expect(sheet.getByRole("region", { name: "Balance due" })).toContainText("฿1,200");
-      // Buttons, not counting the sheet's own ✕ and the "Already paid…" text link.
-      const buttons = sheet.locator("button:visible").filter({ hasNotText: /^Close$|^Already paid…$/ });
+      // Header Edit and Close are icon actions; the payment and status actions keep their hierarchy.
+      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"])').filter({ hasNotText: /^Already paid…$/ });
       const take = sheet.getByRole("link", { name: "Take payment" });
       await expect(take).toHaveAttribute("href", /\/admin\/checkout\?appointment=/);
-      await expect(buttons).toHaveText(["Mark arrived", ""]);
+      await expect(buttons).toHaveText(["", "Mark arrived"]);
+      await expect(sheet.getByRole("button", { name: "Edit appointment" })).toBeVisible();
       expect((await buttons.count()) + (await take.count())).toBe(3);
       // While a balance is due, Take payment is the one filled button.
       await expect(take).toHaveClass(/bg-primary/);
@@ -317,6 +318,10 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await page.locator(`[data-day="2026-11-20"] button`).click();
       await page.locator(`[data-day="2026-11-23"] button`).click();
       await expect(dialog.getByText("Total ฿36,000")).toBeVisible();
+      expect(await inView(dialog.getByText("Total ฿36,000"))).toBe(true);
+      const checkIn = await dialog.getByTestId("booking-check-in").boundingBox();
+      const checkOut = await dialog.getByTestId("booking-check-out").boundingBox();
+      expect(checkIn!.y).toBe(checkOut!.y);
       await expect(dialog).toContainText("· 3 nights");
       await expectAtMostSentences(dialog, 1);
       const create = dialog.getByRole("button", { name: "Create booking" });

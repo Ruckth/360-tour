@@ -30,7 +30,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
   const money = (n: number) => formatMoney(n, appointment.currency);
   const records = data.orders.length + data.payments.length + data.refunds.length + (data.unitemised > 0 ? 1 : 0);
   if (records === 0 && appointment.paymentStatus !== "refunded" && !dialog) return null;
-  return <Disclosure aria-label="Appointment payments" label={`Payments and refunds (${records})`} contentClassName="grid gap-3 pb-2">
+  return <Disclosure className="font-sans tabular-nums" aria-label="Appointment payments" label={`Payments and refunds (${records})`} contentClassName="grid gap-3 pb-2">
     <p className="text-sm">Paid {money(data.money.net)} · Refunded {money(data.money.refunded)}</p>
     {data.orders.map(order => <div key={order.billId} className="grid gap-2 border-t border-border pt-3 text-sm">
       <Link className="underline underline-offset-2" href={receiptPath(order.billId)}>Receipt {order.receiptNumber ?? "record"} · {money(order.charged)}</Link>
@@ -71,15 +71,15 @@ export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: 
   const { data, owed } = useAppointmentOwed(appointment);
   const [paying, setPaying] = useState(false);
   const headline = owed > 0 ? { label: "Balance due", amount: owed } : data && data.money.net > 0 ? { label: "Paid", amount: data.money.net } : { label: "Nothing due", amount: 0 };
-  return <section aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
+  return <section aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-4 rounded-xl border border-border bg-card p-5">
     <div data-sentence-budget="ignore">
-      <h3 id={`appointment-money-${appointment._id}`} className="text-sm font-medium text-muted-foreground">{data ? headline.label : "Balance due"}</h3>
-      <p className="font-serif text-3xl font-semibold tabular-nums">{data ? formatMoney(headline.amount, appointment.currency) : "…"}</p>
+      <h3 id={`appointment-money-${appointment._id}`} className="text-xs font-medium text-muted-foreground">{data ? headline.label : "Balance due"}</h3>
+      <p className="font-sans text-4xl font-semibold tracking-tight tabular-nums">{data ? formatMoney(headline.amount, appointment.currency) : "…"}</p>
     </div>
     <div className="flex flex-wrap items-center gap-2">
       {owed > 0 ? <ButtonLink href={`/admin/checkout?appointment=${appointment._id}`} aria-disabled={disabled || undefined} className={disabled ? "pointer-events-none opacity-50" : undefined}>Take payment</ButtonLink> : null}
       {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
-        <Button variant="link" className="min-h-10 px-1" disabled={disabled} onClick={() => setPaying(true)}>Already paid…</Button>
+        <Button variant="outline" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Already paid…</Button>
       ) : null}
     </div>
     {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}

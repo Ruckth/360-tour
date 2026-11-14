@@ -10,7 +10,7 @@ import {
   canCorrectAppointmentTime,
   turnaroundMinutes,
 } from "convex/lib/appointmentWindow";
-import { Repeat } from "lucide-react";
+import { Pencil, Repeat, X } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
 import { AppointmentFeeAction } from "@/components/admin/AppointmentFeeAction";
@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog as Modal, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { endTime, timeRange } from "@/lib/schedule-changes";
@@ -51,8 +51,8 @@ type Appointment = Doc<"serviceAppointments">;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2 text-sm">
-      <dt className="text-muted-foreground">{label}</dt>
+    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
+      <dt className="text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -162,15 +162,34 @@ export function AppointmentSheet({
         }
       }}
     >
-      <SheetContent onEscapeKeyDown={(e) => { if (feePending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (feePending) e.preventDefault(); }} className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent showCloseButton={false} onEscapeKeyDown={(e) => { if (feePending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (feePending) e.preventDefault(); }} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
         {appointment && status ? (
           <div className="grid gap-5">
-            <div>
-              <SheetTitle className="pe-8">Appointment · {appointment.guestName || "Unnamed guest"}</SheetTitle>
-              <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
-                <StatusBadge {...status} />
-              </SheetDescription>
-            </div>
+            <header className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="mb-1 text-xs text-muted-foreground">Appointment</p>
+                <SheetTitle className="font-serif text-2xl font-semibold"><span className="sr-only">Appointment · </span>{appointment.guestName || "Unnamed guest"}</SheetTitle>
+                <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
+              </div>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Button size="icon" variant="ghost" aria-label="Edit appointment" disabled={feePending || pending !== null || editing} onClick={() => setEditing(true)}><Pencil aria-hidden className="size-4" /></Button>
+                {!editing ? (
+                  <MoreMenu
+                    label="More appointment actions"
+                    disabled={feePending || pending !== null}
+                    items={[
+                      ...actions.filter((action) => action !== next).map((action) => ({ label: ACTION_LABELS[action], onSelect: () => void run(action) })),
+                      // Date or time, turnaround, status and details: one item, then a choice.
+                      { label: "Correct…", onSelect: () => setDialog("choose") },
+                      { label: "Book again", onSelect: () => onBookAgain(appointment), hidden: !canBookAgain(appointment) || next === "book_again", disabled: services.length === 0 },
+                      { label: "Copy reference", onSelect: () => void copyReference() },
+                      { label: "Cancel appointment", onSelect: () => setDialog("cancel"), destructive: true, hidden: !CANCELLABLE.includes(appointment.status) },
+                    ]}
+                  />
+                ) : null}
+                <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" disabled={feePending}><X aria-hidden className="size-4" /></Button></SheetClose>
+              </div>
+            </header>
             {editing ? (
               <AppointmentEditForm
                 key={appointment._id}
@@ -189,23 +208,11 @@ export function AppointmentSheet({
                       {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
                     </Button>
                   ) : null}
-                  <MoreMenu
-                    label="More appointment actions"
-                    disabled={feePending || pending !== null}
-                    items={[
-                      ...actions.filter((action) => action !== next).map((action) => ({ label: ACTION_LABELS[action], onSelect: () => void run(action) })),
-                      // Date or time, turnaround, status and details: one item, then a choice.
-                      { label: "Correct…", onSelect: () => setDialog("choose") },
-                      { label: "Book again", onSelect: () => onBookAgain(appointment), hidden: !canBookAgain(appointment) || next === "book_again", disabled: services.length === 0 },
-                      { label: "Copy reference", onSelect: () => void copyReference() },
-                      { label: "Cancel appointment", onSelect: () => setDialog("cancel"), destructive: true, hidden: !CANCELLABLE.includes(appointment.status) },
-                    ]}
-                  />
                 </div>
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
                 {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
-                <dl className="divide-y divide-border border-y border-border">
+                <dl className="divide-y divide-border rounded-xl border border-border bg-card px-4">
                   <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
                   <Detail label="Staff">
                     {staff ? (

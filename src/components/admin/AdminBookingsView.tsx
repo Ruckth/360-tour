@@ -227,9 +227,9 @@ function HotelBookings() {
 
   return (
     // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
       <TodayStrip villaName={villaName} onOpen={openQuick} />
-      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -290,6 +290,13 @@ function HotelBookings() {
           onRangeChange={({ range: visible }) =>
             setRange({ from: isoDate(visible.start), to: isoDate(addDays(visible.end, 1)) })
           }
+          classNames={{
+            monthCellFooter: "absolute left-0 top-1 justify-start pb-0",
+            monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground/50",
+            monthCellContent: "pt-7",
+            monthBarOverlay: "pt-7",
+            moreIndicator: "h-4 w-fit max-w-full shrink-0 rounded-full bg-muted px-0.5 text-[10px] leading-4 sm:px-2 sm:text-[11px]",
+          }}
           loading={data === undefined}
           className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
         >

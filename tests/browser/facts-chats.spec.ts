@@ -8,7 +8,7 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
  *   Resolve a report with an existing fact: 3 taps (open picker, fact, Resolve) → now 2.
  *   Clear a chat (desktop): 2 taps (⋯, No reply needed) and 1 more to open the next chat → now 1.
  *   Clear a chat (phone): 3 taps (chat, ⋯, No reply needed) and 2 more to reach the next → now 2.
- *   Read a guest's contact: 2 taps (ⓘ, Close) → now 0.
+ *   Contact details live behind ⓘ per the visual brief; the reply and resolve tap budgets stay unchanged.
  */
 const SIZES = { desktop: { width: 1180, height: 820 }, phone: { width: 390, height: 844 } } as const;
 const SHOTS = "docs/screenshots/ux-p6";
@@ -148,10 +148,17 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       if (size === "desktop") await expect(list.getByRole("status")).toHaveText("No reply needed · Anna Müller");
     });
 
-    test("contact details sit in the chat header; IDs sit under a closed More · technical section (2 → 0 taps)", async ({ page }) => {
+    test("contact details are behind the header info button; IDs stay under closed More · technical", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
       if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();
-      const contact = page.getByRole("group", { name: "Contact" }).or(page.locator('address[aria-label="Contact"]'));
+      const pane = size === "phone" ? page.getByTestId("admin-chat-detail-dialog") : page.getByRole("region", { name: "Selected chat" });
+      await expect(pane.locator('address[aria-label="Contact"]')).toHaveCount(0);
+      await expectAtMostSentences(pane, 1);
+      await shot(page, `after-${size}-chat`);
+      // Debug fields: in Chat details, under More · technical, closed until asked for.
+      await page.getByRole("button", { name: "Chat details" }).click();
+      const sheet = page.getByRole("dialog", { name: "Chat details" });
+      const contact = sheet.locator('address[aria-label="Contact"]');
       await expect(contact).toContainText("+49 151 2345 6789");
       await expect(contact).toContainText("anna.mueller@example.com");
       await expect(contact.getByRole("link", { name: "anna.mueller@example.com" })).toHaveAttribute("href", "mailto:anna.mueller@example.com");
@@ -161,14 +168,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
         expect(box!.y).toBeGreaterThanOrEqual(0);
       }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
-      await expect(page.getByText("chat-anna")).toHaveCount(0);
-      const pane = size === "phone" ? page.getByTestId("admin-chat-detail-dialog") : page.getByRole("region", { name: "Selected chat" });
-      await expectAtMostSentences(pane, 1);
-      await shot(page, `after-${size}-chat`);
 
-      // Debug fields: in Chat details, under More · technical, closed until asked for.
-      await page.getByRole("button", { name: "Chat details" }).click();
-      const sheet = page.getByRole("dialog", { name: "Chat details" });
       const technical = sheet.locator("details", { has: page.locator("summary", { hasText: "More · technical" }) });
       await expect(technical).not.toHaveAttribute("open", "");
       await expect(sheet.getByText("chat-anna")).toBeHidden();

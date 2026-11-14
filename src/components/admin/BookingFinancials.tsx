@@ -148,7 +148,7 @@ function LoadedBookingFinancials({
   const records = (
     <>
       {recordCount ? (
-        <div className="grid gap-3">
+        <div className="grid gap-3 font-sans tabular-nums">
           <h4 className="admin-eyebrow">Payments and refunds</h4>
           {data.payments.length ? (
             <ul className="grid gap-2">
@@ -191,7 +191,7 @@ function LoadedBookingFinancials({
           ) : null}
         </div>
       ) : null}
-      <div className="grid gap-1 text-muted-foreground">
+      <div className="grid gap-1 font-sans tabular-nums text-muted-foreground">
         <h4 className="admin-eyebrow pt-2">Price</h4>
         <p>{formatMoney(booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0, booking.currency)} × {booking.nights} {booking.nights === 1 ? "night" : "nights"} = {formatMoney(booking.subtotal, booking.currency)}</p>
         {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
@@ -208,12 +208,12 @@ function LoadedBookingFinancials({
 
   return (
     <>
-      <section aria-labelledby="booking-payments" className="grid gap-2 rounded-xl border border-border bg-muted/40 p-3">
+      <section aria-labelledby="booking-payments" className="grid gap-4 rounded-xl border border-border bg-card p-5">
         <div data-sentence-budget="ignore">
-          <h3 id="booking-payments" className="text-sm font-medium text-muted-foreground">{headline.label}</h3>
-          <p className="font-serif text-3xl font-semibold tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
+          <h3 id="booking-payments" className="text-xs font-medium text-muted-foreground">{headline.label}</h3>
+          <p className="font-sans text-4xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
           {spaTotal > 0 && due > 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="font-sans text-[13px] tabular-nums text-muted-foreground">
               Stay {formatMoney(money.owed, money.currency)} · Spa {formatMoney(spaTotal, money.currency)}
             </p>
           ) : null}
@@ -231,7 +231,7 @@ function LoadedBookingFinancials({
           ) : null}
           {canPay ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <Button variant="link" className="min-h-10 px-1" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+              <Button variant="outline" className="min-h-10" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
                 Already paid…
               </Button>
             </DisabledReason>

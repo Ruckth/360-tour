@@ -51,13 +51,13 @@ for (const viewport of [
       exact: true,
     });
     if (viewport.width >= 640) {
-      // The sticky footer: no Close of its own (✕ is in the corner), Create beside the total.
+      // The footer keeps its total above the actions, with one header Close.
       await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
-      const footer = submit.locator("xpath=..");
+      const footer = submit.locator("xpath=../..");
       await expect(footer).toContainText("Total ฿21,675 · 3 nights");
       const totalBox = await footer.getByText(/^Total/).boundingBox();
       const submitBox = await submit.boundingBox();
-      expect(Math.abs(totalBox!.y + totalBox!.height / 2 - (submitBox!.y + submitBox!.height / 2))).toBeLessThan(6);
+      expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(submitBox!.y);
     }
     await page.screenshot({ path: testInfo.outputPath("booking-popup.png") });
     await submit.scrollIntoViewIfNeeded();

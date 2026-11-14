@@ -43,7 +43,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
 
   return (
     <section aria-label="Today" className="grid shrink-0 gap-2">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-3">
         {GROUPS.map(({ key, label }) => (
           <button
             key={key}
@@ -53,12 +53,12 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
             disabled={!groups}
             onClick={() => setOpen((current) => (current === key ? null : key))}
             className={cn(
-              "grid min-h-14 min-w-0 rounded-xl border border-border bg-card px-3 py-2 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+              "grid min-h-20 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-3 sm:min-h-24 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
               open === key && "border-foreground/40 bg-muted",
             )}
           >
-            <span className="text-xs leading-tight font-semibold text-muted-foreground">{label}</span>
-            <span className="text-xl font-semibold tabular-nums">{groups ? key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length : "–"}</span>
+            <span className="text-[11px] leading-tight font-normal text-muted-foreground sm:text-xs">{label}</span>
+            <span className={cn("font-sans text-[28px] leading-none font-semibold tracking-tight tabular-nums", key === "balanceDue" && "text-base tracking-tighter sm:text-[28px]")}>{groups ? key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length : "–"}</span>
           </button>
         ))}
       </div>

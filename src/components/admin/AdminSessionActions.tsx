@@ -116,7 +116,7 @@ export function AdminSessionActions({
   ) : null;
 
   const actions = (
-    <div className="flex flex-wrap items-center justify-end gap-1.5">
+    <div className="flex items-center justify-end gap-0 sm:gap-1.5">
       {status === "open" ? (
         <Button
           type="button"
@@ -124,10 +124,12 @@ export function AdminSessionActions({
           variant="outline"
           disabled={pending}
           title="No reply needed (e)"
+          aria-label="No reply needed"
+          className="size-9 p-0 sm:w-auto sm:px-3"
           onClick={() => void run(() => changeStatus("resolved"))}
         >
           <CheckCheck aria-hidden="true" className="size-4" />
-          No reply needed
+          <span className="hidden sm:inline">No reply needed</span>
         </Button>
       ) : (
         <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run(() => changeStatus("open"))}>

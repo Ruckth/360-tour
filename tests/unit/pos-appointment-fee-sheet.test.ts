@@ -26,7 +26,7 @@ it('mounts the real fee control beside financials and blocks sheet Close, Escape
   mocks.fee.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
   const onClose = vi.fn(), start = Date.now() - 3600000;
   const appointment: Doc<'serviceAppointments'> = { _id: 'fxappt000002' as Id<'serviceAppointments'>, _creationTime: start, serviceId: 'fxsvc000002' as Id<'services'>, staffId: 'fxstaff000001' as Id<'staff'>, status: 'no_show', paymentStatus: 'unpaid', price: 1600, currency: 'THB', revision: 0, start, end: start + 3600000, blockedUntil: start + 3600000, guestName: 'Somchai', guestPhone: '0812345678', source: 'admin', confirmationCode: 'SVC-0002', accessToken: 'fixture', createdAt: start };
-  const button = (name: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim() === name)!;
+  const button = (name: string) => [...document.querySelectorAll('button')].find(b => b.getAttribute('aria-label') === name || b.textContent?.trim() === name)!;
   const type = async (selector: string, value: string) => act(async () => {
     const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector)!;
     Object.getOwnPropertyDescriptor(el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, 'value')!.set!.call(el, value);

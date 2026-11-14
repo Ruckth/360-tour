@@ -92,7 +92,7 @@ const click = async (el: Element | null | undefined) => {
   }
   await act(async () => (el as HTMLElement).click());
 };
-const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
+const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.getAttribute("aria-label") === text || el.textContent?.trim() === text);
 const type = (id: string, value: string) => act(async () => {
   const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!;

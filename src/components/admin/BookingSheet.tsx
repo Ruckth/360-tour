@@ -1,5 +1,6 @@
 "use client";
 
+import { Pencil, X } from "lucide-react";
 import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
@@ -21,7 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,8 +61,8 @@ type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.get
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2 text-sm">
-      <dt className="text-muted-foreground">{label}</dt>
+    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
+      <dt className="text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -84,7 +85,8 @@ export function BookingSheet({
 
   return (
     <Sheet open={Boolean(bookingId)} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent showCloseButton={false} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
+        {booking === undefined || booking === null ? <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" className="absolute right-3 top-3"><X aria-hidden className="size-4" /></Button></SheetClose> : null}
         {booking === undefined ? (
           <div role="status" aria-label="Loading booking" className="grid gap-5">
             <SheetTitle className="sr-only">Booking</SheetTitle>
@@ -220,12 +222,37 @@ function BookingDetails({
 
   return (
     <div className="grid gap-5">
-      <div>
-        <SheetTitle className="pe-8">{booking.guestName}</SheetTitle>
-        <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
-          <StatusBadge {...status} />
-        </SheetDescription>
-      </div>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <SheetTitle className="font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
+          <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {editable ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
+                <Pencil aria-hidden className="size-4" />
+              </Button>
+            </DisabledReason>
+          ) : null}
+          <MoreMenu
+            label="More booking actions"
+            disabled={pending !== null}
+            items={[
+              { label: "Copy pay link", onSelect: () => void copyPayLink(), hidden: !booking.accessToken },
+              { label: "Copy reference", onSelect: () => void copyReference(), hidden: !booking.confirmationCode },
+              {
+                label: "Resend emails",
+                onSelect: () => void act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued."),
+                hidden: booking.status !== "confirmed",
+              },
+              { label: "Cancel stay", onSelect: () => setDialog("cancel"), destructive: true, hidden: !editable, disabled: booking.checkoutLive },
+              { label: "Delete booking", onSelect: () => void remove(), destructive: true, hidden: !deletable },
+            ]}
+          />
+          <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close"><X aria-hidden className="size-4" /></Button></SheetClose>
+        </div>
+      </header>
 
       <BookingFinancials
         booking={booking}
@@ -240,9 +267,10 @@ function BookingDetails({
           />
         }
       >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {editable && booking.status === "pending" ? (
           <Button
+            variant="outline"
             onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), booking.notifyByDefault && booking.guestEmail ? "Confirmed. The guest is emailed." : "Confirmed.")}
             disabled={pending !== null}
           >
@@ -250,34 +278,13 @@ function BookingDetails({
             Confirm
           </Button>
         ) : null}
-        {editable ? (
-          <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-            <Button variant="outline" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
-              Edit
-            </Button>
-          </DisabledReason>
-        ) : null}
         {cancelled ? (
           <Button variant="outline" onClick={() => setDialog("reopen")} disabled={pending !== null}>
             Reopen
           </Button>
         ) : null}
         {pending === "resend" || pending === "delete" || pending === "copy" || pending === "reference" ? <Spinner label="Working" /> : null}
-        <MoreMenu
-          label="More booking actions"
-          disabled={pending !== null}
-          items={[
-            { label: "Copy pay link", onSelect: () => void copyPayLink(), hidden: !booking.accessToken },
-            { label: "Copy reference", onSelect: () => void copyReference(), hidden: !booking.confirmationCode },
-            {
-              label: "Resend emails",
-              onSelect: () => void act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued."),
-              hidden: booking.status !== "confirmed",
-            },
-            { label: "Cancel stay", onSelect: () => setDialog("cancel"), destructive: true, hidden: !editable, disabled: booking.checkoutLive },
-            { label: "Delete booking", onSelect: () => void remove(), destructive: true, hidden: !deletable },
-          ]}
-        />
+
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
@@ -288,7 +295,7 @@ function BookingDetails({
       ) : null}
       {!editable ? <p className="text-xs text-muted-foreground">Reopen a cancelled booking to change it.</p> : null}
 
-      <dl className="divide-y divide-border border-y border-border">
+      <dl className="divide-y divide-border rounded-xl border border-border bg-card px-4">
         <Detail label="Villa">
           {booking.propertyName}
           {booking.propertyStatus !== "active" ? <span className="block text-muted-foreground">Villa is {booking.propertyStatus}</span> : null}
@@ -324,8 +331,8 @@ function BookingDetails({
         ) : null}
       </dl>
 
-      <div className="grid gap-2">
-        <Label htmlFor="booking-notes">Notes (staff only)</Label>
+      <div className="grid gap-2 rounded-xl border border-border bg-card p-4">
+        <Label className="text-[13px] text-muted-foreground" htmlFor="booking-notes">Notes (staff only)</Label>
         <Textarea
           id="booking-notes"
           value={notes}

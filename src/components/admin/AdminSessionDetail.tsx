@@ -48,11 +48,11 @@ export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T
   return [...newestFirst].reverse();
 }
 
-/** How to reach the guest, shown in the chat header: a phone or app handle, and an email. */
-function ContactLine({ session }: { session: AdminSession }) {
+/** Contact details behind info; app handles can also identify the guest in the header. */
+function ContactLine({ session, handlesOnly = false }: { session: AdminSession; handlesOnly?: boolean }) {
   const handle = session.visitorContactHandle;
-  const phone = session.visitorPhone;
-  const email = session.visitorEmail;
+  const phone = handlesOnly ? undefined : session.visitorPhone;
+  const email = handlesOnly ? undefined : session.visitorEmail;
   if (!handle && !phone && !email) return null;
   const item = "inline-flex min-w-0 max-w-full items-center gap-1 rounded hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
   return (
@@ -354,15 +354,15 @@ export function AdminSessionDetail({
     <Sheet>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
-          {/* Wraps the actions under the name when large text or a narrow phone leaves no room. */}
-          <div className="flex flex-wrap items-center justify-between gap-2 p-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 flex-[1_1_12rem] items-center gap-3">
+          {/* Keep identity, state and tools in one header; long names truncate before the tools. */}
+          <div className="flex items-start justify-between gap-1 p-3 sm:gap-3 sm:px-6 sm:py-4">
+            <div className="flex min-w-0 flex-1 items-start gap-1 sm:gap-3">
               {compact && onBack ? (
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
-                  className="size-9 shrink-0"
+                  className="size-9 shrink-0 -ml-1"
                   aria-label="Back to chats"
                   onClick={onBack}
                 >
@@ -380,18 +380,26 @@ export function AdminSessionDetail({
                   .join("")
                   .toUpperCase()}
               </span>
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2>
-                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2>
+                  <StatusBadge tone={status.tone} label={status.label} className="text-[11px]" />
+                </div>
+                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
                   <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
                   <span className="shrink-0">{sourceLabel(session.channel)}</span>
                   <span aria-hidden="true">·</span>
                   <span className="truncate">{propertyLabel}</span>
                 </p>
-                <ContactLine session={session} />
+                <ContactLine session={session} handlesOnly />
+                <p className={cn("mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground", !session.aiPaused && !session.keepWithStaff && "max-sm:hidden")}>
+                  {status.reason ? <span>{status.reason}</span> : null}
+                  <span>{session.aiPaused ? "AI paused" : "AI on"}</span>
+                  <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
+                </p>
               </div>
             </div>
-            <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-1">
+            <div className="ml-auto flex shrink-0 items-center justify-end gap-0 sm:gap-1">
               <SheetTrigger asChild>
                 <Button
                   type="button"
@@ -405,19 +413,6 @@ export function AdminSessionDetail({
               </SheetTrigger>
               {actions}
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 px-4 py-2 text-xs text-muted-foreground sm:px-6">
-            <span className="inline-flex flex-wrap items-center gap-2">
-              <StatusBadge tone={status.tone} label={status.label} />
-              {status.reason ? <span>{status.reason}</span> : null}
-            </span>
-            <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="inline-flex items-center gap-1.5">
-                {session.aiPaused ? <Hand className="size-3.5 shrink-0" aria-hidden="true" /> : <Bot className="size-3.5 shrink-0" aria-hidden="true" />}
-                {session.aiPaused ? "AI paused" : "AI on"}
-              </span>
-              <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
-            </span>
           </div>
           {followUp ?? (session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null)}
           {session.inboxSendError ? <p role="alert" className="border-t border-border/40 px-4 py-2 text-xs text-destructive sm:px-6">{session.inboxSendError}</p> : null}
@@ -601,6 +596,15 @@ export function AdminSessionDetail({
             {guestName} · {sourceLabel(session.channel)}
           </SheetDescription>
         </SheetHeader>
+        <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
+          <ContactLine session={session} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <StatusBadge tone={status.tone} label={status.label} />
+            {status.reason ? <span>{status.reason}</span> : null}
+            <span className="inline-flex items-center gap-1.5">{session.aiPaused ? <Hand aria-hidden className="size-3.5" /> : <Bot aria-hidden className="size-3.5" />}{session.aiPaused ? "AI paused" : "AI on"}</span>
+            <span>Next issue: {session.keepWithStaff ? "Staff" : "AI"}</span>
+          </div>
+        </div>
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
