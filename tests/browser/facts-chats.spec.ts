@@ -88,10 +88,16 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     test("a report card: resolve with a fact, Create fact in one tap, Ignore in ⋯", async ({ page }) => {
       await open(page, "/tests/browser/questions.html?path=/admin/questions");
       const card = page.locator("tbody tr").filter({ hasText: "Do you have a baby cot?" });
-      // Before round 2: checkbox, Open chat, the select, Create fact, Ignore (5), plus a "New" badge,
-      // a "Context" label and the page path (/villas/tideglass) on every card.
+      // Phone keeps checkbox, Resolve, Create fact and More; Open chat stays reachable in More.
+      // Desktop retains its direct Open chat action.
       const controls = await card.evaluate((el) => Array.from(el.querySelectorAll<HTMLElement>("button, select, a[href], input:not([type=hidden])")).filter(control => { const r = control.getBoundingClientRect(); return control.checkVisibility() && r.width > 2 && r.height > 2; }).length);
-      expect(controls).toBe(5);
+      expect(controls).toBe(size === "phone" ? 4 : 5);
+      if (size === "phone") {
+        await expect(card.getByRole("link", { name: "Open chat" })).toBeHidden();
+        await card.getByRole("button", { name: 'More for "Do you have a baby cot?"' }).click();
+        await expect(page.getByRole("menuitem", { name: "Open chat", exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+      } else await expect(card.getByRole("link", { name: "Open chat" })).toBeVisible();
       await expect(card.getByRole("button", { name: "Create fact" })).toHaveCount(1);
       await expect(card.getByRole("button", { name: "Ignore", exact: true })).toHaveCount(0);
       await expect(page.locator("tbody").getByText("New", { exact: true })).toHaveCount(0);
@@ -135,7 +141,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const taps = recorder();
       if (size === "phone") await taps.tap(page.getByRole("button", { name: /Anna Müller/ }).first());
       await expect(page.getByRole("heading", { name: "Anna Müller", exact: true })).toBeVisible();
-      await taps.tap(page.getByRole("button", { name: "Done · No reply needed", exact: true }));
+      await taps.tap(page.getByRole("button", { name: "No reply needed", exact: true }));
       await expect(page.getByRole("heading", { name: "Somchai P.", exact: true })).toBeVisible();
       // Desktop 2 → 1 (the chat opens itself); phone 3 → 2 (open the chat, then No reply needed).
       expect(taps.taps).toBe(size === "phone" ? 2 : 1);

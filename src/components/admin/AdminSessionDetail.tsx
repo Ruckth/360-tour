@@ -351,8 +351,9 @@ export function AdminSessionDetail({
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
   const replyHintId = `${replyInputId}-hint`;
   const status = conversationStatus(session);
-  const latestUnansweredGuestId = session.needsReply ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
-  const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "AI couldn't answer" : session.keepWithStaff ? "Staff handles next question" : "AI on";
+  // The server records AI escalations as handoff; staff_reply is a later guest message.
+  const escalatedGuestId = session.needsReply && session.inboxReason === "handoff" ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
+  const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "Waiting for staff" : session.keepWithStaff ? "Waiting for staff" : "AI on";
 
   return (
     <Sheet>
@@ -361,11 +362,15 @@ export function AdminSessionDetail({
           <div className="grid gap-2 p-3 sm:px-6 sm:py-4">
             <div className="flex min-w-0 items-center gap-1 sm:gap-3">
               {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
-              <div className="min-w-0 flex-1"><h2 aria-label={guestName} className="flex min-w-0 items-center gap-2 text-base font-semibold text-foreground"><span title={status.label} className={cn("size-2 shrink-0 rounded-full sm:hidden", session.needsReply ? "bg-amber-600" : "bg-emerald-700")} /><span className="truncate">{guestName}</span><span className="sr-only sm:hidden">{status.label}</span></h2><p className="text-balance text-[13px] text-muted-foreground sm:hidden">{sourceLabel(session.channel)} · {propertyLabel}</p></div>
+              <div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
               <div className="flex shrink-0 items-center gap-0 sm:gap-1">
                 <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
                 {actions}
               </div>
+            </div>
+            <div className="flex min-w-0 items-center gap-2 sm:hidden">
+              <StatusBadge tone={status.tone} label={session.adminStatus === "resolved" || session.adminStatus === "archived" ? status.label : session.needsReply ? "Needs you" : session.aiPaused || session.keepWithStaff ? "Waiting for staff" : automationLabel} className="shrink-0 text-xs" />
+              <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
             </div>
             <p className="hidden min-w-0 items-start gap-1.5 sm:flex text-[13px] text-muted-foreground">
               <ChannelIcon channel={session.channel} className="mt-1 size-3 shrink-0" />
@@ -444,12 +449,11 @@ export function AdminSessionDetail({
                     >
                       {formatDateTime(message.timestamp)}
                     </ChatBubbleTimestamp>
-                    {fromGuest && onAddBusinessFact ? (
+                    {fromGuest && message._id === escalatedGuestId && onAddBusinessFact ? (
                       <button
                         type="button"
                         onClick={() => onAddBusinessFact(message)}
-                        // Every guest question keeps a tap route, including earlier messages.
-                        className={cn("mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100", message._id !== latestUnansweredGuestId && "pointer-coarse:hidden")}
+                        className={cn("mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100")}
                       >
                         <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
                         Save answer for AI

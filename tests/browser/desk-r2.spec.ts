@@ -66,7 +66,7 @@ test('Done keeps an unsent reply editable when discard is cancelled', async ({ p
   await page.goto('/tests/browser/chats.html?path=/admin/chats');
   await page.locator('[data-fixture-ready]').waitFor();
   await page.getByRole('textbox', { name: 'Type an admin reply' }).fill('Unsent answer');
-  await page.getByRole('button', { name: 'Done · No reply needed', exact: true }).click();
+  await page.getByRole('button', { name: 'No reply needed', exact: true }).click();
   await page.getByRole('button', { name: 'Keep editing' }).click();
   await expect(page.getByRole('heading', { name: 'Anna Müller', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Type an admin reply' })).toHaveValue('Unsent answer');

@@ -109,9 +109,9 @@ function EventCalendarResourceView({
     const slotPx = slotRow?.getBoundingClientRect().height || 64
     const pxPerMinute = slotPx / interval
     const scrollTo = (minutes: number) => {
-      // keep the hour label above the target line visible (it hangs -top-2)
+      // Start exactly on the hour, without a sliver of the previous slot.
       viewport?.scrollTo({
-        top: Math.max(0, (minutes - startHour * 60) * pxPerMinute - 12),
+        top: Math.max(0, (minutes - startHour * 60) * pxPerMinute),
       })
     }
     scrollTo(viewConfig.scrollToHour * 60)

@@ -67,17 +67,6 @@ export function NewBookingDialog({
   const createBooking = useMutation(api.adminBookings.createBooking);
   const [creationKey] = useState(() => newAttemptKey("booking"));
   const pending = useRef(false);
-  const fields = useRef<HTMLFieldSetElement>(null);
-  const [moreFields, setMoreFields] = useState(true);
-  const checkContinuation = () => { const el = fields.current; if (el) setMoreFields(el.scrollHeight - el.scrollTop - el.clientHeight > 2); };
-  useEffect(() => {
-    const el = fields.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => { setMoreFields(el.scrollHeight - el.scrollTop - el.clientHeight > 2); });
-    observer.observe(el);
-    for (const child of el.children) observer.observe(child);
-    return () => observer.disconnect();
-  }, []);
   // A prefilled archived villa is kept only for a past stay (the calendar filtered to that villa).
   const prefillCheckIn = prefill?.checkIn ?? "";
   const prefillPast = prefillCheckIn !== "" && prefillCheckIn < serverTodayIso();
@@ -236,23 +225,24 @@ export function NewBookingDialog({
 
   return (
     <Dialog open onOpenChange={(next) => (next || saving ? undefined : void close())}>
-      <DialogContent className="h-[min(56rem,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] grid-rows-[auto_minmax(0,1fr)] gap-3 sm:gap-5 overflow-hidden p-5 sm:max-w-2xl" showCloseButton={!saving}>
+      <DialogContent className="h-auto max-h-[calc(100dvh-1rem)] max-sm:h-dvh max-sm:max-h-dvh grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-5 sm:max-w-2xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl font-semibold">{historical ? "Record past stay" : "New booking"}</DialogTitle>
           <DialogDescription className="sr-only">Villa, dates and guest</DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden">
-          <fieldset ref={fields} onScroll={checkContinuation} disabled={saving} className="-mx-5 grid min-h-0 gap-6 sm:gap-4 overflow-y-auto px-5 pb-6 [&_label:not(:has(input))]:text-xs [&_label:not(:has(input))]:text-muted-foreground [&_input]:placeholder:text-muted-foreground">
-            <section aria-labelledby="nb-stay-title" className="grid gap-2 sm:gap-3">
+          <fieldset disabled={saving} className="-mx-5 grid min-h-0 gap-4 overflow-y-auto px-5 pb-5 [&_label:not(:has(input))]:text-xs [&_label:not(:has(input))]:text-muted-foreground [&_input]:placeholder:text-muted-foreground">
+            <section aria-labelledby="nb-stay-title" className="grid gap-1 sm:gap-2">
               <div className="flex items-center justify-between gap-3"><h3 id="nb-stay-title" className="text-base font-semibold">Stay</h3>
-              <ToggleGroup variant="segmented" className="w-fit p-0.5" value={confirmed ? "confirmed" : "pending"} onValueChange={value => setConfirmed(value === "confirmed")} aria-label="Booking status" disabled={saving}>
+              <ToggleGroup variant="segmented" tone="subtle" className="w-fit p-0.5" value={confirmed ? "confirmed" : "pending"} onValueChange={value => setConfirmed(value === "confirmed")} aria-label="Booking status" disabled={saving}>
                 <ToggleGroupItem className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!" value="confirmed">Confirmed</ToggleGroupItem><ToggleGroupItem className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!" value="pending">Pending</ToggleGroupItem>
               </ToggleGroup>
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-1 sm:gap-2">
                 <Label id="nb-villa-label" htmlFor="nb-villa">Villa</Label>
                 <VillaPicker
                   id="nb-villa"
+                  className="[&>button]:font-normal"
                   labelId="nb-villa-label"
                   properties={villas}
                   value={property?._id}
@@ -267,7 +257,7 @@ export function NewBookingDialog({
                 ) : null}
               </div>
               {archivedVilla ? (
-                <div className="grid gap-2">
+                <div className="grid gap-1 sm:gap-2">
                   <Label htmlFor="nb-villa-reason">This villa is archived. Why record this past stay in it? (required)</Label>
                   <Input
                     id="nb-villa-reason"
@@ -287,17 +277,23 @@ export function NewBookingDialog({
                 onMonthChange={availability.onMonthChange}
               />
 
+              {property && dates.checkIn && dates.checkOut ? (
+                <Button type="button" variant="ghost" className="-ms-2 w-fit justify-start px-2 text-sm text-muted-foreground" disabled={saving}
+                  onClick={async () => { if (await confirmDiscard()) onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut }); }}>
+                  Block these dates instead
+                </Button>
+              ) : null}
               {!confirmed ? <p className="text-xs text-muted-foreground">Pending holds the dates without emailing the guest.</p> : null}
 
             </section>
-            <section aria-labelledby="nb-guest-title" className="grid gap-2 sm:gap-3">
+            <section aria-labelledby="nb-guest-title" className="grid gap-1 sm:gap-2">
               <h3 id="nb-guest-title" className="text-base font-semibold">Guest</h3>
               <div className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-3">
-                <div className="grid gap-2">
+                <div className="grid gap-1 sm:gap-2">
                   <Label htmlFor="nb-name">Guest name</Label>
                   <Input id="nb-name" required {...field("name")} />
                 </div>
-                <div className="grid gap-2">
+                <div className="grid gap-1 sm:gap-2">
                   <Label htmlFor="nb-guests">Guests{property ? ` (max ${property.maxGuests})` : ""}</Label>
                   <Input
                     id="nb-guests"
@@ -313,7 +309,7 @@ export function NewBookingDialog({
                 </div>
               </div>
               <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-              <div className="grid content-start gap-2">
+              <div className="grid content-start gap-1 sm:gap-2">
                 <Label htmlFor="nb-phone">Phone</Label>
                 <PhoneInput
                   id="nb-phone"
@@ -335,7 +331,7 @@ export function NewBookingDialog({
                   </p>
                 ) : null}
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-1 sm:gap-2">
                 <Label htmlFor="nb-email">Email (optional)</Label>
                 <Input id="nb-email" type="email" autoComplete="off" {...field("email")} />
               </div>
@@ -382,16 +378,19 @@ export function NewBookingDialog({
                 <p className="-mt-2 text-xs text-muted-foreground">Past stay · Email off by default</p>
               ) : null}
             </section>
-            <section aria-labelledby="nb-price-title" className="grid gap-2 sm:gap-3">
+            <section aria-labelledby="nb-price-title" className="grid gap-1 sm:gap-2">
               <h3 id="nb-price-title" className="text-base font-semibold">Price</h3>
-              <div className="grid gap-3 rounded-xl border border-border bg-card p-3">
-                <button id="nb-custom" type="button" role="switch" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex min-h-12 items-center justify-between rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  Custom price
-                  <span aria-hidden className={`flex h-6 w-10 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
+              <div className="grid gap-2 rounded-xl border border-border bg-card px-3">
+                <button id="nb-custom" type="button" role="switch" aria-labelledby="nb-custom-label" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex h-12 shrink-0 items-center justify-between rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="grid min-w-0 gap-0.5 text-left font-normal">
+                    <span id="nb-custom-label">Custom price</span>
+                    {!custom && property && dates.checkIn && dates.checkOut && !conflicts ? <span className="font-sans text-xs tabular-nums text-muted-foreground">{formatMoney(property.pricePerNight, property.currency)}/night{property.directDiscountPercent ? ` · direct −${property.directDiscountPercent}%` : ""}</span> : null}
+                  </span>
+                  <span aria-hidden className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
                 </button>
                 {custom ? (
                   <>
-                    <div className="grid gap-2">
+                    <div className="grid gap-2 pb-3">
                       <Label htmlFor="nb-custom-total">Stay total ({property?.currency ?? "THB"})</Label>
                       <Input
                         id="nb-custom-total"
@@ -402,7 +401,7 @@ export function NewBookingDialog({
                         disabled={saving}
                       />
                     </div>
-                    <div className="grid gap-2">
+                    <div className="grid gap-2 pb-3">
                       <Label htmlFor="nb-custom-reason">Reason (required)</Label>
                       <Input
                         id="nb-custom-reason"
@@ -414,14 +413,9 @@ export function NewBookingDialog({
                       />
                     </div>
                   </>
-                ) : property && dates.checkIn && dates.checkOut && !conflicts ? (
-                  <p className="font-sans text-[13px] tabular-nums text-muted-foreground">
-                    Villa rate: {formatMoney(property.pricePerNight, property.currency)} per night
-                    {property.directDiscountPercent ? `, ${property.directDiscountPercent}% direct discount` : ""}
-                  </p>
                 ) : null}
               </div>
-              <div className="grid gap-2">
+              <div className="grid gap-1 sm:gap-2">
                 <Label htmlFor="nb-coupon">
                   Coupon code <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
@@ -442,7 +436,7 @@ export function NewBookingDialog({
                   aria-describedby="nb-coupon-status"
                   className="font-mono font-semibold tracking-wide"
                 />
-                <div id="nb-coupon-status" aria-live="polite" className="grid gap-2">
+                <div id="nb-coupon-status" aria-live="polite" className="grid gap-1 sm:gap-2">
                   {custom && couponTyped ? (
                     <p className="text-xs text-muted-foreground">A custom price replaces the villa rate, so the code isn’t used.</p>
                   ) : !couponLive ? null : !property || !dates.checkIn || !dates.checkOut ? (
@@ -468,36 +462,20 @@ export function NewBookingDialog({
             </section>
 
           </fieldset>
-          {moreFields ? <p className="shrink-0 border-t border-border py-1.5 text-xs text-muted-foreground">More booking options below ↓</p> : null}
           {/* Separate from the scroller: the footer never covers a field. */}
           <DialogFooter className="-mx-5 shrink-0 flex-col gap-2 border-t border-border bg-card px-5 py-3 sm:flex-col sm:items-stretch">
-            <p className="min-w-0 text-xs" aria-live="polite" data-sentence-budget="ignore">
-              {total !== null ? (
-                <>
-                  <span className="font-sans text-lg font-semibold tabular-nums">Total {formatMoney(total, property?.currency ?? "THB")}</span>
-                  <span className="text-muted-foreground"> · {nights} {nights === 1 ? "night" : "nights"}</span>
-                </>
-              ) : null}
-            </p>
-            <p className={`text-pretty text-xs ${footerError ? "text-destructive" : "text-muted-foreground"}`} role={footerError ? "alert" : (availability.loading && !availability.canSubmit) || couponWaiting ? "status" : undefined} aria-live="polite">{blockingReason}</p>
-            {availability.failed ? <Button type="button" variant="outline" size="sm" className="self-start" disabled={saving} onClick={availability.retry}>Retry availability</Button> : null}
-            <div className="flex w-full flex-wrap items-center justify-between gap-2">
-              {property && dates.checkIn && dates.checkOut ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="-ms-2 h-10 justify-self-start px-2 text-xs font-medium text-muted-foreground"
-                  disabled={saving}
-                  onClick={async () => { if (await confirmDiscard()) onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut }); }}
-                >
-                  Block these dates instead
-                </Button>
-              ) : null}
-              <Button type="submit" className="ms-auto disabled:opacity-45" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting || !guest.name.trim() || !guest.phone.trim()}>
+            <div className="flex w-full items-center justify-between gap-3">
+              <p className="min-w-0 text-xs" aria-live="polite" data-sentence-budget="ignore">
+                <span className="block font-sans text-lg font-semibold tabular-nums">Total {total !== null ? formatMoney(total, property?.currency ?? "THB") : "—"}</span>{" "}
+                {nights > 0 ? <span className="text-muted-foreground">{nights} {nights === 1 ? "night" : "nights"}</span> : null}
+              </p>
+              <Button type="submit" className="shrink-0 disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100" disabled={saving || !availability.canSubmit || Boolean(problem) || Boolean(couponProblem) || couponWaiting || !guest.name.trim() || !guest.phone.trim()}>
                 {saving ? <Spinner className="text-current" /> : null}
                 Create booking
               </Button>
             </div>
+            {blockingReason ? <p className={`text-pretty text-xs ${footerError ? "text-destructive" : "text-muted-foreground"}`} role={footerError ? "alert" : (availability.loading && !availability.canSubmit) || couponWaiting ? "status" : undefined} aria-live="polite">{blockingReason}</p> : null}
+            {availability.failed ? <Button type="button" variant="outline" size="sm" className="self-start" disabled={saving} onClick={availability.retry}>Retry availability</Button> : null}
           </DialogFooter>
         </form>
       </DialogContent>

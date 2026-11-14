@@ -6,6 +6,7 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { MessageSquare, Plus, RotateCcw } from "lucide-react";
 import { MoreMenu } from "@/components/ui/more-menu";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -91,6 +92,7 @@ export function MissingInformationPanel({
 }: {
   properties: readonly AdminFactProperty[];
 }) {
+  const router = useRouter();
   const [status, setStatus] = useState<MissingInfoFilter>("new");
   const [searchInput, setSearchInput] = useState("");
   const search = useDebounced(searchInput.trim());
@@ -492,7 +494,7 @@ export function MissingInformationPanel({
                           </span>
                         ))}
                         {question.propertyName ? (
-                          <span>{question.propertyName}</span>
+                          <span className="min-w-0 truncate">{question.propertyName}</span>
                         ) : null}
                         {question.detectedTopic ? (
                           <Badge variant="outline" className="text-xs font-normal">{question.detectedTopic}</Badge>
@@ -527,9 +529,8 @@ export function MissingInformationPanel({
                             Create fact
                           </Button>
                         {question.sessionId ? (
-                          <Button asChild variant="ghost" size="sm" className="w-fit px-2 max-lg:col-span-full"><Link
+                          <Button asChild variant="ghost" size="sm" className="hidden w-fit px-2 text-sm font-medium lg:inline-flex"><Link
                             href={`/admin/chats?session=${question.sessionId}`}
-                            className="min-h-11"
                           >
                             <MessageSquare
                               aria-hidden="true"
@@ -582,6 +583,11 @@ export function MissingInformationPanel({
                           label={`More for "${question.userQuestion}"`}
                           disabled={pendingAction !== ""}
                           items={[
+                            {
+                              label: "Open chat",
+                              onSelect: () => router.push(`/admin/chats?session=${question.sessionId}`),
+                              hidden: !question.sessionId,
+                            },
                             {
                               label: "Ignore",
                               onSelect: () => void ignore([key]),
@@ -639,7 +645,7 @@ function ResolveFactPicker({ label, facts, disabled, resolving, status, loadMore
     </ComboboxTrigger>
     <ComboboxContent className="w-[min(24rem,calc(100vw-2rem))]">
       <ComboboxInput showTrigger={false} aria-label="Search approved facts and sources" placeholder="Search facts and sources" value={search} onChange={event => setSearch(event.target.value)} className="pointer-coarse:min-h-11" />
-      <ComboboxEmpty className="p-3 text-sm text-muted-foreground">{status === "LoadingMore" ? "Searching more facts…" : "No matching facts or sources."}</ComboboxEmpty>
+      {status === "LoadingFirstPage" ? <p role="status" className="p-3 text-sm text-muted-foreground">Loading approved facts…</p> : <ComboboxEmpty className="p-3 text-sm text-muted-foreground">{status === "LoadingMore" ? "Searching more facts…" : "No matching facts or sources."}</ComboboxEmpty>}
       <ComboboxList>{filtered.map(option => <ComboboxItem key={option.value} value={option.value} className="pointer-coarse:min-h-11">{option.label}</ComboboxItem>)}</ComboboxList>
       {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="ghost" className="w-full" disabled={status === "LoadingMore"} onClick={loadMore}>{status === "LoadingMore" ? "Loading more facts…" : "Load more facts"}</Button> : null}
     </ComboboxContent>

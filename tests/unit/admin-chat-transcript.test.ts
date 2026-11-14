@@ -23,8 +23,8 @@ describe("admin transcript", () => {
     for (const fact of ["Needs you", "Reply failed", "AI paused", "Check the late checkout", "Provider unavailable", "Could not send your reply"]) {
       expect(html).toContain(fact);
     }
-    // Desktop badge, mobile dot tooltip and mobile accessible status.
-    expect(html.match(/Needs you/g)).toHaveLength(3);
+    // Desktop and phone each have a text badge, with no duplicate dot tooltip or sr-only label.
+    expect(html.match(/Needs you/g)).toHaveLength(2);
     expect(html).toContain(closed ? "reply window has ended" : "reply window closes in");
     expect(html).not.toContain("Staff is replying");
   });

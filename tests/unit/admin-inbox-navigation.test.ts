@@ -273,7 +273,7 @@ describe("inbox navigation", () => {
     mocks.detail = { session: { ...session("session-a"), latestGuestMessageId: "guest-a" }, replyWindow: { applies: false } };
     await render();
     mocks.replace.mockClear();
-    await click("DoneNo reply needed");
+    await click("No reply needed");
     expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved", expectedGuestMessageId: "guest-a" });
     const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
     expect(destination).toContain("session=session-b");

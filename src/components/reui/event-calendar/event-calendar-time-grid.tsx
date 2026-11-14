@@ -153,9 +153,9 @@ function EventCalendarTimeGrid({
     const slotPx = slotRow?.getBoundingClientRect().height || 64
     const pxPerMinute = slotPx / interval
     const scrollTo = (minutes: number) => {
-      // keep the hour label above the target line visible (it hangs -top-2)
+      // Start exactly on the hour, without a sliver of the previous slot.
       viewport?.scrollTo({
-        top: Math.max(0, (minutes - startHour * 60) * pxPerMinute - 12),
+        top: Math.max(0, (minutes - startHour * 60) * pxPerMinute),
       })
     }
     scrollTo(viewConfig.scrollToHour * 60)
@@ -832,7 +832,6 @@ function EventCalendarAllDayCell({ day }: { day: Date }) {
 function EventCalendarTimeGutter({
   days,
   slots,
-  startHour,
   interval,
   className,
 }: {
@@ -863,17 +862,14 @@ function EventCalendarTimeGutter({
           zonedStartOfDay(referenceDay, settings.timeZone),
           minutes
         )
-        // Always consult renderTimeGutterSlot (a consumer may label the first
-        // slot); only the DEFAULT label is suppressed at the day-start edge.
+        // Labels sit inside their slot so the first visible hour stays readable.
         const label =
           viewConfig.renderTimeGutterSlot?.({
             time,
             hour: Math.floor(minutes / 60),
             minute: minutes % 60,
           }) ??
-          (minutes > startHour * 60
-            ? format(time, labelFormat, { locale: settings.locale })
-            : null)
+          format(time, labelFormat, { locale: settings.locale })
         return (
           <div
             key={minutes}
@@ -883,7 +879,7 @@ function EventCalendarTimeGutter({
             {label != null && (
               <span
                 className={cn(
-                  "text-muted-foreground absolute end-2.5 -top-2",
+                  "text-muted-foreground absolute end-2.5 top-1",
                   viewConfig.classNames?.timeGutterLabel
                 )}
               >

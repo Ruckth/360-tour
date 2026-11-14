@@ -128,13 +128,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       if (size === "phone") {
         await expect(page.locator('[data-slot="event-calendar-agenda-view"]')).toBeVisible();
         await expect(toolbar.getByRole("combobox", { name: "Calendar view" })).toBeVisible();
-        await page.getByRole("button", { name: "More calendar tools" }).click();
-        await page.getByRole("menuitem", { name: "Search bookings", exact: true }).click();
+        await toolbar.getByRole("button", { name: "Search bookings", exact: true }).click();
         await expect(page.getByRole("searchbox", { name: "Search bookings" })).toBeFocused();
         await page.keyboard.press("Escape");
       } else {
         await expect(toolbar.getByRole("button", { name: "Today", exact: true })).toBeVisible();
-        await toolbar.getByRole("button", { name: "Search bookings", exact: true }).click();
+        await toolbar.getByRole("searchbox", { name: "Search bookings", exact: true }).click();
         await expect(toolbar.getByRole("searchbox", { name: "Search bookings" })).toBeFocused();
         await page.keyboard.press("Escape");
         await expect(toolbar.getByRole("radio", { name: "Month", exact: true })).toHaveAttribute("data-state", "on");
@@ -244,7 +243,13 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const money = sheet.getByRole("region", { name: "Balance due" });
       await expect(money).toContainText("฿27,500");
       await expect(money).toContainText("Stay ฿26,000 · Spa ฿1,500");
-      await expect(money.locator("button:not([data-info-tip])")).toHaveText(["Take payment", "Paid elsewhere…"]);
+      await expect(money.locator("button:not([data-info-tip])")).toHaveText(["Take payment", "Record external payment…"]);
+      for (const action of await money.locator("button:not([data-info-tip])").all()) {
+        const actionBox = (await action.boundingBox())!;
+        const moneyBox = (await money.boundingBox())!;
+        expect(actionBox.x).toBeGreaterThanOrEqual(moneyBox.x);
+        expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(moneyBox.x + moneyBox.width);
+      }
       // The money block is the first thing under the title.
       const top = await money.boundingBox();
       expect(top!.y).toBeLessThan(160);
@@ -257,7 +262,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await sheet.locator("summary", { hasText: "History" }).click();
       await expect(sheet.getByRole("heading", { name: "Payments and refunds" })).toBeVisible();
       await expect(sheet.getByRole("heading", { name: "Price" })).toBeVisible();
-      await money.getByRole("button", { name: "Paid elsewhere…" }).click();
+      await money.getByRole("button", { name: "Record external payment…" }).click();
       const paid = page.getByRole("dialog", { name: "Record a payment taken elsewhere" });
       await expect(paid.getByRole("button", { name: "Record ฿26,000" })).toBeVisible();
       await paid.getByRole("button", { name: "Close", exact: true }).click();
@@ -271,10 +276,10 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const sheet = page.getByRole("dialog", { name: /Ken Tanaka/ });
       await expect(sheet.getByRole("region", { name: "Balance due" })).toContainText("฿1,200");
       // Header Edit and Close are icon actions; the payment and status actions keep their hierarchy.
-      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"]):not([data-info-tip])').filter({ hasNotText: /^(Paid elsewhere…|Take payment)$/ });
+      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"]):not([data-info-tip])').filter({ hasNotText: /^(Record external payment…|Take payment)$/ });
       const take = sheet.getByRole("button", { name: "Take payment", exact: true });
       await expect(take).toBeEnabled();
-      await expect(buttons).toHaveText(["", "Mark arrived", "Ocean Suite · until Sat 14 Nov"]);
+      await expect(buttons).toHaveText(["Mark arrived", "", "Open stay · Ocean Suite · until Sat 14 Nov"]);
       await expect(sheet.getByRole("button", { name: "Edit appointment" })).toBeVisible();
       expect((await buttons.count()) + (await take.count())).toBe(4);
       // While a balance is due, Take payment is the one filled button.
@@ -314,7 +319,8 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const checkIn = await dialog.getByTestId("booking-check-in").boundingBox();
       const checkOut = await dialog.getByTestId("booking-check-out").boundingBox();
       expect(checkIn!.y).toBe(checkOut!.y);
-      await expect(dialog).toContainText("· 3 nights");
+      await expect(dialog).toContainText("3 nights");
+      if (size === "ipad") expect(await inView(dialog.getByLabel("Coupon code"))).toBe(true);
       await expectAtMostSentences(dialog, 1);
       const create = dialog.getByRole("button", { name: "Create booking" });
       const box = await create.boundingBox();

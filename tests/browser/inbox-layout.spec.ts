@@ -21,7 +21,7 @@ for (const { width, font } of [
     await expect(page.getByRole("alert")).toContainText("Message could not be delivered");
     await expect(page.getByText(/reply window.*(ends|closes)/i)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-    for (const name of ["Edit follow-up", "Complete follow-up", "Done · No reply needed", "More chat actions"]) {
+    for (const name of ["Edit follow-up", "Complete follow-up", "No reply needed", "More chat actions"]) {
       const control = page.getByRole("button", { name, exact: true });
       await control.scrollIntoViewIfNeeded();
       const box = await control.boundingBox();

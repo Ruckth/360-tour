@@ -9,6 +9,7 @@ import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -68,38 +69,42 @@ type Dialog =
 export function BookingFinancials({
   booking,
   initialAction,
+  beforeTakePayment,
   orders,
   villaName,
   children,
 }: {
   booking: BookingDetail;
   initialAction?: "pay";
+  beforeTakePayment?: () => Promise<boolean>;
   orders?: ReactNode;
   villaName?: (id: string) => string;
   children?: ReactNode;
 }) {
   const data = useQuery(api.adminBookings.bookingFinancials, { bookingId: booking._id });
   const history = (records?: ReactNode) => (
-    <BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName ?? (() => "Villa")}>
+    <Card className="p-4 shadow-none"><BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName ?? (() => "Villa")}>
       {records}
       {orders}
-    </BookingHistory>
+    </BookingHistory></Card>
   );
   if (data === undefined) return <><Skeleton className="h-20 w-full" aria-label="Loading payments" />{children}{history()}</>;
   if (data === null) return <>{children}{history()}</>;
-  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} history={history}>{children}</LoadedBookingFinancials>;
+  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} history={history} beforeTakePayment={beforeTakePayment}>{children}</LoadedBookingFinancials>;
 }
 
 function LoadedBookingFinancials({
   booking,
   data,
   initialAction,
+  beforeTakePayment,
   history,
   children,
 }: {
   booking: BookingDetail;
   data: Financials;
   initialAction?: "pay";
+  beforeTakePayment?: () => Promise<boolean>;
   history: (records: ReactNode) => ReactNode;
   children?: ReactNode;
 }) {
@@ -138,6 +143,7 @@ function LoadedBookingFinancials({
     setOpening(true);
     setProblems([]);
     try {
+      if (beforeTakePayment && !(await beforeTakePayment())) return;
       setProblems(await openCheckout(booking._id));
     } catch (err) {
       setProblems([errorText(err, "Couldn't open checkout for this stay.")]);
@@ -209,7 +215,7 @@ function LoadedBookingFinancials({
 
   return (
     <>
-      <section aria-labelledby="booking-payments" className="grid gap-4 rounded-xl border border-border bg-card p-5">
+      <Card role="region" aria-labelledby="booking-payments" className="grid gap-4 p-4 shadow-none">
         <div data-sentence-budget="ignore">
           <h3 id="booking-payments" className="text-xs font-medium text-muted-foreground">{headline.label}</h3>
           <p className="font-sans text-4xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
@@ -221,10 +227,10 @@ function LoadedBookingFinancials({
           {money.refunded > 0 ? <p className="text-xs text-muted-foreground">Refunded {formatMoney(money.refunded, money.currency)}</p> : null}
         </div>
         {booking.paymentStatus === "failed" ? <p className="text-sm text-destructive">Payment failed.</p> : null}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 items-center gap-2 sm:flex sm:flex-wrap max-sm:[&>span]:w-full">
           {due > 0 ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <Button disabled={booking.checkoutLive || !spa || opening} onClick={() => void takePayment()}>
+              <Button className="w-full sm:w-auto" disabled={booking.checkoutLive || !spa || opening} onClick={() => void takePayment()}>
                 {opening ? <Spinner className="text-current" /> : null}
                 Take payment
               </Button>
@@ -232,9 +238,9 @@ function LoadedBookingFinancials({
           ) : null}
           {canPay ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <span className="inline-flex items-center gap-1"><Button variant="ghost" className="min-h-10" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
-                Paid elsewhere…
-              </Button><InfoTip label="About Paid elsewhere">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
+              <span className="inline-flex w-full items-center justify-center gap-1 sm:w-auto"><Button variant="ghost" className="min-h-11 flex-1 sm:flex-none" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+                Record external payment…
+              </Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
             </DisabledReason>
           ) : null}
           {money.refundable > 0 ? (
@@ -249,7 +255,7 @@ function LoadedBookingFinancials({
             {problems.map((problem) => <p key={problem}>{problem}</p>)}
           </div>
         ) : null}
-      </section>
+      </Card>
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
       {money.legacyRefund ? (
         <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
