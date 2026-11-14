@@ -3,6 +3,7 @@ import { act, Component, createElement, type ComponentProps, type ReactNode } fr
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from '@/components/checkout/backend';
+import { OpenOrders } from "@/components/checkout/OrderStrip";
 import { CheckoutView } from '@/components/checkout/CheckoutView';
 import { createFixtureBackend } from '@/components/checkout/fixture-backend';
 
@@ -45,7 +46,7 @@ describe('Checkout error recovery', () => {
       ? { ...backend, useCustomerSearch: query => { if (query.trim().length >= 2) throw new Error('Search unavailable'); return []; } }
       : { ...backend, useAttachable: ({ query }) => { if (query.trim().length >= 2) throw new Error('Search unavailable'); return []; } };
     await render(failed, orderId);
-    await act(async () => button(kind === 'customer' ? 'Add customer' : 'Add booking').click());
+    await act(async () => button(kind === 'customer' ? 'Customer' : 'Add booking').click());
     await act(async () => type(document.querySelector<HTMLInputElement>(`input[aria-label="Search ${kind === 'customer' ? 'customers' : 'bookings'}"]`)!, 'Guest'));
     // A query error should be recoverable inside its dialog, like Orders, without losing the order UI.
     expect(document.querySelector('[data-testid="page-error"]')).toBeNull();
@@ -57,7 +58,7 @@ describe('Checkout error recovery', () => {
     const { backend, orderId } = await setup();
     vi.spyOn(backend.useActions(), 'createCustomer').mockRejectedValueOnce(new Error('Customer could not save'));
     await render(backend, orderId);
-    await act(async () => button('Add customer').click());
+    await act(async () => button('Customer').click());
     await act(async () => button('New customer').click());
     await act(async () => type(document.querySelector<HTMLInputElement>('#customer-name')!, 'Recovery payer'));
     await act(async () => type(document.querySelector<HTMLInputElement>('#customer-phone')!, '0812345678'));
@@ -108,10 +109,31 @@ describe('Checkout error recovery', () => {
     const { backend, orderId } = await setup();
     const pending: CheckoutBackend = { ...backend, useCustomerSearch: query => query.length >= 2 ? undefined : [] };
     await render(pending, orderId);
-    await act(async () => button('Add customer').click());
+    await act(async () => button('Customer').click());
     await act(async () => type(document.querySelector<HTMLInputElement>('[aria-label="Search customers"]')!, 'Anna'));
     expect(document.querySelector('[aria-label="Searching"]')).toBeTruthy();
     expect(document.body.textContent).not.toContain('No booking');
     expect(document.body.textContent).not.toContain('No customer matches');
   });
+});
+
+it("keeps an order number through a failed lookup and retries only the result", async () => {
+  const { backend, orderId } = await setup();
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  let failed = true;
+  const onOpen = vi.fn();
+  const recoverable: CheckoutBackend = { ...backend, useFindOrder: (number) => {
+    if (number === null) return undefined;
+    if (failed) throw new Error("Lookup unavailable");
+    return orderId;
+  } };
+  await act(async () => root.render(createElement(CheckoutBackendProvider, { backend: recoverable } as ComponentProps<typeof CheckoutBackendProvider>, createElement(OpenOrders, { currentId: orderId, onOpen }))));
+  await act(async () => type(document.querySelector<HTMLInputElement>("#order-lookup")!, "1043"));
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(document.querySelector<HTMLInputElement>("#order-lookup")!.value).toBe("1043");
+  expect(document.querySelector('[role="alert"]')!.textContent).toContain("Couldn’t find this order");
+  expect(onOpen).not.toHaveBeenCalled();
+  failed = false;
+  await act(async () => button("Retry").click());
+  expect(onOpen).toHaveBeenCalledExactlyOnceWith(orderId);
 });

@@ -150,9 +150,9 @@ export function OrderStrip({
           phone, Add booking and New order sit in ⋯, and focus goes back to ⋯. */}
       <Dialog open={panel === "customer"} onOpenChange={(open) => { if (!customerPending) changePanel(open ? "customer" : null); }}>
         <DialogTrigger asChild>
-          <Button variant="outline" className={cn(phone ? "max-w-[40vw] shrink-0 px-3" : "max-w-[60vw]")} disabled={order?.state === "discarded"} aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Add customer"}>
+          <Button variant="outline" className={cn(phone ? "max-w-[40vw] shrink-0 px-3" : "max-w-[60vw]")} disabled={order?.state === "discarded"} aria-label={customer ? `Customer: ${customer.name}. Change customer` : "Customer"}>
             {customer ? <UserRound aria-hidden className="size-4" /> : <UserRoundPlus aria-hidden className="size-4" />}
-            <span className="truncate">{customer ? customer.name : phone ? "Customer" : "Add customer"}</span>
+            <span className="truncate">{customer ? customer.name : "Customer"}</span>
           </Button>
         </DialogTrigger>
         <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
@@ -178,11 +178,11 @@ export function OrderStrip({
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             {phone ? (
-              <Button variant="ghost" size="icon" className="size-11" aria-label="Orders">
+              <Button variant="outline" size="icon" className="size-11" aria-label="Orders">
                 <ListOrdered aria-hidden className="size-5" />
               </Button>
             ) : (
-              <Button variant="ghost">
+              <Button variant="outline">
                 <ListOrdered aria-hidden className="size-4" />
                 <span>Orders</span>
               </Button>
@@ -191,7 +191,7 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription>{cashier ? "Open orders, newest first. For today's receipts, enter the order number." : "Latest first. A paid order opens its receipt."}</DialogDescription>
+              <DialogDescription>{cashier ? "Open orders · find receipts by number." : "Newest first · paid orders open receipts."}</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
@@ -644,13 +644,6 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   const [text, setText] = useState("");
   const [number, setNumber] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const found = useCheckoutBackend().useFindOrder(number);
-  const opened = useRef<number | null>(null);
-  useEffect(() => {
-    if (number === null || !found || opened.current === number) return;
-    opened.current = number;
-    onOpen(found);
-  }, [number, found, onOpen]);
   function submit(event: FormEvent) {
     event.preventDefault();
     const raw = text.trim();
@@ -669,7 +662,6 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
       return;
     }
     setError("");
-    opened.current = null;
     setNumber(Number.isSafeInteger(value) && value > 0 ? value : null);
   }
   return (
@@ -677,13 +669,26 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
       <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number</Label>
       <div className="flex gap-2">
         <Input id="order-lookup" inputMode="numeric" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043" />
-        <Button type="submit" variant="outline" disabled={!text.trim()}>Go</Button>
+        <Button type="submit" className="disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground" disabled={!text.trim()}>Go</Button>
       </div>
       {error ? <p id="order-lookup-error" role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {number !== null && found === undefined ? <Spinner label="Finding order" /> : null}
-      {number !== null && found === null ? <p role="status" className="text-sm text-muted-foreground">Not available. Check the number or pick an open order above.</p> : null}
+      {number !== null ? <InlineErrorBoundary resetKey={String(number)} retryLabel="Retry" message="Couldn’t find this order. Try again."><OrderLookupResult number={number} onOpen={onOpen} /></InlineErrorBoundary> : null}
     </form>
   );
+}
+
+/** Query failures stay inside the result, preserving the number typed in the form. */
+function OrderLookupResult({ number, onOpen }: { number: number; onOpen: (id: OrderId) => void }) {
+  const found = useCheckoutBackend().useFindOrder(number);
+  const opened = useRef<number | null>(null);
+  useEffect(() => {
+    if (!found || opened.current === number) return;
+    opened.current = number;
+    onOpen(found);
+  }, [number, found, onOpen]);
+  if (found === undefined) return <Spinner label="Finding order" />;
+  if (found === null) return <p role="status" className="text-sm text-pretty text-muted-foreground">Not available. Check the number or pick an open order above.</p>;
+  return null;
 }
 
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
@@ -699,8 +704,8 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
   return (
     <div className="grid gap-3">
       {restoring ? <InlineErrorBoundary resetKey={restoring} message="Couldn't review this order. Try again."><OrderLifecycle key={restoring} orderId={restoring} onPending={onPending} onDone={() => setRestoring(null)} onOpen={onOpen} /></InlineErrorBoundary> : <>
-      <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
-        {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value}>{f.label}</ToggleGroupItem>)}
+      <ToggleGroup value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start border-transparent bg-muted p-0.5">
+        {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value} className="h-9 pointer-coarse:h-11 data-[state=on]:bg-background data-[state=on]:text-foreground">{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
       {filter === "discarded" ? <p className="text-xs text-muted-foreground">Restore… checks for rows now on another order first.</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">

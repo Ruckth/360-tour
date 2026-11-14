@@ -143,7 +143,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   await openMenuItem("Clear order");
   await press(within(dialog()!, "Clear order")); await tick();
   expect(read.view!.lines).toHaveLength(0);
-  expect(panel().textContent).toContain("Tap an item to add it to the order.");
+  expect(panel().textContent).toContain("Tap an item to add it.");
 
   // Removed items stay in the history, which still follows the (now empty) list.
   const history = historyDetails(panel())!;

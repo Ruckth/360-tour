@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
 import { cn } from "@/lib/utils";
@@ -94,6 +95,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
   const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
+  const [refundDirty, setRefundDirty] = useState(false);
+  const [refundBusy, setRefundBusy] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(refundDirty);
   // What a finished refund or request said, under its line.
   const [lineNotes, setLineNotes] = useState<Record<string, string>>({});
   // Correct payment or Void…, opened from ⋯; the toolbar's Close ends it.
@@ -121,7 +125,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     return () => window.removeEventListener("beforeprint", beforePrint);
   }, [measure]);
   // Another order: nothing from the last one stays open.
-  useEffect(() => { setTask(null); setRefunding(null); setLineNotes({}); setNotice(""); }, [orderId]);
+  useEffect(() => { setTask(null); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); }, [orderId]);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   // Cashiers open today's receipts only; older ones come back as missing.
@@ -167,6 +171,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   function closeRefund(lineId: Id<"billLines">, message?: string) {
     flushSync(() => {
       setRefunding(null);
+      setRefundDirty(false);
+      setRefundBusy(false);
       if (message) setLineNotes((notes) => ({ ...notes, [lineId]: message }));
     });
     const note = document.querySelector<HTMLElement>(`[data-line-note="${lineId}"]`);
@@ -223,7 +229,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     <div
       data-testid="receipt-view"
       className={cn(
-        "grid min-w-0 flex-1 content-start gap-x-8 gap-y-3 px-4 py-3 sm:gap-y-5 sm:py-5 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-6xl",
+        "grid min-w-0 flex-1 content-start gap-x-8 gap-y-3 px-4 py-3 sm:gap-y-5 sm:py-5 sm:px-6 lg:grid-cols-[24rem_minmax(0,1fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-6xl",
         TOUCH_TARGETS,
       )}
     >
@@ -236,7 +242,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             Receipt {receiptNumber}
             {paid && view.fullyRefunded ? (
               <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
-            ) : null}
+            ) : paid ? <span data-testid="receipt-status" className="rounded-full bg-emerald-50 px-2 py-0.5 font-sans text-xs font-medium tracking-normal text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300">Paid</span> : null}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith}` : ""}`}
@@ -250,7 +256,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             <>
               <Button variant="outline" className="max-sm:size-11 max-sm:p-0 sm:px-4" aria-label="Print" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span className="max-sm:sr-only">Print</span></Button>
               <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
-              <Button className="px-3 max-sm:h-12 max-sm:flex-1 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+              <Button className="px-3 max-sm:h-12 max-sm:flex-1 sm:px-4" disabled={refundBusy} onClick={() => { void confirmDiscard().then((discard) => { if (discard) onNewSale(); }); }}><Plus aria-hidden className="size-4" /> New sale</Button>
             </>
           )}
           {shownTask ? (
@@ -380,8 +386,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
-        <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
-          <h3 className="border-b border-border px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
+        <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden lg:max-h-[calc(100dvh-12rem)] lg:overflow-y-auto", shownTask && "hidden")}>
+          <h3 className="sticky top-0 z-10 border-b border-border bg-card px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
           <ul className="divide-y divide-border">
             {lines.map((line) => {
               const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
@@ -390,7 +396,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
               const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
               const note = lineNotes[line._id];
               const unscheduled = line.kind === "service" && !line.schedule?.date && !line.startAt && !view.links.some((l) => l.lineId === line._id && l.status === "active");
-              return <li key={line._id} className="px-4 py-3 sm:px-5 sm:py-4">
+              return <li key={line._id} className="scroll-mt-14 px-4 py-3 sm:px-5 sm:py-4">
                 <div className="flex items-baseline justify-between gap-3">
                   <p className="text-[15px] font-medium">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</p>
                   <p className="shrink-0 text-[15px] font-medium font-sans tabular-nums">{formatMoney(line.net)}</p>
@@ -404,14 +410,14 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 ) : null}
                 {/* An open form stays until closed, even if this line was just refunded in full. */}
                 {paid && refunding === line._id ? (
-                  <RefundForm view={view} line={line} waiting={waiting} onCancel={() => closeRefund(line._id)} onDone={(message) => closeRefund(line._id, message)} />
+                  <RefundForm view={view} line={line} waiting={waiting} onDraftChange={setRefundDirty} onBusyChange={setRefundBusy} onCancel={() => { void confirmDiscard().then((discard) => { if (discard) closeRefund(line._id); }); }} onDone={(message) => closeRefund(line._id, message)} />
                 ) : showRefund || linkable ? (
                   <div data-screen-only="" className="mt-1 flex flex-wrap items-center gap-2 font-sans print:hidden">
                     {linkable ? <LineLink view={view} line={line} /> : null}
                     {showRefund ? (
                       <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
                         data-refund-trigger={line._id}
                         aria-label={`Refund ${line.name}`}

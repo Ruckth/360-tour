@@ -16,7 +16,7 @@ const show = (backend: CheckoutBackend, start: OrderId | null) =>
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
-const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text) as HTMLButtonElement | undefined;
+const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿")))) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 function type(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;

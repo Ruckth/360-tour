@@ -71,7 +71,7 @@ export function PayPanel({
     const host = root.current?.parentElement;
     const label = mode === "none" ? null : mode === "split" ? "Split payment" : TENDER_LABELS[mode].short;
     onBack();
-    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => getComputedStyle(el).display !== "none" && (el.getAttribute("aria-label") ?? el.textContent?.trim()) === label)?.focus());
+    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => getComputedStyle(el).display !== "none" && ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === label || (label === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))))?.focus());
   }
 
   // Escape leaves the panel first, not the phone order sheet around it: this runs before the
@@ -89,7 +89,7 @@ export function PayPanel({
   });
 
   return (
-    <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3" data-testid="pay-panel">
+    <div ref={root} className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 @container", mode === "split" && "gap-2 py-2")} data-testid="pay-panel">
       <PayAttempt
         key={mode}
         mode={mode}
@@ -268,7 +268,7 @@ function PayAttempt({
       <fieldset
         aria-label={panelName}
         disabled={submitting || attempted}
-        className={cn("flex min-w-0 flex-1 flex-col disabled:opacity-70", mode === "split" ? "gap-3" : "gap-4")}
+        className={cn("flex min-w-0 flex-1 flex-col disabled:opacity-70", mode === "split" ? "gap-2" : "gap-4")}
       >
         {view.promotion && !view.promotion.problem && view.totals.coupon ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -365,7 +365,7 @@ function PayAttempt({
   );
 }
 
-const TENDER_ROW: PayMode[] = ["cash", "promptpay", "card", "transfer"];
+const TENDER_ROW: PayMode[] = ["cash", "promptpay", "card", "transfer", "split"];
 
 /** The order's tender row, kept on top of the panel: pressed is the one being taken. */
 function TenderRow({
@@ -380,23 +380,12 @@ function TenderRow({
   onPick: (mode: PayMode) => void;
 }) {
   return (
-    <div role="group" aria-label="Take payment by" className="flex min-w-0 flex-wrap items-center gap-1">
-      <div className="flex min-w-0 flex-1 basis-[14rem] flex-wrap rounded-full bg-muted p-1">
-        {TENDER_ROW.map((mode) => (
-          <Button
-            key={mode}
-            ref={mode === active ? activeRef : undefined}
-            variant="ghost"
-            aria-pressed={mode === active}
-            disabled={disabled}
-            className={cn("h-11 min-w-0 flex-1 rounded-full px-0 text-sm", mode === "promptpay" ? "basis-20" : mode === "transfer" ? "basis-14" : "basis-10", mode === active && "bg-foreground text-background hover:bg-foreground hover:text-background")}
-            onClick={() => onPick(mode)}
-          >
-            {TENDER_LABELS[mode as TenderMethod].short}
-          </Button>
-        ))}
-      </div>
-      <Button ref={active === "split" ? activeRef : undefined} variant="ghost" aria-label="Split payment" aria-pressed={active === "split"} className={cn("h-11 rounded-full px-2 text-sm", active === "split" && "bg-foreground text-background hover:bg-foreground hover:text-background")} disabled={disabled} onClick={() => onPick("split")}>Split</Button>
+    <div role="group" aria-label="Take payment by" className="grid min-w-0 grid-cols-2 rounded-xl bg-muted p-0.5 @min-[18rem]:grid-cols-[1fr_1.5fr_1fr_1.2fr_1fr] @min-[18rem]:rounded-full">
+      {TENDER_ROW.map((mode) => (
+        <Button key={mode} ref={mode === active ? activeRef : undefined} variant="ghost" aria-label={mode === "split" ? "Split payment" : undefined} aria-pressed={mode === active} disabled={disabled}
+          className={cn("h-9 pointer-coarse:h-11 min-w-0 rounded-full px-1 text-sm", mode === active && "bg-foreground text-background hover:bg-foreground hover:text-background")}
+          onClick={() => onPick(mode)}>{mode === "split" ? "Split" : TENDER_LABELS[mode].short}</Button>
+      ))}
     </div>
   );
 }
@@ -572,13 +561,13 @@ function CashForm({
       </div>
       {notes.length ? (
         <div role="group" aria-label="Notes handed over" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))] gap-2">
-          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-muted" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
+          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
           {notes.map((note) => (
             <Button
               key={note}
               variant="outline"
               aria-pressed={value === note}
-              className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-muted"
+              className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-foreground aria-pressed:text-background"
               onClick={() => setReceived(String(note))}
             >
               {formatMoney(note)}
@@ -657,72 +646,40 @@ function SplitForm({
         {rows.map((row, index) => {
           const isLast = index === rows.length - 1;
           return (
-            <li key={index} className="flex min-w-0 flex-wrap items-end gap-2 border-b border-border/70 pb-2">
-              <div role="group" aria-label={`Payment ${index + 1} method`} className="flex min-w-0 flex-1 basis-full flex-wrap rounded-full bg-muted p-1 sm:basis-60">
-                {TENDER_METHODS.map((method) => (
-                  <Button
-                    key={method}
-                    size="sm"
-                    variant="ghost"
-                    aria-pressed={row.method === method}
-                    className={cn("h-11 min-w-0 flex-1 rounded-full px-0.5 text-xs", method === "promptpay" ? "basis-17" : method === "transfer" ? "basis-14" : "basis-12", row.method === method && "bg-foreground text-background hover:bg-foreground hover:text-background")}
-                    onClick={() => update(index, { method })}
-                  >
-                    {TENDER_LABELS[method].short}
-                  </Button>
-                ))}
+            <li key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-y-2 @min-[18rem]:grid-cols-[minmax(0,1fr)_minmax(6rem,8rem)_auto] rounded-xl bg-muted/40 p-3">
+              <div className="col-start-1 row-start-1 grid gap-1">
+                <h3 className="text-sm font-medium">Payment {index + 1}</h3>
+                <Label htmlFor={`split-${validationId}-${index}`} className="text-xs text-muted-foreground">{isLast ? "Rest" : "Amount"}</Label>
               </div>
-              <div className="flex w-full min-w-0 items-end gap-1 sm:w-24">
-                {isLast ? (
-                  <div className="grid min-w-0 flex-1 gap-1">
-                    <span className="text-xs text-muted-foreground">Auto balance</span>
-                    <output aria-label={`Payment ${index + 1} amount`} className="flex h-11 items-center justify-end rounded-lg border border-dashed border-input px-3 font-sans text-sm tabular-nums">{formatMoney(Math.max(0, rest))}</output>
-                  </div>
-                ) : (
-                  <div className="relative min-w-0 flex-1">
+              {isLast ? <output id={`split-${validationId}-${index}`} aria-label={`Payment ${index + 1} amount`} className="col-span-2 row-start-2 flex h-11 items-center justify-end rounded-lg border border-dashed border-input px-3 font-sans text-sm tabular-nums @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">{formatMoney(Math.max(0, rest))}</output> : (
+                <div className="relative col-span-2 row-start-2 min-w-0 @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">
                   <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>
-                  <Input
-                    inputMode="decimal"
-                    autoComplete="off"
-                    aria-label={`Payment ${index + 1} amount`}
-                    className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums"
-                    aria-invalid={!(Number(row.amount) > 0) || remaining < 0 ? true : undefined}
-                    aria-describedby={validationId}
-                    value={row.amount}
-                    {...selectAll}
-                    onChange={(e) => update(index, { amount: amountInput(e.target.value) })}
-                    placeholder="0"
-                  />
-                  </div>
-                )}
-                {rows.length > 2 ? (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-9 shrink-0"
-                    aria-label={`Remove payment ${index + 1}`}
-                    onClick={() => setRows(rows.filter((_, i) => i !== index))}
-                  >
-                    <X aria-hidden className="size-4" />
-                  </Button>
-                ) : null}
+                  <Input id={`split-${validationId}-${index}`} inputMode="decimal" autoComplete="off" aria-label={`Payment ${index + 1} amount`} className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums" aria-invalid={!(Number(row.amount) > 0) || remaining < 0 ? true : undefined} aria-describedby={validationId} value={row.amount} {...selectAll} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />
+                </div>
+              )}
+              {rows.length > 2 ? <Button size="icon" variant="ghost" className="col-start-2 row-start-1 ml-1 size-11 shrink-0 @min-[18rem]:col-start-3" aria-label={`Remove payment ${index + 1}`} onClick={() => setRows(rows.filter((_, i) => i !== index))}><X aria-hidden className="size-4" /></Button> : <span className="col-start-2 row-start-1 @min-[18rem]:col-start-3" />}
+              <div role="group" aria-label={`Payment ${index + 1} method`} className="col-span-2 row-start-3 grid min-w-0 grid-cols-2 @min-[18rem]:col-span-3 @min-[18rem]:row-start-2 rounded-xl border bg-background p-0.5 @min-[18rem]:grid-cols-[1fr_1.5fr_1fr_1.2fr]">
+                {TENDER_METHODS.map((method) => (
+                  <Button key={method} size="sm" variant="ghost" aria-pressed={row.method === method}
+                    className={cn("h-9 pointer-coarse:h-11 min-w-0 rounded-lg px-1 text-sm", row.method === method && "bg-muted text-foreground ring-1 ring-inset ring-border")}
+                    onClick={() => update(index, { method })}>{TENDER_LABELS[method].short}</Button>
+                ))}
               </div>
             </li>
           );
         })}
       </ul>
-      {/* The last row absorbs the rest, so the summary only claims "Fully allocated" once every payment has an amount;
-          until then the validation line below the rows says what's missing. */}
+      {/* Every payment must have an amount before this can claim coverage. */}
       {ready || remaining < 0 ? (
-        <div className="flex items-baseline justify-between gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
-          <span className="flex items-center gap-2 text-sm">{remaining < 0 ? "Over by" : <><Check aria-hidden className="size-4" />Fully allocated</>}</span>
-          <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", remaining < 0 ? "text-destructive" : "text-foreground")}>{formatMoney(Math.abs(remaining))}</output>
-        </div>
+        <p data-testid="split-remaining" role="status" className={cn("flex items-center gap-2 rounded-xl p-3 font-sans text-sm font-medium tabular-nums text-pretty", remaining < 0 ? "bg-destructive/5 text-destructive" : "bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300")}>
+          {remaining < 0 ? `Over by ${formatMoney(Math.abs(remaining))}` : <><Check aria-hidden className="size-4 shrink-0" />Covered · {formatMoney(due)} in {rows.length} payments</>}
+        </p>
       ) : null}
+      <div className="flex items-center justify-between gap-3">
       {rows.length < MAX_TENDERS ? (
         <Button
           variant="ghost"
-          className="self-start"
+          className="shrink-0 self-start px-2"
           // A new row goes before the last, which keeps taking the rest.
           onClick={() => setRows([...typed, { method: unused(), amount: "" }, last])}
         >
@@ -730,8 +687,9 @@ function SplitForm({
         </Button>
       ) : null}
       <p className="text-xs text-muted-foreground">
-        Take each payment on its terminal or app before the next one.
+        Take all payments before confirming.
       </p>
+      </div>
       <p id={validationId} aria-live="polite" className="text-xs text-amber-800 empty:hidden dark:text-amber-300">{validation}</p>
       <PayButton
         submitting={submitting}

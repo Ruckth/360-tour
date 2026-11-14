@@ -27,7 +27,7 @@ test.use({ viewport: { width: 1360, height: 1000 } });
 test("a manager refunds part of a line, then the rest of the receipt", async ({ page }) => {
   await open(page, "?role=manager&scenario=refund");
   const r = receipt(page);
-  await expect(page.getByTestId("receipt-status")).toHaveCount(0);
+  await expect(page.getByTestId("receipt-status")).toHaveText("Paid");
   await expect(r.getByTestId("receipt-net")).toHaveCount(0);
 
   await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
@@ -36,21 +36,21 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   // Opens ready to send: all that is left, the original tender, and focus on the form, not a keyboard.
   await expect(form.getByText("Refund", { exact: true })).toBeFocused();
   await expect(amount).toHaveValue("1200");
-  await expect(form.getByRole("button", { name: "All ฿1,200" })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(form.getByRole("group", { name: "Refund to" }).getByRole("button", { name: "Card", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(form.getByRole("button", { name: "Record refund ฿1,200" })).toBeDisabled();
+  await expect(form.getByRole("button", { name: "Pick a reason" })).toBeDisabled();
   await amount.fill("1200.01");
   await expect(form.getByText("Up to ฿1,200.")).toBeVisible();
   await amount.fill("300");
-  await form.getByRole("button", { name: "Shortened treatment" }).click();
+  await form.getByRole("button", { name: "Short treatment" }).click();
   await form.getByRole("button", { name: "Record refund ฿300" }).click();
 
-  await expect(note(page, "Refunded ฿300 · Shortened treatment")).toBeFocused();
+  await expect(note(page, "Refunded ฿300 · Short treatment")).toBeFocused();
   await expect(form).toHaveCount(0);
   await expect(r.getByTestId("receipt-line-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-net")).toHaveText("Net฿1,500");
-  await expect(page.getByTestId("receipt-status")).toHaveCount(0);
+  await expect(page.getByTestId("receipt-status")).toHaveText("Paid");
 
   // The rest of the massage: the form now offers what is left.
   const rest = await refund(page, "Thai massage 60", null, "Guest left early");
@@ -74,12 +74,13 @@ test("the form works from the keyboard and Escape returns focus to its line", as
   const form = items(page).getByRole("form", { name: "Refund", exact: true });
   await expect(form.getByText("Refund", { exact: true })).toBeFocused();
   // The segmented method control works from the keyboard; Escape still closes the form.
-  const cash = form.getByRole("group", { name: "Refund to" }).getByRole("button", { name: "Cash", exact: true });
+  const cash = form.getByRole("group", { name: "Refund to" }).getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true });
   await cash.focus();
   await page.keyboard.press("Enter");
   await expect(cash).toHaveAttribute("aria-pressed", "true");
   await form.getByRole("textbox", { name: "Reason" }).focus();
   await page.keyboard.press("Escape");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
   await expect(form).toHaveCount(0);
   await expect(trigger).toBeFocused();
 });
@@ -92,7 +93,7 @@ test("a refund over what is left shows the server's remaining amount", async ({ 
   await form.getByRole("button", { name: RECORD }).click();
   await expect(form.getByRole("alert")).toHaveText("Only ฿700 left to refund on this line.");
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("700");
-  await expect(form.getByRole("button", { name: "All ฿700" })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
   await form.getByRole("button", { name: "Record refund ฿700" }).click();
   await expect(note(page, "Refunded ฿700")).toBeVisible();
   await expect(receipt(page).getByTestId("receipt-line-refunded")).toHaveText("Refunded-฿1,200");
@@ -100,7 +101,7 @@ test("a refund over what is left shows the server's remaining amount", async ({ 
 
 test("a cashier asks a manager, and the approved refund appears on the receipt", async ({ page }) => {
   await open(page, "?role=cashier&scenario=refund");
-  const form = await refund(page, "Thai massage 60", "300", "Shortened treatment", "Ask a manager");
+  const form = await refund(page, "Thai massage 60", "300", "Short treatment", "Ask a manager");
   await form.getByRole("button", { name: "Send refund ฿300 to manager" }).click();
   await expect(note(page, "Sent to a manager · refund ฿300")).toBeVisible();
   await expect(page.locator('[data-approval-status="pending"]')).toContainText("Waiting for a manager · refund ฿300 · Thai massage 60");
@@ -113,8 +114,9 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   await page.getByTestId("approvals-button").click();
   const panel = page.getByRole("dialog", { name: "Approvals" });
   const card = panel.getByTestId("approval-request");
-  await expect(card).toContainText("Mint asks to refund ฿300 · Thai massage 60");
-  await expect(card).toContainText("“Shortened treatment”");
+  await expect(card.locator("p").first()).toHaveText("Thai massage 60");
+  await expect(card).toContainText("Mint · asks to refund ฿300");
+  await expect(card).toContainText("“Short treatment”");
   await expect(card).toContainText("Order #1043 · Net received ฿1,800 → ฿1,500");
   await card.getByRole("button", { name: "Approve" }).click();
   // The last request: the panel closes and the toast says what happened.
@@ -128,7 +130,7 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   const attempts = await page.evaluate(() => window.fixture.refundAttempts());
   expect(attempts).toHaveLength(1);
   expect(attempts[0].idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
-  expect(attempts[0]).toMatchObject({ amount: 30_000, currency: "THB", method: "card", reason: "Shortened treatment" });
+  expect(attempts[0]).toMatchObject({ amount: 30_000, currency: "THB", method: "card", reason: "Short treatment" });
 });
 
 test("a cashier allowed to refund records it directly", async ({ page }) => {
@@ -164,7 +166,7 @@ test("attached rows point to their booking instead of offering a refund", async 
 
 test("financial history and the orders list show the refund", async ({ page }) => {
   await open(page, "?role=manager&scenario=refund");
-  await (await refund(page, "Thai massage 60", "300", "Shortened treatment")).getByRole("button", { name: "Record refund ฿300" }).click();
+  await (await refund(page, "Thai massage 60", "300", "Short treatment")).getByRole("button", { name: "Record refund ฿300" }).click();
   await expect(note(page, "Refunded ฿300")).toBeVisible();
 
   const history = page.getByTestId("receipt-history");
@@ -174,7 +176,7 @@ test("financial history and the orders list show the refund", async ({ page }) =
   await expect(stream.getByRole("listitem")).toHaveCount(1);
   await expect(stream.getByRole("listitem")).toContainText("Refunded · ฿300 · Card");
   await expect(stream.getByRole("listitem")).toContainText("Thai massage 60");
-  await expect(stream.getByRole("listitem")).toContainText("Shortened treatment");
+  await expect(stream.getByRole("listitem")).toContainText("Short treatment");
 
   await page.getByRole("button", { name: "New sale" }).click();
   await page.getByRole("button", { name: "Orders", exact: true }).click();
@@ -186,11 +188,11 @@ test("financial history and the orders list show the refund", async ({ page }) =
 test("a retry after a lost answer reuses the same attempt key", async ({ page }) => {
   await open(page, "?role=manager&scenario=refund");
   await page.evaluate(() => window.fixture.loseNextRefundResponse());
-  const form = await refund(page, "Thai massage 60", "300", "Shortened treatment");
+  const form = await refund(page, "Thai massage 60", "300", "Short treatment");
   await form.getByRole("button", { name: "Record refund ฿300" }).click();
   await expect(form.getByRole("alert")).toHaveText("Connection lost. Try again.");
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toBeDisabled();
-  await expect(form.getByRole("textbox", { name: "Reason (required)" })).toBeDisabled();
+  await expect(form.getByRole("textbox", { name: "Reason" })).toBeDisabled();
   for (const method of await form.getByRole("group", { name: "Refund to" }).getByRole("button").all()) await expect(method).toBeDisabled();
   await form.getByRole("button", { name: "Retry same refund" }).click();
   await expect(note(page, "Refunded ฿300")).toBeVisible();

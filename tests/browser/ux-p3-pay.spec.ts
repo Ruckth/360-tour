@@ -39,7 +39,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test("the cash panel opens at the amount due with 6 controls and at most one sentence", async ({ page }) => {
       await open(page, "?role=cashier&scenario=spa");
       const panel = await orderPanel(page, size);
-      await panel.getByRole("button", { name: "Cash", exact: true }).click();
+      await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       const cash = panel.getByRole("group", { name: "Cash payment" });
       await expect(cash.getByLabel("Cash received")).toHaveValue("1,200");
       await expect(cash.getByRole("button", { name: "Confirm cash · ฿1,200 received · no change" })).toBeEnabled();
@@ -96,11 +96,11 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await panel.getByRole("button", { name: "Split payment", exact: true }).click();
       await expect(pay.getByRole("group", { name: "Payment 1 method" })).toBeVisible();
       const tenders = pay.getByRole("group", { name: "Take payment by" });
-      await tenders.getByRole("button", { name: "Cash", exact: true }).click();
+      await tenders.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       await expect(pay.getByLabel("Cash received")).toHaveValue("1,200");
       await panel.getByRole("button", { name: "Order", exact: true }).click();
       await expect(pay).toHaveCount(0);
-      await expect(panel.getByRole("button", { name: "Cash", exact: true })).toBeFocused();
+      await expect(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeFocused();
     });
 
     test("exact cash sale: 3 taps (item, Cash, Confirm)", async ({ page }) => {
@@ -109,7 +109,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await count.tap(page.getByRole("button", { name: /^Thai massage 60.*Add to order/ }), "Thai massage 60");
       const panel = await orderPanel(page, size);
       await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
-      await count.tap(panel.getByRole("button", { name: "Cash", exact: true }), "Cash");
+      await count.tap(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }), "Cash");
       await count.tap(panel.getByRole("button", { name: "Confirm cash · ฿1,200 received · no change" }), "Confirm");
       await expect(receipt(page)).toBeVisible();
       expect({ taps: count.taps, typed: count.typed, scrolls: count.scrolls }, count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
@@ -120,7 +120,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const count = new TaskCounter();
       await count.tap(page.getByRole("button", { name: /^Thai massage 60.*Add to order/ }), "Thai massage 60");
       const panel = await orderPanel(page, size);
-      await count.tap(panel.getByRole("button", { name: "Cash", exact: true }), "Cash");
+      await count.tap(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }), "Cash");
       await count.tap(panel.getByRole("button", { name: "฿1,500", exact: true }), "฿1,500");
       const amountField = panel.getByLabel("Cash received");
       await expect(amountField).toBeVisible();
@@ -145,7 +145,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       }
       await count.tap(panel.getByRole("group", { name: "Payment 2 method" }).getByRole("button", { name: "Card", exact: true }), "Card");
       await count.type(panel.getByLabel("Payment 1 amount"), "500", "cash amount");
-      await expect(panel.getByTestId("split-remaining")).toHaveText("฿0");
+      await expect(panel.getByTestId("split-remaining")).toHaveText("Covered · ฿1,200 in 2 payments");
       await expectAtMostSentences(panel.getByTestId("pay-panel"), 1);
       await count.tap(panel.getByRole("button", { name: "Confirm ฿500 cash + ฿700 card" }), "Confirm");
       await expect(receipt(page)).toBeVisible();
@@ -155,7 +155,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test("the selected tender stays open; Order and Escape return to the items", async ({ page }) => {
       await open(page, "?role=cashier&scenario=spa");
       const panel = await orderPanel(page, size);
-      await panel.getByRole("button", { name: "Cash", exact: true }).click();
+      await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       const pay = panel.getByTestId("pay-panel");
       // Another tender switches.
       await pay.getByRole("button", { name: "Card", exact: true }).click();
@@ -169,13 +169,13 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(panel.getByRole("button", { name: "Card", exact: true })).toBeFocused();
 
       // Keyboard: Enter opens Cash, focus starts on it, Escape leaves (the phone sheet stays open).
-      await panel.getByRole("button", { name: "Cash", exact: true }).press("Enter");
-      await expect(pay.getByRole("button", { name: "Cash", exact: true })).toBeFocused();
+      await panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).press("Enter");
+      await expect(pay.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeFocused();
       await page.keyboard.press("Tab");
       await page.keyboard.press("Escape");
       await expect(pay).toHaveCount(0);
       await expect(panel).toBeVisible();
-      await expect(panel.getByRole("button", { name: "Cash", exact: true })).toBeFocused();
+      await expect(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeFocused();
     });
   });
 }
@@ -222,7 +222,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
 
     test("cash fits with Confirm in view, no scroll", async ({ page }) => {
       const sheet = await openSheet(page);
-      await sheet.getByRole("button", { name: "Cash", exact: true }).click();
+      await sheet.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       const confirm = sheet.getByRole("button", { name: /^Confirm cash · ฿[\d,]+ received · no change$/ });
       expect(await needsScroll(confirm), "Confirm needs no scroll").toBe(false);
       await expectTappable(page, sheet, confirm, "Confirm cash");

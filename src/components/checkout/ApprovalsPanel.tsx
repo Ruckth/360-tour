@@ -133,17 +133,19 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
   const { decide, busy, error } = useApprovalDecision(request, lineName, title);
   // Display only: the server decides expiry (and drops expired requests), so a fast device clock never blocks a decision.
   const expiring = now >= request.expiresAt;
+  const soon = request.expiresAt - now <= 2 * 60_000;
 
   return (
     <li data-testid="approval-request">
     <Card className="grid gap-2 p-4">
-      <p className="text-sm font-semibold [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request, lineName)}</p>
+      <p className="text-[15px] font-medium text-balance [overflow-wrap:anywhere]">{lineName ?? (request.payload.kind === "customPrice" && request.payload.action === "addCustomItem" ? request.payload.name : title)}</p>
+      <p className="text-sm text-pretty [overflow-wrap:anywhere]">{personName(request.requesterEmail)} · {approvalAsk(request)}</p>
       {/* The cashier's own words, not an explanation. */}
       <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
       <p className="text-sm text-muted-foreground font-sans tabular-nums">
         {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <p className={soon ? "flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300" : "flex items-center gap-1.5 text-xs text-muted-foreground"}>
         {expiring ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
         <InfoTip label="About approvals">Works once, for this order as it is now.</InfoTip>
       </p>

@@ -204,7 +204,7 @@ const buttonText = (text: string) => [...document.querySelectorAll("button")].fi
 /** The layers checkout portals out of its screen, and how staff open each one. */
 const LAYERS: Record<string, () => Promise<void>> = {
   Orders: () => click(buttonText("Orders")),
-  Customer: () => click(document.querySelector('[aria-label="Add customer"]')),
+  Customer: () => click(document.querySelector('[aria-label="Customer"]')),
   "Add booking": () => click(buttonText("Add booking")),
   "Custom item": async () => {
     await click(tab("Extras"));
@@ -299,7 +299,7 @@ describe("checkout order title", () => {
     expect(shownAt(document.querySelector('[data-testid="order-title"]')!, "desktop")).toBe(false);
     // Booking context, customer, Orders and New order stay in the strip on desktop.
     expect(shownText("No booking", "desktop")).toHaveLength(0);
-    expect(shownAt(document.querySelector('[aria-label="Add customer"]')!, "desktop")).toBe(true);
+    expect(shownAt(document.querySelector('[aria-label="Customer"]')!, "desktop")).toBe(true);
     expect(shownAt(buttonText("Orders")!, "desktop")).toBe(true);
     const newOrder = document.querySelector<HTMLButtonElement>('[aria-label="New order"]')!;
     expect(shownAt(newOrder, "desktop")).toBe(true);

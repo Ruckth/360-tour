@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import type { DisplayOrderState } from "convex/lib/displayView";
 import { NextIntlClientProvider } from "next-intl";
@@ -28,7 +30,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(400); }
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const button = (text: string | RegExp, within: ParentNode = panel()) =>
-  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
+  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))) : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 const field = () => panel().querySelector<HTMLInputElement>('form[aria-label="Add coupon"] input')!;
 const due = () => panel().querySelector('[data-testid="order-due"]')?.textContent;
@@ -339,7 +341,7 @@ describe("receipts with a coupon", () => {
 
   it("prints a coupon line per row, apart from the staff discount, and in the totals", async () => {
     const { fixture, orderId } = await paidOrder();
-    await render(createElement(CheckoutBackendProvider, { backend: fixture as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
+    await render(createElement(CheckoutBackendProvider, { backend: fixture as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
     const receipt = document.querySelector("article.pos-receipt")!;
     expect([...receipt.querySelectorAll('[data-testid="receipt-line-coupon"]')].map((el) => el.textContent)).toEqual(["Coupon DCNT-SPA-500-฿333", "Coupon DCNT-SPA-500-฿167"]);
     expect(receipt.textContent).not.toContain("Discount-");
@@ -407,3 +409,5 @@ describe("customer display", () => {
     expect(document.querySelector('[data-testid="display-coupon-saved"]')).toBeNull();
   });
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

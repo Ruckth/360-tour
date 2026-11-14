@@ -1,9 +1,10 @@
 "use client";
 
+import { Menu } from "@base-ui/react/menu";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, MoreHorizontal, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
@@ -221,12 +222,32 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
           </h1>
           {access.capabilities.approve || checkoutFlow ? <CheckoutHeaderStaff backend={checkoutBackend} /> : null}
           {tillOnly ? (
-            <SignOutButton redirectUrl="/admin">
-              <Button variant="outline" className="shrink-0">
-                <LogOut aria-hidden className="size-4" />
-                Sign out
-              </Button>
-            </SignOutButton>
+            <>
+              <div className="sm:hidden">
+                <Menu.Root>
+                  <Menu.Trigger aria-label="Account menu" className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring">
+                    <MoreHorizontal aria-hidden className="size-5" />
+                  </Menu.Trigger>
+                  <Menu.Portal>
+                    <Menu.Positioner align="end" sideOffset={6} className="z-50">
+                      <Menu.Popup className="min-w-40 rounded-xl border bg-popover p-1 shadow-xl">
+                        <SignOutButton redirectUrl="/admin">
+                          <Menu.Item className="flex min-h-11 items-center gap-2 rounded-md px-3 text-sm outline-none data-highlighted:bg-muted">
+                            <LogOut aria-hidden className="size-4" /> Sign out
+                          </Menu.Item>
+                        </SignOutButton>
+                      </Menu.Popup>
+                    </Menu.Positioner>
+                  </Menu.Portal>
+                </Menu.Root>
+              </div>
+              <SignOutButton redirectUrl="/admin">
+                <Button variant="outline" className="hidden shrink-0 sm:inline-flex">
+                  <LogOut aria-hidden className="size-4" />
+                  Sign out
+                </Button>
+              </SignOutButton>
+            </>
           ) : null}
         </header>
         <ConfirmProvider>

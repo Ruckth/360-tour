@@ -61,7 +61,7 @@ for (const [size, viewport] of Object.entries(UX_VIEWPORTS)) {
 
     await open(page, "?role=manager&scenario=spa");
     if (size === "phone") await orderPanel(page, size);
-    const customer = page.getByRole("button", { name: /^Add customer$/ }).first();
+    const customer = page.getByRole("button", { name: /^Customer$/ }).first();
     if (size === "phone") await page.keyboard.press("Escape");
     await customer.click();
     await page.getByRole("dialog").getByRole("textbox", { name: "Search customers" }).fill("Anna");

@@ -132,12 +132,12 @@ describe("pay panel", () => {
     const settle = loseFirstAnswer(actions);
     const rowTwo = document.querySelector('[aria-label="Payment 2 method"]')!;
     await act(async () => [...rowTwo.querySelectorAll("button")].find((b) => b.textContent === "Card")!.click());
-    // Not "Fully allocated" while payment 1 is still empty.
+    // Not "Covered" while payment 1 is still empty.
     expect(document.querySelector('[data-testid="split-remaining"]')).toBeNull();
     expect(button("Confirm split")?.disabled).toBe(true);
     await input('[aria-label="Payment 1 amount"]', "500");
-    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿0");
-    expect(document.body.textContent).toContain("Fully allocated");
+    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("Covered · ฿1,200 in 2 payments");
+    expect(document.body.textContent).toContain("Covered");
     expect(document.querySelector('[aria-label="Payment 2 amount"]')?.textContent).toBe("฿700");
     await click("Confirm ฿500 cash + ฿700 card"); await tick();
     expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "cash", amount: 500 }, { method: "card", amount: 700 }] });
@@ -150,7 +150,7 @@ describe("pay panel", () => {
     await openPanel("split");
     await input('[aria-label="Payment 1 amount"]', "1500");
     expect(document.body.textContent).toContain("Over by");
-    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿300");
+    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("Over by ฿300");
     expect(button("Confirm split")?.disabled).toBe(true);
   });
 

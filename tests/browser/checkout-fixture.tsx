@@ -1,3 +1,4 @@
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { Id } from "convex/_generated/dataModel";
 import { NextIntlClientProvider } from "next-intl";
 import { useState } from "react";
@@ -130,7 +131,7 @@ function Harness({ initialOrder }: { initialOrder: OrderId | null }) {
 void seed().then((initialOrder) =>
   createRoot(document.getElementById("root")!).render(
     <NextIntlClientProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
-      <Harness initialOrder={initialOrder} />
+      <ConfirmProvider><Harness initialOrder={initialOrder} /></ConfirmProvider>
     </NextIntlClientProvider>,
   ),
 );

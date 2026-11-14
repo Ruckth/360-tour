@@ -64,12 +64,12 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const count = new TaskCounter();
       await count.tap(items(page).getByRole("button", { name: "Refund Foot spa 45" }), "Refund Foot spa 45");
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
-      await expect(form.getByRole("button", { name: "All ฿600" })).toHaveAttribute("aria-pressed", "true");
+      await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
       await expectAtMostSentences(view(page), 2);
-      await count.tap(form.getByRole("button", { name: "Shortened treatment" }), "reason chip");
+      await count.tap(form.getByRole("button", { name: "Short treatment" }), "reason chip");
       await count.tap(form.getByRole("button", { name: "Record refund ฿600" }), "Record refund ฿600");
       const note = items(page).locator("[data-line-note]");
-      await expect(note).toHaveText("Refunded ฿600 · Shortened treatment");
+      await expect(note).toHaveText("Refunded ฿600 · Short treatment");
       await expect(note).toBeFocused();
       await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿600");
       expect(result(count), count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
@@ -79,24 +79,24 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await open(page, "?role=manager&scenario=refund");
       await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
-      await form.getByRole("button", { name: "Half ฿600" }).click();
+      await form.getByRole("button", { name: "Half", exact: true }).click();
       await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("600");
       await form.getByRole("button", { name: "Guest complaint" }).click();
       await form.getByRole("button", { name: "Record refund ฿600" }).click();
       await expect(items(page).locator("[data-line-note]")).toHaveText("Refunded ฿600 · Guest complaint");
       // What is left is ฿600: All and Half follow it.
       await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
-      await expect(form.getByRole("button", { name: "All ฿600" })).toHaveAttribute("aria-pressed", "true");
-      await expect(form.getByRole("button", { name: "Half ฿300" })).toBeVisible();
+      await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(form.getByRole("button", { name: "Half", exact: true })).toBeVisible();
     });
 
     test("a cashier's refund request names the money and waits on the bar", async ({ page }) => {
       await open(page, "?role=cashier&scenario=refund");
       await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
       const form = items(page).getByRole("form", { name: "Ask a manager", exact: true });
-      await form.getByRole("button", { name: "Shortened treatment" }).click();
+      await form.getByRole("button", { name: "Short treatment" }).click();
       await form.getByRole("button", { name: "Send refund ฿600 to manager" }).click();
-      await expect(items(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Shortened treatment");
+      await expect(items(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Short treatment");
       const bar = side(page).locator('[data-approval-status="pending"]');
       await expect(bar).toContainText("Waiting for a manager · refund ฿600 · Foot spa 45");
       // The cashier who asked can cancel; only approvers decide.
@@ -128,11 +128,11 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(form.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
       // The toolbar is only Close while the task is open.
       await expect(page.getByRole("toolbar", { name: "Receipt actions" }).getByRole("button")).toHaveText(["Close"]);
-      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper, including the Paid chip").toBeLessThanOrEqual(26);
       await expectAtMostSentences(view(page), 1);
       await count.tap(form.getByRole("button", { name: "PromptPay", exact: true }), "PromptPay");
       await count.tap(form.getByRole("button", { name: "Wrong method picked" }), "reason chip");
-      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper, including the Paid chip").toBeLessThanOrEqual(26);
       await count.tap(form.getByRole("button", { name: "Save · PromptPay ฿1,800" }), "Save");
       await expect(form).toHaveCount(0);
       await expect(page.getByRole("status").filter({ hasText: "Payment corrected · PromptPay ฿1,800" })).toBeVisible();
@@ -226,7 +226,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(yes).toHaveText("YesNo refund sent");
       await expect(no).toHaveText("NoEntered by mistake");
       await expect(page.getByRole("toolbar", { name: "Receipt actions" }).getByRole("button")).toHaveText(["Close"]);
-      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper, including the Paid chip").toBeLessThanOrEqual(26);
       // No answer is picked for them, and neither runs without a reason.
       await expect(yes).toBeDisabled();
       await expect(no).toBeDisabled();
@@ -247,7 +247,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const panel = page.getByTestId("void-panel");
       await expect(panel.locator('[data-void-choice="received"]')).toHaveText("YesBookings stay paid");
       await expect(panel.locator('[data-void-choice="unreceived"]')).toHaveText("NoBalances reopen");
-      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+      expect((await receiptCensus(page)).wordsOutsidePaper, "words outside the paper, including the Paid chip").toBeLessThanOrEqual(26);
     });
 
     test("Void… · No voids it as entered by mistake", async ({ page }) => {
@@ -264,7 +264,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test("Void… is off once the receipt has a refund", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
       await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
-      await items(page).getByRole("button", { name: "Charged by mistake" }).click();
+      await items(page).getByRole("button", { name: "Wrong charge" }).click();
       await items(page).getByRole("button", { name: "Record refund ฿600" }).click();
       await expect(items(page).locator("[data-line-note]")).toBeVisible();
       await more(page).click();

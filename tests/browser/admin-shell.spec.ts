@@ -41,7 +41,7 @@ for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
 
       const count = tapper();
       await count.tap(approvalsButton(page));
-      await expect(panel(page).getByTestId("approval-request")).toContainText("Mint asks for a ฿180 discount (15%)");
+      await expect(panel(page).getByTestId("approval-request")).toContainText("Mint · asks for a ฿180 discount (15%)");
       await expectAtMostSentences(panel(page), 1);
       await count.tap(panel(page).getByRole("button", { name: "Approve" }));
 
@@ -116,7 +116,7 @@ for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
   test.describe(`cashier on ${device}`, () => {
     test.use({ viewport });
 
-    test("gets the till alone: no navigation, no approvals, Sign out in the header", async ({ page }) => {
+    test("gets the till alone with Sign out in the account menu on phone", async ({ page }) => {
       await open(page, "?role=cashier&path=/admin/checkout");
       const header = page.locator("header");
       await expect(header.locator("h1")).toHaveText("Checkout");
@@ -124,7 +124,12 @@ for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
       await expect(page.locator('[data-sidebar="sidebar"]')).toHaveCount(0);
       await expect(page.getByTestId("approvals-button")).toHaveCount(0);
       await expect(header.getByTestId("cashier-badge")).toHaveText("Cashier");
-      await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
+      if (device === "phone") {
+        await expect(header.getByRole("button", { name: "Sign out" })).toBeHidden();
+        await header.getByRole("button", { name: "Account menu", exact: true }).click();
+        await expect(page.getByRole("menuitem", { name: "Sign out", exact: true })).toBeVisible();
+        await page.keyboard.press("Escape");
+      } else await expect(header.getByRole("button", { name: "Sign out" })).toBeVisible();
       await expect(page.getByText("Concierge operations")).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Thai massage 60" }).first()).toBeVisible();
     });

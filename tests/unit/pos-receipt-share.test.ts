@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import { act, createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +31,7 @@ async function paidReceipt() {
   const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Massage", price: 1200 } }));
   await show(backend, createElement(Probe, { backend, orderId }));
   await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 1200, idempotencyKey: "share-receipt-0001", tenders: [{ method: "cash", amount: 1200 }] }));
-  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
 }
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
@@ -116,9 +118,11 @@ it("calls money paid before checkout Paid in advance on the receipt and its shar
   const text = receiptText(view!, "Resort");
   expect(text).toContain("Paid in advance  -฿10,000");
   expect(text).not.toMatch(/before checkout|paid online/i);
-  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
   const receipt = document.querySelector('[aria-label="Receipt"]')!.textContent!;
   expect(receipt).toContain("Paid in advance");
   expect(receipt).toContain("VAT 7% included");
   expect(receipt).not.toContain("Paid before checkout");
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

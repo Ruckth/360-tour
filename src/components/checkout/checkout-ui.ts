@@ -57,7 +57,7 @@ export function cashNotes(due: number, max = MAX_BILL): number[] {
  * including portaled dialogs, sheets and select menus, which don't inherit it.
  */
 export const TOUCH_TARGETS =
-  "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
+  "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_textarea]:min-h-11 pointer-coarse:[&_select]:min-h-11 pointer-coarse:[&_a[href]]:min-h-11 pointer-coarse:[&_a[href]]:min-w-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
 /**
  * A row of up to four equal buttons (tenders, cash shortcuts): four columns while each can be
@@ -111,7 +111,7 @@ export function receiptSchedule(schedule: ServiceSchedule | undefined) {
   if (day && time) return `${day}, ${time}`;
   if (day) return `${day} · time to be confirmed`;
   if (time) return `${time} · date to be confirmed`;
-  return "Not scheduled";
+  return null;
 }
 
 /** How an order correction is titled in its history. */

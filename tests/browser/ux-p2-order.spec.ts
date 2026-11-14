@@ -97,13 +97,13 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       // Waiting shows once: the line's bar (the cashier withdraws there), and the tenders are off.
       await expect(panel.getByText("Waiting for approval")).toHaveCount(0);
       await expect(waiting.getByRole("button", { name: "Withdraw" })).toBeVisible();
-      await expect(panel.getByRole("button", { name: "Cash", exact: true })).toBeDisabled();
+      await expect(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeDisabled();
 
       await page.evaluate(() => window.fixture.setRole("manager"));
       await page.waitForTimeout(300);
       await count.tap(page.getByTestId("approvals-button"), "Approvals");
       const request = page.getByRole("dialog", { name: "Approvals" }).getByTestId("approval-request");
-      await expect(request).toContainText("Mint asks for a ฿180 discount (15%)");
+      await expect(request).toContainText("Mint · asks for a ฿180 discount (15%)");
       await expect(request).toContainText("“Service delay”");
       await count.tap(request.getByRole("button", { name: "Approve" }), "Approve");
       await expect(page.getByTestId("toast")).toHaveText("Approved 15% discount on #1043");
@@ -153,7 +153,7 @@ test.describe("phone header", () => {
 
   test("is one row: Customer, Orders and ⋯ with Add booking and New order", async ({ page }) => {
     await open(page, "?role=cashier&scenario=spa");
-    const customer = page.getByRole("button", { name: "Add customer" });
+    const customer = page.getByRole("button", { name: "Customer" });
     const orders = page.getByRole("button", { name: "Orders", exact: true });
     const more = page.getByRole("button", { name: "More checkout actions" });
     const title = page.getByTestId("order-title");
@@ -178,7 +178,7 @@ test.describe("customer dialog", () => {
 
   test("lists customers to link, with no Details per result and no archived toggle", async ({ page }) => {
     await open(page, "?role=manager");
-    await page.getByRole("button", { name: "Add customer" }).click();
+    await page.getByRole("button", { name: "Customer" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("textbox", { name: "Search customers" }).fill("Anna");
     await expect(dialog.getByRole("list", { name: "Customers" }).getByRole("button")).toHaveCount(2);
