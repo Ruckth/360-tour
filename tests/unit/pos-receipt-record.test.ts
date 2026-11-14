@@ -72,12 +72,12 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-it("puts Print · Share · New sale and ⋯ above the receipt, outside what prints", async () => {
+it("puts Print · New sale and ⋯ above the receipt, outside what prints", async () => {
   const { backend, actions, orderId } = await paidSale();
   const onNewSale = vi.fn();
   await receipt(backend, orderId, onNewSale);
   const toolbar = document.querySelector<HTMLElement>('[role="toolbar"][aria-label="Receipt actions"]')!;
-  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["Print", "Share", "New sale", "More receipt actions"]);
+  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["Print", "New sale", "More receipt actions"]);
   for (const control of toolbar.querySelectorAll("button")) {
     // Before the receipt in reading and tab order, so it is reached without scrolling past it.
     expect(paper().compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
@@ -85,13 +85,13 @@ it("puts Print · Share · New sale and ⋯ above the receipt, outside what prin
     expect(control.closest(".print\\:hidden"), "hidden when printing").toBeTruthy();
   }
   for (const gone of ["Checkout", "Copy", "58 mm", "80 mm", "Void…", "Correct payment recording", "No money was received…"]) expect(button(gone), gone).toBeUndefined();
-  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper", "Correct payment", "Void…"]);
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper", "Correct payment", "Void…"]);
   await click("New sale");
   expect(onNewSale).toHaveBeenCalledOnce();
 
   await run(actions.voidOrder({ orderId, reason: "Charged the wrong guest" }));
   await receipt(backend, orderId, onNewSale);
-  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper"]);
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper"]);
   expect(button("New sale")).toBeTruthy();
 });
 
@@ -265,5 +265,5 @@ it("shows cashiers no History; Correct payment and Void… stay, as requests", a
   expect(document.querySelector('[data-testid="receipt-history"]')).toBeNull();
   expect(document.querySelector("summary")).toBeNull();
   expect(button("Link appointment")).toBeUndefined();
-  expect((await receiptActions()).map(i => i.label)).toEqual(["Use 58 mm paper", "Correct payment", "Void…"]);
+  expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper", "Correct payment", "Void…"]);
 });

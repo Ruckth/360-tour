@@ -28,7 +28,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
   test.describe(size, () => {
     test.use({ viewport: UX_VIEWPORTS[size] });
 
-    test("checkout shows at most 22 controls at the start and 26 with a line open", async ({ page }) => {
+    test("checkout shows at most 22 controls at the start and 28 with a line open", async ({ page }) => {
       await open(page, "?role=cashier");
       expect(await controlsOnScreen(page)).toBeLessThanOrEqual(22);
       await expect(page.getByRole("button", { name: "Filters" })).toHaveCount(0);
@@ -41,9 +41,9 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
       await expect(panel.getByRole("textbox", { name: "Discount" })).toBeInViewport();
       // The plan's budget is 30 with a line open; therapist chips, date and time fold into one
-      // Schedule row that opens on tap (31 → 26 on iPad).
+      // Schedule row that opens on tap. The shorter tender bar also exposes History and Add coupon.
       expect(await controlsOnScreen(page)).toBeLessThanOrEqual(30);
-      expect(await controlsOnScreen(page)).toBeLessThanOrEqual(26);
+      expect(await controlsOnScreen(page)).toBeLessThanOrEqual(28);
       const schedule = panel.getByRole("button", { name: /^Schedule/ });
       await expect(schedule).toHaveText("ScheduleAny therapist · Not scheduled");
       await expect(schedule).toHaveAttribute("aria-expanded", "false");

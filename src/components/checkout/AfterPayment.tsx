@@ -52,9 +52,9 @@ export function LineLink({ view, line }: { view: OrderView; line: OrderLine }) {
       ) : null}
       {canLink ? (
         link ? (
-          <Button type="button" size="sm" variant="ghost" className="h-8 px-3 font-sans text-xs" aria-label={`Unlink ${line.name}`} onClick={() => setOpen("unlink")}>Unlink…</Button>
+          <Button type="button" size="sm" variant="ghost" className="h-11 px-3 font-sans text-sm" aria-label={`Unlink ${line.name}`} onClick={() => setOpen("unlink")}>Unlink…</Button>
         ) : (
-          <Button type="button" size="sm" variant="outline" className="h-8 px-3 font-sans text-xs" onClick={() => setOpen("link")}>
+          <Button type="button" size="sm" variant="outline" className="h-11 px-3 font-sans text-sm" onClick={() => setOpen("link")}>
             <Link2 aria-hidden className="size-3.5" /> {target === "appointment" ? "Link appointment" : "Link to stay"}
           </Button>
         )

@@ -77,7 +77,7 @@ function ReceiptHistoryDetails({ view, className }: { view: OrderView; className
       data-testid="receipt-history"
       label="History"
       lazy="first-open"
-      className={cn("border-t border-border print:hidden", className)}
+      className={cn("rounded-xl border border-border bg-card px-5 print:hidden", className)}
       contentClassName="pb-0"
     >
         <div className="pb-3">

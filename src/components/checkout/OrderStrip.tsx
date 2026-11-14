@@ -623,7 +623,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
                   <span className="block text-xs text-muted-foreground">Balance due</span>
-                  <span className="block text-sm font-semibold tabular-nums">{formatMoney(row.due, row.currency)}</span>
+                  <span className="block text-sm font-semibold font-sans tabular-nums">{formatMoney(row.due, row.currency)}</span>
                 </span>
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </span>
@@ -733,10 +733,10 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
                   <span className="block text-xs text-muted-foreground">{row.state === "unpaid" ? "Balance due" : row.state === "paid" ? "Paid" : row.state === "discarded" ? "Discarded" : "Voided"}</span>
-                  <span className={cn("block text-sm font-semibold tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
+                  <span className={cn("block text-sm font-semibold font-sans tabular-nums", row.state === "void" && "text-muted-foreground line-through")}>
                     {formatMoney(row.state === "unpaid" ? row.due : row.total, row.currency)}
                   </span>
-                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground tabular-nums">Refunded {formatMoney(row.refundedAmountSatang / 100, row.currency)}</span> : null}
+                  {row.refundedAmountSatang ? <span className="block text-xs text-muted-foreground font-sans tabular-nums">Refunded {formatMoney(row.refundedAmountSatang / 100, row.currency)}</span> : null}
                 </span>
                 {/* The row itself opens the order. */}
                 <ChevronRight aria-hidden className="size-4 text-muted-foreground" />

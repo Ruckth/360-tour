@@ -229,7 +229,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
         <span className="line-clamp-2 text-sm leading-snug font-semibold [overflow-wrap:anywhere]">{tile.name}</span>
         <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
         <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
-          <span className="text-sm font-semibold tabular-nums">{price}</span>
+          <span className="text-sm font-semibold font-sans tabular-nums">{price}</span>
           {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
           <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
             <Plus aria-hidden className="size-4" />

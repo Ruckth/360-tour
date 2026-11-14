@@ -42,7 +42,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const buttons = () => [...document.querySelectorAll("button")];
-const button = (text: string) => buttons().find((el) => el.textContent?.trim() === text)!;
+const button = (text: string) => buttons().find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text)!;
 const buttonStarting = (text: string) => buttons().find((el) => el.textContent?.trim().startsWith(text))!;
 const byLabel = (label: string) => document.querySelector<HTMLElement>(`[aria-label="${label}"]`)!;
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });

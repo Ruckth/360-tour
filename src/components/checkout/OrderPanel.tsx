@@ -27,7 +27,7 @@ import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTo
 import type { ApprovalPayload } from "convex/lib/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
-import { TENDER_LABELS, UP_TO_FOUR_COLUMNS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
+import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
 import { discountText, parseDiscount } from "./discount-input";
@@ -145,12 +145,13 @@ export function OrderPanel({
     <div className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-2">
         <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
-          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
+          {paying ? null : <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
-          </span>
+          </span>}
           <div className="min-w-0 flex-1">
-            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-base" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? `Balance due ${formatMoney(totals.due)}` : title}</h2>
-            <p className="truncate text-sm text-muted-foreground">
+            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? "Balance due" : title}</h2>
+            {paying ? <p className="mt-1 text-[40px] leading-tight font-semibold font-sans tabular-nums">{formatMoney(totals.due)}</p> : null}
+            <p className={cn("truncate text-xs text-muted-foreground", paying && "sr-only")}>
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
               {onClose && view?.customer ? ` · ${view.customer.name}` : ""}
@@ -244,16 +245,16 @@ export function OrderPanel({
                     <TicketPercent aria-hidden className="size-3.5 shrink-0 text-gold-text" />
                     <span className="[overflow-wrap:anywhere]">{couponLabel(view ?? {})}</span>
                   </dt>
-                  <dd className="text-right font-medium tabular-nums">{formatMoney(-totals.coupon)}</dd>
+                  <dd className="text-right font-medium font-sans tabular-nums">{formatMoney(-totals.coupon)}</dd>
                 </div>
               ) : null}
               <TotalRow label="VAT 7% included" value={formatMoney(totals.vat)} muted />
               {totals.deposit ? <TotalRow label="Paid in advance" value={formatMoney(-totals.deposit)} /> : null}
             </dl>
             <div className="mt-2 mb-3 flex flex-wrap items-baseline justify-between gap-x-2 border-t border-border/70 pt-2 [@media(max-height:32rem)]:mb-2 [@media(max-height:32rem)]:pt-1">
-              <span className="font-serif text-[min(1.5rem,6cqi)] font-semibold whitespace-nowrap">Balance due</span>
+              <span className="text-xs text-muted-foreground whitespace-nowrap">Balance due</span>
               {/* Never wider than the panel: shrinks with it, and wraps under "Balance due" if it must. */}
-              <span className="ml-auto min-w-0 text-right font-serif text-[min(2.25rem,10cqi)] leading-none font-semibold lining-nums tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,10cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
+              <span className="ml-auto min-w-0 text-right text-[min(2.5rem,11cqi)] leading-none font-semibold lining-nums font-sans tabular-nums [overflow-wrap:anywhere] [@media(max-height:32rem)]:text-[min(1.875rem,10cqi)]" data-testid="order-due">{formatMoney(totals.due)}</span>
             </div>
             {stale ? (
               <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
@@ -277,27 +278,15 @@ export function OrderPanel({
               // On short screens (phone landscape) Split joins the tender row, leaving room for the items.
               <>
               <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Take payment by</p>
-              <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
-                {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                  <Button
-                    key={method}
-                    className={cn("h-auto min-h-12 rounded-xl px-1 text-xs leading-tight whitespace-normal sm:text-sm [@media(max-height:32rem)]:h-11 [@media(max-height:32rem)]:min-h-11", method !== "cash" && "border-border bg-muted/50 hover:bg-muted")}
-                    variant={method === "cash" ? "default" : "outline"}
-                    disabled={cannotPay}
-                    onClick={() => setPaying(method)}
-                  >
-                    {TENDER_LABELS[method].short}
-                  </Button>
-                ))}
-                {/* Outlined in gold, so Cash stays the one filled action. */}
-                <Button
-                  variant="outline"
-                  className="col-span-full h-11 rounded-xl border-gold/60 text-gold-text hover:bg-gold/10 hover:text-gold-text [@media(max-height:32rem)]:col-span-1 [@media(max-height:32rem)]:px-1 [@media(max-height:32rem)]:text-xs"
-                  disabled={cannotPay}
-                  onClick={() => setPaying("split")}
-                >
-                  Split payment
-                </Button>
+              <div className="flex flex-wrap items-center gap-1">
+                <div className="grid min-w-0 flex-1 basis-[14rem] grid-cols-[repeat(auto-fit,minmax(min(100%,3.5rem),1fr))] rounded-full bg-muted p-1">
+                  {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
+                    <Button key={method} className={cn("h-11 min-w-0 rounded-full px-1 text-xs max-[350px]:text-[11px]", method === "cash" && "bg-foreground text-background hover:bg-foreground hover:text-background")} variant="ghost" disabled={cannotPay} onClick={() => setPaying(method)}>
+                      {TENDER_LABELS[method].short}
+                    </Button>
+                  ))}
+                </div>
+                <Button variant="ghost" aria-label="Split payment" className="h-11 px-2 text-xs" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
               </div>
               </>
             )}
@@ -371,7 +360,7 @@ function TotalRow({ label, value, muted }: { label: string; value: string; muted
   return (
     <div className={cn("flex justify-between gap-3", muted ? "text-xs text-muted-foreground" : "text-muted-foreground")}>
       <dt>{label}</dt>
-      <dd className="text-right tabular-nums">{value}</dd>
+      <dd className="text-right font-sans tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -436,9 +425,9 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
           ) : null}
         </span>
         <span className="ml-auto shrink-0 text-right">
-          <span className="block text-sm font-semibold tabular-nums">{formatMoney(line.net)}</span>
-          {line.net !== listPrice ? <span className="block text-xs text-muted-foreground tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
-          {couponShare ? <span className="block text-xs font-medium whitespace-nowrap text-gold-text tabular-nums">Coupon {formatMoney(-couponShare)}</span> : null}
+          <span className="block text-sm font-semibold font-sans tabular-nums">{formatMoney(line.net)}</span>
+          {line.net !== listPrice ? <span className="block text-xs text-muted-foreground font-sans tabular-nums line-through">{formatMoney(listPrice)}</span> : null}
+          {couponShare ? <span className="block text-xs font-medium whitespace-nowrap text-gold-text font-sans tabular-nums">Coupon {formatMoney(-couponShare)}</span> : null}
         </span>
         <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </button>
@@ -491,7 +480,7 @@ function QtyStepper({ line, run }: { line: OrderLine; run: Run }) {
       <Button size="icon" variant="outline" className="size-8 rounded-full" aria-label={words.fewer} disabled={line.qty <= 1} onClick={() => step(-1)}>
         <Minus aria-hidden className="size-3.5" />
       </Button>
-      <output aria-live="polite" className="min-w-14 text-center text-sm font-semibold tabular-nums">
+      <output aria-live="polite" className="min-w-14 text-center text-sm font-semibold font-sans tabular-nums">
         {line.qty}
         {unit ? <span className="font-normal text-muted-foreground"> {unit}</span> : null}
       </output>
@@ -531,7 +520,7 @@ function ServiceTimeInput({ value, onCommit }: { value: string; onCommit: (time:
     setText(value);
   }
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <Input
         type="time"
         aria-label="Service time"
@@ -598,10 +587,10 @@ function ScheduleRow({ line, eligible, catalogLoaded, run }: { line: OrderLine; 
         aria-expanded={open}
         aria-controls={`${id}-schedule`}
         onClick={() => setOpen(!open)}
-        className="-mx-2 flex min-h-10 items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
+        className="flex min-h-12 w-full items-center justify-between gap-3 text-left text-sm hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
-        <span className="text-xs font-medium text-muted-foreground">Schedule</span>
-        <span className="min-w-0 flex-1 truncate">{scheduleSummary(line, now)}</span>
+        <span className="text-sm">Schedule</span>
+        <span className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground">{scheduleSummary(line, now)}</span>
         <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-90")} />
       </button>
       {open ? (
@@ -694,7 +683,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const unchangedPrice = line.priceOverride !== undefined && Number(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
 
   return (
-    <div ref={editor} className="grid gap-4 border-t border-dashed border-border px-4 pt-3 pb-3">
+    <div ref={editor} className="mx-3 mb-3 divide-y divide-border overflow-hidden rounded-xl bg-muted/50 px-3">
       {/* The discount first: it is what a cashier opens a row for most often. */}
       {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={onSent} />}
       {line.kind === "service" ? (
@@ -706,7 +695,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
         <p className="text-xs text-muted-foreground">A stay is charged at its booked price. To change it, edit the booking, then update the row here.</p>
       ) : (
         <>
-          <Field label="Price">
+          <div className="grid min-h-12 items-center gap-2">
             {line.priceOverride && !priceOpen ? (
               <div className="flex items-start justify-between gap-2 rounded-lg bg-amber-50 p-2 text-xs dark:bg-amber-400/10">
                 <span className="min-w-0 [overflow-wrap:anywhere]">
@@ -735,11 +724,11 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
                 </div>
               </div>
             ) : (
-              <Button size="sm" variant="outline" className="justify-self-start" onClick={editPrice}>
-                Change price
+              <Button size="sm" variant="ghost" aria-label={`Price ${formatMoney(line.priceOverride?.price ?? line.unitPrice)}`} className="h-11 w-full justify-between px-0 font-normal" onClick={editPrice}>
+                <span>Price</span><span className="ml-auto font-sans tabular-nums">{formatMoney(line.priceOverride?.price ?? line.unitPrice)}</span><ChevronRight aria-hidden className="size-4 text-muted-foreground" />
               </Button>
             )}
-          </Field>
+          </div>
         </>
       )}
 
@@ -759,7 +748,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
         />
       ) : null}
 
-      <Button size="sm" variant="ghost" className="justify-self-start text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
+      <Button size="sm" variant="ghost" className="h-12 w-full justify-center rounded-none text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
       </Button>
     </div>
@@ -834,9 +823,9 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
 
   const status = parsed ? (parsed.ok ? parsed.echo : parsed.error) : "";
   return (
-    <div ref={root} className="grid gap-1.5">
+    <div ref={root} className="grid min-h-12 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2">
       <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-        <Label htmlFor={`${id}-discount`} className="text-xs font-medium text-muted-foreground">Discount</Label>
+        <Label htmlFor={`${id}-discount`} className="text-sm font-normal text-foreground">Discount</Label>
         {/* A cashier's limit in plain sight, so learning it costs no tap. */}
         {cashier ? (
           <span id={`${id}-limit`} data-testid="discount-limit" className="font-normal">
@@ -848,7 +837,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
         <Input
           id={`${id}-discount`}
           aria-label="Discount"
-          className="h-9 w-32"
+          className="h-11 w-32 bg-background text-right font-sans tabular-nums"
           value={text}
           autoComplete="off"
           enterKeyHint="done"
@@ -871,7 +860,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           </Button>
         ) : null}
       </div>
-      <p id={`${id}-echo`} data-testid="discount-echo" className={cn("text-xs tabular-nums", parsed && !parsed.ok ? "text-destructive" : "text-muted-foreground")}>
+      <p id={`${id}-echo`} data-testid="discount-echo" className={cn("col-span-2 text-xs font-sans tabular-nums empty:hidden", parsed && !parsed.ok ? "text-destructive" : "text-muted-foreground")}>
         {status}
         {over ? (
           <span data-testid="discount-limit-hint" className="text-amber-800 dark:text-amber-300">
@@ -883,7 +872,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
         ) : null}
       </p>
       {asking && parsed?.ok ? (
-        <div role="group" aria-label="Ask a manager" className="grid gap-2">
+        <div role="group" aria-label="Ask a manager" className="col-span-2 grid gap-2">
           <ReasonField compact value={reason} onChange={setReason} chips={REASON_CHIPS.discount} disabled={sending} />
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {/* One request at a time per order: a second waits until the first is decided. */}

@@ -4,10 +4,10 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
 import { TaskCounter, UX_VIEWPORTS, controlsOnScreen, type UxViewport } from "./helpers/ux-census";
 
 /*
- * P4 · Receipt: the counts the plan sets (docs/plans/ux-simplification-plan.md), measured the way
+ * P4 · Receipt: the task counts the plan sets (docs/plans/ux-simplification-plan.md), measured the way
  * the click audit did, at iPad landscape and phone size, on the staff-roles fixture: a ฿1,800
  * receipt (Thai massage 60 ฿1,200 + Foot spa 45 ฿600) paid by card.
- *   words outside the paper     ~100 → ≤ 25
+ *   words outside the paper     ≤ 65 including the separate Items card
  *   side column blocks          9 → ≤ 3
  *   refund one line             3 taps (Refund, a reason chip, Record refund ฿600), 0 typed, 0 scrolls
  *   correct the payment method  5 taps (⋯, Correct payment, method, reason chip, Save), 0 typed, 0 scrolls, ≤ 7 controls
@@ -24,6 +24,7 @@ async function open(page: Page, query: string, fixture = "staff-roles") {
   await page.waitForTimeout(300);
 }
 const receipt = (page: Page) => page.getByRole("article", { name: "Receipt" });
+const items = (page: Page) => page.getByTestId("receipt-items");
 const side = (page: Page) => page.getByTestId("receipt-side");
 const view = (page: Page) => page.getByTestId("receipt-view");
 const more = (page: Page) => page.getByRole("button", { name: "More receipt actions" });
@@ -34,10 +35,12 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test.use({ viewport: UX_VIEWPORTS[size] });
 
     for (const role of ["manager", "cashier"] as const) {
-      test(`${role}: Print · Share · New sale, ≤ 25 words outside the paper, ≤ 3 side blocks, one sentence`, async ({ page }) => {
+      test(`${role}: Print · New sale, ≤ 65 words including Items outside the paper, ≤ 3 side blocks, one sentence`, async ({ page }) => {
         await open(page, `?role=${role}&scenario=refund`);
         const toolbar = page.getByRole("toolbar", { name: "Receipt actions" });
-        await expect(toolbar.getByRole("button")).toHaveText(["Print", "Share", "New sale", ""]);
+        await expect(toolbar.getByRole("button")).toHaveText(["Print", "New sale", ""]);
+        await expect(receipt(page).getByRole("button")).toHaveCount(0);
+        await expect(items(page)).toBeVisible();
         // One row, ⋯ included, at both sizes.
         const tops = await toolbar.getByRole("button").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
         expect(Math.max(...tops) - Math.min(...tops), "toolbar on one row").toBeLessThanOrEqual(2);
@@ -47,25 +50,25 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
         await expect(page.getByRole("region", { name: "After payment" })).toHaveCount(0);
         await expect(page.getByText("Printing tips")).toHaveCount(0);
         const counts = await receiptCensus(page);
-        expect(counts.wordsOutsidePaper, "words outside the paper").toBeLessThanOrEqual(25);
+        expect(counts.wordsOutsidePaper, "header and item context outside the paper").toBeLessThanOrEqual(65);
         expect(counts.sideBlocks, "side column blocks").toBeLessThanOrEqual(3);
         await expectAtMostSentences(view(page), 1);
         // Cashiers don't get History, or links their rules don't let them make.
         await expect(page.getByTestId("receipt-history")).toHaveCount(role === "cashier" ? 0 : 1);
-        await expect(receipt(page).getByRole("button", { name: "Link appointment" })).toHaveCount(role === "cashier" ? 0 : 2);
+        await expect(items(page).getByRole("button", { name: "Link appointment" })).toHaveCount(role === "cashier" ? 0 : 2);
       });
     }
 
     test("refund one line: 3 taps, nothing typed, no scroll, and the result shows under its line", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
       const count = new TaskCounter();
-      await count.tap(receipt(page).getByRole("button", { name: "Refund Foot spa 45" }), "Refund Foot spa 45");
-      const form = receipt(page).getByRole("form", { name: "Refund", exact: true });
+      await count.tap(items(page).getByRole("button", { name: "Refund Foot spa 45" }), "Refund Foot spa 45");
+      const form = items(page).getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("button", { name: "All ฿600" })).toHaveAttribute("aria-pressed", "true");
       await expectAtMostSentences(view(page), 1);
       await count.tap(form.getByRole("button", { name: "Shortened treatment" }), "reason chip");
       await count.tap(form.getByRole("button", { name: "Record refund ฿600" }), "Record refund ฿600");
-      const note = receipt(page).locator("[data-line-note]");
+      const note = items(page).locator("[data-line-note]");
       await expect(note).toHaveText("Refunded ฿600 · Shortened treatment");
       await expect(note).toBeFocused();
       await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿600");
@@ -74,26 +77,26 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
 
     test("Half sets half of what is left, and the button says the money", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
-      await receipt(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
-      const form = receipt(page).getByRole("form", { name: "Refund", exact: true });
+      await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
+      const form = items(page).getByRole("form", { name: "Refund", exact: true });
       await form.getByRole("button", { name: "Half ฿600" }).click();
       await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("600");
       await form.getByRole("button", { name: "Guest complaint" }).click();
       await form.getByRole("button", { name: "Record refund ฿600" }).click();
-      await expect(receipt(page).locator("[data-line-note]")).toHaveText("Refunded ฿600 · Guest complaint");
+      await expect(items(page).locator("[data-line-note]")).toHaveText("Refunded ฿600 · Guest complaint");
       // What is left is ฿600: All and Half follow it.
-      await receipt(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
+      await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
       await expect(form.getByRole("button", { name: "All ฿600" })).toHaveAttribute("aria-pressed", "true");
       await expect(form.getByRole("button", { name: "Half ฿300" })).toBeVisible();
     });
 
     test("a cashier's refund request names the money and waits on the bar", async ({ page }) => {
       await open(page, "?role=cashier&scenario=refund");
-      await receipt(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
-      const form = receipt(page).getByRole("form", { name: "Ask a manager", exact: true });
+      await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
+      const form = items(page).getByRole("form", { name: "Ask a manager", exact: true });
       await form.getByRole("button", { name: "Shortened treatment" }).click();
       await form.getByRole("button", { name: "Send refund ฿600 to manager" }).click();
-      await expect(receipt(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Shortened treatment");
+      await expect(items(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Shortened treatment");
       const bar = side(page).locator('[data-approval-status="pending"]');
       await expect(bar).toContainText("Waiting for a manager · refund ฿600 · Foot spa 45");
       // The cashier who asked can cancel; only approvers decide.
@@ -202,11 +205,12 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(page.getByRole("menuitem", { name: "Use 80 mm paper" })).toBeVisible();
     });
 
-    test("Share copies the receipt where the device can't share", async ({ page, context }) => {
+    test("Share in ⋯ copies the receipt where the device can't share", async ({ page, context }) => {
       await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       await page.addInitScript(() => { Reflect.deleteProperty(Navigator.prototype, "share"); });
       await open(page, "?role=manager&scenario=refund");
-      await page.getByRole("button", { name: "Share", exact: true }).click();
+      await more(page).click();
+      await page.getByRole("menuitem", { name: "Share", exact: true }).click();
       await expect(page.getByRole("status").filter({ hasText: "Receipt copied." })).toBeVisible();
       expect(await page.evaluate(() => navigator.clipboard.readText())).toContain("Foot spa 45");
     });
@@ -259,10 +263,10 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
 
     test("Void… is off once the receipt has a refund", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
-      await receipt(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
-      await receipt(page).getByRole("button", { name: "Charged by mistake" }).click();
-      await receipt(page).getByRole("button", { name: "Record refund ฿600" }).click();
-      await expect(receipt(page).locator("[data-line-note]")).toBeVisible();
+      await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
+      await items(page).getByRole("button", { name: "Charged by mistake" }).click();
+      await items(page).getByRole("button", { name: "Record refund ฿600" }).click();
+      await expect(items(page).locator("[data-line-note]")).toBeVisible();
       await more(page).click();
       await expect(page.getByRole("menuitem", { name: "Void… · not after a refund" })).toHaveAttribute("aria-disabled", "true");
     });
@@ -294,7 +298,7 @@ test.describe("link after payment", () => {
       await page.setViewportSize(UX_VIEWPORTS[size]);
       await open(page, "?scenario=unscheduled-paid", "checkout");
       const count = new TaskCounter();
-      await count.tap(receipt(page).getByRole("button", { name: "Link appointment" }), "Link appointment");
+      await count.tap(items(page).getByRole("button", { name: "Link appointment" }), "Link appointment");
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByTestId("link-review")).toContainText("SVC-0002");
       // One sentence: the "Not changed… No new payment is taken." paragraph is gone.
@@ -303,7 +307,7 @@ test.describe("link after payment", () => {
       await expect(dialog.getByRole("textbox", { name: "Reason" })).toHaveValue("");
       await count.tap(dialog.getByRole("button", { name: "Guest asked" }), "reason chip");
       await count.tap(dialog.getByRole("button", { name: "Confirm link" }), "Confirm link");
-      await expect(receipt(page).getByTestId("line-link")).toHaveText("Linked · SVC-0002");
+      await expect(items(page).getByTestId("line-link")).toHaveText("Linked · SVC-0002");
       // Back still lists every candidate, the plan's escape hatch.
       expect(result(count), count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
     });
@@ -311,7 +315,7 @@ test.describe("link after payment", () => {
 
   test("Back from the review shows the list", async ({ page }) => {
     await open(page, "?scenario=unscheduled-paid", "checkout");
-    await receipt(page).getByRole("button", { name: "Link appointment" }).click();
+    await items(page).getByRole("button", { name: "Link appointment" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "Back" }).click();
     await expect(dialog.getByTestId("link-candidate").filter({ hasText: "SVC-0002" })).toBeVisible();

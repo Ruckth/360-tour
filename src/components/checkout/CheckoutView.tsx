@@ -182,7 +182,7 @@ export function CheckoutView({
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         <aside
           aria-label="Order"
-          className="mt-1 mr-4 mb-4 hidden w-[380px] shrink-0 overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
+          className="mt-1 mr-4 mb-4 hidden max-h-full w-[380px] shrink-0 overflow-hidden has-[[data-testid=pay-panel]]:self-start rounded-2xl border border-border/80 bg-card/95 shadow-xl shadow-navy/10 backdrop-blur-xl supports-[backdrop-filter:blur(1px)]:bg-card/80 lg:flex lg:flex-col xl:w-[440px] 2xl:w-[480px] dark:shadow-black/30"
         >
           {panel()}
         </aside>
@@ -219,7 +219,7 @@ export function CheckoutView({
                 <span className="block truncate text-sm font-semibold">View order</span>{" "}
                 <span className="block truncate text-xs opacity-80">{count} {count === 1 ? "item" : "items"}</span>{" "}
               </span>
-              {quickCash ? null : <span className="shrink-0 font-serif text-2xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(due)}</span>}
+              {quickCash ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
               <ChevronUp aria-hidden className="size-5 shrink-0" />
             </button>
           </SheetTrigger>
@@ -231,12 +231,12 @@ export function CheckoutView({
               className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-4 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-foreground"
             >
               <span className="text-sm font-semibold">Cash</span>
-              <span className="font-serif text-xl leading-none font-semibold lining-nums tabular-nums">{formatMoney(due)}</span>
+              <span className=" text-xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>
             </button>
           ) : null}
         </div>
         {/* --admin-header is set on <html> by the shell, since the sheet is portaled outside it. */}
-        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))] has-[[data-testid=pay-panel]]:max-h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh] has-[[data-testid=pay-panel]]:max-h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 has-[[data-testid=pay-panel]]:h-auto lg:hidden")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>

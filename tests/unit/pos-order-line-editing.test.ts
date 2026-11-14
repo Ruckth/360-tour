@@ -16,7 +16,7 @@ const show = (backend: CheckoutBackend, start: OrderId | null) =>
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
-const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => el.textContent?.trim() === text) as HTMLButtonElement | undefined;
+const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === text) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 function type(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -50,7 +50,7 @@ describe("editing a changed price", () => {
     const orderId = await orderWithGift(backend);
     await show(backend, orderId);
     await click(row("Gift basket").querySelector("button"));
-    await click(inPanel("Change price"));
+    await click(inPanel("Price ฿1,000"));
     type(priceInput(), "800");
     type(reasonInput(), "Loyal guets");
     await click(inPanel("Apply price"));
@@ -98,7 +98,7 @@ describe("editing a changed price", () => {
     type(discount, "10");
     expect([...panel().querySelectorAll("button")].find((el) => el.textContent?.startsWith("Apply ฿10"))?.disabled).toBe(false);
 
-    await click(inPanel("Change price"));
+    await click(inPanel("Price ฿1,000"));
     type(priceInput(), ".");
     type(reasonInput(), "Typo check");
     expect(inPanel("Apply price")?.disabled).toBe(true);

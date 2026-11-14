@@ -15,7 +15,7 @@ import { cashConfirmLabel, cashNotes } from "@/components/checkout/checkout-ui";
 
 let root: Root;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("button")];
-const button = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
+const button = (text: string) => buttons().find((b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === text);
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text)!.click(); });
 const tick = (ms = 200) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const input = (selector: string, value: string) => act(async () => {
@@ -24,7 +24,10 @@ const input = (selector: string, value: string) => act(async () => {
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
-const confirmText = () => buttons().find((b) => b.textContent?.startsWith("Confirm") || b.textContent?.startsWith("Short"))?.textContent?.trim();
+const confirmText = () => {
+  const control = buttons().find((b) => b.textContent?.startsWith("Confirm") || b.textContent?.startsWith("Short"));
+  return control?.getAttribute("aria-label") ?? control?.textContent?.trim();
+};
 
 function Probe({ backend, orderId, mode, onBack, onPaid }: { backend: CheckoutBackend; orderId: OrderId; mode: ComponentProps<typeof PayPanel>["mode"]; onBack: () => void; onPaid: () => void }) {
   const view: OrderView | null | undefined = backend.useOrder(orderId);
@@ -189,7 +192,7 @@ describe("pay panel", () => {
     await openPanel("cash");
     expect(document.body.textContent).toContain("Received now");
     expect(document.querySelector("#payment-effective")).toBeNull();
-    await click("Change");
+    await click("Change payment time");
     await input("#payment-effective-time", "14:15");
     expect(document.body.textContent).toContain("Received 2026-11-01 · 14:15 Bangkok");
   });

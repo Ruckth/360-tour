@@ -1,11 +1,12 @@
 "use client";
 
-import { Check, Plus, Printer, Share2, X } from "lucide-react";
+import { Check, Plus, Printer, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
@@ -73,9 +74,9 @@ const useCanShare = () =>
   useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
 
 /**
- * Receipt after payment. The toolbar is Print · Share · New sale; the paper width (remembered on
+ * Receipt after payment. The toolbar is Print · New sale; Share, the paper width (remembered on
  * this device), Correct payment and Void… sit in ⋯, and while one of those is open the toolbar is
- * just its Close (History steps aside too). Refund and Link sit on the receipt lines, and
+ * just its Close (History steps aside too). Refund and Link sit in a separate Items card, and
  * one closed History holds every ledger. The printed receipt never changes.
  */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
@@ -222,7 +223,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     <div
       data-testid="receipt-view"
       className={cn(
-        "grid min-w-0 flex-1 content-start gap-x-8 gap-y-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-5xl",
+        "grid min-w-0 flex-1 content-start gap-x-8 gap-y-3 px-4 py-3 sm:gap-y-5 sm:py-5 sm:px-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-6xl",
         TOUCH_TARGETS,
       )}
     >
@@ -249,7 +250,6 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             <>
               <Button variant="outline" className="px-3 sm:px-4" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
               <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
-              <Button variant="outline" className="px-3 sm:px-4" onClick={() => void share()}><Share2 aria-hidden className="size-4" /> Share</Button>
               <Button className="px-3 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
             </>
           )}
@@ -261,6 +261,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             <MoreMenu
               label="More receipt actions"
               items={[
+                { label: "Share", onSelect: () => void share() },
                 { label: paper === "58" ? "Use 80 mm paper" : "Use 58 mm paper", onSelect: () => choosePaper(paper === "58" ? "80" : "58") },
                 { label: "Correct payment", onSelect: () => openTask("correct"), hidden: !paid },
                 // pos.voidOrder and voidUnreceivedOrder refuse a receipt with refunds (ORDER_HAS_REFUNDS).
@@ -271,8 +272,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         </div>
       </header>
 
-      <div className="grid min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6">
-        <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
+      <div className="grid min-w-0 content-start justify-items-center gap-3 lg:self-start">
+        <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-sans text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
               Void · {order.voidReason}
@@ -290,23 +291,14 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <ul className="space-y-2">
             {lines.map((line) => {
               const lineRefunded = truncated ? 0 : line.refundedAmountSatang ?? 0;
-              const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
-              const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
-              const showRefund = refundable;
-              const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
-              const note = lineNotes[line._id];
               return (
               <li key={line._id}>
                 <div className="flex justify-between gap-2">
                   <span className="min-w-0">
                     {line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}
-                    {elsewhere ? (
-                      <span data-screen-only="" className="ml-1 font-sans print:hidden">
-                        <InfoTip label={`Refunding ${line.name}`}>{elsewhere === "booking" ? "Refund this on the booking." : "Refund this on the appointment."}</InfoTip>
-                      </span>
-                    ) : null}
+
                   </span>
-                  <span className="shrink-0 tabular-nums">{formatMoney(lineGross(line))}</span>
+                  <span className="shrink-0 font-sans tabular-nums">{formatMoney(lineGross(line))}</span>
                 </div>
                 {line.staffName || line.qty > 1 ? (
                   <p className="text-xs opacity-70">{[line.staffName, line.qty > 1 ? `${formatMoney(linePrice(line))} each` : ""].filter(Boolean).join(" · ")}</p>
@@ -316,46 +308,19 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 {lineStaffDiscount(line) ? (
                   <div className="flex justify-between gap-2 text-xs opacity-70">
                     <span>Discount</span>
-                    <span className="tabular-nums">{formatMoney(-lineStaffDiscount(line))}</span>
+                    <span className="font-sans tabular-nums">{formatMoney(-lineStaffDiscount(line))}</span>
                   </div>
                 ) : null}
                 {line.couponDiscount && lineCouponDiscount(line) ? (
                   <div className="flex justify-between gap-2 text-xs opacity-70" data-testid="receipt-line-coupon">
                     <span className="min-w-0">{coupon}</span>
-                    <span className="shrink-0 tabular-nums">{formatMoney(-lineCouponDiscount(line))}</span>
+                    <span className="shrink-0 font-sans tabular-nums">{formatMoney(-lineCouponDiscount(line))}</span>
                   </div>
                 ) : null}
                 {lineRefunded ? (
                   <div className="flex justify-between gap-2 text-xs" data-testid="receipt-line-refunded">
                     <span>Refunded</span>
-                    <span className="tabular-nums">{satangMoney(-lineRefunded, line.currency)}</span>
-                  </div>
-                ) : null}
-                {note ? (
-                  <p data-screen-only="" data-line-note={line._id} tabIndex={-1} role="status" className="mt-1 flex items-start gap-1.5 rounded font-sans text-xs font-medium text-emerald-800 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-300 print:hidden">
-                    <Check aria-hidden className="mt-px size-3.5 shrink-0" /> {note}
-                  </p>
-                ) : null}
-                {/* An open form stays until closed, even if this line was just refunded in full. */}
-                {paid && refunding === line._id ? (
-                  <RefundForm view={view} line={line} waiting={waiting} onCancel={() => closeRefund(line._id)} onDone={(message) => closeRefund(line._id, message)} />
-                ) : showRefund || linkable ? (
-                  <div data-screen-only="" className="mt-1 flex flex-wrap items-center justify-end gap-2 font-sans print:hidden">
-                    {showRefund ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        data-refund-trigger={line._id}
-                        aria-label={`Refund ${line.name}`}
-                        disabled={refundLocked || refunding !== null}
-                        onClick={() => { setNotice(""); setRefunding(line._id); }}
-                        className="h-8 px-3 font-sans text-xs"
-                      >
-                        Refund
-                      </Button>
-                    ) : null}
-                    {linkable ? <LineLink view={view} line={line} /> : null}
+                    <span className="font-sans tabular-nums">{satangMoney(-lineRefunded, line.currency)}</span>
                   </div>
                 ) : null}
               </li>
@@ -367,25 +332,25 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <dl className="space-y-1">
             {totals.coupon ? (
               <>
-                <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
-                {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
-                <div className="flex justify-between gap-2" data-testid="receipt-coupon-total"><dt className="min-w-0">{coupon}</dt><dd className="shrink-0 tabular-nums">{formatMoney(-totals.coupon)}</dd></div>
+                <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="font-sans tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
+                {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="font-sans tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
+                <div className="flex justify-between gap-2" data-testid="receipt-coupon-total"><dt className="min-w-0">{coupon}</dt><dd className="shrink-0 font-sans tabular-nums">{formatMoney(-totals.coupon)}</dd></div>
               </>
             ) : null}
-            <div className="flex justify-between font-bold"><dt>Total</dt><dd className="tabular-nums">{formatMoney(totals.total)}</dd></div>
-            <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="tabular-nums">{formatMoney(totals.vat)}</dd></div>
-            {totals.deposit ? <div className="flex justify-between"><dt>Paid in advance</dt><dd className="tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
+            <div className="flex justify-between font-bold"><dt>Total</dt><dd className="font-sans tabular-nums">{formatMoney(totals.total)}</dd></div>
+            <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="font-sans tabular-nums">{formatMoney(totals.vat)}</dd></div>
+            {totals.deposit ? <div className="flex justify-between"><dt>Paid in advance</dt><dd className="font-sans tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
             {payments.map((payment) => (
               <div key={payment._id} className="flex justify-between">
                 <dt>{TENDER_LABELS[payment.method].long}</dt>
-                <dd className="tabular-nums">{formatMoney(payment.received ?? payment.amount)}</dd>
+                <dd className="font-sans tabular-nums">{formatMoney(payment.received ?? payment.amount)}</dd>
               </div>
             ))}
-            {change ? <div className="flex justify-between"><dt>Change</dt><dd className="tabular-nums">{formatMoney(change)}</dd></div> : null}
+            {change ? <div className="flex justify-between"><dt>Change</dt><dd className="font-sans tabular-nums">{formatMoney(change)}</dd></div> : null}
             {refunded ? (
               <>
-                <div className="flex justify-between" data-testid="receipt-refunded"><dt>Refunded</dt><dd className="tabular-nums">{satangMoney(-refunded, order.currency)}</dd></div>
-                <div className="flex justify-between font-bold" data-testid="receipt-net"><dt>Net</dt><dd className="tabular-nums">{formatMoney(net, order.currency)}</dd></div>
+                <div className="flex justify-between" data-testid="receipt-refunded"><dt>Refunded</dt><dd className="font-sans tabular-nums">{satangMoney(-refunded, order.currency)}</dd></div>
+                <div className="flex justify-between font-bold" data-testid="receipt-net"><dt>Net</dt><dd className="font-sans tabular-nums">{formatMoney(net, order.currency)}</dd></div>
               </>
             ) : null}
           </dl>
@@ -398,7 +363,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
 
       <div
         data-testid="receipt-side"
-        className="grid min-w-0 max-w-md content-start gap-4 print:hidden"
+        className="grid min-w-0 content-start gap-4 print:hidden"
         onKeyDown={(event: KeyboardEvent) => {
           if (event.key === "Escape" && shownTask && !taskBusy && (event.target as HTMLElement).closest('[data-testid="correct-payment"],[data-testid="void-panel"]')) {
             event.stopPropagation();
@@ -415,6 +380,54 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
+        <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
+          <h3 className="border-b border-border px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
+          <ul className="divide-y divide-border">
+            {lines.map((line) => {
+              const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
+              const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
+              const showRefund = refundable;
+              const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
+              const note = lineNotes[line._id];
+              const unscheduled = line.kind === "service" && !line.schedule?.date && !line.startAt && !view.links.some((l) => l.lineId === line._id && l.status === "active");
+              return <li key={line._id} className="px-4 py-3 sm:px-5 sm:py-4">
+                <div className="flex items-baseline justify-between gap-3">
+                  <p className="text-[15px] font-medium">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</p>
+                  <p className="shrink-0 text-[15px] font-medium font-sans tabular-nums">{formatMoney(line.net)}</p>
+                </div>
+                {unscheduled ? <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">Not scheduled</span> : null}
+                {elsewhere ? <span className="ml-2"><InfoTip label={`Refunding ${line.name}`}>{elsewhere === "booking" ? "Refund this on the booking." : "Refund this on the appointment."}</InfoTip></span> : null}
+                {note ? (
+                  <p data-screen-only="" data-line-note={line._id} tabIndex={-1} role="status" className="mt-1 flex items-start gap-1.5 rounded font-sans text-xs font-medium text-emerald-800 outline-none focus-visible:ring-2 focus-visible:ring-ring dark:text-emerald-300 print:hidden">
+                    <Check aria-hidden className="mt-px size-3.5 shrink-0" /> {note}
+                  </p>
+                ) : null}
+                {/* An open form stays until closed, even if this line was just refunded in full. */}
+                {paid && refunding === line._id ? (
+                  <RefundForm view={view} line={line} waiting={waiting} onCancel={() => closeRefund(line._id)} onDone={(message) => closeRefund(line._id, message)} />
+                ) : showRefund || linkable ? (
+                  <div data-screen-only="" className="mt-1 flex flex-wrap items-center gap-2 font-sans print:hidden">
+                    {linkable ? <LineLink view={view} line={line} /> : null}
+                    {showRefund ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        data-refund-trigger={line._id}
+                        aria-label={`Refund ${line.name}`}
+                        disabled={refundLocked || refunding !== null}
+                        onClick={() => { setNotice(""); setRefunding(line._id); }}
+                        className="h-11 px-3 font-sans text-sm text-destructive hover:text-destructive"
+                      >
+                        Refund
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </li>;
+            })}
+          </ul>
+        </Card>
         <LinkedRefunds view={view} />
         {/* Cashiers work the till: the paged ledgers are for managers and owners. */}
         {/* Out of sight while a task is open, but kept mounted: it reopens as it was, with the task's result. */}
