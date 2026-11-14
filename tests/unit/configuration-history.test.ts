@@ -142,10 +142,12 @@ it("saves built-in defaults without requiring an edit, using the live revision",
   await render(createElement(AdminSettingsView));
   expect(document.body.textContent).toContain("Using built-in defaults");
   expect(button("Discard")).toBeUndefined();
-  expect(button("Save").disabled).toBe(false);
-  await click("Save");
+  expect(button("Save")).toBeUndefined();
+  expect(button("Save defaults").disabled).toBe(false);
+  await click("Save defaults");
   expect(state.update).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 4, business: expect.objectContaining({ businessName: mergeSiteSettings(null).businessName }) }));
   expect(button("Save")).toBeUndefined();
+  expect(button("Save defaults")).toBeUndefined();
 });
 it("applies history with the live revision, prevents duplicate pending writes and reports a rejected restore", async () => {
   let reject!: (error: Error) => void;

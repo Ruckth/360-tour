@@ -115,6 +115,16 @@ for (const [size, viewport] of Object.entries({
             .waitFor();
         else if (tab === "business")
           await page.getByLabel("Business name", { exact: true }).waitFor();
+        if (tab === "team") {
+          // Touch sizing must keep roles and actions on one line, including the reserved ⋯ slot.
+          for (const person of await page.getByTestId("team-person").all()) {
+            const badge = (await person.getByTestId("team-roles").boundingBox())!;
+            for (const action of await person.getByRole("button").all()) {
+              const box = (await action.boundingBox())!;
+              expect(Math.abs(box.y + box.height / 2 - badge.y - badge.height / 2), (await action.getAttribute("aria-label")) ?? "Team action alignment").toBeLessThanOrEqual(1);
+            }
+          }
+        }
         await assertTargets(page);
         if (tab === "team") {
           await page

@@ -131,12 +131,14 @@ async function scene(page: Page, name: string, phone: boolean) {
         .click();
   } else if (name === "missing-information")
     await open(page, "questions", "?path=/admin/questions");
-  else if (name.startsWith("settings-"))
-    await open(
-      page,
-      "staff-roles",
-      `?view=settings&tab=${name === "settings-team" ? "team" : "business"}`,
-    );
+  else if (name.startsWith("settings-")) {
+    const tab = name.slice("settings-".length).replace(/-dirty$/, "");
+    await open(page, "staff-roles", `?view=settings&tab=${tab}`);
+    if (name === "settings-business-dirty")
+      await page.getByRole("textbox", { name: "Business name", exact: true }).fill("Auralis Cove Resort");
+    if (name === "settings-team-dirty")
+      await page.getByRole("textbox", { name: "Discount without approval" }).fill("15");
+  }
   else if (name === "new-coupon" || name === "new-coupon-filled") {
     await open(page, "marketing-coupon");
     if (name === "new-coupon-filled")
@@ -245,6 +247,15 @@ for (const [size, state] of [
     }
     await shot(page, `ux-p1-${size}-${state}`);
   });
+
+// Round 4 settings evidence includes every tab and both shared save-bar contexts.
+for (const [size, viewport] of Object.entries(sizes))
+  for (const state of ["settings-bookingRules", "settings-ai", "settings-email", "settings-channels", "settings-business-dirty", "settings-team-dirty"])
+    test(`extra-${state}-${size}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await scene(page, state, size === "phone");
+      await shot(page, `extra-${state}-${size}`);
+    });
 
 // Round 3 checkout evidence also covers desktop, plus the previously missing sheet sizes.
 test.describe("checkout desktop", () => {

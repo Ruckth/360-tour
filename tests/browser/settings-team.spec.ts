@@ -123,6 +123,12 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const rules = page.getByRole("form", { name: "Rules for all cashiers" });
       await expect(rules.getByTestId("rules-save-bar")).toHaveCount(0);
       await rules.getByRole("textbox", { name: "Discount without approval" }).fill("15");
+      // The appearing bar must not cover the field that made the form dirty.
+      await expect.poll(async () => {
+        const field = (await rules.getByRole("textbox", { name: "Discount without approval" }).boundingBox())!;
+        const bar = (await rules.getByTestId("rules-save-bar").boundingBox())!;
+        return field.y + field.height <= bar.y;
+      }).toBe(true);
       // Scroll so only the first rows of the rules show at the bottom of the screen.
       const scrollTop = await rules.evaluate((el) => Math.max(0, window.scrollY + el.getBoundingClientRect().top - window.innerHeight + 200));
       await page.evaluate((top) => window.scrollTo({ top, behavior: "instant" }), scrollTop);
@@ -152,18 +158,31 @@ test.describe("Settings panels", () => {
       const save = panel.getByRole("button", { name: "Save", exact: true });
       // Deleted villa history lives on Properties, not under every Settings tab.
       await expect(page.getByText("deleted villas")).toHaveCount(0);
-      await expect(save).toHaveCount(tab === "business" ? 1 : 0);
+      await expect(save).toHaveCount(0);
+      await expect(panel.getByRole("button", { name: "Save defaults", exact: true })).toHaveCount(tab === "business" ? 1 : 0);
       const field = panel.locator("input:not([type=hidden]), textarea").first();
       const value = await field.inputValue();
       await field.fill(`${value}1`);
       await expect(save).toBeEnabled();
       await field.fill(value);
-      await expect(save).toHaveCount(tab === "business" ? 1 : 0);
+      await expect(save).toHaveCount(0);
+      await expect(panel.getByRole("button", { name: "Save defaults", exact: true })).toHaveCount(tab === "business" ? 1 : 0);
       const history = panel.locator("details").filter({ has: page.locator("summary", { hasText: /^History(?: ·|$)/ }) });
       await expect(history).toHaveCount(1);
       await expect(history).not.toHaveAttribute("open", /.*/);
     });
   }
+
+  test("Business defaults save from History without a clean primary bar", async ({ page }) => {
+    await open(page, "?view=settings&tab=business");
+    const panel = page.getByRole("region", { name: "Business profile" });
+    await expect(panel.getByTestId("settings-save-bar")).toHaveCount(0);
+    await expect(panel.locator("summary").filter({ hasText: "Using built-in defaults" })).toHaveCount(1);
+    await panel.getByRole("button", { name: "Save defaults", exact: true }).click();
+    await expect(panel.getByRole("status")).toHaveText("Saved");
+    await expect(panel.getByRole("button", { name: "Save defaults", exact: true })).toHaveCount(0);
+    await expect(panel.getByTestId("settings-save-bar")).toHaveCount(0);
+  });
 
   test("Business hints open from their ⓘ", async ({ page }) => {
     await open(page, "?view=settings&tab=business");
@@ -205,7 +224,7 @@ test.describe("Round 1 settings drafts", () => {
     await expect(page.locator("body")).toHaveAttribute("data-navigation", /tab=team/);
   });
 
-  test("Discard resets fields and Save stays visible briefly after success", async ({ page }) => {
+  test("Discard resets fields and success stays visible without a clean save bar", async ({ page }) => {
     await open(page, "?view=settings&tab=business");
     const name = page.getByRole("textbox", { name: "Business name", exact: true });
     const original = await name.inputValue();
@@ -216,6 +235,8 @@ test.describe("Round 1 settings drafts", () => {
     expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(false);
     await name.fill("Saved name");
     await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(page.getByTestId("settings-save-bar")).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toHaveText("Saved");
     await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeInViewport();
     await expect(page.getByRole("status").filter({ hasText: "Saved" })).toHaveCount(0, { timeout: 5000 });
   });

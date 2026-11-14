@@ -165,7 +165,7 @@ describe("dashboard view", () => {
     expect(text()).toContain("Net collected by source");
     // Explanations moved behind the metric’s information button, without losing the counts.
     click(buttons("About paid bookings")[0]);
-    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("179 paid stays in all · 7 checkout orders count in money only");
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("Of 179 paid stays, 132 came from tracked links; 7 checkout orders count in money only.");
     click(buttons("About return on ad spend")[0]);
     expect([...document.querySelectorAll('[role="tooltip"]')].map(tip => tip.textContent).join(" ")).toMatch(/2 campaigns with spend · \d+ more campaigns? with sales have no spend/);
   });
@@ -223,7 +223,7 @@ describe("dashboard view", () => {
     expect(text()).not.toContain("left out of conversion");
     click(buttons("About booked rate")[0]);
     const tip = document.querySelector('[role="tooltip"]')!;
-    expect(tip.textContent).toContain("Consented direct visits can also book");
+    expect(tip.textContent).toContain("Paid bookings from tracked visits ÷ tracked visits in these dates, including consented direct visits.");
     expect(tip.textContent).not.toContain("never in conversion");
   });
 
@@ -269,6 +269,8 @@ describe("dashboard view", () => {
   it("shows loading, error with retry, first run, empty range, truncated and non-THB states", () => {
     render({ status: "loading" });
     expect(text()).toContain("Loading marketing results");
+    expect(document.querySelector('[role="status"]')?.textContent).toBe("Updating…");
+    expect(document.querySelector('[aria-label="Report results"]')?.getAttribute("aria-busy")).toBe("true");
 
     render({ status: "error", message: "Server timed out." });
     expect(text()).toContain("Couldn’t load marketing results");
@@ -408,6 +410,15 @@ describe("dashboard view", () => {
     }
     render(ready({ ...emptyRangeReport(), basis: "cash", truncated: true }));
     expect(text()).not.toContain("No payments or refunds in these dates.");
+  });
+
+  it("exposes refresh progress alongside previous figures", () => {
+    render({ status: "ready", report: dashboardReport(), refreshing: true });
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Updating… · showing previous figures");
+    expect(document.querySelector('[aria-label="Report results"]')?.getAttribute("aria-busy")).toBe("true");
+    render(ready());
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("Updated");
+    expect(document.querySelector('[aria-label="Report results"]')?.getAttribute("aria-busy")).toBe("false");
   });
 
   it("keeps the figures on screen when a refresh fails", () => {

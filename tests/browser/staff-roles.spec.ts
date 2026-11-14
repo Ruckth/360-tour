@@ -168,8 +168,9 @@ test.describe("Settings › Team", () => {
   test("built-in business defaults can be saved and invalid saves focus the first field", async ({ page }) => {
     await open(page, "?view=settings&tab=business");
     const save = page.getByRole("button", { name: "Save", exact: true });
-    await expect(page.getByRole("status")).toHaveText("Using built-in defaults");
-    await expect(save).toBeEnabled();
+    await expect(page.locator("details")).toContainText("Using built-in defaults");
+    await expect(save).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save defaults", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Discard", exact: true })).toHaveCount(0);
     const name = page.getByRole("textbox", { name: "Business name", exact: true });
     await name.fill("");
