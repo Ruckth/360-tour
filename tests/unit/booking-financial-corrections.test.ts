@@ -186,7 +186,7 @@ describe("booking payments and refunds", () => {
     expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Entered by mistake…")).toHaveLength(1);
     expect(button("Correct…")?.closest("details")?.querySelector("summary")?.textContent).toBe("History");
     expect([...document.querySelectorAll("summary")].map((s) => s.textContent)).toEqual(["History"]);
-    expect(button("Record payment…")).toBeUndefined();
+    expect(button("Paid elsewhere…")).toBeUndefined();
   });
 
   it("records a refund with a reason, keeps the input and attempt after a failure, and retries once", async () => {
@@ -229,7 +229,7 @@ describe("booking payments and refunds", () => {
     mutations.recordPayment.mockImplementation(() => new Promise((resolve) => { finish = () => resolve({ paymentId: "p", replayed: false }); }));
     await render(createElement(BookingFinancials, { booking: owing }));
     expect(moneyBlock()).toEqual({ label: "Balance due", amount: "฿4,000" });
-    await click(button("Record payment…"));
+    await click(button("Paid elsewhere…"));
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.querySelector("h2")?.textContent).toBe("Record a payment taken elsewhere");
     expect(dialog.textContent).toContain("Record ฿4,000 the guest already paid.");
@@ -488,7 +488,7 @@ describe("calendar booking action intent", () => {
     expect(button("Record ฿17,000")).toBeUndefined();
     await render(createElement(BookingSheet, props));
     expect(button("Record ฿17,000")).toBeUndefined();
-    await click(button("Record payment…"));
+    await click(button("Paid elsewhere…"));
     await click(button("Record ฿17,000"));
     expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmount: 17000, expectedRevision: 7 }));
   });
@@ -516,7 +516,7 @@ describe("calendar booking action intent", () => {
     queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
     await render(createElement(BookingSheet, props));
     expect(button("Record ฿17,000")).toBeUndefined();
-    expect(button("Record payment…")).toBeDefined();
+    expect(button("Paid elsewhere…")).toBeDefined();
   });
 
   it("opens paid cancellation directly and keeps the booking sheet after backing out", async () => {
@@ -545,7 +545,7 @@ describe("calendar booking action intent", () => {
     await render(createElement(BookingQuickActions, props));
     // The popover keeps Take payment · Book spa · Details; the rest sit in ⋯.
     expect(button("Record payment")).toBeUndefined();
-    expect(button("Record payment…")).toBeUndefined();
+    expect(button("Paid elsewhere…")).toBeUndefined();
     expect(button("Cancel stay")).toBeUndefined();
     await click(await stayItem("Record payment…"));
     expect(onAction).toHaveBeenLastCalledWith({ kind: "pay", booking: owing });

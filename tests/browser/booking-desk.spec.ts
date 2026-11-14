@@ -244,7 +244,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const money = sheet.getByRole("region", { name: "Balance due" });
       await expect(money).toContainText("฿27,500");
       await expect(money).toContainText("Stay ฿26,000 · Spa ฿1,500");
-      await expect(money.getByRole("button")).toHaveText(["Take payment", "Record payment…"]);
+      await expect(money.locator("button:not([data-info-tip])")).toHaveText(["Take payment", "Paid elsewhere…"]);
       // The money block is the first thing under the title.
       const top = await money.boundingBox();
       expect(top!.y).toBeLessThan(160);
@@ -257,7 +257,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await sheet.locator("summary", { hasText: "History" }).click();
       await expect(sheet.getByRole("heading", { name: "Payments and refunds" })).toBeVisible();
       await expect(sheet.getByRole("heading", { name: "Price" })).toBeVisible();
-      await money.getByRole("button", { name: "Record payment…" }).click();
+      await money.getByRole("button", { name: "Paid elsewhere…" }).click();
       const paid = page.getByRole("dialog", { name: "Record a payment taken elsewhere" });
       await expect(paid.getByRole("button", { name: "Record ฿26,000" })).toBeVisible();
       await paid.getByRole("button", { name: "Close", exact: true }).click();
@@ -271,10 +271,10 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const sheet = page.getByRole("dialog", { name: /Ken Tanaka/ });
       await expect(sheet.getByRole("region", { name: "Balance due" })).toContainText("฿1,200");
       // Header Edit and Close are icon actions; the payment and status actions keep their hierarchy.
-      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"])').filter({ hasNotText: /^(Record payment…|Take payment)$/ });
+      const buttons = sheet.locator('button:visible:not([aria-label="Close"]):not([aria-label="Edit appointment"]):not([data-info-tip])').filter({ hasNotText: /^(Paid elsewhere…|Take payment)$/ });
       const take = sheet.getByRole("button", { name: "Take payment", exact: true });
       await expect(take).toBeEnabled();
-      await expect(buttons).toHaveText(["Mark arrived", "", "Open stay · Ocean Suite · Ken Tanaka"]);
+      await expect(buttons).toHaveText(["", "Mark arrived", "Ocean Suite · until Sat 14 Nov"]);
       await expect(sheet.getByRole("button", { name: "Edit appointment" })).toBeVisible();
       expect((await buttons.count()) + (await take.count())).toBe(4);
       // While a balance is due, Take payment is the one filled button.
@@ -285,8 +285,8 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expectAtMostSentences(sheet, 1);
       await sheet.getByRole("button", { name: "More appointment actions" }).click();
       const menu = page.getByRole("menu", { name: "More appointment actions" });
-      await expect(menu.getByRole("menuitem")).toHaveText(["Start service", "Complete", "No-show", "Correct…", "Copy reference", "Cancel appointment"]);
-      await menu.getByRole("menuitem", { name: "Correct…" }).click();
+      await expect(menu.getByRole("menuitem")).toHaveText(["Start service", "Complete", "No-show", "Fix time, turnaround or status…", "Copy reference", "Cancel appointment"]);
+      await menu.getByRole("menuitem", { name: "Fix time, turnaround or status…" }).click();
       const choose = page.getByRole("dialog", { name: "Correct" });
       await expect(choose.getByRole("button").filter({ hasNotText: /^Close$/ })).toHaveText(["Date or time", "Turnaround", "Status", "Guest, service or notes"]);
       await choose.getByRole("button", { name: "Status" }).click();

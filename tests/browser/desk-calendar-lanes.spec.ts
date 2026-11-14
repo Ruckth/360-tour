@@ -14,3 +14,16 @@ test("single-day arrivals fill a free lane below a continuing stay; overflow lis
   await expect(more).not.toContainText("Saturday first arrival");
   await expect(more).not.toContainText("Long stay");
 });
+
+
+test("automatic month rows grow and repeat a continuous stay on the next week", async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.goto("/tests/browser/desk-calendar-lanes.html?auto=1");
+  const bars = page.locator('[data-slot="event-calendar-month-bar-overlay"] [data-slot="event-calendar-event"]').filter({ hasText: "Long stay" });
+  await expect(bars).toHaveCount(2);
+  for (const bar of await bars.all()) await expect(bar).toBeVisible();
+  await expect(page.locator('[data-slot="event-calendar-more"]')).toHaveCount(0);
+  const heights = await page.locator('[data-slot="event-calendar-month-row"]').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height));
+  expect(Math.max(...heights)).toBeGreaterThan(Math.min(...heights));
+  expect(Math.min(...heights)).toBeGreaterThanOrEqual(88);
+});

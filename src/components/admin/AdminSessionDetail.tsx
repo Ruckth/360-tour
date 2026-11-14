@@ -352,7 +352,7 @@ export function AdminSessionDetail({
   const replyHintId = `${replyInputId}-hint`;
   const status = conversationStatus(session);
   const latestUnansweredGuestId = session.needsReply ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
-  const automationLabel = session.aiPaused ? "AI paused" : session.keepWithStaff ? "Staff handles next question" : "AI replying";
+  const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "AI couldn't answer" : session.keepWithStaff ? "Staff handles next question" : "AI on";
 
   return (
     <Sheet>
@@ -361,21 +361,21 @@ export function AdminSessionDetail({
           <div className="grid gap-2 p-3 sm:px-6 sm:py-4">
             <div className="flex min-w-0 items-center gap-1 sm:gap-3">
               {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
-              <h2 className="min-w-0 flex-1 break-words text-base font-semibold text-foreground">{guestName}</h2>
+              <div className="min-w-0 flex-1"><h2 aria-label={guestName} className="flex min-w-0 items-center gap-2 text-base font-semibold text-foreground"><span title={status.label} className={cn("size-2 shrink-0 rounded-full sm:hidden", session.needsReply ? "bg-amber-600" : "bg-emerald-700")} /><span className="truncate">{guestName}</span><span className="sr-only sm:hidden">{status.label}</span></h2><p className="text-balance text-[13px] text-muted-foreground sm:hidden">{sourceLabel(session.channel)} · {propertyLabel}</p></div>
               <div className="flex shrink-0 items-center gap-0 sm:gap-1">
                 <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
                 {actions}
               </div>
             </div>
-            <p className="flex min-w-0 items-start gap-1.5 text-[13px] text-muted-foreground">
+            <p className="hidden min-w-0 items-start gap-1.5 sm:flex text-[13px] text-muted-foreground">
               <ChannelIcon channel={session.channel} className="mt-1 size-3 shrink-0" />
               <span className="sr-only sm:not-sr-only sm:shrink-0">{sourceLabel(session.channel)}</span>
               <span aria-hidden="true" className="hidden sm:inline">·</span>
               <span className="min-w-0 break-words">{propertyLabel}</span>
             </p>
-            <ContactLine session={session} handlesOnly />
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <StatusBadge tone={status.tone} label={status.label} className="text-[11px]" />
+            <div className="hidden sm:block"><ContactLine session={session} handlesOnly /></div>
+            <div className="hidden flex-wrap items-center gap-2 text-xs text-muted-foreground sm:flex">
+              <StatusBadge tone={status.tone} label={status.label} className="text-xs" />
               {status.reason ? <span>{status.reason}</span> : null}
               <span className="rounded-full bg-muted px-2 py-1">{automationLabel}</span>
             </div>
@@ -409,13 +409,13 @@ export function AdminSessionDetail({
             {canLoadOlderMessages && !loadingOlderMessages && !loadingTranscript ? (
               <button
                 type="button"
-                className="block w-full rounded py-2 text-center text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="block min-h-11 w-full rounded py-2 text-center text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={requestOlderMessages}
               >
                 Load older messages
               </button>
             ) : null}
-            {messages.map((message) => {
+            {messages.map((message, index) => {
               const author = messageAuthor(message);
               const fromGuest = author === "guest";
               const variant = fromGuest ? "received" : "sent";
@@ -427,7 +427,7 @@ export function AdminSessionDetail({
                   variant={variant}
                 >
                   <div className={cn("min-w-0", !fromGuest && "text-right")}>
-                    <span className="mb-1 block truncate text-xs font-medium text-muted-foreground">
+                    <span className={cn("mb-1 block truncate text-xs font-medium text-muted-foreground", index > 0 && messageAuthor(messages[index - 1]) === author && "sr-only")}>
                       {author === "ai" ? "AI" : author === "staff" ? "Staff" : guestName}
                     </span>
                     <ChatBubbleMessage
@@ -452,7 +452,7 @@ export function AdminSessionDetail({
                         className={cn("mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100", message._id !== latestUnansweredGuestId && "pointer-coarse:hidden")}
                       >
                         <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                        Answer as a business fact
+                        Save answer for AI
                       </button>
                     ) : null}
                   </div>
@@ -492,13 +492,13 @@ export function AdminSessionDetail({
           </div>
         ) : (
           <form
-            className="border-t border-border/60 bg-card p-3 sm:p-5"
+            className="border-t border-border/60 bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5"
             onSubmit={(event) => {
               event.preventDefault();
               void onSendReply();
             }}
           >
-            <label className="mb-2 block text-xs text-muted-foreground" htmlFor={replyInputId}>
+            <label className="sr-only" htmlFor={replyInputId}>
               Reply via {sourceLabel(session.channel)}
             </label>
             <div className="flex items-end gap-2">
@@ -520,7 +520,7 @@ export function AdminSessionDetail({
                 }}
                 maxLength={1000}
                 disabled={replyPending || loadingTranscript || !replyWindow}
-                placeholder="Type a reply…"
+                placeholder={`Reply on ${sourceLabel(session.channel)}…`}
               />
               <Button
                 type="submit"

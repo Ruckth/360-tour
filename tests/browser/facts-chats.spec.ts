@@ -90,7 +90,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const card = page.locator("tbody tr").filter({ hasText: "Do you have a baby cot?" });
       // Before round 2: checkbox, Open chat, the select, Create fact, Ignore (5), plus a "New" badge,
       // a "Context" label and the page path (/villas/tideglass) on every card.
-      const controls = await card.evaluate((el) => el.querySelectorAll("button, select, a[href], input:not([type=hidden])").length);
+      const controls = await card.evaluate((el) => Array.from(el.querySelectorAll<HTMLElement>("button, select, a[href], input:not([type=hidden])")).filter(control => { const r = control.getBoundingClientRect(); return control.checkVisibility() && r.width > 2 && r.height > 2; }).length);
       expect(controls).toBe(5);
       await expect(card.getByRole("button", { name: "Create fact" })).toHaveCount(1);
       await expect(card.getByRole("button", { name: "Ignore", exact: true })).toHaveCount(0);
@@ -135,7 +135,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       const taps = recorder();
       if (size === "phone") await taps.tap(page.getByRole("button", { name: /Anna Müller/ }).first());
       await expect(page.getByRole("heading", { name: "Anna Müller", exact: true })).toBeVisible();
-      await taps.tap(page.getByRole("button", { name: "No reply needed", exact: true }));
+      await taps.tap(page.getByRole("button", { name: "Done · No reply needed", exact: true }));
       await expect(page.getByRole("heading", { name: "Somchai P.", exact: true })).toBeVisible();
       // Desktop 2 → 1 (the chat opens itself); phone 3 → 2 (open the chat, then No reply needed).
       expect(taps.taps).toBe(size === "phone" ? 2 : 1);

@@ -5,6 +5,7 @@ import { getFunctionName, type FunctionReference } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../messages/en.json";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { MoveBookingDialog, type Move } from "@/components/admin/AdminBookingsView";
 
@@ -58,7 +59,7 @@ const oldVilla = { ...villa, _id: "p2", slug: "old-villa", name: "Old Villa", st
 
 const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, node)));
+const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text) as HTMLButtonElement | undefined;
 const type = (id: string, value: string) => act(async () => {

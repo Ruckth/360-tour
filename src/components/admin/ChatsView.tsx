@@ -185,6 +185,7 @@ export function ChatsView() {
   const largeViewport = useMediaQuery("(min-width: 1024px)");
   const isLargeViewport = largeViewport === true;
   // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
+  const leaveReply = useRef<() => Promise<boolean>>(async () => true);
   const updateParams = useCallback(
     (patch: Partial<Record<FilterParam | "session", string | null>>) => {
       // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
@@ -198,10 +199,13 @@ export function ChatsView() {
         else params.set(key, value);
       }
       const query = params.toString();
-      navigationQueryRef.current = query;
-      router.replace(`/admin/chats${query ? `?${query}` : ""}`, {
-        scroll: false,
-      });
+      const commit = () => {
+        navigationQueryRef.current = query;
+        router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+      };
+      if (params.get("session") !== new URLSearchParams(navigationQueryRef.current).get("session")) {
+        void leaveReply.current().then(leave => { if (leave) commit(); });
+      } else commit();
     },
     [router],
   );
@@ -307,6 +311,7 @@ export function ChatsView() {
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
   const reply = useAdminReplyComposer(selectedSessionId, sessionDetail?.session.latestGuestMessageId);
+  useEffect(() => { leaveReply.current = reply.confirmLeave; }, [reply.confirmLeave]);
   const unqualifiedDeepLink =
     Boolean(selectedSessionId) &&
     incomingSessionId === selectedSessionId &&
@@ -374,6 +379,7 @@ export function ChatsView() {
     setSettlingMessageIds(new Set(settlingRef.current));
     setSettleError(null);
     try {
+      if (sessionId === selectedSessionId && !(await reply.confirmLeave())) return;
       await settleGuestMessageMutation({ sessionId, messageId });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
@@ -437,6 +443,7 @@ export function ChatsView() {
         key={selectedSession._id}
         session={{ ...selectedSession, latestGuestMessageId:
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
+        beforeLeave={reply.confirmLeave}
         onDeleted={() => {
           if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
         }}
@@ -612,7 +619,7 @@ export function ChatsView() {
   return (
     <>
       <div className="min-h-0 flex-1 p-3 sm:p-5">
-        <div className="grid h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <div className="grid h-full min-h-0 overflow-hidden max-lg:rounded-none max-lg:border-0 rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside
             aria-label="Chat list"
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-card lg:border-r lg:border-border/60"
@@ -946,7 +953,7 @@ export function ChatsView() {
       >
         <DialogContent
           data-testid="admin-chat-detail-dialog"
-          className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
+          className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 max-md:rounded-none max-md:border-0 max-md:max-h-dvh max-md:pb-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
           showCloseButton={false}
         >
           <DialogTitle className="sr-only">

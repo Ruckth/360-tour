@@ -3,6 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import type { Id } from "convex/_generated/dataModel";
 import { useRef, useState } from "react";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { sourceLabel } from "@/components/admin/labels";
 
 type SessionId = Id<"chatSessions">;
@@ -16,6 +17,7 @@ type ReplyEntry = {
 
 export type AdminReplyComposer = {
   draft: string;
+  confirmLeave: () => Promise<boolean>;
   pending: boolean;
   error: string | null;
   status: string | null;
@@ -31,12 +33,25 @@ export type AdminReplyComposer = {
 export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessageId?: Id<'chatMessages'>): AdminReplyComposer {
   const { getToken } = useAuth();
   const [entries, setEntries] = useState<Partial<Record<SessionId, ReplyEntry>>>({});
+  const entriesRef = useRef(entries);
   // State lags a render behind; this guards a double submit before React commits `pending`.
   const pendingSessions = useRef(new Set<SessionId>());
   const entry = sessionId ? entries[sessionId] : undefined;
+  const { confirmDiscard } = useUnsavedGuard(Object.values(entries).some(value => Boolean(value?.draft.trim())));
+  async function confirmLeave() {
+    if (!sessionId || !entriesRef.current[sessionId]?.draft.trim()) return true;
+    if (!(await confirmDiscard())) return false;
+    const cleared = { ...entriesRef.current, [sessionId]: { ...entriesRef.current[sessionId]!, draft: "" } };
+    entriesRef.current = cleared;
+    setEntries(cleared);
+    return true;
+  }
 
   function update(id: SessionId, patch: (current: ReplyEntry) => ReplyEntry) {
-    setEntries((current) => ({ ...current, [id]: patch(current[id] ?? { draft: "" }) }));
+    const current = entriesRef.current;
+    const next = { ...current, [id]: patch(current[id] ?? { draft: "" }) };
+    entriesRef.current = next;
+    setEntries(next);
   }
 
   async function send(onSent?: (sessionId: SessionId) => void) {
@@ -102,6 +117,7 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
 
   return {
     draft: entry?.draft ?? "",
+    confirmLeave,
     pending: entry?.pending ?? false,
     error: entry?.error ?? null,
     status: entry?.status ?? null,

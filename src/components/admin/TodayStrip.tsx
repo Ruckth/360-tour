@@ -6,6 +6,7 @@ import type { AdminBooking } from "convex/adminBookings";
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "./labels";
 import { paymentText, serverTodayIso } from "./admin-bookings-shared";
@@ -49,17 +50,19 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
           <button
             key={key}
             type="button"
+            aria-label={key === "balanceDue" ? `Due · Balance due ${groups ? formatMoney(owed, "THB") : "loading"}` : undefined}
             aria-expanded={open === key}
             aria-controls="today-list"
             disabled={!groups}
             onClick={() => setOpen((current) => (current === key ? null : key))}
             className={cn(
-              "grid min-h-0 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-3 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+              "grid min-h-14 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-2 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
               open === key && "border-foreground/40 bg-muted",
             )}
           >
-            <span className="flex items-center justify-between gap-1 text-[11px] leading-tight font-normal text-muted-foreground sm:text-xs">{label}<ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open === key && "rotate-180")} /></span>
-            <span className={cn("money font-sans text-xl sm:text-[28px] leading-none font-semibold tracking-tight tabular-nums")}>{groups ? key === "balanceDue" ? <><span className="sm:hidden">฿{owed >= 1000 ? `${(owed / 1000).toFixed(1)}k` : owed.toLocaleString("en-GB")}</span><span className="hidden sm:inline">{formatMoney(owed, "THB")}</span></> : groups[key].length : "–"}</span>
+            <span className="flex items-center justify-between gap-1 text-xs leading-tight font-normal text-muted-foreground sm:text-xs">{key === "balanceDue" ? <><span className="sm:hidden">Due</span><span className="hidden sm:inline">{label}</span></> : label}<ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open === key && "rotate-180")} /></span>
+            {groups ? <span className="money font-sans text-lg leading-none font-semibold tracking-tight tabular-nums sm:text-[28px]">{key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length}</span> : <Skeleton className="h-6 w-10" />}
+
           </button>
         ))}
       </div>

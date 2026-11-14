@@ -83,36 +83,26 @@ export function AdminCalendarHeader({
             value={view}
             onValueChange={setView}
             aria-label="Calendar view"
-            className={compact ? "" : "ms-auto"}
+            className="ms-auto p-0.5"
           >
             {availableViews.map((option) => (
-              <ToggleGroupItem key={option} value={option}>
+              <ToggleGroupItem key={option} value={option} className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!">
                 {viewName(option)}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          {compact ? children : null}
+          <div className="shrink-0">{primaryAction}</div>
         </div>
         <div className="flex items-center gap-0.5 px-2 py-2 sm:hidden">
           <EventCalendarNavPrev className="size-9 shrink-0 pointer-coarse:size-11" />
           {picker}
           <EventCalendarNavNext className="size-9 shrink-0 pointer-coarse:size-11" />
-          {compact ? (
-            <>
-              <div className="ms-auto">{mobileView}</div>
-              {children}
-            </>
-          ) : (
-            <div className="ms-auto shrink-0">{primaryAction}</div>
-          )}
+          <div className="ms-auto shrink-0">{primaryAction}</div>
         </div>
-        {!compact ? (
-          <div className="flex items-center gap-2 border-t border-border px-2 py-2 sm:flex-wrap sm:px-4 sm:py-3">
-            <div className="sm:hidden">{mobileView}</div>
-            {children}
-            <div className="ms-auto hidden sm:block">{primaryAction}</div>
-          </div>
-        ) : null}
+        <div className="flex items-center gap-1.5 border-t border-border px-2 py-2 sm:flex-wrap sm:gap-2 sm:px-4">
+          <div className="sm:hidden">{mobileView}</div>
+          {children}
+        </div>
       </TooltipProvider>
     </div>
   );
