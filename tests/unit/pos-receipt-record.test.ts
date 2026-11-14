@@ -4,6 +4,7 @@ import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
@@ -73,6 +74,18 @@ beforeEach(() => {
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it("server-renders receipt paper hidden on phones until the viewport is known", async () => {
+  const { backend, orderId } = await paidSale();
+  const html = renderToString(provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const preview = container.querySelector<HTMLDetailsElement>("details.receipt-preview")!;
+  // Wide screens keep the paper open; phone CSS hides it before hydration can close details.
+  expect(preview.open).toBe(true);
+  expect(preview.classList.contains("max-sm:[&>div:not(:has([data-print-measure]))]:hidden")).toBe(true);
+  expect(preview.querySelector(".pos-receipt")?.textContent).toContain("Tea");
+});
 
 it("puts Print · New sale and ⋯ above the receipt, outside what prints", async () => {
   const { backend, actions, orderId } = await paidSale();
