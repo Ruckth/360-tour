@@ -55,7 +55,7 @@ export function DeskBookingRangePicker({
                   data-testid={id}
                   data-selected-date={value}
                   variant="outline"
-                  className="h-12 justify-start px-2 text-[13px]"
+                  className="h-12 justify-start px-2 text-[13px] font-normal pointer-coarse:text-sm"
                   onClick={() => {
                     setActive(field);
                     onMonthChange(

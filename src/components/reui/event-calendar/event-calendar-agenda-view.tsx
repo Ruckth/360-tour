@@ -79,6 +79,7 @@ function EventCalendarAgendaView({
     getDayKey(new Date(), settings.timeZone)
 
   const native = viewConfig.scrollbars === "native"
+  const pageScroll = viewConfig.scrollMode === "page"
 
   const body = (
     <>
@@ -141,7 +142,7 @@ function EventCalendarAgendaView({
                     // stops before the scrollbar instead of covering it. Native
                     // scrollbars already sit outside the content box, so this
                     // only applies to the custom-scrollbar path.
-                    !native && "me-2.5",
+                    !native && !pageScroll && "me-2.5 pointer-coarse:me-0",
                     viewConfig.classNames?.agendaDayHeader
                   )}
                 >
@@ -186,7 +187,7 @@ function EventCalendarAgendaView({
       viewConfig.classNames?.agendaView,
       className
     ),
-    children: native ? (
+    children: pageScroll ? body : native ? (
       <div
         data-slot="scroll-area-viewport"
         data-ec-native-scroll=""

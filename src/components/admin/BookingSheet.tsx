@@ -111,7 +111,7 @@ export function BookingSheet({
             <SheetDescription>It may have been deleted.</SheetDescription>
           </>
         ) : (
-          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} onDirtyChange={setDirty} />
+          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} onDirtyChange={setDirty} beforeLeave={confirmDiscard} />
         )}
       </SheetContent>
     </Sheet>
@@ -126,12 +126,14 @@ function BookingDetails({
   properties,
   onDeleted,
   onDirtyChange,
+  beforeLeave,
 }: {
   booking: BookingDetail;
   initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onDeleted: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  beforeLeave: () => Promise<boolean>;
 }) {
   const updateBooking = useMutation(api.adminBookings.updateBooking);
   const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
@@ -153,6 +155,7 @@ function BookingDetails({
   /** The revision the notes edit started from, so another device's change isn't overwritten. */
   const [notesRevision, setNotesRevision] = useState<number | null>(null);
   const [notesError, setNotesError] = useState("");
+  const [notesNotice, setNotesNotice] = useState("");
 
   const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);
@@ -185,10 +188,11 @@ function BookingDetails({
   async function saveNotes() {
     setPending("notes");
     setNotesError("");
+    setNotesNotice("");
     try {
       await updateNotes({ bookingId: booking._id, notes, expectedRevision: notesRevision ?? booking.revision });
       setNotesRevision(null);
-      setNotice("Notes saved.");
+      setNotesNotice("Notes saved.");
     } catch (err) {
       setNotesError(errorText(err, "Could not save the notes."));
     } finally {
@@ -204,7 +208,7 @@ function BookingDetails({
       cancelLabel: "Keep stay",
       destructive: true,
     });
-    if (!ok) return;
+    if (!ok || !(await beforeLeave())) return;
     setPending("delete");
     setError("");
     try {
@@ -287,6 +291,7 @@ function BookingDetails({
         booking={booking}
         initialAction={paymentShortcut}
         villaName={villaName}
+        beforeTakePayment={beforeLeave}
         orders={
           <BookingOrders
             source={{ bookingId: booking._id }}
@@ -305,7 +310,7 @@ function BookingDetails({
       ) : null}
       {!editable ? <p className="text-xs text-muted-foreground">Reopen a cancelled booking to change it.</p> : null}
 
-      <Card className="px-4 shadow-none"><dl className="divide-y divide-border">
+      <Card className="p-4 shadow-none"><dl className="divide-y divide-border">
         <Detail label="Villa">
           {booking.propertyName}
           {booking.propertyStatus !== "active" ? <span className="block text-muted-foreground">Villa is {booking.propertyStatus}</span> : null}
@@ -317,9 +322,9 @@ function BookingDetails({
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
         </Detail>
-        <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
+        <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">
-          {booking.guestEmail ? <a className="-my-3 inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
+          {booking.guestEmail ? <a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
           {booking.guestEmail && booking.guestEmailsOff ? <span className="block text-muted-foreground">Entered without guest emails</span> : null}
         </Detail>
         <Detail label="Source">
@@ -341,7 +346,7 @@ function BookingDetails({
         ) : null}
       </dl></Card>
 
-      <div className="grid gap-2 rounded-xl border border-border bg-card p-4">
+      <Card className="grid gap-2 p-4 shadow-none">
         <Label className="text-[13px] text-muted-foreground" htmlFor="booking-notes">Notes (staff only)</Label>
         <Textarea
           id="booking-notes"
@@ -350,9 +355,10 @@ function BookingDetails({
           onChange={(event) => {
             if (notesRevision === null) setNotesRevision(booking.revision);
             setNotes(event.target.value);
+            setNotesNotice("");
           }}
           placeholder="Arrival time, requests…"
-          className="border-0 bg-muted/40 shadow-none"
+          className="min-h-20 field-sizing-content border-0 bg-muted/40 shadow-none"
         />
         {notesError ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -371,12 +377,13 @@ function BookingDetails({
           </div>
         ) : null}
         {notesChanged ? (
-          <Button size="sm" variant="outline" className="justify-self-start" disabled={pending !== null} onClick={saveNotes}>
+          <Button size="sm" variant="outline" className="justify-self-start text-[13px] pointer-coarse:text-sm" disabled={pending !== null} onClick={saveNotes}>
             {pending === "notes" ? <Spinner className="text-current" /> : null}
             Save notes
           </Button>
         ) : null}
-      </div>
+        {notesNotice ? <p role="status" className="text-sm text-muted-foreground">{notesNotice}</p> : null}
+      </Card>
       </BookingFinancials>
 
       {dialog === "edit" ? <EditBookingDialog booking={booking} properties={properties} onClose={() => setDialog(null)} /> : null}

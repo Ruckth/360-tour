@@ -127,12 +127,12 @@ export function AdminSessionActions({
           variant="outline"
           disabled={pending}
           title="No reply needed (e)"
-          aria-label="Done · No reply needed"
-          className="h-9 px-2 sm:px-3"
+          aria-label="No reply needed"
+          className="h-9 px-2 text-[13px] pointer-coarse:text-sm sm:px-3"
           onClick={() => void run(() => changeStatus("resolved"))}
         >
           <CheckCheck aria-hidden="true" className="size-4" />
-          <span className="sm:hidden">Done</span><span className="hidden sm:inline">No reply needed</span>
+          <span className="hidden sm:inline">No reply needed</span>
         </Button>
       ) : (
         <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run(() => changeStatus("open"))}>

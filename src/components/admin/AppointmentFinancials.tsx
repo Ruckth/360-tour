@@ -17,6 +17,7 @@ import { MONEY_METHOD_LABELS, staffLabel } from "./admin-bookings-shared";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfoTip } from "@/components/ui/info-tip";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,7 +62,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
 
 /**
  * The money at the top of the appointment sheet: what is due, Take payment (checkout for this
- * appointment, on its stay's order when it has one) and Paid elsewhere… (records a desk payment).
+ * appointment, on its stay's order when it has one) and Record external payment… (records a desk payment).
  */
 /** What is still due on the appointment (0 while loading), and its financial record. */
 export function useAppointmentOwed(appointment: Appointment) {
@@ -75,19 +76,19 @@ export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: 
   const router = useRouter();
   const [paying, setPaying] = useState(false);
   const headline = owed > 0 ? { label: "Balance due", amount: owed } : data && data.money.net > 0 ? { label: "Paid", amount: data.money.net } : { label: "Nothing due", amount: 0 };
-  return <section aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-4 rounded-xl border border-border bg-card p-5">
+  return <Card role="region" aria-labelledby={`appointment-money-${appointment._id}`} className="grid gap-4 p-4 shadow-none">
     <div data-sentence-budget="ignore">
       <h3 id={`appointment-money-${appointment._id}`} className="text-xs font-medium text-muted-foreground">{data ? headline.label : "Balance due"}</h3>
       {data ? <p className="money font-sans text-4xl font-semibold tracking-tight tabular-nums">{formatMoney(headline.amount, appointment.currency)}</p> : <Skeleton className="mt-1 h-10 w-32" />}
     </div>
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="grid grid-cols-1 items-center gap-2 sm:flex sm:flex-wrap">
       {owed > 0 ? <Button disabled={disabled} onClick={() => router.push(`/admin/checkout?appointment=${appointment._id}`)}>Take payment</Button> : null}
       {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
-        <span className="inline-flex items-center gap-1"><Button variant="ghost" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Paid elsewhere…</Button><InfoTip label="About Paid elsewhere">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
+        <span className="inline-flex items-center justify-center gap-1"><Button variant="ghost" className="min-h-11 flex-1 sm:flex-none" disabled={disabled} onClick={() => setPaying(true)}>Record external payment…</Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
       ) : null}
     </div>
     {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}
-  </section>;
+  </Card>;
 }
 
 /** Captures the reviewed revision, attempt key and draft once, including ambiguous network retries. */

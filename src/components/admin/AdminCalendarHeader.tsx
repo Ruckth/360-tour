@@ -1,7 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, SearchIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   useEventCalendarNavigation,
@@ -24,6 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toZoned } from "@/components/reui/event-calendar/event-calendar-lib";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 /** Phones get date navigation and a compact view picker; tablets share the segmented header. */
@@ -57,7 +61,7 @@ export function AdminCalendarHeader({
     <Select value={view} onValueChange={(next) => setView(next as typeof view)}>
       <SelectTrigger
         aria-label="Calendar view"
-        className="h-9 w-auto gap-1 rounded-full px-2 text-xs pointer-coarse:min-h-11"
+        className="h-9 w-auto gap-1 rounded-full px-2 text-sm pointer-coarse:min-h-11"
       >
         <SelectValue>{viewName(view)}</SelectValue>
       </SelectTrigger>
@@ -71,7 +75,7 @@ export function AdminCalendarHeader({
     </Select>
   );
   return (
-    <div className="border-b border-border" data-testid="calendar-toolbar">
+    <div className="border-b border-border [&_button]:text-[13px] pointer-coarse:[&_button]:text-sm" data-testid="calendar-toolbar">
       <TooltipProvider delay={400}>
         <div className="hidden flex-wrap items-center gap-2 px-4 py-3 sm:flex">
           <EventCalendarNavToday className="h-9 px-3 pointer-coarse:min-h-11" />
@@ -80,6 +84,7 @@ export function AdminCalendarHeader({
           <EventCalendarNavNext className="size-9 pointer-coarse:size-11" />
           <ToggleGroup
             variant="segmented"
+            tone="subtle"
             value={view}
             onValueChange={setView}
             aria-label="Calendar view"
@@ -106,4 +111,23 @@ export function AdminCalendarHeader({
       </TooltipProvider>
     </div>
   );
+}
+
+/** One search layout for both desk calendars: inline on tablets, a popover on phones. */
+export function AdminCalendarSearch({ label, placeholder, value, onChange, open, onOpenChange, children }: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: ReactNode;
+}) {
+  const phone = useIsMobile(640);
+  const content = <div className="relative min-w-0 flex-1 sm:max-w-60">
+    <SearchIcon aria-hidden className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+    <Input type="search" aria-label={label} placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className="h-9 ps-9 pointer-coarse:min-h-11" />
+    {children}
+  </div>;
+  return phone ? <Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild><Button size="icon" variant="outline" aria-label={label}><SearchIcon aria-hidden className="size-4" /></Button></PopoverTrigger><PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))]">{content}</PopoverContent></Popover> : content;
 }

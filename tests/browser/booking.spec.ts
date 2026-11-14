@@ -23,6 +23,7 @@ for (const viewport of [
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
         left: rect.left,
+        top: rect.top,
         right: rect.right,
         bottom: rect.bottom,
         titleLeft: title.left,
@@ -50,19 +51,25 @@ for (const viewport of [
       name: "Create booking",
       exact: true,
     });
-    if (viewport.width >= 640) {
-      // The footer keeps its total above the actions, with one header Close.
-      await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
-      const footer = submit.locator("xpath=../..");
-      await expect(footer).toContainText("Total ฿21,675 · 3 nights");
-      const totalBox = await footer.getByText(/^Total/).boundingBox();
-      const submitBox = await submit.boundingBox();
-      expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(submitBox!.y);
-    }
+    // Total and Create share a row at every size; neither may overlap or escape the dialog.
+    await expect(dialog.getByRole("button", { name: "Close", exact: true })).toHaveCount(1);
+    const footer = submit.locator("xpath=../..");
+    await expect(footer).toContainText("Total ฿21,675 3 nights");
+    const totalBox = await footer.getByText(/^Total/).boundingBox();
+    const submitBox = await submit.boundingBox();
+    expect(totalBox!.x + totalBox!.width).toBeLessThanOrEqual(submitBox!.x);
+    expect(totalBox!.y).toBeLessThan(submitBox!.y + submitBox!.height);
+    expect(totalBox!.y + totalBox!.height).toBeGreaterThan(submitBox!.y);
+    expect(totalBox!.x).toBeGreaterThanOrEqual(geometry.left + geometry.padding);
+    expect(totalBox!.x + totalBox!.width).toBeLessThanOrEqual(geometry.right - geometry.padding);
+    expect(totalBox!.y).toBeGreaterThanOrEqual(geometry.top);
+    expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(geometry.bottom);
     await page.screenshot({ path: testInfo.outputPath("booking-popup.png") });
     await submit.scrollIntoViewIfNeeded();
     const box = await submit.boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(geometry.left + geometry.padding);
+    expect(box!.y).toBeGreaterThanOrEqual(geometry.top);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(geometry.bottom);
     expect(box!.x + box!.width).toBeLessThanOrEqual(
       geometry.right - geometry.padding,
     );

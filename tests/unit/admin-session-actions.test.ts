@@ -142,7 +142,7 @@ it("shows No reply needed in the header, rare actions in ⋯, and retains the ex
     "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive chat",
   ]);
   await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-  await click(button("DoneNo reply needed"));
+  await click(button("No reply needed"));
   expect(mocks.mutation).toHaveBeenLastCalledWith("adminChat:setSessionStatus", { sessionId: "session-a", status: "resolved", expectedGuestMessageId: "message-a" });
   expect(statusChanged).toHaveBeenCalledWith("resolved");
   await menu("Resume AI");

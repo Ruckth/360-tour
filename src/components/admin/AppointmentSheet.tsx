@@ -10,7 +10,7 @@ import {
   canCorrectAppointmentTime,
   turnaroundMinutes,
 } from "convex/lib/appointmentWindow";
-import { Pencil, Repeat, X } from "lucide-react";
+import { ChevronRight, Pencil, Repeat, X } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
 import { AppointmentFeeAction } from "@/components/admin/AppointmentFeeAction";
@@ -178,7 +178,14 @@ export function AppointmentSheet({
               <div className="min-w-0">
                 <p className="mb-1 text-xs text-muted-foreground">Appointment</p>
                 <SheetTitle className="text-balance font-serif text-2xl font-semibold"><span className="sr-only">Appointment · </span>{appointment.guestName || "Unnamed guest"}</SheetTitle>
-                <SheetDescription className="mt-2"><StatusBadge {...status} /></SheetDescription>
+                <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} />
+                  {!editing && next ? (
+                    <Button variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
+                      {pending === next ? <Spinner className="text-current" /> : null}
+                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
+                    </Button>
+                  ) : null}
+                </SheetDescription>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <Button size="icon" variant="ghost" aria-label="Edit appointment" disabled={feePending || pending !== null || editing} onClick={() => setEditing(true)}><Pencil aria-hidden className="size-4" /></Button>
@@ -199,15 +206,6 @@ export function AppointmentSheet({
                 <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" disabled={feePending || editorSaving}><X aria-hidden className="size-4" /></Button></SheetClose>
               </div>
             </header>
-            <div className="flex gap-2 empty:hidden">
-                  {!editing && next ? (
-                    <Button size="sm" variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
-                      {pending === next ? <Spinner className="text-current" /> : null}
-                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
-                    </Button>
-                  ) : null}
-
-            </div>
             {editing ? (
               <AppointmentEditForm
                 key={appointment._id}
@@ -225,7 +223,7 @@ export function AppointmentSheet({
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
                 {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
-                <Card className="px-4 shadow-none"><dl className="divide-y divide-border">
+                <Card className="p-4 shadow-none"><dl className="divide-y divide-border">
                   <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
                   <Detail label="Staff">
                     {staff ? (
@@ -252,30 +250,31 @@ export function AppointmentSheet({
                       ) : null}
                     </Detail>
                   ) : null}
-                  {appointment.guestPhone ? <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${appointment.guestPhone}`}>{appointment.guestPhone}</a></Detail> : null}
-                  {appointment.guestEmail ? <Detail label="Email"><a className="-my-3 inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${appointment.guestEmail}`}>{appointment.guestEmail}</a></Detail> : null}
+                  {appointment.guestPhone ? <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${appointment.guestPhone}`}>{appointment.guestPhone}</a></Detail> : null}
+                  {appointment.guestEmail ? <Detail label="Email"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${appointment.guestEmail}`}>{appointment.guestEmail}</a></Detail> : null}
                   {appointment.notes ? <Detail label="Notes"><span className="whitespace-pre-wrap">{appointment.notes}</span></Detail> : null}
-                  {appointment.bookingId ? <Detail label="Villa stay"><Button variant="link" className="-my-3 h-auto min-h-11 pointer-coarse:min-h-11 max-w-full justify-start whitespace-normal px-0 text-left font-normal text-foreground" disabled={!stay} onClick={() => setStayOpen(true)}>{stay ? `${stay.propertyName} · until ${displayDate(stay.checkOut)}` : "Loading stay…"}</Button></Detail> : null}
+                  {appointment.bookingId ? <Detail label="Villa stay"><Button variant="link" className="-my-3 h-auto min-h-11 pointer-coarse:min-h-11 max-w-full justify-start whitespace-normal px-0 text-left font-normal text-foreground" disabled={!stay} onClick={() => setStayOpen(true)}><span className="sr-only">Open stay · </span><span className="grid min-w-0"><span className="truncate">{stay ? stay.propertyName : "Loading stay…"}</span>{stay ? <span className="text-xs text-muted-foreground"><span className="sr-only"> · </span>until {displayDate(stay.checkOut)}</span> : null}</span><ChevronRight aria-hidden className="size-4 shrink-0" /></Button></Detail> : null}
                   {appointment.rebookedFromId ? <Detail label="Booked again">{originalReference === undefined ? "Loading original reference…" : originalReference ? `From ${originalReference}` : "Original appointment unavailable"}</Detail> : null}
                   <Detail label="Source">
                     {sourceLabel(appointment.source)}
                   </Detail>
                 </dl></Card>
+                {appointment.status === "no_show" || appointment.status === "cancelled" ? (
+                  <Card className="p-4 shadow-none"><AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} /></Card>
+                ) : null}
+                <Card className="grid gap-4 p-4 shadow-none">
                 <BookingOrders
                   source={{ appointmentId: appointment._id }}
                   currency={appointment.currency}
                   closed={appointment.status === "cancelled" || appointment.status === "no_show" || appointment.paymentStatus === "refunded"}
                   history
                 />
-                {appointment.status === "no_show" || appointment.status === "cancelled" ? (
-                  <AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} />
-                ) : null}
-                <div className="grid gap-4 border-t border-border pt-4"><AppointmentFinancials key={appointment._id} appointment={appointment} />
+                <AppointmentFinancials key={appointment._id} appointment={appointment} />
                 <AppointmentHistory
                   appointmentId={appointment._id}
                   staffName={staffName}
                   serviceName={(id) => serviceById.get(id)?.name ?? "Former service"}
-                /></div>
+                /></Card>
               </>
             )}
           </div>

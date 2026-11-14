@@ -5,11 +5,11 @@ import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/lib/appointmentWindow";
-import { CalendarDays, Clock, Filter, PlusIcon, SearchIcon, Users } from "lucide-react";
+import { CalendarDays, Clock, Filter, PlusIcon, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
-import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { AdminCalendarHeader, AdminCalendarSearch } from "@/components/admin/AdminCalendarHeader";
 import type {
   CalendarEvent,
   CalendarView,
@@ -30,7 +30,6 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -82,7 +81,7 @@ const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
 /** listSchedule's limit. */
 const MAX_SCHEDULE_DAYS = 14;
 // Stable reference: the calendar rebuilds its settings when this object changes.
-const CALENDAR_I18N = { viewNames: { resource: "Day" }, formats: STAFF_CALENDAR_FORMATS };
+const CALENDAR_I18N = { viewNames: { resource: "Day", agenda: "List" }, formats: STAFF_CALENDAR_FORMATS };
 
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
@@ -384,7 +383,7 @@ function StaffCalendar() {
             <span className={cn(currentView === "agenda" ? "text-[15px] font-medium" : "truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground", appointment.status === "cancelled" && "line-through")}>
               {appointment.guestName || "Unnamed guest"}
             </span>
-            {currentView !== "agenda" || appointment.status !== "booked" ? <StatusBadge {...appointmentStatus(displayStatus(appointment))} className={cn(currentView === "agenda" ? "shrink-0" : "hidden @[12rem]:inline-flex", appointment.status === "cancelled" && "border border-current bg-transparent")} /> : <span className="sr-only">Booked</span>}
+            {appointment.status !== "booked" ? <StatusBadge {...appointmentStatus(displayStatus(appointment))} className={cn(currentView === "agenda" ? "shrink-0" : "hidden @[12rem]:inline-flex", appointment.status === "cancelled" && "border border-current bg-transparent")} /> : <span className="sr-only">Booked</span>}
           </span>
           {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className={cn("text-xs text-muted-foreground", currentView !== "agenda" && "truncate")}>
@@ -541,7 +540,8 @@ function StaffCalendar() {
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
           loading={data === undefined}
-          className="h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
+          scrollMode={view === "agenda" ? "page" : "contained"}
+          className={view === "agenda" ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
           <AdminCalendarHeader primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
                 <Button
@@ -554,10 +554,10 @@ function StaffCalendar() {
                   <span className="sm:hidden">New</span><span className="hidden sm:inline">New appointment</span>
                 </Button>
               </DisabledReason>}>
-            {phone ? <Popover><PopoverTrigger asChild><Button size="icon" variant="outline" aria-label="Search appointments"><SearchIcon aria-hidden className="size-4" /></Button></PopoverTrigger><PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))]"><Input type="search" aria-label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={e => setSearch(e.target.value)} /></PopoverContent></Popover> : (<div className="relative min-w-0 flex-1 sm:max-w-60"><SearchIcon aria-hidden className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input type="search" aria-label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={e => setSearch(e.target.value)} className="h-9 pl-9 pointer-coarse:min-h-11" /></div>)}
+            <AdminCalendarSearch label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
-              {bookedCount} booked in view
+              {bookedCount} {view === "resource" ? "today" : "this week"}
             </span>
             <CheckList
               icon={<Users aria-hidden className="size-4" />}
@@ -722,7 +722,7 @@ function OffscreenAppointmentCue({ resourceId, appointments }: { resourceId: str
     return () => { viewport.removeEventListener('scroll', update); observer.disconnect(); };
   }, [resourceId, appointments]);
   const calendar = useEventCalendar();
-  return <span ref={anchor}>{cue ? <Button size="sm" variant="ghost" className="min-h-11 px-2 text-xs" aria-label={`Show appointment at ${staffTime(cue.start)}`} onClick={() => calendar.api.scrollToTime(new Date(cue.start))}>{cue.direction} {staffTime(cue.start)}</Button> : null}</span>;
+  return <span ref={anchor}>{cue ? <Button size="sm" variant="ghost" className="min-h-11 px-2 text-[13px] pointer-coarse:text-sm" aria-label={`Show appointment at ${staffTime(cue.start)}`} onClick={() => calendar.api.scrollToTime(new Date(cue.start))}>{cue.direction === "↓" ? "Next" : "Earlier"} {staffTime(cue.start)} {cue.direction}</Button> : null}</span>;
 }
 
 type CheckGroup = {

@@ -628,7 +628,7 @@ export function ChatsView() {
             <div className="grid gap-3 p-4 pb-3">
               {/* Phones show the page title only; shortcuts are offered where there's a mouse and keyboard. */}
               <div className="flex items-center justify-between max-md:contents">
-                <h2 className="text-base font-semibold max-md:sr-only">Chats</h2>
+                <h2 className="font-serif text-2xl font-semibold max-md:sr-only">Chats</h2>
                 <Button
                   type="button"
                   variant="ghost"

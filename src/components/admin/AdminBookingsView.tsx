@@ -5,9 +5,9 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
-import { Check, Clock, Ban, PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { Check, CircleDashed, Clock, Ban, PlusIcon, XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -17,7 +17,7 @@ import type {
   EventCalendarProposedUpdate,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
-import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { AdminCalendarHeader, AdminCalendarSearch } from "@/components/admin/AdminCalendarHeader";
 import { Button, ButtonLink } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
 import { errorText } from "@/lib/staff-bookings";
@@ -125,7 +124,6 @@ function HotelBookings() {
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [managingCalendars, setManagingCalendars] = useState(false);
   const [managingRates, setManagingRates] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
@@ -231,8 +229,8 @@ function HotelBookings() {
   }
 
   return (
-    // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
+    // Month rows grow with their stays; the page carries the full month.
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6">
       <TodayStrip villaName={villaName} onOpen={openQuick} />
 
       {phone && villa !== "all" ? <Button variant="outline" onClick={() => setVilla("all")} aria-label={`Showing ${villaName(villa)} only. Show all villas`}>{villaName(villa)}<XIcon aria-hidden className="size-4" /></Button> : null}
@@ -250,7 +248,7 @@ function HotelBookings() {
             if (item?.kind !== "booking") return <span className="w-full truncate bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_12%,transparent)_7px_8px)] text-xs">{occurrence.event.title}</span>;
             const b = item.booking;
             const status = statusKey(b);
-            const Icon = status === "paid" ? Check : status === "cancelled" ? Ban : Clock;
+            const Icon = status === "paid" ? Check : status === "cancelled" ? Ban : status === "pending" ? CircleDashed : Clock;
             return <span className={`flex w-full min-w-0 items-start gap-1.5 ${status === "cancelled" ? "line-through" : ""}`}>
               <Icon aria-hidden className="mt-0.5 size-3 shrink-0" />
               <span className="grid min-w-0 text-xs leading-4">
@@ -345,10 +343,11 @@ function HotelBookings() {
             moreIndicator: "mt-auto h-6 pointer-coarse:h-11 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
           }}
           loading={data === undefined}
-          className="[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
+          scrollMode={view === "month" ? "page" : "contained"}
+          className={view === "month" ? "[--ec-month-bar-h:2.375rem] w-full" : "[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full"}
         >
           <AdminCalendarHeader compact primaryAction={<Button size="sm" aria-label="New booking" disabled={!data} onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}><PlusIcon aria-hidden className="size-4" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New booking</span></Button>}>
-            <div className="hidden sm:contents"><GuestSearch compact properties={data?.properties ?? []} onPick={openFromSearch} /></div>
+            <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
             {phone ? (
               villa !== "all" ? (
                 // The villa filter lives in ⋯ on a phone; a filtered calendar says so and clears in one tap.
@@ -372,7 +371,6 @@ function HotelBookings() {
                 items={[
                   ...(phone
                     ? [
-                        { label: "Search bookings", onSelect: () => setSearchOpen(true) },
                         { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
                         ...(data?.properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
                       ]
@@ -400,16 +398,16 @@ function HotelBookings() {
               can check. Try a shorter view, or search for the guest.
             </p>
           ) : null}
-      <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Search bookings</DialogTitle><DialogDescription>Find a guest by name, phone or code.</DialogDescription></DialogHeader><GuestSearch forceExpanded properties={data?.properties ?? []} onPick={booking => { setSearchOpen(false); openFromSearch(booking); }} /></DialogContent></Dialog>
           <EventCalendarContent />
         </EventCalendar>
         <div className={view === "agenda" ? "hidden" : "hidden shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex"}>
-          {HOTEL_STATUSES.map((key) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: hotelStatusColor(key) }} />
-              {hotelStatus(key).label}
-            </span>
-          ))}
+          {HOTEL_STATUSES.map((key) => {
+            const Icon = key === "paid" ? Check : key === "cancelled" ? Ban : key === "pending" ? CircleDashed : Clock;
+            return <span key={key} className="flex items-center gap-1.5">
+              {key === "hostBlock" || key === "otaBlock" ? <span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" /> : <Icon aria-hidden className="size-3.5" style={{ color: hotelStatusColor(key) }} />}
+              {key === "pending" ? "Pending · dashed border" : key === "confirmed" ? "Confirmed · balance due" : hotelStatus(key).label}
+            </span>;
+          })}
           <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
             {/* The drag hint is for a mouse or pen; on touch the chips open on a tap. */}
             {notice?.text ?? <span className="pointer-coarse:hidden">Drag across days to book or block · drag a booking to move it, or its edge to change dates</span>}
@@ -649,9 +647,10 @@ export function MoveBookingDialog({
 }
 
 /** Finds a booking by guest name, phone, email or confirmation code and jumps the calendar to it. */
-function GuestSearch({ properties, onPick, forceExpanded = false, compact = false }: { properties: AdminProperty[]; onPick: (booking: AdminBooking) => void; forceExpanded?: boolean; compact?: boolean }) {
+function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPick: (booking: AdminBooking) => void }) {
   const { goTo } = useEventCalendarNavigation();
   const [text, setText] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   useEffect(() => {
     const id = setTimeout(() => setQuery(text.trim()), 250);
@@ -660,40 +659,8 @@ function GuestSearch({ properties, onPick, forceExpanded = false, compact = fals
   const active = query.length >= 2 && text.trim().length >= 2;
   const results = useQuery(api.adminBookings.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
-  // On a phone the box folds to an icon until tapped; it folds again when left empty.
-  const [expanded, setExpanded] = useState(forceExpanded);
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (expanded) input.current?.focus();
-  }, [expanded]);
-
   return (
-    <>
-    {expanded ? null : (
-      <Button type="button" size="icon" variant="outline" className={compact ? "size-9" : "size-9 sm:hidden"} aria-label="Search bookings" onClick={() => setExpanded(true)}>
-        <SearchIcon aria-hidden className="size-4" />
-      </Button>
-    )}
-    <div className={expanded ? "relative order-last w-full min-w-0 sm:order-none sm:w-48" : compact ? "hidden" : "relative hidden min-w-0 sm:block sm:w-64"}>
-      <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        ref={input}
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onBlur={() => {
-          if (!text.trim()) setExpanded(false);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setText("");
-            setExpanded(false);
-          }
-        }}
-        placeholder="Guest, phone or code"
-        aria-label="Search bookings"
-        className="h-9 ps-8 pointer-coarse:min-h-11"
-      />
+    <AdminCalendarSearch label="Search bookings" placeholder="Guest, phone or code" value={text} onChange={setText} open={searchOpen} onOpenChange={setSearchOpen}>
       {active ? (
         <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 min-w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg">
           {results === undefined ? (
@@ -711,7 +678,7 @@ function GuestSearch({ properties, onPick, forceExpanded = false, compact = fals
                       goTo(new Date(`${booking.checkIn}T12:00:00`));
                       onPick(booking);
                       setText("");
-                      setExpanded(false);
+                      setSearchOpen(false);
                     }}
                   >
                     <span className="flex items-center justify-between gap-2 font-medium">
@@ -731,7 +698,6 @@ function GuestSearch({ properties, onPick, forceExpanded = false, compact = fals
           )}
         </div>
       ) : null}
-    </div>
-    </>
+    </AdminCalendarSearch>
   );
 }
