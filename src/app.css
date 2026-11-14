@@ -11,8 +11,8 @@
 	--background: oklch(0.985 0.003 80);
 	--foreground: oklch(0.18 0.02 260);
 	--card: oklch(1 0 0);
-	/* Slate staff-entered marks contrast ≥3:1 with the neighbouring Not tracked marks. */
-	--chart-s0b: #334155;
+	/* Staff-entered: a hue apart from navy Tracked links and purple Messaging, ≥3:1 against the grey Not tracked mark and the card. */
+	--chart-s0b: #92400e;
 	--card-foreground: oklch(0.18 0.02 260);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.18 0.02 260);
@@ -50,7 +50,7 @@
 }
 
 .dark {
-	--chart-s0b: #e2e8f0;
+	--chart-s0b: #5eead4;
 	--background: oklch(0.16 0.015 260);
 	--foreground: oklch(0.94 0.005 80);
 	--card: oklch(0.22 0.015 260);

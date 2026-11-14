@@ -456,6 +456,8 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
 
 function ChannelsPanel() {
   const health = useQuery(api.settings.channelHealth, {});
+  // Fixed at mount: "Receiving" means a message arrived in the last week, not just ever.
+  const [now] = useState(() => Date.now());
   const server = useQuery(api.settings.serverConfig, {});
   const config = useChannelConfig();
 
@@ -489,7 +491,7 @@ function ChannelsPanel() {
                   <li key={channel.channel} className="py-4 first:pt-0 last:pb-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="flex-1 text-[15px] font-medium text-foreground">{sourceLabel(channel.channel)}</h3>
-                      <StatusBadge {...channelHealthMeta(config, env?.configured, channel)} />
+                      <StatusBadge {...channelHealthMeta(config, env?.configured, channel, now)} />
                     </div>
                     {missing.length ? (
                       <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.map(channelSetupLabel).join(", ")}</p>
@@ -580,20 +582,24 @@ function channelSetupLabel(name: string) {
 }
 
 /** Channel status from the website env check plus recent webhook failures. */
+const RECENT_EVENT_MS = 7 * 24 * 60 * 60 * 1000;
+
 function channelHealthMeta(
   config: ChannelConfig,
   configured: boolean | undefined,
   channel: { failed24h: number; failed7d: number; lastEventAt?: number | null },
+  now: number,
 ): StatusMeta {
   if (channel.failed24h > 0) return statusMeta("channelHealth", "failing");
   if (channel.failed7d > 0) return statusMeta("channelHealth", "warning");
+  const recent = channel.lastEventAt != null && now - channel.lastEventAt <= RECENT_EVENT_MS;
   if (configured === undefined) {
-    if (channel.lastEventAt) return { tone: "success", label: "Receiving" };
+    if (recent) return { tone: "success", label: "Receiving" };
     return { tone: "muted", label: config.state === "loading" ? "Checking…" : "Not checked" };
   }
   if (!configured) return statusMeta("channelHealth", "not_configured");
   if (!channel.lastEventAt) return { tone: "neutral", label: "No messages yet" };
-  return { tone: "success", label: "Receiving" };
+  return recent ? { tone: "success", label: "Receiving" } : { tone: "neutral", label: "No recent messages" };
 }
 
 function formatTime(timestamp: number) {
