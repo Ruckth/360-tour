@@ -562,7 +562,7 @@ export type ChartData = { interval: "day" | "week"; series: ChartSeries[]; bucke
 
 /** Validated categorical slots from the design (docs/previews/marketing/src/dashboard.html). */
 export const CHART_COLOR_VARS =
-  "[--chart-s1:#3568b2] [--chart-s2:#d58d25] [--chart-s3:#009589] [--chart-s4:#d45b3d] [--chart-s5:#8c5cad] [--chart-s0:#b3aea6] [--chart-s0b:#dcd8d2] dark:[--chart-s1:#5589d7] dark:[--chart-s2:#c68627] dark:[--chart-s3:#00998c] dark:[--chart-s4:#c9593d] dark:[--chart-s5:#9868ba] dark:[--chart-s0:#5c6068] dark:[--chart-s0b:#3e424a]";
+  "[--chart-s1:#3568b2] [--chart-s2:#d58d25] [--chart-s3:#009589] [--chart-s4:#d45b3d] [--chart-s5:#8c5cad] [--chart-s0:#b3aea6] dark:[--chart-s1:#5589d7] dark:[--chart-s2:#c68627] dark:[--chart-s3:#00998c] dark:[--chart-s4:#c9593d] dark:[--chart-s5:#9868ba] dark:[--chart-s0:#5c6068]";
 const SOURCE_COLORS = ["var(--chart-s1)", "var(--chart-s2)", "var(--chart-s3)", "var(--chart-s4)"];
 const OTHER = { key: "__other", label: "Other sources", color: "var(--chart-s5)" };
 const UNTRACKED = { key: "__untracked", label: "Not tracked", color: "var(--chart-s0)" };

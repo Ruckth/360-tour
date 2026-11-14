@@ -93,3 +93,26 @@ it("blocks an in-app link until discard, then replays it once", async () => {
   await act(async () => button("Discard").click());
   expect(navigations).toBe(1);
 });
+
+it("replays once across nested dirty guards and repeated captured clicks", async () => {
+  function NestedEditor() {
+    useUnsavedGuard(true);
+    return createElement(Editor);
+  }
+  await act(async () => root.render(createElement(ConfirmProvider, null, createElement(NestedEditor))));
+  const anchor = host.querySelector("a")!;
+  let navigations = 0;
+  anchor.addEventListener("click", (event) => {
+    event.preventDefault();
+    navigations += 1;
+  });
+  await act(async () => { anchor.click(); anchor.click(); });
+  expect(navigations).toBe(0);
+  expect(document.querySelectorAll('[role="alertdialog"]')).toHaveLength(1);
+  await act(async () => button("Keep editing").click());
+  expect(navigations).toBe(0);
+  await act(async () => { anchor.click(); anchor.click(); });
+  await act(async () => button("Discard").click());
+  expect(navigations).toBe(1);
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+});

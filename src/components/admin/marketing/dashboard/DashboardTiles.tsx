@@ -15,7 +15,7 @@ const HINTS: Record<string, string> = {
   Refunds: "Refunds in this period",
   "First-payment sales": "First paid in this period",
   "Discounts granted": "Coupon savings",
-  "Tracked visits": "After cookie consent",
+  "Tracked visits": "Visitors who allowed tracking",
   "Paid bookings": "Stays paid",
   "Booked rate": "Visits that booked",
 };
@@ -72,7 +72,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
   ) : (
     <>
       <Tile label="Tracked visits" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")}>
-        {totals.trackedSessions === null ? ALL_ONLY : "After cookie consent, including direct arrivals. Visits, not people."}
+        {totals.trackedSessions === null ? ALL_ONLY : "Visitors who allowed tracking, including direct arrivals. Visits, not people."}
       </Tile>
       <Tile label="Paid bookings" value={tracked.paid.toLocaleString("en-US")}>
         Paid stays from tracked links · <Strong>{all.paid.toLocaleString("en-US")}</Strong> paid stays in all
@@ -123,7 +123,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 id="kpi-title" className="text-base font-semibold text-foreground">{p.cash ? "Money in and out" : "Results from tracked links"}</h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">{p.cash ? "Finance view · by payment, refund and coupon settlement date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`}</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{p.cash ? "Finance view · by payment, refund and coupon settlement date" : `Sales made in these dates · credited to the ${p.filters.touch === "first" ? "first" : "last"} link clicked`}</p>
         </div>
 
       </header>

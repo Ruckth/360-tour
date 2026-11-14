@@ -90,7 +90,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
   if (!isNew && detail === undefined) return <EditorSkeleton />;
   if (!isNew && detail === null) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
         <Card className="grid justify-items-center gap-3 px-4 py-12 text-center">
           <p className="text-base font-semibold text-foreground">Coupon not found</p>
           <p className="max-w-md text-sm text-muted-foreground">It may have been removed, or the address is wrong.</p>
@@ -123,10 +123,10 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
 
 function EditorSkeleton() {
   return (
-    <div role="status" className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-4 sm:px-6">
+    <div role="status" className="mx-auto grid w-full max-w-3xl gap-4 px-4 py-4 sm:px-6">
       <span className="sr-only">Loading coupon</span>
       <Skeleton className="h-8 w-56" />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-4">
         <div className="grid gap-4">
           <Skeleton className="h-40 w-full" />
           <Skeleton className="h-40 w-full" />
@@ -238,6 +238,8 @@ function CouponBuilder({
   const firstError = (Object.keys(errors) as (keyof CouponFormErrors)[])[0];
   const shown = (key: keyof CouponFormErrors) => (submitted ? errors[key] : undefined);
   const rules = couponRulesFrom(form);
+  const validDiscount = !errors.value && Number(form.value.replace(/,/g, "")) > 0;
+  const summaryScope = form.scope === "accommodation" ? "Villa nights" : form.scope === "services" ? "Spa services" : "Stays & spa";
   const code = normalizeCouponCode(form.code);
   const changedRules = detail ? rulesChanged(rules, detail.rules) : true;
   // Compared on what would be saved, so formatting ("1500" vs "1,500"), villa order or spaces aren't edits.
@@ -396,7 +398,7 @@ function CouponBuilder({
     );
 
   return (
-    <div className="mx-auto w-full max-w-7xl min-w-0 px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6" data-coupon-editor="">
+    <div className="mx-auto w-full max-w-3xl min-w-0 px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6" data-coupon-editor="">
       <ButtonLink href={listHref} variant="ghost" size="sm" className="-ml-2">
         <ArrowLeft aria-hidden className="size-4" />
         Coupons
@@ -424,7 +426,7 @@ function CouponBuilder({
         </Callout>
       ) : null}
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="mt-4 grid items-start gap-4">
         <form
           id={`${id}-form`}
           noValidate
@@ -455,7 +457,7 @@ function CouponBuilder({
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
-                    className="font-mono font-semibold tracking-wide placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
+                    className="h-11 pointer-coarse:h-12 font-mono font-semibold tracking-wide placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
                   />
                 )}
                 {codeLocked ? (
@@ -479,10 +481,10 @@ function CouponBuilder({
                     setDiscountText(event.target.value);
                     setForm((current) => ({ ...current, ...discountFromText(current.kind === "percent" && event.target.value.trim() && !/[%฿]/.test(event.target.value) ? `${event.target.value}%` : event.target.value, current.kind) }));
                   }}
-                  className="money min-w-0 font-semibold placeholder:font-normal placeholder:text-muted-foreground"
+                  className="money h-11 pointer-coarse:h-12 min-w-0 font-semibold placeholder:font-normal placeholder:text-muted-foreground"
                 />
                 <ToggleGroup variant="segmented" tone="subtle" value={form.kind} onValueChange={(kind: CouponForm["kind"]) => { set("kind", kind); setDiscountText(kind === "percent" && form.value ? `${form.value}%` : form.value); }} aria-label="Discount unit" className="shrink-0">
-                  <ToggleGroupItem value="percent" aria-label="% percent">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="฿ baht">฿</ToggleGroupItem>
+                  <ToggleGroupItem value="percent" aria-label="% percent" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="฿ baht" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">฿</ToggleGroupItem>
                 </ToggleGroup>
                 </div>
                 {shown("value") ? err("value") : discountEcho(form, properties) ? (
@@ -492,17 +494,17 @@ function CouponBuilder({
             </div>
 
             <fieldset className="grid min-w-0 gap-2">
-              <legend className="mb-2 text-xs font-normal text-muted-foreground">Covers</legend>
-              <ToggleGroup variant="segmented" tone="subtle" value={form.scope} onValueChange={(value: CouponForm["scope"]) => set("scope", value)} aria-label="Covers" className="w-full flex-wrap">
-                <ToggleGroupItem value="accommodation" className="whitespace-nowrap px-2">Villa nights</ToggleGroupItem>
-                <ToggleGroupItem value="services" className="whitespace-nowrap px-2">Spa services</ToggleGroupItem>
-                <ToggleGroupItem value="accommodation_and_services" className="whitespace-nowrap px-2">Both</ToggleGroupItem>
+              <legend className="mb-2 text-xs font-normal text-muted-foreground">Applies to</legend>
+              <ToggleGroup variant="segmented" tone="subtle" value={form.scope} onValueChange={(value: CouponForm["scope"]) => set("scope", value)} aria-label="Applies to" className="w-full flex-wrap">
+                <ToggleGroupItem value="accommodation" className="whitespace-nowrap px-3">Stays</ToggleGroupItem>
+                <ToggleGroupItem value="services" className="whitespace-nowrap px-3">Spa</ToggleGroupItem>
+                <ToggleGroupItem value="accommodation_and_services" className="whitespace-nowrap px-3">Both</ToggleGroupItem>
               </ToggleGroup>
             </fieldset>
             {form.scope !== "services" ? (
               <fieldset className="-mt-2 grid gap-3" aria-describedby={shown("villas") ? `${id}-villas-error` : undefined}>
                 <legend className="mb-2 text-xs font-normal text-muted-foreground">Villas</legend>
-                <ToggleGroup variant="segmented" tone="subtle" value={form.allVillas ? "all" : "choose"} onValueChange={(value) => set("allVillas", value === "all")} aria-label="Villas" className="w-full sm:w-80">
+                <ToggleGroup variant="segmented" tone="subtle" value={form.allVillas ? "all" : "choose"} onValueChange={(value) => set("allVillas", value === "all")} aria-label="Villas" className="w-full">
                   <ToggleGroupItem value="all">All villas</ToggleGroupItem><ToggleGroupItem value="choose">Choose villas</ToggleGroupItem>
                 </ToggleGroup>
                 {!form.allVillas ? (
@@ -667,7 +669,7 @@ function CouponBuilder({
         </form>
 
         <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
-          {Number(form.value.replace(/,/g, "")) > 0 ? <Card role="region" aria-labelledby={`${id}-summary`}>
+          {validDiscount ? <Card role="region" aria-labelledby={`${id}-summary`}>
             <header className="flex items-center gap-2 border-b border-border px-4 py-3">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
                 Summary
@@ -683,7 +685,7 @@ function CouponBuilder({
               <dl className="divide-y divide-border border-t border-border text-sm">
                 {(
                   [
-                    ["Covers", scopeLabel(rules.scope, rules.propertySlugs, villaName)],
+                    ["Applies to", scopeLabel(rules.scope, rules.propertySlugs, villaName)],
                     ["Booking", formatRange(rules.bookFrom, rules.bookTo)],
                     ["Stay", formatRange(rules.stayFrom, rules.stayTo)],
                     ["Rules", couponRulesLine(rules)],
@@ -723,7 +725,7 @@ function CouponBuilder({
                 </div>
               ) : null}
             </div>
-          </Card> : <Card className="p-5"><p className="text-pretty text-[13px] text-muted-foreground">Set a discount to see the summary</p></Card>}
+          </Card> : null}
 
           {canPublish && detail && STATUS_ACTIONS[detail.status].length ? (
             <SideCard
@@ -805,7 +807,7 @@ function CouponBuilder({
 
       <div data-admin-bottom-bar="sm" className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          <span className={cn("block truncate text-foreground", code ? "font-mono text-sm font-semibold" : "text-[13px]")}>{code || "New coupon"}</span>
+          <span className={cn("block text-pretty text-[13px] text-foreground", !validDiscount && code && "truncate font-mono text-sm font-semibold")}>{validDiscount ? `${benefitLabel(rules.benefit)} · ${summaryScope}` : code || "New coupon"}</span>
           {saveHint ? <span aria-hidden>{saveHint}</span> : null}
         </p>
         {headerActions()}

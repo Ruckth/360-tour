@@ -19,7 +19,7 @@ export function Stat({ label, value, info, hint, hero = false, children, classNa
         <InfoTip label={`About ${label.toLowerCase()}`}>{info}</InfoTip>
       </div>
       <p className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums tracking-tight", hero && "text-[40px]")}>{value}</p>
-      {hint ? <p className="text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
+      {hint ? <p className="text-balance text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
       {children}
     </Card>
   );

@@ -51,11 +51,15 @@ export function SegmentedTabs<T extends string>({
   const listRef = useRef<HTMLDivElement>(null);
 
   const [overflow, setOverflow] = useState(false);
+  const [scrollable, setScrollable] = useState(false);
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const update = () =>
+    const update = () => {
+      // Reserve a separate button column instead of painting over a clipped tab label.
+      setScrollable(list.scrollWidth > (list.parentElement?.clientWidth ?? list.clientWidth) + 2);
       setOverflow(list.scrollWidth - list.clientWidth - list.scrollLeft > 2);
+    };
     const observer = new ResizeObserver(update);
     observer.observe(list);
     list.addEventListener("scroll", update);
@@ -98,7 +102,7 @@ export function SegmentedTabs<T extends string>({
   }
 
   return (
-    <div className="relative min-w-0">
+    <div className="flex min-w-0">
       <div
         ref={listRef}
         role="tablist"
@@ -107,7 +111,7 @@ export function SegmentedTabs<T extends string>({
         // The baseline is an inset shadow, not a border, so the selected tab's underline sits on it
         // without overflowing the scroll box (which would clip the tab's touch area).
         className={cn(
-          "flex max-w-full overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]",
+          "flex min-w-0 max-w-full flex-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]",
           fill ? "w-full" : "gap-6",
           className,
         )}
@@ -137,8 +141,8 @@ export function SegmentedTabs<T extends string>({
           );
         })}
       </div>
-      {overflow ? (
-        <button type="button" aria-label="More tabs" onClick={() => listRef.current?.scrollBy({ left: Math.max(160, listRef.current.clientWidth - 80), behavior: "smooth" })} className="absolute right-0 top-0 flex size-11 items-center justify-center bg-gradient-to-l from-background via-background/95 to-background/70 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      {scrollable ? (
+        <button type="button" aria-label="More tabs" disabled={!overflow} onClick={() => listRef.current?.scrollBy({ left: Math.max(160, listRef.current.clientWidth - 80), behavior: "smooth" })} className="flex min-h-11 w-11 shrink-0 items-center justify-center border-b border-border bg-background text-muted-foreground disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <ChevronRight aria-hidden className="size-4" />
         </button>
       ) : null}

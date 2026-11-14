@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { isInAppNavigation } from "@/lib/react/use-unsaved-changes";
 
+// A captured link is replayed through every mounted guard, including nested drafts.
+let replaying = false;
+
 /** Guard explicit close/tab routes with confirmDiscard; same-tab links and page unloads are automatic. */
 export function useUnsavedGuard(dirty: boolean) {
   const confirm = useConfirm();
@@ -26,14 +29,14 @@ export function useUnsavedGuard(dirty: boolean) {
 
   useEffect(() => {
     if (!dirty) return;
-    let replaying = false;
+    let awaitingNavigation = false;
     let live = true;
     const beforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
       event.returnValue = "";
     };
     const click = (event: MouseEvent) => {
-      if (replaying) return;
+      if (replaying || event.defaultPrevented) return;
       const anchor = (event.target as Element | null)?.closest?.("a[href]");
       if (
         !(anchor instanceof HTMLAnchorElement) ||
@@ -42,6 +45,8 @@ export function useUnsavedGuard(dirty: boolean) {
         return;
       event.preventDefault();
       event.stopPropagation();
+      if (awaitingNavigation) return;
+      awaitingNavigation = true;
       void confirmDiscard().then((discard) => {
         if (!discard || !live || !anchor.isConnected) return;
         replaying = true;
@@ -50,7 +55,7 @@ export function useUnsavedGuard(dirty: boolean) {
         } finally {
           replaying = false;
         }
-      });
+      }).finally(() => { awaitingNavigation = false; });
     };
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", click, true);

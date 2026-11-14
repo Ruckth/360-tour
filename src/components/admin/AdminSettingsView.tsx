@@ -271,7 +271,9 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
     if (pending.current || readOnly) return;
     setSubmitted(true);
     if (Object.keys(errors).length) {
+      const form = event.currentTarget;
       setState({ saving: false, saved: false, error: "Fix the highlighted fields and save again." });
+      requestAnimationFrame(() => form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
       return;
     }
     pending.current = true;
@@ -289,6 +291,8 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   }
 
   const dirty = JSON.stringify(values) !== JSON.stringify(savedValues);
+  const usingDefaults = section === "business" && !settings.updatedAt && revision === settings.revision;
+  const showSaveBar = !readOnly && (dirty || state.saved || usingDefaults);
   useEffect(() => { onDirtyChange(dirty && !readOnly); return () => onDirtyChange(false); }, [dirty, readOnly, onDirtyChange]);
   useEffect(() => {
     if (!state.saved) return;
@@ -397,7 +401,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
 
   return (
     <Panel title={config.title} description={config.description} grouped>
-      <form onSubmit={submit} noValidate className={cn("grid gap-5", (dirty || state.saved) && !readOnly && "pb-20")}>
+      <form onSubmit={submit} noValidate className={cn("grid gap-5", showSaveBar && "pb-20")}>
       {settings.revision > revision ? <Alert variant="warning"><AlertDescription>Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></AlertDescription></Alert> : null}
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
         <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
@@ -418,17 +422,8 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           </Alert>
         ) : null}
 
-        {!readOnly && (dirty || state.saved) ? <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur">
-          <span role="status" className="mr-auto text-sm text-muted-foreground">{state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" />Saved</span> : "Unsaved changes"}</span>
-          {dirty ? <>
-            <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setValues(savedValues); setTouched(new Set()); setSubmitted(false); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button>
-            <Button type="submit" disabled={state.saving}>{state.saving ? <Spinner label="Saving" className="text-current" /> : null}Save</Button>
-          </> : null}
-        </div> : null}
-      </form>
-      <Card className="mt-4 px-5 py-3">
-        {!settings.updatedAt ? <p className="text-pretty text-[13px] text-muted-foreground">Defaults in use · save once to keep them</p> : null}
-        <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : undefined}>
+      <Card className="px-5 py-3 lg:px-6">
+        <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : section !== "business" ? "Using built-in defaults" : readOnly ? "Default settings are active." : "Default settings are active. Select Save to keep them."}>
           {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or discard your changes first.</p> : null}
           <RecordHistoryPanel
             entityType="settings"
@@ -440,6 +435,16 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           />
         </HistoryDisclosure>
       </Card>
+
+        {showSaveBar ? <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur">
+          <span role="status" className="mr-auto text-sm text-muted-foreground">{state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" />Saved</span> : dirty ? "Unsaved changes" : "Using built-in defaults"}</span>
+          {dirty || usingDefaults ? <>
+            {dirty ? <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setValues(savedValues); setTouched(new Set()); setSubmitted(false); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button> : null}
+            <Button type="submit" disabled={state.saving}>{state.saving ? <Spinner label="Saving" className="text-current" /> : null}Save</Button>
+          </> : null}
+        </div> : null}
+      </form>
+
     </Panel>
   );
 }
