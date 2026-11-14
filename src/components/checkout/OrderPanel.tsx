@@ -36,7 +36,7 @@ import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { DiscardOrderDialog } from "./OrderLifecycle";
-import { useCheckoutDraft, useCheckoutDraftState, useCheckoutDiscountNotice } from "./CheckoutDrafts";
+import { useCheckoutDraft, useCheckoutDraftState, useCheckoutDiscountNotice, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
 import { PayPanel } from "./PayPanel";
 import { discountOverLimit, formatPercent, needsApproval, shownRequest } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
@@ -44,6 +44,7 @@ import type { Run } from "./useOrderWrites";
 /** A request the cashier is about to send: what it is, its exact payload, and a reason to start from. */
 type Ask = { what: string; payload: ApprovalPayload; reason?: string };
 
+const EMPTY_LINES: OrderLine[] = [];
 const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
 /**
@@ -71,7 +72,7 @@ export function serviceStartLabel(startAt: number, now: number) {
  */
 export function usePayState(view: OrderView | null | undefined) {
   const now = useNow();
-  const lines = view?.lines ?? [];
+  const lines = view?.lines ?? EMPTY_LINES;
   // Rows whose booking or appointment changed must be updated (or removed) before payment.
   const stale = lines.filter((line) => line.sourceIssue).length;
   // A coupon that no longer fits must be fixed or removed first; settleOrder refuses it too.
@@ -122,8 +123,8 @@ export function OrderPanel({
   const [expanded, setExpanded] = useCheckoutDraftState<string | null>(`${view?.order._id ?? "new"}:expanded`, null);
   const { discountNotice: pendingDiscount, setDiscountNotice } = useCheckoutDiscountNotice();
   const [couponOpen, setCouponOpen] = useState(false);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-  const lines = view?.lines ?? [];
+  const { paymentSubmitting, setPaymentSubmitting } = useCheckoutPaymentSubmitting();
+  const lines = view?.lines ?? EMPTY_LINES;
   const editingLine = lines.some((line) => line._id === expanded);
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
@@ -136,11 +137,15 @@ export function OrderPanel({
   // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !payLocked && totals.due > 0 ? initialPay : null));
   useEffect(() => {
-    if (!pendingDiscount?.review || pendingDiscount.orderId !== orderId) return;
+    if (paymentSubmitting || busy || !pendingDiscount?.review || pendingDiscount.orderId !== orderId) return;
+    if (!lines.some(line => line._id === pendingDiscount.lineId) || view?.order.state === "paid" || view?.order.state === "void" || view?.order.state === "discarded") {
+      setDiscountNotice(null);
+      return;
+    }
     setExpanded(pendingDiscount.lineId);
     setPaying(null);
     setDiscountNotice(null);
-  }, [pendingDiscount, orderId, setExpanded, setDiscountNotice]);
+  }, [pendingDiscount, orderId, setExpanded, setDiscountNotice, paymentSubmitting, busy, lines, view?.order.state]);
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
   const shown = shownRequest(approvals, now);
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
@@ -282,7 +287,7 @@ export function OrderPanel({
                 ))}
               </ul>
             )}
-            {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
+            {orderId && view && view.order.revision > 0 ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
           </div>
 
           {moreBelow ? <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-card via-card/95 to-transparent pb-1.5"><span className="flex items-center gap-1 rounded-full bg-card px-2 text-xs text-muted-foreground"><ChevronDown aria-hidden className="size-3" />More item options</span></div> : null}
@@ -901,11 +906,12 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           if (!cashier || !needsApproval(err)) throw err;
           refused = true;
           setServerAsk(true);
-          if (!document.getElementById(`checkout-discount-${lineId}`)) setDiscountNotice({
+          if (!document.getElementById(`checkout-discount-${lineId}`)) setDiscountNotice(previous => ({
             orderId: line.billId,
             lineId,
-            message: `${discountText(typed)}${typed.type === "amount" ? " baht" : ""} off ${line.name} needs a manager — not applied.`,
-          });
+            discount: discountText(line.discount),
+            message: `${previous && previous.lineId !== lineId ? "Latest: " : ""}${discountText(typed)}${typed.type === "amount" ? " baht" : ""} off ${line.name} needs a manager — not applied.`,
+          }));
           return null;
         }
       });
@@ -931,6 +937,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
     setSending(false);
     if (failed) setError(failed);
     else {
+      setDiscountNotice(current => current?.lineId === lineId ? null : current);
       setText(discountText(line.discount));
       setReason("");
       setServerAsk(false);

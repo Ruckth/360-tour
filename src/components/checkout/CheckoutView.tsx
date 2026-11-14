@@ -14,7 +14,7 @@ import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
 import { useLoadablePhoto } from "./CheckoutPhoto";
-import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDiscountNotice } from "./CheckoutDrafts";
+import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDiscountNotice, useCheckoutDraftOrder, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
@@ -57,6 +57,7 @@ function CheckoutContent({
   const catalog = backend.useCatalog();
   const view = backend.useOrder(orderId);
   const actions = backend.useActions();
+  const { paymentSubmitting } = useCheckoutPaymentSubmitting();
   const [error, setError] = useState("");
   const [earlierError, setEarlierError] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -64,6 +65,8 @@ function CheckoutContent({
   // Set by the phone bar's Cash: the sheet opens on the cash panel instead of the rows.
   const [payOnOpen, setPayOnOpen] = useState<"cash" | undefined>();
   const { run, switchTo, busy } = useOrderWrites(orderId, onOrderChange, setError, setEarlierError);
+  const reviewLocked = useRef(false);
+  useEffect(() => { reviewLocked.current = paymentSubmitting || busy; }, [paymentSubmitting, busy]);
   const access = useStaffAccess();
   const cashier = access.role === "cashier";
   // Approvers keep the header's Approvals usable over the phone order sheet, so for them the sheet
@@ -110,15 +113,14 @@ function CheckoutContent({
   }
 
   const changeOrder = useCallback(
-    (next: OrderId | null) => {
-      void confirmDiscard().then((discard) => {
-        if (!discard) return;
-        setSheetOpen(false);
-        setPayOnOpen(undefined);
-        // A failed write belongs to the order it was made on; the next order starts without its banner.
-        setError("");
-        switchTo(next);
-      });
+    async (next: OrderId | null, canChange: () => boolean = () => true) => {
+      if (!await confirmDiscard() || !canChange()) return false;
+      setSheetOpen(false);
+      setPayOnOpen(undefined);
+      // A failed write belongs to the order it was made on; the next order starts without its banner.
+      setError("");
+      switchTo(next);
+      return true;
     },
     [switchTo, confirmDiscard],
   );
@@ -142,6 +144,7 @@ function CheckoutContent({
   const due = view?.totals.due ?? 0;
   // The phone bar offers exact cash once the order could be paid with it.
   const { cannotPay, approvals, now } = usePayState(missing ? null : view);
+  useCheckoutDraftOrder(orderId, view, approvals);
   const request = shownRequest(approvals, now);
   const requestLabel = request?.status === "pending" ? "Request waiting" : "Request update";
   // Not while a change is still saving: the panel would open on an order about to change.
@@ -178,16 +181,15 @@ function CheckoutContent({
   const discountAlert = discountNotice ? (
     <div role="alert" className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
       <span className="flex-1 basis-40">{discountNotice.message}</span>
-      <button type="button" className="min-h-11 rounded px-2 font-medium underline" onClick={() => {
-        void confirmDiscard().then((discard) => {
-          if (!discard) return;
-          if (orderId !== discountNotice.orderId) switchTo(discountNotice.orderId);
+      <button type="button" disabled={paymentSubmitting || busy} className="min-h-11 rounded px-2 font-medium underline disabled:opacity-50" onClick={() => {
+        void (async () => {
+          if (reviewLocked.current || !await changeOrder(discountNotice.orderId, () => !reviewLocked.current) || reviewLocked.current) return;
           setPayOnOpen(undefined);
           if (narrow) setSheetOpen(true);
-          setDiscountNotice({ ...discountNotice, review: true });
-        });
+          setDiscountNotice(current => current === discountNotice ? { ...current, review: true } : current);
+        })();
       }}>Review discount</button>
-      <button type="button" aria-label="Dismiss discount notice" className="grid size-11 place-items-center rounded" onClick={() => setDiscountNotice(null)}><X aria-hidden className="size-4" /></button>
+      <button type="button" disabled={paymentSubmitting || busy} aria-label="Dismiss discount notice" className="grid size-11 place-items-center rounded disabled:opacity-50" onClick={() => setDiscountNotice(null)}><X aria-hidden className="size-4" /></button>
     </div>
   ) : null;
 
@@ -215,6 +217,7 @@ function CheckoutContent({
 
   return (
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
+      {discountNotice && discountNotice.orderId !== orderId ? <DiscountNoticeTarget orderId={discountNotice.orderId} /> : null}
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
       <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
@@ -308,4 +311,12 @@ function Backdrop({ src }: { src?: string }) {
       <div className="absolute inset-0 bg-linear-to-b from-background via-background/80 via-40% to-background/70" />
     </div>
   );
+}
+
+/** A late refusal can belong to another order; validate it without moving the cashier there. */
+function DiscountNoticeTarget({ orderId }: { orderId: OrderId }) {
+  const view = useCheckoutBackend().useOrder(orderId);
+  const approvals = useCheckoutBackend().useOrderApprovals(orderId);
+  useCheckoutDraftOrder(orderId, view, approvals);
+  return null;
 }

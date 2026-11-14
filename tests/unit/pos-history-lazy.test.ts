@@ -27,7 +27,7 @@ const show = async (backend: CheckoutBackend, orderId = first) => act(async () =
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); root = createRoot(document.body.appendChild(document.createElement('div'))); });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it('checks item-history availability while keeping financial ledgers lazy, retains cursors while closed, and resets on every order switch', async () => {
+it('subscribes only on first expansion, retains cursors while closed, and resets on every order switch', async () => {
   const corrections: Doc<'billCorrections'>[] = [first, second].flatMap(billId => Array.from({ length: 61 }, (_, i) => ({
     _id: `${billId}-${i}` as Id<'billCorrections'>, _creationTime: i, billId, sequence: i + 1, kind: 'amended', reason: `${billId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${billId}-${i}`,
   })));
@@ -51,8 +51,7 @@ it('checks item-history availability while keeping financial ledgers lazy, retai
     useBillRefundHistory: instrument('useBillRefundHistory', base.useBillRefundHistory),
   };
   await show(backend);
-  expect(calls.useOrderHistory).toHaveBeenCalledOnce();
-  for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
+  for (const hook of hooks) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('History', true);
   expect(calls.useOrderHistory).toHaveBeenCalledOnce();
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
@@ -71,7 +70,8 @@ it('checks item-history availability while keeping financial ledgers lazy, retai
   await show(backend, second);
   expect(unmounts).toHaveBeenCalledTimes(6);
   expect(document.querySelectorAll('details[open]')).toHaveLength(0);
-  expect(hooks.slice(1).map(h => calls[h].mock.calls.length)).toEqual(priorCalls.slice(1));
+  expect(hooks.map(h => calls[h].mock.calls.length)).toEqual(priorCalls);
+  await toggle('History', true);
   expect(calls.useOrderHistory).toHaveBeenLastCalledWith(second);
   await toggle('History · all ledgers', true);
   expect(rows()).toHaveLength(20); expect(document.body.textContent).toContain(second);
@@ -113,13 +113,13 @@ it('keeps a receipt item-history failed continuation and its retry boundary thro
 });
 
 
-it('hides item History until the first recorded change arrives, then shows its real contents', async () => {
-  const backend = createFixtureBackend();
+it('shows a compact collapsed History without subscribing even when no entries have been recorded', async () => {
+  const base = createFixtureBackend();
+  const useOrderHistory = vi.fn(base.useOrderHistory);
+  const backend = { ...base, useOrderHistory };
   await show(backend);
-  const itemHistory = () => [...document.querySelectorAll('summary')].find(el => el.textContent === 'History');
-  expect(itemHistory()).toBeUndefined();
-  await act(async () => { await backend.useActions().addItem({ orderId: first, item: { kind: 'extra', name: 'New history item', price: 10 } }); });
-  expect(itemHistory()).toBeTruthy();
+  expect([...document.querySelectorAll('summary')].some(el => el.textContent === 'History')).toBe(true);
+  expect(useOrderHistory).not.toHaveBeenCalled();
   await toggle('History', true);
-  expect(document.querySelector('[aria-label="Order history"]')?.textContent).toContain('New history item');
+  expect(document.querySelector('[aria-label="Order history"]')?.textContent).toContain('No recorded item changes.');
 });

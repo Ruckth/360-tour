@@ -139,18 +139,8 @@ export function HistoryValues({
 
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
-    <InlineErrorBoundary resetKey={orderId} message="Couldn't load order history. Retry to continue.">
-      <RecordedOrderHistory key={orderId} orderId={orderId} />
-    </InlineErrorBoundary>
-  );
-}
-
-function RecordedOrderHistory({ orderId }: { orderId: OrderId }) {
-  const page = useCheckoutBackend().useOrderHistory(orderId);
-  if (!page.results.length) return null;
-  return (
     <HistoryDetails orderId={orderId} title="History">
-      <HistoryPageContent page={page} intro />
+      <OrderHistoryList orderId={orderId} />
     </HistoryDetails>
   );
 }

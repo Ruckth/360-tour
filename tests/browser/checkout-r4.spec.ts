@@ -60,8 +60,8 @@ for (const width of [390, 1180, 1440]) {
       expect((await all.boundingBox())!.width).toBeGreaterThan(row!.width / 2);
     });
 
-    test("empty History stays hidden and split amounts share currency and number alignment", async ({ page }) => {
-      // The earlier saved order has no recorded changes; the newly rung-up spa order does.
+    test("History stays compact and lazy, and split amounts share currency and number alignment", async ({ page }) => {
+      // A saved order may predate recorded changes; offer a compact lazy disclosure.
       await open(page, "?role=cashier");
       await page.getByRole("button", { name: "Orders", exact: true }).click();
       const description = page.getByText("Open orders on every till. Look up today's receipts by order number.", { exact: true });
@@ -79,7 +79,12 @@ for (const width of [390, 1180, 1440]) {
       await page.getByRole("list", { name: "Open orders", exact: true }).getByRole("button", { name: /^Order #1042/ }).click();
       if (width === 390) await page.getByRole("button", { name: /open the order/ }).click();
       const panel = width === 390 ? page.getByRole("dialog") : page.getByRole("complementary", { name: "Order", exact: true });
-      await expect(panel.getByText("History", { exact: true })).toHaveCount(0);
+      const history = panel.locator('details').filter({ has: page.locator('summary').filter({ hasText: /^History$/ }) });
+      await expect(history).not.toHaveAttribute('open', '');
+      expect((await history.boundingBox())!.height, 'no empty band under the collapsed row').toBeLessThanOrEqual(45);
+      await expect(history.getByRole('region', { name: 'Order history' })).toHaveCount(0);
+      await history.locator('summary').click();
+      await expect(history.getByText('No recorded item changes.', { exact: true })).toBeVisible();
       await open(page, "?role=cashier&scenario=spa");
       if (width === 390) await page.getByRole("button", { name: /open the order/ }).click();
       const split = panel.getByRole("button", { name: "Split payment", exact: true });

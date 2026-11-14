@@ -238,6 +238,38 @@ for (const width of [390, 1180]) {
       await expect(panel.getByTestId("order-due")).toHaveText("฿1,800");
     });
 
+    for (const loseAnswer of [false, true]) test(`discount Review cannot interrupt a submitting payment (${loseAnswer ? "lost answer" : "success"})`, async ({ page }) => {
+      await open(page, "staff-roles", "?role=cashier&scenario=spa&serverLimit=5");
+      await page.getByRole("button", { name: /^Foot spa 45.*Add to order/ }).click();
+      const panel = await orderPanel(page, width);
+      await panel.getByRole("button", { name: /^Thai massage 60/ }).click();
+      await page.evaluate(() => window.fixture.holdNextDiscountWrite());
+      await panel.getByLabel("Discount", { exact: true }).fill("10%");
+      await panel.getByRole("button", { name: /^Foot spa 45/ }).click();
+      await page.evaluate(() => window.fixture.finishDiscountWrite());
+      const review = panel.getByRole("button", { name: "Review discount", exact: true });
+      await expect(review).toBeEnabled();
+      await panel.getByRole("button", { name: /^Cash ฿1,800$/ }).click();
+      // Discard the refused line draft while retaining its notice.
+      if (await discardDialog(page).count()) await discard(page);
+      await page.evaluate(() => window.fixture.holdNextPayment());
+      await panel.getByRole("button", { name: "Confirm cash · ฿1,800 received · no change", exact: true }).click();
+      await expect(review).toBeDisabled();
+      await expect(panel.getByRole("button", { name: "Dismiss discount notice" })).toBeDisabled();
+      // A synthetic click also exercises the handler's guard.
+      await review.evaluate((button: HTMLButtonElement) => button.click());
+      await expect(panel.getByTestId("pay-panel")).toBeVisible();
+      await page.evaluate((lost) => window.fixture.finishPayment(lost), loseAnswer);
+      if (loseAnswer) {
+        await expect(panel.getByTestId("pay-panel").getByRole("alert")).toContainText("Payment answer lost");
+        await panel.getByRole("button", { name: "Retry payment", exact: true }).click();
+        const attempts = await page.evaluate(() => window.fixture.paymentAttempts());
+        expect(attempts).toHaveLength(2);
+        expect(attempts[1]).toBe(attempts[0]);
+      }
+      await expect(page.getByRole("article", { name: "Receipt", includeHidden: true })).toContainText("฿1,800");
+    });
+
     test("a discount reply reaches the editor reopened during the save", async ({ page }) => {
       await open(page, "staff-roles", "?role=cashier&scenario=spa&serverLimit=5");
       await page.getByRole("button", { name: /^Foot spa 45.*Add to order/ }).click();
