@@ -22,7 +22,7 @@ import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, C
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel as Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
@@ -100,7 +100,7 @@ export function AdminSettingsView() {
         {tab === "channels" ? (
           <ChannelsPanel />
         ) : tab === "team" ? (
-          <TeamSettings onDirtyChange={setDirty} />
+          <TeamSettings onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
@@ -358,11 +358,6 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             <ComboboxInput containerClassName="m-0" id={id} aria-label={field.label} aria-invalid={Boolean(error)} aria-describedby={describedBy} onBlur={common.onBlur} />
             <ComboboxContent><ComboboxEmpty className="p-3 text-sm text-muted-foreground">No time zones found.</ComboboxEmpty><ComboboxList>{(zone: string) => <ComboboxItem key={zone} value={zone} className="pointer-coarse:min-h-11">{zone}</ComboboxItem>}</ComboboxList></ComboboxContent>
           </Combobox>
-        ) : field.type === "time" && section === "business" ? (
-          <Select value={common.value} onValueChange={(value) => common.onChange({ target: { value } })} disabled={state.saving || readOnly}>
-            <SelectTrigger id={id} aria-label={`${field.label}, ${common.value}`} aria-invalid={Boolean(error)} aria-describedby={describedBy} onBlur={common.onBlur} className="w-full font-normal tabular-nums"><SelectValue /></SelectTrigger>
-            <SelectContent>{Array.from(new Set([common.value, ...Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, "0")}:${index % 2 ? "30" : "00"}`)].filter(Boolean))).sort().map((time) => <SelectItem key={time} value={time}>{time}</SelectItem>)}</SelectContent>
-          </Select>
         ) : field.type === "time" ? (
           <TimePicker
             id={id}
@@ -374,7 +369,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             aria-invalid={Boolean(error)}
             aria-describedby={describedBy}
             disabled={state.saving || readOnly}
-            variant={section === "business" ? "compact" : "default"}
+            variant="compact"
             allowEmpty={!field.required}
           />
         ) : (
@@ -403,13 +398,14 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   return (
     <Panel title={config.title} description={config.description} grouped>
       <form onSubmit={submit} noValidate className={cn("grid gap-5", (dirty || state.saved) && !readOnly && "pb-20")}>
+      {settings.revision > revision ? <Alert variant="warning"><AlertDescription>Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></AlertDescription></Alert> : null}
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
         <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
           {section === "business" ? businessGroups.map((group) => (
             <Card key={group.title} className="grid gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
               <header>
-                <h3 className="text-[15px] font-semibold">{group.title}</h3>
-                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{group.description}</p>
+                <h3 className="text-balance text-[15px] font-semibold">{group.title}</h3>
+                <p className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground">{group.description}</p>
               </header>
               <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
@@ -430,10 +426,9 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           </> : null}
         </div> : null}
       </form>
-      {settings.revision > revision ? <p className="mt-3 text-sm text-muted-foreground">Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></p> : null}
       <Card className="mt-4 px-5 py-3">
-        <p className="text-[13px] text-muted-foreground">{settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : "Not saved yet · showing built-in defaults"}</p>
-        <HistoryDisclosure>
+        {!settings.updatedAt ? <p className="text-pretty text-[13px] text-muted-foreground">Defaults in use · save once to keep them</p> : null}
+        <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : undefined}>
           {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or discard your changes first.</p> : null}
           <RecordHistoryPanel
             entityType="settings"

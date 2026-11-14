@@ -26,10 +26,13 @@ for (const scene of scenes) test(scene.name, async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(scene.width);
   await page.screenshot({ path: `docs/screenshots/vis-c/${scene.name}.png`, fullPage: scene.fullPage, animations: "disabled" });
   if (scene.name === "business-desktop") {
-    await page.getByRole("combobox", { name: /^Check-in time,/ }).click();
+    await page.getByRole("button", { name: /^Check-in time,/ }).click();
     await page.screenshot({ path: "docs/screenshots/vis-c/business-time-picker-desktop.png", animations: "disabled" });
-    await page.getByRole("option", { name: "15:30", exact: true }).click();
-    await expect(page.getByRole("combobox", { name: "Check-in time, 15:30", exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: "Check-in time hour", exact: true }).click();
+    await page.getByRole("option", { name: "15", exact: true }).click();
+    await page.getByRole("combobox", { name: "Check-in time minute", exact: true }).click();
+    await page.getByRole("option", { name: "30", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Check-in time, 15:30", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
   }
   // Supplement the comparison states with the summary and dirty bars that are conditional.

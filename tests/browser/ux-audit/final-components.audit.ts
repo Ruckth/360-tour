@@ -231,7 +231,7 @@ const PAGES: Record<string, PageSpec> = {
     tag: async (page) => {
       await tagAll("Header (back, title, Save & publish, ⋯)", [page.getByRole("link", { name: "Coupons" }), page.getByRole("heading", { name: "New coupon" }), btn(page, "Save & publish"), btn(page, "More save options")]);
       await tagCommon(page, "Code · Type · Discount", page.getByRole("textbox", { name: "Code", exact: true }), page.getByRole("textbox", { name: "Discount", exact: true }));
-      await tagCommon(page, "Covers", page.getByRole("radio", { name: /^Accommodation/ }), page.getByRole("radio", { name: /^Both/ }));
+      await tagCommon(page, "Covers", page.getByRole("radio", { name: /^Villa nights/ }), page.getByRole("radio", { name: /^Both/ }));
       await tag("More rules (closed)", page.locator("details").filter({ has: page.locator("summary", { hasText: "More · campaign" }) }));
       await tag("Summary", page.locator("section, aside, div").filter({ has: page.getByRole("heading", { name: "Summary", exact: true }) }).last());
       const f = "src/components/admin/marketing/CouponEditor.tsx";

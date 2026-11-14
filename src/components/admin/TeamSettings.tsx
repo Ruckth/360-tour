@@ -7,12 +7,13 @@ import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/lib/staffTypes";
 import { Check, UserPlus } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel as Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -73,13 +74,18 @@ async function copyText(text: string) {
 }
 
 /** Settings › Team: everyone with a Desk or Marketing role, plus what cashiers may do without a manager. */
-export function TeamSettings({ onDirtyChange }: { onDirtyChange?: (dirty: boolean) => void } = {}) {
+export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?: (dirty: boolean) => void; confirmDiscard?: () => Promise<boolean> } = {}) {
+  const [inviteDirty, setInviteDirty] = useState(false);
+  const [rulesDirty, setRulesDirty] = useState(false);
+  useEffect(() => { onDirtyChange?.(inviteDirty || rulesDirty); return () => onDirtyChange?.(false); }, [inviteDirty, rulesDirty, onDirtyChange]);
+  // The containing settings page owns navigation; standalone uses keep the same guard.
+  const localGuard = useUnsavedGuard(!confirmDiscard && (inviteDirty || rulesDirty));
   const people = useQuery(api.staffAccess.listPeople, {});
   return (
     <>
       <header className="px-1 pt-1"><h2 className="font-serif text-3xl">Team</h2></header>
-      <PeoplePanel people={people} />
-      <CashierRulesPanel onDirtyChange={onDirtyChange} hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
+      <PeoplePanel people={people} inviteDirty={inviteDirty} onDirtyChange={setInviteDirty} confirmDiscard={confirmDiscard ?? localGuard.confirmDiscard} />
+      <CashierRulesPanel onDirtyChange={setRulesDirty} hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
     </>
   );
 }
@@ -106,7 +112,7 @@ const ROLES_TIP = (
   </span>
 );
 
-function PeoplePanel({ people }: { people: Person[] | undefined }) {
+function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { people: Person[] | undefined; inviteDirty: boolean; onDirtyChange: (dirty: boolean) => void; confirmDiscard: () => Promise<boolean> }) {
   const setStaffGrant = useMutation(api.staffAccess.setGrant);
   const updateInvitation = useMutation(api.staffAccess.updateInvitation);
   const setMarketingGrant = useMutation(api.marketingAccess.setGrant);
@@ -160,7 +166,7 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
       label="People"
       tip={ROLES_TIP}
       action={
-        <Button size="sm" variant="outline" aria-expanded={inviting} onClick={() => setInviting(!inviting)}>
+        <Button size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); }}>
           <UserPlus aria-hidden className="size-4" /> Invite
         </Button>
       }
@@ -168,7 +174,8 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
       {inviting ? (
         <InviteForm
           busy={busy !== null}
-          onCancel={() => setInviting(false)}
+          onDirtyChange={onDirtyChange}
+          onCancel={async () => { if (!inviteDirty || await confirmDiscard()) setInviting(false); }}
           onInvite={async (email, desk, marketing) => {
             const ok = await save(
               email,
@@ -195,6 +202,7 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
               key={`${person.email}:${person.staffGrant?.role ?? ""}:${person.marketingGrant?.role ?? ""}`}
               person={person}
               busy={busy !== null}
+              saving={busy === person.email}
               message={message?.email === person.email ? message : null}
               onDesk={(role) => void setDesk(person, role)}
               onMarketing={(role) => void setMarketing(person, role)}
@@ -229,7 +237,8 @@ function PeoplePanel({ people }: { people: Person[] | undefined }) {
   );
 }
 
-function InviteForm({ busy, onInvite, onCancel }: {
+function InviteForm({ busy, onInvite, onCancel, onDirtyChange }: {
+  onDirtyChange: (dirty: boolean) => void;
   busy: boolean;
   onInvite: (email: string, desk: StaffRole | null, marketing: MarketingRole | null) => Promise<boolean>;
   onCancel: () => void;
@@ -239,6 +248,8 @@ function InviteForm({ busy, onInvite, onCancel }: {
   const [desk, setDesk] = useState<StaffRole | "">("cashier");
   const [marketing, setMarketing] = useState<MarketingRole | "">("");
   const [error, setError] = useState("");
+  const dirty = Boolean(email || desk !== "cashier" || marketing);
+  useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     const address = email.trim().toLowerCase();
@@ -280,7 +291,7 @@ type Grant = NonNullable<Person["staffGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
-  return grant.expiresAt ? `${prefix}Invite expires ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
+  return grant.expiresAt ? `${prefix}Invited · until ${staffDate(grant.expiresAt)}` : `${prefix}Invited`;
 }
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */
@@ -290,9 +301,10 @@ function rolesText(person: Person) {
   return [desk, marketing].filter(Boolean).join(" · ") || "No access";
 }
 
-function PersonRow({ person, busy, message, onDesk, onMarketing, onRenew, onCopyLink }: {
+function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRenew, onCopyLink }: {
   person: Person;
   busy: boolean;
+  saving: boolean;
   message: { text: string; error?: boolean } | null;
   onDesk: (role: StaffRole | null) => void;
   onMarketing: (role: MarketingRole | null) => void;
@@ -315,16 +327,16 @@ function PersonRow({ person, busy, message, onDesk, onMarketing, onRenew, onCopy
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5">
         <div className="min-w-0">
           <p className="text-[15px] font-medium text-foreground">{name}</p>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-[13px] break-all text-muted-foreground">{person.email}</p>{states.map((state) => <Badge key={state} className={cn("rounded-full text-xs font-medium", TONES.warning.bg, TONES.warning.text, TONES.warning.border)}>{state}</Badge>)}</div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1"><p className="text-[13px] break-all text-muted-foreground">{person.email}</p>{states.map((state) => <Badge key={state} variant="muted" className={cn("rounded-full text-xs font-medium", state?.includes("Invite expired") && [TONES.danger.bg, TONES.danger.text, TONES.danger.border])}>{state}</Badge>)}</div>
         </div>
         <div className="flex flex-wrap items-center gap-2 max-sm:col-span-2">
           <Badge variant="muted" className="mr-auto max-w-full rounded-full text-xs" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
-          {owner ? <span aria-hidden className="w-[7.25rem]" /> : (
+          {owner ? <span aria-hidden className="w-[7.25rem] max-sm:hidden" /> : (
             <div className="flex shrink-0 items-center gap-1">
               {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
               {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
               <Button size="sm" variant="outline" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
-                Change
+                {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
               {linkWorks ? <MoreMenu
                 label={`More for ${name}`}
@@ -333,7 +345,7 @@ function PersonRow({ person, busy, message, onDesk, onMarketing, onRenew, onCopy
                   { label: "Copy sign-in link", onSelect: () => void onCopyLink(), hidden: !linkWorks },
                   { label: "Renew invite", onSelect: onRenew, hidden: !linkWorks },
                 ]}
-              /> : <span aria-hidden className="size-11" />}
+              /> : <span aria-hidden className="size-11 max-sm:hidden" />}
             </div>
           )}
         </div>
@@ -342,6 +354,7 @@ function PersonRow({ person, busy, message, onDesk, onMarketing, onRenew, onCopy
       {message ? <p role={message.error ? "alert" : "status"} className={cn("text-[13px]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
       {changing && !owner ? (
         <div id={`${id}-roles`} className="flex flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
+          <p className="w-full text-[13px] text-muted-foreground">Role changes apply immediately.</p>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
             <RoleSelect id={`${id}-desk`} label={`Desk role for ${name}`} value={(grant?.role ?? "") as StaffRole | ""} disabled={busy} onChange={(value) => onDesk(value || null)} options={DESK_OPTIONS} empty="None" />
@@ -377,7 +390,7 @@ function CashierRulesPanel({ hasCashiers, onDirtyChange }: { hasCashiers: boolea
       title="Rules for all cashiers"
       label="Rules for all cashiers"
       tip={<>Cashiers can always sell, take payment and apply valid coupons. Anything that needs a manager becomes a request.</>}
-      action={hasCashiers === false ? <Badge variant="muted">No cashiers</Badge> : null}
+      action={hasCashiers === false ? <Badge variant="muted" className="rounded-full">No cashiers</Badge> : null}
     >
       {rules === undefined ? <div className="grid place-items-center py-8"><Spinner label="Loading cashier rules" /></div> : <RulesForm rules={rules} onDirtyChange={onDirtyChange} />}
     </Section>
@@ -390,31 +403,28 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
   const [revision, setRevision] = useState(rules.revision);
   const [base, setBase] = useState<Draft>(() => draftOf(rules));
   const [draft, setDraft] = useState<Draft>(() => draftOf(rules));
-  const [state, setState] = useState<{ saving: boolean; saved: boolean; error: string; notice: string }>({ saving: false, saved: false, error: "", notice: "" });
+  const [state, setState] = useState<{ saving: boolean; saved: boolean; error: string }>({ saving: false, saved: false, error: "" });
   const lock = useRef(false);
-  const [reload, setReload] = useState(false);
+  const [stale, setStale] = useState(false);
   const load = (next: CashierRules) => {
+    setStale(false);
     setRevision(next.revision);
     setBase(draftOf(next));
     setDraft(draftOf(next));
   };
-  if (reload && rules.revision !== revision) {
-    setReload(false);
-    load(rules);
-  }
   const problem = limitProblem(draft.limit);
   const dirty = !sameDraft(draft, base);
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
   const set = (patch: Partial<Draft>) => {
     setDraft((current) => ({ ...current, ...patch }));
-    setState((current) => ({ ...current, saved: false, notice: "" }));
+    setState((current) => ({ ...current, saved: false }));
   };
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (lock.current || problem || !dirty) return;
+    if (lock.current || problem || !dirty || stale || rules.revision > revision) return;
     lock.current = true;
-    setState({ saving: true, saved: false, error: "", notice: "" });
+    setState({ saving: true, saved: false, error: "" });
     try {
       const saved = await update({
         expectedRevision: revision,
@@ -425,13 +435,13 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
         refund: draft.refund,
       });
       load(saved);
-      setState({ saving: false, saved: true, error: "", notice: "" });
+      setState({ saving: false, saved: true, error: "" });
     } catch (err) {
       if (isStaleRules(err)) {
-        // Someone else saved first: show theirs (as soon as they arrive), so nothing is overwritten unseen.
-        setReload(true);
-        setState({ saving: false, saved: false, error: "", notice: "Rules changed on another device. Reloaded." });
-      } else setState({ saving: false, saved: false, error: errorText(err, "Couldn’t save the rules."), notice: "" });
+        // Keep the local draft until the owner explicitly reviews the latest revision.
+        setStale(true);
+        setState({ saving: false, saved: false, error: "" });
+      } else setState({ saving: false, saved: false, error: errorText(err, "Couldn’t save the rules.") });
     } finally {
       lock.current = false;
     }
@@ -439,13 +449,13 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
 
   return (
     <form onSubmit={submit} noValidate className={cn("grid", dirty && "pb-20")} aria-label="Rules for all cashiers">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-2.5">
+      <div className="grid grid-cols-[minmax(0,1fr)_11rem] items-center gap-3 border-b border-border py-2.5">
         <Label htmlFor={`${id}-limit`}>Discount without approval</Label>
-        <span className="flex items-center gap-1.5">
+        <span className="flex w-44 items-center gap-1.5">
           <Input
             id={`${id}-limit`}
             inputMode="decimal"
-            className={cn("h-10 w-24 text-right tabular-nums", problem && "border-destructive")}
+            className={cn("h-10 min-w-0 flex-1 text-right tabular-nums", problem && "border-destructive")}
             value={draft.limit}
             disabled={state.saving}
             aria-invalid={problem ? true : undefined}
@@ -454,26 +464,26 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
           />
           <span aria-hidden className="text-sm text-muted-foreground">%</span>
         </span>
-        {problem ? <p id={`${id}-limit-error`} className="w-full text-right text-xs text-destructive">{problem}</p> : null}
+        {problem ? <p id={`${id}-limit-error`} className="col-span-2 text-right text-xs text-destructive">{problem}</p> : null}
       </div>
-      <p className="pt-3 pb-1 text-xs text-muted-foreground">Who can do each action without asking for approval</p>
+      <p className="pt-4 pb-1 text-[13px] font-medium text-foreground">Without approval</p>
       {RULES.map(({ key, label }) => (
         <div key={key} className="flex items-center justify-between gap-3 border-b border-border py-2.5">
           <Label htmlFor={`${id}-${key}`}>{label}</Label>
-          <ToggleGroup id={`${id}-${key}`} variant="segmented" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
+          <ToggleGroup id={`${id}-${key}`} variant="segmented" tone="subtle" className="w-44 shrink-0" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
             <ToggleGroupItem value="cashier">Cashier</ToggleGroupItem><ToggleGroupItem value="manager">Manager</ToggleGroupItem>
           </ToggleGroup>
         </div>
       ))}
       {state.error ? <p role="alert" className="pt-2 text-sm text-destructive">{state.error}</p> : null}
       <div role="status" className="pt-3 text-sm text-muted-foreground">
-        {state.notice ? state.notice : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : rules.revision > revision ? <>Changed on another device. <Button type="button" variant="outline" size="sm" onClick={() => load(rules)}>Load latest</Button></> : ""}
+        {stale || rules.revision > revision ? <>Rules changed on another device. Review latest before saving. <Button type="button" variant="outline" size="sm" disabled={state.saving || stale && rules.revision <= revision} onClick={() => { load(rules); setState({ saving: false, saved: false, error: "" }); }}>Reload latest</Button></> : state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" /> Saved</span> : ""}
       </div>
       {dirty ? (
         <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 mt-3 rounded-xl flex flex-wrap items-center justify-end gap-3 border border-border bg-card/95 px-4 py-3 backdrop-blur" data-testid="rules-save-bar">
           <span className="mr-auto text-[13px] text-muted-foreground">Unsaved changes</span>
-          <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setDraft(base); setState({ saving: false, saved: false, error: "", notice: "" }); }}>Discard</Button>
-          <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty}>
+          <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setDraft(base); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button>
+          <Button type="submit" disabled={state.saving || Boolean(problem) || !dirty || stale || rules.revision > revision}>
             {state.saving ? <Spinner label="Saving" className="text-current" /> : null}
             Save
           </Button>

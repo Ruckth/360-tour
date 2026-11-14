@@ -247,7 +247,7 @@ const VERDICT_BOX = {
 
 function AppliedTag() {
   return (
-    <span className={cn("ms-1.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[11px] font-semibold", TONES.success.bg, TONES.success.border, TONES.success.text)}>
+    <span className={cn("ms-1.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-xs font-semibold", TONES.success.bg, TONES.success.border, TONES.success.text)}>
       <Check aria-hidden className="size-3" />
       Applied
     </span>

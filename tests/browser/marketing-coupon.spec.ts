@@ -44,7 +44,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     const counts = await census(page);
     expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
     await expect(page.getByRole("radio", { name: "% percent" })).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "20%");
+    await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "e.g. 20");
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
     // Dates, minimums and terms are folded away; a quote can't run before the first save.
@@ -230,4 +230,25 @@ test("a discount over 100% or with decimals says so on save", async ({ page }) =
   await page.getByRole("textbox", { name: "Discount", exact: true }).fill("12.5%");
   await expect(page.getByText("Use a whole number")).toBeVisible();
   expect(await calls(page)).toEqual([]);
+});
+
+test("unsaved coupons guard every in-app link and retain the draft", async ({ page }) => {
+  await open(page, SIZES.ipad);
+  const code = page.getByRole("textbox", { name: "Code", exact: true });
+  await code.fill("UNSAVED20");
+  await page.evaluate(() => {
+    const link = document.createElement("a");
+    link.href = "/admin/marketing/dashboard";
+    link.textContent = "Dashboard navigation";
+    link.onclick = (event) => { event.preventDefault(); document.body.dataset.left = "yes"; };
+    document.body.prepend(link);
+  });
+  await page.getByRole("link", { name: "Dashboard navigation" }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+  await dialog.getByRole("button", { name: "Keep editing" }).click();
+  await expect(code).toHaveValue("UNSAVED20");
+  await expect(page.locator("body")).not.toHaveAttribute("data-left");
+  await page.getByRole("link", { name: "Dashboard navigation" }).click();
+  await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-left", "yes");
 });

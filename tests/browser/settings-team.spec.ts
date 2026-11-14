@@ -65,7 +65,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "marketer" });
       const mint = people.getByTestId("team-person").filter({ hasText: "mint@" });
       await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Editor");
-      await expect(mint).toContainText("Marketing: Invite expires");
+      await expect(mint).toContainText("Marketing: Invited · until");
       expect(await page.locator("body").getAttribute("data-navigation")).toBeNull();
       expect(run.counts).toEqual({ taps: 3, fields: 0, scrolls: 0 });
       expect(run.counts.taps).toBeLessThan(BEFORE_GRANT_MARKETING.taps);
@@ -220,7 +220,7 @@ test.describe("Round 1 settings drafts", () => {
     await expect(page.getByRole("status").filter({ hasText: "Saved" })).toHaveCount(0, { timeout: 5000 });
   });
 
-  test("currency, searchable time zone and required half-hour times use structured pickers", async ({ page }) => {
+  test("currency, searchable time zone and required times use structured pickers", async ({ page }) => {
     await open(page, "?view=settings&tab=business");
     await page.getByRole("combobox", { name: "Currency", exact: true }).click();
     await page.getByRole("option", { name: "THB", exact: true }).click();
@@ -228,10 +228,12 @@ test.describe("Round 1 settings drafts", () => {
     await zone.fill("Tokyo");
     await page.getByRole("option", { name: "Asia/Tokyo", exact: true }).click();
     await expect(zone).toHaveValue("Asia/Tokyo");
-    const checkIn = page.getByRole("combobox", { name: /^Check-in time,/ });
+    const checkIn = page.getByRole("button", { name: /^Check-in time,/ });
     await checkIn.click();
-    await expect(page.getByRole("option")).toHaveCount(48);
-    await page.getByRole("option", { name: "15:30", exact: true }).click();
+    await page.getByRole("combobox", { name: "Check-in time hour" }).click();
+    await page.getByRole("option", { name: "15", exact: true }).click();
+    await page.getByRole("combobox", { name: "Check-in time minute" }).click();
+    await page.getByRole("option", { name: "30", exact: true }).click();
     await expect(checkIn).toHaveAccessibleName("Check-in time, 15:30");
     await expect(page.getByRole("button", { name: /Clear check-/ })).toHaveCount(0);
   });
@@ -247,4 +249,19 @@ test.describe("Round 1 settings drafts", () => {
     await expect(rule.getByRole("radio", { name: "Manager", exact: true })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByTestId("rules-save-bar")).toHaveCount(0);
   });
+});
+
+test("invite drafts guard tab changes and their own Cancel", async ({ page }) => {
+  await open(page, "?view=settings&tab=team");
+  await page.getByRole("button", { name: "Invite", exact: true }).click();
+  const invite = page.getByRole("form", { name: "Invite", exact: true });
+  await invite.getByRole("textbox", { name: "Email", exact: true }).fill("draft@example.com");
+  await page.getByRole("tab", { name: "Business", exact: true }).click();
+  const dialog = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+  await dialog.getByRole("button", { name: "Keep editing" }).click();
+  await expect(invite.getByRole("textbox", { name: "Email", exact: true })).toHaveValue("draft@example.com");
+  await invite.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(invite).toHaveCount(0);
+  expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(false);
 });

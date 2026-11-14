@@ -14,9 +14,9 @@ const HINTS: Record<string, string> = {
   Collected: "Payments in this period",
   Refunds: "Refunds in this period",
   "First-payment sales": "First paid in this period",
-  "Discounts granted": "Coupon savings granted",
+  "Discounts granted": "Coupon savings",
   "Tracked visits": "After cookie consent",
-  "Paid bookings": "From tracked links",
+  "Paid bookings": "Stays paid",
   "Booked rate": "Visits that booked",
 };
 function Tile({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
@@ -41,7 +41,7 @@ function RoasTile({ roas, onAddSpend }: { roas: Roas; onAddSpend: (campaignIds: 
       : `${thb(Math.round(roas.net))} net ÷ ${thb(Math.round(roas.spend))} spend · ${pluralize(roas.campaigns, "campaign")} with spend${roas.missing.length ? ` · ${pluralize(roas.missing.length, "more campaign")} with sales have no spend` : ""}`;
   const missing = roas.kind === "missing" ? roas.campaignIds : roas.kind === "value" ? roas.missing : [];
   return (
-    <Stat className="relative pr-32" label="Return on ad spend" value={roas.kind === "value" ? formatRoas(roas.value) : "—"} info={info} hint={roas.kind === "all_properties_only" ? "All properties only" : roas.kind === "missing" ? "No spend entered" : `${roas.campaigns} campaigns with spend`}>
+    <Stat className="relative pr-32" label="Return on ad spend" value={roas.kind === "value" ? formatRoas(roas.value) : "—"} info={info} hint={roas.kind === "all_properties_only" ? "All properties only" : roas.kind === "missing" ? "No spend entered" : `${pluralize(roas.campaigns, "campaign")} with spend`}>
       {missing.length || roas.kind === "missing" ? <div className="absolute right-4 bottom-4 sm:right-5 sm:bottom-5"><AddSpendLink onClick={() => onAddSpend(missing)} /></div> : null}
     </Stat>
   );
@@ -120,7 +120,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
 
   return (
     <section aria-labelledby="kpi-title" className="grid min-w-0 gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-2 px-1">
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h2 id="kpi-title" className="text-base font-semibold text-foreground">{p.cash ? "Money in and out" : "Results from tracked links"}</h2>
           <p className="mt-1 text-[13px] text-muted-foreground">{p.cash ? "Finance view · by payment, refund and coupon settlement date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`}</p>
@@ -128,7 +128,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
 
       </header>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <Stat hero label="Net collected" value={thb(p.cash ? all.net : tracked.net)} hint={p.cash ? "Collected minus refunds" : "From tracked links"}
+        <Stat hero label="Net collected" value={thb(p.cash ? all.net : tracked.net)} hint={p.cash ? "Collected minus refunds" : undefined}
           info={<>Net is collected minus refunds, not profit. {p.cash ? `Tracked links: ${thb(tracked.net)} net.` : `Business total: ${thb(all.net)} after ${thb(all.refunded)} refunds.`} {countOf(all)}. {parts.map((part) => `${part.label}: ${countOf(part.money)} · ${share(part.money.net)}%`).join(". ")}</>}
           className="col-span-2 flex flex-col p-4 sm:p-6">
           <div className="mt-2 grid gap-3 border-t border-border pt-3 sm:mt-auto sm:pt-4">

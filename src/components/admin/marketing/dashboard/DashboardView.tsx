@@ -106,7 +106,7 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="h-10 w-full min-w-0 justify-start gap-2 px-3 shadow-sm sm:h-9 sm:w-auto" aria-label={`Dates: ${label}, ${formatRange(range.from, range.to)}`}>
+        <Button type="button" variant="outline" className="h-10 w-full min-w-0 justify-start gap-2 px-3 shadow-sm sm:h-10 pointer-coarse:h-12 sm:w-auto" aria-label={`Dates: ${label}, ${formatRange(range.from, range.to)}`}>
           <CalendarRange aria-hidden className="size-4 text-muted-foreground" />
           <span className="truncate">{label}</span>
           <ChevronDown aria-hidden className="ml-auto size-4 opacity-75" />
@@ -126,7 +126,7 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
                     onChange({ preset: preset.id as PresetId, ...r });
                     setOpen(false);
                   }}
-                  className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex size-4 items-center justify-center">{selected ? <Check aria-hidden className="size-4" /> : null}</span>
                   <span className={cn("flex-1", selected && "font-semibold")}>{preset.label}</span>
@@ -172,7 +172,7 @@ function ViewOptions({ touch, onTouch, open, onOpenChange }: { touch: Touch; onT
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-9 sm:flex-none" aria-label={`View options: ${touch === "first" ? "First touch" : "Last touch"}`}>
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" aria-label={`View options: ${touch === "first" ? "First touch" : "Last touch"}`}>
           <SlidersHorizontal aria-hidden className="size-4" />
           View options
           {touch === "first" ? <span className="rounded-full bg-muted px-1.5 text-xs">First touch</span> : null}
@@ -183,7 +183,7 @@ function ViewOptions({ touch, onTouch, open, onOpenChange }: { touch: Touch; onT
           <span id="touch-label" className="text-sm font-medium text-foreground">
             Attribution
           </span>
-          <ToggleGroup variant="segmented" value={touch} onValueChange={onTouch} aria-labelledby="touch-label" className="w-full">
+          <ToggleGroup variant="segmented" tone="subtle" value={touch} onValueChange={onTouch} aria-labelledby="touch-label" className="w-full">
             <ToggleGroupItem value="last" className="flex-1 py-1.5">
               Last touch
             </ToggleGroupItem>
@@ -298,7 +298,7 @@ export function DashboardView({
       </div>
       <div className="min-w-0">
         <Select value={propertyFilter} onValueChange={setProperty} disabled={!report}>
-          <SelectTrigger aria-label="Property" className="h-10 w-full sm:h-9 sm:w-56">
+          <SelectTrigger aria-label="Property" className="h-10 w-full sm:h-10 pointer-coarse:h-12 sm:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -312,7 +312,7 @@ export function DashboardView({
         </Select>
       </div>
       <div className="min-w-0 max-sm:col-span-2 max-sm:col-start-1 max-sm:row-start-2 max-sm:mr-14">
-        <ToggleGroup variant="segmented" value={request.basis} onValueChange={(basis) => onRequestChange({ ...request, basis })} aria-label="View" className="w-full">
+        <ToggleGroup variant="segmented" tone="subtle" value={request.basis} onValueChange={(basis) => onRequestChange({ ...request, basis })} aria-label="View" className="w-full">
           <ToggleGroupItem value="cohort" className="flex-1 py-1.5 sm:flex-none">
             Marketing
           </ToggleGroupItem>
@@ -324,13 +324,13 @@ export function DashboardView({
       <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 sm:ml-auto">
         <ViewOptions touch={touch} onTouch={setTouch} open={viewOptions} onOpenChange={setViewOptions} />
         {/* On a phone, View options, Export CSV and Refresh wait in ⋯ so the figures come first. */}
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-9 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />
           Export CSV
         </Button>
         <MoreMenu
           label="More dashboard actions"
-          className="size-10 border border-border sm:hidden"
+          className="size-10 pointer-coarse:size-12 border border-border sm:hidden"
           items={[
             { label: busy ? "Updating…" : "Refresh", disabled: busy, onSelect: onRetry },
             { label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) },
