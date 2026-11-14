@@ -229,7 +229,7 @@ describe("checkout theme", () => {
         // header's Approvals stays usable: it has no overlay. Every other layer dims the page.
         const overlay = name === "Order sheet" ? null : content.previousElementSibling!;
         if (overlay) expect(overlay.className).toContain("bg-background/80");
-        else expect(content.className).toContain("h-[calc(100dvh-var(--admin-header,6dvh))]");
+        else expect(content.className).toContain("max-h-[calc(100dvh-var(--admin-header,6dvh))]");
         expect(content.className).toContain("pointer-coarse:[&_button]:min-h-11");
         // No checkout-only palette, and nothing below <html> forces a theme.
         expect(document.querySelector(".checkout-theme")).toBeNull();
@@ -298,7 +298,7 @@ describe("checkout order title", () => {
     // The strip's title is still in the page for narrow screens, just not on desktop.
     expect(shownAt(document.querySelector('[data-testid="order-title"]')!, "desktop")).toBe(false);
     // Booking context, customer, Orders and New order stay in the strip on desktop.
-    expect(shownText("No booking", "desktop")).toHaveLength(1);
+    expect(shownText("No booking", "desktop")).toHaveLength(0);
     expect(shownAt(document.querySelector('[aria-label="Add customer"]')!, "desktop")).toBe(true);
     expect(shownAt(buttonText("Orders")!, "desktop")).toBe(true);
     const newOrder = document.querySelector<HTMLButtonElement>('[aria-label="New order"]')!;

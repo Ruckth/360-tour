@@ -206,20 +206,20 @@ export function CheckoutView({
           order can be paid, Cash ฿X beside it opens the sheet on the cash panel, prefilled; its
           Confirm is still the one that takes the money. */}
       <Sheet open={sheetOpen} onOpenChange={(open) => { setSheetOpen(open); if (!open) setPayOnOpen(undefined); }} modal={!keepHeader}>
-        <div data-admin-bottom-bar="lg" className="fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl bg-primary p-1 text-primary-foreground shadow-xl shadow-navy/25 lg:hidden dark:shadow-black/40">
+        <div data-admin-bottom-bar="lg" className={cn("fixed inset-x-4 bottom-[calc(1rem+max(var(--admin-tab-bar,0px),env(safe-area-inset-bottom)))] z-30 flex min-h-14 items-stretch gap-1 rounded-2xl p-1 lg:hidden", count ? "bg-primary text-primary-foreground shadow-xl shadow-navy/25 dark:shadow-black/40" : "border border-border bg-card text-foreground shadow-sm")}>
           <SheetTrigger asChild>
             <button
               type="button"
               // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
-              aria-label={`View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-primary-foreground"
+              aria-label={count === 0 ? "View order · No items yet · open the order" : `View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order`}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
             >
               <ReceiptText aria-hidden className="size-5 shrink-0" />
               <span className="min-w-0 flex-1 leading-tight">
                 <span className="block truncate text-sm font-semibold">View order</span>{" "}
-                <span className="block truncate text-xs opacity-80">{count} {count === 1 ? "item" : "items"}</span>{" "}
+                <span className="block truncate text-xs opacity-80">{count ? `${count} ${count === 1 ? "item" : "items"}` : "No items yet"}</span>{" "}
               </span>
-              {quickCash ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
+              {quickCash || !count ? null : <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>}
               <ChevronUp aria-hidden className="size-5 shrink-0" />
             </button>
           </SheetTrigger>
@@ -228,7 +228,7 @@ export function CheckoutView({
               type="button"
               data-testid="bar-cash"
               onClick={() => { setPayOnOpen("cash"); setSheetOpen(true); }}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-4 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-foreground"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-4 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
               <span className="text-sm font-semibold">Cash</span>
               <span className=" text-xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>
@@ -236,7 +236,7 @@ export function CheckoutView({
           ) : null}
         </div>
         {/* --admin-header is set on <html> by the shell, since the sheet is portaled outside it. */}
-        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "h-[calc(100dvh-var(--admin-header,6dvh))] has-[[data-testid=pay-panel]]:max-h-[calc(100dvh-var(--admin-header,6dvh))]" : "h-[94dvh] has-[[data-testid=pay-panel]]:max-h-[94dvh]", "gap-0 rounded-t-2xl border-border/80 bg-card p-0 has-[[data-testid=pay-panel]]:h-auto lg:hidden")}>
+        <CheckoutSheetContent side="bottom" showCloseButton={false} className={cn(keepHeader ? "max-h-[calc(100dvh-var(--admin-header,6dvh))]" : "max-h-[94dvh]", "h-auto gap-0 rounded-t-2xl border-border/80 bg-card p-0 lg:hidden")}>
           <div aria-hidden className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
           <SheetTitle className="sr-only">{title}</SheetTitle>
           <SheetDescription className="sr-only">Items, totals and payment</SheetDescription>

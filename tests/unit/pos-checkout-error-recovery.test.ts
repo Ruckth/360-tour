@@ -111,7 +111,7 @@ describe('Checkout error recovery', () => {
     await act(async () => button('Add customer').click());
     await act(async () => type(document.querySelector<HTMLInputElement>('[aria-label="Search customers"]')!, 'Anna'));
     expect(document.querySelector('[aria-label="Searching"]')).toBeTruthy();
-    expect(document.body.textContent).toContain('No booking');
+    expect(document.body.textContent).not.toContain('No booking');
     expect(document.body.textContent).not.toContain('No customer matches');
   });
 });

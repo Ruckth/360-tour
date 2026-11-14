@@ -19,7 +19,7 @@ export function parseDiscount(text: string, line: PricedLine): ParsedDiscount | 
   if (!trimmed) return null;
   const percentMatch = /^(.*?)\s*%$/.exec(trimmed);
   const raw = (percentMatch ? percentMatch[1] : trimmed.replace(/^฿\s*/, "")).trim();
-  if (!NUMBER.test(raw)) return { ok: false, error: "Type 15% or 150" };
+  if (!NUMBER.test(raw)) return { ok: false, error: "Type 10% or ฿120" };
   const value = Number(raw.replace(/,/g, ""));
   if (!(value > 0)) return { ok: false, error: "Type more than 0" };
   const gross = lineGross(line);

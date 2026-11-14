@@ -75,8 +75,8 @@ describe("cash wording", () => {
   });
 
   it("says the money on the button", () => {
-    expect(cashConfirmLabel(1200, 1200)).toEqual({ ready: true, text: "Confirm ฿1,200 cash · no change" });
-    expect(cashConfirmLabel(1200, 1500)).toEqual({ ready: true, text: "Confirm ฿1,500 cash · change ฿300" });
+    expect(cashConfirmLabel(1200, 1200)).toEqual({ ready: true, text: "Confirm cash · ฿1,200 received · no change" });
+    expect(cashConfirmLabel(1200, 1500)).toEqual({ ready: true, text: "Confirm cash · ฿1,500 received · change ฿300" });
     expect(cashConfirmLabel(1200, 1000)).toEqual({ ready: false, text: "Short ฿200" });
   });
 });
@@ -85,18 +85,19 @@ describe("pay panel", () => {
   it("opens cash at the amount due, a note chip sets what was handed over, and typing replaces it", async () => {
     const { actions, onPaid } = await openPanel("cash");
     const settle = vi.spyOn(actions, "settleOrder");
-    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("1200");
-    expect(confirmText()).toBe("Confirm ฿1,200 cash · no change");
+    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("1,200");
+    expect(confirmText()).toBe("Confirm cash · ฿1,200 received · no change");
     await click("฿1,500");
-    expect(confirmText()).toBe("Confirm ฿1,500 cash · change ฿300");
+    expect(confirmText()).toBe("Confirm cash · ฿1,500 received · change ฿300");
     expect(button("฿1,500")?.getAttribute("aria-pressed")).toBe("true");
     await click("฿2,000");
-    expect(confirmText()).toBe("Confirm ฿2,000 cash · change ฿800");
+    expect(confirmText()).toBe("Confirm cash · ฿2,000 received · change ฿800");
     await input("#cash-received", "1100");
-    expect(confirmText()).toBe("Short ฿100");
-    expect(button("Short ฿100")?.disabled).toBe(true);
+    expect(confirmText()).toBe("Confirm cash");
+    expect(button("Confirm cash")?.disabled).toBe(true);
+    expect(document.querySelector('[role="status"]')?.textContent).toBe("Short฿100");
     await click("฿1,500");
-    await click("Confirm ฿1,500 cash · change ฿300"); await tick();
+    await click("Confirm cash · ฿1,500 received · change ฿300"); await tick();
     expect(settle).toHaveBeenCalledOnce();
     expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 1200, tenders: [{ method: "cash", amount: 1200, received: 1500 }] });
     expect(onPaid).toHaveBeenCalledOnce();
@@ -105,7 +106,7 @@ describe("pay panel", () => {
   it("retries a cash payment with the same attempt key", async () => {
     const { actions, onPaid } = await openPanel("cash");
     const settle = loseFirstAnswer(actions);
-    await click("Confirm ฿1,200 cash · no change"); await tick();
+    await click("Confirm cash · ฿1,200 received · no change"); await tick();
     expect(document.body.textContent).toContain("Response lost");
     // The attempt is frozen: no other amount, and switching or retrying can't change it silently.
     expect(document.querySelector<HTMLInputElement>("#cash-received")?.closest("fieldset")?.disabled).toBe(true);
@@ -131,10 +132,12 @@ describe("pay panel", () => {
     const settle = loseFirstAnswer(actions);
     const rowTwo = document.querySelector('[aria-label="Payment 2 method"]')!;
     await act(async () => [...rowTwo.querySelectorAll("button")].find((b) => b.textContent === "Card")!.click());
-    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿1,200");
+    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿0");
     expect(button("Confirm split")?.disabled).toBe(true);
     await input('[aria-label="Payment 1 amount"]', "500");
-    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿700");
+    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿0");
+    expect(document.body.textContent).toContain("Fully allocated");
+    expect(document.querySelector('[aria-label="Payment 2 amount"]')?.textContent).toBe("฿700");
     await click("Confirm ฿500 cash + ฿700 card"); await tick();
     expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "cash", amount: 500 }, { method: "card", amount: 700 }] });
     await click("Retry payment"); await tick();
@@ -165,13 +168,13 @@ describe("pay panel", () => {
     expect(onBack).not.toHaveBeenCalled();
   });
 
-  it("leaves on the active tender and on Escape from inside the panel", async () => {
+  it("keeps the active tender selected and leaves on Escape from inside the panel", async () => {
     const { onBack } = await openPanel("promptpay");
     await click("PromptPay");
-    expect(onBack).toHaveBeenCalledOnce();
+    expect(onBack).not.toHaveBeenCalled();
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     await act(async () => { document.activeElement!.dispatchEvent(escape); });
-    expect(onBack).toHaveBeenCalledTimes(2);
+    expect(onBack).toHaveBeenCalledOnce();
     expect(escape.defaultPrevented).toBe(true);
   });
 
@@ -179,7 +182,7 @@ describe("pay panel", () => {
     const { actions, onBack } = await openPanel("cash");
     let release = () => {};
     vi.spyOn(actions, "settleOrder").mockImplementationOnce(() => new Promise((_, reject) => { release = () => reject(new Error("Response lost")); }));
-    await click("Confirm ฿1,200 cash · no change");
+    await click("Confirm cash · ฿1,200 received · no change");
     expect(button("Card")?.disabled).toBe(true);
     const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     await act(async () => { document.body.dispatchEvent(escape); });
@@ -192,7 +195,7 @@ describe("pay panel", () => {
     await openPanel("cash");
     expect(document.body.textContent).toContain("Received now");
     expect(document.querySelector("#payment-effective")).toBeNull();
-    await click("Change payment time");
+    await click("Edit payment time");
     await input("#payment-effective-time", "14:15");
     expect(document.body.textContent).toContain("Received 2026-11-01 · 14:15 Bangkok");
   });

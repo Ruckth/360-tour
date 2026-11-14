@@ -38,7 +38,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const earlier = list.getByRole("button", { name: /^Order #1042/ });
       await expect(earlier).toContainText("Somchai Prasert · 3 items");
       await expect(earlier).toContainText("฿780");
-      await expectAtMostSentences(dialog, 1);
+      await expectAtMostSentences(dialog, 2);
       await count.tap(earlier, "Order #1042 row");
       await expect(dialog).toHaveCount(0);
       await expect(orderTitle(page, size)).toHaveText("Order #1042");
@@ -50,7 +50,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const count = new TaskCounter();
       await count.tap(page.getByRole("button", { name: "Orders", exact: true }), "Orders");
       const dialog = page.getByRole("dialog", { name: "Orders" });
-      await count.type(dialog.getByRole("textbox", { name: "Go to order #" }), "1042", "order number");
+      await count.type(dialog.getByRole("textbox", { name: "Order number shown on the receipt" }), "1042", "order number");
       await count.tap(dialog.getByRole("button", { name: "Go", exact: true }), "Go");
       await expect(orderTitle(page, size)).toHaveText("Order #1042");
       expect({ taps: count.taps, typed: count.typed }, count.log.join("\n")).toEqual({ taps: 2, typed: 1 });

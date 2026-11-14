@@ -217,7 +217,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   }
 
   const receiptNumber = formatReceiptNumber(order.receiptNumber ?? 0);
-  const paidWith = [...new Set(payments.map((payment) => TENDER_LABELS[payment.method].short))].join(" + ");
+  const paidWith = [...new Set(payments.map((payment) => payment.method === "promptpay" ? "PromptPay" : TENDER_LABELS[payment.method].short.toLowerCase()))].join(" + ");
 
   return (
     <div
@@ -232,25 +232,25 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       {/* What this receipt is, and the toolbar, before anything else. */}
       <header className="flex flex-wrap items-end justify-between gap-3 lg:col-span-2 print:hidden">
         <div className="min-w-0">
-          <h2 className="flex flex-wrap items-center gap-2 text-xl font-semibold tracking-tight">
+          <h2 className="flex flex-wrap items-center gap-2 font-serif text-2xl font-semibold tracking-tight">
             Receipt {receiptNumber}
             {paid && view.fullyRefunded ? (
               <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
             ) : null}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith.toLowerCase()}` : ""}`}
+            {order.title} · {formatMoney(totals.total)} · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith}` : ""}`}
             {!isVoid && view.paymentRecord.tendersAmended ? " · corrected" : ""}
           </p>
           {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="mt-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{notice}</p> : null}
         </div>
-        <div ref={toolbarRef} role="toolbar" aria-label="Receipt actions" className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+        <div ref={toolbarRef} role="toolbar" aria-label="Receipt actions" className="flex flex-wrap items-center gap-1.5 max-sm:w-full sm:gap-2">
           {/* While Correct payment or Void… is open, the toolbar is only its Close. */}
           {shownTask ? null : (
             <>
-              <Button variant="outline" className="px-3 sm:px-4" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /> Print</Button>
+              <Button variant="outline" className="max-sm:size-11 max-sm:p-0 sm:px-4" aria-label="Print" onClick={() => window.print()} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span className="max-sm:sr-only">Print</span></Button>
               <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
-              <Button className="px-3 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+              <Button className="px-3 max-sm:h-12 max-sm:flex-1 sm:px-4" onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
             </>
           )}
           {shownTask ? (
@@ -272,7 +272,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         </div>
       </header>
 
-      <div className="grid min-w-0 content-start justify-items-center gap-3 lg:self-start">
+      <div className="grid min-w-0 content-start justify-items-center gap-3 lg:justify-items-start lg:self-start">
         <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
@@ -386,7 +386,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             {lines.map((line) => {
               const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
               const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
-              const showRefund = refundable;
+              const showRefund = refundable && refunding === null;
               const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
               const note = lineNotes[line._id];
               const unscheduled = line.kind === "service" && !line.schedule?.date && !line.startAt && !view.links.some((l) => l.lineId === line._id && l.status === "active");
@@ -415,9 +415,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                         size="sm"
                         data-refund-trigger={line._id}
                         aria-label={`Refund ${line.name}`}
-                        disabled={refundLocked || refunding !== null}
+                        disabled={refundLocked}
                         onClick={() => { setNotice(""); setRefunding(line._id); }}
-                        className="h-11 px-3 font-sans text-sm text-destructive hover:text-destructive"
+                        className="h-11 px-3 font-sans text-sm text-foreground"
                       >
                         Refund
                       </Button>

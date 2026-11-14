@@ -6,6 +6,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { InfoTip } from "@/components/ui/info-tip";
 import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
@@ -130,9 +131,11 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
   const refund = request.payload.kind === "refund" ? request.payload : null;
   const lineName = order?.lines.find((line) => line._id === request.lineId)?.name;
   const { decide, busy, error } = useApprovalDecision(request, lineName, title);
+  const expired = now >= request.expiresAt;
 
   return (
-    <li className="grid gap-2 rounded-xl border border-border bg-card p-4" data-testid="approval-request">
+    <li data-testid="approval-request">
+    <Card className="grid gap-2 p-4">
       <p className="text-sm font-semibold [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {approvalAsk(request, lineName)}</p>
       {/* The cashier's own words, not an explanation. */}
       <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{refund?.reason ?? request.reason}”</blockquote>
@@ -140,11 +143,12 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
         {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        Expires in {minutesLeft(request.expiresAt, now)} min
+        {expired ? "Expired · ask the cashier to request again" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
         <InfoTip label="About approvals">Works once, for this order as it is now.</InfoTip>
       </p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <ApprovalDecisionButtons busy={busy} onDecide={(choice) => void decide(choice).then((result) => { if (result) onResult(result); })} />
+      <ApprovalDecisionButtons busy={busy} disabled={expired} onDecide={(choice) => { if (Date.now() >= request.expiresAt) return; void decide(choice).then((result) => { if (result) onResult(result); }); }} />
+    </Card>
     </li>
   );
 }

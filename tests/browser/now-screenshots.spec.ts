@@ -197,6 +197,8 @@ for (const [size, viewport] of Object.entries(sizes))
     "line-open",
     "cash-panel",
     "receipt",
+    "split",
+    "refund",
     "stay-sheet",
     "appointment-sheet",
     "hotel-calendar",

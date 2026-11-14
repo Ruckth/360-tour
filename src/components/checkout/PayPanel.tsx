@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowLeft, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useEffect, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { ArrowLeft, Check, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,26 +40,30 @@ import {
 type PayMode = TenderMethod | "split";
 
 /**
- * Takes the payment. The tender row stays on top and replaces Back: another tender switches to it,
- * the active one closes the panel (so does Escape). A split, whose payments each pick a method,
- * shows Back instead. Each tender is its own attempt (PayAttempt, keyed by mode), exactly as going
- * back and picking another tender would be.
+ * Takes the payment. Another tender switches modes; the active tender keeps its attempt.
+ * Each mode is its own attempt (PayAttempt, keyed by mode). Back and Escape return to the order.
  */
 export function PayPanel({
   mode: opened,
   view,
   onBack,
   onPaid,
+  onSubmittingChange,
 }: {
   mode: PayMode | "none";
   view: OrderView;
   onBack: () => void;
   onPaid: (orderId: OrderId) => void;
+  onSubmittingChange?: (submitting: boolean) => void;
 }) {
   const [mode, setMode] = useState(opened);
   const root = useRef<HTMLDivElement>(null);
   // While a payment is in flight the panel can't be left (as Back was disabled).
   const [submitting, setSubmitting] = useState(false);
+  useEffect(() => {
+    onSubmittingChange?.(submitting);
+    return () => onSubmittingChange?.(false);
+  }, [onSubmittingChange, submitting]);
 
   /** Leaves the panel, putting focus back on the order's tender it was opened from. */
   function back() {
@@ -66,7 +71,7 @@ export function PayPanel({
     const host = root.current?.parentElement;
     const label = mode === "none" ? null : mode === "split" ? "Split payment" : TENDER_LABELS[mode].short;
     onBack();
-    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => (el.getAttribute("aria-label") ?? el.textContent?.trim()) === label)?.focus());
+    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => getComputedStyle(el).display !== "none" && (el.getAttribute("aria-label") ?? el.textContent?.trim()) === label)?.focus());
   }
 
   // Escape leaves the panel first, not the phone order sheet around it: this runs before the
@@ -84,13 +89,13 @@ export function PayPanel({
   });
 
   return (
-    <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4" data-testid="pay-panel">
+    <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3" data-testid="pay-panel">
       <PayAttempt
         key={mode}
         mode={mode}
         view={view}
         onSubmitting={setSubmitting}
-        onPick={(next) => (next === mode ? back() : setMode(next))}
+        onPick={(next) => { if (next !== mode) setMode(next); }}
         onBack={back}
         onPaid={onPaid}
       />
@@ -168,7 +173,7 @@ function PayAttempt({
       view.customer.mergedInto,
     );
 
-  // Focus starts on the active tender, inside the panel, so Escape or Enter on it leaves.
+  // Focus starts on the active tender, inside the panel, where Escape returns to the order.
   const active = useRef<HTMLButtonElement>(null);
   const backButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -246,8 +251,7 @@ function PayAttempt({
 
   return (
     <>
-      {/* Splitting has its own method chips per payment, so the tender row gives way to one Back. */}
-      {mode === "none" || mode === "split" ? (
+      {mode === "none" ? (
         <button
           ref={backButton}
           type="button"
@@ -264,7 +268,7 @@ function PayAttempt({
       <fieldset
         aria-label={panelName}
         disabled={submitting || attempted}
-        className="flex min-w-0 flex-1 flex-col gap-4 disabled:opacity-70"
+        className={cn("flex min-w-0 flex-1 flex-col disabled:opacity-70", mode === "split" ? "gap-3" : "gap-4")}
       >
         {view.promotion && !view.promotion.problem && view.totals.coupon ? (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -274,18 +278,6 @@ function PayAttempt({
             </span>
           </p>
         ) : null}
-        {mode === "none" ? null : (
-          <ReceivedAt
-            value={effectiveInput}
-            edited={timeEdited}
-            open={timeOpen}
-            onToggle={() => setTimeOpen(!timeOpen)}
-            onChange={(value) => {
-              setEffectiveInput(value);
-              setTimeEdited(true);
-            }}
-          />
-        )}
         {view.sources.some((source) => source.kind === "booking") ? (
           <label className="flex min-h-11 items-center gap-2 text-sm">
             <input
@@ -316,6 +308,18 @@ function PayAttempt({
               {tenderConfirmLabel(mode, due)}
             </PayButton>
           </>
+        )}
+        {mode === "none" ? null : (
+          <ReceivedAt
+            value={effectiveInput}
+            edited={timeEdited}
+            open={timeOpen}
+            onToggle={() => setTimeOpen(!timeOpen)}
+            onChange={(value) => {
+              setEffectiveInput(value);
+              setTimeEdited(true);
+            }}
+          />
         )}
       </fieldset>
       {couponProblem ? (
@@ -377,7 +381,7 @@ function TenderRow({
 }) {
   return (
     <div role="group" aria-label="Take payment by" className="flex min-w-0 flex-wrap items-center gap-1">
-      <div className="grid min-w-0 flex-1 basis-[14rem] grid-cols-[repeat(auto-fit,minmax(min(100%,3.5rem),1fr))] rounded-full bg-muted p-1">
+      <div className="flex min-w-0 flex-1 basis-[14rem] flex-wrap rounded-full bg-muted p-1">
         {TENDER_ROW.map((mode) => (
           <Button
             key={mode}
@@ -385,14 +389,14 @@ function TenderRow({
             variant="ghost"
             aria-pressed={mode === active}
             disabled={disabled}
-            className={cn("h-11 min-w-0 rounded-full px-1 text-xs max-[350px]:text-[11px]", mode === active && "bg-foreground text-background hover:bg-foreground hover:text-background")}
+            className={cn("h-11 min-w-0 flex-1 rounded-full px-0 text-sm", mode === "promptpay" ? "basis-20" : mode === "transfer" ? "basis-14" : "basis-10", mode === active && "bg-foreground text-background hover:bg-foreground hover:text-background")}
             onClick={() => onPick(mode)}
           >
             {TENDER_LABELS[mode as TenderMethod].short}
           </Button>
         ))}
       </div>
-      <Button variant="ghost" aria-label="Split payment" className="h-11 px-2 text-xs" disabled={disabled} onClick={() => onPick("split")}>Split</Button>
+      <Button ref={active === "split" ? activeRef : undefined} variant="ghost" aria-label="Split payment" aria-pressed={active === "split"} className={cn("h-11 rounded-full px-2 text-sm", active === "split" && "bg-foreground text-background hover:bg-foreground hover:text-background")} disabled={disabled} onClick={() => onPick("split")}>Split</Button>
     </div>
   );
 }
@@ -417,7 +421,7 @@ function ReceivedAt({
   const [day, time = ""] = value.split("T");
   return (
     <div className="grid min-w-0 gap-2">
-      <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-[13px]">
+      <p className="flex min-h-11 flex-wrap items-center justify-center gap-x-1.5 text-center text-[13px]">
         <span className="text-muted-foreground">
           {edited ? <>Received <span className="tabular-nums">{day} · {time}</span> Bangkok</> : "Received now"}
         </span>
@@ -427,7 +431,7 @@ function ReceivedAt({
           variant="link"
           aria-expanded={open}
           aria-controls="payment-received-at"
-          aria-label="Change payment time"
+          aria-label="Edit payment time"
           className="min-h-11 px-0 text-[13px] text-muted-foreground underline underline-offset-4"
           onClick={onToggle}
         >
@@ -520,6 +524,7 @@ function CashForm({
 }) {
   // Opens at the amount due, so an exact cash sale is one tap; a note chip sets what was handed over.
   const [received, setReceived] = useState(() => amountInput(String(due)));
+  const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Keyboard viewport changes keep the focused amount clear of the pinned confirmation bar.
   useEffect(() => {
@@ -532,6 +537,7 @@ function CashForm({
     return () => viewport?.removeEventListener("resize", reveal);
   }, []);
   const value = Number(received) || 0;
+  const displayed = focused || !received ? received : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
   const label = cashConfirmLabel(due, value);
   const notes = cashNotes(due);
 
@@ -547,13 +553,18 @@ function CashForm({
             ref={inputRef}
             inputMode="decimal"
             autoComplete="off"
-            className="h-14 pr-3 pl-8 text-right text-2xl font-sans tabular-nums max-md:text-2xl md:text-2xl"
+            className="h-14 min-w-0 pr-3 pl-8 text-right font-sans tabular-nums"
+            // Keep long, grouped amounts inside the field at enlarged text sizes.
+            style={{ fontSize: `${Math.min(1.5, 9 / Math.max(1, displayed.length))}rem` }}
             {...selectAll}
             onFocus={(e) => {
+              // Remove grouping before selecting: changing a controlled value clears selection.
+              flushSync(() => setFocused(true));
               selectAll.onFocus(e);
               inputRef.current?.scrollIntoView({ block: "center" });
             }}
-            value={received}
+            onBlur={() => setFocused(false)}
+            value={displayed}
             onChange={(e) => setReceived(amountInput(e.target.value))}
             placeholder="0"
           />
@@ -561,7 +572,7 @@ function CashForm({
       </div>
       {notes.length ? (
         <div role="group" aria-label="Notes handed over" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))] gap-2">
-          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
+          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:border-foreground aria-pressed:bg-muted" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
           {notes.map((note) => (
             <Button
               key={note}
@@ -580,18 +591,23 @@ function CashForm({
           <span className="text-sm">Change</span>
           <output className="text-[32px] leading-none font-semibold text-emerald-700 font-sans tabular-nums dark:text-emerald-400">{formatMoney(round2(value - due))}</output>
         </div>
+      ) : value < due ? (
+        <div role="status" className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-4 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">
+          <span className="text-sm">Short</span>
+          <output className="text-[32px] leading-none font-semibold font-sans tabular-nums">{formatMoney(round2(due - value))}</output>
+        </div>
       ) : null}
       {/* Keep the action in view when the phone keyboard reduces the viewport. */}
       <div aria-live="polite" className="mt-auto max-md:[@media(max-height:36rem)]:sticky max-md:[@media(max-height:36rem)]:bottom-0 max-md:[@media(max-height:36rem)]:z-10 max-md:[@media(max-height:36rem)]:bg-card max-md:[@media(max-height:36rem)]:py-2">
         <PayButton
           submitting={submitting}
           disabled={!label.ready}
-          label={label.text}
+          label={label.ready ? label.text : "Confirm cash"}
           onClick={() =>
             onPay([{ method: "cash", amount: due, received: value }])
           }
         >
-          <span data-testid="cash-confirm-label" className="font-sans tabular-nums">{label.ready ? "Confirm cash" : label.text}</span>
+          <span data-testid="cash-confirm-label" className="font-sans tabular-nums">Confirm cash</span>
         </PayButton>
       </div>
     </>
@@ -613,6 +629,7 @@ function SplitForm({
   submitting: boolean;
   onPay: (tenders: Tender[]) => void;
 }) {
+  const validationId = useId();
   const [rows, setRows] = useState<SplitRow[]>([
     { method: "cash", amount: "" },
     { method: "promptpay", amount: "" },
@@ -622,49 +639,61 @@ function SplitForm({
   const rest = round2(due - typed.reduce((total, row) => total + (Number(row.amount) || 0), 0));
   const tenders: Tender[] = [
     ...typed.map((row) => ({ method: row.method, amount: Number(row.amount) || 0 })),
-    { method: last.method, amount: rest },
+    { method: last.method, amount: Math.max(0, rest) },
   ];
+  const remaining = round2(due - tenders.reduce((total, tender) => total + tender.amount, 0));
   const ready = tenders.every((tender) => tender.amount > 0);
+  const emptyPayment = typed.findIndex((row) => !(Number(row.amount) > 0));
+  const validation = emptyPayment >= 0
+    ? `Enter an amount for payment ${emptyPayment + 1}.`
+    : rest <= 0 ? "Leave an amount for the final payment, or use a single payment." : "";
   const update = (index: number, patch: Partial<SplitRow>) =>
     setRows(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   const unused = () => TENDER_METHODS.find((method) => !rows.some((row) => row.method === method)) ?? "card";
 
   return (
     <>
-      <ul className="grid gap-3">
+      <ul className="grid gap-2">
         {rows.map((row, index) => {
           const isLast = index === rows.length - 1;
           return (
-            <li key={index} className="flex min-w-0 flex-wrap items-center gap-2 border-b border-border/70 pb-3">
-              <div role="group" aria-label={`Payment ${index + 1} method`} className="grid min-w-0 flex-1 basis-44 grid-cols-[repeat(auto-fit,minmax(min(100%,3rem),1fr))] rounded-full bg-muted p-1">
+            <li key={index} className="flex min-w-0 flex-wrap items-end gap-2 border-b border-border/70 pb-2">
+              <div role="group" aria-label={`Payment ${index + 1} method`} className="flex min-w-0 flex-1 basis-full flex-wrap rounded-full bg-muted p-1 sm:basis-60">
                 {TENDER_METHODS.map((method) => (
                   <Button
                     key={method}
                     size="sm"
                     variant="ghost"
-                    aria-label={TENDER_LABELS[method].short}
                     aria-pressed={row.method === method}
-                    className={cn("h-11 rounded-full px-1 text-[11px]", row.method === method && "bg-foreground text-background hover:bg-foreground hover:text-background")}
+                    className={cn("h-11 min-w-0 flex-1 rounded-full px-0.5 text-xs", method === "promptpay" ? "basis-17" : method === "transfer" ? "basis-14" : "basis-12", row.method === method && "bg-foreground text-background hover:bg-foreground hover:text-background")}
                     onClick={() => update(index, { method })}
                   >
-                    {method === "promptpay" ? "QR" : TENDER_LABELS[method].short}
+                    {TENDER_LABELS[method].short}
                   </Button>
                 ))}
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-1">
+              <div className="flex w-full min-w-0 items-end gap-1 sm:w-24">
                 {isLast ? (
-                  <output aria-label={`Payment ${index + 1} amount`} className="flex h-11 w-32 items-center justify-end rounded-lg bg-muted/50 px-3 font-sans text-sm tabular-nums">{formatMoney(rest)}</output>
+                  <div className="grid min-w-0 flex-1 gap-1">
+                    <span className="text-xs text-muted-foreground">Auto balance</span>
+                    <output aria-label={`Payment ${index + 1} amount`} className="flex h-11 items-center justify-end rounded-lg border border-dashed border-input px-3 font-sans text-sm tabular-nums">{formatMoney(Math.max(0, rest))}</output>
+                  </div>
                 ) : (
+                  <div className="relative min-w-0 flex-1">
+                  <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>
                   <Input
                     inputMode="decimal"
                     autoComplete="off"
                     aria-label={`Payment ${index + 1} amount`}
-                    className="h-11 w-32 min-w-0 text-right font-sans tabular-nums"
+                    className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums"
+                    aria-invalid={!(Number(row.amount) > 0) || remaining < 0 ? true : undefined}
+                    aria-describedby={validationId}
                     value={row.amount}
                     {...selectAll}
                     onChange={(e) => update(index, { amount: amountInput(e.target.value) })}
                     placeholder="0"
                   />
+                  </div>
                 )}
                 {rows.length > 2 ? (
                   <Button
@@ -683,13 +712,13 @@ function SplitForm({
         })}
       </ul>
       <div className="flex items-baseline justify-between gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
-        <span className="text-sm">{rest < 0 ? "Over by" : "Remaining"}</span>
-        <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", rest < 0 ? "text-destructive" : rest > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>{formatMoney(Math.abs(rest))}</output>
+        <span className="flex items-center gap-2 text-sm">{remaining === 0 ? <Check aria-hidden className="size-4" /> : null}{remaining < 0 ? "Over by" : remaining > 0 ? "Remaining" : "Fully allocated"}</span>
+        <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", remaining < 0 ? "text-destructive" : remaining > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>{formatMoney(Math.abs(remaining))}</output>
       </div>
       {rows.length < MAX_TENDERS ? (
         <Button
           variant="ghost"
-          className="justify-self-start"
+          className="self-start"
           // A new row goes before the last, which keeps taking the rest.
           onClick={() => setRows([...typed, { method: unused(), amount: "" }, last])}
         >
@@ -699,6 +728,7 @@ function SplitForm({
       <p className="text-xs text-muted-foreground">
         Take each payment on its terminal or app before the next one.
       </p>
+      <p id={validationId} aria-live="polite" className="text-xs text-amber-800 empty:hidden dark:text-amber-300">{validation}</p>
       <PayButton
         submitting={submitting}
         disabled={!ready}

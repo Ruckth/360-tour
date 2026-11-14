@@ -84,6 +84,27 @@ describe("editing a changed price", () => {
     ]);
   });
 
+  it("saves a discount on blur without sending a duplicate while that save is in flight", async () => {
+    const backend = createFixtureBackend();
+    await show(backend, await orderWithGift(backend));
+    const update = vi.spyOn(backend.useActions(), "updateLine");
+    await click(row("Gift basket").querySelector("button"));
+    const discount = panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!;
+    await act(async () => {
+      discount.focus();
+      type(discount, "10%");
+    });
+    await act(async () => {
+      discount.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      discount.blur();
+    });
+    expect(panel().textContent).toContain("Saving…");
+    await settle();
+    expect(update).toHaveBeenCalledOnce();
+    expect(update.mock.calls[0][0]).toMatchObject({ discount: { type: "percent", value: 10 } });
+    expect(panel().querySelector('[data-testid="order-due"]')?.textContent).toBe("฿900");
+  });
+
   it("doesn't offer to apply a price or discount that is only a decimal point", async () => {
     const backend = createFixtureBackend();
     await show(backend, await orderWithGift(backend));
@@ -94,7 +115,7 @@ describe("editing a changed price", () => {
     expect(discount.value).toBe(".");
     // Not a discount yet: no Apply, and the field says what it takes.
     expect([...panel().querySelectorAll("button")].some((el) => el.textContent?.startsWith("Apply"))).toBe(false);
-    expect(panel().querySelector('[data-testid="discount-echo"]')?.textContent).toBe("Type 15% or 150");
+    expect(panel().querySelector('[data-testid="discount-echo"]')?.textContent).toBe("Type 10% or ฿120");
     type(discount, "10");
     expect([...panel().querySelectorAll("button")].find((el) => el.textContent?.startsWith("Apply ฿10"))?.disabled).toBe(false);
 

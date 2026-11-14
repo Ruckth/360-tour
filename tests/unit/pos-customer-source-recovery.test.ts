@@ -86,7 +86,7 @@ it.each(["order=aaaaaaaa", "order=bbbbbbbb", "order=fxmissing000001", "booking=b
   await click("New order");
   expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
-  expect(button("New order").disabled).toBe(true);
+  expect(button("New order")).toBeUndefined();
 });
 
 it("opens an existing order through Orders after a missing link", async () => {
