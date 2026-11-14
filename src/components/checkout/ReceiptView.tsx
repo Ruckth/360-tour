@@ -273,7 +273,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       </header>
 
       <div className="grid min-w-0 content-start justify-items-center gap-3 lg:self-start">
-        <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-sans text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
+        <article ref={receiptRef} data-sentence-budget="ignore" className="pos-receipt relative w-full min-w-0 max-w-sm rounded-xl border border-border bg-card p-4 sm:p-5 font-mono text-[13px] leading-snug [overflow-wrap:anywhere] shadow-sm" aria-label="Receipt">
           {isVoid ? (
             <p className="mb-3 rounded border-2 border-destructive px-2 py-1 text-center font-bold tracking-widest text-destructive uppercase">
               Void · {order.voidReason}
