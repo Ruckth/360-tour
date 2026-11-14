@@ -23,7 +23,8 @@ describe("admin transcript", () => {
     for (const fact of ["Needs you", "Reply failed", "AI paused", "Check the late checkout", "Provider unavailable", "Could not send your reply"]) {
       expect(html).toContain(fact);
     }
-    expect(html.match(/Needs you/g)).toHaveLength(1);
+    // Desktop badge, mobile dot tooltip and mobile accessible status.
+    expect(html.match(/Needs you/g)).toHaveLength(3);
     expect(html).toContain(closed ? "reply window has ended" : "reply window closes in");
     expect(html).not.toContain("Staff is replying");
   });
@@ -68,7 +69,7 @@ describe("admin transcript", () => {
     const html = renderToStaticMarkup(createElement(AdminSessionDetail, props));
     expect(html.indexOf("Oldest guest message")).toBeLessThan(html.indexOf("Middle reply"));
     expect(html.indexOf("Middle reply")).toBeLessThan(html.indexOf("Newest guest message"));
-    expect(html.indexOf("Newest guest message")).toBeLessThan(html.indexOf("Type a reply"));
+    expect(html.indexOf("Newest guest message")).toBeLessThan(html.indexOf("Reply on Website"));
     expect(html.indexOf("Load older messages")).toBeLessThan(html.indexOf("Oldest guest message"));
   });
 

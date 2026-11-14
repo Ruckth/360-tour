@@ -84,7 +84,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await shot(page, "appointment-sheet");
       await page.getByRole("button", { name: "More appointment actions" }).click();
       await shot(page, "appointment-more");
-      await page.getByRole("menuitem", { name: "Correct…" }).click();
+      await page.getByRole("menuitem", { name: "Fix time, turnaround or status…" }).click();
       await page.getByRole("dialog", { name: "Correct" }).waitFor();
       await shot(page, "appointment-correct");
     });

@@ -67,7 +67,8 @@ describe("admin chat dashboard source", () => {
 
     // Structured sources are always offered, so SelectContent always has at least one item.
     expect(panelSource).toContain("STRUCTURED_SOURCES.map");
-    expect(panelSource).toContain("resolveOptions(reportPropertyId)");
+    expect(panelSource).toContain("compatibleFacts(facts, reportPropertyId)");
+    expect(panelSource).toContain("<ComboboxEmpty");
     expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
   });
 });

@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -62,8 +63,8 @@ type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.get
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
-      <dt className="self-center text-[13px] text-muted-foreground">{label}</dt>
+    <div className="grid min-h-12 grid-cols-[96px_minmax(0,1fr)] items-start gap-3 py-3 text-sm">
+      <dt className="pt-px text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -232,7 +233,7 @@ function BookingDetails({
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="mb-1 text-xs text-muted-foreground">Villa stay</p>
-          <SheetTitle className="font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
+          <SheetTitle className="text-balance font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
           <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
@@ -262,19 +263,6 @@ function BookingDetails({
         </div>
       </header>
 
-      <BookingFinancials
-        booking={booking}
-        initialAction={paymentShortcut}
-        villaName={villaName}
-        orders={
-          <BookingOrders
-            source={{ bookingId: booking._id }}
-            currency={booking.currency}
-            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
-            history
-          />
-        }
-      >
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {editable && booking.status === "pending" ? (
           <Button
@@ -294,6 +282,20 @@ function BookingDetails({
         {pending === "resend" || pending === "delete" || pending === "copy" || pending === "reference" ? <Spinner label="Working" /> : null}
 
       </div>
+
+      <BookingFinancials
+        booking={booking}
+        initialAction={paymentShortcut}
+        villaName={villaName}
+        orders={
+          <BookingOrders
+            source={{ bookingId: booking._id }}
+            currency={booking.currency}
+            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
+            history
+          />
+        }
+      >
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
       {editable && booking.status === "pending" && booking.historical && booking.guestEmail ? (
@@ -303,7 +305,7 @@ function BookingDetails({
       ) : null}
       {!editable ? <p className="text-xs text-muted-foreground">Reopen a cancelled booking to change it.</p> : null}
 
-      <dl className="divide-y divide-border rounded-xl border border-border bg-card px-4">
+      <Card className="px-4 shadow-none"><dl className="divide-y divide-border">
         <Detail label="Villa">
           {booking.propertyName}
           {booking.propertyStatus !== "active" ? <span className="block text-muted-foreground">Villa is {booking.propertyStatus}</span> : null}
@@ -315,9 +317,9 @@ function BookingDetails({
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
         </Detail>
-        <Detail label="Phone"><a className="inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
+        <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">
-          {booking.guestEmail ? <a className="inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
+          {booking.guestEmail ? <a className="-my-3 inline-flex min-h-11 items-center rounded underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
           {booking.guestEmail && booking.guestEmailsOff ? <span className="block text-muted-foreground">Entered without guest emails</span> : null}
         </Detail>
         <Detail label="Source">
@@ -337,7 +339,7 @@ function BookingDetails({
             </span>
           </Detail>
         ) : null}
-      </dl>
+      </dl></Card>
 
       <div className="grid gap-2 rounded-xl border border-border bg-card p-4">
         <Label className="text-[13px] text-muted-foreground" htmlFor="booking-notes">Notes (staff only)</Label>
@@ -395,6 +397,7 @@ export function EditBookingDialog({
 }) {
   const editBooking = useMutation(api.adminBookings.editBooking);
   /** The revision this edit was reviewed against; a change made meanwhile is refused, not overwritten. */
+  const [original] = useState(booking);
   const [revision] = useState(booking.revision);
   const [propertyId, setPropertyId] = useState<string>(booking.propertyId);
   const [dates, setDates] = useState({ checkIn: booking.checkIn, checkOut: booking.checkOut });
@@ -409,6 +412,10 @@ export function EditBookingDialog({
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const dirty = propertyId !== original.propertyId || dates.checkIn !== original.checkIn || dates.checkOut !== original.checkOut || guests !== String(original.guests) || guestName !== original.guestName || guestPhone !== original.guestPhone || guestEmail !== (original.guestEmail ?? "") || custom !== Boolean(original.priceOverride) || customTotal !== String(original.priceOverride?.total ?? original.total) || customReason !== (original.priceOverride?.reason ?? "") || Boolean(villaReason) || notifyChoice !== null;
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+  const close = async () => { if (!saving && await confirmDiscard()) onClose(); };
 
   const historicalStay = dates.checkIn < serverTodayIso();
   // Archived villas are offered only to record a stay that started in the past.
@@ -484,15 +491,16 @@ export function EditBookingDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
+    <Dialog open onOpenChange={(open) => (open || saving ? undefined : void close())}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit booking</DialogTitle>
+          <DialogTitle className="font-serif text-2xl font-semibold">Edit booking</DialogTitle>
           <DialogDescription>
             Changing the villa or dates recalculates the price, with the booking’s coupon if it still applies, unless you set a custom price.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
+          <fieldset disabled={saving} className="m-0 grid min-w-0 gap-4 border-0 p-0">
           <div className="grid gap-2">
             <Label id="edit-villa-label" htmlFor="edit-villa">Villa</Label>
             <VillaPicker id="edit-villa" labelId="edit-villa-label" properties={villas} value={propertyId} onChange={setPropertyId} disabled={saving} />
@@ -545,10 +553,10 @@ export function EditBookingDialog({
           </div>
 
           <div className="grid gap-3 rounded-lg border border-border p-3">
-            <label htmlFor="eb-custom" className="flex items-center gap-2 text-sm font-medium">
-              <input id="eb-custom" type="checkbox" className="size-4 accent-foreground" checked={custom} onChange={(e) => setCustom(e.target.checked)} />
+            <button id="eb-custom" type="button" role="switch" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex min-h-12 items-center justify-between rounded-md text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring">
               Custom price
-            </label>
+              <span aria-hidden className={`flex h-6 w-10 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
+            </button>
             {custom ? (
               <>
                 <div className="grid gap-2">
@@ -619,6 +627,7 @@ export function EditBookingDialog({
               Save changes
             </Button>
           </DialogFooter>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

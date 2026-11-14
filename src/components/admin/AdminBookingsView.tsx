@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from "convex/adminBookings";
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
-import { PlusIcon, SearchIcon, XIcon } from "lucide-react";
+import { Check, Clock, Ban, PlusIcon, SearchIcon, XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
@@ -27,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
@@ -162,7 +163,10 @@ function HotelBookings() {
   );
 
   const events = useMemo<CalendarEvent<EventData>[]>(
-    () => buildHotelCalendarEvents({ data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel }),
+    () => buildHotelCalendarEvents({ data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel }).map(event => {
+      const item = event.data;
+      return item?.kind === "booking" ? { ...event, title: `${item.booking.guestName}, ${data?.properties.find(p => p._id === item.booking.propertyId)?.name ?? "Villa"}, ${displayDate(item.booking.checkIn)} to ${displayDate(item.booking.checkOut)}, ${hotelStatus(statusKey(item.booking)).label}` } : event;
+    }),
     [data, villa, showCancelled, checkInTime, checkOutTime],
   );
 
@@ -230,9 +234,9 @@ function HotelBookings() {
     // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
       <TodayStrip villaName={villaName} onOpen={openQuick} />
-      <Button className="w-full sm:hidden" onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })} disabled={!data}><PlusIcon aria-hidden className="size-4" />New booking</Button>
+
       {phone && villa !== "all" ? <Button variant="outline" onClick={() => setVilla("all")} aria-label={`Showing ${villaName(villa)} only. Show all villas`}>{villaName(villa)}<XIcon aria-hidden className="size-4" /></Button> : null}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card [&_*]:border-border">
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
@@ -243,22 +247,36 @@ function HotelBookings() {
           agendaDayCount={14}
           renderEvent={({ occurrence }) => {
             const item = occurrence.event.data;
-            const status = item?.kind === "booking" ? item.booking.status : undefined;
-            return <><span aria-hidden className={status === "pending" ? "absolute inset-0 rounded-[inherit] border border-dashed border-current" : undefined} /><span className={status === "cancelled" ? "truncate text-xs line-through" : "truncate text-xs"}>{occurrence.event.title}</span></>;
+            if (item?.kind !== "booking") return <span className="w-full truncate bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_12%,transparent)_7px_8px)] text-xs">{occurrence.event.title}</span>;
+            const b = item.booking;
+            const status = statusKey(b);
+            const Icon = status === "paid" ? Check : status === "cancelled" ? Ban : Clock;
+            return <span className={`flex w-full min-w-0 items-start gap-1.5 ${status === "cancelled" ? "line-through" : ""}`}>
+              <Icon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              <span className="grid min-w-0 text-xs leading-4">
+                <span className="truncate font-medium">{b.guestName}</span>
+                <span className="truncate font-normal">{villaName(b.propertyId)}</span>
+              </span>
+              {status === "pending" ? <span aria-hidden className="absolute inset-0 rounded-[inherit] border border-dashed border-current" /> : null}
+            </span>;
           }}
-          renderAgendaEvent={({ occurrence }) => {
+          renderAgendaEvent={({ occurrence, segment }) => {
             const item = occurrence.event.data;
             if (item?.kind !== "booking") return <span className="text-sm">{occurrence.event.title}</span>;
             const b = item.booking;
+            const day = isoDate(segment.day);
+            const phase = day === b.checkIn ? "Arrives" : day === b.checkOut ? "Leaves" : "In house";
             return <span className="flex w-full min-w-0 items-center justify-between gap-3">
               <span className="grid min-w-0 gap-1 text-left">
                 <span className="text-[15px] font-medium">{b.guestName}</span>
-                <span className="text-xs text-muted-foreground">{villaName(b.propertyId)} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
-                <span className="text-xs text-muted-foreground">{hotelStatus(statusKey(b)).label}</span>
+                <span className="text-pretty text-xs text-muted-foreground">{villaName(b.propertyId)}</span>
+                <span className="text-pretty text-xs text-muted-foreground">{phase} · {displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
+                <StatusBadge {...hotelStatus(statusKey(b))} className="w-fit" />
               </span>
-              <span className="money shrink-0 font-sans text-sm tabular-nums">{formatMoney(b.owed, b.currency)}</span>
+              <span className={`money shrink-0 font-sans text-sm tabular-nums ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span>
             </span>;
           }}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No stays in this period.</p><Button onClick={() => setCreating({})} disabled={!data}>New booking</Button></div>}
           dayStartHour={8}
           dayEndHour={20}
           interval={60}
@@ -272,6 +290,7 @@ function HotelBookings() {
           onSlotClick={(slot) => {
             // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
             const checkIn = isoDate(slot.date);
+            if (slot.view === "month") openNew(checkIn, addDaysIso(checkIn, 1));
             if (slot.view === "resource" && slot.allDay && slot.resourceId) {
               openNew(checkIn, addDaysIso(checkIn, 1), slot.resourceId);
             }
@@ -318,12 +337,12 @@ function HotelBookings() {
             monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground",
             monthCellContent: "pt-7",
             monthBarOverlay: "pt-7",
-            moreIndicator: "mt-auto h-6 pointer-coarse:h-7 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
+            moreIndicator: "mt-auto h-6 pointer-coarse:h-11 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
           }}
           loading={data === undefined}
-          className="h-[calc(100dvh-13rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
+          className="[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"
         >
-          <AdminCalendarHeader compact>
+          <AdminCalendarHeader compact primaryAction={<Button size="sm" aria-label="New booking" disabled={!data} onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}><PlusIcon aria-hidden className="size-4" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New booking</span></Button>}>
             <div className="hidden sm:contents"><GuestSearch compact properties={data?.properties ?? []} onPick={openFromSearch} /></div>
             {phone ? (
               villa !== "all" ? (
@@ -342,15 +361,6 @@ function HotelBookings() {
             )}
             {data === undefined ? <Spinner label="Loading bookings" /> : null}
             <div className="ms-auto flex items-center gap-2">
-              <Button
-                size="sm"
-                className="hidden sm:inline-flex"
-                onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
-                disabled={!data}
-              >
-                <PlusIcon aria-hidden="true" className="size-4" />
-                New booking
-              </Button>
               <MoreMenu
                 label="More calendar tools"
                 disabled={!data}
@@ -388,7 +398,7 @@ function HotelBookings() {
       <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className="sm:max-w-md"><DialogHeader><DialogTitle>Search bookings</DialogTitle><DialogDescription>Find a guest by name, phone or code.</DialogDescription></DialogHeader><GuestSearch forceExpanded properties={data?.properties ?? []} onPick={booking => { setSearchOpen(false); openFromSearch(booking); }} /></DialogContent></Dialog>
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
+        <div className={view === "agenda" ? "hidden" : "hidden shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex"}>
           {HOTEL_STATUSES.map((key) => (
             <span key={key} className="flex items-center gap-1.5">
               <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: hotelStatusColor(key) }} />
@@ -400,7 +410,7 @@ function HotelBookings() {
             {notice?.text ?? <span className="pointer-coarse:hidden">Drag across days to book or block · drag a booking to move it, or its edge to change dates</span>}
           </span>
         </div>
-      </div>
+      </Card>
 
       <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={data?.properties ?? []} onClose={() => setSelected(null)} />
       {quick ? (
@@ -677,7 +687,7 @@ function GuestSearch({ properties, onPick, forceExpanded = false, compact = fals
         }}
         placeholder="Guest, phone or code"
         aria-label="Search bookings"
-        className="h-9 ps-8"
+        className="h-9 ps-8 pointer-coarse:min-h-11"
       />
       {active ? (
         <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 min-w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg">

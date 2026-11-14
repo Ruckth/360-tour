@@ -25,6 +25,7 @@ import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
 import { staffLabel } from "@/components/admin/admin-bookings-shared";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog as Modal, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetClose, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { DeskSheetContent as SheetContent } from "./DeskSheetContent";
+import { displayDate } from "./admin-bookings-shared";
 import { BookingSheet } from "./BookingSheet";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Spinner } from "@/components/ui/spinner";
@@ -53,8 +55,8 @@ type Appointment = Doc<"serviceAppointments">;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-3 py-3 text-sm">
-      <dt className="self-center text-[13px] text-muted-foreground">{label}</dt>
+    <div className="grid min-h-12 grid-cols-[96px_minmax(0,1fr)] items-start gap-3 py-3 text-sm">
+      <dt className="pt-px text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
@@ -175,16 +177,8 @@ export function AppointmentSheet({
             <header className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="mb-1 text-xs text-muted-foreground">Appointment</p>
-                <SheetTitle className="font-serif text-2xl font-semibold"><span className="sr-only">Appointment · </span>{appointment.guestName || "Unnamed guest"}</SheetTitle>
-                <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} />                <span className="inline-flex">
-                  {!editing && next ? (
-                    <Button size="sm" variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
-                      {pending === next ? <Spinner className="text-current" /> : null}
-                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
-                    </Button>
-                  ) : null}
-                </span>
-</SheetDescription>
+                <SheetTitle className="text-balance font-serif text-2xl font-semibold"><span className="sr-only">Appointment · </span>{appointment.guestName || "Unnamed guest"}</SheetTitle>
+                <SheetDescription className="mt-2"><StatusBadge {...status} /></SheetDescription>
               </div>
               <div className="flex shrink-0 items-center gap-0.5">
                 <Button size="icon" variant="ghost" aria-label="Edit appointment" disabled={feePending || pending !== null || editing} onClick={() => setEditing(true)}><Pencil aria-hidden className="size-4" /></Button>
@@ -195,7 +189,7 @@ export function AppointmentSheet({
                     items={[
                       ...actions.filter((action) => action !== next).map((action) => ({ label: ACTION_LABELS[action], onSelect: () => void run(action) })),
                       // Date or time, turnaround, status and details: one item, then a choice.
-                      { label: "Correct…", onSelect: () => setDialog("choose") },
+                      { label: "Fix time, turnaround or status…", onSelect: () => setDialog("choose") },
                       { label: "Book again", onSelect: () => onBookAgain(appointment), hidden: !canBookAgain(appointment) || next === "book_again", disabled: services.length === 0 },
                       { label: "Copy reference", onSelect: () => void copyReference() },
                       { label: "Cancel appointment", onSelect: () => setDialog("cancel"), destructive: true, hidden: !CANCELLABLE.includes(appointment.status) },
@@ -205,6 +199,15 @@ export function AppointmentSheet({
                 <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" disabled={feePending || editorSaving}><X aria-hidden className="size-4" /></Button></SheetClose>
               </div>
             </header>
+            <div className="flex gap-2 empty:hidden">
+                  {!editing && next ? (
+                    <Button size="sm" variant={balanceDue ? "outline" : "default"} onClick={() => (next === "book_again" ? onBookAgain(appointment) : run(next))} disabled={feePending || pending !== null || (next === "book_again" && services.length === 0)}>
+                      {pending === next ? <Spinner className="text-current" /> : null}
+                      {next === "book_again" ? <><Repeat aria-hidden className="size-4" />Book again</> : ACTION_LABELS[next]}
+                    </Button>
+                  ) : null}
+
+            </div>
             {editing ? (
               <AppointmentEditForm
                 key={appointment._id}
@@ -222,7 +225,7 @@ export function AppointmentSheet({
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
                 {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
                 {canBookAgain(appointment) && services.length === 0 ? <p className="text-sm text-muted-foreground">Add an active service before booking again.</p> : null}
-                <dl className="divide-y divide-border rounded-xl border border-border bg-card px-4">
+                <Card className="px-4 shadow-none"><dl className="divide-y divide-border">
                   <Detail label="Service">{appointment.serviceNameSnapshot ?? service?.name ?? "—"}</Detail>
                   <Detail label="Staff">
                     {staff ? (
@@ -249,15 +252,15 @@ export function AppointmentSheet({
                       ) : null}
                     </Detail>
                   ) : null}
-                  {appointment.guestPhone ? <Detail label="Phone"><a className="inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${appointment.guestPhone}`}>{appointment.guestPhone}</a></Detail> : null}
-                  {appointment.guestEmail ? <Detail label="Email"><a className="inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${appointment.guestEmail}`}>{appointment.guestEmail}</a></Detail> : null}
+                  {appointment.guestPhone ? <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${appointment.guestPhone}`}>{appointment.guestPhone}</a></Detail> : null}
+                  {appointment.guestEmail ? <Detail label="Email"><a className="-my-3 inline-flex min-h-11 items-center rounded hover:underline focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${appointment.guestEmail}`}>{appointment.guestEmail}</a></Detail> : null}
                   {appointment.notes ? <Detail label="Notes"><span className="whitespace-pre-wrap">{appointment.notes}</span></Detail> : null}
-                  {appointment.bookingId ? <Detail label="Villa stay"><Button variant="ghost" className="h-auto min-h-11 whitespace-normal px-0 text-left" disabled={!stay} onClick={() => setStayOpen(true)}>Open stay · {stay ? `${stay.propertyName} · ${stay.guestName}` : "Loading stay…"}</Button></Detail> : null}
+                  {appointment.bookingId ? <Detail label="Villa stay"><Button variant="link" className="-my-3 h-auto min-h-11 pointer-coarse:min-h-11 max-w-full justify-start whitespace-normal px-0 text-left font-normal text-foreground" disabled={!stay} onClick={() => setStayOpen(true)}>{stay ? `${stay.propertyName} · until ${displayDate(stay.checkOut)}` : "Loading stay…"}</Button></Detail> : null}
                   {appointment.rebookedFromId ? <Detail label="Booked again">{originalReference === undefined ? "Loading original reference…" : originalReference ? `From ${originalReference}` : "Original appointment unavailable"}</Detail> : null}
                   <Detail label="Source">
                     {sourceLabel(appointment.source)}
                   </Detail>
-                </dl>
+                </dl></Card>
                 <BookingOrders
                   source={{ appointmentId: appointment._id }}
                   currency={appointment.currency}
@@ -267,12 +270,12 @@ export function AppointmentSheet({
                 {appointment.status === "no_show" || appointment.status === "cancelled" ? (
                   <AppointmentFeeAction key={`fee:${appointment._id}`} appointment={appointment} onPendingChange={setFeePending} />
                 ) : null}
-                <AppointmentFinancials key={appointment._id} appointment={appointment} />
+                <div className="grid gap-4 border-t border-border pt-4"><AppointmentFinancials key={appointment._id} appointment={appointment} />
                 <AppointmentHistory
                   appointmentId={appointment._id}
                   staffName={staffName}
                   serviceName={(id) => serviceById.get(id)?.name ?? "Former service"}
-                />
+                /></div>
               </>
             )}
           </div>

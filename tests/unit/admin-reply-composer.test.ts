@@ -3,6 +3,7 @@ import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { useAdminReplyComposer, type AdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 
 const auth = vi.hoisted(() => ({ token: "test-token" as string | null }));
@@ -27,7 +28,7 @@ function Harness({ sessionId, replyToMessageId }: {
 }
 async function render(sessionId: Id<"chatSessions"> | null, replyToMessageId?: Id<"chatMessages">) {
   await act(async () => {
-    root.render(createElement(Harness, { sessionId, replyToMessageId }));
+    root.render(createElement(ConfirmProvider, null, createElement(Harness, { sessionId, replyToMessageId })));
   });
 }
 function deferred<T>() {

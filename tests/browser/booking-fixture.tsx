@@ -107,6 +107,6 @@ createRoot(document.getElementById("root")!).render(
     timeZone="Asia/Bangkok"
     messages={{ Booking: { checkIn: "Check in", checkOut: "Check out" } }}
   >
-    <Fixture />
+    <ConfirmProvider><Fixture /></ConfirmProvider>
   </NextIntlClientProvider>,
 );

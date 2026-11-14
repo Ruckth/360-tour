@@ -16,6 +16,7 @@ import { formatMoney } from "./labels";
 import { MONEY_METHOD_LABELS, staffLabel } from "./admin-bookings-shared";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,7 +61,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
 
 /**
  * The money at the top of the appointment sheet: what is due, Take payment (checkout for this
- * appointment, on its stay's order when it has one) and Record payment… (records a desk payment).
+ * appointment, on its stay's order when it has one) and Paid elsewhere… (records a desk payment).
  */
 /** What is still due on the appointment (0 while loading), and its financial record. */
 export function useAppointmentOwed(appointment: Appointment) {
@@ -82,7 +83,7 @@ export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: 
     <div className="flex flex-wrap items-center gap-2">
       {owed > 0 ? <Button disabled={disabled} onClick={() => router.push(`/admin/checkout?appointment=${appointment._id}`)}>Take payment</Button> : null}
       {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
-        <Button variant="outline" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Record payment…</Button>
+        <span className="inline-flex items-center gap-1"><Button variant="ghost" className="min-h-10" disabled={disabled} onClick={() => setPaying(true)}>Paid elsewhere…</Button><InfoTip label="About Paid elsewhere">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
       ) : null}
     </div>
     {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}

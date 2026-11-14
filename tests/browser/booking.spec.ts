@@ -236,16 +236,23 @@ test("historical conflict in a middle month blocks submission and is marked unav
 });
 
 test("availability loading and failures stay closed until a successful retry", async ({ page }) => {
+  // Hold the fixture's availability response while fields are filled; this
+  // tests the loading gate independently of machine load and typing speed.
+  const clockStart = new Date("2026-11-12T03:00:00Z");
+  await page.clock.install({ time: clockStart });
+  await page.clock.pauseAt(new Date(clockStart.getTime() + 1000));
   await page.goto("/tests/browser/index.html?checkIn=2025-01-30&checkOut=2025-02-03&delay&fail");
   await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
   await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeDisabled();
   await expect(page.getByRole("status")).toHaveText("Checking availability…");
+  await page.clock.runFor(1500);
   await expect(page.getByRole("alert")).toContainText("Could not load availability");
   await expect(submit).toBeDisabled();
   await page.getByRole("button", { name: "Retry availability" }).click();
   await expect(submit).toBeDisabled();
+  await page.clock.runFor(1500);
   await expect(submit).toBeEnabled();
 });
 
@@ -293,7 +300,7 @@ test("country selector changes the example, accepts international phone entry, a
   await page.getByLabel("Guest name", { exact: true }).fill("Phone Guest");
   await expect(page.getByRole("button", { name: "Create booking", exact: true })).toBeDisabled();
   await expect(page.locator("body")).not.toHaveAttribute("data-submission");
-  await page.getByRole("combobox", { name: "Country: Thailand", exact: true }).click();
+  await page.getByRole("combobox", { name: "Country: Thailand +66", exact: true }).click();
   const search = page.getByRole("combobox", { name: "Search countries" });
   await search.fill("United Kingdom");
   await page.getByRole("option", { name: /United Kingdom/ }).click();
@@ -309,7 +316,7 @@ test("returning guest selection fills contact fields and updates the country", a
   await page.getByRole("button", { name: /Returning Guest/ }).click();
   await expect(page.getByLabel("Guest name", { exact: true })).toHaveValue("Returning Guest");
   await expect(page.getByLabel("Email (optional)")).toHaveValue("returning@example.com");
-  await expect(page.getByRole("combobox", { name: "Country: United Kingdom", exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Country: United Kingdom +44", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Create booking", exact: true }).click();
   await expect(page.locator("body")).toHaveAttribute("data-submission", /"guestPhone":"\+447400123456"/);
 });
@@ -317,7 +324,7 @@ test("returning guest selection fills contact fields and updates the country", a
 test("phone country search handles empty results, keyboard selection and mobile bounds", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/tests/browser/index.html");
-  await page.getByRole("combobox", { name: "Country: Thailand", exact: true }).click();
+  await page.getByRole("combobox", { name: "Country: Thailand +66", exact: true }).click();
   const search = page.getByRole("combobox", { name: "Search countries" });
   await expect(search).toBeFocused();
   await search.fill("zzzz");
@@ -331,7 +338,7 @@ test("phone country search handles empty results, keyboard selection and mobile 
   await search.press("ArrowDown");
   await search.press("Enter");
   await expect(search).not.toBeVisible();
-  const country = page.getByRole("combobox", { name: "Country: United Kingdom", exact: true });
+  const country = page.getByRole("combobox", { name: "Country: United Kingdom +44", exact: true });
   await expect(country).toBeVisible();
   await country.click();
   await expect(search).toHaveValue("");

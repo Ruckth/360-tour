@@ -21,11 +21,13 @@ export function AdminSessionActions({
   session,
   onDeleted,
   onStatusChanged,
+  beforeLeave,
   children,
 }: {
   session: AdminSession;
   onDeleted: () => void;
   onStatusChanged?: (status: AdminSessionStatus) => void;
+  beforeLeave?: () => Promise<boolean>;
   children?: (slots: ActionSlots) => ReactNode;
 }) {
   const confirm = useConfirm();
@@ -84,6 +86,7 @@ export function AdminSessionActions({
   }
 
   async function changeStatus(nextStatus: AdminSessionStatus) {
+    if (nextStatus !== "open" && beforeLeave && !(await beforeLeave())) return;
     await setSessionStatus({ sessionId, status: nextStatus,
       ...(nextStatus === "resolved" ? { expectedGuestMessageId: session.latestGuestMessageId ?? null } : {}) });
     onStatusChanged?.(nextStatus);
@@ -96,7 +99,7 @@ export function AdminSessionActions({
       confirmLabel: "Delete chat",
       destructive: true,
     });
-    if (!confirmed) return;
+    if (!confirmed || (beforeLeave && !(await beforeLeave()))) return;
     await run(async () => {
       await deleteArchivedSession({ sessionId });
       onDeleted();
@@ -124,12 +127,12 @@ export function AdminSessionActions({
           variant="outline"
           disabled={pending}
           title="No reply needed (e)"
-          aria-label="No reply needed"
-          className="size-9 p-0 sm:w-auto sm:px-3"
+          aria-label="Done · No reply needed"
+          className="h-9 px-2 sm:px-3"
           onClick={() => void run(() => changeStatus("resolved"))}
         >
           <CheckCheck aria-hidden="true" className="size-4" />
-          <span className="hidden sm:inline">No reply needed</span>
+          <span className="sm:hidden">Done</span><span className="hidden sm:inline">No reply needed</span>
         </Button>
       ) : (
         <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void run(() => changeStatus("open"))}>

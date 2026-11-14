@@ -8,6 +8,7 @@ import { formatReceiptNumber } from "convex/lib/billMath";
 import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -231,9 +232,9 @@ function LoadedBookingFinancials({
           ) : null}
           {canPay ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <Button variant="outline" className="min-h-10" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
-                Record payment…
-              </Button>
+              <span className="inline-flex items-center gap-1"><Button variant="ghost" className="min-h-10" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+                Paid elsewhere…
+              </Button><InfoTip label="About Paid elsewhere">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
             </DisabledReason>
           ) : null}
           {money.refundable > 0 ? (
