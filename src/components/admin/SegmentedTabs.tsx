@@ -52,6 +52,7 @@ export function SegmentedTabs<T extends string>({
 
   const [overflow, setOverflow] = useState(false);
   const [scrollable, setScrollable] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -59,6 +60,7 @@ export function SegmentedTabs<T extends string>({
       // Reserve a separate button column instead of painting over a clipped tab label.
       setScrollable(list.scrollWidth > (list.parentElement?.clientWidth ?? list.clientWidth) + 2);
       setOverflow(list.scrollWidth - list.clientWidth - list.scrollLeft > 2);
+      setScrolled(list.scrollLeft > 2);
     };
     const observer = new ResizeObserver(update);
     observer.observe(list);
@@ -77,9 +79,10 @@ export function SegmentedTabs<T extends string>({
     // tab list (such as the dashboard breakdown) mounts.
     const row = list.getBoundingClientRect();
     const tab = selected.getBoundingClientRect();
-    if (tab.left < row.left) list.scrollLeft += tab.left - row.left;
-    else if (tab.right > row.right) list.scrollLeft += tab.right - row.right;
-  }, [value]);
+    if (tab.left < row.left + 16) list.scrollLeft += tab.left - row.left - 16;
+    // Leave room for the overflow fade so the selected label stays fully readable.
+    else if (tab.right > row.right - 32) list.scrollLeft += tab.right - row.right + 32;
+  }, [value, scrollable]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const index = tabs.findIndex((tab) => tab.value === value);
@@ -113,6 +116,11 @@ export function SegmentedTabs<T extends string>({
         className={cn(
           "flex min-w-0 max-w-full flex-1 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]",
           fill ? "w-full" : "gap-6",
+          scrolled && overflow
+            ? "[mask-image:linear-gradient(to_right,transparent,#000_1rem,#000_calc(100%_-_2rem),transparent)]"
+            : overflow
+              ? "[mask-image:linear-gradient(to_right,#000_calc(100%_-_2rem),transparent)]"
+              : scrolled && "[mask-image:linear-gradient(to_right,transparent,#000_1rem)]",
           className,
         )}
       >

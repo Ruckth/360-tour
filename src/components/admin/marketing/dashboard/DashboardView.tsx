@@ -298,7 +298,7 @@ export function DashboardView({
       </div>
       <div className="min-w-0">
         <Select value={propertyFilter} onValueChange={setProperty} disabled={!report}>
-          <SelectTrigger aria-label="Property" className="h-10 w-full sm:h-10 pointer-coarse:h-12 sm:w-56">
+          <SelectTrigger aria-label="Property" className="h-10 w-full border-border shadow-none sm:h-10 pointer-coarse:h-12 sm:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -345,8 +345,8 @@ export function DashboardView({
     <div className="grid gap-1 text-xs leading-5 text-muted-foreground">
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span role="status" className="inline-flex items-center gap-1.5 font-medium text-foreground">
-          <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "animate-pulse bg-amber-500" : "bg-emerald-500")} />
-          Updated {formatStamp(report.asOf)}
+          <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "motion-safe:animate-pulse bg-amber-500" : "bg-emerald-500")} />
+          {busy ? "Updating… · showing previous figures" : `Updated ${formatStamp(report.asOf)}`}
         </span>
         <span>
           {report.basis === "cash" ? "Paid or refunded" : "Sales made"} {formatRange(report.from, report.to)}
@@ -368,7 +368,7 @@ export function DashboardView({
         </p>
       ) : null}
     </div>
-  ) : null;
+  ) : state.status === "loading" ? <p role="status" className="text-xs text-muted-foreground">Updating…</p> : null;
 
   let body;
   if (state.status === "loading") body = <LoadingBody />;
@@ -512,7 +512,7 @@ export function DashboardView({
             : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
         </Callout>
       ) : null}
-      <div aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
+      <div role="region" aria-label="Report results" aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
         {body}
       </div>
 

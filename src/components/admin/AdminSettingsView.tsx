@@ -10,10 +10,11 @@ import {
   type EffectiveSettings,
   type SettingsInput,
 } from "convex/lib/siteSettings";
-import { Check, RotateCw } from "lucide-react";
+import { RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { InfoTip } from "@/components/ui/info-tip";
@@ -23,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TimePicker } from "@/components/ui/time-picker";
 import { Input } from "@/components/ui/input";
 import { FieldLabel as Label } from "@/components/ui/label";
+import { Toast } from "@/components/ui/toast";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
@@ -37,7 +39,7 @@ import { useStaffAccess } from "./staff-access";
 import { TeamSettings } from "./TeamSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
-import { TONES, statusMeta, type StatusMeta } from "./status-tones";
+import { statusMeta, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
 const TABS = ADMIN_SETTINGS_TABS;
@@ -151,7 +153,7 @@ const SECTIONS: Record<
   },
   business: {
     title: "Business profile",
-    description: "Used by the AI concierge, emails and the admin. The public website still shows its built-in content.",
+    description: "Used by the AI concierge, guest emails and the admin.",
     fields: () => [
       { name: "businessName", label: "Business name", required: true },
       { name: "tagline", label: "Tagline" },
@@ -218,14 +220,14 @@ const SECTIONS: Record<
         name: "fromName",
         label: "Sender name",
         placeholder: s.businessName,
-        hint: "Display name only. The sender address stays in the EMAIL_FROM environment variable.",
+        hint: "Name shown on guest emails; the sender address is managed separately.",
       },
       {
         name: "ownerNotificationEmail",
         label: "Owner notification email",
         type: "email",
-        placeholder: "Uses OWNER_NOTIFICATION_EMAIL when blank",
-        hint: "Receives new-booking notifications and staff alerts.",
+        placeholder: "Default notification email",
+        hint: "Receives new-booking notifications and staff alerts; leave blank to use the default.",
       },
       { name: "footer", label: "Footer", type: "textarea", hint: "Shown at the bottom of guest emails. Leave blank for none.", wide: true },
     ],
@@ -292,7 +294,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
 
   const dirty = JSON.stringify(values) !== JSON.stringify(savedValues);
   const usingDefaults = section === "business" && !settings.updatedAt && revision === settings.revision;
-  const showSaveBar = !readOnly && (dirty || state.saved || usingDefaults);
+  const showSaveBar = !readOnly && (dirty || Boolean(state.error));
   useEffect(() => { onDirtyChange(dirty && !readOnly); return () => onDirtyChange(false); }, [dirty, readOnly, onDirtyChange]);
   useEffect(() => {
     if (!state.saved) return;
@@ -416,14 +418,8 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
         </fieldset>
 
-        {state.error ? (
-          <Alert variant="destructive">
-            <AlertDescription>{state.error}</AlertDescription>
-          </Alert>
-        ) : null}
-
-      <Card className="px-5 py-3 lg:px-6">
-        <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : section !== "business" ? "Using built-in defaults" : readOnly ? "Default settings are active." : "Default settings are active. Select Save to keep them."}>
+      <Card className="px-5 py-3 lg:px-6 [&>details]:border-t-0">
+        <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : usingDefaults ? "Using built-in defaults" : undefined}>
           {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or discard your changes first.</p> : null}
           <RecordHistoryPanel
             entityType="settings"
@@ -434,17 +430,16 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             disabled={state.saving || dirty || settings.revision > revision}
           />
         </HistoryDisclosure>
+        {usingDefaults && !readOnly ? <Button type="submit" variant="outline" disabled={state.saving || dirty} className="mb-2">{state.saving ? <Spinner label="Saving defaults" /> : null}Save defaults</Button> : null}
       </Card>
 
-        {showSaveBar ? <div className="sticky bottom-[var(--admin-tab-bar,0px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur">
-          <span role="status" className="mr-auto text-sm text-muted-foreground">{state.saved ? <span className={cn("inline-flex items-center gap-1", TONES.success.text)}><Check aria-hidden className="size-4" />Saved</span> : dirty ? "Unsaved changes" : "Using built-in defaults"}</span>
-          {dirty || usingDefaults ? <>
-            {dirty ? <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setValues(savedValues); setTouched(new Set()); setSubmitted(false); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button> : null}
-            <Button type="submit" disabled={state.saving}>{state.saving ? <Spinner label="Saving" className="text-current" /> : null}Save</Button>
-          </> : null}
-        </div> : null}
+        {showSaveBar ? <StickyActionBar data-testid="settings-save-bar">
+          <span role={state.error ? "alert" : "status"} className={cn("mr-auto text-sm", state.error ? "text-destructive" : "text-muted-foreground")}>{state.error || "Unsaved changes"}</span>
+          {dirty ? <Button type="button" variant="ghost" disabled={state.saving} onClick={() => { setValues(savedValues); setTouched(new Set()); setSubmitted(false); setState({ saving: false, saved: false, error: "" }); }}>Discard</Button> : null}
+          <Button type="submit" disabled={state.saving}>{state.saving ? <Spinner label="Saving" className="text-current" /> : null}Save</Button>
+        </StickyActionBar> : null}
       </form>
-
+      {state.saved ? <Toast current={{ id: revision, message: "Saved" }} /> : null}
     </Panel>
   );
 }

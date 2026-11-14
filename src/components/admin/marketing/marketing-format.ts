@@ -139,12 +139,12 @@ export function benefitLabel(benefit: CouponBenefit) {
   return benefit.kind === "percent" ? `${benefit.percent}% off` : `${thb(benefit.amount)} off`;
 }
 
-/** "Accommodation, all villas" / "Accommodation: Mossbell Garden Suite" / "Spa services" … */
+/** Consistent guest-facing scope names for selectors, summaries and lists. */
 export function scopeLabel(scope: CouponScope, propertySlugs: readonly string[] | undefined, villaName: (slug: string) => string) {
   const villas = propertySlugs?.length ? propertySlugs.map(villaName).join(", ") : "all villas";
-  if (scope === "services") return "Spa services";
-  if (scope === "accommodation") return `Accommodation, ${villas}`;
-  return `Accommodation (${villas}) + spa services`;
+  if (scope === "services") return "Spa";
+  if (scope === "accommodation") return `Stays, ${villas}`;
+  return `Stays (${villas}) & spa`;
 }
 
 type Rules = Pick<
@@ -152,15 +152,15 @@ type Rules = Pick<
   "benefit" | "bookFrom" | "bookTo" | "stayFrom" | "stayTo" | "minNights" | "minEligibleSubtotal" | "maxSaving"
 >;
 
-/** "Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000", or "No limits". */
-export function couponRulesLine(rules: Rules) {
+/** "Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000", or "No minimum". */
+export function couponRulesLine(rules: Rules, { includeDates = true }: { includeDates?: boolean } = {}) {
   const items: string[] = [];
-  if (rules.bookFrom || rules.bookTo) items.push(`book ${formatRange(rules.bookFrom, rules.bookTo)}`);
-  if (rules.stayFrom || rules.stayTo) items.push(`stay ${formatRange(rules.stayFrom, rules.stayTo)}`);
+  if (includeDates && (rules.bookFrom || rules.bookTo)) items.push(`book ${formatRange(rules.bookFrom, rules.bookTo)}`);
+  if (includeDates && (rules.stayFrom || rules.stayTo)) items.push(`stay ${formatRange(rules.stayFrom, rules.stayTo)}`);
   if (rules.minNights) items.push(`min ${rules.minNights} ${rules.minNights === 1 ? "night" : "nights"}`);
   if (rules.minEligibleSubtotal) items.push(`min spend ${thb(rules.minEligibleSubtotal)}`);
   if (rules.benefit.kind === "percent" && rules.maxSaving) items.push(`max saving ${thb(rules.maxSaving)}`);
-  return items.length ? capitalize(items.join(" · ")) : "Ongoing, no minimum";
+  return items.length ? capitalize(items.join(" · ")) : "No minimum";
 }
 
 /**

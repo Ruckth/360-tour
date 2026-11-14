@@ -7,6 +7,7 @@ import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "luci
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -239,7 +240,7 @@ function CouponBuilder({
   const shown = (key: keyof CouponFormErrors) => (submitted ? errors[key] : undefined);
   const rules = couponRulesFrom(form);
   const validDiscount = !errors.value && Number(form.value.replace(/,/g, "")) > 0;
-  const summaryScope = form.scope === "accommodation" ? "Villa nights" : form.scope === "services" ? "Spa services" : "Stays & spa";
+  const summaryScope = form.scope === "accommodation" ? "Stays" : form.scope === "services" ? "Spa" : "Stays & spa";
   const code = normalizeCouponCode(form.code);
   const changedRules = detail ? rulesChanged(rules, detail.rules) : true;
   // Compared on what would be saved, so formatting ("1500" vs "1,500"), villa order or spaces aren't edits.
@@ -457,7 +458,7 @@ function CouponBuilder({
                     autoComplete="off"
                     autoCapitalize="characters"
                     spellCheck={false}
-                    className="h-11 pointer-coarse:h-12 font-mono font-semibold tracking-wide placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
+                    className="h-11 pointer-coarse:h-12 font-mono font-semibold tracking-wide placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
                   />
                 )}
                 {codeLocked ? (
@@ -484,7 +485,7 @@ function CouponBuilder({
                   className="money h-11 pointer-coarse:h-12 min-w-0 font-semibold placeholder:font-normal placeholder:text-muted-foreground"
                 />
                 <ToggleGroup variant="segmented" tone="subtle" value={form.kind} onValueChange={(kind: CouponForm["kind"]) => { set("kind", kind); setDiscountText(kind === "percent" && form.value ? `${form.value}%` : form.value); }} aria-label="Discount unit" className="shrink-0">
-                  <ToggleGroupItem value="percent" aria-label="% percent" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="฿ baht" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">฿</ToggleGroupItem>
+                  <ToggleGroupItem value="percent" aria-label="Percent" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="Baht" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">฿</ToggleGroupItem>
                 </ToggleGroup>
                 </div>
                 {shown("value") ? err("value") : discountEcho(form, properties) ? (
@@ -670,7 +671,7 @@ function CouponBuilder({
 
         <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
           {validDiscount ? <Card role="region" aria-labelledby={`${id}-summary`}>
-            <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <header className="flex items-center gap-2 px-4 pt-4">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
                 Summary
               </h3>
@@ -688,7 +689,7 @@ function CouponBuilder({
                     ["Applies to", scopeLabel(rules.scope, rules.propertySlugs, villaName)],
                     ["Booking", formatRange(rules.bookFrom, rules.bookTo)],
                     ["Stay", formatRange(rules.stayFrom, rules.stayTo)],
-                    ["Rules", couponRulesLine(rules)],
+                    ["Rules", couponRulesLine(rules, { includeDates: false })],
                   ] as const
                 ).map(([term, value]) => (
                   <div key={term} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-2">
@@ -805,13 +806,13 @@ function CouponBuilder({
         </aside>
       </div>
 
-      <div data-admin-bottom-bar="sm" className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
+      <StickyActionBar position="fixed" data-admin-bottom-bar="sm" className="flex-nowrap gap-2 sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          <span className={cn("block text-pretty text-[13px] text-foreground", !validDiscount && code && "truncate font-mono text-sm font-semibold")}>{validDiscount ? `${benefitLabel(rules.benefit)} · ${summaryScope}` : code || "New coupon"}</span>
+          <span className={cn("block text-pretty text-[13px] text-foreground", !validDiscount && code && "truncate font-mono text-sm font-semibold")}>{validDiscount ? `${benefitLabel(rules.benefit)} · ${summaryScope}` : code || "Add a code and discount"}</span>
           {saveHint ? <span aria-hidden>{saveHint}</span> : null}
         </p>
         {headerActions()}
-      </div>
+      </StickyActionBar>
 
       {detail && canQr ? (
         <CouponQrDialog

@@ -43,7 +43,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     await open(page, size);
     const counts = await census(page);
     expect(counts.controlsOnPage, "controls on the page").toBeLessThanOrEqual(14);
-    await expect(page.getByRole("radio", { name: "% percent" })).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("radio", { name: "Percent" })).toHaveAttribute("aria-checked", "true");
     await expect(page.getByRole("textbox", { name: "Discount", exact: true })).toHaveAttribute("placeholder", "e.g. 20");
     const discountBox = (await page.getByRole("textbox", { name: "Discount", exact: true }).boundingBox())!;
     const unitBox = (await page.getByRole("radiogroup", { name: "Discount unit", exact: true }).boundingBox())!;
@@ -214,7 +214,7 @@ test("the discount reads like checkout's: 20% is a percent with its nightly savi
   await expect(page.getByText("20% = ฿840 a night")).toBeVisible();
   await discount.fill("150%");
   await page.getByRole("textbox", { name: "Code", exact: true }).click();
-  await page.getByRole("radio", { name: "฿ baht" }).click();
+  await page.getByRole("radio", { name: "Baht" }).click();
   await discount.fill("500");
   await expect(page.getByText("฿500 off", { exact: true })).toBeVisible();
   await expect(page.getByText(/a night$/)).toHaveCount(0);
@@ -274,5 +274,5 @@ test("a valid discount reveals a summary below the stable single-column form", a
   await expect(summary).toHaveCount(0);
   await page.setViewportSize(SIZES.phone);
   await discount.fill("20");
-  await expect(page.locator('[data-admin-bottom-bar="sm"]')).toContainText("20% off · Villa nights");
+  await expect(page.locator('[data-admin-bottom-bar="sm"]')).toContainText("20% off · Stays");
 });

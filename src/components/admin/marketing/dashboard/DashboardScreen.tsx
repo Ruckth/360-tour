@@ -37,7 +37,7 @@ export function DashboardScreen() {
   const basis = request.basis;
   useEffect(() => {
     let live = true;
-    setState((current) => (current.status === "ready" ? { status: "ready", report: current.report, refreshing: true } : { status: "loading" }));
+    setState((current) => (current.status === "ready" && current.report.from === from && current.report.to === to && current.report.basis === basis ? { status: "ready", report: current.report, refreshing: true } : { status: "loading" }));
     convex.query(api.marketingReport.getReport, { from, to, basis }).then(
       (report) => live && setState({ status: "ready", report }),
       (error: unknown) => {

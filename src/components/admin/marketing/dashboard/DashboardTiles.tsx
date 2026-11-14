@@ -16,7 +16,7 @@ const HINTS: Record<string, string> = {
   "First-payment sales": "First paid in this period",
   "Discounts granted": "Coupon savings",
   "Tracked visits": "Visitors who allowed tracking",
-  "Paid bookings": "Stays paid",
+  "Paid bookings": "From tracked links",
   "Booked rate": "Visits that booked",
 };
 function Tile({ label, value, children }: { label: string; value: ReactNode; children: ReactNode }) {
@@ -51,7 +51,6 @@ const ALL_ONLY = "All properties only";
 
 export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals: BusinessTotals; onAddSpend: (campaignIds: string[]) => void }) {
   const { tracked, unknown, staff, messaging, all } = totals;
-  const otherPaid = all.paidOther;
   const tiles = p.cash ? (
     <>
       <Tile label="Collected" value={thb(all.collected)}>
@@ -72,25 +71,13 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
   ) : (
     <>
       <Tile label="Tracked visits" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")}>
-        {totals.trackedSessions === null ? ALL_ONLY : "Visitors who allowed tracking, including direct arrivals. Visits, not people."}
+        {totals.trackedSessions === null ? ALL_ONLY : "Visits with tracking consent include direct arrivals."}
       </Tile>
       <Tile label="Paid bookings" value={tracked.paid.toLocaleString("en-US")}>
-        Paid stays from tracked links · <Strong>{all.paid.toLocaleString("en-US")}</Strong> paid stays in all
-        {otherPaid ? (
-          <>
-            {" "}
-            · {pluralize(otherPaid, "checkout order")} {otherPaid === 1 ? "counts" : "count"} in money only
-          </>
-        ) : null}
+        Of {all.paid.toLocaleString("en-US")} paid stays, {tracked.paid.toLocaleString("en-US")} came from tracked links; {pluralize(all.paidOther, "checkout order")} {all.paidOther === 1 ? "counts" : "count"} in money only.
       </Tile>
       <Tile label="Booked rate" value={totals.conv === null ? "—" : formatPercent(totals.conv)}>
-        {totals.trackedSessions === null
-          ? ALL_ONLY
-          : totals.trackedSessions
-            ? `${totals.convertedSessions.toLocaleString("en-US")} converted sessions ÷ ${totals.trackedSessions.toLocaleString("en-US")} sessions started in range`
-            : "No consented sessions in these dates"}
-        <span className="block">Consented direct visits can also book, even without a tracked sales link.</span>
-        <span className="block">{pluralize(tracked.currentLinkPaidStays, "current-link paid stay")} without a session · counted separately</span>
+        {totals.trackedSessions === null ? ALL_ONLY : "Paid bookings from tracked visits ÷ tracked visits in these dates, including consented direct visits."}
       </Tile>
       <Tile label="Discounts granted" value={thb(tracked.discount)}>
         Coupons on tracked sales · <Strong>{thb(all.discount)}</Strong> business total
@@ -105,9 +92,6 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
     { key: "staff", label: "Staff-entered", money: staff, color: "var(--chart-s0b)" },
     { key: "messaging", label: "Messaging", money: messaging, color: "var(--chart-s5)" },
   ].filter((part) => part.key === "tracked" || part.money.sales > 0);
-  const positive = Math.max(1, parts.reduce((total, part) => total + Math.max(0, part.money.net), 0));
-  const share = (net: number) => Math.round((Math.max(0, net) / positive) * 100);
-  const countOf = (m: { paid: number; paidOther: number; couponOnlySettlements: number }) => (p.cash ? `${m.paid} first paid · ${m.couponOnlySettlements} coupon-only` : `${m.paid} paid${m.paidOther ? ` + ${m.paidOther} orders` : ""}`);
 
   const trackingBreakdown = <>
 <div role="img" aria-label={`Net collected by tracking: ${parts.map((part) => `${part.label} ${thb(part.money.net)}`).join(", ")}`} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
@@ -129,7 +113,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
       </header>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <Stat hero label="Net collected" value={thb(p.cash ? all.net : tracked.net)} hint={p.cash ? "Collected minus refunds" : undefined}
-          info={<>Net is collected minus refunds, not profit. {p.cash ? `Tracked links: ${thb(tracked.net)} net.` : `Business total: ${thb(all.net)} after ${thb(all.refunded)} refunds.`} {countOf(all)}. {parts.map((part) => `${part.label}: ${countOf(part.money)} · ${share(part.money.net)}%`).join(". ")}</>}
+          info="Collected minus refunds (not profit); business total includes untracked and staff-entered sales."
           className="col-span-2 flex flex-col p-4 sm:p-6">
           <div className="mt-2 grid gap-3 border-t border-border pt-3 sm:mt-auto sm:pt-4">
             <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">

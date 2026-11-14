@@ -57,11 +57,12 @@ describe("marketing labels", () => {
     expect(benefitLabel({ kind: "percent", percent: 20 })).toBe("20% off");
     expect(benefitLabel({ kind: "fixed", amount: 500 })).toBe("฿500 off");
     const name = (slug: string) => ({ "mossbell-garden-suite": "Mossbell Garden Suite" })[slug] ?? slug;
-    expect(scopeLabel("accommodation", undefined, name)).toBe("Accommodation, all villas");
-    expect(scopeLabel("accommodation", ["mossbell-garden-suite"], name)).toBe("Accommodation, Mossbell Garden Suite");
-    expect(scopeLabel("services", undefined, name)).toBe("Spa services");
+    expect(scopeLabel("accommodation", undefined, name)).toBe("Stays, all villas");
+    expect(scopeLabel("accommodation", ["mossbell-garden-suite"], name)).toBe("Stays, Mossbell Garden Suite");
+    expect(scopeLabel("services", undefined, name)).toBe("Spa");
+    expect(couponRulesLine(F1, { includeDates: false })).toBe("Min 2 nights · max saving ฿3,000");
     expect(couponRulesLine(F1)).toBe("Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000");
-    expect(couponRulesLine({ benefit: { kind: "percent", percent: 10 } })).toBe("Ongoing, no minimum");
+    expect(couponRulesLine({ benefit: { kind: "percent", percent: 10 } })).toBe("No minimum");
     expect(generatedTerms(F1)).toBe(
       "Book by 30 Nov 2026 · Stay 1 Nov–20 Dec 2026 · Min 2 nights · Max saving ฿3,000 · While codes last · One code per booking",
     );

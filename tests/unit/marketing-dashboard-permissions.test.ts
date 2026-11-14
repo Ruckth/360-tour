@@ -44,3 +44,33 @@ it("retains operational booking details for system administrators", async () => 
   expect(mocked.bookingSheet).toHaveBeenCalledWith(expect.objectContaining({ bookingId: "booking" }));
   expect(mocked.query).toHaveBeenCalledWith("properties:adminList", {});
 });
+
+it.each(["range", "basis"] as const)("clears previous figures while a different %s loads", async (change) => {
+  mocked.client.query.mockImplementationOnce((_ref, args) => Promise.resolve({ ...firstRunReport(), ...args }));
+  await render("admin");
+  expect(mocked.view!.state.status).toBe("ready");
+  const request = mocked.view!.request;
+  let finish!: (report: ReturnType<typeof firstRunReport>) => void;
+  mocked.client.query.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => mocked.view!.onRequestChange(change === "basis"
+    ? { ...request, basis: "cash" }
+    : { ...request, range: { preset: "custom", from: "2026-10-01", to: "2026-10-31" } }));
+  expect(mocked.view!.state).toEqual({ status: "loading" });
+  const next = mocked.view!.request;
+  await act(async () => finish({ ...firstRunReport(), from: next.range.from, to: next.range.to, basis: next.basis }));
+  expect(mocked.view!.state).toMatchObject({ status: "ready", report: { from: next.range.from, to: next.range.to, basis: next.basis } });
+});
+
+it("retains figures for a same-scope refresh and preserves them on failure", async () => {
+  mocked.client.query.mockImplementationOnce((_ref, args) => Promise.resolve({ ...firstRunReport(), ...args }));
+  await render("admin");
+  const initial = mocked.view!.state;
+  expect(initial.status).toBe("ready");
+  let fail!: (error: Error) => void;
+  mocked.client.query.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+  await act(async () => mocked.view!.onRetry());
+  expect(mocked.view!.state).toMatchObject({ status: "ready", refreshing: true });
+  if (initial.status === "ready") expect(mocked.view!.state).toHaveProperty("report", initial.report);
+  await act(async () => fail(new Error("Refresh unavailable")));
+  expect(mocked.view!.state).toMatchObject({ status: "ready", refreshError: "Refresh unavailable" });
+});
