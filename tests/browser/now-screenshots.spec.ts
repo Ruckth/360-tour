@@ -7,7 +7,13 @@ test.skip(
   process.env.CAPTURE_NOW !== "1",
   "Set CAPTURE_NOW=1 to capture current screens.",
 );
-test.use({ colorScheme: "light", timezoneId: "Asia/Bangkok" });
+// Front-desk iPads and phones are touch screens; desktop captures opt out below.
+test.use({
+  colorScheme: "light",
+  timezoneId: "Asia/Bangkok",
+  hasTouch: true,
+  isMobile: true,
+});
 const sizes = {
   ipad: { width: 1180, height: 820 },
   phone: { width: 390, height: 844 },
@@ -152,13 +158,27 @@ const pairs: Array<
   ["ux-p5-new-booking-phone", "new-booking", "phone"],
   ["ux-p5-stay-sheet-ipad", "stay-sheet", "ipad"],
   ["ux-p6-phone-chat", "chats", "phone"],
-  ["ux-p6-desktop-missing", "missing-information", "ipad"],
+  ["ux-p6-desktop-missing", "missing-information", "dashboard-desktop"],
   ["ux-p7-team-phone", "settings-team", "phone"],
   ["ux-p7-business-desktop", "settings-business", "business-desktop", true],
   ["ux-p8-new-coupon-phone", "new-coupon", "phone", true],
   ["ux-p8-dashboard-desktop", "marketing-dashboard", "dashboard-desktop"],
 ];
-for (const [file, state, size, fullPage] of pairs)
+const isDesktop = (size: string) => size.endsWith("-desktop");
+for (const desktop of [false, true])
+  test.describe(desktop ? "desktop" : "touch", () => {
+    if (desktop) test.use({ hasTouch: false, isMobile: false });
+    for (const [file, state, size, fullPage] of pairs.filter(
+      ([, , size]) => isDesktop(size) === desktop,
+    ))
+      pairTest(file, state, size, fullPage);
+  });
+function pairTest(
+  file: string,
+  state: string,
+  size: (typeof pairs)[number][2],
+  fullPage?: boolean,
+) {
   test(file, async ({ page }) => {
     await page.setViewportSize(
       size === "business-desktop"
@@ -170,6 +190,7 @@ for (const [file, state, size, fullPage] of pairs)
     await scene(page, state, size === "phone");
     await shot(page, file, fullPage);
   });
+}
 for (const [size, viewport] of Object.entries(sizes))
   for (const state of [
     "checkout-start",
