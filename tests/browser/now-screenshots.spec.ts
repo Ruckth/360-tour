@@ -245,3 +245,30 @@ for (const [size, state] of [
     }
     await shot(page, `ux-p1-${size}-${state}`);
   });
+
+// Round 3 checkout evidence also covers desktop, plus the previously missing sheet sizes.
+test.describe("checkout desktop", () => {
+  test.use({ hasTouch: false, isMobile: false, viewport: { width: 1440, height: 900 } });
+  for (const state of ["checkout-start", "line-open", "cash-panel", "cash-1500", "split", "receipt", "refund", "orders"]) {
+    test(`extra-${state}-desktop`, async ({ page }) => {
+      await scene(page, state, false);
+      await shot(page, `extra-${state}-desktop`);
+    });
+  }
+  test("extra-approvals-desktop", async ({ page }) => {
+    await open(page, "staff-roles", "?role=manager&scenario=pending");
+    await page.getByTestId("approvals-button").click();
+    await shot(page, "extra-approvals-desktop");
+  });
+});
+test("extra-orders-ipad", async ({ page }) => {
+  await page.setViewportSize(sizes.ipad);
+  await scene(page, "orders", false);
+  await shot(page, "extra-orders-ipad");
+});
+test("extra-approvals-phone", async ({ page }) => {
+  await page.setViewportSize(sizes.phone);
+  await open(page, "staff-roles", "?role=manager&scenario=pending");
+  await page.getByTestId("approvals-button").click();
+  await shot(page, "extra-approvals-phone");
+});

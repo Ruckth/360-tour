@@ -147,8 +147,8 @@ it("has one closed History, and each tab's ledgers load only when first shown", 
   }
   await receipt(backend, orderId);
   expect(mounted).not.toHaveBeenCalled();
-  // One closed section, nothing else collapsed or repeated.
-  expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["History"]);
+  // One closed History plus the phone receipt preview; no repeated ledgers.
+  expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["Receipt preview", "History"]);
   expect(document.querySelector('[aria-label="Payment record"]')).toBeNull();
 
   await toggle("History");
@@ -269,7 +269,8 @@ it("shows cashiers no History; Correct payment and Void… stay, as requests", a
   };
   await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));
   expect(document.querySelector('[data-testid="receipt-history"]')).toBeNull();
-  expect(document.querySelector("summary")).toBeNull();
+  expect([...document.querySelectorAll("summary")].map(s => s.textContent)).toEqual(["Receipt preview"]);
+  expect(document.querySelector<HTMLDetailsElement>("details.receipt-preview")?.open).toBe(false);
   expect(button("Link appointment")).toBeUndefined();
   expect((await receiptActions()).map(i => i.label)).toEqual(["Share", "Use 58 mm paper", "Correct payment", "Void…"]);
 });

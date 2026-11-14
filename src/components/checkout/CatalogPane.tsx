@@ -122,7 +122,7 @@ export function CatalogPane({
     return next;
   });
 
-  const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[53rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
+  const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[46rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
 
   return (
     <section aria-label="Catalog" className={cn("@container flex min-h-0 flex-col", className)}>

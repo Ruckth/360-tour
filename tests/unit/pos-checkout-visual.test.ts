@@ -210,7 +210,11 @@ const LAYERS: Record<string, () => Promise<void>> = {
     await click(tab("Extras"));
     await click(buttonText("Custom item"));
   },
-  "Order sheet": () => click(document.querySelector('[aria-label$="open the order"]')),
+  "Order sheet": async () => {
+    await click(tile("Thai massage 60"));
+    await settle();
+    await click(document.querySelector('[aria-label$="open the order"]'));
+  },
 };
 
 describe("checkout theme", () => {

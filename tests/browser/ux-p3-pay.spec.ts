@@ -30,7 +30,7 @@ async function orderPanel(page: Page, size: UxViewport): Promise<Locator> {
   return sheet;
 }
 
-const receipt = (page: Page) => page.getByRole("article", { name: "Receipt" });
+const receipt = (page: Page) => page.getByRole("article", { name: "Receipt", includeHidden: true });
 
 for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
   test.describe(size, () => {
@@ -94,7 +94,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await panel.getByRole("button", { name: "Order", exact: true }).click();
       await expect(panel.getByRole("button", { name: "Split payment", exact: true })).toBeFocused();
       await panel.getByRole("button", { name: "Split payment", exact: true }).click();
-      await expect(pay.getByRole("group", { name: "Payment 1 method" })).toBeVisible();
+      await expect(pay.getByRole("radiogroup", { name: "Payment 1 method" })).toBeVisible();
       const tenders = pay.getByRole("group", { name: "Take payment by" });
       await tenders.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }).click();
       await expect(pay.getByLabel("Cash received")).toHaveValue("1,200");
@@ -111,7 +111,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(panel.getByTestId("order-due")).toHaveText("฿1,200");
       await count.tap(panel.getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true }), "Cash");
       await count.tap(panel.getByRole("button", { name: "Confirm cash · ฿1,200 received · no change" }), "Confirm");
-      await expect(receipt(page)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Receipt R-/ })).toBeVisible();
       expect({ taps: count.taps, typed: count.typed, scrolls: count.scrolls }, count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
     });
 
@@ -128,7 +128,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const amountBox = await amountField.boundingBox();
       expect(amountBox!.height, "cash entry stays rendered after a note shortcut").toBeGreaterThanOrEqual(56);
       await count.tap(panel.getByRole("button", { name: "Confirm cash · ฿1,500 received · change ฿300" }), "Confirm");
-      await expect(receipt(page)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Receipt R-/ })).toBeVisible();
       await expect(receipt(page)).toContainText("฿1,500");
       await expect(receipt(page)).toContainText("฿300");
       expect({ taps: count.taps, typed: count.typed, scrolls: count.scrolls }, count.log.join("\n")).toEqual({ taps: 4, typed: 0, scrolls: 0 });
@@ -139,16 +139,16 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const panel = await orderPanel(page, size);
       const count = new TaskCounter();
       await count.tap(panel.getByRole("button", { name: "Split payment", exact: true }), "Split payment");
-      for (const method of await panel.getByRole("group", { name: "Payment 2 method" }).getByRole("button").all()) {
+      for (const method of await panel.getByRole("radiogroup", { name: "Payment 2 method" }).getByRole("radio").all()) {
         const width = await method.evaluate((el) => ({ scroll: el.scrollWidth, client: el.clientWidth }));
         expect(width.scroll, "split method label fits its segment").toBeLessThanOrEqual(width.client + 1);
       }
-      await count.tap(panel.getByRole("group", { name: "Payment 2 method" }).getByRole("button", { name: "Card", exact: true }), "Card");
+      await count.tap(panel.getByRole("radiogroup", { name: "Payment 2 method" }).getByRole("radio", { name: "Card", exact: true }), "Card");
       await count.type(panel.getByLabel("Payment 1 amount"), "500", "cash amount");
       await expect(panel.getByTestId("split-remaining")).toHaveText("Covered · ฿1,200 in 2 payments");
       await expectAtMostSentences(panel.getByTestId("pay-panel"), 1);
       await count.tap(panel.getByRole("button", { name: "Confirm ฿500 cash + ฿700 card" }), "Confirm");
-      await expect(receipt(page)).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Receipt R-/ })).toBeVisible();
       expect({ taps: count.taps, typed: count.typed, scrolls: count.scrolls }, count.log.join("\n")).toEqual({ taps: 3, typed: 1, scrolls: 0 });
     });
 
@@ -268,7 +268,7 @@ test.describe("phone bottom bar", () => {
     // Opening the sheet records nothing: the order is still unpaid until Confirm.
     await expect(receipt(page)).toHaveCount(0);
     await count.tap(cash.getByRole("button", { name: "Confirm cash · ฿1,200 received · no change" }), "Confirm");
-    await expect(receipt(page)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Receipt R-/ })).toBeVisible();
     expect({ taps: count.taps, typed: count.typed, scrolls: count.scrolls }, count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
   });
 

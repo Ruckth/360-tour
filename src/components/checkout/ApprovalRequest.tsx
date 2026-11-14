@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ export function useSendApproval() {
 export function ApprovalRequestForm({
   what,
   initialReason = "",
+  onDraftChange,
   placeholder = "e.g. Guest service recovery",
   onSend,
   onCancel,
@@ -41,6 +42,7 @@ export function ApprovalRequestForm({
   /** "฿150 discount", "custom price": what is asked for. */
   what: string;
   initialReason?: string;
+  onDraftChange?: (dirty: boolean) => void;
   placeholder?: string;
   onSend: (reason: string) => Promise<string | null>;
   onCancel: () => void;
@@ -48,6 +50,7 @@ export function ApprovalRequestForm({
 }) {
   const id = useId();
   const [reason, setReason] = useState(initialReason);
+  useEffect(() => { onDraftChange?.(Boolean(reason.trim())); return () => onDraftChange?.(false); }, [reason, onDraftChange]);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);

@@ -35,6 +35,7 @@ import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { DiscardOrderDialog } from "./OrderLifecycle";
+import { useCheckoutDraft } from "./CheckoutDrafts";
 import { PayPanel } from "./PayPanel";
 import { discountOverLimit, formatPercent, needsApproval, shownRequest } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
@@ -107,7 +108,10 @@ export function OrderPanel({
   /** Open on this tender's panel instead of the rows (the phone's "Cash ฿X"). */
   initialPay?: TenderMethod;
 }) {
+  const { confirmDiscard } = useCheckoutDraft();
   const panelRef = useRef<HTMLDivElement>(null);
+  const itemsRef = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
   const backend = useCheckoutBackend();
   const actions = backend.useActions();
   const access = useStaffAccess();
@@ -116,6 +120,7 @@ export function OrderPanel({
   const [couponOpen, setCouponOpen] = useState(false);
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
   const lines = view?.lines ?? [];
+  const editingLine = lines.some((line) => line._id === expanded);
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
@@ -129,7 +134,27 @@ export function OrderPanel({
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
   const staffDiscount = round2(totals.discount - totals.coupon);
 
+  // Content and viewport changes both affect the continuation cue (expanded rows, live writes,
+  // keyboard, or rotation). ResizeObserver watches the scroller and its content.
+  useEffect(() => {
+    const box = itemsRef.current;
+    if (!box) return;
+    const update = () => setMoreBelow(box.scrollHeight - box.clientHeight - box.scrollTop > 2);
+    const observer = new ResizeObserver(update);
+    observer.observe(box);
+    for (const child of box.children) observer.observe(child);
+    box.addEventListener("scroll", update, { passive: true });
+    update();
+    return () => { observer.disconnect(); box.removeEventListener("scroll", update); };
+  }, [paying, lines.length]);
+
+  async function openPayment(mode: TenderMethod | "split" | "none") {
+    if (payLocked || !await confirmDiscard()) return;
+    setPaying(mode);
+  }
+
   async function clear() {
+    if (!await confirmDiscard()) return;
     setConfirm(null);
     if (orderId) await run(() => actions.clearOrder({ orderId }));
   }
@@ -174,7 +199,7 @@ export function OrderPanel({
         ) : (
           <>
             {canAddCoupon(view) && !couponOpen ? (
-              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
+              <Button size="icon" variant="outline" className={cn("size-9 rounded-xl text-gold-text", !editingLine && SHORT_SCREEN_ONLY)} data-add-coupon onClick={() => setCouponOpen(true)} aria-label="Add coupon" title="Add coupon: code, QR or link">
                 <TicketPercent aria-hidden className="size-4" />
               </Button>
             ) : null}
@@ -185,7 +210,7 @@ export function OrderPanel({
               items={[
                 { label: "Clear order", onSelect: () => setConfirm("clear") },
                 // Cashiers' Orders list only open orders, so they couldn't restore one they discard.
-                { label: "Discard order…", destructive: true, hidden: !access.capabilities.orders, onSelect: () => setConfirm("discard") },
+                { label: "Discard order…", destructive: true, hidden: !access.capabilities.orders, onSelect: () => { void confirmDiscard().then((discard) => { if (discard) setConfirm("discard"); }); } },
               ]}
             />
             {/* Local dialogs rather than useConfirm: on phones they nest in the order sheet, which a
@@ -220,7 +245,8 @@ export function OrderPanel({
       ) : (
         <>
           {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
-          <div className="flex min-h-[min(14rem,28dvh)] flex-1 flex-col overflow-y-auto [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]">
+          <div className="relative flex min-h-[min(14rem,28dvh)] flex-1 flex-col [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]">
+          <div ref={itemsRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {lines.length === 0 ? (
               <div className="grid flex-1 place-items-center px-6 py-8 text-center text-sm text-muted-foreground">
                 <div className="grid justify-items-center gap-2"><ReceiptText aria-hidden className="size-8 text-muted-foreground/60" /><p className="text-[15px] font-medium text-foreground">No items yet</p><p className="text-[13px] text-pretty">Tap an item to add it.</p></div>
@@ -233,7 +259,7 @@ export function OrderPanel({
                     line={line}
                     catalog={catalog}
                     open={expanded === line._id}
-                    onToggle={() => setExpanded(expanded === line._id ? null : line._id)}
+                    onToggle={() => { void confirmDiscard().then((discard) => { if (discard) setExpanded(expanded === line._id ? null : line._id); }); }}
                     run={run}
                     now={now}
                     waiting={waiting}
@@ -246,11 +272,14 @@ export function OrderPanel({
             {orderId ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
           </div>
 
-          <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
+          {moreBelow ? <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-card via-card/95 to-transparent pb-1.5"><span className="flex items-center gap-1 rounded-full bg-card px-2 text-xs text-muted-foreground"><ChevronDown aria-hidden className="size-3" />More item options</span></div> : null}
+          </div>
+
+          {lines.length || (shown && !shownLine) ? <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
             {/* Outside the empty-order branch: a request for the first custom item starts on an empty order. */}
             {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
             {lines.length ? <>
-              {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} /> : null}
+              {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} hideAdd={editingLine} /> : null}
               <dl className="space-y-1 text-sm">
                 <TotalRow label="Subtotal" value={formatMoney(totals.subtotal)} />
                 {staffDiscount ? <TotalRow label="Discounts" value={formatMoney(-staffDiscount)} /> : null}
@@ -287,20 +316,20 @@ export function OrderPanel({
               ) : null}
               {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
               {lines.length && totals.due === 0 ? (
-                <CloseNothingDue view={view!} disabled={payLocked} onPaid={onPaid} onReview={() => setPaying("none")} />
+                <CloseNothingDue view={view!} disabled={payLocked} onPaid={onPaid} onReview={() => { void openPayment("none"); }} />
               ) : (
                 <>
-                  <Button className="h-auto min-h-14 w-full whitespace-normal py-3 text-base font-sans tabular-nums" disabled={payLocked} onClick={() => setPaying("cash")}>Cash {formatMoney(totals.due)}</Button>
-                  <div className="mt-2 grid grid-cols-2 gap-2 @min-[28rem]:grid-cols-4">
+                  <Button className="h-auto min-h-14 w-full whitespace-normal py-3 text-base font-sans tabular-nums" disabled={payLocked} onClick={() => { void openPayment("cash"); }}>Cash {formatMoney(totals.due)}</Button>
+                  <div className="mt-2 grid grid-cols-2 gap-2 @min-[28rem]:grid-cols-4 lg:grid-cols-4">
                     {(["promptpay", "card", "transfer"] as const).map((method) => (
-                      <Button key={method} className="h-auto min-h-11 min-w-0 whitespace-normal px-3 py-2 text-sm text-balance" variant="outline" disabled={payLocked} onClick={() => setPaying(method)}>{TENDER_LABELS[method].short}</Button>
+                      <Button key={method} className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2 text-sm text-balance lg:px-1 lg:text-[13px]" variant="outline" disabled={payLocked} onClick={() => { void openPayment(method); }}>{TENDER_LABELS[method].short}</Button>
                     ))}
-                    <Button variant="outline" className="h-auto min-h-11 min-w-0 whitespace-normal px-3 py-2 text-sm text-balance" disabled={payLocked} onClick={() => setPaying("split")}>Split payment</Button>
+                    <Button variant="outline" className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2 text-sm text-balance lg:px-1 lg:text-[13px]" disabled={payLocked} onClick={() => { void openPayment("split"); }}>Split payment</Button>
                   </div>
                 </>
               )}
             </> : null}
-          </div>
+          </div> : null}
         </>
       )}
     </div>
@@ -425,7 +454,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
             {line.name}
           </span>
           <span className="block text-pretty text-xs leading-4 text-muted-foreground">{lineSubtitle(line, now)}</span>
-          {line.kind === "service" && scheduleLabel(line.schedule, now) === "Not scheduled" ? <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">Not scheduled</span> : null}
+          {!open && line.kind === "service" && scheduleLabel(line.schedule, now) === "Not scheduled" ? <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">Not scheduled</span> : null}
           {line.deposit ? <span className="block text-xs text-emerald-700 dark:text-emerald-300">{formatMoney(line.deposit)} paid in advance</span> : null}
           {line.priceOverride ? <span className="block truncate text-xs text-amber-700 dark:text-amber-300">Price changed: {line.priceOverride.note}</span> : null}
           {line.stayCoupon ? (
@@ -601,7 +630,7 @@ function ScheduleRow({ line, eligible, catalogLoaded, run }: { line: OrderLine; 
         className="flex min-h-12 w-full items-center justify-between gap-3 text-left text-sm hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-ring"
       >
         <span className="text-sm">Schedule</span>
-        <span className="min-w-0 flex-1 text-right text-xs text-muted-foreground">{scheduleSummary(line, now)}</span>
+        <span className="min-w-0 flex-1 text-right text-[13px] text-muted-foreground">{scheduleSummary(line, now)}</span>
         <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-90")} />
       </button>
       {open ? (
@@ -649,6 +678,9 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const [priceOpen, setPriceOpen] = useState(false);
   const [price, setPrice] = useState("");
   const [note, setNote] = useState("");
+  const [approvalDirty, setApprovalDirty] = useState(false);
+  const priceDirty = priceOpen && (price !== (line.priceOverride ? String(line.priceOverride.price) : "") || note !== (line.priceOverride?.note ?? ""));
+  const { confirmDiscard } = useCheckoutDraft(priceDirty || approvalDirty);
   const lineId = line._id;
   const service = catalog?.services.find((s) => s._id === line.serviceId);
   const eligible = catalog?.staff.filter((person) => service?.staffIds.includes(person._id)) ?? [];
@@ -696,7 +728,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   return (
     <div ref={editor} className="mx-3 mb-3 divide-y divide-border overflow-hidden rounded-xl bg-muted/50 px-3">
       {/* The discount first: it is what a cashier opens a row for most often. */}
-      {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={onSent} />}
+      {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={() => { if (!priceDirty && !approvalDirty) onSent(); }} />}
       {line.kind === "service" ? (
         <ScheduleRow line={line} eligible={eligible} catalogLoaded={Boolean(catalog)} run={run} />
       ) : null}
@@ -731,7 +763,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
                 <div className="flex gap-2">
                   <Button size="sm" disabled={!isAmount(price) || !note.trim() || unchangedPrice || (priceNeedsManager && waiting)} onClick={applyPrice}>{priceNeedsManager ? "Ask manager" : "Apply price"}</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setPriceOpen(false)}>Cancel</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { void confirmDiscard().then((discard) => { if (discard) { setPriceOpen(false); setPrice(""); setNote(""); } }); }}>Cancel</Button>
                 </div>
               </div>
             ) : (
@@ -747,19 +779,22 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
         <ApprovalRequestForm
           what={ask.what}
           initialReason={ask.reason}
-          onCancel={() => setAsk(null)}
+          onDraftChange={setApprovalDirty}
+          onCancel={() => { void confirmDiscard().then((discard) => { if (discard) setAsk(null); }); }}
           onSend={async (reason) => {
             const failed = await send(line.billId, ask.payload, reason);
             if (!failed) {
               setAsk(null);
               setPriceOpen(false);
+              setPrice("");
+              setNote("");
             }
             return failed;
           }}
         />
       ) : null}
 
-      <Button size="sm" variant="ghost" className="h-12 w-full justify-center rounded-none text-sm text-destructive" onClick={() => run(() => actions.removeLine({ lineId }))}>
+      <Button size="sm" variant="ghost" className="h-12 w-full justify-center rounded-none text-sm text-destructive" onClick={() => { void confirmDiscard().then((discard) => { if (discard) void run(() => actions.removeLine({ lineId })); }); }}>
         <Trash2 aria-hidden className="size-3.5" /> Remove item
       </Button>
     </div>
@@ -796,6 +831,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   // A cashier's limit, worked out as the server will (owners and managers have none).
   const over = cashier && typed && !applied ? discountOverLimit(line, typed, access.cashierRules) : null;
   const asking = Boolean(parsed?.ok && !applied && (over || serverAsk));
+  useCheckoutDraft((text !== discountText(line.discount) && !applied) || Boolean(reason.trim()));
 
   // The reason and Send appear under the field; keep them (and the field, if it fits) on screen.
   useEffect(() => {
@@ -835,7 +871,12 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
     lock.current = false;
     setSending(false);
     if (failed) setError(failed);
-    else onSent();
+    else {
+      setText(discountText(line.discount));
+      setReason("");
+      setServerAsk(false);
+      onSent();
+    }
   }
 
   const status = parsed ? (parsed.ok ? parsed.echo : parsed.error) : "";
@@ -845,7 +886,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
         <Label htmlFor={`${id}-discount`} className="text-sm font-normal text-foreground">Discount</Label>
         {/* A cashier's limit in plain sight, so learning it costs no tap. */}
         {cashier ? (
-          <span id={`${id}-limit`} data-testid="discount-limit" className="font-normal">
+          <span id={`${id}-limit`} data-testid="discount-limit" className="text-[13px] font-normal">
             Up to {formatPercent(access.cashierRules.discountLimitPercent)}% without approval
           </span>
         ) : null}

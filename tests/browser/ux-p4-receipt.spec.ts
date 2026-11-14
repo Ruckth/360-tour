@@ -20,10 +20,10 @@ import { TaskCounter, UX_VIEWPORTS, controlsOnScreen, type UxViewport } from "./
 async function open(page: Page, query: string, fixture = "staff-roles") {
   await page.goto(`/tests/browser/${fixture}.html${query}`);
   await page.locator("[data-fixture-ready]").waitFor();
-  await receipt(page).waitFor();
+  await page.getByTestId("receipt-view").waitFor();
   await page.waitForTimeout(300);
 }
-const receipt = (page: Page) => page.getByRole("article", { name: "Receipt" });
+const receipt = (page: Page) => page.getByRole("article", { name: "Receipt", includeHidden: true });
 const items = (page: Page) => page.getByTestId("receipt-items");
 const side = (page: Page) => page.getByTestId("receipt-side");
 const view = (page: Page) => page.getByTestId("receipt-view");

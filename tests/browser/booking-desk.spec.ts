@@ -230,7 +230,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await t.tap(page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }), "Confirm cash");
       await t.tap(page.getByRole("button", { name: "Print", exact: true }), "Print");
       await expect(page.locator("body")).toHaveAttribute("data-printed", "1");
-      await expect(page.getByRole("article", { name: "Receipt" })).toContainText("27,500");
+      await expect(page.getByRole("article", { name: "Receipt", includeHidden: true })).toContainText("27,500");
       // iPad: 5, since cash opens with the amount due. A phone adds "View order" (plan: counts are iPad).
       expect(t.summary()).toMatchObject({ taps: size === "phone" ? 6 : 5, typed: 0 });
     });

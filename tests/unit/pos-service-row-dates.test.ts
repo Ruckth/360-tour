@@ -137,7 +137,8 @@ describe("a service row's optional date and time at checkout", () => {
     await click(row("Thai massage 60").querySelector("button"));
     // Therapist, date and time sit behind the editor's Schedule row.
     await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
-    expect(subtitle("Thai massage 60")).toContain("Not scheduled");
+    // The open editor shows the schedule state once, in its Schedule row.
+    expect([...row("Thai massage 60").querySelectorAll("button")].find((button) => button.textContent?.startsWith("Schedule"))?.textContent).toContain("Not scheduled");
     expect(panel().textContent).toContain("Date (optional)");
     expect(panel().textContent).toContain("Time (optional)");
     // No mode choice and no "Now" shortcut: blank is simply unset.
@@ -165,7 +166,8 @@ describe("a service row's optional date and time at checkout", () => {
     await click(buttonNamed("Clear"));
     await settle();
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceDate: null }));
-    expect(subtitle("Thai massage 60")).toContain("Not scheduled");
+    // The open editor shows the schedule state once, in its Schedule row.
+    expect([...row("Thai massage 60").querySelectorAll("button")].find((button) => button.textContent?.startsWith("Schedule"))?.textContent).toContain("Not scheduled");
   });
 
   it("never fills a part in from the clock", async () => {

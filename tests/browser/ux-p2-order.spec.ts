@@ -103,7 +103,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await page.waitForTimeout(300);
       await count.tap(page.getByTestId("approvals-button"), "Approvals");
       const request = page.getByRole("dialog", { name: "Approvals" }).getByTestId("approval-request");
-      await expect(request).toContainText("Mint · asks for a ฿180 discount (15%)");
+      await expect(request).toContainText("Mint asks for a ฿180 discount (15%)");
       await expect(request).toContainText("“Service delay”");
       await count.tap(request.getByRole("button", { name: "Approve" }), "Approve");
       await expect(page.getByTestId("toast")).toHaveText("Approved 15% discount on #1043");
@@ -121,7 +121,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(panel.getByTestId("order-due")).toHaveText("฿0");
       const count = new TaskCounter();
       await count.tap(panel.getByRole("button", { name: "Close order · nothing due" }), "Close order");
-      await expect(page.getByRole("article", { name: "Receipt" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: /^Receipt R-/ })).toBeVisible();
       expect(count.taps).toBe(1);
     });
 
