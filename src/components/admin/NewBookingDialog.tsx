@@ -10,7 +10,7 @@ import { calculateDirectQuote } from "convex/lib/pricing";
 import { nightsBetweenIso } from "@/lib/booking/dates";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { DeskPhoneCountrySelect } from "./DeskPhoneCountrySelect";
-import { UserRound } from "lucide-react";
+import { Ban, UserRound } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { DeskBookingRangePicker as BookingRangePicker } from "./DeskBookingRangePicker";
@@ -225,20 +225,20 @@ export function NewBookingDialog({
 
   return (
     <Dialog open onOpenChange={(next) => (next || saving ? undefined : void close())}>
-      <DialogContent className="h-auto max-h-[calc(100dvh-1rem)] max-sm:h-dvh max-sm:max-h-dvh grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-5 sm:max-w-2xl" showCloseButton={!saving}>
+      <DialogContent className="h-auto max-h-[calc(100dvh-1rem)] max-sm:h-dvh max-sm:max-h-dvh grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden p-5 pb-0 max-md:pb-0 sm:max-w-2xl" showCloseButton={!saving}>
         <DialogHeader>
           <DialogTitle className="font-serif text-2xl font-semibold">{historical ? "Record past stay" : "New booking"}</DialogTitle>
           <DialogDescription className="sr-only">Villa, dates and guest</DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="flex min-h-0 min-w-0 flex-col gap-0 overflow-hidden">
-          <fieldset disabled={saving} className="-mx-5 grid min-h-0 gap-4 overflow-y-auto px-5 pb-5 [&_label:not(:has(input))]:text-xs [&_label:not(:has(input))]:text-muted-foreground [&_input]:placeholder:text-muted-foreground">
-            <section aria-labelledby="nb-stay-title" className="grid gap-1 sm:gap-2">
+        <form onSubmit={submit} className="flex h-full min-h-0 min-w-0 flex-col gap-0 overflow-hidden">
+          <fieldset disabled={saving} className="-mx-5 grid min-h-0 flex-1 content-start gap-6 overflow-y-auto px-5 pb-5 [&_label:not(:has(input))]:text-xs [&_label:not(:has(input))]:text-muted-foreground [&_input]:placeholder:text-muted-foreground">
+            <section aria-labelledby="nb-stay-title" className="grid gap-4">
               <div className="flex items-center justify-between gap-3"><h3 id="nb-stay-title" className="text-base font-semibold">Stay</h3>
               <ToggleGroup variant="segmented" tone="subtle" className="w-fit p-0.5" value={confirmed ? "confirmed" : "pending"} onValueChange={value => setConfirmed(value === "confirmed")} aria-label="Booking status" disabled={saving}>
                 <ToggleGroupItem className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!" value="confirmed">Confirmed</ToggleGroupItem><ToggleGroupItem className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!" value="pending">Pending</ToggleGroupItem>
               </ToggleGroup>
               </div>
-              <div className="grid gap-1 sm:gap-2">
+              <div className="grid content-start gap-1.5">
                 <Label id="nb-villa-label" htmlFor="nb-villa">Villa</Label>
                 <VillaPicker
                   id="nb-villa"
@@ -257,7 +257,7 @@ export function NewBookingDialog({
                 ) : null}
               </div>
               {archivedVilla ? (
-                <div className="grid gap-1 sm:gap-2">
+                <div className="grid content-start gap-1.5">
                   <Label htmlFor="nb-villa-reason">This villa is archived. Why record this past stay in it? (required)</Label>
                   <Input
                     id="nb-villa-reason"
@@ -280,20 +280,21 @@ export function NewBookingDialog({
               {property && dates.checkIn && dates.checkOut ? (
                 <Button type="button" variant="ghost" className="-ms-2 w-fit justify-start px-2 text-sm text-muted-foreground" disabled={saving}
                   onClick={async () => { if (await confirmDiscard()) onBlockInstead({ propertyId: property._id, start: dates.checkIn, end: dates.checkOut }); }}>
+                  <Ban aria-hidden className="size-4" />
                   Block these dates instead
                 </Button>
               ) : null}
               {!confirmed ? <p className="text-xs text-muted-foreground">Pending holds the dates without emailing the guest.</p> : null}
 
             </section>
-            <section aria-labelledby="nb-guest-title" className="grid gap-1 sm:gap-2">
+            <section aria-labelledby="nb-guest-title" className="grid gap-4">
               <h3 id="nb-guest-title" className="text-base font-semibold">Guest</h3>
-              <div className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-3">
-                <div className="grid gap-1 sm:gap-2">
+              <div className="grid grid-cols-[minmax(0,1fr)_96px] items-start gap-4">
+                <div className="grid content-start gap-1.5">
                   <Label htmlFor="nb-name">Guest name</Label>
                   <Input id="nb-name" required {...field("name")} />
                 </div>
-                <div className="grid gap-1 sm:gap-2">
+                <div className="grid content-start gap-1.5">
                   <Label htmlFor="nb-guests">Guests{property ? ` (max ${property.maxGuests})` : ""}</Label>
                   <Input
                     id="nb-guests"
@@ -308,8 +309,8 @@ export function NewBookingDialog({
                   {property ? <p id="nb-guests-hint" className="sr-only">Max {property.maxGuests}</p> : null}
                 </div>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
-              <div className="grid content-start gap-1 sm:gap-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="nb-phone">Phone</Label>
                 <PhoneInput
                   id="nb-phone"
@@ -331,7 +332,7 @@ export function NewBookingDialog({
                   </p>
                 ) : null}
               </div>
-              <div className="grid gap-1 sm:gap-2">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="nb-email">Email (optional)</Label>
                 <Input id="nb-email" type="email" autoComplete="off" {...field("email")} />
               </div>
@@ -378,8 +379,8 @@ export function NewBookingDialog({
                 <p className="-mt-2 text-xs text-muted-foreground">Past stay · Email off by default</p>
               ) : null}
             </section>
-            <section aria-labelledby="nb-price-title" className="grid gap-1 sm:gap-2">
-              <h3 id="nb-price-title" className="text-base font-semibold">Price</h3>
+            <section aria-labelledby="nb-price-title" className="grid gap-4 sm:grid-cols-2 sm:items-start">
+              <h3 id="nb-price-title" className="text-base font-semibold sm:col-span-2">Price</h3>
               <div className="grid gap-2 rounded-xl border border-border bg-card px-3">
                 <button id="nb-custom" type="button" role="switch" aria-labelledby="nb-custom-label" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex h-12 shrink-0 items-center justify-between rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="grid min-w-0 gap-0.5 text-left font-normal">
@@ -390,7 +391,7 @@ export function NewBookingDialog({
                 </button>
                 {custom ? (
                   <>
-                    <div className="grid gap-2 pb-3">
+                    <div className="grid gap-1.5 pb-3">
                       <Label htmlFor="nb-custom-total">Stay total ({property?.currency ?? "THB"})</Label>
                       <Input
                         id="nb-custom-total"
@@ -401,7 +402,7 @@ export function NewBookingDialog({
                         disabled={saving}
                       />
                     </div>
-                    <div className="grid gap-2 pb-3">
+                    <div className="grid gap-1.5 pb-3">
                       <Label htmlFor="nb-custom-reason">Reason (required)</Label>
                       <Input
                         id="nb-custom-reason"
@@ -415,7 +416,7 @@ export function NewBookingDialog({
                   </>
                 ) : null}
               </div>
-              <div className="grid gap-1 sm:gap-2">
+              <div className="grid content-start gap-1.5">
                 <Label htmlFor="nb-coupon">
                   Coupon code <span className="font-normal text-muted-foreground">(optional)</span>
                 </Label>
@@ -434,9 +435,9 @@ export function NewBookingDialog({
                   disabled={saving || custom}
                   aria-invalid={couponInvalid || couponError ? true : undefined}
                   aria-describedby="nb-coupon-status"
-                  className="font-mono font-semibold tracking-wide"
+                  className="font-mono font-semibold tracking-wide placeholder:font-sans placeholder:font-normal placeholder:tracking-normal"
                 />
-                <div id="nb-coupon-status" aria-live="polite" className="grid gap-1 sm:gap-2">
+                <div id="nb-coupon-status" aria-live="polite" className="grid content-start gap-1.5">
                   {custom && couponTyped ? (
                     <p className="text-xs text-muted-foreground">A custom price replaces the villa rate, so the code isn’t used.</p>
                   ) : !couponLive ? null : !property || !dates.checkIn || !dates.checkOut ? (
@@ -463,7 +464,7 @@ export function NewBookingDialog({
 
           </fieldset>
           {/* Separate from the scroller: the footer never covers a field. */}
-          <DialogFooter className="-mx-5 shrink-0 flex-col gap-2 border-t border-border bg-card px-5 py-3 sm:flex-col sm:items-stretch">
+          <DialogFooter className="-mx-5 shrink-0 flex-col gap-2 border-t border-border bg-card px-5 pt-3 pb-[max(env(safe-area-inset-bottom),1rem)] sm:flex-col sm:items-stretch">
             <div className="flex w-full items-center justify-between gap-3">
               <p className="min-w-0 text-xs" aria-live="polite" data-sentence-budget="ignore">
                 <span className="block font-sans text-lg font-semibold tabular-nums">Total {total !== null ? formatMoney(total, property?.currency ?? "THB") : "—"}</span>{" "}

@@ -45,28 +45,27 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
 
   return (
     <section aria-label="Today" className="grid shrink-0 gap-2">
-      <div className="grid grid-cols-[1fr_1fr_1fr_1.3fr] gap-1.5 sm:grid-cols-4 sm:gap-3">
+      <div className="grid grid-cols-[1fr_1fr_1fr_1.7fr] gap-1.5 sm:grid-cols-4 sm:gap-3">
         {GROUPS.map(({ key, label }) => (
           <button
             key={key}
             type="button"
-            aria-label={key === "balanceDue" ? `Due · Balance due ${groups ? formatMoney(owed, "THB") : "loading"}` : undefined}
+            aria-label={key === "balanceDue" ? `Balance due ${groups ? formatMoney(owed, "THB") : "loading"}` : undefined}
             aria-expanded={open === key}
             aria-controls="today-list"
             disabled={!groups}
             onClick={() => setOpen((current) => (current === key ? null : key))}
             className={cn(
-              "grid min-h-14 min-w-0 content-between gap-2 rounded-xl border border-border bg-card px-2 py-2 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+              "grid min-h-14 min-w-0 content-start gap-2 rounded-xl border border-border bg-card px-2 py-2 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
               open === key && "border-foreground/40 bg-muted",
             )}
           >
-            <span className="flex items-center justify-between gap-1 text-xs leading-tight font-normal text-muted-foreground sm:text-xs">{key === "balanceDue" ? <><span className="sm:hidden">Due</span><span className="hidden sm:inline">{label}</span></> : label}<ChevronDown aria-hidden className={cn("size-3 shrink-0 transition-transform", open === key && "rotate-180")} /></span>
+            <span className="flex items-center justify-between gap-0.5 whitespace-nowrap text-xs leading-tight font-normal text-muted-foreground sm:text-xs">{label}<ChevronDown aria-hidden className={cn("size-2.5 shrink-0 transition-transform sm:size-3", open === key && "rotate-180")} /></span>
             {groups ? <span className="money font-sans text-lg leading-none font-semibold tracking-tight tabular-nums sm:text-[28px]">{key === "balanceDue" ? formatMoney(owed, "THB") : groups[key].length}</span> : <Skeleton className="h-6 w-10" />}
-
+            {key === "balanceDue" ? <span className="text-pretty text-xs text-muted-foreground">From today’s guests</span> : null}
           </button>
         ))}
       </div>
-      {open === "balanceDue" ? <p className="text-xs text-muted-foreground">Due from today’s guests</p> : null}
       {open ? (
         <ul id="today-list" aria-label={GROUPS.find((g) => g.key === open)!.label} className="grid gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-2 lg:grid-cols-3">
           {list.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">No one today.</li> : null}

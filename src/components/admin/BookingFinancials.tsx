@@ -238,7 +238,7 @@ function LoadedBookingFinancials({
           ) : null}
           {canPay ? (
             <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
-              <span className="inline-flex w-full items-center justify-center gap-1 sm:w-auto"><Button variant="ghost" className="min-h-11 flex-1 sm:flex-none" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+              <span className="inline-flex w-full items-center justify-center gap-1 sm:w-auto"><Button variant="ghost" className="min-h-11 flex-none" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
                 Record external payment…
               </Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
             </DisabledReason>

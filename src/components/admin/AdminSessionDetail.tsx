@@ -355,6 +355,8 @@ export function AdminSessionDetail({
   const escalatedGuestId = session.needsReply && (session.inboxHandoff || session.inboxReason === "handoff") ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
   const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "Waiting for staff" : session.keepWithStaff ? "Waiting for staff" : "AI on";
 
+  const automationChip = session.aiPaused || session.inboxState === "processing" ? automationLabel : null;
+
   return (
     <Sheet>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
@@ -369,20 +371,18 @@ export function AdminSessionDetail({
               </div>
             </div>
             <div className="flex min-w-0 items-center gap-2 sm:hidden">
-              <StatusBadge tone={status.tone} label={session.adminStatus === "resolved" || session.adminStatus === "archived" ? status.label : session.needsReply ? "Needs you" : automationLabel} className="shrink-0 text-xs" />
+              <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
+              {automationChip ? <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{automationChip}</span> : null}
               <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
             </div>
-            <p className="hidden min-w-0 items-start gap-1.5 sm:flex text-[13px] text-muted-foreground">
-              <ChannelIcon channel={session.channel} className="mt-1 size-3 shrink-0" />
+            <div className="hidden min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground sm:flex">
+              <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
               <span className="sr-only sm:not-sr-only sm:shrink-0">{sourceLabel(session.channel)}</span>
               <span aria-hidden="true" className="hidden sm:inline">·</span>
-              <span className="min-w-0 break-words">{propertyLabel}</span>
-            </p>
-            <div className="hidden sm:block"><ContactLine session={session} handlesOnly /></div>
-            <div className="hidden flex-wrap items-center gap-2 text-xs text-muted-foreground sm:flex">
-              <StatusBadge tone={status.tone} label={status.label} className="text-xs" />
-              {status.reason ? <span>{status.reason}</span> : null}
-              <span className="rounded-full bg-muted px-2 py-1">{automationLabel}</span>
+              <span className="min-w-0 truncate">{propertyLabel}</span>
+              <StatusBadge tone={status.tone} label={status.label} className="ml-1 text-xs" />
+              {status.reason ? <span className="shrink-0 text-xs">{status.reason}</span> : null}
+              {automationChip ? <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{automationChip}</span> : null}
             </div>
           </div>
           {actionError}
@@ -511,7 +511,7 @@ export function AdminSessionDetail({
                 aria-label="Type an admin reply"
                 aria-describedby={replyHintId}
                 // A 3:1 field edge and a solid focus ring, 44px tall at every size.
-                className="min-h-11 border-input focus-visible:ring-ring md:min-h-11"
+                className="min-h-11 border-input py-2 leading-6 focus-visible:ring-ring max-md:rounded-xl md:min-h-11"
                 value={replyDraft}
                 onChange={(event) => onReplyDraftChange(event.target.value)}
                 onKeyDown={(event) => {
@@ -528,6 +528,7 @@ export function AdminSessionDetail({
               />
               <Button
                 type="submit"
+                className="min-h-11 max-md:rounded-xl disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                 disabled={replyPending || loadingTranscript || !replyWindow || !replyDraft.trim()}
                 aria-describedby={replyHintId}
               >

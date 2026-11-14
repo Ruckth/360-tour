@@ -44,6 +44,7 @@ const facts: AdminBusinessFact[] = [
   fact("fact-pool", "The pool is heated all year", "The Tideglass pool stays around 29 °C all year.", tideglass),
 ];
 
+let failResolve = new URLSearchParams(location.search).has("failResolve");
 let reportSeq = 0;
 function report(userQuestion: string, minutesAgo: number, extra: Partial<AdminUnknownQuestion> = {}): AdminUnknownQuestion {
   return {
@@ -106,6 +107,7 @@ registerFixtureFunctions({
   mutations: {
     "businessFacts:adminResolveUnknownGroups": (args: { normalizedQuestions: string[]; factId?: string; structuredSource?: string }) => {
       record("adminResolveUnknownGroups", args);
+      if (failResolve) { failResolve = false; throw new Error("Fixture resolve unavailable"); }
       const title = facts.find((item) => item._id === args.factId)?.title;
       const touched = reports.filter((item) => item.status === "new" && args.normalizedQuestions.includes(item.normalizedQuestion));
       for (const item of touched) Object.assign(item, { status: "resolved", resolvedFactTitle: title, resolvedSource: args.structuredSource });

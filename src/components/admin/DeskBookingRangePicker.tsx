@@ -41,13 +41,13 @@ export function DeskBookingRangePicker({
       nightsBetweenIso(checkIn, dateToIso(date)) < minNights);
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-4">
         {(["checkIn", "checkOut"] as const).map((field) => {
           const id = `booking-${field === "checkIn" ? "check-in" : "check-out"}`;
           const label = field === "checkIn" ? "Check-in" : "Check-out";
           const value = field === "checkIn" ? checkIn : checkOut;
           return (
-            <div key={field} className="grid gap-2">
+            <div key={field} className="grid gap-1.5">
               <Label htmlFor={id}>{label}</Label>
               <PopoverTrigger asChild>
                 <Button

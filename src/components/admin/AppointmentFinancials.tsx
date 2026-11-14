@@ -84,7 +84,7 @@ export function AppointmentMoneyBlock({ appointment, disabled }: { appointment: 
     <div className="grid grid-cols-1 items-center gap-2 sm:flex sm:flex-wrap">
       {owed > 0 ? <Button disabled={disabled} onClick={() => router.push(`/admin/checkout?appointment=${appointment._id}`)}>Take payment</Button> : null}
       {data && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" ? (
-        <span className="inline-flex items-center justify-center gap-1"><Button variant="ghost" className="min-h-11 flex-1 sm:flex-none" disabled={disabled} onClick={() => setPaying(true)}>Record external payment…</Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
+        <span className="inline-flex items-center justify-center gap-1"><Button variant="ghost" className="min-h-11 flex-none" disabled={disabled} onClick={() => setPaying(true)}>Record external payment…</Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
       ) : null}
     </div>
     {paying && data ? <AppointmentMoneyDialog appointment={appointment} revision={data.revision} data={data} dialog={{ kind: "pay" }} onClose={() => setPaying(false)} /> : null}

@@ -320,7 +320,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       const checkOut = await dialog.getByTestId("booking-check-out").boundingBox();
       expect(checkIn!.y).toBe(checkOut!.y);
       await expect(dialog).toContainText("3 nights");
-      if (size === "ipad") expect(await inView(dialog.getByLabel("Coupon code"))).toBe(true);
+      if (size === "ipad") {
+        // The two Price fields fit together on iPad without clipping the coupon input.
+        expect(await inView(dialog.getByLabel("Coupon code"))).toBe(true);
+        await dialog.getByLabel("Coupon code").scrollIntoViewIfNeeded();
+        expect(await inView(dialog.getByRole("button", { name: "Create booking" }))).toBe(true);
+      }
       await expectAtMostSentences(dialog, 1);
       const create = dialog.getByRole("button", { name: "Create booking" });
       const box = await create.boundingBox();
@@ -436,7 +441,7 @@ test("phone agenda rows expose their visible balance and appointment status to a
   await openDesk(page);
   await expect(page.getByRole("button", { name: /Anna Schmidt.*฿26,000/ }).first()).toBeVisible();
   await openDesk(page, "?view=staff");
-  await expect(page.getByRole("button", { name: /Ken Tanaka.*Booked.*09:50–10:50/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ken Tanaka.*09:50–10:50.*Booked/ }).first()).toBeVisible();
 });
 
 test.describe("phone agenda touch scrolling", () => {
