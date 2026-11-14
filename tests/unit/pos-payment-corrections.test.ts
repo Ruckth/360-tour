@@ -9,7 +9,7 @@ import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type Or
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { PayPanel } from "@/components/checkout/PayPanel";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
-import { OrderHistory } from "@/components/checkout/OrderHistory";
+import { OrderHistory, OrderHistoryList } from "@/components/checkout/OrderHistory";
 import { receiptText } from "@/components/checkout/checkout-ui";
 import { paymentDateInput, paymentDateValue } from "@/components/checkout/payment-time";
 import { pickReceiptAction } from "./receipt-menu";
@@ -255,14 +255,13 @@ it("recovers order history errors and displays loading, empty and continuation s
   const loadMore = vi.fn();
   const broken: CheckoutBackend = { ...backend, useOrderHistory: () => { if (fail) throw new Error("History offline"); return { results: [], status: "LoadingFirstPage", loadMore }; } };
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await act(async () => root.render(provide(broken, createElement(OrderHistory, { orderId }))));
-  await expandHistory("History");
+  await act(async () => root.render(provide(broken, createElement(OrderHistoryList, { orderId }))));
   expect(document.body.textContent).toContain("Couldn't load order history");
   fail = false; await click("Try again");
   expect(document.querySelector('[aria-label="Loading order history"]')).toBeTruthy();
   for (const status of ["Exhausted", "CanLoadMore", "LoadingMore"] as const) {
     const paged = { ...backend, useOrderHistory: () => ({ results: [], status, loadMore }) };
-    await act(async () => root.render(provide(paged, createElement(OrderHistory, { orderId }))));
+    await act(async () => root.render(provide(paged, createElement(OrderHistoryList, { orderId }))));
     if (status === "Exhausted") expect(document.body.textContent).toContain("No recorded item changes");
     if (status === "CanLoadMore") { await click("Load older order changes"); expect(loadMore).toHaveBeenCalledWith(20); }
     if (status === "LoadingMore") expect(button("Loading older changes…").disabled).toBe(true);

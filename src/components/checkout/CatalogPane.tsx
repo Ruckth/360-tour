@@ -215,7 +215,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
     <button
       type="button"
       onClick={() => onAdd(tile.item)}
-      className="group flex h-full min-h-[72px] w-full flex-wrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
+      className="group flex h-full min-h-[72px] w-full flex-nowrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
     >
       <span className="relative shrink-0">
         <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
@@ -225,7 +225,7 @@ function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd:
           </span>
         ) : null}
       </span>
-      <span className="flex min-w-[min(100%,8rem)] flex-1 flex-col py-0.5">
+      <span className="flex min-w-0 flex-1 flex-col py-0.5">
         <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
         <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
         <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">

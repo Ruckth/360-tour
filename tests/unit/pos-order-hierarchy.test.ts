@@ -56,6 +56,8 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 it("lists items before their history and names the customer once beside the catalog, but keeps it in the phone sheet", async () => {
   const backend = createFixtureBackend();
   await showCheckout(backend, saved);
+  expect(historyDetails(panel())).toBeUndefined();
+  await run(backend.useActions().addItem({ orderId: saved, item: { kind: "extra", name: "Recorded item", price: 10 } }));
   const customer = read.view!.customer!.name;
   const items = panel().querySelector("ul")!;
   expect(items.textContent).toContain("Foot spa 45");
@@ -159,7 +161,7 @@ it("lists unpaid orders without a Discard button and offers Restore… beside ea
   const restore = vi.spyOn(actions, "restoreOrder");
   await act(async () => root.render(provide(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }))));
   const selected = () => document.querySelector<HTMLButtonElement>('[aria-current="true"]')!;
-  const title = selected().textContent!.split(" · ")[0];
+  const title = selected().querySelector("span span")!.firstChild!.textContent!;
   const action = (label: string) => document.querySelector<HTMLButtonElement>(`button[aria-label="${label} ${title}"]`);
   // Discard lives in the open order's ⋯ now.
   expect(action("Discard")).toBeNull();

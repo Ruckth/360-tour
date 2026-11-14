@@ -5,7 +5,7 @@ import { useStaffAccess } from "@/components/admin/staff-access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ReasonField } from "@/components/ui/reason-field";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { newAttemptKey, useCheckoutBackend, type OrderLine, type OrderView } from "./backend";
@@ -14,9 +14,6 @@ import {
   REFUND_METHODS, answeredRefusal, checkoutErrorText, defaultRefundMethod, refundAmountSatang, refundButtonLabel, remainingFromError, satangInput, satangMoney, type RefundMethod,
 } from "./refunds";
 import { needsApproval } from "./staff-approvals";
-
-// Applied once to all pressed-state chips: amount presets, methods, and ReasonField's buttons.
-const REFUND_CHIPS = "[&_button[aria-pressed]]:h-11 [&_button[aria-pressed]]:min-w-0 [&_button[aria-pressed]]:justify-center [&_button[aria-pressed]]:rounded-full [&_button[aria-pressed]]:border [&_button[aria-pressed=false]]:border-border [&_button[aria-pressed=false]]:bg-background [&_button[aria-pressed]]:px-3 [&_button[aria-pressed]]:text-sm [&_button[aria-pressed]]:font-medium [&_button[aria-pressed=true]]:border-foreground [&_button[aria-pressed=true]]:bg-foreground [&_button[aria-pressed=true]]:text-background";
 
 /**
  * The inline refund form under one paid receipt line. It opens ready to send: the amount is what is
@@ -128,18 +125,6 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
     }
   }
 
-  const chip = (value: "all" | "half", label: string, satangValue: number) => (
-    <button
-      type="button"
-      aria-pressed={chosen === value}
-      disabled={saving || uncertain || satangValue <= 0}
-      onClick={() => setAmount(value === "all" ? null : satangInput(satangValue))}
-      className="inline-flex items-center font-sans tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45"
-    >
-      {label}
-    </button>
-  );
-
   return (
     <form
       ref={formRef}
@@ -156,18 +141,24 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       data-screen-only=""
       data-refund-form={line._id}
       className={cn(
-        "@container mt-3 grid scroll-mt-[calc(var(--admin-header,4rem)+3rem)] scroll-mb-4 lg:scroll-mb-0 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal print:hidden",
+        "@container mt-3 grid scroll-mt-[calc(var(--admin-header,4rem)+3rem)] scroll-mb-4 lg:scroll-mb-0 gap-3 rounded-xl border p-3 font-sans text-sm leading-normal pointer-coarse:[&_button[type=submit]]:min-h-12 print:hidden",
         TOUCH_TARGETS,
-        REFUND_CHIPS,
         ask ? "border-amber-300 bg-amber-50/70 dark:border-amber-400/40 dark:bg-amber-400/10" : "border-border bg-background",
       )}
     >
-      <p id={`${id}-title`} ref={titleRef} tabIndex={-1} className="rounded text-[15px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">{ask ? "Ask a manager" : "Refund"}</p>
-      <p className="text-sm text-muted-foreground">Records money already returned to the guest.</p>
+      <div className="grid gap-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p id={`${id}-title`} ref={titleRef} tabIndex={-1} className="rounded text-[15px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">{ask ? "Ask a manager" : "Refund"}</p>
+          <p className="min-w-0 text-xs text-muted-foreground text-pretty [overflow-wrap:anywhere]">{view.order.title} · {line.name}</p>
+        </div>
+        <p className="text-sm text-muted-foreground">Records money already returned to the guest.</p>
+      </div>
       <div className="grid gap-2">
-        <div role="group" aria-label="Refund amount" className="grid grid-cols-[1fr_1fr_6rem] items-center gap-2">
-          {chip("all", "All", all)}
-          {half > 0 && half < all ? chip("half", "Half", half) : null}
+        <div role="group" aria-label="Refund amount" className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-2">
+          <ToggleGroup variant="segmented" tone="subtle" value={chosen ?? ""} onValueChange={(value) => setAmount(value === "all" ? null : satangInput(half))} aria-label="Amount presets" disabled={saving || uncertain}>
+            <ToggleGroupItem value="all" disabled={all <= 0} onClick={() => setAmount(null)} className="disabled:opacity-45">All</ToggleGroupItem>
+            {half > 0 && half < all ? <ToggleGroupItem value="half" className="disabled:opacity-45">Half</ToggleGroupItem> : null}
+          </ToggleGroup>
           <Label htmlFor={`${id}-amount`} className="sr-only">Amount (฿)</Label>
           <div className="relative">
             <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>
@@ -192,20 +183,28 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       </div>
       <div className="grid gap-1.5">
         <p id={`${id}-method`} className="text-xs text-muted-foreground">Refund to</p>
-        <div role="group" aria-labelledby={`${id}-method`} className="grid grid-cols-3 gap-2 @md:grid-cols-5">
+        <ToggleGroup variant="segmented" tone="subtle" value={method} onValueChange={setMethod} disabled={saving || uncertain} aria-labelledby={`${id}-method`} className="grid min-w-0 grid-cols-[1fr_1.5fr_1fr_1.2fr_1fr]">
           {REFUND_METHODS.map((option) => (
-            <button key={option.value} type="button" aria-pressed={method === option.value} disabled={saving || uncertain} onClick={() => setMethod(option.value)} className="inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-45">
+            <ToggleGroupItem key={option.value} value={option.value} className="min-w-0 px-1 font-medium disabled:opacity-45 group-data-[variant=segmented]/toggle:text-[13px] @md:group-data-[variant=segmented]/toggle:text-sm">
               {option.label}
-            </button>
+            </ToggleGroupItem>
           ))}
-        </div>
+        </ToggleGroup>
       </div>
-      <ReasonField label="Reason" placeholder="Or type a reason" value={reason} onChange={setReason} chips={["Short treatment", "Guest complaint", "Wrong charge"]} disabled={saving || uncertain} id={`${id}-reason`} className="[&_label]:text-xs [&_label]:text-muted-foreground" />
+      <div className="grid gap-2">
+        <Label htmlFor={`${id}-reason`} className="text-xs text-muted-foreground">Reason</Label>
+        <ToggleGroup variant="segmented" tone="subtle" value={reason.trim()} onValueChange={setReason} disabled={saving || uncertain} aria-label="Quick reason" className="grid min-w-0 grid-cols-[1.2fr_1.2fr_1.1fr]">
+          {["Short treatment", "Guest complaint", "Wrong charge"].map((value) => (
+            <ToggleGroupItem key={value} value={value} className="min-w-0 px-0.5 font-medium disabled:opacity-45 group-data-[variant=segmented]/toggle:text-[13px] @md:group-data-[variant=segmented]/toggle:text-sm">{value}</ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        <Input id={`${id}-reason`} placeholder="Or type a reason" value={reason} onChange={(event) => setReason(event.target.value)} required aria-required="true" disabled={saving || uncertain} autoComplete="off" />
+      </div>
       {uncertain ? <p role="status" className="text-xs text-muted-foreground">Retry sends the same refund, so it is never recorded twice.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
       <div className="grid grid-cols-[auto_1fr] gap-2">
         <Button type="button" variant="ghost" className="h-11" disabled={saving} onClick={onCancel}>Cancel</Button>
-        <Button type="submit" variant="outline" className="h-auto min-h-11 w-full whitespace-normal border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive disabled:opacity-100 disabled:border-border disabled:text-muted-foreground" disabled={!ready || saving}>
+        <Button type="submit" variant="outline" className="h-auto min-h-12 w-full whitespace-normal text-[15px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive disabled:opacity-100 disabled:border-border disabled:text-muted-foreground" disabled={!ready || saving}>
           {saving ? <Spinner label={ask ? "Sending" : "Recording"} className="text-current" /> : null}
           {uncertain ? "Retry same refund" : !reason.trim() ? "Pick a reason" : refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
         </Button>

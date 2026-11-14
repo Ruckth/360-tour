@@ -139,8 +139,18 @@ export function HistoryValues({
 
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
+    <InlineErrorBoundary resetKey={orderId} message="Couldn't load order history. Retry to continue.">
+      <RecordedOrderHistory key={orderId} orderId={orderId} />
+    </InlineErrorBoundary>
+  );
+}
+
+function RecordedOrderHistory({ orderId }: { orderId: OrderId }) {
+  const page = useCheckoutBackend().useOrderHistory(orderId);
+  if (!page.results.length) return null;
+  return (
     <HistoryDetails orderId={orderId} title="History">
-      <OrderHistoryList orderId={orderId} />
+      <HistoryPageContent page={page} intro />
     </HistoryDetails>
   );
 }
@@ -161,6 +171,10 @@ export function OrderHistoryList({ orderId, intro = true }: { orderId: OrderId; 
 }
 function HistoryPage({ orderId, intro }: { orderId: OrderId; intro: boolean }) {
   const page = useCheckoutBackend().useOrderHistory(orderId);
+  return <HistoryPageContent page={page} intro={intro} />;
+}
+
+function HistoryPageContent({ page, intro }: { page: ReturnType<ReturnType<typeof useCheckoutBackend>["useOrderHistory"]>; intro: boolean }) {
   return (
     <section aria-label="Order history" className="grid gap-3 pb-3">
       {intro ? (

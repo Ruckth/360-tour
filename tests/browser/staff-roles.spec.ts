@@ -129,10 +129,10 @@ test.describe("manager approvals", () => {
     await expect(requests).toHaveCount(2);
 
     const first = requests.filter({ hasText: "Guest waited 40 minutes" });
-    await expect(first.locator("p").first()).toHaveText("Thai massage 60");
+    await expect(first.locator("p").first()).toHaveText("Thai massage 60 · Order #1043");
     await expect(first).toContainText("Mint asks for a ฿180 discount (15%)");
     await expect(first).toContainText("“Guest waited 40 minutes”");
-    await expect(first).toContainText("Order #1043 · Total ฿1,200 → ฿1,020");
+    await expect(first).toContainText("Total ฿1,200 → ฿1,020");
     await expect(first).toContainText("Expires in 5 min");
     await first.getByRole("button", { name: "About approvals" }).click();
     await expect(page.getByRole("tooltip")).toHaveText("Works once, for this order as it is now.");

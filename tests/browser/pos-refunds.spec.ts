@@ -36,13 +36,13 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   // Opens ready to send: all that is left, the original tender, and focus on the form, not a keyboard.
   await expect(form.getByText("Refund", { exact: true })).toBeFocused();
   await expect(amount).toHaveValue("1200");
-  await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(form.getByRole("group", { name: "Refund to" }).getByRole("button", { name: "Card", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(form.getByRole("radiogroup", { name: "Refund to" }).getByRole("radio", { name: "Card", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(form.getByRole("button", { name: "Pick a reason" })).toBeDisabled();
   await amount.fill("1200.01");
   await expect(form.getByText("Up to ฿1,200.")).toBeVisible();
   await amount.fill("300");
-  await form.getByRole("button", { name: "Short treatment" }).click();
+  await form.getByRole("radio", { name: "Short treatment" }).click();
   await form.getByRole("button", { name: "Record refund ฿300" }).click();
 
   await expect(note(page, "Refunded ฿300 · Short treatment")).toBeFocused();
@@ -74,10 +74,10 @@ test("the form works from the keyboard and Escape returns focus to its line", as
   const form = items(page).getByRole("form", { name: "Refund", exact: true });
   await expect(form.getByText("Refund", { exact: true })).toBeFocused();
   // The segmented method control works from the keyboard; Escape still closes the form.
-  const cash = form.getByRole("group", { name: "Refund to" }).getByRole("button", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true });
+  const cash = form.getByRole("radiogroup", { name: "Refund to" }).getByRole("radio", { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true });
   await cash.focus();
   await page.keyboard.press("Enter");
-  await expect(cash).toHaveAttribute("aria-pressed", "true");
+  await expect(cash).toHaveAttribute("aria-checked", "true");
   await form.getByRole("textbox", { name: "Reason" }).focus();
   await page.keyboard.press("Escape");
   await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
@@ -93,7 +93,7 @@ test("a refund over what is left shows the server's remaining amount", async ({ 
   await form.getByRole("button", { name: RECORD }).click();
   await expect(form.getByRole("alert")).toHaveText("Only ฿700 left to refund on this line.");
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("700");
-  await expect(form.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
   await form.getByRole("button", { name: "Record refund ฿700" }).click();
   await expect(note(page, "Refunded ฿700")).toBeVisible();
   await expect(receipt(page).getByTestId("receipt-line-refunded")).toHaveText("Refunded-฿1,200");
@@ -114,10 +114,10 @@ test("a cashier asks a manager, and the approved refund appears on the receipt",
   await page.getByTestId("approvals-button").click();
   const panel = page.getByRole("dialog", { name: "Approvals" });
   const card = panel.getByTestId("approval-request");
-  await expect(card.locator("p").first()).toHaveText("Thai massage 60");
+  await expect(card.locator("p").first()).toHaveText("Thai massage 60 · Order #1043");
   await expect(card).toContainText("Mint asks to refund ฿300");
   await expect(card).toContainText("“Short treatment”");
-  await expect(card).toContainText("Order #1043 · Net received ฿1,800 → ฿1,500");
+  await expect(card).toContainText("Net received ฿1,800 → ฿1,500");
   await card.getByRole("button", { name: "Approve" }).click();
   // The last request: the panel closes and the toast says what happened.
   await expect(panel).toHaveCount(0);
@@ -193,7 +193,7 @@ test("a retry after a lost answer reuses the same attempt key", async ({ page })
   await expect(form.getByRole("alert")).toHaveText("Connection lost. Try again.");
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toBeDisabled();
   await expect(form.getByRole("textbox", { name: "Reason" })).toBeDisabled();
-  for (const method of await form.getByRole("group", { name: "Refund to" }).getByRole("button").all()) await expect(method).toBeDisabled();
+  for (const method of await form.getByRole("radiogroup", { name: "Refund to" }).getByRole("radio").all()) await expect(method).toBeDisabled();
   await form.getByRole("button", { name: "Retry same refund" }).click();
   await expect(note(page, "Refunded ฿300")).toBeVisible();
   const retryAttempts = await page.evaluate(() => window.fixture.refundAttempts());

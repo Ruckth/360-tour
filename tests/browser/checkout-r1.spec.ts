@@ -81,7 +81,7 @@ test.describe("phone payment layouts", () => {
     await expect(pay.getByTestId("split-remaining")).toHaveText("Covered · ฿1,200 in 2 payments");
     await expect(pay.getByText(/^Covered ·/)).toBeVisible();
     await expect(pay.getByLabel("Payment 2 amount")).toHaveText("฿700");
-    await expect(pay.getByText("Rest")).toBeVisible();
+    await expect(pay.getByRole("heading", { name: "Payment 2 · rest", exact: true })).toBeVisible();
     await pay.getByLabel("Payment 1 amount").fill("1200");
     await expect(pay.getByText("Leave an amount for the final payment, or use a single payment.")).toBeVisible();
     await expect(pay.getByRole("button", { name: "Confirm split", exact: true })).toBeDisabled();
@@ -104,8 +104,8 @@ test.describe("phone payment layouts", () => {
 
     await expect(form.getByRole("button", { name: "Pick a reason", exact: true })).toBeDisabled();
     await expect(items.getByRole("button", { name: "Refund Thai massage 60", exact: true })).toHaveCount(0);
-    await expect(form.getByRole("button", { name: "PromptPay", exact: true })).toHaveAccessibleName("PromptPay");
-    await form.getByRole("button", { name: "Short treatment", exact: true }).click();
+    await expect(form.getByRole("radio", { name: "PromptPay", exact: true })).toHaveAccessibleName("PromptPay");
+    await form.getByRole("radio", { name: "Short treatment", exact: true }).click();
     await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
     await form.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
@@ -123,8 +123,8 @@ test("a changed refund draft guards New sale and Escape without recording money"
   const itemsHeading = await page.getByTestId("receipt-items").getByRole("heading", { name: "Items", exact: true }).boundingBox();
   const serviceTitle = await page.getByTestId("receipt-items").getByText("Foot spa 45", { exact: true }).boundingBox();
   expect(serviceTitle!.y, "the service name stays below the sticky Items header").toBeGreaterThanOrEqual(itemsHeading!.y + itemsHeading!.height);
-  await form.getByRole("button", { name: "Half", exact: true }).click();
-  await form.getByRole("button", { name: "Guest complaint", exact: true }).click();
+  await form.getByRole("radio", { name: "Half", exact: true }).click();
+  await form.getByRole("radio", { name: "Guest complaint", exact: true }).click();
   await page.getByRole("button", { name: "New sale", exact: true }).click();
   const guard = page.getByRole("alertdialog");
   await expect(guard.getByRole("heading", { name: "Discard unsaved changes?" })).toBeVisible();

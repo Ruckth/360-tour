@@ -47,11 +47,11 @@ for (const width of [390, 1180]) {
       }
     });
 
-    test("all refund chip groups keep selected text visible on the foreground fill", async ({ page }) => {
+    test("all refund choices use the locked subtle tone with legible selected text", async ({ page }) => {
       await open(page, "staff-roles", "?role=manager&scenario=refund");
       await page.getByRole("button", { name: "Refund Foot spa 45", exact: true }).click();
       const form = page.getByRole("form", { name: "Refund", exact: true });
-      await form.getByRole("button", { name: "Guest complaint", exact: true }).click();
+      await form.getByRole("radio", { name: "Guest complaint", exact: true }).click();
       const palette = await page.evaluate(() => {
         const probe = document.createElement("span");
         probe.style.cssText = "color:var(--foreground);background-color:var(--background)";
@@ -61,12 +61,13 @@ for (const width of [390, 1180]) {
         return colors;
       });
       for (const name of ["All", "Card", "Guest complaint"]) {
-        const chip = form.getByRole("button", { name, exact: true });
-        await expect(chip).toHaveAttribute("aria-pressed", "true");
-        await expect(chip).toHaveCSS("background-color", palette.foreground);
-        await expect(chip).toHaveCSS("color", palette.background);
+        const chip = form.getByRole("radio", { name, exact: true });
+        await expect(chip).toHaveAttribute("aria-checked", "true");
+        await expect(chip).toHaveCSS("background-color", palette.background);
+        await expect(chip).toHaveCSS("color", palette.foreground);
       }
-      await expect(form.getByRole("button", { name: "Half", exact: true })).toHaveCSS("background-color", palette.background);
+      await expect(form.getByRole("radio", { name: "Half", exact: true })).toHaveAttribute("aria-checked", "false");
+      for (const group of await form.locator("[data-variant=segmented]").all()) await expect(group).toHaveAttribute("data-tone", "subtle");
     });
 
     test("price and reason survive cancelled collapse, row switch, payment and sheet dismissal", async ({ page }) => {
