@@ -35,7 +35,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: "Orders", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const lookup = dialog.getByLabel("Order number shown on the receipt");
+  const lookup = dialog.getByLabel("Order number");
   for (const invalid of ["0", "-1042", "1042.5", "1042abc", "9007199254740992"]) {
     await lookup.fill(invalid);
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
@@ -43,22 +43,26 @@ test("invalid order numbers never open a different order", async ({ page }) => {
     await expect(dialog.getByRole("alert")).toHaveText("Enter a positive whole order number.");
     await expect(dialog).toBeVisible();
   }
-  await lookup.fill("1042");
+  await lookup.fill("R-001042");
+  await dialog.getByRole("button", { name: "Go", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("That's the receipt number. Enter the order number, shown as Order #.");
+  await lookup.fill("Order #1042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("order-panel-title")).toHaveText("Order #1042");
 });
 
-test("an expired approval names its item and disables both decisions", async ({ page }) => {
+test("an approval past its local expiry names its item and leaves the decision to the server", async ({ page }) => {
   await page.clock.install();
   await open(page, "?role=manager&scenario=pending");
   await page.getByTestId("approvals-button").click();
   const request = page.getByTestId("approval-request").first();
   await expect(request).toContainText("on Thai massage 60");
   await page.clock.fastForward(5 * 60_000);
-  await expect(request).toContainText("Expired · ask the cashier to request again");
-  await expect(request.getByRole("button", { name: "Approve", exact: true })).toBeDisabled();
-  await expect(request.getByRole("button", { name: "Decline", exact: true })).toBeDisabled();
+  // A fast device clock must not block a decision the server would still accept.
+  await expect(request).toContainText("Expiring now");
+  await expect(request.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
+  await expect(request.getByRole("button", { name: "Decline", exact: true })).toBeEnabled();
 });
 
 test.describe("phone payment layouts", () => {
@@ -71,6 +75,7 @@ test.describe("phone payment layouts", () => {
     await order.getByRole("button", { name: "Split payment", exact: true }).click();
     const pay = order.getByTestId("pay-panel");
     await expect(pay.getByText("Enter an amount for payment 1.")).toBeVisible();
+    await expect(pay.getByText("Fully allocated")).toHaveCount(0);
     await expect(pay.getByRole("button", { name: "Confirm split", exact: true })).toBeDisabled();
     await pay.getByLabel("Payment 1 amount").fill("500");
     await expect(pay.getByTestId("split-remaining")).toHaveText("฿0");

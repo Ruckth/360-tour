@@ -711,10 +711,14 @@ function SplitForm({
           );
         })}
       </ul>
-      <div className="flex items-baseline justify-between gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
-        <span className="flex items-center gap-2 text-sm">{remaining === 0 ? <Check aria-hidden className="size-4" /> : null}{remaining < 0 ? "Over by" : remaining > 0 ? "Remaining" : "Fully allocated"}</span>
-        <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", remaining < 0 ? "text-destructive" : remaining > 0 ? "text-amber-700 dark:text-amber-400" : "text-foreground")}>{formatMoney(Math.abs(remaining))}</output>
-      </div>
+      {/* The last row absorbs the rest, so the summary only claims "Fully allocated" once every payment has an amount;
+          until then the validation line below the rows says what's missing. */}
+      {ready || remaining < 0 ? (
+        <div className="flex items-baseline justify-between gap-3 rounded-xl bg-muted/50 p-4" aria-live="polite">
+          <span className="flex items-center gap-2 text-sm">{remaining < 0 ? "Over by" : <><Check aria-hidden className="size-4" />Fully allocated</>}</span>
+          <output data-testid="split-remaining" className={cn("font-sans text-[28px] leading-tight font-semibold tabular-nums", remaining < 0 ? "text-destructive" : "text-foreground")}>{formatMoney(Math.abs(remaining))}</output>
+        </div>
+      ) : null}
       {rows.length < MAX_TENDERS ? (
         <Button
           variant="ghost"

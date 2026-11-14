@@ -12,7 +12,7 @@ import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
 
 /*
  * P2b: a cashier's Orders is the open orders list (pos.listOpenOrders), one tap per order, plus a
- * small "Order number shown on the receipt" for today's receipts. Save & close is gone.
+ * small "Order number" for today's receipts. Save & close is gone.
  */
 
 const CASHIER: StaffAccessView = {
@@ -71,7 +71,7 @@ describe("open orders list", () => {
     expect(list()).toBeNull();
     expect(document.body.textContent).toContain("No open orders.");
     // The receipt lookup stays, for today's paid orders.
-    expect(document.querySelector('label[for="order-lookup"]')?.textContent).toBe("Order number shown on the receipt");
+    expect(document.querySelector('label[for="order-lookup"]')?.textContent).toBe("Order number");
   });
 
   it("lists each order with its customer or booking, item count and due, in the order given, and opens one in a tap", async () => {

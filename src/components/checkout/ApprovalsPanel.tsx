@@ -131,7 +131,8 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
   const refund = request.payload.kind === "refund" ? request.payload : null;
   const lineName = order?.lines.find((line) => line._id === request.lineId)?.name;
   const { decide, busy, error } = useApprovalDecision(request, lineName, title);
-  const expired = now >= request.expiresAt;
+  // Display only: the server decides expiry (and drops expired requests), so a fast device clock never blocks a decision.
+  const expiring = now >= request.expiresAt;
 
   return (
     <li data-testid="approval-request">
@@ -143,11 +144,11 @@ function ApprovalItem({ request, onResult }: { request: ApprovalRequest; onResul
         {title} · {refund ? "Net received" : "Total"} {formatMoney(request.totalBefore)} → <span className="font-semibold text-foreground">{formatMoney(request.totalAfter)}</span>
       </p>
       <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {expired ? "Expired · ask the cashier to request again" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
+        {expiring ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}
         <InfoTip label="About approvals">Works once, for this order as it is now.</InfoTip>
       </p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <ApprovalDecisionButtons busy={busy} disabled={expired} onDecide={(choice) => { if (Date.now() >= request.expiresAt) return; void decide(choice).then((result) => { if (result) onResult(result); }); }} />
+      <ApprovalDecisionButtons busy={busy} onDecide={(choice) => { void decide(choice).then((result) => { if (result) onResult(result); }); }} />
     </Card>
     </li>
   );

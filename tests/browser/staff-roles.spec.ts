@@ -90,10 +90,10 @@ test.describe("cashier checkout", () => {
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("radio", { name: "Paid" })).toHaveCount(0);
     await expect(dialog.getByRole("list", { name: "Open orders" }).getByRole("button")).toHaveCount(2);
-    await dialog.getByRole("textbox", { name: "Order number shown on the receipt" }).fill("999");
+    await dialog.getByRole("textbox", { name: "Order number" }).fill("999");
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
     await expect(dialog.getByText("Not available. Check the number or pick an open order above.")).toBeVisible();
-    await dialog.getByRole("textbox", { name: "Order number shown on the receipt" }).fill("1042");
+    await dialog.getByRole("textbox", { name: "Order number" }).fill("1042");
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     await expect(orderPanel(page).getByTestId("order-panel-title")).toHaveText("Order #1042");

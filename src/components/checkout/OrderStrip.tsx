@@ -653,8 +653,17 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   }, [number, found, onOpen]);
   function submit(event: FormEvent) {
     event.preventDefault();
-    const value = Number(text.trim());
-    if (!/^\d+$/.test(text.trim()) || !Number.isSafeInteger(value) || value <= 0) {
+    const raw = text.trim();
+    if (/^r\s*-?\s*\d/i.test(raw)) {
+      // R-000042 is the receipt number, not order #42.
+      setError("That's the receipt number. Enter the order number, shown as Order #.");
+      setNumber(null);
+      return;
+    }
+    // Accept the number as the app shows it: "1043", "#1043" or "Order #1043".
+    const digits = raw.replace(/^(order\s*)?#?\s*/i, "");
+    const value = Number(digits);
+    if (!/^\d+$/.test(digits) || !Number.isSafeInteger(value) || value <= 0) {
       setError("Enter a positive whole order number.");
       setNumber(null);
       return;
@@ -665,7 +674,7 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
   }
   return (
     <form onSubmit={submit} className="grid gap-2 border-t border-border pt-3">
-      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number shown on the receipt</Label>
+      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number</Label>
       <div className="flex gap-2">
         <Input id="order-lookup" inputMode="numeric" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043" />
         <Button type="submit" variant="outline" disabled={!text.trim()}>Go</Button>

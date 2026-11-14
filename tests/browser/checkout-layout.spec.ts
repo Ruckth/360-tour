@@ -202,6 +202,8 @@ test.describe("order panel under enlarged text (RA-01)", () => {
     for (let i = 0; i < 3; i += 1) {
       for (let j = i + 1; j < 3; j += 1) expect.soft(overlaps(boxes[i], boxes[j]), `split row controls ${i + 1} and ${j + 1}`).toBe(false);
     }
+    // The summary appears once every payment has an amount.
+    await sheet.getByLabel("Payment 1 amount").fill("500");
     await expectOneLine(sheet.getByTestId("split-remaining"), "remaining amount");
     const amount = await sheet.getByLabel("Payment 1 amount").boundingBox();
     expect.soft(amount!.width, "amount field keeps room to type").toBeGreaterThanOrEqual(96);

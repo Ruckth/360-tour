@@ -132,7 +132,8 @@ describe("pay panel", () => {
     const settle = loseFirstAnswer(actions);
     const rowTwo = document.querySelector('[aria-label="Payment 2 method"]')!;
     await act(async () => [...rowTwo.querySelectorAll("button")].find((b) => b.textContent === "Card")!.click());
-    expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿0");
+    // Not "Fully allocated" while payment 1 is still empty.
+    expect(document.querySelector('[data-testid="split-remaining"]')).toBeNull();
     expect(button("Confirm split")?.disabled).toBe(true);
     await input('[aria-label="Payment 1 amount"]', "500");
     expect(document.querySelector('[data-testid="split-remaining"]')?.textContent).toBe("฿0");

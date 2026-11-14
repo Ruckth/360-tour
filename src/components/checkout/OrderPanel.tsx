@@ -120,6 +120,8 @@ export function OrderPanel({
   const orderId = view?.order._id;
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
   const { now, stale, couponBlocked, approvals, waiting, cannotPay } = usePayState(view);
+  // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
+  const payLocked = cannotPay || busy;
   // Opened from the phone's "Cash ฿X": straight to the cash panel, if the order can be paid. Confirm is still required.
   const [paying, setPaying] = useState<TenderMethod | "split" | "none" | null>(() => (initialPay && !cannotPay && totals.due > 0 ? initialPay : null));
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
@@ -245,6 +247,8 @@ export function OrderPanel({
           </div>
 
           <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
+            {/* Outside the empty-order branch: a request for the first custom item starts on an empty order. */}
+            {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
             {lines.length ? <>
               {view ? <OrderCoupon view={view} run={run} busy={busy} open={couponOpen} onOpenChange={setCouponOpen} /> : null}
               <dl className="space-y-1 text-sm">
@@ -275,7 +279,6 @@ export function OrderPanel({
               {couponBlocked ? (
                 <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
               ) : null}
-              {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
               {/* The request sits on its line, which may be scrolled away: say why the tenders are off. */}
               {waiting && shownLine ? (
                 <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">
@@ -284,19 +287,19 @@ export function OrderPanel({
               ) : null}
               {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
               {lines.length && totals.due === 0 ? (
-                <CloseNothingDue view={view!} disabled={cannotPay} onPaid={onPaid} onReview={() => setPaying("none")} />
+                <CloseNothingDue view={view!} disabled={payLocked} onPaid={onPaid} onReview={() => setPaying("none")} />
               ) : (
                 <>
                   <p className="mb-2 text-xs font-medium text-muted-foreground [@media(max-height:32rem)]:sr-only">Pay <span className="font-sans tabular-nums">{formatMoney(totals.due)}</span> by</p>
                   <div className={cn(UP_TO_FOUR_COLUMNS, "[@media(max-height:32rem)]:grid-cols-5")}>
                     {(["cash", "promptpay", "card", "transfer"] as const).map((method) => (
-                      <Button key={method} className="h-12 min-w-0 rounded-xl px-1 text-sm" variant={method === "cash" ? "default" : "outline"} disabled={cannotPay} onClick={() => setPaying(method)}>
+                      <Button key={method} className="h-12 min-w-0 rounded-xl px-1 text-sm" variant={method === "cash" ? "default" : "outline"} disabled={payLocked} onClick={() => setPaying(method)}>
                         {TENDER_LABELS[method].short}
                       </Button>
                     ))}
-                  <Button variant="ghost" aria-label="Split payment" className="hidden h-12 text-sm [@media(max-height:32rem)]:inline-flex" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
+                  <Button variant="ghost" aria-label="Split payment" className="hidden h-12 text-sm [@media(max-height:32rem)]:inline-flex" disabled={payLocked} onClick={() => setPaying("split")}>Split</Button>
                   </div>
-                  <Button variant="ghost" aria-label="Split payment" className="mt-1 ml-auto flex h-11 px-2 text-sm [@media(max-height:32rem)]:hidden" disabled={cannotPay} onClick={() => setPaying("split")}>Split</Button>
+                  <Button variant="ghost" aria-label="Split payment" className="mt-1 ml-auto flex h-11 px-2 text-sm [@media(max-height:32rem)]:hidden" disabled={payLocked} onClick={() => setPaying("split")}>Split</Button>
                 </>
               )}
             </> : <p className="py-2 text-sm text-muted-foreground">Add an item to take payment.</p>}
