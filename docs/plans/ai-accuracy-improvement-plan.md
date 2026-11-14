@@ -93,7 +93,7 @@ The six stages above total roughly **14–24 engineering hours** for an initial 
 
 Optional later capabilities are separate work: a real reschedule workflow (roughly 6–10 hours, including atomic slot/staff validation, confirmation, and cancellation-policy handling) and durable notification/delivery recovery (roughly 3–6 hours after channel setup). Do not implement reschedule as cancel-then-rebook without a transaction and policy design.
 
-The observed Luna comparison cost was about ฿0.92 for 79 prompts. Three equivalent replay passes would be about **฿2.76 of provider API cost** at the measured mix; provision approximately **฿3–10 per live accuracy run** for expanded scenarios and routing calls. Context size, tools, cache hits, and retries can change this. Excludes Codex, hosting, and engineering time. Store actual usage after each run; deterministic mocked tests do not require paid model calls.
+The observed Luna comparison cost was about ฿0.92 for 79 prompts. Three equivalent replay passes would be about **฿2.76 of provider API cost** at the measured mix; provision approximately **฿3–10 per live accuracy run** for expanded scenarios and routing calls. Context size, tools, cache hits, and retries can change this. Excludes development tooling, hosting, and engineering time. Store actual usage after each run; deterministic mocked tests do not require paid model calls.
 
 Rollout: freeze the scored baseline → implement facts → implement transaction/capability correctness → rerun three live repetitions → try efficiency changes one at a time → rerun the identical suite. Keep prior config/prompt versions for rollback. The current model change is applied to dev/preview; release further behavior changes only with their measured results.
 

@@ -19,7 +19,7 @@ Rules for all phases:
 - **Archive, don't delete** anything that other records point to (properties, staff, services, answers, paid bookings). Archived rows get **Restore**.
 - **Hard delete** only rows with no references: unpaid test bookings, leads, time off, archived answers and suggestions (with cascade).
 - Every admin mutation calls `requireAdmin` and has a test in the matching `convex/*.test.ts`.
-- Each numbered step is its own PR. Backend-heavy PRs go to Codex (gpt-6-sol) and are reviewed by Opus. UI and flows are done by Opus.
+- Each numbered step is its own PR. Assign implementation and independent review owners for backend and UI work.
 
 ---
 
@@ -188,7 +188,7 @@ Top fixes, in order (details in the UI research):
     - Show payment and money as formatted text (not raw `unpaid` / `THB 12000`).
     - Admin transcript: guest on the left, and AI replies visually distinct from admin replies.
 
-Verification: a Codex computer-use pass screenshots every admin screen in light and dark, before and after, and runs a contrast check.
+Verification: a browser automation pass screenshots every admin screen in light and dark, before and after, and runs a contrast check.
 
 ---
 

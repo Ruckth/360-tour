@@ -29,6 +29,7 @@ export function useToast(ms = 8000) {
   const seq = useRef(0);
 
   const dismiss = useCallback(() => {
+    ++seq.current;
     clearTimeout(timer.current);
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
     setCurrent(null);
@@ -57,21 +58,24 @@ export function useToast(ms = 8000) {
 
   const run = useCallback(async () => {
     const action = current?.action;
-    if (!action) return;
+    if (!action || current.id !== seq.current) return;
+    const id = current.id;
     // Hold the toast while the action runs, and on an error until it is dismissed.
     clearTimeout(timer.current);
     setBusy(true);
     try {
       await action.run();
-      setCurrent(null);
+      if (seq.current === id) setCurrent(null);
     } catch (failure) {
+      if (seq.current !== id) return;
       setError(failure instanceof Error && failure.message ? failure.message : `Couldn't ${action.label.toLowerCase()}. Try again.`);
     } finally {
-      setBusy(false);
+      if (seq.current === id) setBusy(false);
     }
   }, [current]);
 
   useEffect(() => () => {
+    ++seq.current;
     clearTimeout(timer.current);
     if (frame.current !== undefined) cancelAnimationFrame(frame.current);
   }, []);

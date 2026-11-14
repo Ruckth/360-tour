@@ -48,7 +48,7 @@ Make the web chat look and feel cleaner with shadcn-chat components, without bre
      - `/chat` page
      - mobile widget with the keyboard open
      - Thai text and a very long message
-   - Manual checks on iOS Safari and in the LINE / Facebook in-app browsers (keyboard + external-browser handoff). Use Codex computer use for the device clicking.
+   - Manual checks on iOS Safari and in the LINE / Facebook in-app browsers (keyboard + external-browser handoff). Use browser or device automation for these checks.
 
 ## Out of scope
 - Changing AI behaviour or booking logic (see `ai-chat-booking.md`).

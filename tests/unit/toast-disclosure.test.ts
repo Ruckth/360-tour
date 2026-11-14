@@ -28,6 +28,42 @@ const region = () => document.querySelector<HTMLElement>('[data-testid="toast"]'
 const button = (name: string) => [...document.querySelectorAll("button")].find((b) => (b.textContent || b.getAttribute("aria-label")) === name);
 
 describe("Toast", () => {
+  it.each(["resolve", "reject"])("ignores an old action's %s after a new toast replaces it", async (outcome) => {
+    let show!: (text: string, action?: ToastAction) => void;
+    let resolve!: () => void;
+    let reject!: (error: Error) => void;
+    const pending = new Promise<void>((done, fail) => { resolve = done; reject = fail; });
+    await act(async () => root.render(createElement(Harness, { onReady: (s) => (show = s) })));
+    await act(async () => show("Old report", { label: "Undo", run: () => pending }));
+    await act(async () => button("Undo")!.click());
+    await act(async () => show("New report", { label: "Undo", run: () => undefined }));
+    await act(async () => {
+      if (outcome === "resolve") resolve();
+      else reject(new Error("Old failure"));
+    });
+    expect(region().textContent).toContain("New report");
+    expect(region().textContent).not.toContain("Old failure");
+    expect(button("Undo")?.disabled).toBe(false);
+  });
+
+  it("does not unlock a newer action when an older one completes", async () => {
+    let show!: (text: string, action?: ToastAction) => void;
+    let finishOld!: () => void;
+    let finishNew!: () => void;
+    const oldAction = new Promise<void>((done) => { finishOld = done; });
+    const newAction = new Promise<void>((done) => { finishNew = done; });
+    await act(async () => root.render(createElement(Harness, { onReady: (s) => (show = s) })));
+    await act(async () => show("Old report", { label: "Undo", run: () => oldAction }));
+    await act(async () => button("Undo")!.click());
+    await act(async () => show("New report", { label: "Undo", run: () => newAction }));
+    await act(async () => button("Undo")!.click());
+    await act(async () => finishOld());
+    expect(region().textContent).toContain("New report");
+    expect(region().querySelector("button")!.disabled).toBe(true);
+    await act(async () => finishNew());
+    expect(region().textContent).toBe("");
+  });
+
   it("keeps one live region mounted and clears the message after its time", async () => {
     vi.useFakeTimers();
     let show!: (text: string, action?: ToastAction) => void;
