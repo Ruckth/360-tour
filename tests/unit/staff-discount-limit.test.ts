@@ -85,13 +85,13 @@ describe("cashier discount limit hint", () => {
 
 it("rounds the approval ask to one decimal without changing the discount or its exact limit display", () => {
   const request: Pick<ApprovalView, "payload" | "amount" | "percent"> = {
-    payload: { kind: "discount", lineId: "line" as Extract<ApprovalView["payload"], { kind: "discount" }>["lineId"], discount: { type: "percent", value: 1667.0000000000002 } },
+    payload: { kind: "discount", lineId: "line" as Extract<ApprovalView["payload"], { kind: "discount" }>["lineId"], discount: { type: "percent", value: 1667 } },
     amount: 10000,
-    percent: 1667.0000000000002,
+    percent: 1667,
   };
   expect(approvalAsk(request)).toBe("asks for a ฿100 discount (16.7%)");
   expect(approvalAsk({ ...request, percent: 1500 })).toBe("asks for a ฿100 discount (15%)");
-  expect(request.payload).toMatchObject({ discount: { value: 1667.0000000000002 } });
+  expect(request.payload).toMatchObject({ discount: { value: 1667 } });
   expect(request.percent).toBe(1667);
   expect(formatPercent(1667)).toBe("16.67");
 });

@@ -127,7 +127,7 @@ it("amends a wrong tender through the real control while preserving the original
   await click("Wrong method picked");
   await click("Save · Transfer ฿100"); await tick();
   expect(amendment).toHaveBeenCalledOnce();
-  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, reason: "Wrong method picked", tenders: [{ method: "transfer", amount: 100 }] });
+  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, reason: "Wrong method picked", tenders: [{ method: "transfer", amount: 10000 }] });
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toBe(originalPaper);
   expect(document.querySelector('[role="status"]')!.textContent).toBe("Payment corrected · Transfer ฿100");
   expect(document.body.textContent).toContain("Paid by card · corrected");

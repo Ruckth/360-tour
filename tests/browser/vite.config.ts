@@ -1,4 +1,3 @@
-import { act } from "../support/checkout-act";
 import path from "node:path";
 import { defineConfig } from "vite";
 

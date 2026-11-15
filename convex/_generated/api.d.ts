@@ -325,7 +325,10 @@ import type {
 
 import type * as pos_commands_openStayCheckout from "../pos/commands/openStayCheckout.js";
 
+import type * as services_private_stayAppointments from "../services/private/stayAppointments.js";
+
 declare const fullApi: ApiFromModules<{
+  "services/private/stayAppointments": typeof services_private_stayAppointments;
   "pos/commands/openStayCheckout": typeof pos_commands_openStayCheckout;
   "auth/model": typeof auth_model;
   "auth/private/adminAuth": typeof auth_private_adminAuth;

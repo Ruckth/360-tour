@@ -70,7 +70,7 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
     case "refund":
       return [`asks to refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
-      return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${Math.round(request.percent * 10) / 10}%)` : ""}${lineName ? ` on ${lineName}` : ""}`;
+      return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${Math.round(basisPointsToPercent(request.percent) * 10) / 10}%)` : ""}${lineName ? ` on ${lineName}` : ""}`;
     case "customPrice":
       if (payload.action === "addCustomItem") return `asks to add “${payload.name}” at ${formatMoney(payload.price)}`;
       return `asks for a custom price${request.amount ? ` (${formatMoney(request.amount)} off)` : ""}`;

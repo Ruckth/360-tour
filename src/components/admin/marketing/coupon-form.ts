@@ -51,7 +51,8 @@ export function discountFromText(text: string, current: CouponForm["kind"]): Pic
   const parsed = parseDiscount(trimmed, UNBOUNDED_LINE);
   if (parsed?.ok) {
     const { type, value } = parsed.discount;
-    return type === "percent" ? { kind: "percent", value: String(value) } : { kind: "fixed", value: Number.isInteger(value) ? wholeText(value) : String(value) };
+    const human = type === "percent" ? basisPointsToPercent(value) : satangToBaht(value);
+    return type === "percent" ? { kind: "percent", value: String(human) } : { kind: "fixed", value: Number.isInteger(human) ? wholeText(human) : String(human) };
   }
   // Not a discount yet ("abc", "150%"): kept as typed, so couponFormErrors can say what's wrong.
   const percent = /^(.*?)\s*%$/.exec(trimmed);

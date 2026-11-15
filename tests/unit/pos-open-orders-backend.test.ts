@@ -44,7 +44,7 @@ it('pages fixture open orders, preserves cross-staff recall and reacts to discar
 	const backend = await createFixtureBackend();
 	const actions = backend.useActions();
 	const created = await Promise.all(Array.from({ length: 72 }, (_, i) => actions.addItem({ item: { kind: 'extra', name: `Sale ${i}`, price: 10000 } })));
-	backend.setStaff({ role: 'cashier', email: 'another-cashier@example.com' });
+	await backend.setStaff({ role: 'cashier', email: 'another-cashier@example.com' });
 	await render(backend);
 	expect(page.results).toHaveLength(20);
 	expect(page.status).toBe('CanLoadMore');

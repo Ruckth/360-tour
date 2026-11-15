@@ -539,7 +539,7 @@ export async function createFixtureBackend(options: Options = {}) {
     setAppointmentSnapshot,
     setBookingSnapshot,
     async readFixtureQuery(name: string, args: Record<string, unknown>) {
-      return translate(
+      const value = translate(
         await t
           .withIdentity(identity())
           .query(
@@ -548,6 +548,7 @@ export async function createFixtureBackend(options: Options = {}) {
           ),
         true,
       );
+      return name === "pos/catalog:catalog" ? { ...(value as object), extras: CATALOG.extras, frequent: CATALOG.frequent } : value;
     },
     async setCouponSnapshot(code: string, patch: Partial<CouponRules>) {
       await t.run(async (ctx) => {

@@ -29,10 +29,10 @@ function reportFor(request: ReportRequest): ReportData {
     return { ...base, from: request.range.from, to: request.range.to,
       sales: [tracked, unknown, staff, messaging],
       events: [
-        { saleId: tracked.id, day: base.to, kind: "payment", amount: 1000 },
-        { saleId: unknown.id, day: base.to, kind: "payment", amount: 2000 },
-        { saleId: staff.id, day: base.to, kind: "refund", amount: 3000 },
-        { saleId: messaging.id, day: base.to, kind: "refund", amount: 500 },
+        { saleId: tracked.id, day: base.to, kind: "payment", amount: 100000 },
+        { saleId: unknown.id, day: base.to, kind: "payment", amount: 200000 },
+        { saleId: staff.id, day: base.to, kind: "refund", amount: 300000 },
+        { saleId: messaging.id, day: base.to, kind: "refund", amount: 50000 },
       ],
     };
   }

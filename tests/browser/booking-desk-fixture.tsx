@@ -1,3 +1,4 @@
+import { bahtToSatang } from "convex/shared/money";
 type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
@@ -57,7 +58,7 @@ const access: StaffAccessView = {
 
 const villa = (n: number, name: string, pricePerNight: number) => ({
   _id: fid<"properties">("villa", n) as Id<"properties">, slug: name.toLowerCase().replace(/\s+/g, "-"), name, maxGuests: 4,
-  status: "active" as const, pricePerNight, currency: "THB", directDiscountPercent: 0,
+  status: "active" as const, pricePerNight: bahtToSatang(pricePerNight), currency: "THB", directDiscountPercent: 0,
 });
 const properties = [villa(1, "Lagoon Pool Villa", 12000), villa(2, "Garden Villa", 8500), villa(3, "Ocean Suite", 4900), villa(4, "Tideglass Pool Residence", 8500)];
 
@@ -70,7 +71,7 @@ type Stay = {
 const stay = (n: number, fields: Omit<Stay, "_id" | "revision" | "payments" | "source"> & { paid?: Payment[] }): Stay => ({
   _id: fid<"bookings">("bkg", n) as Id<"bookings">, revision: 1, source: "web", payments: fields.paid ?? [], ...fields,
 });
-const deposit = (id: string, amount: number, method: string, daysAgo: number): Payment => ({ _id: id, amount, method, origin: method === "stripe" ? "online" : "manual", effectiveAt: now - daysAgo * DAY_MS });
+const deposit = (id: string, amount: number, method: string, daysAgo: number): Payment => ({ _id: id, amount: bahtToSatang(amount), method, origin: method === "stripe" ? "online" : "manual", effectiveAt: now - daysAgo * DAY_MS });
 const desk = {
   stays: [
     // Same ids as the checkout fixture backend: Anna's stay and its Hot stone appointment.
@@ -127,7 +128,7 @@ const person = (n: number, name: string, role: string, color: string) => ({
 }) as Doc<"staff">;
 const staff = [person(1, "Nok", "Therapist", "#0f766e"), person(2, "Ploy", "Therapist", "#b45309"), person(3, "Mali", "Senior therapist", "#7c3aed"), person(4, "Dao", "Therapist", "#be123c")];
 const service = (n: number, name: string, category: string, durationMin: number, price: number, staffIds: number[]) => ({
-  _id: fid<"services">("svc", n) as Id<"services">, _creationTime: 0, slug: `svc-${n}`, name, category, description: "", durationMin, bufferMin: 15, price, currency: "THB",
+  _id: fid<"services">("svc", n) as Id<"services">, _creationTime: 0, slug: `svc-${n}`, name, category, description: "", durationMin, bufferMin: 15, price: bahtToSatang(price), currency: "THB",
   staffIds: staffIds.map((i) => staff[i - 1]._id), status: "active" as const, createdAt: 0, updatedAt: 0,
 }) as Doc<"services">;
 const services = [service(1, "Thai massage 60", "Massage", 60, 1200, [1, 2, 3]), service(3, "Aroma oil massage 90", "Massage", 90, 1800, [2, 3]), service(5, "Hot stone 60", "Body", 60, 1500, [3, 4]), service(7, "Foot spa 45", "Feet & hands", 45, 600, [1, 2, 3, 4])];
@@ -240,7 +241,7 @@ registerFixtureFunctions({
       }
       return { orderId, added, skipped };
     },
-    "bookings/admin:recordPayment": (args: { bookingId: string; expectedRevision: number; expectedAmount: number; method: string; effectiveAt: number; idempotencyKey: string }) => {
+    "bookings/commands/recordPayment:recordPayment": (args: { bookingId: string; expectedRevision: number; expectedAmount: number; method: string; effectiveAt: number; idempotencyKey: string }) => {
       write("recordPayment", args);
       const s = find(args.bookingId)!;
       if (money(s).owed !== args.expectedAmount) throw new Error("The balance changed. Review it again.");
@@ -248,27 +249,27 @@ registerFixtureFunctions({
       s.payments.push({ _id: `pay-${args.idempotencyKey}`, amount: args.expectedAmount, method: args.method, origin: "manual", effectiveAt: args.effectiveAt });
       return null;
     },
-    "bookings/admin:cancelStay": (args: { bookingId: string; expectedRevision: number }) => {
+    "bookings/commands/cancelStay:cancelStay": (args: { bookingId: string; expectedRevision: number }) => {
       write("cancelStay", args);
       const s = find(args.bookingId)!;
       fresh(s, args.expectedRevision);
       s.status = "cancelled";
       return null;
     },
-    "bookings/admin:updateBooking": (args: { bookingId: string; action: "confirm" | "cancel"; expectedRevision: number }) => {
+    "bookings/commands/updateBooking:updateBooking": (args: { bookingId: string; action: "confirm" | "cancel"; expectedRevision: number }) => {
       write("updateBooking", args);
       const s = find(args.bookingId)!;
       fresh(s, args.expectedRevision);
       s.status = args.action === "confirm" ? "confirmed" : "cancelled";
       return null;
     },
-    "services/admin:createAppointment": (args: { serviceId: Id<"services">; start: number; staffId?: Id<"staff">; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings"> }) => {
+    "services/commands/createAppointment:createAppointment": (args: { serviceId: Id<"services">; start: number; staffId?: Id<"staff">; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings"> }) => {
       write("createAppointment", args);
       const svc = services.find((s) => s._id === args.serviceId)!;
       const created = addAppointment({ ...args, staffId: args.staffId ?? svc.staffIds[0] });
       return { appointmentId: created._id, staffId: created.staffId, confirmationCode: created.confirmationCode, accessToken: "" };
     },
-    "services/admin:updateAppointmentStatus": (args: { appointmentId: string; status: Doc<"appointments">["status"] }) => {
+    "services/commands/updateAppointmentStatus:updateAppointmentStatus": (args: { appointmentId: string; status: Doc<"appointments">["status"] }) => {
       write("updateAppointmentStatus", args);
       const a = desk.appointments.find((row) => row._id === args.appointmentId)! as { status: string; revision?: number };
       a.status = args.status;

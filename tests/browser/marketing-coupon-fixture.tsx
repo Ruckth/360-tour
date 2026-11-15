@@ -26,8 +26,8 @@ const seedCampaigns: CampaignRow[] =
     ? []
     : [{ _id: "campaign1" as Id<"marketingCampaigns">, _creationTime: 0, name: "Songkran spa week", source: "instagram", medium: "social", status: "active", ...audit, linkCount: 1, couponCount: 0, opens: 0, countsCapped: false }];
 const properties = [
-  { _id: "pool-id" as Id<"properties">, name: "Tideglass Pool Residence", slug: "pool-villa", status: "active", pricePerNight: 8500, currency: "THB", maxGuests: 6, directDiscountPercent: 15 },
-  { _id: "garden-id" as Id<"properties">, name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 4200, currency: "THB", maxGuests: 4, directDiscountPercent: 0 },
+  { _id: "pool-id" as Id<"properties">, name: "Tideglass Pool Residence", slug: "pool-villa", status: "active", pricePerNight: 850000, currency: "THB", maxGuests: 6, directDiscountPercent: 1500 },
+  { _id: "garden-id" as Id<"properties">, name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 420000, currency: "THB", maxGuests: 4, directDiscountPercent: 0 },
 ] as MarketingProperty[];
 
 function record(name: string, args: unknown) {

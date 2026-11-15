@@ -91,7 +91,7 @@ it("pays an unscheduled service, links it from its receipt line to the guest's a
   await tick();
   expect(document.querySelector('[data-testid="line-link"]')).toBeNull();
   expect(button("Link appointment")).toBeTruthy();
-  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 1600 });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 160000 });
   expect(printed()).toBe(issued);
 });
 

@@ -100,7 +100,7 @@ describe("pay panel", () => {
     await click("฿1,500");
     await click("Confirm cash · ฿1,500 received · change ฿300"); await tick();
     expect(settle).toHaveBeenCalledOnce();
-    expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 120000, tenders: [{ method: "cash", amount: 120000, received: 1500 }] });
+    expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 120000, tenders: [{ method: "cash", amount: 120000, received: 150000 }] });
     expect(onPaid).toHaveBeenCalledOnce();
   });
 

@@ -12,7 +12,7 @@ type CalendarProps = {
   onSlotClick: (slot: { date: Date; view: string; allDay: boolean; resourceId?: string }) => void;
 };
 const observed = vi.hoisted(() => ({ calendar: null as CalendarProps | null, draft: null as ComponentProps<typeof NewBookingDialog>["prefill"] | null }));
-const villa = { _id: "p1", name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 4000, currency: "THB", maxGuests: 4 };
+const villa = { _id: "p1", name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 400000, currency: "THB", maxGuests: 4 };
 vi.mock("convex/react", () => ({
   useMutation: () => vi.fn(),
   useQuery: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref).endsWith(":listForAdmin")
@@ -39,17 +39,27 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-it("opens a one-night past stay from the clicked villa/date cell without creating anything", async () => {
+it("opens a one-night stay from the clicked villa/date cell without creating anything", async () => {
   await act(async () => root.render(createElement(AdminBookingsView)));
-  await act(async () => observed.calendar!.onSlotClick({ date: new Date("2026-11-07T00:00:00"), view: "resource", allDay: true, resourceId: "p1" }));
-  expect(observed.draft).toEqual({ propertyId: "p1", checkIn: "2026-11-07", checkOut: "2026-11-08" });
+  await act(async () => observed.calendar!.onSlotClick({ date: new Date("2026-11-17T00:00:00"), view: "resource", allDay: true, resourceId: "p1" }));
+  expect(observed.draft).toEqual({ propertyId: "p1", checkIn: "2026-11-17", checkOut: "2026-11-18" });
   expect(document.body.textContent).toContain("Booking form opened");
 });
 
-it("allows a past drag and preserves its villa and exclusive end date", async () => {
+it("allows a future drag and preserves its villa and exclusive end date", async () => {
   await act(async () => root.render(createElement(AdminBookingsView)));
-  const start = new Date("2026-11-04T00:00:00"), end = new Date("2026-11-07T00:00:00");
+  const start = new Date("2026-11-14T00:00:00"), end = new Date("2026-11-17T00:00:00");
   expect(observed.calendar!.canSelectSlot?.({ start }) ?? true).toBe(true);
   await act(async () => observed.calendar!.onSelectSlot({ start, end, allDay: true, resourceId: "p1" }));
-  expect(observed.draft).toEqual({ propertyId: "p1", checkIn: "2026-11-04", checkOut: "2026-11-07" });
+  expect(observed.draft).toEqual({ propertyId: "p1", checkIn: "2026-11-14", checkOut: "2026-11-17" });
+});
+
+it("refuses past calendar taps and drags while leaving explicit past-stay entry to its form", async () => {
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  const start = new Date("2026-11-04T00:00:00"), end = new Date("2026-11-07T00:00:00");
+  expect(observed.calendar!.canSelectSlot?.({ start })).toBe(false);
+  await act(async () => observed.calendar!.onSlotClick({ date: start, view: "resource", allDay: true, resourceId: "p1" }));
+  await act(async () => observed.calendar!.onSelectSlot({ start, end, allDay: true, resourceId: "p1" }));
+  expect(observed.draft).toBeNull();
+  expect(document.body.textContent).not.toContain("Booking form opened");
 });

@@ -69,7 +69,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(page.getByTestId("toast")).toContainText("Maya Lin: Payment recorded.");
       expect(t.summary()).toMatchObject({ taps: 4, typed: 0, scrolls: 0 });
       const [payment] = (await calls(page)).filter((call) => call.name === "recordPayment");
-      expect(payment.args).toMatchObject({ bookingId: "fxbkg000003", expectedRevision: 1, expectedAmount: 8500, method: "cash" });
+      expect(payment.args).toMatchObject({ bookingId: "fxbkg000003", expectedRevision: 1, expectedAmount: 850000, method: "cash" });
       expect((payment.args as { idempotencyKey: string }).idempotencyKey).toMatch(/^pay-/);
     });
 

@@ -21,7 +21,6 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isTimeValue } from "@/lib/dates/values";
 import {
-  errorText,
   resortIsoDate,
   resortTime24,
   useNow,
@@ -31,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/shared/orderMath";
 import type { ApprovalPayload } from "convex/shared/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
-import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
+import { useCheckoutBackend, type ApprovalRequest, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";

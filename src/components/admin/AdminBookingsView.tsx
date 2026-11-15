@@ -283,8 +283,10 @@ function HotelBookings() {
           interval={60}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: true }}
+          canSelectSlot={(slot) => isoDate(slot.start) >= today}
           onSelectSlot={(slot) => {
             const checkIn = isoDate(slot.start);
+            if (checkIn < today) return;
             const end = slot.allDay ? isoDate(slot.end) : "";
             openNew(checkIn, end > checkIn ? end : addDaysIso(checkIn, 1), slot.resourceId);
           }}
@@ -296,8 +298,8 @@ function HotelBookings() {
             }
             // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
             const checkIn = isoDate(slot.date);
-            if (slot.view === "month") openNew(checkIn, addDaysIso(checkIn, 1));
-            if (slot.view === "resource" && slot.allDay && slot.resourceId) {
+            if (slot.view === "month" && checkIn >= today) openNew(checkIn, addDaysIso(checkIn, 1));
+            if (slot.view === "resource" && slot.allDay && slot.resourceId && checkIn >= today) {
               openNew(checkIn, addDaysIso(checkIn, 1), slot.resourceId);
             }
           }}

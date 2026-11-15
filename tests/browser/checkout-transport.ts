@@ -1,4 +1,3 @@
-import { act } from "../support/checkout-act";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   getFunctionName,

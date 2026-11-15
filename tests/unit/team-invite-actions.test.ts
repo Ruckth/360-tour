@@ -10,7 +10,7 @@ vi.mock("convex/react", async () => {
     useQuery: (ref: Parameters<typeof getFunctionName>[0]) => {
       const name = getFunctionName(ref);
       if (name === "auth/staffAccess:listPeople") return mocks.people;
-      if (name === "auth/staffAccess:getCashierRules") return { discountLimitPercent: 1000, voidPaidSale: "manager", customPrice: "manager", paymentFix: "manager", refund: "manager", revision: 0 };
+      if (name === "settings/cashierRules:getCashierRules") return { discountLimitPercent: 1000, voidPaidSale: "manager", customPrice: "manager", paymentFix: "manager", refund: "manager", revision: 0 };
       return undefined;
     },
     useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {

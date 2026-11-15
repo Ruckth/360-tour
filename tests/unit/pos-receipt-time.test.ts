@@ -83,8 +83,8 @@ it("keeps coupon savings and Bangkok issue time together on the receipt and shar
   await run(actions.addItem({ orderId, item: { kind: "service", serviceId: "fxsvc000007" as Id<"services"> } }));
   await run(actions.applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
   await show(backend, createElement(Probe, { backend, orderId }));
-  expect(view!.totals).toMatchObject({ total: 1300, coupon: 500 });
-  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 1300, idempotencyKey: "tz-coupon-receipt", tenders: [{ method: "cash", amount: 1300 }] }));
+  expect(view!.totals).toMatchObject({ total: 130000, coupon: 50000 });
+  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 130000, idempotencyKey: "tz-coupon-receipt", tenders: [{ method: "cash", amount: 130000 }] }));
   await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
   const receipt = document.querySelector('[aria-label="Receipt"]')!.textContent;
   expect(receipt).toContain("Issued 2 Nov 2026, 05:30");

@@ -42,7 +42,7 @@ describe("optional service date and time", () => {
   it("keeps unset schedule parts blank after the cutover", () => {
     expect(serviceScheduleValue({ schedule: { date: "2026-10-26", time: "14:30" } })).toEqual({ date: "2026-10-26", time: "14:30" });
     expect(serviceScheduleValue({})).toEqual({ date: "", time: "" });
-    expect(serviceScheduleValue({})).toEqual({ date: "", time: "09:15" });
+    expect(serviceScheduleValue({ schedule: { time: "09:15" } })).toEqual({ date: "", time: "09:15" });
   });
 
   it("labels legacy rows with their date unless they are today", () => {

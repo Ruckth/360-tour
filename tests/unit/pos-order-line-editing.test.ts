@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from '../support/checkout-act';
+import { act, gateResponse } from '../support/checkout-act';
 import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -88,7 +88,8 @@ describe("editing a changed price", () => {
   it("saves a discount on blur without sending a duplicate while that save is in flight", async () => {
     const backend = await createFixtureBackend();
     await show(backend, await orderWithGift(backend));
-    const update = vi.spyOn(backend.useActions(), "updateLine");
+    const gate = gateResponse(backend.useActions().updateLine);
+    const update = vi.spyOn(backend.useActions(), "updateLine").mockImplementation(gate.write);
     await click(row("Gift basket").querySelector("button"));
     const discount = panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!;
     await act(async () => {
@@ -100,9 +101,10 @@ describe("editing a changed price", () => {
       discount.blur();
     });
     expect(panel().textContent).toContain("Saving…");
+    gate.release();
     await settle();
     expect(update).toHaveBeenCalledOnce();
-    expect(update.mock.calls[0][0]).toMatchObject({ discount: { type: "percent", value: 10 } });
+    expect(update.mock.calls[0][0]).toMatchObject({ discount: { type: "percent", value: 1000 } });
     expect(panel().querySelector('[data-testid="order-due"]')?.textContent).toBe("฿900");
   });
 

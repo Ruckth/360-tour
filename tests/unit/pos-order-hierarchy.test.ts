@@ -115,7 +115,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   expect(line(massage.name)!.discount).toBeUndefined();
 
   // A zero custom price is still a custom price: editable and restorable.
-  await press(within(row(massage.name)!, `Price ฿${listPrice.toLocaleString("en-US")}`));
+  await press(within(row(massage.name)!, `Price ฿${(listPrice / 100).toLocaleString("en-US")}`));
   await type(row(massage.name)!.querySelector<HTMLInputElement>('input[id^="price-"]'), "0");
   await type(row(massage.name)!.querySelector<HTMLTextAreaElement>('textarea[aria-label="Reason for the price change"]'), "Complimentary");
   await press(within(row(massage.name)!, "Apply price")); await tick();

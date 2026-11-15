@@ -255,7 +255,7 @@ if (params.get("teamInvite") === "expired") {
 registerFixtureFunctions({
   queries: {
     "auth/staffAccess:listPeople": () => team.people,
-    "auth/staffAccess:getCashierRules": () => team.rules,
+    "settings/cashierRules:getCashierRules": () => team.rules,
     "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
     "settings/settings:setupChecklist": () => undefined,
     "settings/settings:channelHealth": () => ({

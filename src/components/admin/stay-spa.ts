@@ -1,4 +1,6 @@
 "use client";
+import { roundMoney } from "convex/shared/money";
+
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
@@ -29,7 +31,7 @@ export function useStaySpa(stay: StayRef | null | undefined): StaySpa | undefine
   const result = useQuery(api.bookings.admin.stayAppointments, stay ? { bookingId: stay._id } : "skip");
   if (!stay || !result) return undefined;
   const appointments = result.appointments.filter((a) => spaChargeable(a) && a.currency === stay.currency);
-  const total = Math.round(appointments.reduce((sum, a) => sum + a.price, 0) * 100) / 100;
+  const total = roundMoney(appointments.reduce((sum, a) => sum + a.price, 0));
   return { appointments, total, complete: result.complete };
 }
 

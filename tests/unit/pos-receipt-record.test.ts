@@ -229,7 +229,7 @@ it("updates the current record, its count and the open history together; the iss
 it("keeps line refunds separate from the payment correction count and history, and turns Void… off", async () => {
   const { backend, actions, orderId } = await paidSale();
   await run(actions.refundLine({
-    orderId, lineId: current.lines[0]._id, amount: 250000, currency: "THB", method: "card",
+    orderId, lineId: current.lines[0]._id, amount: 2500, currency: "THB", method: "card",
     reason: "Returned part of the sale", idempotencyKey: "record-line-refund-01",
   }));
   await receipt(backend, orderId);

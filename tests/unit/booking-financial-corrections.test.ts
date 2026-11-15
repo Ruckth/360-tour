@@ -479,7 +479,7 @@ describe("calendar booking action intent", () => {
     expect(button("Record ฿17,000")).toBeUndefined();
     await click(button("Record external payment…"));
     await click(button("Record ฿17,000"));
-    expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmount: 17000, expectedRevision: 7 }));
+    expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmount: 1700000, expectedRevision: 7 }));
   });
 
   it.each(["pay", "cancel"] as const)("consumes a blocked %s shortcut without opening later when Stripe finishes", async (initialAction) => {
@@ -592,7 +592,7 @@ for (const kind of ["pay", "refund", "amend", "cancelEntry", "cancelUnrecorded",
   it(`guards the stay ${kind} draft and closes a successful record without prompting`, async () => {
     const owing = { ...booking, money: { ...money, credit: 0, refundable: 0, owed: 400000, net: 1300000 }, confirmationEmailed: false } as BookingDetail;
     if (kind === "pay") queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money });
-    if (kind === "cancelUnrecorded") queries.bookingFinancials.mockReturnValue({ ...financials, payments: [], unitemised: 25500, legacyManual: { cancellable: true, amount: 2550000 } });
+    if (kind === "cancelUnrecorded") queries.bookingFinancials.mockReturnValue({ ...financials, payments: [{ ...cashPayment, method: "unrecorded" }] });
     if (kind === "linkStripe") queries.bookingFinancials.mockReturnValue({ ...financials, refunds: [{ _id: "refund1", amount: 50000, currency: "THB", method: "stripe", reason: "Returned online", effectiveAt: NOW, recordedBy: "desk@example.com", order: null }] });
     await render(createElement(BookingFinancials, { booking: kind === "pay" ? owing : booking }));
     const open = kind === "pay" ? "Record external payment…" : kind === "refund" ? "Record refund" : kind === "amend" ? "Correct…" : kind === "linkStripe" ? "Link Stripe refund evidence" : "Entered by mistake…";
