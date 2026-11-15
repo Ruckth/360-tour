@@ -66,7 +66,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
       await expectAtMostSentences(view(page), 2);
-      await count.tap(form.getByRole("radio", { name: "Short treatment" }), "reason chip");
+      await count.tap(form.getByRole("radio", { name: "Cut short" }), "reason chip");
       await count.tap(form.getByRole("button", { name: "Record refund ฿600" }), "Record refund ฿600");
       const note = items(page).locator("[data-line-note]");
       await expect(note).toHaveText("Refunded ฿600 · Short treatment");
@@ -81,7 +81,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
       await form.getByRole("radio", { name: "Half", exact: true }).click();
       await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("600");
-      await form.getByRole("radio", { name: "Guest complaint" }).click();
+      await form.getByRole("radio", { name: "Complaint" }).click();
       await form.getByRole("button", { name: "Record refund ฿600" }).click();
       await expect(items(page).locator("[data-line-note]")).toHaveText("Refunded ฿600 · Guest complaint");
       // What is left is ฿600: All and Half follow it.
@@ -94,7 +94,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await open(page, "?role=cashier&scenario=refund");
       await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
       const form = items(page).getByRole("form", { name: "Ask a manager", exact: true });
-      await form.getByRole("radio", { name: "Short treatment" }).click();
+      await form.getByRole("radio", { name: "Cut short" }).click();
       await form.getByRole("button", { name: "Send refund ฿600 to manager" }).click();
       await expect(items(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Short treatment");
       const bar = side(page).locator('[data-approval-status="pending"]');
@@ -165,6 +165,9 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expectAtMostSentences(view(page), 1);
       // Close puts the ⋯ back; nothing was saved.
       await page.getByRole("button", { name: "Close Correct payment" }).click();
+      const guard = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+      await expect(guard).toBeVisible();
+      await guard.getByRole("button", { name: "Discard", exact: true }).click();
       await expect(form).toHaveCount(0);
       await expect(more(page)).toBeFocused();
       await expect(page.getByText("· corrected")).toHaveCount(0);

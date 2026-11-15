@@ -107,7 +107,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
   const [refundDirty, setRefundDirty] = useState(false);
   const [refundBusy, setRefundBusy] = useState(false);
-  const { confirmDiscard } = useUnsavedGuard(refundDirty);
+  const [taskDirty, setTaskDirty] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(refundDirty || taskDirty);
   // What a finished refund or request said, under its line.
   const [lineNotes, setLineNotes] = useState<Record<string, string>>({});
   // Correct payment or Void…, opened from ⋯; the toolbar's Close ends it.
@@ -167,7 +168,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     };
   }, [beforePrint, afterPrint]);
   // Another order: nothing from the last one stays open.
-  useEffect(() => { setTask(null); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); }, [orderId]);
+  useEffect(() => { setTask(null); setTaskDirty(false); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); }, [orderId]);
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   // Cashiers open today's receipts only; older ones come back as missing.
@@ -227,12 +228,14 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     setTask(next);
   }
 
-  function closeTask(message?: string) {
+  async function closeTask(message?: string) {
     // The toolbar's Close waits for a running write; a finished one closes with its result.
     if (taskBusy && !message) return;
+    if (!message && !(await confirmDiscard())) return;
     flushSync(() => {
       setTask(null);
       setTaskBusy(false);
+      setTaskDirty(false);
       if (message) setNotice(message);
     });
     focusAfter(message ? noticeRef.current : null);
@@ -270,6 +273,13 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   return (
     <div
       data-testid="receipt-view"
+      onKeyDown={(event: KeyboardEvent) => {
+        if (event.key === "Escape" && !event.defaultPrevented && shownTask && !taskBusy) {
+          event.preventDefault();
+          event.stopPropagation();
+          void closeTask();
+        }
+      }}
       className={cn(
         "grid min-w-0 flex-1 content-start gap-x-8 gap-y-3 px-4 py-3 sm:gap-y-5 sm:py-5 sm:px-6 lg:grid-cols-[24rem_minmax(0,1fr)] lg:px-8 lg:py-6 xl:mx-auto xl:w-full xl:max-w-6xl",
         TOUCH_TARGETS,
@@ -414,12 +424,6 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       <div
         data-testid="receipt-side"
         className="grid min-w-0 content-start gap-4 print:hidden"
-        onKeyDown={(event: KeyboardEvent) => {
-          if (event.key === "Escape" && shownTask && !taskBusy && (event.target as HTMLElement).closest('[data-testid="correct-payment"],[data-testid="void-panel"]')) {
-            event.stopPropagation();
-            closeTask();
-          }
-        }}
       >
         {isVoid ? (
           <div className="grid gap-1 text-sm text-muted-foreground" data-testid="receipt-void-status">
@@ -428,8 +432,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </div>
         ) : null}
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
-        {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
-        {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} /> : null}
+        {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
+        {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
           <h3 className="border-b border-border bg-card px-4 py-3 sm:px-5 sm:py-4 text-base font-semibold">Items</h3>
           <ul className="divide-y divide-border">

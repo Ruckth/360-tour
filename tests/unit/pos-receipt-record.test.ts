@@ -6,7 +6,7 @@ import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
+import { CheckoutBackendProvider, type CheckoutBackend, type FinancialRows, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { historyTime } from "@/components/checkout/OrderHistory";
@@ -195,6 +195,8 @@ it("updates the current record, its count and the open history together; the iss
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Abandoned edit");
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Close Correct payment"]')!.click());
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Discard unsaved changes?");
+  await click("Discard");
   expect(amend).not.toHaveBeenCalled();
   expect(fact("Corrections")).toBe("None");
 
@@ -264,13 +266,14 @@ it("Half refunds half of what is left; a new form is a new key", async () => {
   await receipt(backend, orderId);
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
   await click("Half");
-  await click("Guest complaint");
+  await click("Complaint");
   await click("Record refund ฿50"); await tick();
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
   expect(button("All")?.getAttribute("aria-checked")).toBe("true");
-  await click("Short treatment");
+  await click("Cut short");
   await click("Record refund ฿50"); await tick();
   expect(refund.mock.calls.map(c => c[0].amount)).toEqual([5_000, 5_000]);
+  expect(refund.mock.calls.map(c => c[0].reason)).toEqual(["Guest complaint", "Short treatment"]);
   expect(refund.mock.calls[1][0].idempotencyKey).not.toBe(refund.mock.calls[0][0].idempotencyKey);
 });
 
@@ -290,3 +293,62 @@ it("shows cashiers no History; Correct payment and Void… stay, as requests", a
 });
 
 function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }
+
+it("keeps raw ledger references in closed Technical details while showing human source labels", async () => {
+  const { backend: base, orderId } = await paidSale();
+  const now = Date.now();
+  const stayId = "internal-stay-id" as Id<"bookings">;
+  const appointmentId = "internal-appointment-id" as Id<"serviceAppointments">;
+  const customerId = "internal-customer-id" as Id<"customers">;
+  const stay: FinancialRows["bookingRefunds"] = {
+    _id: "stay-return" as Id<"bookingRefunds">, billId: orderId, bookingId: stayId,
+    amount: 20, currency: "THB", method: "transfer", reason: "Stay return", effectiveAt: now,
+    recordedAt: now, recordedBy: "manager@example.com", netBefore: 100, netAfter: 80, providerRefundId: "internal-provider-id",
+  };
+  const appointment: FinancialRows["appointmentRefunds"] = {
+    _id: "appointment-return" as Id<"appointmentRefunds">, _creationTime: now, billId: orderId, appointmentId,
+    amount: 10, currency: "THB", method: "cash", reason: "Service return", effectiveAt: now,
+    recordedAt: now, recordedBy: "manager@example.com", idempotencyKey: "ledger-test-return", netBefore: 50, netAfter: 40,
+  };
+  const audit: FinancialRows["audit"] = {
+    _id: "customer-activity" as Id<"billAudit">, _creationTime: now, billId: orderId, at: now,
+    kind: "customer_linked", actor: "manager@example.com", note: "Customer selected", customerId,
+  };
+  const backend: CheckoutBackend = {
+    ...base,
+    useOrder(id) {
+      const view = base.useOrder(id);
+      return view ? { ...view, sources: [{ kind: "booking", id: stayId, reference: "Stay #2042", name: "Ocean villa", guestName: "Anna", guestPhone: "", guestEmail: "", linked: false }] } : view;
+    },
+    useAuditHistory: () => ({ results: [audit], status: "Exhausted", loadMore: vi.fn() }),
+    useBookingRefundHistory: () => ({ results: [stay], status: "Exhausted", loadMore: vi.fn() }),
+    useAppointmentRefundHistory: () => ({ results: [appointment], status: "Exhausted", loadMore: vi.fn() }),
+  };
+  await receipt(backend, orderId);
+  await toggle("History");
+  const activity = document.querySelector('[aria-label="Receipt activity"]')!;
+  expect(activity.querySelector<HTMLDetailsElement>("details")!.open).toBe(false);
+  expect(activity.querySelector("details")!.textContent).toContain(customerId);
+  const primary = (element: Element) => {
+    const copy = element.cloneNode(true) as Element;
+    copy.querySelectorAll("details").forEach(details => details.remove());
+    return copy.textContent;
+  };
+  expect(primary(activity)).toContain("Customer");
+  expect(primary(activity)).not.toContain(customerId);
+  await tab("Refunds");
+  const stayLedger = document.querySelector('[aria-label="Stay refunds"]')!;
+  const appointmentLedger = document.querySelector('[aria-label="Appointment refunds"]')!;
+  expect(primary(stayLedger)).toContain("Stay #2042");
+  expect(primary(stayLedger)).toContain("Refunded ฿20");
+  expect(primary(stayLedger)).toContain("Net balance after this return: ฿100 → ฿80");
+  expect(primary(appointmentLedger)).toContain("Linked appointment");
+  for (const [ledger, id] of [[stayLedger, stayId], [appointmentLedger, appointmentId]] as const) {
+    expect(primary(ledger)).not.toContain(id);
+    const details = ledger.querySelector<HTMLDetailsElement>("details")!;
+    expect(details.open).toBe(false);
+    expect(details.textContent).toContain(id);
+  }
+  expect(primary(stayLedger)).not.toContain("internal-provider-id");
+  expect(stayLedger.querySelector("details")!.textContent).toContain("internal-provider-id");
+});

@@ -21,7 +21,7 @@ export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: O
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
       <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
-      <Ledger title="All receipt activity"><Audit orderId={orderId} /></Ledger>
+      <Ledger title="All receipt activity"><Audit orderId={orderId} view={view} /></Ledger>
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All line refunds"><LineRefunds orderId={orderId} view={view} /></Ledger>
@@ -104,7 +104,7 @@ function ReceiptHistoryDetails({ view, className }: { view: OrderView; className
           </div>
           {panel("items", <>
             <OrderHistoryList orderId={orderId} intro={false} />
-            <Ledger title="Receipt activity"><Audit orderId={orderId} /></Ledger>
+            <Ledger title="Receipt activity"><Audit orderId={orderId} view={view} /></Ledger>
           </>)}
           {panel("payments", <>
             <PaymentFacts view={view} />
@@ -148,20 +148,32 @@ function Corrections({ orderId, view }: { orderId: OrderId; view?: OrderView }) 
     {r.customerBefore !== undefined || r.customerAfter !== undefined ? <><p>Customer before: {r.customerBefore?.name ?? "No named customer"} · {r.customerBefore?.phone} · {r.customerBefore?.email}</p><p>Customer after: {r.customerAfter?.name ?? "No named customer"} · {r.customerAfter?.phone} · {r.customerAfter?.email}</p></> : null}
   </>} />;
 }
-function Audit({ orderId }: { orderId: OrderId }) {
-  const page = useCheckoutBackend().useAuditHistory(orderId);
-  return <Page page={page} label="receipt activity" render={r => <><p className="font-medium capitalize">{r.kind.replaceAll("_", " ")}</p><p>{r.note}</p>{r.fromPrice !== undefined ? <p>Before: {formatMoney(r.fromPrice)}</p> : null}{r.toPrice !== undefined ? <p>After: {formatMoney(r.toPrice)}</p> : null}{r.customerId ? <p>Customer reference: {r.customerId}</p> : null}<p>Recorded {historyTime(r.at)} by {r.actor}</p></>} />;
+/** Prefer references already loaded with the receipt; never surface an internal ID as a label. */
+function linkedSourceLabel(view: OrderView | undefined, id: string, kind: "booking" | "appointment") {
+  return view?.sources.find(source => source.id === id)?.reference ??
+    view?.links.find(link => link.target.id === id)?.target.reference ??
+    view?.lines.find(line => (kind === "booking" ? line.bookingId : line.appointmentId) === id)?.name ??
+    (kind === "booking" ? "Linked stay" : "Linked appointment");
 }
-function Refund({ row }: { row: FinancialRows["bookingRefunds"] | FinancialRows["appointmentRefunds"] }) {
-  return <><p className="font-medium">Recorded · {formatMoney(row.amount, row.currency)} · {row.method}</p><p>{row.reason}</p><p>Effective {historyTime(row.effectiveAt)} · Recorded {historyTime(row.recordedAt)} by {row.recordedBy}</p><p>{"bookingId" in row ? `Stay: ${row.bookingId}` : `Appointment: ${row.appointmentId}`}</p>{row.netBefore !== undefined && row.netAfter !== undefined ? <p>Net balance after this return: {formatMoney(row.netBefore, row.currency)} → {formatMoney(row.netAfter, row.currency)}</p> : null}{"providerRefundId" in row && row.providerRefundId ? <p>Provider refund: {row.providerRefundId}</p> : null}</>;
+function TechnicalDetails({ children }: { children: ReactNode }) {
+  return <Disclosure label="Technical details" contentClassName="pb-0"><div className="grid gap-1 text-xs text-muted-foreground">{children}</div></Disclosure>;
+}
+function Audit({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
+  const page = useCheckoutBackend().useAuditHistory(orderId);
+  return <Page page={page} label="receipt activity" render={r => <><p className="font-medium capitalize">{r.kind.replaceAll("_", " ")}</p><p>{r.note}</p>{r.fromPrice !== undefined ? <p>Before: {formatMoney(r.fromPrice)}</p> : null}{r.toPrice !== undefined ? <p>After: {formatMoney(r.toPrice)}</p> : null}{r.customerId ? <><p>{view?.customer?._id === r.customerId ? view.customer.name : "Customer"}</p><TechnicalDetails><p>Customer reference: {r.customerId}</p></TechnicalDetails></> : null}<p>Recorded {historyTime(r.at)} by {r.actor}</p></>} />;
+}
+function Refund({ row, view }: { row: FinancialRows["bookingRefunds"] | FinancialRows["appointmentRefunds"]; view?: OrderView }) {
+  const kind = "bookingId" in row ? "booking" : "appointment";
+  const id = "bookingId" in row ? row.bookingId : row.appointmentId;
+  return <><p className="font-medium">Recorded · {formatMoney(row.amount, row.currency)} · {row.method}</p><p>{row.reason}</p><p>Effective {historyTime(row.effectiveAt)} · Recorded {historyTime(row.recordedAt)} by {row.recordedBy}</p><p>{linkedSourceLabel(view, id, kind)}</p>{row.netBefore !== undefined && row.netAfter !== undefined ? <p>Net balance after this return: {formatMoney(row.netBefore, row.currency)} → {formatMoney(row.netAfter, row.currency)}</p> : null}<TechnicalDetails><p>{kind === "booking" ? "Stay" : "Appointment"} reference: {id}</p>{"providerRefundId" in row && row.providerRefundId ? <p>Provider refund: {row.providerRefundId}</p> : null}</TechnicalDetails></>;
 }
 function BookingRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useBookingRefundHistory(orderId);
-  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="booking" /><Page page={page} label="stay refunds" render={row => <Refund row={row} />} /></>;
+  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="booking" /><Page page={page} label="stay refunds" render={row => <Refund row={row} view={view} />} /></>;
 }
 function AppointmentRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useAppointmentRefundHistory(orderId);
-  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="appointment" /><Page page={page} label="appointment refunds" render={row => <Refund row={row} />} /></>;
+  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="appointment" /><Page page={page} label="appointment refunds" render={row => <Refund row={row} view={view} />} /></>;
 }
 
 function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows: Array<{ amount: number; currency: string; bookingId?: string; appointmentId?: string }>; complete: boolean; kind: "booking" | "appointment" }) {
@@ -175,7 +187,7 @@ function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows
     const lines = view.lines.filter(line => kind === "booking" ? line.bookingId === id : line.appointmentId === id);
     const gross = round2(lines.reduce((n, line) => n + line.net - (line.deposit ?? 0), 0));
     const issued = view.order.state === "paid" || (view.order.state === "void" && !view.paymentRecord.voidUnreceived);
-    return <p key={id}><span className="font-medium">{view.sources.find(s => s.id === id)?.reference ?? id}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(round2(gross - sum.amount), sum.currency)}` : ""}</p>;
+    return <p key={id}><span className="font-medium">{linkedSourceLabel(view, id, kind)}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(round2(gross - sum.amount), sum.currency)}` : ""}</p>;
   })}{!complete ? <p>Load older refunds to see complete per-source net balances.</p> : null}</div>;
 }
 

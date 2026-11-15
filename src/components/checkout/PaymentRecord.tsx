@@ -95,6 +95,7 @@ export function LinkedRefunds({ view, className }: { view: OrderView; className?
           <li key={refund._id} className="[overflow-wrap:anywhere]">
             Recorded · {formatMoney(refund.amount, refund.currency)} · {refund.method} · <RefundSource refund={refund} sources={view.sources} /> · {refund.reason}
             <span className="block text-xs text-muted-foreground">Effective {historyTime(refund.effectiveAt)} · Recorded {historyTime(refund.recordedAt)} by {refund.recordedBy}</span>
+            <Disclosure label="Technical details" contentClassName="pb-0"><p className="text-xs text-muted-foreground">Source reference: {refund.sourceType === "appointment" ? refund.appointmentId : refund.bookingId}</p></Disclosure>
           </li>
         ))}
       </ul>
@@ -105,7 +106,8 @@ export function LinkedRefunds({ view, className }: { view: OrderView; className?
 function RefundSource({ refund, sources }: { refund: { sourceType?: "booking" | "appointment"; bookingId?: string; appointmentId?: string }; sources: OrderView["sources"] }) {
   const appointment = refund.sourceType === "appointment" || Boolean(refund.appointmentId);
   const id = appointment ? refund.appointmentId : refund.bookingId;
-  return <>{appointment ? "Appointment " : "Stay "}{sources.find(source => source.id === id)?.reference ?? id ?? "Unknown source"}</>;
+  const reference = sources.find(source => source.id === id)?.reference;
+  return <>{reference ?? (appointment ? "Linked appointment" : "Linked stay")}</>;
 }
 
 /** A task panel opened from the receipt's ⋯; the toolbar's Close ends it (refused while a write runs). */
@@ -115,6 +117,8 @@ type TaskProps = {
   onDone: (notice: string) => void;
   /** True while a write runs, so the toolbar can't close the panel under it. */
   onBusyChange: (busy: boolean) => void;
+  /** Draft changes are guarded by the receipt, including in-app navigation. */
+  onDraftChange: (dirty: boolean) => void;
 };
 
 /** Opening a panel brings it, its button included, into view and puts focus on its title. */
@@ -136,7 +140,7 @@ type TenderRow = { method: TenderMethod; amount: number; received?: number; amou
  * and the money stay as they are. One attempt key per opened panel; a retry resends the frozen
  * attempt. A cashier whose rules keep payment fixes for managers sends the change as a request.
  */
-export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
+export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: TaskProps) {
   const actions = useCheckoutBackend().useActions();
   const access = useStaffAccess();
   const send = useSendApproval();
@@ -174,6 +178,14 @@ export function CorrectPayment({ view, onDone, onBusyChange }: TaskProps) {
       const was = reviewedRecord.tenders[i];
       return row.method !== was.method || Number(row.amountInput) !== was.amount || (row.receivedInput === "" ? undefined : Number(row.receivedInput)) !== was.received;
     });
+
+  const dirty = reason !== "" || payer !== undefined || date !== initialDate ||
+    tenders.length !== reviewedRecord.tenders.length || tenders.some((row, i) => {
+      const was = reviewedRecord.tenders[i];
+      return !was || row.method !== was.method || row.amountInput !== String(was.amount) ||
+        row.receivedInput !== (was.received === undefined ? "" : String(was.received));
+    });
+  useEffect(() => { onDraftChange(dirty); return () => onDraftChange(false); }, [dirty, onDraftChange]);
 
   async function submit() {
     if (lock.current) return;
@@ -397,7 +409,7 @@ type VoidChoice = "received" | "unreceived";
  * correction revision, reused by a retry. Each choice says what it does. A cashier whose rules keep
  * that choice for managers sends it as a request instead.
  */
-export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & { waiting: boolean }) {
+export function VoidPanel({ view, waiting, onDone, onBusyChange, onDraftChange }: TaskProps & { waiting: boolean }) {
   const actions = useCheckoutBackend().useActions();
   const access = useStaffAccess();
   const send = useSendApproval();
@@ -415,6 +427,8 @@ export function VoidPanel({ view, waiting, onDone, onBusyChange }: TaskProps & {
   const [frozen, setFrozen] = useState(false);
   const lock = useRef(false);
   useEffect(() => onBusyChange(busy !== null), [busy, onBusyChange]);
+  const dirty = reason !== "";
+  useEffect(() => { onDraftChange(dirty); return () => onDraftChange(false); }, [dirty, onDraftChange]);
   const { attached } = voidReopens(view);
   const receipt = `${formatReceiptNumber(view.order.receiptNumber ?? 0)} · ${formatMoney(view.totals.total)}`;
 

@@ -105,7 +105,7 @@ test.describe("phone payment layouts", () => {
     await expect(form.getByRole("button", { name: "Pick a reason", exact: true })).toBeDisabled();
     await expect(items.getByRole("button", { name: "Refund Thai massage 60", exact: true })).toHaveCount(0);
     await expect(form.getByRole("radio", { name: "PromptPay", exact: true })).toHaveAccessibleName("PromptPay");
-    await form.getByRole("radio", { name: "Short treatment", exact: true }).click();
+    await form.getByRole("radio", { name: "Cut short", exact: true }).click();
     await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
     await form.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();
@@ -124,7 +124,7 @@ test("a changed refund draft guards New sale and Escape without recording money"
   const serviceTitle = await page.getByTestId("receipt-items").getByText("Foot spa 45", { exact: true }).boundingBox();
   expect(serviceTitle!.y, "the service name stays below the sticky Items header").toBeGreaterThanOrEqual(itemsHeading!.y + itemsHeading!.height);
   await form.getByRole("radio", { name: "Half", exact: true }).click();
-  await form.getByRole("radio", { name: "Guest complaint", exact: true }).click();
+  await form.getByRole("radio", { name: "Complaint", exact: true }).click();
   await page.getByRole("button", { name: "New sale", exact: true }).click();
   const guard = page.getByRole("alertdialog");
   await expect(guard.getByRole("heading", { name: "Discard unsaved changes?" })).toBeVisible();

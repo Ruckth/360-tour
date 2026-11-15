@@ -193,9 +193,9 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       </div>
       <div className="grid gap-2">
         <Label htmlFor={`${id}-reason`} className="text-xs text-muted-foreground">Reason</Label>
-        <ToggleGroup variant="segmented" tone="subtle" value={reason.trim()} onValueChange={setReason} disabled={saving || uncertain} aria-label="Quick reason" className="grid min-w-0 grid-cols-[1.2fr_1.2fr_1.1fr]">
-          {["Short treatment", "Guest complaint", "Wrong charge"].map((value) => (
-            <ToggleGroupItem key={value} value={value} className="min-w-0 px-0.5 font-medium disabled:opacity-45 group-data-[variant=segmented]/toggle:text-[13px] @md:group-data-[variant=segmented]/toggle:text-sm">{value}</ToggleGroupItem>
+        <ToggleGroup variant="segmented" tone="subtle" value={reason.trim()} onValueChange={setReason} disabled={saving || uncertain} aria-label="Quick reason" className="grid min-w-0 grid-cols-[1fr_1fr_1.2fr]">
+          {[["Short treatment", "Cut short"], ["Guest complaint", "Complaint"], ["Wrong charge", "Wrong charge"]].map(([value, label]) => (
+            <ToggleGroupItem key={value} value={value} className="min-w-0 px-2 font-medium disabled:opacity-45 group-data-[variant=segmented]/toggle:text-[13px] @md:group-data-[variant=segmented]/toggle:text-sm">{label}</ToggleGroupItem>
           ))}
         </ToggleGroup>
         <Input id={`${id}-reason`} placeholder="Or type a reason" value={reason} onChange={(event) => setReason(event.target.value)} required aria-required="true" disabled={saving || uncertain} autoComplete="off" />
