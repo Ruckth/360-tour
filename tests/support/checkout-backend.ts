@@ -391,6 +391,18 @@ export async function createFixtureBackend(options: Options = {}) {
             }),
           );
         }
+        // A missing historical source still needs a genuine, now-deleted Convex ID.
+        // Alias translation keeps the readable technical reference used by the browser assertions.
+        for (const [field, owner] of [["customerId", "customers"], ["appointmentId", "appointments"], ["bookingId", "bookings"]] as const) {
+          const reference = fields[field];
+          if (typeof reference !== "string" || aliases.has(reference) || ctx.db.normalizeId(owner, reference)) continue;
+          const sample = await ctx.db.query(owner).first();
+          if (!sample) throw new Error(`Missing fixture source for ${owner}`);
+          const contents = Object.fromEntries(Object.entries(sample).filter(([key]) => key !== "_id" && key !== "_creationTime"));
+          const missingId = await ctx.db.insert(owner, contents as Parameters<typeof ctx.db.insert<typeof owner>>[1]);
+          aliases.set(reference, missingId);
+          await ctx.db.delete(missingId);
+        }
         if (table === "bookingRefunds")
           Object.assign(fields, {
             netBefore: 0,

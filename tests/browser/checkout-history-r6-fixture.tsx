@@ -14,13 +14,13 @@ const now = Date.parse("2026-11-15T03:00:00Z");
 const stay: FinancialRows["bookingRefunds"] = {
   _id: "r6-stay-return" as Id<"bookingRefunds">, orderId: orderId, bookingId: "fxbkg000001" as Id<"bookings">,
   amount: 5000, currency: "THB", method: "transfer", reason: "One night cut short", effectiveAt: now,
-  recordedAt: now, recordedBy: "ploy@auraliscove.co", netBefore: 780, netAfter: 730, providerRefundId: "internal-provider-reference",
+  recordedAt: now, recordedBy: "ploy@auraliscove.co", netBefore: 78000, netAfter: 73000, providerRefundId: "internal-provider-reference",
 };
 const appointment: FinancialRows["appointmentRefunds"] = {
   _id: "r6-appointment-return" as Id<"appointmentRefunds">, _creationTime: now, orderId: orderId,
   appointmentId: "internal-appointment-reference" as Id<"appointments">,
   amount: 2000, currency: "THB", method: "cash", reason: "Service cut short", effectiveAt: now,
-  recordedAt: now, recordedBy: "ploy@auraliscove.co", idempotencyKey: "r6-ledger-appointment", netBefore: 100, netAfter: 80,
+  recordedAt: now, recordedBy: "ploy@auraliscove.co", idempotencyKey: "r6-ledger-appointment", netBefore: 10000, netAfter: 8000,
 };
 const audit: FinancialRows["audit"] = {
   _id: "r6-customer-activity" as Id<"orderAudit">, _creationTime: now, orderId: orderId, at: now,

@@ -39,14 +39,14 @@ for (const width of [390, 1180, 1440]) {
       // Re-selecting All after typing the full amount restores its live remaining-amount default.
       await form.getByLabel("Amount (฿)", { exact: true }).fill("600");
       await form.getByRole("radio", { name: "All", exact: true }).click();
-      await page.evaluate(() => { window.fixture.refundFromAnotherTill("Foot spa 45", 10_000); window.fixture.setRole("manager"); });
+      await page.evaluate(async () => { await window.fixture.refundFromAnotherTill("Foot spa 45", 10_000); await window.fixture.setRole("manager"); });
       await expect(form.getByLabel("Amount (฿)", { exact: true })).toHaveValue("500");
       await expect(form.getByRole("button", { name: "Record refund ฿500", exact: true })).toBeEnabled();
     });
 
     test("the single-preset amount row fills its track when Half is unavailable", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
-      await page.evaluate(() => { window.fixture.refundFromAnotherTill("Foot spa 45", 59_999); window.fixture.setRole("manager"); });
+      await page.evaluate(async () => { await window.fixture.refundFromAnotherTill("Foot spa 45", 59_999); await window.fixture.setRole("manager"); });
       await page.getByRole("button", { name: "Refund Foot spa 45", exact: true }).click();
       const form = page.getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("radio", { name: "Half", exact: true })).toHaveCount(0);

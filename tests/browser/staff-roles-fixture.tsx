@@ -1,3 +1,4 @@
+import { percentToBasisPoints } from "convex/shared/money";
 import type { Id } from "convex/_generated/dataModel";
 import { mergeSiteSettings } from "convex/shared/siteSettings";
 import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/shared/staffTypes";
@@ -155,12 +156,12 @@ function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; rece
 declare global {
   interface Window {
     fixture: {
-      setRole: (next: typeof role) => void;
+      setRole: (next: typeof role) => Promise<void>;
       refundAttempts: () => ReturnType<typeof backend.refundAttempts>;
       recordedRefunds: () => ReturnType<typeof backend.recordedRefunds>;
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
-      refundFromAnotherTill: (lineName: string, satang: number) => void;
+      refundFromAnotherTill: (lineName: string, satang: number) => Promise<void>;
       holdNextPayment: () => void;
       finishPayment: (loseAnswer?: boolean) => void;
       paymentAttempts: () => string[];
@@ -221,11 +222,11 @@ window.fixture = {
   finishDiscountWrite: (fail) => { if (!finishDiscount) throw new Error("No discount write is waiting"); finishDiscount(fail); },
   discountFromAnotherTill: (value) => {
     if (!spaLineId) throw new Error("No seeded spa line");
-    return updateLine({ lineId: spaLineId, discount: { type: "percent", value } });
+    return updateLine({ lineId: spaLineId, discount: { type: "percent", value: percentToBasisPoints(value) } });
   },
   requestFromAnotherTill: () => {
     if (!spaLineId || !spaOrderId) throw new Error("No seeded spa line");
-    return backend.seedApproval({ orderId: spaOrderId, requesterEmail: EMAILS.cashier, reason: "Other till request", payload: { kind: "discount", lineId: spaLineId, discount: { type: "percent", value: 15 } } });
+    return backend.seedApproval({ orderId: spaOrderId, requesterEmail: EMAILS.cashier, reason: "Other till request", payload: { kind: "discount", lineId: spaLineId, discount: { type: "percent", value: 1500 } } });
   },
 };
 

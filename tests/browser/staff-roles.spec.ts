@@ -265,7 +265,7 @@ test.describe("Settings › Team", () => {
     await rules.getByRole("textbox", { name: "Discount without approval" }).fill("25");
     await rules.getByRole("button", { name: "Save", exact: true }).click();
     await expect(rules.getByRole("status")).toHaveText("Saved");
-    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 1, discountLimitPercent: 25 });
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toMatchObject({ expectedRevision: 1, discountLimitPercent: 2500 });
   });
 
   test("managers don't see Team, get a read-only banner and read settings without saving", async ({ page }) => {
