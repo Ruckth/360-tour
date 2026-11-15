@@ -3,6 +3,8 @@ import createNextIntlPlugin from "next-intl/plugin";
 import { withSentryConfig } from '@sentry/nextjs/config';
 
 const nextConfig: NextConfig = {
+  // verify and vercel-build type-check first; avoid repeating that work in Next.
+  typescript: { ignoreBuildErrors: true },
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   async headers() {
     const cacheHeaders = [

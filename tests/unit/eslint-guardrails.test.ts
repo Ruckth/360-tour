@@ -1,29 +1,45 @@
 import { ESLint } from 'eslint';
+import { readFile, writeFile, rm } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { expect, it } from 'vitest';
 
-it('uses actual type information for promises in app, backend and test code', async () => {
-  // lintText supplies changing virtual source. CI's read-only single-run TS program can retain
-  // the on-disk AST instead, whose locations do not match this small snippet.
-  const eslint = new ESLint({ overrideConfig: [{ languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } } }] });
-  for (const filePath of ['src/components/booking/PayClient.tsx', 'convex/pos/orders.ts', 'tests/unit/eslint-guardrails.test.ts']) {
-    const [bad] = await eslint.lintText('async function operation() { return 1; }\noperation();', { filePath });
-    expect(bad.messages.filter(m => m.ruleId === '@typescript-eslint/no-floating-promises'), filePath).toHaveLength(1);
-    const [good] = await eslint.lintText('async function operation() { return 1; }\nawait operation();', { filePath });
-    expect(good.messages.filter(m => m.ruleId === '@typescript-eslint/no-floating-promises'), filePath).toEqual([]);
+it('keeps ESLint untyped and checks floating promises with the standard oxlint script', async () => {
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+  expect(pkg.scripts['lint:types']).toBe('oxlint --type-aware -A all -D typescript/no-floating-promises');
+  expect(pkg.scripts.lint).toContain('pnpm lint:types');
+  const eslint = new ESLint();
+  const config = await eslint.calculateConfigForFile('tests/unit/eslint-guardrails.test.ts');
+  expect(config.languageOptions.parserOptions.project).toBeUndefined();
+  expect(config.rules['@typescript-eslint/no-floating-promises']).toBeUndefined();
+  const fixtures = [
+    ...['src', 'convex', 'tests/unit', 'scripts'].map(dir => `${dir}/floating-promise-${process.pid}.ts`),
+    `scripts/floating-promise-${process.pid}.mjs`,
+  ];
+  try {
+    for (const file of fixtures) await writeFile(file, 'async function operation() { return 1; }\noperation();\nexport {};\n');
+    const bad = await promisify(execFile)('pnpm', ['lint:types', ...fixtures]).catch(error => error);
+    expect(bad.code).toBe(1);
+    expect(bad.stdout).toContain('no-floating-promises');
+    for (const file of fixtures) expect(bad.stdout).toContain(file);
+    for (const file of fixtures) await writeFile(file, 'async function operation() { return 1; }\nawait operation();\nexport {};\n');
+    await expect(promisify(execFile)('pnpm', ['lint:types', ...fixtures])).resolves.toMatchObject({ stderr: '' });
+  } finally {
+    await Promise.all(fixtures.map(file => rm(file, { force: true })));
   }
-}, 30_000);
+});
 
 it('wires current-source ownership into standard ESLint while allowing focused private tests', async () => {
-  const eslint = new ESLint({ overrideConfig: [{ languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } } }] });
+  const eslint = new ESLint();
   const source = "import type { QueryCtx } from 'convex/pos/private/orderLinks'; export type Context = QueryCtx;";
   const [browser] = await eslint.lintText(source, { filePath: 'src/components/booking/PayClient.tsx' });
   expect(browser.messages.some(m => m.ruleId === 'architecture/ownership')).toBe(true);
   const [test] = await eslint.lintText(source, { filePath: 'tests/unit/eslint-guardrails.test.ts' });
   expect(test.messages.some(m => m.ruleId === 'architecture/ownership')).toBe(false);
-}, 30_000);
+});
 
 it('checks deployed harness registrations and configures every Convex entry extension', async () => {
-  const eslint = new ESLint({ overrideConfig: [{ languageOptions: { parserOptions: { disallowAutomaticSingleRunInference: true } } }] });
+  const eslint = new ESLint();
   const [harness] = await eslint.lintText("import { query } from '../_generated/server'; export const leak = query({ args: {}, handler: () => null });", { filePath: 'convex/testing/harness.ts' });
   expect(harness.messages.some(message => message.ruleId === 'no-restricted-imports')).toBe(true);
   expect(harness.messages.some(message => message.ruleId === 'architecture/ownership')).toBe(true);
@@ -31,4 +47,4 @@ it('checks deployed harness registrations and configures every Convex entry exte
     const config = await eslint.calculateConfigForFile(`convex/pos/leak.${extension}`);
     expect(config.rules['architecture/ownership'][0]).toBe(2);
   }
-}, 30_000);
+});

@@ -1,0 +1,7 @@
+{
+  "ignorePatterns": [
+    ".next/**", "node_modules/**", "opensrc/**", ".claude/**", ".cursor/**",
+    ".vercel/**", "archive/**", "convex/_generated/**", "src/components/reui/**",
+    "build/**", "output/**", ".local-dev/**"
+  ]
+}
