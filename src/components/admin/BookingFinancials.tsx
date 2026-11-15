@@ -352,6 +352,7 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
   const done = useDone(onClose, "Stripe refund evidence linked. Stripe can now retry reconciliation.");
   return <ChangeConfirmDialog
     title="Link Stripe refund evidence"
+    dirty={chargeId !== "" || refundId !== ""}
     description="Use the charge and refund IDs from Stripe for this recorded refund. Linking prevents the same returned money being counted twice; it does not send a refund."
     rows={[{ label: "Recorded refund", before: formatMoney(refund.amount, refund.currency), after: formatMoney(refund.amount, refund.currency) }]}
     confirmLabel={submitted ? "Retry linking" : "Link refund"}
@@ -381,10 +382,12 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
   const firstConfirmation = !booking.confirmationEmailed;
   const done = useDone(onClose, "Payment recorded.");
   const [notify, setNotify] = useState(booking.notifyByDefault);
+  const [openingNotify] = useState(notify);
 
   return (
     <ChangeConfirmDialog
       title="Record a payment taken elsewhere"
+      dirty={method !== "cash" || when.edited || note !== "" || notify !== openingNotify}
       description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net + reviewed.owed, booking.currency) },
@@ -433,10 +436,12 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const amountProblem = amount === null || amount <= 0 ? "Enter an amount, at most 2 decimals." : amount > cap ? `At most ${formatMoney(cap, money.currency)}.` : null;
   const after = amount !== null ? money.net - amount : money.net;
   const done = useDone(onClose, "Refund recorded. Remember: recording it does not return the money.");
+  const [opening] = useState({ target, amountText, method });
 
   return (
     <ChangeConfirmDialog
       title="Record refund"
+      dirty={target !== opening.target || amountText !== opening.amountText || method !== opening.method || when.edited || reason !== ""}
       description={
         money.refundContext === "credit"
           ? "Record money given back for what the guest paid above the price of the stay. Recording does not return money: give it back first (for Stripe payments, refund in the Stripe dashboard)."
@@ -495,10 +500,12 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
   const [reason, setReason] = useState("");
   const done = useDone(onClose, "Payment corrected.");
   const changed = method !== payment.method || when.at !== payment.effectiveAt || note.trim() !== (payment.note ?? "");
+  const [opening] = useState({ method, note });
 
   return (
     <ChangeConfirmDialog
       title="Correct payment"
+      dirty={method !== opening.method || when.edited || note !== opening.note || reason !== ""}
       description="The amount stays as recorded."
       rows={[
         { label: "Method", before: MONEY_METHOD_LABELS[payment.method] ?? payment.method, after: MONEY_METHOD_LABELS[method] },
@@ -550,6 +557,7 @@ function CancelEntryDialog({
   return (
     <ChangeConfirmDialog
       title="Entered by mistake"
+      dirty={reason !== ""}
       description={`Void ${formatMoney(amount, booking.currency)} that was never received; it stays in History.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net - amount, booking.currency) },

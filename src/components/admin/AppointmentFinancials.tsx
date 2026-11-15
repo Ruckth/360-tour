@@ -102,6 +102,8 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
   const [method, setMethod] = useState<string>((dialog.kind === "amend" ? dialog.payment.method : "cash"));
   const [reason, setReason] = useState("");
   const effective = useEffectiveTime(dialog.kind === "amend" ? dialog.payment.effectiveAt : undefined);
+  const [opening] = useState({ amount, method });
+  const dirty = amount !== opening.amount || method !== opening.method || reason !== "" || effective.edited;
   const pay = useMutation(api.adminServices.markAppointmentPaid);
   const refund = useMutation(api.adminServices.refundAppointment);
   const correct = useMutation(api.adminServices.correctAppointmentPaymentEntry);
@@ -129,7 +131,7 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
     setSubmitted(true);
     await retry.current!();
   }
-  return <ChangeConfirmDialog title={title} description={isRefund ? "Record money already given back to the guest." : isCancel ? "Void this entry; no money was received." : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)} the guest already paid.` : "The amount stays as recorded."} rows={[{ label: "Amount", before: formatMoney(appointment.price, appointment.currency), after: isRefund ? formatMoney(Number(amount) || 0, appointment.currency) : isCancel ? "No money received" : formatMoney(appointment.price, appointment.currency) }]} confirmLabel={confirmLabel} keepLabel={isCancel ? "Keep payment" : null} destructive={isCancel} confirmDisabled={!validAmount || (!isCancel && !effective.at) || (dialog.kind !== "pay" && !reason.trim())} onConfirm={save} onClose={onClose}>
+  return <ChangeConfirmDialog dirty={dirty} title={title} description={isRefund ? "Record money already given back to the guest." : isCancel ? "Void this entry; no money was received." : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)} the guest already paid.` : "The amount stays as recorded."} rows={[{ label: "Amount", before: formatMoney(appointment.price, appointment.currency), after: isRefund ? formatMoney(Number(amount) || 0, appointment.currency) : isCancel ? "No money received" : formatMoney(appointment.price, appointment.currency) }]} confirmLabel={confirmLabel} keepLabel={isCancel ? "Keep payment" : null} destructive={isCancel} confirmDisabled={!validAmount || (!isCancel && !effective.at) || (dialog.kind !== "pay" && !reason.trim())} onConfirm={save} onClose={onClose}>
     <fieldset disabled={submitted} className="grid gap-4">
       {isRefund ? <div className="grid gap-2"><Label htmlFor="af-amount">Refund amount (up to {formatMoney(dialog.max, appointment.currency)})</Label><Input id="af-amount" type="number" inputMode="decimal" min="0.01" max={dialog.max} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></div> : null}
       {!isCancel ? <><MethodPicker label={isRefund ? "Refund method" : "Payment method"} methods={isRefund ? REFUND_METHODS : dialog.kind === "amend" && dialog.payment.method === "unrecorded" ? ["unrecorded", ...MANUAL_PAYMENT_METHODS] : MANUAL_PAYMENT_METHODS} value={method} onChange={setMethod} />{dialog.kind === "pay" ? <ReceivedAtField id="af" label="Payment date" value={effective} /> : <EffectiveTimeFields id="af" label={isRefund ? "Refund date" : "Payment date"} value={effective} />}</> : null}

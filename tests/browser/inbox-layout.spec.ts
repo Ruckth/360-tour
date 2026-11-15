@@ -59,6 +59,9 @@ test("direct task edit can be cancelled; Complete then Add starts empty without 
   await expect(input).toHaveValue(initialTask);
   await input.fill("A cancelled edit");
   await input.press("Escape");
+  const discard = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+  await expect(discard).toBeVisible();
+  await discard.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(page.getByText(initialTask, { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Complete follow-up", exact: true }).click();
   await expect(page.getByRole("button", { name: "Edit follow-up", exact: true })).toHaveCount(0);

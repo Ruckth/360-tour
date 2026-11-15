@@ -9,7 +9,7 @@ import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { BookingQuickActions } from "@/components/admin/BookingQuickActions";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BookingFinancials } from "@/components/admin/BookingFinancials";
+import { BookingFinancials, RecordPaymentDialog } from "@/components/admin/BookingFinancials";
 import { CancelStayDialog, ReopenBookingDialog } from "@/components/admin/BookingCorrectionDialogs";
 import { BookingHistory } from "@/components/admin/BookingHistory";
 import { BookingSheet, EditBookingDialog } from "@/components/admin/BookingSheet";
@@ -600,4 +600,54 @@ describe("one canonical stay-money summary", () => {
     }
     expect(button("Record refund")?.closest("details")).toBeNull();
   });
+});
+
+for (const kind of ["pay", "refund", "amend", "cancelEntry", "cancelLegacy", "linkStripe"] as const) {
+  it(`guards the stay ${kind} draft and closes a successful record without prompting`, async () => {
+    const owing = { ...booking, money: { ...money, credit: 0, refundable: 0, owed: 4000, net: 13000 }, confirmationEmailed: false } as BookingDetail;
+    if (kind === "pay") queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money });
+    if (kind === "cancelLegacy") queries.bookingFinancials.mockReturnValue({ ...financials, payments: [], unitemised: 25500, legacyManual: { cancellable: true, amount: 25500 } });
+    if (kind === "linkStripe") queries.bookingFinancials.mockReturnValue({ ...financials, refunds: [{ _id: "refund1", amount: 500, currency: "THB", method: "stripe", reason: "Returned online", effectiveAt: NOW, recordedBy: "desk@example.com", order: null }] });
+    await render(createElement(BookingFinancials, { booking: kind === "pay" ? owing : booking }));
+    const open = kind === "pay" ? "Record external payment…" : kind === "refund" ? "Record refund" : kind === "amend" ? "Correct…" : kind === "linkStripe" ? "Link Stripe refund evidence" : "Entered by mistake…";
+    await click(button(open));
+    await click(button("Close"));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await click(button(open));
+    if (kind === "pay") await type("pay-note", "Transfer slip");
+    else if (kind === "refund") { await type("refund-reason", "Returned to guest"); await type("refund-amount", "250"); }
+    else if (kind === "amend") { await type("amend-reason", "Wrong tender"); await click(button("Card")); }
+    else if (kind === "linkStripe") { await type("stripe-charge-id", "ch_test123"); await type("stripe-refund-id", "re_test123"); }
+    else await type("cancel-entry-reason", "Wrong booking");
+    await click(button("Close"));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Discard unsaved changes?");
+    await click(button("Keep editing"));
+    const confirm = kind === "pay" ? "Record ฿4,000" : kind === "refund" ? "Record refund ฿250" : kind === "amend" ? "Save correction" : kind === "linkStripe" ? "Link refund" : "Void ฿25,500";
+    await click(button(confirm));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    const mutation = kind === "pay" ? mutations.recordPayment : kind === "refund" ? mutations.recordRefund : kind === "amend" ? mutations.amendPayment : kind === "linkStripe" ? mutations.linkRecordedStripeRefund : mutations.cancelPayment;
+    expect(mutation).toHaveBeenCalledOnce();
+  });
+}
+
+it.each(["method", "time", "note", "notify"] as const)("tracks and clears an external-payment %s edit against its opening value", async field => {
+  const onClose = vi.fn();
+  await render(createElement(RecordPaymentDialog, { booking: { ...booking, confirmationEmailed: false }, owed: 4000, onClose }));
+  if (field === "method") await click(button("Card"));
+  if (field === "time") { await click(button("Change")); await type("pay-when-time", "08:30"); }
+  if (field === "note") await type("pay-note", " ");
+  if (field === "notify") await click(document.getElementById("pay-notify"));
+  await click(button("Close"));
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Discard unsaved changes?");
+  await click(button("Keep editing"));
+  expect(onClose).not.toHaveBeenCalled();
+  if (field === "method") await click(button("Cash"));
+  if (field === "time") await type("pay-when-time", "10:00");
+  if (field === "note") await type("pay-note", "");
+  if (field === "notify") await click(document.getElementById("pay-notify"));
+  await click(button("Close"));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
 });

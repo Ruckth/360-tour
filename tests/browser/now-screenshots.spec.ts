@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openDesk } from "./helpers/desk-taps";
+import { MONEY_DRAFT_SCENARIOS, openMoneyDraft } from "./helpers/money-drafts";
 
 // CAPTURE_NOW=1 BOOKING_UI_PORT=4370 pnpm exec playwright test -c playwright.booking.config.ts now-screenshots --workers=1
 // Original archives are never written by this spec. Extras are viewport captures.
@@ -28,12 +29,45 @@ async function shot(page: Page, name: string, fullPage = false) {
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
+  const directory = process.env.CAPTURE_DIR ?? "now";
   await page.screenshot({
-    path: `docs/screenshots/${process.env.CAPTURE_DIR ?? "now"}/${name}.png`,
+    path: `${directory.startsWith("docs/screenshots/") ? directory : `docs/screenshots/${directory}`}/${name}.png`,
     fullPage,
     animations: "disabled",
   });
 }
+
+// Round 6 desk evidence includes each guarded money dialog and follow-up editor.
+for (const [size, viewport] of Object.entries({ ...sizes, desktop: { width: 1440, height: 900 } })) {
+  test.describe(`round 6 desk drafts ${size}`, () => {
+    test.use({ viewport, hasTouch: size !== "desktop", isMobile: size !== "desktop" });
+    for (const scenario of MONEY_DRAFT_SCENARIOS) {
+      test(`r6-${scenario}-${size}`, async ({ page }) => {
+        await openMoneyDraft(page, scenario);
+        await shot(page, `r6-${scenario}-${size}`);
+      });
+    }
+    test(`r6-follow-up-${size}`, async ({ page }) => {
+      await open(page, "inbox");
+      await page.getByRole("button", { name: "Edit follow-up", exact: true }).click();
+      await shot(page, `r6-follow-up-${size}`);
+    });
+  });
+}
+test("r6-chats-360", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 844 });
+  await scene(page, "chats", true);
+  await shot(page, "r6-chats-360");
+});
+test.describe("round 6 desktop sheets", () => {
+  test.use({ viewport: { width: 1440, height: 900 }, hasTouch: false, isMobile: false });
+  for (const state of ["stay-sheet", "appointment-sheet"]) {
+    test(`r6-${state}-desktop`, async ({ page }) => {
+      await scene(page, state, false);
+      await shot(page, `r6-${state}-desktop`);
+    });
+  }
+});
 async function scene(page: Page, name: string, phone: boolean) {
   if (
     [

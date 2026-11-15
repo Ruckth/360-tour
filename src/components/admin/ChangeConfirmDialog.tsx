@@ -14,11 +14,13 @@ import { Spinner } from "@/components/ui/spinner";
 import type { ChangeRow } from "@/lib/schedule-changes";
 import { RESORT_ZONE_LABEL, errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 
 /**
  * The one before → after confirmation for schedule changes. Nothing is saved until Confirm;
- * closing, Escape or the keep button discards the proposal. `onConfirm` returns false to stay
- * open (for example to show conflicts); a thrown error is shown and the dialog stays open.
+ * closing, Escape or the keep button guards a dirty draft before discarding the proposal.
+ * Successful saves close directly. `onConfirm` returns false to stay open (for example to show
+ * conflicts); a thrown error is shown and the dialog stays open.
  */
 export function ChangeConfirmDialog({
   title,
@@ -30,6 +32,7 @@ export function ChangeConfirmDialog({
   keepLabel = "Keep original",
   destructive = false,
   confirmDisabled = false,
+  dirty = false,
   onConfirm,
   onClose,
 }: {
@@ -44,12 +47,20 @@ export function ChangeConfirmDialog({
   keepLabel?: string | null;
   destructive?: boolean;
   confirmDisabled?: boolean;
+  /** Changes from this dialog's opening draft; successful saves bypass dismissal. */
+  dirty?: boolean;
   onConfirm: () => Promise<boolean | void>;
   onClose: () => void;
 }) {
   const submitting = useRef(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+
+  async function dismiss() {
+    if (submitting.current || !(await confirmDiscard())) return;
+    onClose();
+  }
 
   async function confirm() {
     if (submitting.current || confirmDisabled) return;
@@ -67,7 +78,7 @@ export function ChangeConfirmDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && !submitting.current && onClose()}>
+    <Dialog open onOpenChange={(open) => !open && void dismiss()}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="pe-8">{title}</DialogTitle>
@@ -109,7 +120,7 @@ export function ChangeConfirmDialog({
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
           {keepLabel === null ? null : (
-            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+            <Button type="button" variant="outline" onClick={() => void dismiss()} disabled={pending}>
               {keepLabel}
             </Button>
           )}

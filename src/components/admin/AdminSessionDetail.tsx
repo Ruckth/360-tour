@@ -198,6 +198,7 @@ export function AdminSessionDetail({
   replyWindow,
   onAddBusinessFact,
   actions,
+  replyAction,
   actionError,
   followUp,
   onBack,
@@ -223,8 +224,10 @@ export function AdminSessionDetail({
   replyStatus: string | null;
   replyWindow?: ChannelReplyWindow;
   onAddBusinessFact?: (message: AdminMessage) => void;
-  /** Primary status action and the occasional-action menu, rendered inside the header. */
+  /** Occasional-action menu, rendered on the guest-name row. */
   actions?: ReactNode;
+  /** Status action: on the metadata row on phones, beside the menu on wider screens. */
+  replyAction?: ReactNode;
   actionError?: ReactNode;
   /** Set when the list beside this pane is empty: the pane says so instead of "choose one". */
   emptyList?: boolean;
@@ -361,19 +364,22 @@ export function AdminSessionDetail({
     <Sheet>
       <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
-          <div className="grid gap-2 p-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 flex-wrap items-center gap-1 sm:gap-3">
+          <div data-testid="chat-header" className="grid gap-2 p-3 sm:px-6 sm:py-4">
+            <div data-testid="chat-header-name" className="flex min-w-0 items-center gap-1 sm:gap-3">
               {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
-              <div className="min-w-20 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
+              <div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
               <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1">
                 <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
+                <div className="hidden sm:block">{replyAction}</div>
                 {actions}
               </div>
             </div>
-            <div className="flex min-w-0 items-center gap-2 sm:hidden">
-              <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
-              {automationChip ? <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{automationChip}</span> : null}
-              <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+            <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
+              <div className="flex min-w-20 flex-1 items-center gap-2">
+                <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
+                <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+              </div>
+              {replyAction}
             </div>
             <div className="hidden min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground sm:flex">
               <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
