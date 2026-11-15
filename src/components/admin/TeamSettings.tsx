@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/lib/staffTypes";
-import { Check, UserPlus } from "lucide-react";
+import { Check, RotateCw, UserPlus } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
@@ -19,6 +19,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { errorText } from "@/lib/staff-bookings";
 import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
@@ -351,13 +352,18 @@ function PersonRow({ person, busy, saving, message, onDesk, onMarketing, onRoleS
         <div className="flex min-h-11 flex-wrap items-center gap-2 max-sm:col-span-2">
           <Badge variant="muted" className="max-sm:mr-auto max-w-full rounded-full text-xs font-medium" data-testid="team-roles">{owner ? "Owner · all access" : rolesText(person)}</Badge>
           {owner ? <span aria-hidden className="h-11 w-32 shrink-0" /> : (
-            <div className="flex w-32 shrink-0 flex-wrap items-center justify-end gap-1">
-              {/* An expired invite only works again once renewed, so Renew is the row's one action. */}
-              {allExpired ? <Button size="sm" variant="outline" disabled={busy} onClick={onRenew}>Renew</Button> : null}
+            <div className="flex w-32 shrink-0 flex-nowrap items-center justify-end gap-1">
               <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => setChanging(!changing)}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
-              {linkWorks ? <MoreMenu
+              {allExpired ? <TooltipProvider><Tooltip>
+                <TooltipTrigger asChild>
+                  <Button type="button" size="icon" variant="ghost" className="size-11 shrink-0" aria-label={`Renew invitation for ${name}`} disabled={busy} onClick={onRenew}>
+                    <RotateCw aria-hidden className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Renew invitation</TooltipContent>
+              </Tooltip></TooltipProvider> : linkWorks ? <MoreMenu
                 label={`More for ${name}`}
                 disabled={busy}
                 items={[

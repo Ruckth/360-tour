@@ -26,12 +26,13 @@ async function open(page: Page, fixture: string, query = "") {
   else await page.locator("[data-fixture-ready]").waitFor();
 }
 async function shot(page: Page, name: string, fullPage = false) {
+  const captureDir = process.env.CAPTURE_DIR ?? "now";
+  const directory = captureDir.startsWith("docs/screenshots/") ? captureDir : `docs/screenshots/${captureDir}`;
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(400);
-  const directory = process.env.CAPTURE_DIR ?? "now";
   await page.screenshot({
-    path: `${directory.startsWith("docs/screenshots/") ? directory : `docs/screenshots/${directory}`}/${name}.png`,
+    path: `${directory}/${name}.png`,
     fullPage,
     animations: "disabled",
   });
@@ -166,8 +167,8 @@ async function scene(page: Page, name: string, phone: boolean) {
   } else if (name === "missing-information")
     await open(page, "questions", "?path=/admin/questions");
   else if (name.startsWith("settings-")) {
-    const tab = name.slice("settings-".length).replace(/-dirty$/, "");
-    await open(page, "staff-roles", `?view=settings&tab=${tab}`);
+    const tab = name.slice("settings-".length).replace(/-(dirty|expired|states)$/, "");
+    await open(page, "staff-roles", `?view=settings&tab=${tab}${name === "settings-team-expired" ? "&teamInvite=expired" : name === "settings-channels-states" ? "&channelHealth=states" : ""}`);
     if (name === "settings-business-dirty")
       await page.getByRole("textbox", { name: "Business name", exact: true }).fill("Auralis Cove Resort");
     if (name === "settings-team-dirty")
@@ -180,6 +181,21 @@ async function scene(page: Page, name: string, phone: boolean) {
   }
   else if (name === "marketing-dashboard")
     await open(page, "marketing-dashboard");
+  else if (name === "marketing-dashboard-negative")
+    await open(page, "marketing-dashboard", "?case=negative-net");
+}
+
+// Round 6 covers refund-heavy reporting and the expired invite's fixed action column.
+for (const [size, viewport] of Object.entries({ ...sizes, desktop: { width: 1440, height: 900 } })) {
+  test.describe(`round 6 Package C ${size}`, () => {
+    test.use({ viewport, hasTouch: size !== "desktop", isMobile: size !== "desktop" });
+    for (const state of ["settings-team-expired", "settings-channels-states", "marketing-dashboard-negative"]) {
+      test(`extra-${state}-${size}`, async ({ page }) => {
+        await scene(page, state, size === "phone");
+        await shot(page, `extra-${state}-${size}`, true);
+      });
+    }
+  });
 }
 const pairs: Array<
   [

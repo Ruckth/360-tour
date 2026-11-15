@@ -91,15 +91,19 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
     { key: "unknown", label: "Not tracked", money: unknown, color: "var(--chart-s0)" },
     { key: "staff", label: "Staff-entered", money: staff, color: "var(--chart-s0b)" },
     { key: "messaging", label: "Messaging", money: messaging, color: "var(--chart-s5)" },
-  ].filter((part) => part.key === "tracked" || part.money.sales > 0);
+  ].filter((part) => part.key === "tracked" || part.money.sales > 0 || part.money.net < 0);
+  const hasNegativeNet = parts.some((part) => part.money.net < 0);
+  const netAmount = (amount: number) => amount < 0 ? `−${thb(Math.abs(amount))}` : thb(amount);
 
   const trackingBreakdown = <>
-<div role="img" aria-label={`Net collected by tracking: ${parts.map((part) => `${part.label} ${thb(part.money.net)}`).join(", ")}`} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
-              {parts.filter((part) => part.money.net > 0).map((part) => <span key={part.key} className="block h-2 rounded-full" style={{ flex: `${part.money.net} 1 0`, background: part.color }} />)}
-            </div>
-            <ul className="grid gap-2 text-[13px] text-muted-foreground">
-              {parts.map((part) => <li key={part.key} className="flex items-center gap-2"><span aria-hidden className="size-2 rounded-full" style={{ background: part.color }} /><span className="flex-1">{part.label}</span><span className="money font-medium text-foreground">{thb(part.money.net)}</span></li>)}
-            </ul>
+    {hasNegativeNet ? <p className="text-[13px] text-muted-foreground">Refunds exceed income for some sources.</p> : (
+      <div role="img" aria-label={`Net collected by tracking: ${parts.map((part) => `${part.label} ${thb(part.money.net)}`).join(", ")}`} className="flex h-2 w-full gap-0.5 overflow-hidden rounded-full">
+        {parts.filter((part) => part.money.net > 0).map((part) => <span key={part.key} className="block h-2 rounded-full" style={{ flex: `${part.money.net} 1 0`, background: part.color }} />)}
+      </div>
+    )}
+    <ul aria-label="Net collected by tracking" className="grid gap-2 text-[13px] text-muted-foreground">
+      {parts.map((part) => <li key={part.key} className="flex items-center gap-2"><span aria-hidden className="size-2 rounded-full" style={{ background: part.color }} /><span className="flex-1">{part.label}</span><span className="money font-medium text-foreground">{netAmount(part.money.net)}</span></li>)}
+    </ul>
   </>;
 
   return (
@@ -120,8 +124,10 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
               <span className="text-[13px] text-muted-foreground">Business total</span>
               <span className="money text-lg font-semibold">{thb(all.net)} <span className="text-xs font-normal text-muted-foreground">net</span></span>
             </div>
-            <Disclosure label="Tracking breakdown" className="sm:hidden" contentClassName="grid gap-3">{trackingBreakdown}</Disclosure>
-            <div className="hidden gap-3 sm:grid">{trackingBreakdown}</div>
+            {hasNegativeNet ? <div className="grid gap-3">{trackingBreakdown}</div> : <>
+              <Disclosure label="Tracking breakdown" className="sm:hidden" contentClassName="grid gap-3">{trackingBreakdown}</Disclosure>
+              <div className="hidden gap-3 sm:grid">{trackingBreakdown}</div>
+            </>}
           </div>
         </Stat>
         <div className="col-span-2 grid grid-cols-2 gap-4 md:grid-cols-3 lg:col-span-3 [&>*:last-child:nth-child(odd)]:col-span-2">{tiles}</div>
