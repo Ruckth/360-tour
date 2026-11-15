@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Send } from "lucide-react";
+import { Download, Printer, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -23,8 +23,46 @@ function download(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+const PRINT_PAGE: Record<QrCardFormat, { page: string; svg: string }> = {
+  // A6 prints at its real size, edge to edge; the posts fit the page with a margin.
+  a6: { page: "size: 105mm 148mm; margin: 0", svg: "width: 105mm; height: 148mm" },
+  square: { page: "margin: 12mm", svg: "width: 100%; max-width: 180mm; height: auto" },
+  story: { page: "margin: 12mm", svg: "height: 250mm; width: auto; max-width: 100%" },
+};
+
+/**
+ * Prints the card on its own: the page is hidden for print and only the card is shown. The sheet
+ * goes away after printing (or at the next print).
+ */
+export function printQrCard(svg: string, format: QrCardFormat) {
+  document.querySelectorAll("[data-qr-print]").forEach((node) => node.remove());
+  const style = document.createElement("style");
+  style.dataset.qrPrint = "";
+  style.textContent = `@media screen { .qr-print-sheet { display: none !important } }
+@media print {
+  @page { ${PRINT_PAGE[format].page} }
+  body > *:not(.qr-print-sheet) { display: none !important }
+  .qr-print-sheet { display: flex; justify-content: center; }
+  .qr-print-sheet svg { display: block; ${PRINT_PAGE[format].svg} }
+}`;
+  const sheet = document.createElement("div");
+  sheet.className = "qr-print-sheet";
+  sheet.dataset.qrPrint = format;
+  // Built from escaped text by qrCardSvg, never from raw HTML.
+  sheet.innerHTML = svg;
+  document.head.append(style);
+  document.body.append(sheet);
+  const cleanup = () => {
+    style.remove();
+    sheet.remove();
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+}
+
 /** What the card says: the live coupon's offer, else the direct-booking offer. */
-function qrCardContent({
+export function qrCardContent({
   link,
   coupon,
   couponLive,
@@ -32,8 +70,8 @@ function qrCardContent({
   brand,
   directPercent,
 }: {
-  link: LinkRow;
-  coupon?: CouponRow;
+  link: Pick<LinkRow, "shortUrlPath">;
+  coupon?: Pick<CouponRow, "code" | "rules">;
   couponLive: boolean;
   origin: string;
   brand: string;
@@ -94,7 +132,7 @@ export function QrCardDialog({
   );
 }
 
-function QrCardBody({
+export function QrCardBody({
   link,
   coupons,
   properties,
@@ -180,7 +218,7 @@ function QrCardBody({
                   >
                     <input type="radio" name="qr-format" value={key} checked={format === key} onChange={() => setFormat(key)} className="sr-only" />
                     <span>{QR_CARD_FORMATS[key].label}</span>
-                    <span className="font-normal opacity-80">{key === "a6" ? "105×148 mm" : `${QR_CARD_FORMATS[key].width}×${QR_CARD_FORMATS[key].height}`}</span>
+                    <span className="font-normal">{key === "a6" ? "105×148 mm" : `${QR_CARD_FORMATS[key].width}×${QR_CARD_FORMATS[key].height}`}</span>
                   </label>
                 ))}
               </div>
@@ -226,23 +264,30 @@ function QrCardBody({
               </Callout>
             ) : null}
 
-            {error ? (
-              <p role="alert" className="text-sm font-medium text-destructive">
-                {error}
-              </p>
-            ) : null}
-            <div className="grid grid-cols-2 gap-2">
-              <Button type="button" onClick={() => void savePng()} disabled={busy !== null || draft}>
-                {busy === "png" ? <Spinner label="Making PNG" className="text-current" /> : <Download aria-hidden className="size-4" />}
-                PNG
-              </Button>
-              <Button type="button" variant="outline" onClick={saveSvg} disabled={busy !== null || draft}>
-                <Download aria-hidden className="size-4" />
-                SVG
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">PNG for posting, SVG for print shops. The code carries no personal data.</p>
           </div>
+        </div>
+      </div>
+      {/* Outside the scroller, so Print is on screen on a phone without scrolling past the card. */}
+      <div className="grid gap-2 border-t border-border bg-card px-5 py-3 sm:px-6" data-testid="qr-card-footer">
+        {error ? (
+          <p role="alert" className="text-sm font-medium text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="me-auto hidden text-xs text-muted-foreground sm:block">PNG for posts, SVG for print shops</p>
+          <Button type="button" variant="outline" title="For posts" onClick={() => void savePng()} disabled={busy !== null || draft} className="max-sm:flex-1">
+            {busy === "png" ? <Spinner label="Making PNG" className="text-current" /> : <Download aria-hidden className="size-4" />}
+            PNG
+          </Button>
+          <Button type="button" variant="outline" title="For print shops" onClick={saveSvg} disabled={busy !== null || draft} className="max-sm:flex-1">
+            <Download aria-hidden className="size-4" />
+            SVG
+          </Button>
+          <Button type="button" onClick={() => printQrCard(svg, format)} disabled={busy !== null || draft} className="max-sm:flex-[2] sm:min-w-32">
+            <Printer aria-hidden className="size-4" />
+            Print
+          </Button>
         </div>
       </div>
     </>

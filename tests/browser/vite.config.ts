@@ -59,5 +59,5 @@ export default defineConfig({
       },
     ],
   },
-  server: { host: "127.0.0.1", port: 4319, strictPort: true },
+  server: { host: "127.0.0.1", port: Number(process.env.BOOKING_UI_PORT ?? 4319), strictPort: true },
 });

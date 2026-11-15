@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import { Table2, BarChart3 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -64,11 +66,11 @@ export function DashboardChart({ p }: { p: Prepared }) {
               {b.long}
             </th>
             {visible.map((s) => (
-              <td key={s.key} className="whitespace-nowrap px-3 py-2 text-right tabular-nums text-muted-foreground">
+              <td key={s.key} className="whitespace-nowrap px-3 py-2 text-right font-sans tabular-nums text-muted-foreground">
                 {fmt(b.values[s.key] ?? 0)}
               </td>
             ))}
-            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold tabular-nums text-foreground">{fmt(totals[i])}</td>
+            <td className="whitespace-nowrap px-4 py-2 text-right font-semibold font-sans tabular-nums text-foreground">{fmt(totals[i])}</td>
           </tr>
         ))}
       </tbody>
@@ -76,7 +78,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
   );
 
   return (
-    <section aria-labelledby="chart-title" className="flex min-w-0 flex-col overflow-hidden border border-border bg-card">
+    <Card role="region" aria-labelledby="chart-title" className="flex min-w-0 flex-col overflow-hidden ">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 py-3">
         <div className="min-w-0 flex-1 basis-48">
           <h2 id="chart-title" className="text-base font-semibold text-foreground">
@@ -88,20 +90,21 @@ export function DashboardChart({ p }: { p: Prepared }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup value={metric} onValueChange={setMetric} aria-label="Measure" className="p-[3px]">
-            <ToggleGroupItem value="net" className="py-1.5">
+          <ToggleGroup variant="segmented" tone="subtle" value={metric} onValueChange={setMetric} aria-label="Measure">
+            <ToggleGroupItem value="net" className="whitespace-nowrap py-1.5">
               {p.cash ? "Collected" : "Net collected"}
             </ToggleGroupItem>
-            <ToggleGroupItem value="paid" className="py-1.5">
+            <ToggleGroupItem value="paid" className="whitespace-nowrap py-1.5">
               {p.cash ? "First paid" : "Paid bookings"}
             </ToggleGroupItem>
           </ToggleGroup>
-          <Button type="button" variant="ghost" size="sm" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)} className="aria-pressed:bg-muted">
+          <Button type="button" variant="ghost" size="sm" aria-pressed={asTable} onClick={() => setAsTable((v) => !v)} className="h-10 pointer-coarse:h-12 aria-pressed:bg-muted">
             {asTable ? <BarChart3 aria-hidden className="size-4" /> : <Table2 aria-hidden className="size-4" />}
             {asTable ? "Show chart" : "Show as table"}
           </Button>
         </div>
       </header>
+      <p className="px-4 pt-3 text-xs text-muted-foreground"><span className="pointer-coarse:hidden">Select a source to hide or show it</span><span className="hidden pointer-coarse:inline">Tap a source to hide or show it</span></p>
       <div role="group" aria-label="Series (select to hide or show)" className="flex flex-wrap gap-1 px-3 pt-3">
         {data.series.map((s) => {
           const on = !hidden.has(s.key);
@@ -118,7 +121,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
                   return next;
                 })
               }
-              className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-xs font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[pressed=false]:text-muted-foreground pointer-coarse:min-h-11"
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-transparent aria-[pressed=true]:border-border px-2 text-xs font-medium text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-[pressed=false]:text-muted-foreground pointer-coarse:min-h-11"
             >
               <span aria-hidden className={cn("size-2.5 rounded-sm border", on ? "border-transparent" : "border-muted-foreground bg-transparent")} style={on ? { background: s.color } : undefined} />
               <span className={cn(!on && "line-through")}>{s.label}</span>
@@ -139,7 +142,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             {/* Plot box: y labels on the left, bars on the right, x labels in the 1.5rem below. */}
             <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
-                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-[11px] tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
+                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-xs font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
                   {formatChartTick(value, money)}
                 </span>
               ))}
@@ -164,7 +167,7 @@ export function DashboardChart({ p }: { p: Prepared }) {
             </div>
             <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
               {data.buckets.map((b, i) => (
-                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-[11px] tabular-nums text-muted-foreground">
+                <span key={b.from} className="min-w-0 flex-1 overflow-visible whitespace-nowrap text-center text-xs font-sans tabular-nums text-muted-foreground">
                   {i % labelEvery === 0 ? (data.interval === "day" ? b.label : b.label.split("–")[0]) : ""}
                 </span>
               ))}
@@ -173,6 +176,6 @@ export function DashboardChart({ p }: { p: Prepared }) {
           <div className="sr-only">{table}</div>
         </>
       )}
-    </section>
+    </Card>
   );
 }

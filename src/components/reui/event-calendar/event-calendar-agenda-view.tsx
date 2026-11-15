@@ -79,6 +79,7 @@ function EventCalendarAgendaView({
     getDayKey(new Date(), settings.timeZone)
 
   const native = viewConfig.scrollbars === "native"
+  const pageScroll = viewConfig.scrollMode === "page"
 
   const body = (
     <>
@@ -111,7 +112,7 @@ function EventCalendarAgendaView({
             const items = [...(bucket?.allDay ?? []), ...(bucket?.timed ?? [])]
             const zoned = toZoned(day, settings.timeZone)
             const weekday = format(zoned, "EEEE", { locale: settings.locale })
-            const dayDate = format(zoned, "MMMM d, yyyy", {
+            const dayDate = format(zoned, "d MMM yyyy", {
               locale: settings.locale,
             })
             return (
@@ -141,19 +142,19 @@ function EventCalendarAgendaView({
                     // stops before the scrollbar instead of covering it. Native
                     // scrollbars already sit outside the content box, so this
                     // only applies to the custom-scrollbar path.
-                    !native && "me-2.5",
+                    !native && !pageScroll && "me-2.5 pointer-coarse:me-0",
                     viewConfig.classNames?.agendaDayHeader
                   )}
                 >
                   <span
                     className={cn(
-                      "text-foreground font-semibold",
+                      "text-foreground text-sm font-semibold",
                       isToday(day) && "text-primary"
                     )}
                   >
                     {weekday}
                   </span>
-                  <span className="text-muted-foreground font-medium tabular-nums">
+                  <span className="text-muted-foreground text-xs font-medium tabular-nums">
                     {dayDate}
                   </span>
                 </div>
@@ -186,7 +187,7 @@ function EventCalendarAgendaView({
       viewConfig.classNames?.agendaView,
       className
     ),
-    children: native ? (
+    children: pageScroll ? body : native ? (
       <div
         data-slot="scroll-area-viewport"
         data-ec-native-scroll=""
@@ -226,7 +227,7 @@ function EventCalendarAgendaItem({
       segment={segment}
       className={cn(
         // read-only list: hover only, no selected/focused styling on click
-        "hover:bg-accent/40 gap-3 rounded-none border-b px-4 py-2.5 transition-colors",
+        "min-h-11 hover:bg-accent/40 gap-3 rounded-none border-b px-4 py-2.5 transition-colors",
         viewConfig.classNames?.agendaItem
       )}
     />

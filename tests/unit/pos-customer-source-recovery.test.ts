@@ -49,7 +49,7 @@ it("keeps an invalid phone draft recoverable, then saves the corrected phone", a
   const backend = await createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
-  await click("Add customer");
+  await click("Customer");
   await click("New customer");
   await type("#customer-name", "Payer");
   await type("#customer-phone", "not-a-phone");
@@ -71,7 +71,7 @@ it("allows creating a customer with no phone", async () => {
   const backend = await createFixtureBackend();
   const create = vi.spyOn(backend.useActions(), "createCustomer");
   await show(backend);
-  await click("Add customer");
+  await click("Customer");
   await click("New customer");
   await type("#customer-name", "Payer without phone");
   await submit();
@@ -87,7 +87,7 @@ it.each(["order=aaaaaaaa", "order=bbbbbbbb", "order=fxmissing000001", "booking=b
   await click("New order");
   expect(document.querySelector('[role="alert"]')).toBeNull();
   expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
-  expect(button("New order").disabled).toBe(true);
+  expect(button("New order")).toBeUndefined();
 });
 
 it("opens an existing order through Orders after a missing link", async () => {

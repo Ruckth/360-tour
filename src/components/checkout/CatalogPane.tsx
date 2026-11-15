@@ -1,8 +1,8 @@
 "use client";
+import { parseMoneyInput } from "@/lib/money-input";
 
-import { parseMoneyInput } from '@/lib/money-input';
 
-import { ChevronDown, Info, Plus, Search, SlidersHorizontal, Star } from "lucide-react";
+import { ChevronDown, Plus, Search } from "lucide-react";
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
@@ -10,13 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Sheet, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE } from "convex/shared/orderMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
 import { amountInput } from "./checkout-ui";
-import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
+import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto, KIND_ICONS } from "./CheckoutPhoto";
 
 type Tab = "frequent" | "services" | "rooms" | "extras";
@@ -28,7 +26,6 @@ type Tile = {
   meta: string;
   price: number;
   currency: string;
-  description?: string;
   imageUrl?: string;
   item: CatalogItem;
 };
@@ -52,11 +49,11 @@ export function sectionCount(tiles: readonly Pick<Tile, "kind">[]) {
 function catalogTiles(catalog: Catalog) {
   const services: Tile[] = catalog.services.map((s) => ({
     key: `service:${s._id}`, kind: "service", name: s.name, group: s.category || "Services", meta: `${s.durationMin} min`,
-    price: s.price, currency: s.currency, description: s.description, imageUrl: s.imageUrl, item: { kind: "service", serviceId: s._id },
+    price: s.price, currency: s.currency, imageUrl: s.imageUrl, item: { kind: "service", serviceId: s._id },
   }));
   const rooms: Tile[] = catalog.rooms.map((r) => ({
     key: `room:${r._id}`, kind: "room", name: r.name, group: "Villas", meta: `per night · up to ${r.maxGuests} guests`,
-    price: r.price, currency: r.currency, description: r.tagline || undefined, imageUrl: r.imageUrl, item: { kind: "room", propertyId: r._id },
+    price: r.price, currency: r.currency, imageUrl: r.imageUrl, item: { kind: "room", propertyId: r._id },
   }));
   const extras: Tile[] = catalog.extras.map((x) => ({
     key: `extra:${x.name}`, kind: "extra", name: x.name, group: x.category, meta: "each",
@@ -69,10 +66,18 @@ function catalogTiles(catalog: Catalog) {
   return { frequent, services, rooms, extras } satisfies Record<Tab, Tile[]>;
 }
 
+/** Tiles whose name matches the search, from every tab; Frequent repeats the others, so it is left out. */
+export function searchTiles<T extends { name: string }>(tabs: { services: T[]; rooms: T[]; extras: T[] }, query: string) {
+  const text = query.trim().toLowerCase();
+  if (!text) return [];
+  return [...tabs.services, ...tabs.rooms, ...tabs.extras].filter((tile) => tile.name.toLowerCase().includes(text));
+}
+
 /**
- * Left side of checkout: tabs by type, search and filters, then the items in collapsible groups
- * of photo tiles that add on tap. Columns follow the pane's own width (1, 2, then 3), not the
- * window's, since the order panel beside it takes a share.
+ * Left side of checkout: tabs by type and one search over every tab, then photo tiles that add on
+ * tap. Spa, Rooms and Extras fold by group; Frequent and search results are one flat list. Columns
+ * follow the pane's own width (1, 2, then 3), not the window's, since the order panel beside it
+ * takes a share.
  */
 export function CatalogPane({
   catalog,
@@ -90,23 +95,18 @@ export function CatalogPane({
 }) {
   const [tab, setTab] = useState<Tab>("frequent");
   const [search, setSearch] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
-  const [groups, setGroups] = useState<string[]>([]);
-  const [maxPrice, setMaxPrice] = useState("");
-  // Groups folded by hand, per tab ("services:Massage"); search and filters keep them folded, with their count.
+  // Groups folded by hand, per tab ("services:Massage").
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   const ids = useId();
 
-  const tiles = useMemo(() => (catalog ? catalogTiles(catalog)[tab] : []), [catalog, tab]);
-  const tabGroups = useMemo(() => [...new Set(tiles.map((t) => t.group))], [tiles]);
-  const activeGroups = groups.filter((g) => tabGroups.includes(g));
-  const priceCap = Number(maxPrice) > 0 ? parseMoneyInput(maxPrice) : Infinity;
-  const text = search.trim().toLowerCase();
-  const shown = tiles.filter(
-    (t) => (!text || t.name.toLowerCase().includes(text)) && (!activeGroups.length || activeGroups.includes(t.group)) && t.price <= priceCap,
-  );
-  const sections = tabGroups.map((group) => ({ group, tiles: shown.filter((t) => t.group === group) })).filter((s) => s.tiles.length);
-  const filterCount = activeGroups.length + (priceCap < Infinity ? 1 : 0);
+  const all = useMemo(() => (catalog ? catalogTiles(catalog) : null), [catalog]);
+  const query = search.trim();
+  const searching = query.length > 0;
+  const tiles = all ? (searching ? searchTiles(all, query) : all[tab]) : [];
+  const flat = searching || tab === "frequent";
+  const sections = flat
+    ? []
+    : [...new Set(tiles.map((t) => t.group))].map((group) => ({ group, tiles: tiles.filter((t) => t.group === group) }));
 
   // How many of each tile are on the order, shown as a badge.
   const onOrder = useMemo(() => {
@@ -124,89 +124,54 @@ export function CatalogPane({
     return next;
   });
 
+  const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
+
   return (
     <section aria-label="Catalog" className={cn("@container flex min-h-0 flex-col", className)}>
       <div className="flex flex-col gap-3 px-4 pt-2 pb-3 sm:px-6 @3xl:flex-row @3xl:items-end @3xl:gap-6">
         <SegmentedTabs
           tabs={TABS}
           value={tab}
-          onValueChange={setTab}
+          onValueChange={(next) => { setTab(next); setSearch(""); }}
           label="Item type"
           controls="checkout-catalog"
           className="shrink-0 gap-7 border-border/70 [&_[aria-selected=true]]:border-gold-text [&_[role=tab]]:pt-2"
         />
-        <div className="flex min-w-0 flex-1 gap-2">
-          <div className="relative min-w-0 flex-1">
-            <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search items"
-              aria-label="Search items"
-              className="h-11 rounded-xl bg-card/60 pl-10 [&::-webkit-search-cancel-button]:hidden"
-            />
-          </div>
-          {/* The button is the sheet's trigger, so closing the sheet puts focus back on it. */}
-          <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-            <SheetTrigger asChild>
-              <Button variant="outline" className="h-11 rounded-xl bg-card/60 px-3 sm:px-4" aria-label={`Filters${filterCount ? ` (${filterCount} on)` : ""}`}>
-                <SlidersHorizontal aria-hidden className="size-4" />
-                <span>Filters</span>
-                {filterCount ? <span className="rounded-full bg-primary px-1.5 text-xs text-primary-foreground">{filterCount}</span> : null}
-              </Button>
-            </SheetTrigger>
-            <CheckoutSheetContent side="right" className="w-80">
-              <SheetHeader>
-                <SheetTitle>Filters</SheetTitle>
-                <SheetDescription>Narrow the {TABS.find((t) => t.value === tab)?.label.toLowerCase()} tab.</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Group</p>
-                <div className="flex flex-wrap gap-2">
-                  {tabGroups.map((group) => {
-                    const on = activeGroups.includes(group);
-                    return (
-                      <button
-                        key={group}
-                        type="button"
-                        aria-pressed={on}
-                        onClick={() => setGroups(on ? groups.filter((g) => g !== group) : [...groups, group])}
-                        className={cn("rounded-full border px-3 py-1.5 text-xs font-medium", on ? "border-primary bg-primary text-primary-foreground" : "border-border hover:bg-muted")}
-                      >
-                        {group}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="checkout-max-price">Price up to (฿)</Label>
-                <Input id="checkout-max-price" inputMode="decimal" value={maxPrice} onChange={(e) => setMaxPrice(amountInput(e.target.value, MAX_PRICE / 100))} placeholder="Any price" />
-              </div>
-              <Button variant="outline" onClick={() => { setGroups([]); setMaxPrice(""); }} disabled={!filterCount}>Reset filters</Button>
-            </CheckoutSheetContent>
-          </Sheet>
+        <div className="relative min-w-0 flex-1">
+          <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search all items"
+            aria-label="Search all items"
+            className="h-11 rounded-xl bg-card/60 pl-10 [&::-webkit-search-cancel-button]:hidden"
+          />
         </div>
       </div>
 
       <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
-        {tab === "rooms" ? (
+        {(searching ? tiles.some((tile) => tile.kind === "room") : tab === "rooms") ? (
           <p className="mb-4 rounded-xl border border-border/70 bg-card/50 p-3 text-sm text-muted-foreground">
             Room items record charges only. To reserve dates, create a booking and add it to the order.
           </p>
         ) : null}
         {!catalog ? (
-          <div role="status" aria-label="Loading items" className="grid grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[53rem]:grid-cols-3">
+          <div role="status" aria-label="Loading items" className={cn("grid", grid)}>
             {Array.from({ length: 6 }, (_, i) => <div key={i} className="h-[88px] animate-pulse rounded-xl bg-card/70 motion-reduce:animate-none" />)}
           </div>
         ) : (
           <>
-            {sections.map(({ group, tiles: groupTiles }, index) => {
+            {flat && tiles.length ? (
+              <div className={cn("grid", grid)} aria-label={searching ? `Results for ${query}` : undefined} role={searching ? "group" : undefined}>
+                {tiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onOrder.get(tile.key) ?? 0} onAdd={onAdd} />)}
+              </div>
+            ) : null}
+            {flat ? null : sections.map(({ group, tiles: groupTiles }, index) => {
               const key = `${tab}:${group}`;
               const open = !folded.has(key);
               const panelId = `${ids}-group-${index}`;
-              const Icon = tab === "frequent" ? Star : KIND_ICONS[groupTiles[0].kind];
+              const Icon = KIND_ICONS[groupTiles[0].kind];
               return (
                 <div key={group} className="mb-3">
                   <h3>
@@ -223,23 +188,22 @@ export function CatalogPane({
                       <ChevronDown aria-hidden className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none group-hover/head:text-foreground", !open && "-rotate-90")} />
                     </button>
                   </h3>
-                  <div id={panelId} hidden={!open} className={cn("mt-1 grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[53rem]:grid-cols-3 @min-[84rem]:grid-cols-4", open ? "grid" : "hidden")}>
+                  <div id={panelId} hidden={!open} className={cn("mt-1", grid, open ? "grid" : "hidden")}>
                     {groupTiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onOrder.get(tile.key) ?? 0} onAdd={onAdd} />)}
                   </div>
                 </div>
               );
             })}
-            {!sections.length && (tab !== "extras" || text || filterCount) ? (
-              <div className="grid justify-items-center gap-2 py-10 text-center text-sm text-muted-foreground">
-                <p>{text || filterCount ? "Nothing matches the search or filters." : "Nothing to sell here yet."}</p>
-                {text || filterCount ? (
-                  <Button variant="outline" size="sm" onClick={() => { setSearch(""); setGroups([]); setMaxPrice(""); }}>
-                    Clear search and filters
-                  </Button>
-                ) : null}
+            {searching && !tiles.length ? (
+              <div className="grid justify-items-center gap-3 py-10 text-center text-sm text-muted-foreground">
+                <p>No item matches “{query}”.</p>
+                <CustomItemDialog key={query} onAdd={onAdd} needsManager={customNeedsManager} initialName={query} label="Add as custom item" />
               </div>
             ) : null}
-            {tab === "extras" ? <CustomItemDialog onAdd={onAdd} needsManager={customNeedsManager} /> : null}
+            {!searching && !tiles.length && tab !== "extras" ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Nothing to sell here yet.</p>
+            ) : null}
+            {tab === "extras" && !searching ? <CustomItemDialog onAdd={onAdd} needsManager={customNeedsManager} /> : null}
           </>
         )}
       </div>
@@ -250,64 +214,51 @@ export function CatalogPane({
 function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd: (item: CatalogItem) => void }) {
   const price = formatMoney(tile.price, tile.currency);
   return (
-    <div className="relative h-full">
-      <button
-        type="button"
-        onClick={() => onAdd(tile.item)}
-        className="group flex h-full min-h-[72px] w-full flex-wrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
-      >
-        <span className="relative shrink-0">
-          <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
-          {count ? (
-            <span className="absolute -top-1.5 -left-1.5 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
-              {count}<span className="sr-only"> on the order</span>
-            </span>
-          ) : null}
-        </span>
-        <span className="flex min-w-[min(100%,8rem)] flex-1 flex-col py-0.5">
-          <span className={cn("line-clamp-2 text-sm leading-snug font-semibold [overflow-wrap:anywhere]", tile.description && "pr-7")}>{tile.name}</span>
-          <span className="mt-0.5 truncate text-xs text-muted-foreground">{tile.meta}</span>
-          <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
-            <span className="text-sm font-semibold tabular-nums">{price}</span>
-            {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
-            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
-              <Plus aria-hidden className="size-4" />
-              <span className="sr-only">Add to order</span>
-            </span>
+    <button
+      type="button"
+      onClick={() => onAdd(tile.item)}
+      className="group flex h-full min-h-[72px] w-full flex-nowrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
+    >
+      <span className="relative shrink-0">
+        <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
+        {count ? (
+          <span className="absolute top-1 left-1 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
+            {count}<span className="sr-only"> on the order</span>
+          </span>
+        ) : null}
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col py-0.5">
+        <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
+        <span className="mt-0.5 line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
+        <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
+          <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
+          {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
+          <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
+            <Plus aria-hidden className="size-4" />
+            <span className="sr-only">Add to order</span>
           </span>
         </span>
-      </button>
-      {tile.description ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            {/* A bigger hit area in the corner (44px on touch screens); the visible icon stays small. */}
-            <button type="button" aria-label={`About ${tile.name}`} className="group absolute top-0 right-0 flex size-9 items-start justify-end p-1.5 text-muted-foreground hover:text-foreground pointer-coarse:size-11">
-              <span className="rounded-full p-1 group-hover:bg-muted"><Info aria-hidden className="size-3.5" /></span>
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64 text-sm">
-            <p className="font-semibold">{tile.name}</p>
-            <p className="mt-1 text-muted-foreground">{tile.description}</p>
-            <p className="mt-2 text-xs text-muted-foreground">{tile.meta} · {price}</p>
-          </PopoverContent>
-        </Popover>
-      ) : null}
-    </div>
+      </span>
+    </button>
   );
 }
 
-/** The Custom item tile on the Extras tab and its form; the tile is the trigger, so focus returns to it. */
-function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) => void; needsManager: boolean }) {
+/**
+ * A one-off item and its form. On the Extras tab the trigger is the Custom item tile; when a search
+ * finds nothing it reads "Add as custom item" and starts with the search as the name. The trigger
+ * is the dialog's, so closing it puts focus back on it.
+ */
+function CustomItemDialog({ onAdd, needsManager, initialName = "", label = "Custom item" }: { onAdd: (item: CatalogItem) => void; needsManager: boolean; initialName?: string; label?: string }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initialName);
   const [price, setPrice] = useState("");
-  const valid = name.trim() && price !== "" && Number(price) >= 0;
+  const valid = name.trim() && price !== "" && parseMoneyInput(price) >= 0;
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!valid) return;
     onAdd({ kind: "extra", name: name.trim(), price: parseMoneyInput(price) });
-    setName("");
+    setName(initialName);
     setPrice("");
     setOpen(false);
   }
@@ -320,7 +271,7 @@ function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) 
           className="mt-1 flex w-full items-center gap-3 rounded-xl border border-dashed border-border p-2 text-left text-sm font-semibold text-muted-foreground transition hover:border-gold/70 hover:text-foreground sm:w-auto sm:pr-6"
         >
           <span className="flex size-12 items-center justify-center rounded-lg bg-muted text-gold-text"><Plus aria-hidden className="size-5" /></span>
-          Custom item
+          {label}
         </button>
       </DialogTrigger>
       {/* Held inside the screen and scrolled within, so enlarged text never pushes Close or the actions off it.
@@ -334,11 +285,11 @@ function CustomItemDialog({ onAdd, needsManager }: { onAdd: (item: CatalogItem) 
           </DialogHeader>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-name">Name</Label>
-            <Input id="custom-item-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} autoFocus />
+            <Input id="custom-item-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} autoFocus={!initialName} />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-price">Price (฿, VAT included)</Label>
-            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} />
+            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} autoFocus={Boolean(initialName)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpen(false)}>Cancel</Button>

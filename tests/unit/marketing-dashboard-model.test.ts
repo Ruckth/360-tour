@@ -114,7 +114,7 @@ describe("fixture from kit/data.md (cohort, last touch)", () => {
     expect(nov.roas).toMatchObject({ kind: "value", value: 364_600 / 45_000 });
     expect(row(campaigns.rows, "campaign:c-fb-always").roas).toEqual({ kind: "missing", campaignIds: ["c-fb-always"] });
     expect(campaigns.totals).toHaveLength(1);
-    expect(campaigns.totals[0]).toMatchObject({ name: "Total for facebook", net: 51320000, sessions: 4_410 });
+    expect(campaigns.totals[0]).toMatchObject({ name: "Total for Facebook", net: 51_320_000, sessions: 4_410 });
 
     const links = buildBreakdown(p, "source", [{ level: "source", id: "facebook" }, { level: "campaign", id: "c-fb-nov" }], BY_NET);
     expect(links.rows.map((r) => [r.name, r.paid, r.net, r.refunded])).toEqual([
@@ -343,6 +343,10 @@ describe("dates", () => {
     expect(presetRange("last90", FIXTURE_TODAY)).toEqual({ from: "2026-08-09", to: "2026-11-06" });
     expect(presetRange("month", FIXTURE_TODAY)).toEqual({ from: "2026-11-01", to: "2026-11-07" });
     expect(presetRange("prev30", FIXTURE_TODAY)).toEqual({ from: "2026-09-08", to: "2026-10-07" });
+    // Last week is the previous Monday to Sunday, from any day of this week.
+    expect(presetRange("lastweek", FIXTURE_TODAY)).toEqual({ from: "2026-10-26", to: "2026-11-01" });
+    expect(presetRange("lastweek", "2026-11-02")).toEqual({ from: "2026-10-26", to: "2026-11-01" });
+    expect(presetRange("lastweek", "2026-11-08")).toEqual({ from: "2026-10-26", to: "2026-11-01" });
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
 
@@ -382,7 +386,7 @@ describe("chart", () => {
     const labels = chartData(p, "net").series.map((s) => s.label);
     expect(labels).toHaveLength(6);
     expect(labels.slice(-2)).toEqual(["Other sources", "Not tracked"]);
-    expect(labels[0]).toBe("facebook");
+    expect(labels[0]).toBe("Facebook");
   });
 });
 

@@ -1,3 +1,4 @@
+import { percentToBasisPoints } from "convex/shared/money";
 import type { Id } from "convex/_generated/dataModel";
 import { mergeSiteSettings } from "convex/shared/siteSettings";
 import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/shared/staffTypes";
@@ -38,7 +39,6 @@ import "@/app.css";
  *   limit=N                      the cashier discount limit (10 by default)
  *   serverLimit=N                the limit the fixture server enforces, when it differs from the UI's
  *   stale=1                      Team: someone else saves the cashier rules first
- *   pending=N                    nav: approvals waiting, for the Checkout badge
  *   theme=dark                   dark app theme
  */
 const params = new URLSearchParams(location.search);
@@ -76,11 +76,15 @@ const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent
 const refundScenario = scenario.startsWith("refund");
 const backend = await createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
+let spaLineId: Id<"orderLines"> | undefined;
+let spaOrderId: OrderId | undefined;
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
   const actions = backend.useActions();
   if (scenario === "spa" || scenario === "paid") {
-    const { orderId } = await actions.addItem({ item: service(1) });
+    const { orderId, lineId } = await actions.addItem({ item: service(1) });
+    spaLineId = lineId;
+    spaOrderId = orderId;
     if (scenario === "paid") {
       await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 120000 }] });
       return { orderId, receipt: true };
@@ -132,10 +136,7 @@ function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; rece
     <CheckoutBackendProvider backend={backend}>
       <div className="flex h-dvh flex-col bg-background text-foreground" data-fixture-ready="" data-role={current.role ?? ""}>
         <header className="flex min-h-16 shrink-0 items-center gap-3 border-b border-border bg-card/95 px-4 sm:px-6">
-          <div className="min-w-0 flex-1">
-            <p className="admin-eyebrow">Concierge operations</p>
-            <h1 className="truncate font-serif text-2xl font-semibold tracking-tight text-foreground">Checkout</h1>
-          </div>
+          <h1 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-foreground">Checkout</h1>
           <CheckoutStaffControls />
         </header>
         {receiptId ? (
@@ -155,15 +156,54 @@ function CheckoutHarness({ initial }: { initial: { orderId: OrderId | null; rece
 declare global {
   interface Window {
     fixture: {
-      setRole: (next: typeof role) => void;
+      setRole: (next: typeof role) => Promise<void>;
       refundAttempts: () => ReturnType<typeof backend.refundAttempts>;
       recordedRefunds: () => ReturnType<typeof backend.recordedRefunds>;
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
-      refundFromAnotherTill: (lineName: string, satang: number) => void;
+      refundFromAnotherTill: (lineName: string, satang: number) => Promise<void>;
+      holdNextPayment: () => void;
+      finishPayment: (loseAnswer?: boolean) => void;
+      paymentAttempts: () => string[];
+      holdNextDiscountWrite: () => void;
+      finishDiscountWrite: (fail?: boolean) => void;
+      discountFromAnotherTill: (value: number) => Promise<unknown>;
+      requestFromAnotherTill: () => Promise<unknown>;
     };
   }
 }
+// Hold a blur write across the following tap, independently of browser/machine speed.
+const fixtureActions = backend.useActions();
+const updateLine = fixtureActions.updateLine;
+let holdDiscount = false;
+let finishDiscount: ((fail?: boolean) => void) | undefined;
+fixtureActions.updateLine = async (args) => {
+  if (holdDiscount && args.discount !== undefined) {
+    holdDiscount = false;
+    await new Promise<void>((resolve, reject) => {
+      finishDiscount = (fail) => { finishDiscount = undefined; if (fail) reject(new Error("Discount write failed")); else resolve(); };
+    });
+  }
+  return updateLine(args);
+};
+const settleOrder = fixtureActions.settleOrder;
+let holdPayment = false;
+let finishPayment: ((loseAnswer?: boolean) => void) | undefined;
+const paymentAttempts: string[] = [];
+fixtureActions.settleOrder = async (args) => {
+  paymentAttempts.push(args.idempotencyKey);
+  if (holdPayment) {
+    holdPayment = false;
+    await new Promise<void>((resolve, reject) => {
+      finishPayment = (loseAnswer) => {
+        finishPayment = undefined;
+        if (loseAnswer) reject(new Error("Payment answer lost"));
+        else resolve();
+      };
+    });
+  }
+  return settleOrder(args);
+};
 window.fixture = {
   setRole: async (next) => {
     await backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
@@ -175,6 +215,19 @@ window.fixture = {
   loseNextRefundResponse: () => backend.loseNextRefundResponse(),
   lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
   refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),
+  holdNextPayment: () => { holdPayment = true; },
+  finishPayment: (loseAnswer) => { if (!finishPayment) throw new Error("No payment is waiting"); finishPayment(loseAnswer); },
+  paymentAttempts: () => paymentAttempts,
+  holdNextDiscountWrite: () => { holdDiscount = true; },
+  finishDiscountWrite: (fail) => { if (!finishDiscount) throw new Error("No discount write is waiting"); finishDiscount(fail); },
+  discountFromAnotherTill: (value) => {
+    if (!spaLineId) throw new Error("No seeded spa line");
+    return updateLine({ lineId: spaLineId, discount: { type: "percent", value: percentToBasisPoints(value) } });
+  },
+  requestFromAnotherTill: () => {
+    if (!spaLineId || !spaOrderId) throw new Error("No seeded spa line");
+    return backend.seedApproval({ orderId: spaOrderId, requesterEmail: EMAILS.cashier, reason: "Other till request", payload: { kind: "discount", lineId: spaLineId, discount: { type: "percent", value: 1500 } } });
+  },
 };
 
 // ---------- Settings › Team ----------
@@ -195,14 +248,25 @@ const team = {
   rules: { ...rules },
   staleOnce: params.get("stale") === "1",
 };
+if (params.get("teamInvite") === "expired") {
+  const grant = team.people[0].staffGrant!;
+  grant.expired = true;
+  grant.expiresAt = now - DAY;
+}
 registerFixtureFunctions({
   queries: {
     "auth/staffAccess:listPeople": () => team.people,
     "settings/cashierRules:getCashierRules": () => team.rules,
     "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
     "settings/settings:setupChecklist": () => undefined,
-    "settings/settings:channelHealth": () => undefined,
-    "settings/settings:serverConfig": () => undefined,
+    "settings/settings:channelHealth": () => ({
+      channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: params.get("channelHealth") === "states" && index === 3 ? null : now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failed7d: index === 1 ? 2 : params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failedCapped: false, latestError: null })),
+      ical: [
+        { _id: "ical-1", propertyName: "Tideglass Pool Residence", platform: "airbnb", lastSyncedAt: now - 1_800_000, lastSyncError: null },
+        { _id: "ical-2", propertyName: "Sea Fern Villa", platform: "booking", lastSyncedAt: null, lastSyncError: "Calendar link returned 404" },
+      ],
+    }),
+    "settings/settings:serverConfig": () => ({ RESEND_API_KEY: true, OPENAI_API_KEY: true, STRIPE_SECRET_KEY: false, LINE_CHANNEL_SECRET: true }),
   },
   mutations: {
     "auth/staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
@@ -216,6 +280,16 @@ registerFixtureFunctions({
         ? team.people.map((person) => (person.email === email ? { ...person, role: next, staffGrant: grant } : person))
         : [...team.people, { email, role: next, staffGrant: grant, marketingGrant: null }].sort((a, b) => a.email.localeCompare(b.email));
       return grant.id;
+    },
+    "marketing/access:setGrant": ({ email, role: next }: { email: string; role: MarketingGrant["role"] | null }) => {
+      const known = team.people.some((person) => person.email === email);
+      const fresh: MarketingGrant | null = next ? { id: `mkt-${email}`, role: next, claimed: false, expiresAt: Date.now() + 14 * DAY, expired: false, updatedAt: Date.now() } : null;
+      team.people = known
+        ? team.people
+            .map((person) => (person.email === email ? { ...person, marketingGrant: next ? { ...(person.marketingGrant ?? fresh!), role: next, updatedAt: Date.now() } : null } : person))
+            .filter((person) => person.role || person.marketingGrant)
+        : [...team.people, ...(fresh ? [{ email, role: null, staffGrant: null, marketingGrant: fresh }] : [])].sort((a, b) => a.email.localeCompare(b.email));
+      return null;
     },
     "auth/staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
       const expiresAt = action === "resend" ? Date.now() + 14 * DAY : Date.now();
@@ -240,7 +314,7 @@ registerFixtureFunctions({
 
 function NavHarness() {
   return (
-    <StaffAccessProvider access={access} pendingApprovals={Number(params.get("pending") ?? 0)}>
+    <StaffAccessProvider access={access}>
       <SidebarProvider className="min-h-dvh bg-background" data-fixture-ready="">
         <AdminSidebar userEmail={access.email ?? undefined} />
         <AdminRail />
@@ -275,7 +349,7 @@ async function main() {
   const initial = await seedCheckout();
   root.render(
     <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
-      <CheckoutHarness initial={initial} />
+      <ConfirmProvider><CheckoutHarness initial={initial} /></ConfirmProvider>
     </NextIntlClientProvider>,
   );
 }

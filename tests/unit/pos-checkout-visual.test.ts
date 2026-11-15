@@ -102,15 +102,28 @@ describe("checkout category groups", () => {
     expect(header("Body").getAttribute("aria-expanded")).toBe("true");
     expect(tile("Hot stone 60").closest("[hidden]")).toBeNull();
 
-    // Searching keeps the fold, with the matching count still shown in the header.
-    await act(async () => type(document.querySelector<HTMLInputElement>('input[aria-label="Search items"]')!, "Thai"));
-    expect(header("Massage").textContent).toContain("2 services");
-    expect(header("Massage").getAttribute("aria-expanded")).toBe("false");
-
-    await click(header("Massage"));
+    // A search lists matches from every tab in one flat list, folds or not.
+    await act(async () => type(document.querySelector<HTMLInputElement>('input[aria-label="Search all items"]')!, "Thai"));
+    expect(header("Massage")).toBeUndefined();
     expect(tile("Thai massage 60").closest("[hidden]")).toBeNull();
     expect(tile("Thai massage 90").closest("[hidden]")).toBeNull();
     expect(tile("Aroma oil massage 90")).toBeUndefined();
+  });
+
+  it("searches every tab from any tab, and offers the search as a custom item when nothing matches", async () => {
+    await show(await createFixtureBackend());
+    await click(tab("Spa"));
+    const search = () => document.querySelector<HTMLInputElement>('input[aria-label="Search all items"]')!;
+    await act(async () => type(search(), "coconut"));
+    // A service and an extra, from two tabs, while Spa is selected.
+    expect(tile("Coconut body scrub 45")).toBeTruthy();
+    expect(tile("Coconut water")).toBeTruthy();
+    expect(buttonText("Add as custom item")).toBeUndefined();
+
+    await act(async () => type(search(), "Champagne"));
+    expect(catalog().textContent).toContain("No item matches “Champagne”.");
+    await click(buttonText("Add as custom item"));
+    expect(document.querySelector<HTMLInputElement>("#custom-item-name")?.value).toBe("Champagne");
   });
 
   it("keeps each tab's folds separate", async () => {
@@ -177,7 +190,7 @@ describe("checkout order rows", () => {
     const stay = row("Stay · Lagoon Pool Villa");
     expect(stay.querySelector("img")?.getAttribute("src")).toBe("/pool-villa-veranda-view.webp");
     expect(stay.querySelector('[role="group"]')).toBeNull();
-    expect(stay.textContent).toContain("paid online");
+    expect(stay.textContent).toContain("฿10,000 paid in advance");
     expect(row("Sunrise yoga by the pool 60").querySelector("img")?.getAttribute("src")).toBe("/experiences/wellness-yoga.png");
     expect(row("Breakfast basket").querySelector("[data-photo-fallback]")).toBeTruthy();
 
@@ -192,14 +205,17 @@ const buttonText = (text: string) => [...document.querySelectorAll("button")].fi
 /** The layers checkout portals out of its screen, and how staff open each one. */
 const LAYERS: Record<string, () => Promise<void>> = {
   Orders: () => click(buttonText("Orders")),
-  Customer: () => click(document.querySelector('[aria-label="Add customer"]')),
+  Customer: () => click(document.querySelector('[aria-label="Customer"]')),
   "Add booking": () => click(buttonText("Add booking")),
-  Filters: () => click(document.querySelector('[aria-label^="Filters"]')),
   "Custom item": async () => {
     await click(tab("Extras"));
     await click(buttonText("Custom item"));
   },
-  "Order sheet": () => click(document.querySelector('[aria-label$="open the order"]')),
+  "Order sheet": async () => {
+    await click(tile("Thai massage 60"));
+    await settle();
+    await click(document.querySelector('[aria-label$="open the order"]'));
+  },
 };
 
 describe("checkout theme", () => {
@@ -214,15 +230,18 @@ describe("checkout theme", () => {
         await open();
         const content = [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
         expect(content, name).toBeTruthy();
-        const overlay = content.previousElementSibling!;
-        expect(overlay.className).toContain("bg-background/80");
+        // For approvers (owner here) the order sheet is non-modal and stops under the header, so the
+        // header's Approvals stays usable: it has no overlay. Every other layer dims the page.
+        const overlay = name === "Order sheet" ? null : content.previousElementSibling!;
+        if (overlay) expect(overlay.className).toContain("bg-background/80");
+        else expect(content.className).toContain("max-h-[calc(100dvh-var(--admin-header,6dvh))]");
         expect(content.className).toContain("pointer-coarse:[&_button]:min-h-11");
         // No checkout-only palette, and nothing below <html> forces a theme.
         expect(document.querySelector(".checkout-theme")).toBeNull();
         expect(document.body.querySelector(".dark")).toBeNull();
         const html = theme === "dark" ? document.documentElement : null;
         expect(content.closest(".dark")).toBe(html);
-        expect(overlay.closest(".dark")).toBe(html);
+        if (overlay) expect(overlay.closest(".dark")).toBe(html);
       });
     }
   }
@@ -284,8 +303,8 @@ describe("checkout order title", () => {
     // The strip's title is still in the page for narrow screens, just not on desktop.
     expect(shownAt(document.querySelector('[data-testid="order-title"]')!, "desktop")).toBe(false);
     // Booking context, customer, Orders and New order stay in the strip on desktop.
-    expect(shownText("No booking", "desktop")).toHaveLength(1);
-    expect(shownAt(document.querySelector('[aria-label="Add customer"]')!, "desktop")).toBe(true);
+    expect(shownText("No booking", "desktop")).toHaveLength(0);
+    expect(shownAt(document.querySelector('[aria-label="Customer"]')!, "desktop")).toBe(true);
     expect(shownAt(buttonText("Orders")!, "desktop")).toBe(true);
     const newOrder = document.querySelector<HTMLButtonElement>('[aria-label="New order"]')!;
     expect(shownAt(newOrder, "desktop")).toBe(true);

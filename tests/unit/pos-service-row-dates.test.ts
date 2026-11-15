@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
 import { CheckoutBackendProvider, type CheckoutActions, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { serviceScheduleValue } from "@/components/checkout/OrderPanel";
+import { serviceScheduleValue, serviceStartLabel } from "@/components/checkout/OrderPanel";
 import { receiptSchedule, scheduleLabel } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "../support/checkout-backend";
 import { changeSchedule } from "convex/shared/serviceSchedule";
@@ -27,21 +27,28 @@ describe("optional service date and time", () => {
 
   it("labels unset parts as unset, never as now", () => {
     expect(scheduleLabel({}, NOW)).toBe("Not scheduled");
-    expect(scheduleLabel({ date: "2026-11-12" }, NOW)).toBe("Thu, Nov 12 · time not set");
+    expect(scheduleLabel({ date: "2026-11-12" }, NOW)).toBe("Thu 12 Nov · time not set");
     expect(scheduleLabel({ date: "2026-10-28" }, NOW)).toBe("Today · time not set");
     expect(scheduleLabel({ time: "14:30" }, NOW)).toBe("14:30 · date not set");
-    expect(scheduleLabel({ date: "2027-01-05", time: "09:00" }, NOW)).toBe("Tue, Jan 5, 2027, 09:00");
+    expect(scheduleLabel({ date: "2027-01-05", time: "09:00" }, NOW)).toBe("Tue 5 Jan 2027, 09:00");
     // Legacy rows keep their own label.
     expect(scheduleLabel(undefined, NOW)).toBeNull();
     expect(receiptSchedule(undefined)).toBeNull();
-    expect(receiptSchedule({})).toBe("To be scheduled");
+    expect(receiptSchedule({})).toBeNull();
     expect(receiptSchedule({ date: "2026-11-12" })).toBe("Thu 12 Nov 2026 · time to be confirmed");
     expect(receiptSchedule({ time: "14:30" })).toBe("14:30 · date to be confirmed");
   });
 
-  it("shows blank parts for unscheduled rows", () => {
-    expect(serviceScheduleValue({ schedule: undefined })).toEqual({ date: "", time: "" });
+  it("keeps unset schedule parts blank after the cutover", () => {
+    expect(serviceScheduleValue({ schedule: { date: "2026-10-26", time: "14:30" } })).toEqual({ date: "2026-10-26", time: "14:30" });
+    expect(serviceScheduleValue({})).toEqual({ date: "", time: "" });
     expect(serviceScheduleValue({ schedule: { time: "09:15" } })).toEqual({ date: "", time: "09:15" });
+  });
+
+  it("labels legacy rows with their date unless they are today", () => {
+    expect(serviceStartLabel(at("2026-10-28", "14:30"), NOW)).toBe("14:30");
+    expect(serviceStartLabel(at("2026-10-26", "14:30"), NOW)).toBe("Mon 26 Oct, 14:30");
+    expect(serviceStartLabel(at("2025-12-31", "14:30"), NOW)).toBe("Wed 31 Dec 2025, 14:30");
   });
 });
 
@@ -56,7 +63,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); }
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
-const subtitle = (name: string) => row(name).querySelector("button span span:nth-child(2)")?.textContent ?? "";
+const subtitle = (name: string) => row(name).querySelector("button > span:not([aria-hidden])")?.textContent ?? "";
 const timeInput = () => panel().querySelector<HTMLInputElement>('input[aria-label="Service time"]')!;
 const dateButton = () => panel().querySelector<HTMLButtonElement>('button[aria-label="Service date"]')!;
 const day = (iso: string) => document.querySelector<HTMLElement>(`[data-day="${iso}"]:not([data-outside])`);
@@ -106,6 +113,8 @@ describe("a service row's optional date and time at checkout", () => {
     const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
     updateLine.mockRejectedValueOnce(new Error("Connection lost"));
     type(timeInput(), "14:30");
     await settle();
@@ -125,7 +134,10 @@ describe("a service row's optional date and time at checkout", () => {
     const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
-    expect(subtitle("Thai massage 60")).toContain("Not scheduled");
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
+    // The open editor shows the schedule state once, in its Schedule row.
+    expect([...row("Thai massage 60").querySelectorAll("button")].find((button) => button.textContent?.startsWith("Schedule"))?.textContent).toContain("Not scheduled");
     expect(panel().textContent).toContain("Date (optional)");
     expect(panel().textContent).toContain("Time (optional)");
     // No mode choice and no "Now" shortcut: blank is simply unset.
@@ -141,28 +153,31 @@ describe("a service row's optional date and time at checkout", () => {
 
     await pickDate("2026-10-30");
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceDate: "2026-10-30" }));
-    expect(subtitle("Thai massage 60")).toContain("Fri, Oct 30, 14:30");
+    expect(subtitle("Thai massage 60")).toContain("Fri 30 Oct, 14:30");
 
     await click(buttonNamed("Clear service time"));
     await settle();
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceTime: null }));
-    expect(subtitle("Thai massage 60")).toContain("Fri, Oct 30 · time not set");
+    expect(subtitle("Thai massage 60")).toContain("Fri 30 Oct · time not set");
     expect(timeInput().value).toBe("");
 
     await click(dateButton());
     await click(buttonNamed("Clear"));
     await settle();
     expect(updateLine).toHaveBeenLastCalledWith(expect.objectContaining({ serviceDate: null }));
-    expect(subtitle("Thai massage 60")).toContain("Not scheduled");
+    // The open editor shows the schedule state once, in its Schedule row.
+    expect([...row("Thai massage 60").querySelectorAll("button")].find((button) => button.textContent?.startsWith("Schedule"))?.textContent).toContain("Not scheduled");
   });
 
   it("never fills a part in from the clock", async () => {
     const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
+    // Therapist, date and time sit behind the editor's Schedule row.
+    await click([...row("Thai massage 60").querySelectorAll("button")].find((b) => b.textContent?.startsWith("Schedule")));
     await pickDate("2026-10-27");
     expect(updateLine).toHaveBeenLastCalledWith({ lineId: expect.any(String), serviceDate: "2026-10-27" });
     expect(timeInput().value).toBe("");
-    expect(subtitle("Thai massage 60")).toContain("Tue, Oct 27 · time not set");
+    expect(subtitle("Thai massage 60")).toContain("Tue 27 Oct · time not set");
   });
 });

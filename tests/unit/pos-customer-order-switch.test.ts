@@ -38,7 +38,7 @@ async function setup() {
   return { backend, actions, a, b };
 }
 async function form(name: string) {
-  await click('Add customer');
+  await click('Customer');
   await click('New customer');
   await type('#customer-name', name);
 }

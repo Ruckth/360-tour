@@ -1,12 +1,14 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+import { Disclosure } from "@/components/ui/disclosure";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatResortDateTime } from "@/lib/staff-bookings";
-import { MONEY_METHOD_LABELS, PAYMENT_ORIGIN_LABELS } from "./admin-bookings-shared";
+import { MONEY_METHOD_LABELS, PAYMENT_ORIGIN_LABELS, staffLabel } from "./admin-bookings-shared";
 import { STATUS_LABELS, formatMoney } from "./labels";
 
 const PAGE = 10;
@@ -19,7 +21,7 @@ const KIND_LABELS: Record<string, string> = {
   price_set: "Custom price set",
   payment_recorded: "Payment recorded",
   payment_amended: "Payment corrected",
-  payment_cancelled: "Payment cancelled (not received)",
+  payment_cancelled: "Payment voided (entered by mistake)",
   order_payment_amended: "Checkout receipt corrected",
   order_voided: "Checkout order voided, payment kept",
   refund_recorded: "Refund recorded",
@@ -52,7 +54,7 @@ function show(field: string, value: unknown, currency: string, villaName: (id: s
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (MONEY_FIELDS.has(field)) return formatMoney(value, currency);
-    if (TIME_FIELDS.has(field)) return formatResortDateTime(value);
+    if (TIME_FIELDS.has(field)) return staffDateTime(value);
     return String(value);
   }
   if (typeof value === "string") {
@@ -103,20 +105,25 @@ export function BookingHistory({
   bookingId,
   currency,
   villaName,
+  children,
 }: {
   bookingId: Id<"bookings">;
   currency: string;
   villaName: (id: string) => string;
+  /** The stay's other records (payments, past orders, price), shown above the changes in the same section. */
+  children?: ReactNode;
 }) {
   const { results, status, loadMore } = usePaginatedQuery(api.bookings.admin.bookingHistory, { bookingId }, { initialNumItems: PAGE });
 
   return (
-    <section aria-labelledby="booking-history" className="grid gap-2">
-      <h3 id="booking-history" className="admin-eyebrow">History</h3>
+    // One closed section per record (rule 4).
+    <Disclosure label="History" summaryId="booking-history" contentClassName="grid gap-2 pb-2">
+      {children}
+      {children ? <h4 className="admin-eyebrow pt-2">Changes</h4> : null}
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-12" aria-label="Loading history" />
       ) : results.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No changes recorded yet. Changes made before booking history was added were not recorded.</p>
+        <p className="text-sm text-muted-foreground">No changes recorded since booking history began.</p>
       ) : (
         <ol className="grid gap-3">
           {results.map((entry) => {
@@ -126,11 +133,11 @@ export function BookingHistory({
                 <p className="font-medium">
                   {KIND_LABELS[entry.kind] ?? entry.kind}
                   <span className="font-normal text-muted-foreground">
-                    {" "}· {formatResortDateTime(entry.recordedAt)} · {entry.actor}
+                    {" "}· {staffDateTime(entry.recordedAt)} · {staffLabel(entry.actor)}
                   </span>
                 </p>
                 {Math.abs(entry.effectiveAt - entry.recordedAt) > 60_000 ? (
-                  <p className="text-xs text-muted-foreground">Effective {formatResortDateTime(entry.effectiveAt)}</p>
+                  <p className="text-xs text-muted-foreground">Effective {staffDateTime(entry.effectiveAt)}</p>
                 ) : null}
                 {entry.reason ? <p className="text-muted-foreground">Reason: {entry.reason}</p> : null}
                 {details.length ? (
@@ -154,6 +161,6 @@ export function BookingHistory({
           {status === "LoadingMore" ? "Loading history…" : "Load earlier history"}
         </Button>
       ) : null}
-    </section>
+    </Disclosure>
   );
 }

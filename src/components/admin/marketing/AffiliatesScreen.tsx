@@ -38,6 +38,7 @@ export function AffiliatesScreen() {
   const coupon = useMutation(api.marketing.commands.assignCoupon.assignCoupon);
   const review = useMutation(api.marketing.commands.reviewCredit.reviewCredit);
   const refresh = useMutation(api.marketing.commands.refreshCredit.refreshCredit);
+  const saveCampaign = useMutation(api.marketing.commands.saveCampaign.saveCampaign);
   return (
     <AffiliatesView
       origin={origin}
@@ -47,7 +48,7 @@ export function AffiliatesScreen() {
       coupons={coupons}
       properties={properties}
       canManage={capabilities.partners}
-      actions={{ save, status, coupon }}
+      actions={{ save, status, coupon, saveCampaign: capabilities.draft ? saveCampaign : undefined }}
       selectedPartner={partner}
       onSelectPartner={setPartner}
     >

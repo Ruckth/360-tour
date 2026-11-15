@@ -1,8 +1,9 @@
 import { parseMoneyInput } from "@/lib/money-input";
+import { staffDate } from "@/lib/staff-time";
 import type { api } from "convex/_generated/api";
 import type { FunctionArgs } from "convex/server";
 import { formatMoney } from "@/components/admin/labels";
-import { errorText } from "@/lib/staff-bookings";
+import { errorText, resortMidnight } from "@/lib/staff-bookings";
 import type { OrderLine, OrderView } from "./backend";
 
 /**
@@ -17,10 +18,10 @@ export const REFUND_METHODS: { value: RefundMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
   { value: "promptpay", label: "PromptPay" },
   { value: "card", label: "Card" },
-  { value: "transfer", label: "Bank transfer" },
+  { value: "transfer", label: "Transfer" },
   { value: "other", label: "Other" },
 ];
-const METHOD_NAMES: Record<RefundMethod, string> = { cash: "Cash", promptpay: "PromptPay", card: "Card", transfer: "Bank transfer", stripe: "Stripe", other: "Other", unrecorded: "Not recorded" };
+const METHOD_NAMES: Record<RefundMethod, string> = { cash: "Cash", promptpay: "PromptPay", card: "Card", transfer: "Transfer", stripe: "Stripe", other: "Other", unrecorded: "Not recorded" };
 export const refundMethodName = (method: string) => METHOD_NAMES[method as RefundMethod] ?? method;
 
 /** "฿250", "฿99.50" from satang. */
@@ -28,6 +29,10 @@ export const satangMoney = (satang: number, currency = "THB") => formatMoney(sat
 
 /** The form's amount text for a satang value: "250", "99.50". */
 export const satangInput = (satang: number) => (satang / 100).toFixed(satang % 100 ? 2 : 0);
+
+/** The money button: "Record refund ฿300", or "Send refund ฿300 to manager" for a cashier who asks. */
+export const refundButtonLabel = (ask: boolean, money: string | null) =>
+  ask ? `Send refund${money ? ` ${money}` : ""} to manager` : `Record refund${money ? ` ${money}` : ""}`;
 
 /** Typed baht ("250", "99.5") to whole satang, or null when it isn't a positive amount with at most two decimals. */
 export function refundAmountSatang(text: string) {
@@ -60,8 +65,8 @@ const errorData = (err: unknown) => {
   return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
 };
 const businessDay = (iso: string) => {
-  const [y, m, d] = iso.split("-").map(Number);
-  return y && m && d ? new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : iso;
+  const at = resortMidnight(iso);
+  return Number.isNaN(at) ? iso : staffDate(at);
 };
 
 /**

@@ -1,11 +1,14 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import type { Id } from "convex/_generated/dataModel";
 import type { ReportBasis, ReportData, SpendDraft } from "convex/shared/marketingReport";
-import { BarChart3, BookOpen, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw } from "lucide-react";
+import { BarChart3, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,8 +21,9 @@ import { formatRange, formatStamp } from "../marketing-format";
 import { SpendDialog } from "../SpendDialog";
 import { DashboardBreakdown } from "./DashboardBreakdown";
 import { DashboardChart } from "./DashboardChart";
-import { DefinitionsSheet, ExportDialog, SalesSheet, type SalesSheetTarget } from "./DashboardSheets";
+import { ExportDialog, SalesSheet, type SalesSheetTarget } from "./DashboardSheets";
 import { DashboardTiles } from "./DashboardTiles";
+import { rememberRange, rememberedRange } from "./remembered-range";
 import {
   CHART_COLOR_VARS,
   PRESETS,
@@ -66,7 +70,14 @@ export type DashboardViewProps = {
 
 export const DEFAULT_REQUEST = (today: string): ReportRequest => ({ range: { preset: "last30", ...presetRange("last30", today) }, basis: "cohort" });
 
-const ATTRIBUTION_RULE = "last_touch_30d@1";
+/** The first request on this device: the range it last chose, else the default. */
+export const initialRequest = (today: string): ReportRequest => {
+  const range = rememberedRange(today);
+  return range ? { ...DEFAULT_REQUEST(today), range } : DEFAULT_REQUEST(today);
+};
+
+/** The attribution rule (last_touch_30d@1) in words; the CSV export keeps the rule's id. */
+
 
 function RangePicker({ range, today, onChange }: { range: RangeChoice; today: string; onChange: (range: RangeChoice) => void }) {
   const [open, setOpen] = useState(false);
@@ -95,7 +106,7 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
       }}
     >
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className="h-10 w-full min-w-0 justify-start gap-2 px-3 shadow-sm sm:h-9 sm:w-auto" aria-label={`Dates: ${label}, ${formatRange(range.from, range.to)}`}>
+        <Button type="button" variant="outline" className="h-10 w-full min-w-0 justify-start gap-2 px-3 shadow-sm sm:h-10 pointer-coarse:h-12 sm:w-auto" aria-label={`Dates: ${label}, ${formatRange(range.from, range.to)}`}>
           <CalendarRange aria-hidden className="size-4 text-muted-foreground" />
           <span className="truncate">{label}</span>
           <ChevronDown aria-hidden className="ml-auto size-4 opacity-75" />
@@ -115,7 +126,7 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
                     onChange({ preset: preset.id as PresetId, ...r });
                     setOpen(false);
                   }}
-                  className="flex min-h-10 w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-10 pointer-coarse:min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex size-4 items-center justify-center">{selected ? <Check aria-hidden className="size-4" /> : null}</span>
                   <span className={cn("flex-1", selected && "font-semibold")}>{preset.label}</span>
@@ -156,25 +167,52 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
   );
 }
 
+/** Rarely changed choices about how sales are credited, with what each one means. */
+function ViewOptions({ touch, onTouch, open, onOpenChange }: { touch: Touch; onTouch: (touch: Touch) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" aria-label={`View options: ${touch === "first" ? "First touch" : "Last touch"}`}>
+          <SlidersHorizontal aria-hidden className="size-4" />
+          View options
+          {touch === "first" ? <span className="rounded-full bg-muted px-1.5 text-xs">First touch</span> : null}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-[min(22rem,calc(100vw-2rem))] gap-3 p-3">
+        <div className="grid gap-2">
+          <span id="touch-label" className="text-sm font-medium text-foreground">
+            Attribution
+          </span>
+          <ToggleGroup variant="segmented" tone="subtle" value={touch} onValueChange={onTouch} aria-labelledby="touch-label" className="w-full">
+            <ToggleGroupItem value="last" className="flex-1 py-1.5">
+              Last touch
+            </ToggleGroupItem>
+            <ToggleGroupItem value="first" className="flex-1 py-1.5">
+              First touch
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          {touch === "first"
+            ? "Each sale goes to the first tracked link the guest opened. These are the same sales as last touch, credited differently, so never add the two together."
+            : "Each sale goes to the last tracked link the guest opened within 30 days before booking. First touch credits the same sales to the first link, so never add the two together."}
+        </p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function LoadingBody() {
   return (
     <div role="status" className="grid gap-4">
       <span className="sr-only">Loading marketing results</span>
-      <section className="border border-border bg-card">
-        <div className="border-b border-border px-4 py-3">
-          <Skeleton className="h-4 w-48" />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <Skeleton className="col-span-2 h-52 rounded-xl sm:h-[332px]" />
+        <div className="col-span-2 grid grid-cols-2 gap-4 md:grid-cols-3 lg:col-span-3 [&>*:last-child]:col-span-2">
+          {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)}
         </div>
-        <div className="grid grid-cols-2 gap-px bg-border md:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="grid gap-2 bg-card p-4">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-7 w-20" />
-              <Skeleton className="h-3 w-full" />
-            </div>
-          ))}
-        </div>
-      </section>
-      <section className="border border-border bg-card">
+      </div>
+      <Card>
         <div className="border-b border-border px-4 py-3">
           <Skeleton className="h-4 w-40" />
         </div>
@@ -183,7 +221,7 @@ function LoadingBody() {
             <div key={i} aria-hidden className="flex-1 animate-pulse rounded-t-[4px] bg-muted" style={{ height: `${h}%` }} />
           ))}
         </div>
-      </section>
+      </Card>
     </div>
   );
 }
@@ -207,7 +245,7 @@ export function DashboardView({
   const [path, setPath] = useState<DrillStep[]>([]);
   const [sort, setSort] = useState<Sort>({ key: "net", dir: "desc" });
   const [sheet, setSheet] = useState<SalesSheetTarget | null>(null);
-  const [definitions, setDefinitions] = useState(false);
+  const [viewOptions, setViewOptions] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [spendFor, setSpendFor] = useState<string[] | null>(null);
 
@@ -248,14 +286,19 @@ export function DashboardView({
   }
 
   const busy = state.status === "loading" || (state.status === "ready" && !!state.refreshing);
+  // Every range change is remembered on this device, so the dashboard opens on it next time.
+  const changeRange = (range: RangeChoice) => {
+    rememberRange(range);
+    onRequestChange({ ...request, range });
+  };
   const toolbar = (
     <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
       <div className="min-w-0">
-        <RangePicker range={request.range} today={today} onChange={(range) => onRequestChange({ ...request, range })} />
+        <RangePicker range={request.range} today={today} onChange={changeRange} />
       </div>
       <div className="min-w-0">
         <Select value={propertyFilter} onValueChange={setProperty} disabled={!report}>
-          <SelectTrigger aria-label="Property" className="h-10 w-full sm:h-9 sm:w-56">
+          <SelectTrigger aria-label="Property" className="h-10 w-full border-border shadow-none sm:h-10 pointer-coarse:h-12 sm:w-56">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -268,24 +311,8 @@ export function DashboardView({
           </SelectContent>
         </Select>
       </div>
-      <div className="col-span-2 flex items-center rounded-lg border border-border bg-background p-[3px] sm:col-span-1">
-        <span id="touch-label" className="px-2 text-xs font-medium text-muted-foreground">
-          Attribution
-        </span>
-        <ToggleGroup value={touch} onValueChange={setTouch} aria-labelledby="touch-label" className="flex-1 border-0 p-0">
-          <ToggleGroupItem value="last" className="flex-1 py-1.5 sm:flex-none">
-            Last touch
-          </ToggleGroupItem>
-          <ToggleGroupItem value="first" className="flex-1 py-1.5 sm:flex-none">
-            First touch
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-      <div className="col-span-2 flex items-center rounded-lg border border-border bg-background p-[3px] sm:col-span-1">
-        <span id="basis-label" className="px-2 text-xs font-medium text-muted-foreground">
-          View
-        </span>
-        <ToggleGroup value={request.basis} onValueChange={(basis) => onRequestChange({ ...request, basis })} aria-labelledby="basis-label" className="flex-1 border-0 p-0">
+      <div className="min-w-0 max-sm:col-span-2 max-sm:col-start-1 max-sm:row-start-2 max-sm:mr-14">
+        <ToggleGroup variant="segmented" tone="subtle" value={request.basis} onValueChange={(basis) => onRequestChange({ ...request, basis })} aria-label="View" className="w-full">
           <ToggleGroupItem value="cohort" className="flex-1 py-1.5 sm:flex-none">
             Marketing
           </ToggleGroupItem>
@@ -294,47 +321,42 @@ export function DashboardView({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <div className="col-span-2 flex gap-2 sm:ml-auto">
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" onClick={() => setDefinitions(true)}>
-          <BookOpen aria-hidden className="size-4" />
-          Definitions
-        </Button>
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 sm:h-9 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
+      <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 sm:ml-auto">
+        <ViewOptions touch={touch} onTouch={setTouch} open={viewOptions} onOpenChange={setViewOptions} />
+        {/* On a phone, View options, Export CSV and Refresh wait in ⋯ so the figures come first. */}
+        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />
           Export CSV
         </Button>
+        <MoreMenu
+          label="More dashboard actions"
+          className="size-10 pointer-coarse:size-12 border border-border sm:hidden"
+          items={[
+            { label: busy ? "Updating…" : "Refresh", disabled: busy, onSelect: onRetry },
+            { label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) },
+            { label: "Export CSV", disabled: !p || firstRun, onSelect: () => setExporting(true) },
+          ]}
+        />
       </div>
     </div>
   );
 
   const context = report ? (
     <div className="grid gap-1 text-xs leading-5 text-muted-foreground">
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span role="status" className="inline-flex items-center gap-1.5 font-medium text-foreground">
-          <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "animate-pulse bg-amber-500" : "bg-emerald-500")} />
-          As of {formatStamp(report.asOf)}
-        </span>
-        <span>Asia/Bangkok · THB</span>
-        <span aria-hidden>·</span>
-        <span>
-          {report.basis === "cash" ? "Paid or refunded" : "Sales made"} {formatRange(report.from, report.to)}
+          <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "motion-safe:animate-pulse bg-amber-500" : "bg-emerald-500")} />
+          {busy ? "Updating… · showing previous figures" : `Updated ${formatStamp(report.asOf)}`}
         </span>
         {propertyFilter !== "all" ? (
           <>
-            <span aria-hidden>·</span>
             <span>{propertyName}</span>
           </>
         ) : null}
-        <button type="button" onClick={onRetry} disabled={busy} className="inline-flex items-center gap-1 rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 pointer-coarse:min-h-11">
+        <button type="button" onClick={onRetry} disabled={busy} className="inline-flex items-center gap-1 rounded font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 max-sm:hidden pointer-coarse:min-h-11">
           <RotateCw aria-hidden className={cn("size-3.5", busy && "animate-spin")} />
           {busy ? "Updating" : "Refresh"}
         </button>
-      </p>
-      <p>
-        <span className="font-semibold text-foreground">{touch === "first" ? "First touch" : "Last touch"} ({ATTRIBUTION_RULE}):</span>{" "}
-        {touch === "first"
-          ? "each sale is credited to the first tracked link the guest opened. These are the same sales as last touch, credited differently, so never add the two together."
-          : "each sale is credited to the last tracked link the guest opened within 30 days before booking. First touch credits the same sales to the first link instead, so never add the two together."}
       </p>
       {report.basis === "cash" ? (
         <p>
@@ -343,13 +365,13 @@ export function DashboardView({
         </p>
       ) : null}
     </div>
-  ) : null;
+  ) : state.status === "loading" ? <p role="status" className="text-xs text-muted-foreground">Updating…</p> : null;
 
   let body;
   if (state.status === "loading") body = <LoadingBody />;
   else if (state.status === "error")
     body = (
-      <section className="border border-border bg-card p-4 sm:p-6">
+      <Card className="p-4 sm:p-6">
         <Callout
           tone="danger"
           role="alert"
@@ -363,11 +385,11 @@ export function DashboardView({
         >
           {state.message} Bookings and payments aren’t affected; only this report failed to load.
         </Callout>
-      </section>
+      </Card>
     );
   else if (firstRun)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <FirstRunEmpty
           icon={BarChart3}
           title="See which links bring paid bookings"
@@ -384,21 +406,21 @@ export function DashboardView({
             </ButtonLink>
           </div>}
         </FirstRunEmpty>
-      </section>
+      </Card>
     );
   else if (emptyRange && report?.truncated)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <EmptyState>Nothing was counted before this read reached its limit, so these dates may still have sales. Choose fewer days to see the figures.</EmptyState>
-      </section>
+      </Card>
     );
   else if (emptyRange)
     body = (
-      <section className="border border-border bg-card">
+      <Card>
         <EmptyState
           action={
             request.range.preset !== "last90" ? (
-              <Button type="button" variant="outline" size="sm" onClick={() => onRequestChange({ ...request, range: { preset: "last90", ...presetRange("last90", today) } })}>
+              <Button type="button" variant="outline" size="sm" onClick={() => changeRange({ preset: "last90", ...presetRange("last90", today) })}>
                 Show the last 90 days
               </Button>
             ) : undefined
@@ -410,12 +432,12 @@ export function DashboardView({
               ? `No sales for ${propertyName} in these dates.`
               : "No sales or tracked visits in these dates."}
         </EmptyState>
-      </section>
+      </Card>
     );
   else if (p && totals && breakdown)
     body = (
       <>
-        <DashboardTiles p={p} totals={totals} onAddSpend={addSpend} onDefinitions={() => setDefinitions(true)} />
+        <DashboardTiles p={p} totals={totals} onAddSpend={addSpend} />
         <DashboardChart p={p} />
         <DashboardBreakdown
           p={p}
@@ -487,7 +509,7 @@ export function DashboardView({
             : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
         </Callout>
       ) : null}
-      <div aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
+      <div role="region" aria-label="Report results" aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
         {body}
       </div>
 
@@ -497,7 +519,6 @@ export function DashboardView({
           {breakdown ? <ExportDialog open={exporting} onOpenChange={setExporting} p={p} breakdown={breakdown} pathLabel={pathLabel} propertyName={propertyName} /> : null}
         </>
       ) : null}
-      <DefinitionsSheet open={definitions} onClose={() => setDefinitions(false)} />
       <SpendDialog
         open={!!spendFor && spendCampaigns.length > 0}
         onOpenChange={(open) => !open && setSpendFor(null)}

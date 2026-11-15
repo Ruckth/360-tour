@@ -114,6 +114,11 @@ describe("admin routes", () => {
       expect(shown("settings")).toEqual([["Settings", []]]);
     });
 
+    it("finds checkout by its POS keywords", () => {
+      expect(shown("till")).toEqual([["Checkout", []]]);
+      expect(shown("pos")).toEqual([["Checkout", []]]);
+    });
+
     it("returns nothing for no match", () => {
       expect(searchAdminNav("zzz")).toEqual([]);
     });

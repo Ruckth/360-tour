@@ -1,5 +1,7 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act } from '../support/checkout-act';
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import { createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
@@ -55,7 +57,7 @@ it("prints the receipt, its share text and the void note in Bangkok time", async
   await show(backend, createElement(Probe, { backend, orderId }));
   await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 120000, idempotencyKey: "tz-receipt-0001", tenders: [{ method: "cash", amount: 120000 }] }));
 
-  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toContain("Issued 2 Nov 2026, 05:30");
 
   await show(backend, createElement(Probe, { backend, orderId }));
@@ -63,8 +65,8 @@ it("prints the receipt, its share text and the void note in Bangkok time", async
 
   vi.setSystemTime(new Date("2026-11-01T22:45:00Z"));
   await run(actions.voidOrder({ orderId, reason: "Wrong guest" }));
-  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
-  expect(document.body.textContent).toContain(" on 2 Nov, 05:45. The order and receipt numbers stay on record.");
+  await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  expect(document.body.textContent).toContain(" on 2 Nov, 05:45 · order and receipt numbers stay on record");
 });
 
 it("lists today's orders by the Bangkok day, with the date on other days", () => {
@@ -83,7 +85,7 @@ it("keeps coupon savings and Bangkok issue time together on the receipt and shar
   await show(backend, createElement(Probe, { backend, orderId }));
   expect(view!.totals).toMatchObject({ total: 130000, coupon: 50000 });
   await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 130000, idempotencyKey: "tz-coupon-receipt", tenders: [{ method: "cash", amount: 130000 }] }));
-  await show(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
+  await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
   const receipt = document.querySelector('[aria-label="Receipt"]')!.textContent;
   expect(receipt).toContain("Issued 2 Nov 2026, 05:30");
   expect(receipt).toContain("Coupon DCNT-SPA-500");
@@ -92,3 +94,5 @@ it("keeps coupon savings and Bangkok issue time together on the receipt and shar
   expect(receiptText(view!, "Resort")).toContain("2 Nov 2026, 05:30");
   expect(receiptText(view!, "Resort")).toContain("Coupon DCNT-SPA-500");
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

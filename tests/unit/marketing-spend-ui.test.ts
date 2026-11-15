@@ -111,7 +111,7 @@ describe("SpendDialog", () => {
     expect(noteInput()?.value).toBe("Meta ads · October invoice");
 
     await type(amountInput(), "28000");
-    await click(button("Save changes"));
+    await click(button("Save"));
     expect(props.onSave).toHaveBeenCalledWith({ id: "s1", campaignId: c1, amount: 2800000, from: "2026-10-08", to: "2026-10-31", note: "Meta ads · October invoice" });
 
     await click(button("Delete"));
@@ -238,7 +238,7 @@ describe("CouponRefusalsCard", () => {
     expect(text()).toContain("Booking site30");
     expect(text()).toContain("Staff booking0");
     expect(text()).toContain("Checkout4");
-    expect(text()).toContain("Counted when a guest or staff member saw the refusal. Diagnostic only.");
+    expect(text()).toContain("Counted when a guest or staff member saw the refusal · diagnostic only");
   });
 
   it("has an empty state", async () => {

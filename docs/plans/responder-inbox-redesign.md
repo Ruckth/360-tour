@@ -1,31 +1,55 @@
-# Calm inbox implementation
+# Responder inbox redesign — HTML prototype
 
-Implemented on `codex/calm-inbox` in a separate worktree. Research and design alternatives are recorded in [the research note](../research/responder-inbox-redesign.md). The standalone reference preview at `/prototypes/responder-inbox.html?variant=A` also supports variants B and C with simulated data.
+## โจทย์
+ให้คนตอบแชตเห็นว่าใครรออยู่ อ่านข้อความ ตอบ และปิดเคสได้โดยมีสิ่งรบกวนน้อยลง อ้างอิงภาพหน้าจอของผู้ใช้และโครงสร้างปัจจุบันใน `ChatsView`, `AdminSessionDetail`, `AdminSessionActions`.
 
-## Responder workflow
+## สิ่งที่ปรับ
+| ปัจจุบัน | ข้อเสนอ | เหตุผล |
+| --- | --- | --- |
+| Setup banner ขนาดใหญ่ | ย้ายไป Settings / onboarding | ไม่เกี่ยวกับการตอบเคสปัจจุบัน |
+| Needs reply / Live / All / Inactive + Open / Resolved / Archived | ใช้ Waiting / Open / Done; Archive อยู่ใน filter เพิ่มเติม | แยกคิวงานออกจาก presence; รวมสถานะที่ปิดงานแล้วใน Done |
+| ชื่อ + Offline + Last seen + ปุ่มหลายแถว | header สั้น: ชื่อ, ช่องทาง, บริบท, Resolve | Offline ไม่ใช่เหตุผลที่ตอบไม่ได้ |
+| Reopen / Archive / Take over แสดงพร้อมกัน | primary action ตามสถานะ; Archive และ AI control ใน More | ลดตัวเลือกที่ไม่เกี่ยวกับงานตรงหน้า |
+| Contact & details รวม ID / device / logs | Details เปิดเมื่อจำเป็น | ข้อมูลช่องทางและ property ยังมองเห็นทันที |
+| Shortcut help แสดงตลอด | เมนู Help | ไม่แย่งพื้นที่คิว |
+| Save as answer ใต้ทุกข้อความ | hover/focus action ต่อข้อความ | เป็นงานดูแล knowledge ไม่ใช่งานหลักของผู้ตอบ |
+| Page 1 / Previous / Next ในรายการว่าง | Load more เมื่อมีข้อมูลเพิ่มเติมจริง | ไม่สร้างปุ่มที่กดไม่ได้โดยไม่มีประโยชน์ |
+| แชตเก่ายังแสดงเมื่อ filter ว่าง | ล้าง selection และแสดง empty state ของ filter นั้น | ป้องกันเข้าใจว่าแชตอยู่ใน filter ที่เลือก |
+| ช่องพิมพ์และ Send disabled เมื่อหมดเวลา | กล่องสถานะอธิบายสั้น ๆ แทน composer | เห็นข้อจำกัดและขั้นตอนถัดไปได้ทันที |
 
-- **Waiting** shows open conversations that need a staff reply. **Open** shows all open conversations. **Done** combines resolved and archived conversations.
-- Search stays visible. Activity, channel, date, empty-chat and detailed status filters live in the filter popover. Existing filter URLs continue to work.
-- The two-pane workspace prioritizes the queue, transcript and composer. The setup banner and permanent shortcut strip are removed from the inbox.
-- The header shows the guest, channel and property, with one Resolve or Reopen action. Archive and AI ownership controls live in More. Contact, presence, identifiers and delivery diagnostics remain accessible in the details drawer.
-- Drafts and reply feedback are scoped to each conversation. Sending from Waiting moves the conversation to Open; resolving or archiving selects the next conversation on desktop. Mobile closes the conversation and returns to the queue.
-- Reply availability comes from the backend. A closed messaging window replaces the composer with an explanation. Reopen changes the work status without changing channel restrictions.
-- Existing links from staff alerts and Missing Information open the selected conversation in its appropriate queue. The transcript action adds a Business Fact using the current admin workflow.
-- Pagination is shown only when needed. A filtered cursor page with no matches offers navigation to older conversations instead of claiming the entire queue is empty.
+## สามทางเลือก
+- **A — Calm inbox (แนะนำเป็นจุดเริ่มต้น):** คิวทางซ้าย + บทสนทนาทางขวา คุ้นเคยและสลับเคสได้เร็ว ใช้โทนสว่างอุ่นและ accent สีทองจากแอปเดิม
+- **B — Focus mode:** บทสนทนาเดียวอยู่กลางจอ + เคสถัดไปด้านบน คิวเปิดเป็น drawer เหมาะกับตอบต่อเนื่องทีละเคส ใช้ dark theme และสีทองที่ใกล้ของเดิม
+- **C — Queue desk:** ตารางรวมชื่อ ช่องทาง ข้อความล่าสุด เวลารอ และสถานะ เลือกเคสแล้วเปิดแผงตอบทางขวา เหมาะกับการไล่คิวและดูงานภาพรวม
 
-## Implementation boundaries
+## ขอบเขต HTML
+`public/prototypes/responder-inbox.html` เป็นไฟล์ HTML/CSS/JS เดียว ใช้ข้อมูลจำลองในหน่วยความจำ ไม่มี backend mutation และไม่มีข้อความส่งออกจริง. UI ภาษาอังกฤษให้เทียบกับภาพเดิม; คำอธิบาย variant ภาษาไทย.
 
-The existing Convex queries, permissions, delivery workflow and transcript pagination remain in use. `adminChat.listSessions` accepts `adminStatus: "done"` and applies it to the existing bounded filter scan; no schema migration is needed. The reply route now accepts `PUBLIC_CONVEX_URL` as a fallback, matching the application's configuration.
+รองรับสลับ variant ผ่าน `?variant=A|B|C`, search, filter, เลือกเคส, local draft ต่อเคส, quick reply, ส่งข้อความจำลอง, resolve / reopen / archive, AI takeover ใน More, details drawer, empty state, keyboard variant switch, responsive mobile. ทดสอบสถานะ WhatsApp closed ผ่านรายการ Mali ใน Done หรือ All.
 
-## Verification — 2026-10-03
+## ลำดับหลังเลือกดีไซน์
+1. เลือกโครงสร้างและความหนาแน่นจาก HTML นี้ หรือผสมองค์ประกอบที่ต้องการ
+2. ยืนยันชื่อคิว: Waiting = open ที่ต้องการ staff reply; Open = open ทั้งหมด; Done = resolved + archived
+3. นำ layout ที่เลือกเข้า `ChatsView` / `AdminSessionDetail` โดยคง query, permissions, delivery errors และ draft state เดิม
+4. สถานะ Send ต้องตรวจ reply window จาก backend; ห้ามใช้ online/offline เป็นสิทธิ์การตอบ. Takeover ต้องรักษาพฤติกรรม pause AI เดิม
+5. ตรวจ keyboard, mobile, loading/error/empty, filter-selection consistency และเคสปิด reply window ก่อนนำขึ้นใช้งาน
 
-- Full unit suite: 99 files, 954 tests passed.
-- Type checking, full ESLint and production build passed (147 generated pages).
-- Authenticated browser checks: separate drafts, successful Web reply, retained draft on send failure, AI pause after staff reply, Resolve to next conversation, Reopen to Open, Archive to Done, details drawer and empty search clearing the selected transcript.
-- Mobile checks used authenticated same-origin frames at 390 × 844 and 375 × 667. No horizontal overflow; Send remained within the viewport; Back returned to the queue. These are responsive browser checks, not physical-device tests.
-- Two temporary Web conversations were archived and deleted after verification. No real guest or external channel received a test reply.
-- Parallel Standards and Spec reviews identified four navigation issues: off-page Waiting selection, delayed actions replacing newer navigation, Archive from Done not advancing, and unqualified staff links hiding answered conversations. All were fixed and covered by regression tests; final reviews found no remaining material issue.
-- A real browser walkthrough records separate drafts, the details drawer, a successful Web reply and AI pause, Resolve advancing to the next conversation, Done, and Reopen. Only temporary demo conversations appear in the recording.
-- A follow-up multi-agent Kiro audit fixed per-conversation pending replies, overlapping settle operations, incoming-link lifecycle, older Done URLs, and adjacent selection. It also extracted the reply composer, debounced backend search, removed the hidden mobile transcript, parallelized bounded filter reads, and narrowed delivery-event reads. Findings and deferred optimizations are in [the Kiro audit](../reviews/calm-inbox-kiro-audit.md).
+## เกณฑ์ประเมิน
+- ผู้ตอบหาเคสที่รอได้โดยไม่ต้องใช้ filter ซ้อน
+- ชื่อ ช่องทาง ข้อความล่าสุด และเวลารออ่านได้ในการกวาดตาครั้งเดียว
+- action หลักไม่เกินหนึ่งตัวใน header; Send อยู่ติด draft
+- ข้อมูลสำคัญต่อการตอบยังเข้าถึงได้ในหนึ่งคลิก
+- ปิดเคสแล้วไปเคสถัดไปได้; draft ของเคสอื่นไม่หาย
+- รายการว่างต้องไม่แสดงบทสนทนาที่หลุดจาก filter
 
-The T3 preview resize tool timed out, so responsive checks used measured DOM bounds. A final desktop screenshot of the light theme was captured after a browser repaint; earlier screenshots sometimes omitted painted content despite complete DOM state. The design still needs evaluation with responders to measure usability improvements.
+หลักฐาน research: [responder-inbox-redesign.md](../research/responder-inbox-redesign.md). ข้อเสนอ layout และความเร็วเป็นสมมติฐานที่ต้องทดลองกับผู้ตอบจริง ไม่ใช่ผล usability test.
+
+## เปิด preview
+จาก root repository: `python3 -m http.server 8768 --bind 127.0.0.1 --directory public`
+
+จากนั้นเปิด `http://localhost:8768/prototypes/responder-inbox.html?variant=A`.
+
+## Verification — 2026-09-30
+Browser DOM smoke checks ผ่าน: draft แยกตามเคส, ส่งจำลอง, pause AI, Resolve ไปเคสถัดไป, empty search ล้าง selection, WhatsApp ปิดหน้าต่างแม้ Reopen, B queue/details drawer, C panel เปิด/ปิด, ไม่มี resource error หรือ horizontal overflow บน desktop. Responsive ตรวจด้วย iframe viewport 390 × 844, 375 × 667 และ desktop 1440 × 900 ใน browser เดียวกัน; ไม่ใช่การทดสอบบนอุปกรณ์จริง. T3 screenshot automation ล้มเหลว จึงยังไม่มี visual screenshot evidence.
+
+พบ B title wrap บน mobile ทำให้ comparison bar ทับ composer; แก้ด้วย flex layout ที่หักพื้นที่ตาม heading จริง. ตรวจซ้ำทั้ง 3 variants ทุก viewport ข้างต้น: ไม่มี horizontal overflow และ Send อยู่เหนือ comparison bar.

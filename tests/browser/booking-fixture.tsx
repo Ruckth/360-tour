@@ -82,6 +82,7 @@ function Fixture() {
           includeAll={!params.has("empty")}
           disabled={params.has("disabled")}
           compact
+          className="flex-1 sm:w-48 sm:flex-none"
         />
       </div>
     );
@@ -115,6 +116,6 @@ createRoot(document.getElementById("root")!).render(
     timeZone="Asia/Bangkok"
     messages={{ Booking: { checkIn: "Check in", checkOut: "Check out" } }}
   >
-    <Fixture />
+    <ConfirmProvider><Fixture /></ConfirmProvider>
   </NextIntlClientProvider>,
 );

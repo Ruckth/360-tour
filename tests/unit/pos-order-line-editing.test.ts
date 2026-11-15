@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from '../support/checkout-act';
+import { act, gateResponse } from '../support/checkout-act';
 import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,7 @@ const show = (backend: CheckoutBackend, start: OrderId | null) =>
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
-const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => el.textContent?.trim() === text) as HTMLButtonElement | undefined;
+const inPanel = (text: string) => [...panel().querySelectorAll("button")].find((el) => ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿")))) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 function type(el: HTMLInputElement | HTMLTextAreaElement, value: string) {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -51,7 +51,7 @@ describe("editing a changed price", () => {
     const orderId = await orderWithGift(backend);
     await show(backend, orderId);
     await click(row("Gift basket").querySelector("button"));
-    await click(inPanel("Change price"));
+    await click(inPanel("Price ฿1,000"));
     type(priceInput(), "800");
     type(reasonInput(), "Loyal guets");
     await click(inPanel("Apply price"));
@@ -85,6 +85,29 @@ describe("editing a changed price", () => {
     ]);
   });
 
+  it("saves a discount on blur without sending a duplicate while that save is in flight", async () => {
+    const backend = await createFixtureBackend();
+    await show(backend, await orderWithGift(backend));
+    const gate = gateResponse(backend.useActions().updateLine);
+    const update = vi.spyOn(backend.useActions(), "updateLine").mockImplementation(gate.write);
+    await click(row("Gift basket").querySelector("button"));
+    const discount = panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!;
+    await act(async () => {
+      discount.focus();
+      type(discount, "10%");
+    });
+    await act(async () => {
+      discount.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      discount.blur();
+    });
+    expect(panel().textContent).toContain("Saving…");
+    gate.release();
+    await settle();
+    expect(update).toHaveBeenCalledOnce();
+    expect(update.mock.calls[0][0]).toMatchObject({ discount: { type: "percent", value: 1000 } });
+    expect(panel().querySelector('[data-testid="order-due"]')?.textContent).toBe("฿900");
+  });
+
   it("doesn't offer to apply a price or discount that is only a decimal point", async () => {
     const backend = await createFixtureBackend();
     await show(backend, await orderWithGift(backend));
@@ -93,11 +116,13 @@ describe("editing a changed price", () => {
     const discount = panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!;
     type(discount, ".");
     expect(discount.value).toBe(".");
-    expect(inPanel("Apply")?.disabled).toBe(true);
+    // Not a discount yet: no Apply, and the field says what it takes.
+    expect([...panel().querySelectorAll("button")].some((el) => el.textContent?.startsWith("Apply"))).toBe(false);
+    expect(panel().querySelector('[data-testid="discount-echo"]')?.textContent).toBe("Type 10% or ฿120");
     type(discount, "10");
-    expect(inPanel("Apply")?.disabled).toBe(false);
+    expect([...panel().querySelectorAll("button")].find((el) => el.textContent?.startsWith("Apply ฿10"))?.disabled).toBe(false);
 
-    await click(inPanel("Change price"));
+    await click(inPanel("Price ฿1,000"));
     type(priceInput(), ".");
     type(reasonInput(), "Typo check");
     expect(inPanel("Apply price")?.disabled).toBe(true);
@@ -109,11 +134,11 @@ describe("editing a changed price", () => {
 describe("write errors and order switches", () => {
   it("drops a failed write's banner when the cashier moves on to a new order", async () => {
     const base = await createFixtureBackend();
-    const actions = { ...base.useActions(), saveOrder: () => Promise.reject(new Error("Network down")) };
+    const actions = { ...base.useActions(), addItem: () => Promise.reject(new Error("Network down")) };
     const backend: CheckoutBackend = { ...base, useActions: () => actions };
     await show(backend, await orderWithGift(base));
 
-    await click(inPanel("Save & close"));
+    await click([...document.querySelectorAll("button")].find((el) => el.textContent?.trim().startsWith("Foot spa 45")));
     await settle();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("Network down");
 

@@ -217,6 +217,7 @@ export async function createFixtureBackend(
         lineId,
         query: query || undefined,
       }),
+    useOpenOrders: () => usePage(api.pos.orders.listOpenOrders, {}) as ReturnType<CheckoutBackend["useOpenOrders"]>,
     useOrders: (filter) =>
       usePage(api.pos.orders.listOrders, { filter }) as ReturnType<
         CheckoutBackend["useOrders"]
@@ -265,11 +266,11 @@ export async function createFixtureBackend(
       role = next.role;
       await refresh();
     },
-    seedApproval: (...args: Parameters<ServerBackend["seedApproval"]>) =>
-      call<Awaited<ReturnType<ServerBackend["seedApproval"]>>>(
-        "seedApproval",
-        args,
-      ),
+    seedApproval: async (...args: Parameters<ServerBackend["seedApproval"]>) => {
+      const result = await call<Awaited<ReturnType<ServerBackend["seedApproval"]>>>("seedApproval", args);
+      await refresh();
+      return result;
+    },
     setCouponSnapshot: (
       ...args: Parameters<ServerBackend["setCouponSnapshot"]>
     ) => call("setCouponSnapshot", args),
@@ -285,6 +286,8 @@ export async function createFixtureBackend(
       call<ReturnType<ServerBackend["refundAttempts"]>>("refundAttempts", []),
     loseNextRefundResponse: () => call("loseNextRefundResponse", []),
     async refundFromAnotherTill(lineName: string, satang: number) {
+      // Keep the local view stale until the spec explicitly refreshes it (setStaff).
+      // This lets refund-cap tests exercise the server after an unseen payment at another till.
       await call("refundFromAnotherTill", [lineName, satang]);
     },
   });

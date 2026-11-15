@@ -10,3 +10,5 @@ export { appointmentMoney, appointmentFinancials, recordAppointmentPayment, reco
 export { DAY, MINUTE, hour, rest, staffStatus, serviceStatus, appointmentStatus, required, validateHours, validateService, validateStaffIds, appointmentCount, staffSnapshot, serviceSnapshot, timeOffSnapshot, logStaff, logService, countUpcoming, archiveStaffRecord, timeOffConflicts, assertTimeOffFits, attachAvatarUpload, attachServiceImage, SELECTED_STAFF_READ_LIMIT, type ScheduleBlock, loadAppointment, boundedStaff, adminStarts, assertPageSize, transitions, type ServiceTerms, serviceChange, type RosterConflict, STALE_ROSTER, NOT_SCHEDULED, STAFF_AVATAR_UPLOAD_TTL_MS } from './private/administration';
 export { resortTodayIso as rosterDate } from '../shared/time';
 export { assertTimeOffRange } from '../shared/timeOff';
+
+export { MAX_STAY_APPOINTMENTS, readStayAppointments } from './private/stayAppointments';

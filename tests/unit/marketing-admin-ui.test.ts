@@ -281,8 +281,8 @@ describe("change history in the marketing editors", () => {
   } as CouponDetail;
   const couponEditor = (patch: { detail?: CouponDetail; isNew: boolean }) =>
     createElement(CouponEditor, {
-      ...patch, coupons: patch.detail ? [patch.detail] : [], campaigns: [campaign], properties: [], today: "2026-11-08", listHref: "/c",
-      actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn() }, onCreated: vi.fn(), history,
+      ...patch, coupons: patch.detail ? [patch.detail] : [], campaigns: [campaign], properties: [], today: "2026-11-08", listHref: "/c", origin: "https://book.example", brand: "Auralis",
+      actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn(), saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn(), saveCampaign: vi.fn() }, onCreated: vi.fn(), history,
     });
 
   it("shows a saved campaign's history, not a new one's", async () => {
@@ -313,6 +313,15 @@ describe("change history in the marketing editors", () => {
     expect(slot()).toBeUndefined();
     await render(couponEditor({ detail: coupon, isNew: false }));
     expect(slot()).toBe("History of k1");
+  });
+
+  it("says nothing about versions before a new coupon is saved, and uses a neutral code example", async () => {
+    await render(couponEditor({ isNew: true }));
+    expect(document.body.textContent).not.toMatch(/version/i);
+    const code = document.querySelector<HTMLInputElement>('input[id$="-code"]')!;
+    expect(code.placeholder).toBe("e.g. SUMMER15");
+    await render(couponEditor({ detail: coupon, isNew: false }));
+    expect(document.body.textContent).toContain("No changes");
   });
 
   it("labels the marketing fields the backend records", () => {

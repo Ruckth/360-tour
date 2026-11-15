@@ -19,9 +19,9 @@ const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded
  * and balance or credit, the open order (Open order reuses it, from any device) and recent paid
  * orders with their receipts, refunds against them and whether they were corrected. Receipts
  * themselves stay as issued. `closed` (cancelled or refunded) hides the actions that would start
- * charging it.
+ * charging it. `history` shows only the past and discarded orders: the sheet's money block has the balance and opens checkout.
  */
-export function BookingOrders({ source, currency, closed }: { source: Source; currency: string; closed: boolean }) {
+export function BookingOrders({ source, currency, closed, history: historyOnly = false }: { source: Source; currency: string; closed: boolean; history?: boolean }) {
   const summary = useQuery(api.pos.orders.ordersForBooking, source);
   const openHref = "bookingId" in source ? `/admin/checkout?booking=${source.bookingId}` : `/admin/checkout?appointment=${source.appointmentId}`;
 
@@ -29,17 +29,18 @@ export function BookingOrders({ source, currency, closed }: { source: Source; cu
   if (summary === null) return <p className="text-sm text-muted-foreground">Not found.</p>;
   const { balance, activeOrder, orders } = summary;
   const history = orders.filter((order) => order._id !== activeOrder?._id);
+  if (historyOnly && history.length === 0 && summary.discardedOrders.length === 0) return null;
 
   return (
     <div className="grid gap-2 text-sm">
-      <p>
+      {historyOnly ? null : <p>
         Total {formatMoney(balance.total, currency)} · Paid {formatMoney(balance.paid, currency)}
         {balance.refunded > 0 ? ` (after ${formatMoney(balance.refunded, currency)} refunded)` : ""} ·{" "}
         <span className="font-medium">
           {balance.credit > 0 && !closed ? `Credit ${formatMoney(balance.credit, currency)}` : `Balance ${formatMoney(balance.owed, currency)}`}
         </span>
-      </p>
-      {closed ? null : activeOrder ? (
+      </p>}
+      {historyOnly ? null : closed ? null : activeOrder ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* Opening by booking charges what it still owes on that same order. */}
           <ButtonLink href={balance.owed > 0 ? openHref : orderPath(activeOrder._id)} size="sm">

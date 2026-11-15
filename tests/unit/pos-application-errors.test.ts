@@ -25,6 +25,6 @@ describe('checkout application errors through the installed Convex client', () =
   });
 
   it('keeps legacy development errors readable during rollout', () => {
-    expect(errorText(new Error('[CONVEX M(pos:settleOrder)] Uncaught Error: Review the total\n    at handler'), 'Could not pay')).toBe('Review the total');
+    expect(errorText(new Error('[CONVEX M(pos/commands/settleOrder:settleOrder)] Uncaught Error: Review the total\n    at handler'), 'Could not pay')).toBe('Review the total');
   });
 });

@@ -2,11 +2,13 @@
 
 import { Check, CircleAlert, CircleCheck, Copy, Info, MoreHorizontal, TicketPercent, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetHeader } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
+import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useConfirm, type ConfirmOptions } from "../ConfirmDialog";
 import { TONES } from "../status-tones";
@@ -146,15 +148,16 @@ export function Callout({
   );
 }
 
-export type Notice = { tone: "success" | "danger"; text: string };
+export type Notice = { tone: "success" | "danger"; text: string; id?: number };
 
 /** One-line result of the last action ("Link paused"), cleared after a few seconds. */
 export function useNotice() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const seq = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
   const show = useCallback((text: string, tone: Notice["tone"] = "success") => {
-    setNotice({ text, tone });
+    setNotice({ text, tone, id: ++seq.current });
     window.clearTimeout(timer.current);
     if (tone === "success") timer.current = window.setTimeout(() => setNotice(null), 4000);
   }, []);
@@ -323,25 +326,22 @@ export function SheetForm({
   );
 }
 
+/** A success goes to the shared toast and clears by itself (useNotice); an error stays here, inline, until Dismiss. */
 export function NoticeBar({ notice, onClose }: { notice: Notice | null; onClose: () => void }) {
+  const success = notice?.tone === "success" ? notice : null;
   return (
-    <div aria-live="polite" className={notice ? undefined : "sr-only"}>
-      {notice ? (
-        <div
-          role={notice.tone === "danger" ? "alert" : "status"}
-          className={cn(
-            "flex items-center gap-2 border-b px-4 py-2.5 text-sm",
-            notice.tone === "danger" ? "border-border font-medium text-destructive" : cn(TONES.success.bg, TONES.success.border, TONES.success.text),
-          )}
-        >
-          {notice.tone === "danger" ? <CircleAlert aria-hidden className="size-4 shrink-0" /> : <CircleCheck aria-hidden className="size-4 shrink-0" />}
+    <>
+      {notice?.tone === "danger" ? (
+        <div role="alert" className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm font-medium text-destructive">
+          <CircleAlert aria-hidden className="size-4 shrink-0" />
           <span className="min-w-0 flex-1">{notice.text}</span>
           <Button type="button" variant="ghost" size="sm" onClick={onClose} className="-my-1 h-8">
             Dismiss
           </Button>
         </div>
       ) : null}
-    </div>
+      <Toast current={success ? { id: success.id ?? 0, message: success.text } : null} dismiss={onClose} />
+    </>
   );
 }
 
@@ -376,7 +376,7 @@ export function NumberField({
           {prefix}
         </span>
       ) : null}
-      <Input inputMode="numeric" autoComplete="off" className={cn("tabular-nums", prefix && "pl-7", suffix && "pr-9", className)} {...props} />
+      <Input inputMode="numeric" autoComplete="off" className={cn("money", prefix && "pl-7", suffix && "pr-9", className)} {...props} />
       {suffix ? (
         <span aria-hidden className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
           {suffix}
@@ -432,7 +432,7 @@ export function RowMenu({ label, actions, className }: { label: string; actions:
                   onSelect();
                 }}
                 className={cn(
-                  "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9",
+                  "flex min-h-11 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-9",
                   destructive ? "text-destructive" : "text-foreground",
                 )}
               >
@@ -514,7 +514,7 @@ export function FirstRunEmpty({ icon: Icon, title, description, children }: { ic
 /** A titled card in the coupon page's side column (status, test a quote, versions, links). */
 export function SideCard({ id, title, description, children }: { id: string; title: string; description?: ReactNode; children: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="border border-border bg-card">
+    <Card role="region" aria-labelledby={id}>
       <header className="border-b border-border px-4 py-3">
         <h3 id={id} className="text-base font-semibold text-foreground">
           {title}
@@ -522,7 +522,7 @@ export function SideCard({ id, title, description, children }: { id: string; tit
         {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
       </header>
       {children}
-    </section>
+    </Card>
   );
 }
 

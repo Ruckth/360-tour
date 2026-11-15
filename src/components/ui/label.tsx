@@ -11,3 +11,8 @@ export const Label = forwardRef<HTMLLabelElement, LabelHTMLAttributes<HTMLLabelE
   ),
 );
 Label.displayName = "Label";
+
+/** Muted field label shared by settings and marketing forms. */
+export function FieldLabel(props: LabelHTMLAttributes<HTMLLabelElement>) {
+  return <Label {...props} className={cn("text-xs font-normal text-muted-foreground", props.className)} />;
+}

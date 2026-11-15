@@ -171,12 +171,13 @@ export async function createFixtureBackend(options: Options = {}) {
     const [state, setState] = useState({
       key,
       cursor: null as string | null,
+      numItems: 20,
       older: [] as unknown[],
     });
-    const active = state.key === key ? state : { key, cursor: null, older: [] };
+    const active = state.key === key ? state : { key, cursor: null, numItems: 20, older: [] };
     const value = useRead(ref, {
       ...args,
-      paginationOpts: { numItems: 20, cursor: active.cursor },
+      paginationOpts: { numItems: active.numItems, cursor: active.cursor },
     } as FunctionArgs<R>) as
       | { page: unknown[]; isDone: boolean; continueCursor: string }
       | undefined;
@@ -190,11 +191,12 @@ export async function createFixtureBackend(options: Options = {}) {
           : value.isDone
             ? ("Exhausted" as const)
             : ("CanLoadMore" as const),
-      loadMore: () => {
+      loadMore: (numItems = 20) => {
         if (value && !value.isDone)
           setState({
             key,
             cursor: value.continueCursor,
+            numItems,
             older: [...active.older, ...value.page],
           });
       },
@@ -312,6 +314,7 @@ export async function createFixtureBackend(options: Options = {}) {
         lineId,
         query: query || undefined,
       }),
+    useOpenOrders: () => usePage(api.pos.orders.listOpenOrders, {}) as ReturnType<CheckoutBackend["useOpenOrders"]>,
     useOrders: (filter) =>
       usePage(api.pos.orders.listOrders, { filter }) as ReturnType<
         CheckoutBackend["useOrders"]
@@ -387,6 +390,18 @@ export async function createFixtureBackend(options: Options = {}) {
               updatedAt: Date.now(),
             }),
           );
+        }
+        // A missing historical source still needs a genuine, now-deleted Convex ID.
+        // Alias translation keeps the readable technical reference used by the browser assertions.
+        for (const [field, owner] of [["customerId", "customers"], ["appointmentId", "appointments"], ["bookingId", "bookings"]] as const) {
+          const reference = fields[field];
+          if (typeof reference !== "string" || aliases.has(reference) || ctx.db.normalizeId(owner, reference)) continue;
+          const sample = await ctx.db.query(owner).first();
+          if (!sample) throw new Error(`Missing fixture source for ${owner}`);
+          const contents = Object.fromEntries(Object.entries(sample).filter(([key]) => key !== "_id" && key !== "_creationTime"));
+          const missingId = await ctx.db.insert(owner, contents as Parameters<typeof ctx.db.insert<typeof owner>>[1]);
+          aliases.set(reference, missingId);
+          await ctx.db.delete(missingId);
         }
         if (table === "bookingRefunds")
           Object.assign(fields, {
@@ -536,7 +551,7 @@ export async function createFixtureBackend(options: Options = {}) {
     setAppointmentSnapshot,
     setBookingSnapshot,
     async readFixtureQuery(name: string, args: Record<string, unknown>) {
-      return translate(
+      const value = translate(
         await t
           .withIdentity(identity())
           .query(
@@ -545,6 +560,7 @@ export async function createFixtureBackend(options: Options = {}) {
           ),
         true,
       );
+      return name === "pos/catalog:catalog" ? { ...(value as object), extras: CATALOG.extras, frequent: CATALOG.frequent } : value;
     },
     async setCouponSnapshot(code: string, patch: Partial<CouponRules>) {
       await t.run(async (ctx) => {

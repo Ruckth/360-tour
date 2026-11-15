@@ -24,14 +24,13 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import {
   errorText,
-  formatResortDate,
-  formatResortTime,
   resortIsoDate,
   timeOffRange,
   timeOffRangeProblem,
   useNow,
   type TimeOffInput,
 } from "@/lib/staff-bookings";
+import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 
 const PRESETS = ["Leave", "Sick", "Training"] as const;
@@ -123,7 +122,7 @@ export function TimeOffFields({
 
 /** One line per blocked person, e.g. "2 booked appointments in the way: Mon, Sep 28 10:00 AM, …". */
 export function conflictText(conflicts: TimeOffResults[number]["conflicts"]) {
-  const times = conflicts.slice(0, 3).map((c) => `${formatResortDate(c.start)} ${formatResortTime(c.start)}`);
+  const times = conflicts.slice(0, 3).map((c) => `${staffDate(c.start, { weekday: true })} ${staffTime(c.start)}`);
   const more = conflicts.length > 3 ? `, +${conflicts.length - 3} more` : "";
   const count = conflicts.length === 1 ? "1 booked appointment" : `${conflicts.length} booked appointments`;
   return `${count} in the way: ${times.join(", ")}${more}. Reassign or cancel them first.`;

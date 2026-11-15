@@ -1,3 +1,6 @@
+import { readStayAppointments, MAX_STAY_APPOINTMENTS } from '../services/model';
+import { activeOrderFor } from '../pos/model';
+import { orderTitle } from '../shared/orderMath';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
@@ -308,5 +311,23 @@ export const bookingHistory = adminQuery({
 			.withIndex('by_entityType_and_entityId_and_recordedAt', (q) => q.eq('entityType', 'booking').eq('entityId', args.bookingId))
 			.order('desc')
 			.paginate(args.paginationOpts);
+	}
+});
+
+/** Appointments belonging to this stay, including paid/cancelled rows and their active order. */
+export const stayAppointments = adminQuery({
+	args: { bookingId: v.id('bookings') },
+	handler: async (ctx, { bookingId }) => {
+		const rows = await readStayAppointments(ctx, bookingId);
+		const appointments = await Promise.all(rows.slice(0, MAX_STAY_APPOINTMENTS).map(async (appointment) => {
+			const order = await activeOrderFor(ctx, { appointmentId: appointment._id });
+			const serviceName = appointment.serviceNameSnapshot ?? (await ctx.db.get(appointment.serviceId))?.name ?? 'Spa';
+			return {
+				_id: appointment._id, serviceName, start: appointment.start, price: appointment.price,
+				currency: appointment.currency, status: appointment.status, paymentStatus: appointment.paymentStatus,
+				onOrder: order ? { _id: order._id, title: orderTitle(order.orderNumber) } : null
+			};
+		}));
+		return { appointments: appointments.sort((a, b) => a.start - b.start), complete: rows.length <= MAX_STAY_APPOINTMENTS };
 	}
 });

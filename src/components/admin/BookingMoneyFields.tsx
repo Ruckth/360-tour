@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { resortDateTime, resortIsoDate, resortTime24, useNow } from "@/lib/staff-bookings";
 import { MONEY_METHOD_LABELS } from "./admin-bookings-shared";
+import { cn } from "@/lib/utils";
 
 /**
  * Form pieces shared by the booking money dialogs: the business date something happened (any
@@ -22,7 +24,61 @@ export function useEffectiveTime(initial?: number) {
   const at = date && /^\d{2}:\d{2}$/.test(time) ? resortDateTime(date, time) : Number.NaN;
   // The server allows a few minutes of clock drift; anything later is a future date.
   const valid = Number.isFinite(at) && at <= Math.max(now, opened) + 5 * 60_000;
-  return { date, setDate, time, setTime, at: valid ? at : null, future: Number.isFinite(at) && !valid, today: resortIsoDate(Math.max(now, opened)) };
+  const edited = date !== resortIsoDate(opened) || time !== resortTime24(opened);
+  return { date, setDate, time, setTime, at: valid ? at : null, future: Number.isFinite(at) && !valid, today: resortIsoDate(Math.max(now, opened)), edited };
+}
+
+/**
+ * "Received now · Change", as at the till: when the money moved is usually now, so the date and
+ * time (and anything passed as children, such as a note) stay folded until Change.
+ */
+export function ReceivedAtField({
+  id,
+  verb = "Received",
+  label,
+  value,
+  children,
+}: {
+  id: string;
+  /** "Received", "Effective". */
+  verb?: string;
+  /** Label of the date field once open, e.g. "Received on". */
+  label: string;
+  value: ReturnType<typeof useEffectiveTime>;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="grid min-w-0 gap-2">
+      <p className="flex min-h-11 flex-wrap items-center gap-x-1.5 text-sm">
+        <span className="text-muted-foreground">
+          {value.edited ? <>{verb} <span className="font-sans tabular-nums">{value.date} · {value.time}</span> Bangkok</> : `${verb} now`}
+        </span>
+        <span aria-hidden className="text-muted-foreground">·</span>
+        <Button
+          type="button"
+          variant="link"
+          aria-expanded={open}
+          aria-controls={`${id}-at`}
+          aria-label={`Change ${verb.toLowerCase()} time`}
+          className="min-h-11 px-0 text-sm"
+          onClick={() => setOpen((current) => !current)}
+        >
+          Change
+        </Button>
+      </p>
+      {open ? (
+        <div id={`${id}-at`} className="grid min-w-0 gap-3">
+          <EffectiveTimeFields id={id} label={label} value={value} />
+          {children}
+        </div>
+      ) : value.future ? (
+        <p className="text-xs text-destructive">Pick a time that has already happened.</p>
+      ) : value.at === null ? (
+        <p className="text-xs text-destructive">Enter a date and time.</p>
+      ) : null}
+    </div>
+  );
 }
 
 export function EffectiveTimeFields({
@@ -62,12 +118,13 @@ export function MethodPicker<T extends string>({
   value: T;
   onChange: (value: T) => void;
 }) {
+  const labelId = useId();
   return (
     <div className="grid gap-2">
-      <span className="text-sm font-medium" id={`method-${label}`}>{label}</span>
-      <ToggleGroup value={value} onValueChange={onChange} aria-labelledby={`method-${label}`} className="flex-wrap">
+      <span className="text-sm font-medium" id={labelId}>{label}</span>
+      <ToggleGroup variant="segmented" tone="subtle" value={value} onValueChange={onChange} aria-labelledby={labelId} className={cn("flex-wrap gap-1 rounded-full bg-muted p-1", methods.length > 5 && "grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] rounded-2xl sm:flex sm:rounded-full")}>
         {methods.map((method) => (
-          <ToggleGroupItem key={method} value={method} className="min-h-9">
+          <ToggleGroupItem key={method} value={method} className="min-h-11 min-w-11 rounded-full px-1 group-data-[variant=segmented]/toggle:flex-auto max-sm:group-data-[variant=segmented]/toggle:text-[13px] sm:px-3">
             {MONEY_METHOD_LABELS[method] ?? method}
           </ToggleGroupItem>
         ))}
@@ -76,7 +133,7 @@ export function MethodPicker<T extends string>({
   );
 }
 
-/** "Email the guest" with the current choice spelled out; hidden when the guest has no email. */
+/** One action-labelled notification choice; defaults and explicit opt-in stay with the caller. */
 export function NotifyGuestField({
   id,
   guestEmail,
@@ -91,14 +148,18 @@ export function NotifyGuestField({
   /** What the email is about, e.g. "the cancellation". */
   action: string;
 }) {
-  if (!guestEmail) return <p className="text-xs text-muted-foreground">No guest email on file, so nobody is emailed.</p>;
+  if (!guestEmail) return <p className="text-xs text-muted-foreground">No guest email on file.</p>;
   return (
     <div className="grid gap-1">
-      <label htmlFor={id} className="flex items-center gap-2 text-sm">
-        <input id={id} type="checkbox" className="size-4 accent-foreground" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-        Email {guestEmail} about {action}
+      <label htmlFor={id} className="flex min-h-12 items-center justify-between gap-3 text-sm">
+        <span>Email guest about {action}</span>
+        <span className="relative inline-flex h-6 w-10 shrink-0">
+          <input id={id} type="checkbox" role="switch" className="peer absolute inset-0 z-10 cursor-pointer opacity-0" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+          <span aria-hidden className="absolute inset-0 rounded-full bg-muted-foreground/70 peer-checked:bg-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring" />
+          <span aria-hidden className="pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-4" />
+        </span>
       </label>
-      <p className="ps-6 text-xs text-muted-foreground">{checked ? "The guest will be emailed." : "The guest will not be emailed."}</p>
+      <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{guestEmail}</p>
     </div>
   );
 }

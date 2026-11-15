@@ -1,9 +1,9 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { format } from 'date-fns';
 import { useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -165,7 +165,7 @@ function SourceRow({ source }: { source: Doc<'icalSources'> }) {
       </div>
     </div>
     <p className="break-all text-xs text-muted-foreground">{source.icalUrl}</p>
-    <p className="text-xs text-muted-foreground">Last sync: {source.lastSyncedAt ? format(source.lastSyncedAt, 'd MMM yyyy, HH:mm') : 'Waiting for first sync'}</p>
+    <p className="text-xs text-muted-foreground">Last sync: {source.lastSyncedAt ? staffDateTime(source.lastSyncedAt) : 'Waiting for first sync'}</p>
     {source.lastSyncError ? <p className="text-xs text-destructive">{source.lastSyncError}</p> : null}
     {message ? <p role={message.error ? 'alert' : 'status'} className={message.error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>{message.text}</p> : null}
   </div>;

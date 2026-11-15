@@ -1,5 +1,7 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act } from '../support/checkout-act';
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -8,9 +10,10 @@ import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type Or
 import { createFixtureBackend } from "../support/checkout-backend";
 import { PayPanel } from "@/components/checkout/PayPanel";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
-import { OrderHistory } from "@/components/checkout/OrderHistory";
+import { OrderHistory, OrderHistoryList } from "@/components/checkout/OrderHistory";
 import { receiptText } from "@/components/checkout/checkout-ui";
 import { paymentDateInput, paymentDateValue } from "@/components/checkout/payment-time";
+import { pickReceiptAction } from "./receipt-menu";
 
 let root: Root;
 let current: OrderView;
@@ -34,7 +37,7 @@ function Probe({ backend, orderId, paying = false, onPaid = () => {} }: { backen
   return paying ? createElement(PayPanel, { view, mode: "card", onBack: () => {}, onPaid }) : null;
 }
 const show = (backend: CheckoutBackend, orderId: OrderId, paying = false, onPaid?: () => void) => act(async () => root.render(provide(backend, createElement(Probe, { backend, orderId, paying, onPaid }))));
-const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
+const receipt = (backend: CheckoutBackend, orderId: OrderId) => act(async () => root.render(provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
 async function sale(link = false, backend?: Awaited<ReturnType<typeof createFixtureBackend>>) {
   backend ??= await createFixtureBackend();
   const actions = backend.useActions();
@@ -48,6 +51,13 @@ async function paidSale(link = false) {
   await run(result.actions.settleOrder({ orderId: result.orderId, idempotencyKey: "paid-original-01", expectedDue: 10000, expectedRevision: current.order.revision, expectedCustomerRevision: link ? 0 : undefined, effectiveAt: Date.parse("2026-10-01T03:00:34.567Z"), tenders: [{ method: "card", amount: 10000 }] }));
   return result;
 }
+const correctPayment = () => pickReceiptAction("Correct payment");
+/** Opens "More" in the correction panel: the received date, amount, tenders, customer and own reason. */
+const openMore = () => act(async () => {
+  const details = document.querySelector<HTMLDetailsElement>('[data-testid="correct-payment"] details')!;
+  details.open = true;
+  details.dispatchEvent(new Event("toggle"));
+});
 const expandHistory = async (title: string) => act(async () => {
   const summary = [...document.querySelectorAll("summary")].find(el => el.textContent === title)!;
   const details = summary.parentElement as HTMLDetailsElement;
@@ -66,9 +76,10 @@ it("uses actual received date in Bangkok and freezes every attempt input after a
   const settle = vi.spyOn(actions, "settleOrder").mockImplementationOnce(async args => { await original(args); throw new Error("Response lost"); });
   const onPaid = vi.fn();
   await show(backend, orderId, true, onPaid);
+  await click("Edit time");
   await input("#payment-effective", "2026-10-02");
   await input("#payment-effective-time", "14:15");
-  await click("Confirm ฿100 received"); await tick();
+  await click("Confirm ฿100 card"); await tick();
   expect(document.body.textContent).toContain("Response lost");
   expect(document.querySelector<HTMLInputElement>("#payment-effective")?.disabled).toBe(false); // disabled by its fieldset
   expect(document.querySelector("#payment-effective")?.closest("fieldset")?.disabled).toBe(true);
@@ -103,15 +114,26 @@ it("amends a wrong tender through the real control while preserving the original
   const amendment = vi.spyOn(actions, "amendOrderPayment");
   await receipt(backend, orderId);
   const originalPaper = document.querySelector('[aria-label="Receipt"]')!.textContent;
-  await click("Correct payment recording");
-  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Corrected payment 1 method"]')!.click());
-  await act(async () => [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(el => el.textContent?.includes("Bank transfer"))!.click());
-  await input("#payment-correction-reason", "Recorded card, actually bank transfer");
-  await click("Save recording correction"); await tick();
+  await correctPayment();
+  // The method is a chip: the other three methods, beside what was recorded.
+  const panel = document.querySelector<HTMLElement>('[data-testid="correct-payment"]')!;
+  expect(panel.textContent).toContain("Method · was Card");
+  // Reason is labelled, its chips and own text up front; "Wrong amount typed" joins once an amount changes.
+  expect([...panel.querySelectorAll<HTMLButtonElement>('[role="group"] button')].map(b => b.textContent)).toEqual(["Cash", "PromptPay", "Transfer", "Wrong method picked"]);
+  expect(panel.querySelector<HTMLInputElement>("#payment-correction-reason")?.closest("details")).toBeNull();
+  // Nothing changed yet: the button is a plain, disabled Save.
+  expect(button("Save")?.disabled).toBe(true);
+  await click("Transfer");
+  await click("Wrong method picked");
+  await click("Save · Transfer ฿100"); await tick();
   expect(amendment).toHaveBeenCalledOnce();
-  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, tenders: [{ method: "transfer", amount: 10000 }] });
+  expect(amendment.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, reason: "Wrong method picked", tenders: [{ method: "transfer", amount: 10000 }] });
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toBe(originalPaper);
-  expect(document.querySelector('[aria-label="Payment recording"]')!.textContent).toContain("Bank transfer · ฿100 · amended");
+  expect(document.querySelector('[role="status"]')!.textContent).toBe("Payment corrected · Transfer ฿100");
+  expect(document.body.textContent).toContain("Paid by card · corrected");
+  await expandHistory("History");
+  await act(async () => [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(b => b.textContent === "Payments")!.click());
+  expect(document.querySelector('[aria-label="Payment record"]')!.textContent).toContain("Transfer · ฿100 · corrected");
   await show(backend, orderId);
   expect(current.payments).toEqual(originalPayments);
   expect(current.paymentRecord.effectiveAt).toBe(Date.parse("2026-10-01T03:00:34.567Z"));
@@ -123,12 +145,12 @@ it("retains correction inputs and key on response loss, and preserves original c
   const { backend, actions, orderId } = await paidSale(true);
   const original = actions.amendOrderPayment;
   const amendment = vi.spyOn(actions, "amendOrderPayment").mockImplementationOnce(async args => { await original(args); throw new Error("Correction response lost"); });
-  await receipt(backend, orderId); await click("Correct payment recording");
+  await receipt(backend, orderId); await correctPayment(); await openMore();
   await input("#corrected-payer", "Anna");
   await act(async () => buttons().find(b => b.textContent?.includes("Anna Schmidt · +49"))!.click());
   await input("#correction-effective", "2026-10-03T08:45");
   await input("#payment-correction-reason", "Correct payer and actual received date");
-  await click("Save recording correction"); await tick();
+  await click("Save · Card ฿100"); await tick();
   await run(actions.updateCustomer({ customerId: "fxcust000001" as CustomerId, expectedRevision: 0, name: "Edited after recording" }));
   await click("Retry correction"); await tick();
   expect(amendment.mock.calls[1][0]).toEqual(amendment.mock.calls[0][0]);
@@ -140,19 +162,63 @@ it("retains correction inputs and key on response loss, and preserves original c
   expect(current.corrections).toHaveLength(1);
 });
 
-it("requires the explicit no-money assertion and reason before voiding a mistaken entry", async () => {
+it("says Saving… while the first correction save runs, and offers Retry only after it fails", async () => {
+  const { backend, actions, orderId } = await paidSale(true);
+  let fail!: (err: Error) => void;
+  vi.spyOn(actions, "amendOrderPayment").mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await receipt(backend, orderId); await correctPayment();
+  await click("Transfer");
+  await click("Wrong method picked");
+  await click("Save · Transfer ฿100");
+  expect(button("Saving…")).toBeTruthy();
+  expect(button("Saving…").disabled).toBe(true);
+  expect(button("Retry correction")).toBeUndefined();
+  await act(async () => fail(new Error("Network down")));
+  expect(button("Saving…")).toBeUndefined();
+  expect(button("Retry correction")).toBeTruthy();
+});
+
+it("asks whether money was received with no default, and voids a mistaken entry once, retrying with the same key", async () => {
   const { backend, actions, orderId } = await paidSale();
-  const voidEntry = vi.spyOn(actions, "voidUnreceivedOrder");
-  await receipt(backend, orderId); await click("No money was received…");
-  expect(button("Void mistaken entry").disabled).toBe(true);
-  await input("#payment-correction-reason", "Entered before checking bank; no payment arrived");
-  expect(button("Void mistaken entry").disabled).toBe(true);
-  await act(async () => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
-  await click("Void mistaken entry"); await tick();
-  expect(voidEntry).toHaveBeenCalledOnce();
-  expect(document.body.textContent).toContain("No refund was sent");
+  // The first answer never arrives (the order stays paid, so the panel stays open on its error).
+  const voidEntry = vi.spyOn(actions, "voidUnreceivedOrder").mockRejectedValueOnce(new Error("Connection lost"));
+  const voidSale = vi.spyOn(actions, "voidOrder");
+  await receipt(backend, orderId); await pickReceiptAction("Void…");
+  const yes = document.querySelector<HTMLButtonElement>('[data-void-choice="received"]')!;
+  const no = () => document.querySelector<HTMLButtonElement>('[data-void-choice="unreceived"]')!;
+  expect(document.body.textContent).toContain("Money received?");
+  expect(yes.textContent).toBe("YesNo refund sent");
+  expect(no().textContent).toBe("NoEntered by mistake");
+  // No default: neither runs without a reason.
+  expect(yes.disabled).toBe(true); expect(no().disabled).toBe(true);
+  await click("Duplicate sale");
+  expect(no().disabled).toBe(false);
+  await act(async () => no().click()); await tick();
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
+  // The attempt is frozen: the reason can't change and Yes can't run on top of it.
+  expect(document.querySelector<HTMLInputElement>("#void-reason")!.disabled).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>('[data-void-choice="received"]')!.disabled).toBe(true);
+  await act(async () => no().click()); await tick();
+  expect(voidEntry).toHaveBeenCalledTimes(2);
+  expect(voidEntry.mock.calls[1][0]).toEqual(voidEntry.mock.calls[0][0]);
+  expect(voidEntry.mock.calls[0][0]).toMatchObject({ expectedCorrectionRevision: 0, reason: "Duplicate sale" });
+  expect(voidSale).not.toHaveBeenCalled();
+  expect(document.querySelector('[data-testid="receipt-void-status"]')!.textContent).toContain("Entered by mistake · no money was received, no refund sent");
   await show(backend, orderId);
   expect(current.order.status).toBe("void"); expect(current.payments).toHaveLength(1); expect(current.paymentRecord.voidUnreceived).toBe(true);
+});
+
+it("Void… · Yes voids the sale through pos.voidOrder, which takes no attempt key", async () => {
+  const { backend, actions, orderId } = await paidSale();
+  const voidSale = vi.spyOn(actions, "voidOrder");
+  const voidEntry = vi.spyOn(actions, "voidUnreceivedOrder");
+  await receipt(backend, orderId); await pickReceiptAction("Void…");
+  await click("Wrong guest");
+  await act(async () => document.querySelector<HTMLButtonElement>('[data-void-choice="received"]')!.click()); await tick();
+  expect(voidSale).toHaveBeenCalledExactlyOnceWith({ orderId, reason: "Wrong guest" });
+  expect(voidEntry).not.toHaveBeenCalled();
+  await show(backend, orderId);
+  expect(current.order.status).toBe("void"); expect(current.paymentRecord.voidUnreceived).toBeFalsy();
 });
 
 it("shows imported booking refunds with amount, actor and effective/recorded dates without presenting a send action", async () => {
@@ -162,7 +228,7 @@ it("shows imported booking refunds with amount, actor and effective/recorded dat
   await receipt(backend, orderId);
   const text = document.querySelector('[aria-label="Recorded refunds"]')!.textContent;
   expect(text).toContain("Recorded · ฿50 · transfer"); expect(text).toContain("cashier@example.com"); expect(text).toContain("Effective"); expect(text).toContain("Recorded");
-  expect(text).toContain("does not send refunds");
+  expect(document.querySelector('[aria-label="Recorded refunds"]')!.querySelector("button")).toBeNull();
 });
 
 it("shows paginated readable item history, cleared contents, actor and dates from actual fixture edits", async () => {
@@ -170,7 +236,7 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   for (let i = 0; i < 25; i++) await run(actions.addItem({ orderId, item: { kind: "extra", name: `Item ${i}`, price: 1000 } }));
   await run(actions.clearOrder({ orderId }));
   await act(async () => root.render(provide(backend, createElement(OrderHistory, { orderId }))));
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain("Before · removed contents");
   expect(document.body.textContent).toContain("Item 24"); expect(document.body.textContent).toContain("preview@example.com");
   expect(document.body.textContent).toContain("Effective"); expect(document.body.textContent).toContain("Recorded"); expect(document.body.textContent).not.toContain('"unitPrice"');
@@ -180,7 +246,7 @@ it("shows paginated readable item history, cleared contents, actor and dates fro
   expect(document.body.textContent).toContain("Item: Tea");
   const loaded = document.querySelector('[aria-label="Order history"]')!.textContent;
   await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toBe(loaded);
   expect(button("Load older order changes")).toBeUndefined();
 });
@@ -191,14 +257,13 @@ it("recovers order history errors and displays loading, empty and continuation s
   const loadMore = vi.fn();
   const broken: CheckoutBackend = { ...backend, useOrderHistory: () => { if (fail) throw new Error("History offline"); return { results: [], status: "LoadingFirstPage", loadMore }; } };
   vi.spyOn(console, "error").mockImplementation(() => {});
-  await act(async () => root.render(provide(broken, createElement(OrderHistory, { orderId }))));
-  await expandHistory("Order history");
+  await act(async () => root.render(provide(broken, createElement(OrderHistoryList, { orderId }))));
   expect(document.body.textContent).toContain("Couldn't load order history");
   fail = false; await click("Try again");
   expect(document.querySelector('[aria-label="Loading order history"]')).toBeTruthy();
   for (const status of ["Exhausted", "CanLoadMore", "LoadingMore"] as const) {
     const paged = { ...backend, useOrderHistory: () => ({ results: [], status, loadMore }) };
-    await act(async () => root.render(provide(paged, createElement(OrderHistory, { orderId }))));
+    await act(async () => root.render(provide(paged, createElement(OrderHistoryList, { orderId }))));
     if (status === "Exhausted") expect(document.body.textContent).toContain("No recorded item changes");
     if (status === "CanLoadMore") { await click("Load older order changes"); expect(loadMore).toHaveBeenCalledWith(20); }
     if (status === "LoadingMore") expect(button("Loading older changes…").disabled).toBe(true);
@@ -215,15 +280,18 @@ it("locks correction controls during a pending write and prevents duplicate subm
   const { backend, actions, orderId } = await paidSale();
   let done!: (value: { sequence: number; replayed: boolean }) => void;
   const amendment = vi.spyOn(actions, "amendOrderPayment").mockReturnValueOnce(new Promise(resolve => { done = resolve; }));
-  await receipt(backend, orderId); await click("Correct payment recording");
-  await input("#payment-correction-reason", "Checking the received date");
-  await click("Save recording correction");
-  expect(button("Close correction").disabled).toBe(true);
+  await receipt(backend, orderId); await correctPayment();
+  await click("Cash");
+  await click("Wrong method picked");
+  await click("Save · Cash ฿100");
+  // The toolbar's Close waits for the write.
+  expect(document.querySelector<HTMLButtonElement>('[aria-label="Close Correct payment"]')!.disabled).toBe(true);
   expect(document.querySelector("#payment-correction-reason")?.closest("fieldset")?.disabled).toBe(true);
-  await act(async () => document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  await act(async () => document.querySelector('[data-testid="correct-payment"]')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
   expect(amendment).toHaveBeenCalledOnce();
   await act(async () => done({ sequence: 1, replayed: false }));
-  expect(button("Correct payment recording")).toBeTruthy();
+  expect(document.querySelector('[data-testid="correct-payment"]')).toBeNull();
+  expect(document.querySelector('[aria-label="More receipt actions"]')).toBeTruthy();
 });
 
 it("reopens only the fixture order’s proven linked payment on a mistaken entry and preserves the online deposit", async () => {
@@ -237,3 +305,5 @@ it("reopens only the fixture order’s proven linked payment on a mistaken entry
   await show(backend, replacement.orderId);
   expect(current.totals).toMatchObject({ deposit: 1000000, due: 2600000, total: 3600000 });
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

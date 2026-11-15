@@ -7,7 +7,9 @@ import type { api } from "convex/_generated/api";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
-import { BookingFinancials } from "@/components/admin/BookingFinancials";
+import { BookingQuickActions } from "@/components/admin/BookingQuickActions";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { BookingFinancials, RecordPaymentDialog } from "@/components/admin/BookingFinancials";
 import { CancelStayDialog, ReopenBookingDialog } from "@/components/admin/BookingCorrectionDialogs";
 import { BookingHistory } from "@/components/admin/BookingHistory";
 import { BookingSheet, EditBookingDialog } from "@/components/admin/BookingSheet";
@@ -25,6 +27,7 @@ const mutations = vi.hoisted(() => ({
   cancelStay: vi.fn(),
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
+  openStayCheckout: vi.fn(),
 }));
 const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn(), quoteBookingEdit: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));
@@ -80,16 +83,39 @@ const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as 
 
 let root: Root;
 const render = (node: ReactNode) => act(async () => root.render(
-  createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node)),
+  createElement(NextIntlClientProvider, intl, createElement(TooltipProvider, null, createElement(ConfirmProvider, null, node))),
 ));
-const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
-const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text);
+const click = async (el: Element | null | undefined) => {
+  const disclosure = el?.closest("details");
+  if (disclosure && !disclosure.open && el?.tagName !== "SUMMARY") {
+    await act(async () => disclosure.querySelector("summary")?.click());
+  }
+  await act(async () => (el as HTMLElement).click());
+};
+const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.getAttribute("aria-label") === text || el.textContent?.trim() === text);
 const type = (id: string, value: string) => act(async () => {
   const el = document.getElementById(id) as HTMLInputElement | HTMLTextAreaElement;
   const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), "value")!.set!;
   setter.call(el, value);
   el.dispatchEvent(new Event("input", { bubbles: true }));
 });
+/** Opens the stay sheet's ⋯ menu and returns its item with this label. */
+const menuItem = async (label: string) => {
+  const trigger = document.querySelector('[aria-label="More booking actions"]') as HTMLElement | null;
+  if (trigger && trigger.getAttribute("aria-expanded") !== "true") await act(async () => trigger.click());
+  return [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === label) as HTMLElement | undefined;
+};
+/** Opens the stay popover's ⋯ menu and returns its item with this label. */
+const stayItem = async (label: string) => {
+  const trigger = document.querySelector('[aria-label="More stay actions"]') as HTMLElement | null;
+  if (trigger && trigger.getAttribute("aria-expanded") !== "true") await act(async () => trigger.click());
+  return [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent?.trim() === label) as HTMLElement | undefined;
+};
+/** The money block at the top of the stay sheet: its label and amount. */
+const moneyBlock = () => {
+  const heading = document.getElementById("booking-payments")!;
+  return { label: heading.textContent, amount: heading.nextElementSibling?.textContent };
+};
 const alertText = () => [...document.querySelectorAll('[role="alert"]')].map((el) => el.textContent).join(" ");
 
 beforeEach(() => {
@@ -129,25 +155,38 @@ afterEach(async () => {
 });
 
 describe("booking payments and refunds", () => {
+  it("states the past-stay confirmation email outcome before the direct action without changing its payload", async () => {
+    const pending = { ...booking, status: "pending", paymentStatus: "pending", amountPaid: 0,
+      money: { ...money, gross: 0, net: 0, owed: 17000, credit: 0, refundable: 0 } } as BookingDetail;
+    queries.getForAdmin.mockReturnValue(pending);
+    await render(createElement(BookingSheet, { bookingId: pending._id, properties: [], onClose: vi.fn() }));
+    expect(document.body.textContent).toContain("Confirming this past stay won’t email the guest.");
+    expect(document.querySelector('input[type="checkbox"]')).toBeNull();
+    await click(button("Confirm"));
+    expect(mutations.updateBooking).toHaveBeenCalledExactlyOnceWith({ bookingId: pending._id, action: "confirm", expectedRevision: pending.revision });
+    expect(document.querySelector('[role="status"]')?.textContent).toBe("Confirmed.");
+  });
+
   it("keeps Edit and Cancel reachable for a live fully refunded stay", async () => {
     queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", paymentStatus: "refunded", money: { ...money, gross: 1700000, refunded: 1700000, net: 0, owed: 0, credit: 0, refundable: 0 } });
     await render(createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() }));
-    expect(button("Edit")).toBeDefined();
-    expect(button("Cancel booking")).toBeDefined();
+    expect(button("Edit stay")).toBeDefined();
+    expect(await menuItem("Cancel stay")).toBeDefined();
     expect(button("Reopen")).toBeUndefined();
   });
   it("shows each payment with its corrections, and no corrections for online money", async () => {
     await render(createElement(BookingFinancials, { booking }));
     const text = document.body.textContent ?? "";
-    expect(text).toContain("Paid ฿25,500");
-    expect(text).toContain("Credit ฿8,500");
+    expect(moneyBlock()).toEqual({ label: "Credit", amount: "฿8,500" });
     expect(text).toContain("Recorded on the booking · Cash");
     expect(text).toContain("Paid online · Stripe");
     expect(text).toContain("Online payments are the provider’s record and can’t be changed here.");
-    // Correct and Not received for the desk payment only.
-    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Correct method or date")).toHaveLength(1);
-    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Not received…")).toHaveLength(1);
-    expect(button("Record payment")).toBeUndefined();
+    // Correct… and Entered by mistake… for the desk payment only, inside the one History section.
+    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Correct…")).toHaveLength(1);
+    expect([...document.querySelectorAll("button")].filter((b) => b.textContent === "Entered by mistake…")).toHaveLength(1);
+    expect(button("Correct…")?.closest("details")?.querySelector("summary")?.textContent).toBe("History");
+    expect([...document.querySelectorAll("summary")].map((s) => s.textContent)).toEqual(["History"]);
+    expect(button("Record external payment…")).toBeUndefined();
   });
 
   it("records a refund with a reason, keeps the input and attempt after a failure, and retries once", async () => {
@@ -156,7 +195,7 @@ describe("booking payments and refunds", () => {
     await click(button("Record refund"));
     expect(document.body.textContent).toContain("Recording does not return money");
     expect((document.getElementById("refund-amount") as HTMLInputElement).value).toBe("8500");
-    const confirm = () => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim() === "Record refund") as HTMLButtonElement;
+    const confirm = () => [...document.querySelectorAll('[role="dialog"] button')].find((b) => b.textContent?.trim().startsWith("Record refund")) as HTMLButtonElement;
     expect(confirm().disabled).toBe(true);
     await type("refund-amount", "9000");
     expect(document.body.textContent).toContain("At most ฿8,500.");
@@ -164,6 +203,7 @@ describe("booking payments and refunds", () => {
     await type("refund-reason", "Left a night early");
     await click(button("Card"));
     expect(confirm().disabled).toBe(false);
+    expect(confirm().textContent).toBe("Record refund ฿8,500");
     await click(confirm());
     expect(alertText()).toContain("This booking changed since you opened it");
     expect((document.getElementById("refund-reason") as HTMLTextAreaElement).value).toBe("Left a night early");
@@ -188,14 +228,26 @@ describe("booking payments and refunds", () => {
     let finish!: () => void;
     mutations.recordPayment.mockImplementation(() => new Promise((resolve) => { finish = () => resolve({ paymentId: "p", replayed: false }); }));
     await render(createElement(BookingFinancials, { booking: owing }));
-    await click(button("Record payment"));
-    expect(document.body.textContent).toContain("This does not charge the guest.");
-    expect(document.body.textContent).toContain("The guest will not be emailed.");
-    await click(button("Bank transfer"));
+    expect(moneyBlock()).toEqual({ label: "Balance due", amount: "฿4,000" });
+    await click(button("Record external payment…"));
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector("h2")?.textContent).toBe("Record a payment taken elsewhere");
+    expect(dialog.textContent).toContain("Record ฿4,000 the guest already paid.");
+    expect(dialog.textContent).not.toContain("This does not charge the guest.");
+    // The date waits behind "Received now · Change", as at the till; ✕ is the only way out.
+    expect(dialog.textContent).toContain("Received now");
+    expect(document.getElementById("pay-when-time")).toBeNull();
+    expect([...dialog.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Close")).toHaveLength(1);
+    expect((document.getElementById("pay-notify") as HTMLInputElement).checked).toBe(false);
+    await click(button("Transfer"));
+    await click(button("Change"));
     await type("pay-when-time", "08:30");
+    expect(dialog.textContent).toContain("Received 2026-10-28 · 08:30 Bangkok");
     await click(button("Record ฿4,000"));
     expect(button("Record ฿4,000")?.disabled).toBe(true);
-    expect(button("Close")?.disabled).toBe(true);
+    await act(async () => (dialog.querySelector('[data-slot="dialog-close"], button.absolute') as HTMLElement | null)?.click());
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
     await act(async () => finish());
     expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({
       bookingId: "b1", expectedRevision: 7, expectedAmount: 400000, method: "transfer", effectiveAt: at("2026-10-28", "08:30"), notifyGuest: false,
@@ -204,11 +256,12 @@ describe("booking payments and refunds", () => {
 
   it("cancels a mistaken desk entry only with a reason", async () => {
     await render(createElement(BookingFinancials, { booking }));
-    await click(button("Not received…"));
-    expect(document.body.textContent).toContain("Nothing is refunded");
-    expect(button("Cancel this entry")?.disabled).toBe(true);
+    await click(button("Entered by mistake…"));
+    expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Entered by mistake");
+    expect(button("Keep payment")).toBeDefined();
+    expect(button("Void ฿25,500")?.disabled).toBe(true);
     await type("cancel-entry-reason", "Entered on the wrong booking");
-    await click(button("Cancel this entry"));
+    await click(button("Void ฿25,500"));
     expect(mutations.cancelPayment).toHaveBeenCalledWith({ bookingId: "b1", expectedRevision: 7, reason: "Entered on the wrong booking", paymentId: "pay1" });
   });
 });
@@ -219,11 +272,12 @@ describe("cancel and reopen", () => {
   it("cancels keeping the payment by default, with the guest email choice explicit", async () => {
     const onClose = vi.fn();
     await render(createElement(CancelStayDialog, { booking: paidFuture, onClose }));
-    expect(document.body.textContent).toContain("Cancelling does not refund anything");
-    expect(document.body.textContent).toContain("The guest will be emailed.");
+    expect(document.body.textContent).toContain("Cancelling refunds nothing");
+    expect(button("Keep stay")).toBeDefined();
+    expect((document.getElementById("cancel-notify") as HTMLInputElement).checked).toBe(true);
     await click(document.getElementById("cancel-notify"));
-    expect(document.body.textContent).toContain("The guest will not be emailed.");
-    await click(button("Cancel booking"));
+    expect((document.getElementById("cancel-notify") as HTMLInputElement).checked).toBe(false);
+    await click(button("Cancel stay"));
     expect(mutations.cancelStay).toHaveBeenCalledWith({ bookingId: "b1", expectedRevision: 7, reason: undefined, effectiveAt: NOW, notifyGuest: false });
     expect(onClose).toHaveBeenCalled();
   });
@@ -240,6 +294,18 @@ describe("cancel and reopen", () => {
       expectedRevision: 7, notifyGuest: true,
       refund: expect.objectContaining({ amount: 2000000, currency: "THB", method: "cash", reason: "Cancellation fee kept", effectiveAt: NOW, paymentId: cashPayment._id }),
     }));
+  });
+
+  it("prefills the cancellation refund in baht and refuses more than was paid", async () => {
+    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
+    await click(button("Record a refund"));
+    expect((document.getElementById("cancel-refund-amount") as HTMLInputElement).value).toBe("25500");
+    await type("cancel-refund-reason", "Full refund");
+    await type("cancel-refund-amount", "25501");
+    expect(button("Cancel & record refund")?.disabled).toBe(true);
+    await type("cancel-refund-amount", "25500");
+    await click(button("Cancel & record refund"));
+    expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({ refund: expect.objectContaining({ amount: 2550000 }) }));
   });
 
   it("selects a cancellation refund source and freezes it after a lost response", async () => {
@@ -303,7 +369,10 @@ describe("booking history", () => {
     expect(text).toContain("Method: Card");
     expect(text).toContain("Reason: Left early");
     expect(text).toContain("Effective");
-    expect(text).toContain("Method: Cash → Bank transfer");
+    expect(text).toContain("Method: Cash → Transfer");
+    // Records keep the sign-in email; History shows the part before the @.
+    expect(text).toContain("· desk");
+    expect(text).not.toContain("desk@example.com");
     await click(button("Load earlier history"));
     expect(pages.loadMore).toHaveBeenCalledWith(10);
     expect(pages.read).toHaveBeenCalledWith({ bookingId: "b1" });
@@ -323,7 +392,7 @@ describe("editing the stay price", () => {
     expect(document.body.textContent).toContain("Add the reason for the custom price.");
     await type("eb-custom-reason", "Negotiated with the owner");
     expect(document.body.textContent).toContain("New total ฿15,000");
-    expect(document.body.textContent).toContain("The guest will not be emailed.");
+    expect((document.getElementById("eb-notify") as HTMLInputElement).checked).toBe(false);
     await click(button("Save changes"));
     expect(alertText()).toContain("These dates are no longer available.");
     expect(onClose).not.toHaveBeenCalled();
@@ -398,4 +467,196 @@ describe("editing the stay price", () => {
     expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({ expectedPrice: { total: 2600000, currency: "THB" } }));
     expect(onClose).toHaveBeenCalled();
   });
+});
+
+
+describe("calendar booking action intent", () => {
+  const owing: BookingDetail = { ...booking, status: "confirmed", paymentStatus: "pending", amountPaid: 0,
+    money: { ...money, gross: 0, net: 0, credit: 0, refundable: 0, owed: 1700000 } };
+
+  it("waits for loaded money, opens the existing fixed-amount payment review once, and returns to details", async () => {
+    queries.getForAdmin.mockReturnValue(owing);
+    queries.bookingFinancials.mockReturnValue(undefined);
+    const props = { bookingId: owing._id, properties: [], initialAction: "pay" as const, onClose: vi.fn() };
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeDefined();
+    expect(document.body.textContent).toContain("Record ฿17,000 the guest already paid.");
+    const paymentDialog = button("Record ฿17,000")!.closest('[role="dialog"]')!;
+    await click([...paymentDialog.querySelectorAll("button")].find(b => b.textContent?.trim() === "Close"));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    await click(button("Record external payment…"));
+    await click(button("Record ฿17,000"));
+    expect(mutations.recordPayment).toHaveBeenCalledWith(expect.objectContaining({ expectedAmount: 1700000, expectedRevision: 7 }));
+  });
+
+  it.each(["pay", "cancel"] as const)("consumes a blocked %s shortcut without opening later when Stripe finishes", async (initialAction) => {
+    queries.getForAdmin.mockReturnValue({ ...owing, checkoutLive: true });
+    queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
+    const props = { bookingId: owing._id, properties: [], initialAction, onClose: vi.fn() };
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    expect(document.getElementById("cancel-reason")).toBeNull();
+    expect((await menuItem("Cancel stay"))?.hasAttribute("data-disabled")).toBe(true);
+    queries.getForAdmin.mockReturnValue(owing);
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    expect(document.getElementById("cancel-reason")).toBeNull();
+  });
+
+  it("does not revive a Stripe-blocked payment intent while its money query is loading", async () => {
+    queries.getForAdmin.mockReturnValue({ ...owing, checkoutLive: true });
+    queries.bookingFinancials.mockReturnValue(undefined);
+    const props = { bookingId: owing._id, properties: [], initialAction: "pay" as const, onClose: vi.fn() };
+    await render(createElement(BookingSheet, props));
+    queries.getForAdmin.mockReturnValue(owing);
+    queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money, payments: [] });
+    await render(createElement(BookingSheet, props));
+    expect(button("Record ฿17,000")).toBeUndefined();
+    expect(button("Record external payment…")).toBeDefined();
+  });
+
+  it("opens paid cancellation directly and keeps the booking sheet after backing out", async () => {
+    const paid = { ...booking, status: "confirmed" } as BookingDetail;
+    queries.getForAdmin.mockReturnValue(paid);
+    const props = { bookingId: paid._id, properties: [], initialAction: "cancel" as const, onClose: vi.fn() };
+    await render(createElement(BookingSheet, props));
+    expect(document.getElementById("cancel-reason")).not.toBeNull();
+    await click(button("Keep stay"));
+    expect(document.getElementById("cancel-reason")).toBeNull();
+    expect(document.body.textContent).toContain("Mia");
+    await render(createElement(BookingSheet, props));
+    expect(document.getElementById("cancel-reason")).toBeNull();
+    expect(mutations.cancelStay).not.toHaveBeenCalled();
+    await click(await menuItem("Cancel stay"));
+    expect(document.getElementById("cancel-reason")).not.toBeNull();
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.getElementById("cancel-reason")).toBeNull();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  it("opens Record payment and a paid cancellation in their own dialogs, and disables both during live checkout", async () => {
+    const onAction = vi.fn();
+    const props = { target: { booking: owing as unknown as ComponentProps<typeof BookingQuickActions>["target"]["booking"], rect: { left: 0, top: 0, width: 10, height: 10 } }, villaName: "Pool Villa", onClose: vi.fn(), onOpenDetails: vi.fn(), onAction, onNotice: vi.fn() };
+    queries.getForAdmin.mockReturnValue(owing);
+    await render(createElement(BookingQuickActions, props));
+    // The popover keeps Take payment · Book spa · Details; the rest sit in ⋯.
+    expect(button("Record payment")).toBeUndefined();
+    expect(button("Record external payment…")).toBeUndefined();
+    expect(button("Cancel stay")).toBeUndefined();
+    await click(await stayItem("Record payment…"));
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "pay", booking: owing });
+    const paid = { ...owing, money: { ...owing.money, net: 100000 } };
+    queries.getForAdmin.mockReturnValue(paid);
+    await render(createElement(BookingQuickActions, props));
+    await click(await stayItem("Cancel stay"));
+    expect(onAction).toHaveBeenLastCalledWith({ kind: "cancel", booking: paid });
+    expect(props.onOpenDetails).not.toHaveBeenCalled();
+    queries.getForAdmin.mockReturnValue({ ...owing, checkoutLive: true });
+    await render(createElement(BookingQuickActions, props));
+    expect((await stayItem("Record payment…"))?.hasAttribute("data-disabled")).toBe(true);
+    expect((await stayItem("Cancel stay"))?.hasAttribute("data-disabled")).toBe(true);
+  });
+});
+
+
+describe("one canonical stay-money summary", () => {
+  it.each([
+    ["confirmed", { net: 1300000, owed: 400000, credit: 0, refunded: 0 }, "Balance due", "฿4,000"],
+    ["confirmed", { net: 2550000, owed: 0, credit: 850000, refunded: 0 }, "Credit", "฿8,500"],
+    ["cancelled", { net: 300000, owed: 1400000, credit: 0, refunded: 100000 }, "Kept", "฿3,000"],
+    ["cancelled", { net: 0, owed: 1700000, credit: 0, refunded: 1700000 }, "Settled", "฿0"],
+    ["confirmed", { net: 0, owed: 1700000, credit: 0, refunded: 1700000 }, "Balance due", "฿17,000"],
+  ] as const)("keeps the %s outcome visible without opening payment history", async (status, amounts, outcome, value) => {
+    const current = { ...booking, status, money: { ...money, ...amounts } } as BookingDetail;
+    queries.getForAdmin.mockReturnValue(current);
+    queries.bookingFinancials.mockReturnValue({ ...financials, money: current.money });
+    await render(createElement(BookingSheet, { bookingId: current._id, properties: [], onClose: vi.fn() }));
+    expect(document.querySelectorAll("#booking-payments")).toHaveLength(1);
+    expect(moneyBlock()).toEqual({ label: outcome, amount: value });
+    // One closed History holds payments, price and changes.
+    const sections = [...document.querySelectorAll("summary")].map((summary) => summary.textContent);
+    expect(sections).toEqual(["History"]);
+    const history = document.querySelector("summary")!.closest("details")!;
+    expect(history.open).toBe(false);
+    if (amounts.refunded) {
+      const refundLine = [...document.querySelectorAll("p")].find(p => p.textContent === `Refunded ฿${(amounts.refunded / 100).toLocaleString("en-US")}`)!;
+      expect(refundLine).toBeDefined();
+      expect(refundLine.closest("details")).toBeNull();
+    }
+  });
+
+  it("keeps explicit refunded amounts visible beside the summary", async () => {
+    const current = { ...booking, money: { ...money, refunded: 100000 } } as BookingDetail;
+    queries.bookingFinancials.mockReturnValue({ ...financials, money: current.money });
+    await render(createElement(BookingFinancials, { booking: current }));
+    const line = [...document.querySelectorAll("p")].find(p => p.textContent === "Refunded ฿1,000");
+    expect(line).toBeDefined();
+    expect(line!.closest("details")).toBeNull();
+    expect(button("Record refund")?.closest("details")).toBeNull();
+  });});
+
+for (const kind of ["pay", "refund", "amend", "cancelEntry", "cancelUnrecorded", "linkStripe"] as const) {
+  it(`guards the stay ${kind} draft and closes a successful record without prompting`, async () => {
+    const owing = { ...booking, money: { ...money, credit: 0, refundable: 0, owed: 400000, net: 1300000 }, confirmationEmailed: false } as BookingDetail;
+    if (kind === "pay") queries.bookingFinancials.mockReturnValue({ ...financials, money: owing.money });
+    if (kind === "cancelUnrecorded") queries.bookingFinancials.mockReturnValue({ ...financials, payments: [{ ...cashPayment, method: "unrecorded" }] });
+    if (kind === "linkStripe") queries.bookingFinancials.mockReturnValue({ ...financials, refunds: [{ _id: "refund1", amount: 50000, currency: "THB", method: "stripe", reason: "Returned online", effectiveAt: NOW, recordedBy: "desk@example.com", order: null }] });
+    await render(createElement(BookingFinancials, { booking: kind === "pay" ? owing : booking }));
+    const open = kind === "pay" ? "Record external payment…" : kind === "refund" ? "Record refund" : kind === "amend" ? "Correct…" : kind === "linkStripe" ? "Link Stripe refund evidence" : "Entered by mistake…";
+    await click(button(open));
+    await click(button("Close"));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await click(button(open));
+    if (kind === "pay") await type("pay-note", "Transfer slip");
+    else if (kind === "refund") { await type("refund-reason", "Returned to guest"); await type("refund-amount", "250"); }
+    else if (kind === "amend") { await type("amend-reason", "Wrong tender"); await click(button("Card")); }
+    else if (kind === "linkStripe") { await type("stripe-charge-id", "ch_test123"); await type("stripe-refund-id", "re_test123"); }
+    else await type("cancel-entry-reason", "Wrong booking");
+    await click(button("Close"));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Discard unsaved changes?");
+    await click(button("Keep editing"));
+    const confirm = kind === "pay" ? "Record ฿4,000" : kind === "refund" ? "Record refund ฿250" : kind === "amend" ? "Save correction" : kind === "linkStripe" ? "Link refund" : "Void ฿25,500";
+    await click(button(confirm));
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    const mutation = kind === "pay" ? mutations.recordPayment : kind === "refund" ? mutations.recordRefund : kind === "amend" ? mutations.amendPayment : kind === "linkStripe" ? mutations.linkRecordedStripeRefund : mutations.cancelPayment;
+    expect(mutation).toHaveBeenCalledOnce();
+  });
+}
+
+it.each(["method", "time", "note", "notify"] as const)("tracks and clears an external-payment %s edit against its opening value", async field => {
+  const onClose = vi.fn();
+  await render(createElement(RecordPaymentDialog, { booking: { ...booking, confirmationEmailed: false }, owed: 400000, onClose }));
+  if (field === "method") await click(button("Card"));
+  if (field === "time") { await click(button("Change")); await type("pay-when-time", "08:30"); }
+  if (field === "note") await type("pay-note", " ");
+  if (field === "notify") await click(document.getElementById("pay-notify"));
+  await click(button("Close"));
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Discard unsaved changes?");
+  await click(button("Keep editing"));
+  expect(onClose).not.toHaveBeenCalled();
+  if (field === "method") await click(button("Cash"));
+  if (field === "time") await type("pay-when-time", "10:00");
+  if (field === "note") await type("pay-note", "");
+  if (field === "notify") await click(document.getElementById("pay-notify"));
+  await click(button("Close"));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+});
+
+it.each([false, true])("closes an untouched stay price draft without treating satang as edited baht (custom: %s)", async custom => {
+  const original = { ...booking, ...(custom ? { priceOverride: { total: 1600000, quotedTotal: 1700000, reason: "Reviewed price", by: "desk@example.com", at: NOW } } : {}) } as BookingDetail;
+  const onClose = vi.fn();
+  const villa = { _id: booking.propertyId, slug: "pool-villa", name: "Pool Villa", status: "active" as const, maxGuests: 6, pricePerNight: 1000000, currency: "THB", directDiscountPercent: 1500 };
+  await render(createElement(EditBookingDialog, { booking: original, properties: [villa], onClose }));
+  await click(button("Close"));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  expect(mutations.editBooking).not.toHaveBeenCalled();
 });

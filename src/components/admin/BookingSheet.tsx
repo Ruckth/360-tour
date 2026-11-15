@@ -1,17 +1,18 @@
 "use client";
+import { satangToBaht } from "convex/shared/money";
 
-import { roundRatio, satangToBaht } from 'convex/shared/money';
 
+import { Pencil, X } from "lucide-react";
+import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { format } from "date-fns";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,7 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { DeskSheetContent as SheetContent } from "./DeskSheetContent";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,16 +36,15 @@ import { BookingAvailabilityNotice } from "./BookingAvailabilityNotice";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { BookingFinancials } from "./BookingFinancials";
-import { BookingPromotionLine } from "./BookingPromotion";
 import { BookingMarketingSource } from "./BookingMarketingSource";
 import { bookingEditPrice, reviewedPrice, type BookingEditQuote, type BookingEditQuoteState } from "./booking-edit-price";
-import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
-import { BookingHistory } from "./BookingHistory";
+import { bookingPromotion } from "@/lib/booking/coupon";
 import { CancelStayDialog, ReopenBookingDialog } from "./BookingCorrectionDialogs";
 import { NotifyGuestField } from "./BookingMoneyFields";
 import { BookingOrders } from "./BookingOrders";
 import { DisabledReason } from "./DisabledReason";
 import { StatusBadge } from "./StatusBadge";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { formatMoney, sourceLabel } from "./labels";
 import {
   balanceText,
@@ -52,37 +54,46 @@ import {
   notifyDefault,
   parseAmount,
   payLink,
-  paymentText,
   serverTodayIso,
+  staffLabel,
   statusKey,
   type AdminProperty,
 } from "./admin-bookings-shared";
 
+const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-3 py-2 text-sm">
-      <dt className="text-muted-foreground">{label}</dt>
+    <div className="grid min-h-12 grid-cols-[96px_minmax(0,1fr)] items-start gap-3 py-3 text-sm">
+      <dt className="pt-px text-[13px] text-muted-foreground">{label}</dt>
       <dd className="min-w-0 break-words text-foreground">{children}</dd>
     </div>
   );
 }
 
+export type BookingSheetAction = "pay" | "cancel";
+
 export function BookingSheet({
   bookingId,
+  initialAction,
   properties,
   onClose,
 }: {
   bookingId: Id<"bookings"> | null;
+  initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onClose: () => void;
 }) {
   const booking = useQuery(api.bookings.admin.getForAdmin, bookingId ? { bookingId } : "skip");
+  const [dirty, setDirty] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+  const close = async () => { if (await confirmDiscard()) onClose(); };
 
   return (
-    <Sheet open={Boolean(bookingId)} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+    <Sheet open={Boolean(bookingId)} onOpenChange={(open) => { if (!open) void close(); }}>
+      <SheetContent showCloseButton={false} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
+        {booking === undefined || booking === null ? <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" className="absolute right-3 top-3"><X aria-hidden className="size-4" /></Button></SheetClose> : null}
         {booking === undefined ? (
           <div role="status" aria-label="Loading booking" className="grid gap-5">
             <SheetTitle className="sr-only">Booking</SheetTitle>
@@ -102,7 +113,7 @@ export function BookingSheet({
             <SheetDescription>It may have been deleted.</SheetDescription>
           </>
         ) : (
-          <BookingDetails key={booking._id} booking={booking} properties={properties} onDeleted={onClose} />
+          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} onDirtyChange={setDirty} beforeLeave={confirmDiscard} />
         )}
       </SheetContent>
     </Sheet>
@@ -113,12 +124,18 @@ type OpenDialog = "edit" | "cancel" | "reopen" | null;
 
 function BookingDetails({
   booking,
+  initialAction,
   properties,
   onDeleted,
+  onDirtyChange,
+  beforeLeave,
 }: {
   booking: BookingDetail;
+  initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onDeleted: () => void;
+  onDirtyChange: (dirty: boolean) => void;
+  beforeLeave: () => Promise<boolean>;
 }) {
   const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
   const resendBookingEmails = useMutation(api.bookings.commands.resendBookingEmails.resendBookingEmails);
@@ -128,11 +145,19 @@ function BookingDetails({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [dialog, setDialog] = useState<OpenDialog>(null);
+  // This details instance mounts only after the booking loads. Consume a shortcut once,
+  // so later live updates or closing a form never reopen it.
+  const [dialog, setDialog] = useState<OpenDialog>(() =>
+    initialAction === "cancel" && canEditBooking(booking) && !booking.checkoutLive ? "cancel" : null,
+  );
+  const [paymentShortcut] = useState<"pay" | undefined>(() =>
+    initialAction === "pay" && canEditBooking(booking) && !booking.checkoutLive ? "pay" : undefined,
+  );
   const [notes, setNotes] = useState(booking.adminNotes ?? "");
   /** The revision the notes edit started from, so another device's change isn't overwritten. */
   const [notesRevision, setNotesRevision] = useState<number | null>(null);
   const [notesError, setNotesError] = useState("");
+  const [notesNotice, setNotesNotice] = useState("");
 
   const status = hotelStatus(statusKey(booking));
   const editable = canEditBooking(booking);
@@ -144,12 +169,9 @@ function BookingDetails({
     !booking.paidAt &&
     !booking.hasStripePayment &&
     booking.money.gross === 0;
-  const nightly = booking.nights > 0 ? roundRatio(booking.subtotal, booking.nights) : 0;
-  const balance = booking.amountPaid !== undefined ? balanceText(booking.total, booking.amountPaid, booking.currency) : null;
   const notesChanged = notes.trim() !== (booking.adminNotes ?? "");
-  const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Another villa";
-  // Release 2: getForAdmin may return the coupon the stay was priced with.
-  const promotion = bookingPromotion(booking);
+  useEffect(() => { onDirtyChange(notesChanged); return () => onDirtyChange(false); }, [notesChanged, onDirtyChange]);
+  const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? (id === booking.propertyId ? booking.propertyName : "Another villa");
 
   async function act(name: string, run: () => Promise<unknown>, done = "") {
     setPending(name);
@@ -168,10 +190,11 @@ function BookingDetails({
   async function saveNotes() {
     setPending("notes");
     setNotesError("");
+    setNotesNotice("");
     try {
       await updateNotes({ bookingId: booking._id, notes, expectedRevision: notesRevision ?? booking.revision });
       setNotesRevision(null);
-      setNotice("Notes saved.");
+      setNotesNotice("Notes saved.");
     } catch (err) {
       setNotesError(errorText(err, "Could not save the notes."));
     } finally {
@@ -184,9 +207,10 @@ function BookingDetails({
       title: "Delete this booking?",
       description: "Use this for test or duplicate bookings. It is removed and its dates are released. Its last details stay in the booking history.",
       confirmLabel: "Delete booking",
+      cancelLabel: "Keep stay",
       destructive: true,
     });
-    if (!ok) return;
+    if (!ok || !(await beforeLeave())) return;
     setPending("delete");
     setError("");
     try {
@@ -198,6 +222,12 @@ function BookingDetails({
     }
   }
 
+  async function copyReference() {
+    if (!booking.confirmationCode) return;
+    const code = booking.confirmationCode;
+    await act("reference", () => navigator.clipboard.writeText(code), `Copied ${code}.`);
+  }
+
   async function copyPayLink() {
     if (!booking.accessToken) return;
     const link = payLink(booking._id, booking.accessToken);
@@ -206,15 +236,83 @@ function BookingDetails({
 
   return (
     <div className="grid gap-5">
-      <div>
-        <SheetTitle className="pe-8">{booking.guestName}</SheetTitle>
-        <SheetDescription className="mt-2 flex flex-wrap items-center gap-2">
-          <StatusBadge {...status} />
-          {booking.confirmationCode ? <span className="font-mono text-xs">{booking.confirmationCode}</span> : null}
-        </SheetDescription>
+      <header className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="mb-1 text-xs text-muted-foreground">Villa stay</p>
+          <SheetTitle className="text-balance font-serif text-2xl font-semibold">{booking.guestName}</SheetTitle>
+          <SheetDescription className="mt-2 flex flex-wrap items-center gap-2"><StatusBadge {...status} /></SheetDescription>
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {editable ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <Button variant="ghost" size="icon" aria-label="Edit stay" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
+                <Pencil aria-hidden className="size-4" />
+              </Button>
+            </DisabledReason>
+          ) : null}
+          <MoreMenu
+            label="More booking actions"
+            disabled={pending !== null}
+            items={[
+              { label: "Copy pay link", onSelect: () => void copyPayLink(), hidden: !booking.accessToken },
+              { label: "Copy reference", onSelect: () => void copyReference(), hidden: !booking.confirmationCode },
+              {
+                label: "Resend emails",
+                onSelect: () => void act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued."),
+                hidden: booking.status !== "confirmed",
+              },
+              { label: "Cancel stay", onSelect: () => setDialog("cancel"), destructive: true, hidden: !editable, disabled: booking.checkoutLive },
+              { label: "Delete booking", onSelect: () => void remove(), destructive: true, hidden: !deletable },
+            ]}
+          />
+          <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close"><X aria-hidden className="size-4" /></Button></SheetClose>
+        </div>
+      </header>
+
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
+        {editable && booking.status === "pending" ? (
+          <Button
+            variant="outline"
+            onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), booking.notifyByDefault && booking.guestEmail ? "Confirmed. The guest is emailed." : "Confirmed.")}
+            disabled={pending !== null}
+          >
+            {pending === "confirm" ? <Spinner className="text-current" /> : null}
+            Confirm
+          </Button>
+        ) : null}
+        {cancelled ? (
+          <Button variant="outline" onClick={() => setDialog("reopen")} disabled={pending !== null}>
+            Reopen
+          </Button>
+        ) : null}
+        {pending === "resend" || pending === "delete" || pending === "copy" || pending === "reference" ? <Spinner label="Working" /> : null}
+
       </div>
 
-      <dl className="divide-y divide-border border-y border-border">
+      <BookingFinancials
+        booking={booking}
+        initialAction={paymentShortcut}
+        villaName={villaName}
+        beforeTakePayment={beforeLeave}
+        orders={
+          <BookingOrders
+            source={{ bookingId: booking._id }}
+            currency={booking.currency}
+            closed={cancelled || booking.paymentStatus === "failed"}
+            history
+          />
+        }
+      >
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
+      {editable && booking.status === "pending" && booking.historical && booking.guestEmail ? (
+        <p className="text-xs text-muted-foreground">
+          {booking.notifyByDefault ? "Confirming emails the guest." : "Confirming this past stay won’t email the guest."}
+        </p>
+      ) : null}
+      {!editable ? <p className="text-xs text-muted-foreground">Reopen a cancelled booking to change it.</p> : null}
+
+      <Card className="p-4 shadow-none"><dl className="divide-y divide-border">
         <Detail label="Villa">
           {booking.propertyName}
           {booking.propertyStatus !== "active" ? <span className="block text-muted-foreground">Villa is {booking.propertyStatus}</span> : null}
@@ -226,74 +324,32 @@ function BookingDetails({
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
         </Detail>
-        <Detail label="Price">
-          <span className="block text-muted-foreground">
-            {formatMoney(nightly, booking.currency)} × {booking.nights} = {formatMoney(booking.subtotal, booking.currency)}
-          </span>
-          {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
-            line.kind === "coupon" && promotion ? (
-              <span key="coupon" className="block">
-                <BookingPromotionLine promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
-              </span>
-            ) : (
-              <span key="direct" className="block text-muted-foreground">
-                Direct discount −{formatMoney(line.amount, booking.currency)}
-              </span>
-            ),
-          )}
-          {booking.priceOverride ? (
-            <span className="block text-muted-foreground">
-              Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}
-            </span>
-          ) : null}
-          <span className="block font-medium">Total {formatMoney(booking.total, booking.currency)}</span>
-          {booking.amountPaid !== undefined ? (
-            <span className="block text-muted-foreground">Paid {formatMoney(booking.amountPaid, booking.currency)}</span>
-          ) : null}
-          {balance && !cancelled ? <span className={`block font-medium ${balance.tone}`}>{balance.text}</span> : null}
-        </Detail>
-        <Detail label="Payment">
-          {paymentText(booking)}
-          {booking.paidAt ? (
-            <span className="block text-muted-foreground">{format(new Date(booking.paidAt), "d MMM yyyy, HH:mm")}</span>
-          ) : null}
-          {booking.checkoutLive ? <span className="block text-muted-foreground">Guest has a Stripe checkout open</span> : null}
-        </Detail>
-        <Detail label="Orders">
-          <BookingOrders
-            source={{ bookingId: booking._id }}
-            currency={booking.currency}
-            closed={cancelled || booking.paymentStatus === "failed"}
-          />
-        </Detail>
-        <Detail label="Phone">{booking.guestPhone}</Detail>
+        <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">
-          {booking.guestEmail ?? "—"}
+          {booking.guestEmail ? <a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`mailto:${booking.guestEmail}`}>{booking.guestEmail}</a> : "—"}
           {booking.guestEmail && booking.guestEmailsOff ? <span className="block text-muted-foreground">Entered without guest emails</span> : null}
         </Detail>
         <Detail label="Source">
-          <Badge variant="outline">{sourceLabel(booking.source)}</Badge>
+          {sourceLabel(booking.source)}
           <BookingMarketingSource attribution={booking.marketingAttribution} />
         </Detail>
         <Detail label="Created">
-          {format(new Date(booking.createdAt), "d MMM yyyy, HH:mm")}
-          {booking.createdBy ? <span className="block text-muted-foreground">by {booking.createdBy}</span> : null}
+          {staffDateTime(booking.createdAt)}
+          {booking.createdBy ? <span className="block text-muted-foreground">by {staffLabel(booking.createdBy)}</span> : null}
         </Detail>
         {cancelled && booking.cancelledAt ? (
           <Detail label="Cancelled">
-            {format(new Date(booking.cancelledAt), "d MMM yyyy, HH:mm")}
+            {staffDateTime(booking.cancelledAt)}
             <span className="block text-muted-foreground">
-              {booking.cancelledBy ? `by ${booking.cancelledBy}` : ""}
+              {booking.cancelledBy ? `by ${staffLabel(booking.cancelledBy)}` : ""}
               {booking.cancelReason ? ` · ${booking.cancelReason}` : ""}
             </span>
           </Detail>
         ) : null}
-      </dl>
+      </dl></Card>
 
-      <BookingFinancials booking={booking} />
-
-      <div className="grid gap-2">
-        <Label htmlFor="booking-notes">Notes (staff only)</Label>
+      <Card className="grid gap-2 p-4 shadow-none">
+        <Label className="text-[13px] text-muted-foreground" htmlFor="booking-notes">Notes (staff only)</Label>
         <Textarea
           id="booking-notes"
           value={notes}
@@ -301,8 +357,10 @@ function BookingDetails({
           onChange={(event) => {
             if (notesRevision === null) setNotesRevision(booking.revision);
             setNotes(event.target.value);
+            setNotesNotice("");
           }}
-          placeholder="Arrival time, special requests, deposit details…"
+          placeholder="Arrival time, requests…"
+          className="min-h-20 field-sizing-content border-0 bg-muted/40 shadow-none"
         />
         {notesError ? (
           <div className="flex flex-wrap items-center gap-2">
@@ -321,73 +379,14 @@ function BookingDetails({
           </div>
         ) : null}
         {notesChanged ? (
-          <Button size="sm" variant="outline" className="justify-self-start" disabled={pending !== null} onClick={saveNotes}>
+          <Button size="sm" variant="outline" className="justify-self-start text-[13px] pointer-coarse:text-sm" disabled={pending !== null} onClick={saveNotes}>
             {pending === "notes" ? <Spinner className="text-current" /> : null}
             Save notes
           </Button>
         ) : null}
-      </div>
-
-      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
-
-      <div className="flex flex-wrap gap-2">
-        {editable && booking.status === "pending" ? (
-          <Button
-            onClick={() => act("confirm", () => updateBooking({ bookingId: booking._id, action: "confirm", expectedRevision: booking.revision }), booking.notifyByDefault && booking.guestEmail ? "Confirmed. The guest is emailed." : "Confirmed.")}
-            disabled={pending !== null}
-          >
-            {pending === "confirm" ? <Spinner className="text-current" /> : null}
-            Confirm
-          </Button>
-        ) : null}
-        {editable ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button variant="outline" onClick={() => setDialog("edit")} disabled={pending !== null || booking.checkoutLive}>
-              Edit
-            </Button>
-          </DisabledReason>
-        ) : null}
-        {booking.accessToken ? (
-          <Button variant="outline" onClick={copyPayLink} disabled={pending !== null}>
-            Copy pay link
-          </Button>
-        ) : null}
-        {booking.status === "confirmed" ? (
-          <Button
-            variant="outline"
-            onClick={() => act("resend", () => resendBookingEmails({ bookingId: booking._id }), "Confirmation emails queued.")}
-            disabled={pending !== null}
-          >
-            {pending === "resend" ? <Spinner className="text-current" /> : null}
-            Resend emails
-          </Button>
-        ) : null}
-        {editable ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button variant="outline" onClick={() => setDialog("cancel")} disabled={pending !== null || booking.checkoutLive}>
-              Cancel booking
-            </Button>
-          </DisabledReason>
-        ) : null}
-        {cancelled ? (
-          <Button variant="outline" onClick={() => setDialog("reopen")} disabled={pending !== null}>
-            Reopen
-          </Button>
-        ) : null}
-        {deletable ? (
-          <Button variant="ghost" className="text-destructive" onClick={remove} disabled={pending !== null}>
-            {pending === "delete" ? <Spinner className="text-current" /> : null}
-            Delete
-          </Button>
-        ) : null}
-      </div>
-      {booking.historical && booking.status !== "cancelled" && booking.guestEmail ? (
-        <p className="text-xs text-muted-foreground">This stay started in the past: confirming, editing and cancelling don’t email the guest unless you choose to.</p>
-      ) : null}
-      {!editable ? <p className="text-xs text-muted-foreground">Cancelled bookings are read-only. Reopen one to change it.</p> : null}
-
-      <BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName} />
+        {notesNotice ? <p role="status" className="text-sm text-muted-foreground">{notesNotice}</p> : null}
+      </Card>
+      </BookingFinancials>
 
       {dialog === "edit" ? <EditBookingDialog booking={booking} properties={properties} onClose={() => setDialog(null)} /> : null}
       {dialog === "cancel" ? <CancelStayDialog booking={booking} onClose={() => setDialog(null)} /> : null}
@@ -407,6 +406,7 @@ export function EditBookingDialog({
 }) {
   const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
   /** The revision this edit was reviewed against; a change made meanwhile is refused, not overwritten. */
+  const [original] = useState(booking);
   const [revision] = useState(booking.revision);
   const [propertyId, setPropertyId] = useState<string>(booking.propertyId);
   const [dates, setDates] = useState({ checkIn: booking.checkIn, checkOut: booking.checkOut });
@@ -421,6 +421,10 @@ export function EditBookingDialog({
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const dirty = propertyId !== original.propertyId || dates.checkIn !== original.checkIn || dates.checkOut !== original.checkOut || guests !== String(original.guests) || guestName !== original.guestName || guestPhone !== original.guestPhone || guestEmail !== (original.guestEmail ?? "") || custom !== Boolean(original.priceOverride) || customTotal !== String(satangToBaht(original.priceOverride?.total ?? original.total)) || customReason !== (original.priceOverride?.reason ?? "") || Boolean(villaReason) || notifyChoice !== null;
+  const { confirmDiscard } = useUnsavedGuard(dirty);
+  const close = async () => { if (!saving && await confirmDiscard()) onClose(); };
 
   const historicalStay = dates.checkIn < serverTodayIso();
   // Archived villas are offered only to record a stay that started in the past.
@@ -496,15 +500,16 @@ export function EditBookingDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(open) => (open || saving ? undefined : onClose())}>
+    <Dialog open onOpenChange={(open) => (open || saving ? undefined : void close())}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Edit booking</DialogTitle>
+          <DialogTitle className="font-serif text-2xl font-semibold">Edit booking</DialogTitle>
           <DialogDescription>
             Changing the villa or dates recalculates the price, with the booking’s coupon if it still applies, unless you set a custom price.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="grid min-w-0 gap-4">
+          <fieldset disabled={saving} className="m-0 grid min-w-0 gap-4 border-0 p-0">
           <div className="grid gap-2">
             <Label id="edit-villa-label" htmlFor="edit-villa">Villa</Label>
             <VillaPicker id="edit-villa" labelId="edit-villa-label" properties={villas} value={propertyId} onChange={setPropertyId} disabled={saving} />
@@ -523,6 +528,7 @@ export function EditBookingDialog({
             unavailableDates={availability.blockedDates}
             onMonthChange={availability.onMonthChange}
             markPastUnavailable
+            clearable={false}
           />
           <BookingAvailabilityNotice {...availability} />
           {conflicts ? (
@@ -556,10 +562,10 @@ export function EditBookingDialog({
           </div>
 
           <div className="grid gap-3 rounded-lg border border-border p-3">
-            <label htmlFor="eb-custom" className="flex items-center gap-2 text-sm font-medium">
-              <input id="eb-custom" type="checkbox" className="size-4 accent-foreground" checked={custom} onChange={(e) => setCustom(e.target.checked)} />
+            <button id="eb-custom" type="button" role="switch" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex min-h-12 items-center justify-between rounded-md text-sm font-medium focus-visible:ring-2 focus-visible:ring-ring">
               Custom price
-            </label>
+              <span aria-hidden className={`flex h-6 w-10 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
+            </button>
             {custom ? (
               <>
                 <div className="grid gap-2">
@@ -613,7 +619,7 @@ export function EditBookingDialog({
               <p className="mt-1 text-muted-foreground">
                 Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
                 {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
-                {balance && newTotal < booking.amountPaid ? " Record the refund from Payments once you give it back." : ""}
+                {balance && newTotal < booking.amountPaid ? " Record the refund once you give it back." : ""}
               </p>
             ) : null}
           </div>
@@ -625,14 +631,12 @@ export function EditBookingDialog({
           {customProblem ? <p className={cn("text-sm text-destructive")}>{customProblem}</p> : null}
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
-              Close
-            </Button>
             <Button type="submit" disabled={saving || !availability.canSubmit || Boolean(customProblem) || priceBlocked || (archivedVilla && !villaReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
               Save changes
             </Button>
           </DialogFooter>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

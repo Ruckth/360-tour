@@ -5,18 +5,18 @@ async function open(page: import('@playwright/test').Page, query = '') {
   await page.goto(`/tests/browser/checkout.html${query}`);
   await page.locator('[data-fixture-ready]').waitFor();
 }
-test('direct discard keeps the selected order read only and restores it through Discarded', async ({ page }) => {
+test('discard from the order\'s ⋯ asks first, keeps the order read only and restores it through Discarded', async ({ page }) => {
   await open(page, '?lines=1');
-  await page.getByRole('button', { name: 'Orders', exact: true }).click();
+  const order = page.getByRole('complementary', { name: 'Order', exact: true });
+  await order.getByRole('button', { name: 'More order actions' }).click();
+  await page.getByRole('menuitem', { name: 'Discard order…' }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm.getByRole('heading', { name: /^Discard order #\d+\?$/ })).toBeVisible();
+  await confirm.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(order.getByText(/^Read only\./)).toBeVisible();
   const dialog = page.getByRole('dialog');
-  const selected = dialog.locator('li').filter({ has: page.locator('[aria-current="true"]') });
-  await selected.getByRole('button', { name: /^Discard Order/ }).click();
-  await expect(dialog.getByText(/discarded\. Contents/)).toBeVisible();
-  await dialog.getByRole('button', { name: 'Back to orders' }).click();
-  await dialog.getByRole('radio', { name: 'Discarded', exact: true }).click();
-  await dialog.locator('[aria-current="true"]').click();
-  await expect(page.getByRole('complementary', { name: 'Order', exact: true }).getByText(/^Read only\./)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add booking', exact: true })).toBeDisabled();
   await expect(page.getByRole("complementary", { name: "Order", exact: true }).locator("li").filter({ has: page.locator("p.font-medium") }).getByText(/^Layout check item 1/)).toBeVisible();
   await page.getByRole('button', { name: 'Orders', exact: true }).click();
@@ -24,7 +24,7 @@ test('direct discard keeps the selected order read only and restores it through 
   await dialog.getByRole('button', { name: /^Restore Order/ }).click();
   await dialog.getByRole('button', { name: 'Restore order', exact: true }).click();
   await dialog.getByRole('button', { name: 'Open restored order' }).click();
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeEnabled();
 });
 test('restore reviews competing sources and removes only explicitly selected conflicts', async ({ page }) => {
   await open(page, '?scenario=source-conflict');
@@ -38,7 +38,7 @@ test('restore reviews competing sources and removes only explicitly selected con
   const order = page.getByRole('complementary', { name: 'Order', exact: true });
   await expect(order.getByRole('button', { name: /^Retained tea/ })).toBeVisible();
   await expect(order.getByRole('button', { name: /^Thai massage 90/ })).toHaveCount(0);
-  await order.getByText('Order history', { exact: true }).click();
+  await order.getByText('History', { exact: true }).click();
   await expect(order.getByText(/Taken off when restoring/)).toBeVisible();
 });
 test('fee rows state service was not given and cannot change quantity or price', async ({ page }) => {
@@ -54,10 +54,12 @@ test('fee rows state service was not given and cannot change quantity or price',
 test('receipt pages older financial amendments while preserving the original tender', async ({ page }) => {
   await open(page, '?scenario=history');
   await expect(page.locator('.pos-receipt')).toContainText('Card');
-  await page.getByText('Browse all financial history', { exact: true }).click();
-  const ledger = page.getByRole('region', { name: 'All payment amendments', exact: true });
+  const history = page.getByTestId('receipt-history');
+  await history.getByText('History', { exact: true }).click();
+  await history.getByRole('tab', { name: 'Payments' }).click();
+  const ledger = page.getByRole('region', { name: 'Payment corrections', exact: true });
   await expect(ledger.locator('li')).toHaveCount(20);
-  await ledger.getByRole('button', { name: 'Load older payment amendments' }).click();
+  await ledger.getByRole('button', { name: 'Load older payment corrections' }).click();
   await expect(ledger.locator('li')).toHaveCount(26);
   await expect(ledger).toContainText('Tender correction 1');
   await expect(page.locator('.pos-receipt')).toContainText('Card');
@@ -67,34 +69,39 @@ test('a service row takes an optional date and time, each cleared on its own, an
   await open(page, '?scenario=unscheduled');
   const order = page.getByRole('complementary', { name: 'Order', exact: true });
   await order.getByRole('button', { name: /^Thai massage 90/ }).click();
+  // Therapist, date and time fold into one Schedule row.
+  await order.getByRole('button', { name: /^Schedule/ }).click();
   await expect(order.getByText('Date (optional)', { exact: true })).toBeVisible();
   await expect(order.getByText('Time (optional)', { exact: true })).toBeVisible();
   await expect(order.getByRole('button', { name: 'Now', exact: true })).toHaveCount(0);
-  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  const schedule = order.getByRole('button', { name: /^Schedule/ });
+  await expect(schedule).toContainText('Any therapist · Not scheduled');
   await order.getByLabel('Service time').fill('15:45');
-  await expect(order.getByText(/15:45 · date not set/)).toBeVisible();
+  await expect(schedule).toContainText('15:45 · date not set');
   await order.getByRole('button', { name: 'Clear service time' }).click();
-  await expect(order.getByText(/Not scheduled/)).toBeVisible();
+  await expect(schedule).toContainText('Not scheduled');
   await expect(order.getByLabel('Service time')).toHaveValue('');
-  await expect(page.getByRole('button', { name: 'Cash', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^Cash(?: ฿[\d,.]+)?$/, exact: true })).toBeEnabled();
 });
 test('a paid unscheduled service is linked to its appointment from the receipt, which stays as issued', async ({ page }) => {
   await open(page, '?scenario=unscheduled-paid');
   const receipt = page.locator('.pos-receipt');
-  await expect(receipt).toContainText('To be scheduled');
+  await expect(receipt).not.toContainText('Not scheduled');
+  await expect(page.getByTestId('receipt-items')).toContainText('Not scheduled');
   // What prints: screen-only controls (a line's Refund, which a linked row loses) are left out.
   const printed = () => receipt.evaluate((el) => { const paper = el.cloneNode(true) as HTMLElement; paper.querySelectorAll('[data-screen-only]').forEach((node) => node.remove()); return paper.textContent; });
   const issued = await printed();
-  const after = page.getByRole('region', { name: 'After payment', exact: true });
-  await expect(after).toContainText('1 to link to an appointment');
-  await after.getByRole('button', { name: 'Link appointment' }).click();
+  // Link sits on the receipt line; the only matching appointment opens straight on its review.
+  await page.getByTestId('receipt-items').getByRole('button', { name: 'Link appointment' }).click();
   const dialog = page.getByRole('dialog');
-  await dialog.getByTestId('link-candidate').filter({ hasText: 'SVC-0002' }).getByRole('button', { name: 'Review' }).click();
-  await expect(dialog.getByTestId('link-review')).toContainText('No new payment is taken');
+  await expect(dialog.getByTestId('link-review')).toContainText('Appointment: unpaid ฿1,600 → paid ฿1,600 by Order #1043');
   await expect(dialog.getByRole('button', { name: 'Confirm link' })).toBeDisabled();
-  await dialog.getByLabel('Reason (required)').fill('Guest booked the prepaid massage');
+  await dialog.getByRole('textbox', { name: 'Reason' }).fill('Guest booked the prepaid massage');
   await dialog.getByRole('button', { name: 'Confirm link' }).click();
-  await expect(after).toContainText('Linked · SVC-0002');
-  await expect(page.getByText('Row linked after payment · #1')).toBeVisible();
+  await expect(page.getByTestId('receipt-items').getByTestId('line-link')).toHaveText('Linked · SVC-0002');
+  const history = page.getByTestId('receipt-history');
+  await history.getByText('History', { exact: true }).click();
+  await history.getByRole('tab', { name: 'Payments' }).click();
+  await expect(history.getByText('Row linked after payment · #1', { exact: true })).toBeVisible();
   expect(await printed()).toBe(issued);
 });

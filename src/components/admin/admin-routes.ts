@@ -78,7 +78,7 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
       keywords: STAFF_TAB_KEYWORDS[tab],
     })),
   },
-  { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt"] },
+  { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt", "till", "bill"] },
   { href: "/admin/questions", label: "Business facts", shortLabel: "Facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },
@@ -96,8 +96,8 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
   },
 ];
 
-/** The sections on the phone tab bar, besides Search and Menu: the ones staff use all day. */
-export const ADMIN_TAB_BAR: readonly AdminNavItem[] = ["/admin/chats", "/admin/hotel", "/admin/staff/calendar"].map(
+/** The sections on the phone tab bar, besides Menu: the ones staff use all day. Search is in Menu. */
+export const ADMIN_TAB_BAR: readonly AdminNavItem[] = ["/admin/chats", "/admin/hotel", "/admin/staff/calendar", "/admin/checkout"].map(
   (href) => ADMIN_NAV.find((item) => item.href === href)!,
 );
 

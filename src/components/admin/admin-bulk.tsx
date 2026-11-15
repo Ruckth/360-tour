@@ -1,11 +1,10 @@
 "use client";
 
-import { Search, Undo2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Search, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 
 /** Checkbox selection over the rows currently on screen. Keys that scroll out of view are dropped. */
 export function useSelection(visibleKeys: string[]) {
@@ -47,6 +46,7 @@ export function SelectCheckbox({
     if (ref.current) ref.current.indeterminate = indeterminate;
   }, [indeterminate]);
   return (
+    <label className="inline-flex size-11 cursor-pointer items-center justify-center rounded focus-within:ring-2 focus-within:ring-ring">
     <input
       ref={ref}
       type="checkbox"
@@ -55,6 +55,7 @@ export function SelectCheckbox({
       onChange={onChange}
       aria-label={label}
     />
+    </label>
   );
 }
 
@@ -87,68 +88,6 @@ export function BulkActionBar({
       </Button>
     </div>
   );
-}
-
-type UndoState = { message: string; undo?: () => Promise<unknown>; id: number };
-const UNDO_TIMEOUT_MS = 8000;
-
-/** "Done · Undo" notice for reversible bulk actions, shown instead of a confirm dialog. */
-export function useUndoNotice() {
-  const [state, setState] = useState<UndoState | null>(null);
-  const [undoing, setUndoing] = useState(false);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!state) return;
-    const timeout = window.setTimeout(() => setState((current) => (current?.id === state.id ? null : current)), UNDO_TIMEOUT_MS);
-    return () => window.clearTimeout(timeout);
-  }, [state]);
-
-  const show = useCallback((message: string, undo?: () => Promise<unknown>) => {
-    setError("");
-    setState({ message, undo, id: Date.now() });
-  }, []);
-
-  async function runUndo() {
-    if (!state?.undo) return;
-    setUndoing(true);
-    try {
-      await state.undo();
-      setState(null);
-    } catch (undoError) {
-      setError(undoError instanceof Error ? undoError.message : "Unable to undo.");
-    } finally {
-      setUndoing(false);
-    }
-  }
-
-  const element =
-    state || error ? (
-      <div role="status" className="flex flex-wrap items-center gap-3 border-b border-border bg-gold/10 px-4 py-2 text-sm">
-        <span className="text-foreground">{error || state?.message}</span>
-        {state?.undo && !error ? (
-          <Button type="button" size="sm" variant="outline" disabled={undoing} onClick={() => void runUndo()}>
-            {undoing ? <Spinner label="Undoing" className="text-current" /> : <Undo2 className="h-4 w-4" />}
-            Undo
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          className="ml-auto h-7 w-7"
-          aria-label="Dismiss notice"
-          onClick={() => {
-            setState(null);
-            setError("");
-          }}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
-    ) : null;
-
-  return { show, element };
 }
 
 export function useDebounced<T>(value: T, delay = 250) {
@@ -207,9 +146,9 @@ export function EmptyState({ children, action }: { children: ReactNode; action?:
 }
 
 /** Search field for list toolbars; grows to fill the space left of the filters. */
-export function SearchBox({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+export function SearchBox({ value, onChange, label, placeholder = label, className = "" }: { value: string; onChange: (value: string) => void; label: string; placeholder?: string; className?: string }) {
   return (
-    <div className="relative min-w-[14rem] flex-1">
+    <div className={`relative min-w-[14rem] flex-1 ${className}`}>
       <Search
         aria-hidden="true"
         className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
@@ -218,7 +157,7 @@ export function SearchBox({ value, onChange, label }: { value: string; onChange:
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder={label}
+        placeholder={placeholder}
         aria-label={label}
         className="h-9 pl-9"
       />

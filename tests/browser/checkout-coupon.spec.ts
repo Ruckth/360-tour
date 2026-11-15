@@ -81,7 +81,7 @@ for (const theme of ["light", "dark"] as const) {
       await open(page, width, "coupon-soldout", theme);
       panel = await orderPanel(page, width);
       await panel.getByRole("button", { name: "Card", exact: true }).click();
-      await panel.getByRole("button", { name: /^Confirm .* received$/ }).click();
+      await panel.getByRole("button", { name: /^Confirm ฿[\d,.]+ card$/ }).click();
       const refused = panel.getByTestId("pay-coupon-problem");
       await expect(refused).toContainText("Payment not recorded.");
       await expectInside(refused, panel, "refused at payment");
@@ -107,7 +107,8 @@ test("a stay priced with its own coupon says so and keeps its price", async ({ p
 
 test("the receipt prints the coupon on 58 mm paper", async ({ page }) => {
   await open(page, 1180, "coupon-paid", "light");
-  await page.getByRole("radio", { name: "58 mm" }).click();
+  await page.getByRole("button", { name: "More receipt actions" }).click();
+  await page.getByRole("menuitem", { name: "Use 58 mm paper" }).click();
   await page.emulateMedia({ media: "print" });
   const receipt = page.locator("article.pos-receipt");
   await expect(receipt.getByTestId("receipt-line-coupon")).toHaveCount(2);

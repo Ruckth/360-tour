@@ -353,7 +353,7 @@ export async function linkFirstSource(ctx: MutationCtx, order: Order, source: Or
 }
 
 /** Charges a booking or appointment on the order. Customer and guest details are left alone. */
-export async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor) {
+async function prepareAttach(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor) {
 	await assertRoom(ctx, order._id);
 	let line: LineFields;
 	let appointment: Doc<'appointments'> | undefined;
@@ -377,10 +377,23 @@ export async function attachTo(ctx: MutationCtx, order: Order, source: OrderSour
 	}
 	// Only this new source line is subject to the cashier ceiling; approved existing rows stay usable.
 	await assertCashierDiscount(ctx, actor, line);
+	return { line, appointment };
+}
+
+/** Skip only pre-write string refusals. Errors after the first write abort the transaction. */
+export async function attachTo(ctx: MutationCtx, order: Order, source: OrderSource, actor: StaffActor, skipUnavailable = false) {
+  let prepared: Awaited<ReturnType<typeof prepareAttach>>;
+  try { prepared = await prepareAttach(ctx, order, source, actor); }
+  catch (error) {
+    if (skipUnavailable && error instanceof ConvexError && typeof error.data === 'string') return error.data;
+    throw error;
+  }
+  const { line, appointment } = prepared;
 	const lineId = await ctx.db.insert('orderLines', { orderId: order._id, ...line, catalogUnitPrice: line.catalogUnitPrice ?? line.unitPrice, createdAt: Date.now() });
 	await linkFirstSource(ctx, order, source, appointment);
 	await refreshOrder(ctx, order._id);
 	await logOrder(ctx, order._id, actor.email, 'source_attached', { after: { ...lineSnapshot(line), lineId } });
+	return null;
 }
 
 /** The newest paid order for a source, which a later charge on it follows. */

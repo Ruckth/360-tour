@@ -7,7 +7,6 @@ import type { Id } from "convex/_generated/dataModel";
 import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { MarketingAccessGate, MarketingAccessProvider, useMarketingAccess, type MarketingAccess, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
-import { MarketingAccessScreen } from "@/components/admin/marketing/MarketingAccessScreen";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
 import { LinkEditor } from "@/components/admin/marketing/LinkEditor";
 import { LinksView } from "@/components/admin/marketing/LinksView";
@@ -69,18 +68,18 @@ const campaigns = (status: CampaignRow["status"] = "draft") => createElement(Cam
 it("lets marketers save drafts without budget or publishing controls and inspect live campaigns read-only", async () => {
   campaignActions.saveCampaign.mockClear();
   await render(campaigns(), "marketer"); await click(button("Campaign"));
-  expect(button("Start")).toBeUndefined(); expect(button("Save changes")).toBeDefined();
+  expect(button("Start")).toBeUndefined(); expect(button("Save")).toBeDefined();
   expect(document.querySelector<HTMLInputElement>('input[placeholder="Not set"]')!.disabled).toBe(true);
-  await click(button("Save changes")); expect(campaignActions.saveCampaign).toHaveBeenCalledOnce(); expect(campaignActions.saveCampaign.mock.calls[0][0]).not.toHaveProperty("budget");
+  await click(button("Save")); expect(campaignActions.saveCampaign).toHaveBeenCalledOnce(); expect(campaignActions.saveCampaign.mock.calls[0][0]).not.toHaveProperty("budget");
   await render(campaigns("active"), "marketer"); await click(button("Campaign"));
-  expect(button("Save changes")).toBeUndefined(); expect(button("Pause")).toBeUndefined(); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("edit drafts only");
+  expect(button("Save")).toBeUndefined(); expect(button("Pause")).toBeUndefined(); expect(document.querySelector('[role="dialog"]')?.textContent).toContain("edit drafts only");
 });
 
 it.each(["viewer", "finance"] as const)("lets %s inspect campaigns and hides all draft creation controls", async role => {
-  await render(campaigns(), role); expect(button("New campaign")).toBeUndefined(); await click(button("Campaign")); expect(button("Save changes")).toBeUndefined(); expect(button("Start")).toBeUndefined();
+  await render(campaigns(), role); expect(button("New campaign")).toBeUndefined(); await click(button("Campaign")); expect(button("Save")).toBeUndefined(); expect(button("Start")).toBeUndefined();
   await render(createElement(LinksView, { links: [], campaigns: [], coupons: [], properties: [], origin: "https://example.com", brand: "Resort", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn() } }), role); expect(button("New link")).toBeUndefined(); expect(document.body.textContent).toContain("No short links yet");
   await render(createElement(CouponsView, { coupons: [], campaigns: [], properties: [], today: "2026-11-09", couponHref: () => "/c", newCouponHref: "/c/new" }), role); expect(document.querySelector('a[href="/c/new"]')).toBeNull();
-  await render(createElement(CouponEditor, { isNew: true, coupons: [], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn() } }), role); expect(button("Create coupon")).toBeUndefined(); expect(document.body.textContent).toContain("requires draft access");
+  await render(createElement(CouponEditor, { isNew: true, coupons: [], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", origin: "https://example.com", brand: "Resort", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn(), saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn(), saveCampaign: vi.fn() } }), role); expect(button("Save & publish")).toBeUndefined(); expect(button("Save draft")).toBeUndefined(); expect(document.body.textContent).toContain("requires draft access");
 });
 
 it.each(["viewer", "marketer", "finance", "manager"] as const)("shows spend editing only to permitted roles (%s)", async role => {
@@ -91,17 +90,9 @@ it.each(["viewer", "marketer", "finance", "manager"] as const)("shows spend edit
   expect(!!document.querySelector('[role="dialog"]')).toBe(role === "finance" || role === "manager");
 });
 
-it("hides Access navigation and avoids the grants query for role-only users", async () => {
-  await render(createElement(MarketingSectionNav, null, createElement(MarketingAccessScreen)), "manager");
+it.each(["manager", "admin"] as const)("links no Access page for %s: Marketing roles are set on Settings › Team", async role => {
+  await render(createElement(MarketingSectionNav, null, null), role);
   expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketing/access:listGrants")).toBe(false);
-});
-
-it("creates invitations without sending messages and displays mutation errors", async () => {
-  await render(createElement(MarketingAccessScreen), "admin");
-  await type(document.querySelector<HTMLInputElement>("#marketing-invite-email")!, "friend@example.com");
-  mocked.mutate.mockRejectedValueOnce(new Error("Could not save role"));
-  await click(button("Create invitation")); expect(document.querySelector('[role="alert"]')?.textContent).toContain("Could not save role");
-  await click(button("Create invitation")); expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" }); expect(document.body.textContent).toContain("No email is sent");
 });
 
 
@@ -112,9 +103,9 @@ it.each([
   { role: "finance", status: "active", editable: false },
 ] as const)("gives $role the appropriate $status coupon controls and a read-only usage ledger", async ({ role, status, editable }) => {
   const couponId = "coupon" as Id<"coupons">;
-  const rules: CouponDetail["rules"] = { _id: "version" as Id<"couponVersions">, _creationTime: 0, couponId, version: 1, benefit: { kind: "fixed", amount: 50000 }, scope: "services", createdAt: 0, createdByEmail: "admin@example.com" };
-  const detail: CouponDetail = { _id: couponId, _creationTime: 0, code: "SERVICE500", status, currentVersion: 1, used: 1, discountGranted: 50000, createdAt: 0, updatedAt: 0, updatedByEmail: "admin@example.com", rules, versions: [rules], links: [], redemptions: [{ _id: "redemption" as Id<"couponRedemptions">, _creationTime: 0, couponId, couponVersion: 1, code: "SERVICE500", state: "consumed", discount: 50000, createdAt: 0, updatedAt: 0, order: { orderId: "order" as Id<"orders">, title: "Order #1", receiptNumber: "R-000001", customerName: "Guest" } }] };
-  await render(createElement(CouponEditor, { detail, isNew: false, coupons: [detail], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn() } }), role);
+  const rules: CouponDetail["rules"] = { _id: "version" as Id<"couponVersions">, _creationTime: 0, couponId, version: 1, benefit: { kind: "fixed", amount: 500 }, scope: "services", createdAt: 0, createdByEmail: "admin@example.com" };
+  const detail: CouponDetail = { _id: couponId, _creationTime: 0, code: "SERVICE500", status, currentVersion: 1, used: 1, discountGranted: 500, createdAt: 0, updatedAt: 0, updatedByEmail: "admin@example.com", rules, versions: [rules], links: [], redemptions: [{ _id: "redemption" as Id<"couponRedemptions">, _creationTime: 0, couponId, couponVersion: 1, code: "SERVICE500", state: "consumed", discount: 500, createdAt: 0, updatedAt: 0, order: { orderId: "order" as Id<"orders">, title: "Order #1", receiptNumber: "R-000001", customerName: "Guest" } }] };
+  await render(createElement(CouponEditor, { detail, isNew: false, coupons: [detail], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", origin: "https://example.com", brand: "Resort", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn(), saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn(), saveCampaign: vi.fn() } }), role);
   expect(!!button("Save")).toBe(editable);
   expect(button("Publish")).toBeUndefined(); expect(button("Pause")).toBeUndefined();
   expect(document.querySelector('a[href^="/admin/receipt/"]')).toBeNull();
@@ -134,7 +125,7 @@ it("preserves an affiliate alias association when a manager saves details", asyn
   const alias: LinkRow = { ...partnerLink, slug: "anna-extra", shortUrlPath: "/anna-extra", status: "draft" };
   const saveLink = vi.fn<MarketingActions["saveLink"]>().mockResolvedValue(alias._id);
   await render(createElement(LinkEditor, { link: alias, links: [alias], campaigns: [campaign], coupons: [], properties: [], origin: "https://example.com", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink, checkSlug: vi.fn() }, onDone() {}, onCancel() {}, onDuplicate() {} }), "manager");
-  await click(button("Save changes")); expect(saveLink).toHaveBeenCalledWith(expect.objectContaining({ linkId: alias._id, affiliateId: alias.affiliateId }));
+  await click(button("Save")); expect(saveLink).toHaveBeenCalledWith(expect.objectContaining({ linkId: alias._id, affiliateId: alias.affiliateId }));
 });
 it("copies a partner alias as an explicit ordinary draft for marketers", async () => {
   const saveLink = vi.fn<MarketingActions["saveLink"]>().mockResolvedValue("copy" as Id<"marketingLinks">);
@@ -144,17 +135,4 @@ it("copies a partner alias as an explicit ordinary draft for marketers", async (
   await type(document.querySelector<HTMLInputElement>('input[placeholder="f2"]')!, "anna-copy");
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 400)); });
   await click(button("Create link")); expect(saveLink).toHaveBeenCalledOnce(); expect(saveLink.mock.calls[0][0]).not.toHaveProperty("affiliateId");
-});
-
-
-it("shows expired invitations and lets administrators refresh them", async () => {
-  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", expiresAt: 0, expired: true }];
-  await render(createElement(MarketingAccessScreen), "admin");
-  expect(document.body.textContent).toContain("Expired");
-  await click(button("Renew invitation"));
-  expect(mocked.mutate).toHaveBeenLastCalledWith({ email: "friend@example.com", role: "viewer" });
-  mocked.grants = [{ _id: "invite", email: "friend@example.com", role: "viewer", tokenIdentifier: "friend", expiresAt: null, expired: false }];
-  await render(createElement(MarketingAccessScreen), "admin");
-  expect(document.body.textContent).toContain("Access activated");
-  expect(button("Renew invitation")).toBeUndefined();
 });

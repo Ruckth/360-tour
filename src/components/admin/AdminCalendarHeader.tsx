@@ -1,6 +1,7 @@
 "use client";
 
-import { CalendarDays, ChevronDown } from "lucide-react";
+import { format } from "date-fns";
+import { ChevronDown, SearchIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   useEventCalendarNavigation,
@@ -15,65 +16,118 @@ import {
   EventCalendarTitle,
 } from "@/components/reui/event-calendar/event-calendar-nav";
 import { TooltipProvider } from "@/components/reui/ui/tooltip";
-import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toZoned } from "@/components/reui/event-calendar/event-calendar-lib";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-/** Every toolbar control is h-9, matching `Button size="sm"` in the page's own filters and actions. */
-const TOOLBAR = "flex flex-wrap items-center gap-2 px-4 py-3";
-
-/**
- * Shared admin calendar header. Row 1: Today, prev/next, the period title (click to jump
- * to any date) and the view buttons. Row 2: the page's filters (left) and actions (right),
- * wrapping on small screens instead of squeezing the navigation.
- */
-export function AdminCalendarHeader({ children }: { children?: ReactNode }) {
+/** Phones get date navigation and a compact view picker; tablets share the segmented header. */
+export function AdminCalendarHeader({
+  children,
+  compact = false,
+  primaryAction,
+}: {
+  children?: ReactNode;
+  compact?: boolean;
+  primaryAction?: ReactNode;
+}) {
   const { view, dayCount, availableViews, setView } = useEventCalendarView();
-  const { title } = useEventCalendarNavigation();
-  const { i18n } = useEventCalendarSettings();
-
+  const { title, date } = useEventCalendarNavigation();
+  const { i18n, timeZone } = useEventCalendarSettings();
+  const shortTitle = format(toZoned(date, timeZone), compact ? "MMM yyyy" : "d MMM");
+  const viewName = (option: (typeof availableViews)[number]) =>
+    option === "days" ? i18n.viewNames.days(dayCount) : i18n.viewNames[option];
+  const picker = (
+    <EventCalendarDatePicker
+      aria-label={`${shortTitle}, ${title}, ${i18n.labels.goToDate.toLowerCase()}`}
+      showToday
+      className="h-9 w-auto min-w-0 shrink-0 gap-1 px-1 pointer-coarse:min-h-11"
+    >
+      <span className="text-[13px] font-semibold sm:hidden">{shortTitle}</span>
+      <EventCalendarTitle render={<span />} className="hidden text-[15px] font-semibold sm:inline" />
+      <ChevronDown aria-hidden className="size-3 shrink-0" />
+    </EventCalendarDatePicker>
+  );
+  const mobileView = (
+    <Select value={view} onValueChange={(next) => setView(next as typeof view)}>
+      <SelectTrigger
+        aria-label="Calendar view"
+        className="h-9 w-auto gap-1 rounded-full px-2 text-sm pointer-coarse:min-h-11"
+      >
+        <SelectValue>{viewName(view)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {availableViews.map((option) => (
+          <SelectItem key={option} value={option}>
+            {viewName(option)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-border [&_button]:text-[13px] pointer-coarse:[&_button]:text-sm" data-testid="calendar-toolbar">
       <TooltipProvider delay={400}>
-        <div className={TOOLBAR}>
-          <div className="flex items-center gap-1">
-            <EventCalendarNavToday className="h-9 px-3 text-xs font-semibold" />
-            <EventCalendarNavPrev className="size-9" />
-            <EventCalendarNavNext className="size-9" />
-          </div>
-          <EventCalendarDatePicker
-            aria-label={`${title}, ${i18n.labels.goToDate.toLowerCase()}`}
-            className="h-9 w-auto max-w-full min-w-0 gap-1.5 px-2.5 font-semibold"
+        <div className="hidden flex-wrap items-center gap-2 px-4 py-3 sm:flex">
+          <EventCalendarNavToday className="h-9 px-3 pointer-coarse:min-h-11" />
+          <EventCalendarNavPrev className="size-9 pointer-coarse:size-11" />
+          {picker}
+          <EventCalendarNavNext className="size-9 pointer-coarse:size-11" />
+          <ToggleGroup
+            variant="segmented"
+            tone="subtle"
+            value={view}
+            onValueChange={setView}
+            aria-label="Calendar view"
+            className="ms-auto p-0.5"
           >
-            <CalendarDays aria-hidden className="size-4 shrink-0 text-gold-text" />
-            <EventCalendarTitle render={<span />} className="text-sm" />
-            <ChevronDown aria-hidden className="size-3.5 shrink-0 opacity-60" />
-          </EventCalendarDatePicker>
-          {availableViews.length > 1 ? (
-            <div
-              role="group"
-              aria-label="Calendar view"
-              className="flex min-h-9 w-full rounded-lg border border-border bg-muted p-1 sm:ms-auto sm:w-auto"
-            >
-              {availableViews.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={view === option}
-                  onClick={() => setView(option)}
-                  className={cn(
-                    "min-h-9 flex-1 rounded-md px-3 text-xs font-semibold whitespace-nowrap text-muted-foreground transition outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-none",
-                    view === option ? "bg-card text-foreground shadow-sm ring-1 ring-border" : "hover:text-foreground",
-                  )}
-                >
-                  {option === "days" ? i18n.viewNames.days(dayCount) : i18n.viewNames[option]}
-                </button>
-              ))}
-            </div>
-          ) : null}
+            {availableViews.map((option) => (
+              <ToggleGroupItem key={option} value={option} className="h-9! pointer-coarse:h-11! data-[state=on]:bg-background! data-[state=on]:text-foreground!">
+                {viewName(option)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+          <div className="shrink-0">{primaryAction}</div>
+        </div>
+        <div className="flex items-center gap-0.5 px-2 py-2 sm:hidden">
+          <EventCalendarNavPrev className="size-9 shrink-0 pointer-coarse:size-11" />
+          {picker}
+          <EventCalendarNavNext className="size-9 shrink-0 pointer-coarse:size-11" />
+          <div className="ms-auto shrink-0">{primaryAction}</div>
+        </div>
+        <div className="flex items-center gap-1.5 border-t border-border px-2 py-2 sm:flex-wrap sm:gap-2 sm:px-4">
+          <div className="sm:hidden">{mobileView}</div>
+          {children}
         </div>
       </TooltipProvider>
-      {children ? (
-        <div className={`${TOOLBAR} border-t border-border`}>{children}</div>
-      ) : null}
     </div>
   );
+}
+
+/** One search layout for both desk calendars: inline on tablets, a popover on phones. */
+export function AdminCalendarSearch({ label, placeholder, value, onChange, open, onOpenChange, children }: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: ReactNode;
+}) {
+  const phone = useIsMobile(640);
+  const content = <div className="relative min-w-0 flex-1 sm:max-w-60">
+    <SearchIcon aria-hidden className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+    <Input type="search" aria-label={label} placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className="h-9 ps-9 pointer-coarse:min-h-11" />
+    {children}
+  </div>;
+  return phone ? <Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild><Button size="icon" variant="outline" aria-label={label}><SearchIcon aria-hidden className="size-4" /></Button></PopoverTrigger><PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))]">{content}</PopoverContent></Popover> : content;
 }

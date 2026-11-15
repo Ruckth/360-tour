@@ -24,7 +24,7 @@ const couponPath = (couponId: Id<"coupons"> | "new") => `${adminMarketingPath("c
 /** Closed until opened, so an editor doesn't subscribe to history nobody reads. */
 function History({ entityType, entityId, title }: { entityType: string; entityId: string; title: string }) {
   return (
-    <HistoryDisclosure label={title}>
+    <HistoryDisclosure>
       <RecordHistoryPanel entityType={entityType} entityId={entityId} title={title} />
     </HistoryDisclosure>
   );
@@ -165,6 +165,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
   const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
   const properties = useQuery(api.marketing.queries.catalog, {});
+  const profile = useQuery(api.settings.settings.publicProfile, {});
   return (
     <CouponEditor
       detail={detail}
@@ -174,6 +175,8 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
       properties={properties}
       today={useToday()}
       listHref={adminMarketingPath("coupons")}
+      origin={useOrigin()}
+      brand={profile?.businessName ?? ""}
       actions={useMarketingActions()}
       onCreated={(id) => router.replace(couponPath(id))}
       history={couponHistory}

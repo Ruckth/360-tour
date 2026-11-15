@@ -1,4 +1,5 @@
 "use client";
+import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 
 import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
@@ -185,12 +186,14 @@ export function ChatsView() {
   const largeViewport = useMediaQuery("(min-width: 1024px)");
   const isLargeViewport = largeViewport === true;
   // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
+  const leaveReply = useRef<() => Promise<boolean>>(async () => true);
   const updateParams = useCallback(
     (patch: Partial<Record<FilterParam | "session", string | null>>) => {
       // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
       const params = new URLSearchParams(navigationQueryRef.current);
       // A filter change must not leave a conversation from the previous queue open.
-      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS))
+      // Search is the exception: typing in it keeps the open chat (and its reply draft) where it is.
+      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS && key !== "q"))
         params.delete("session");
       for (const [key, value] of Object.entries(patch)) {
         const fallback = key in FILTER_DEFAULTS ? FILTER_DEFAULTS[key as FilterParam] : "";
@@ -198,10 +201,13 @@ export function ChatsView() {
         else params.set(key, value);
       }
       const query = params.toString();
-      navigationQueryRef.current = query;
-      router.replace(`/admin/chats${query ? `?${query}` : ""}`, {
-        scroll: false,
-      });
+      const commit = () => {
+        navigationQueryRef.current = query;
+        router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+      };
+      if (params.get("session") !== new URLSearchParams(navigationQueryRef.current).get("session")) {
+        void leaveReply.current().then(leave => { if (leave) commit(); });
+      } else commit();
     },
     [router],
   );
@@ -248,6 +254,13 @@ export function ChatsView() {
   const settlingRef = useRef(new Set<Id<"messages">>());
   const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"messages">>>(() => new Set());
   const [settleError, setSettleError] = useState<string | null>(null);
+  // Who was just marked No reply needed, confirmed briefly in the list once the next chat opens.
+  const [cleared, setCleared] = useState<string | null>(null);
+  useEffect(() => {
+    if (!cleared) return;
+    const timeout = window.setTimeout(() => setCleared(null), 6000);
+    return () => window.clearTimeout(timeout);
+  }, [cleared]);
   const trimmedSearchQuery = searchQuery.trim();
   const parsedMessageStartAt = dateTimeInputToMillis(messageStartAt, "start");
   const parsedMessageEndAt = dateTimeInputToMillis(messageEndAt, "end");
@@ -300,6 +313,7 @@ export function ChatsView() {
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
   const reply = useAdminReplyComposer(selectedSessionId, sessionDetail?.session.latestGuestMessageId);
+  useEffect(() => { leaveReply.current = reply.confirmLeave; }, [reply.confirmLeave]);
   const unqualifiedDeepLink =
     Boolean(selectedSessionId) &&
     incomingSessionId === selectedSessionId &&
@@ -367,6 +381,7 @@ export function ChatsView() {
     setSettlingMessageIds(new Set(settlingRef.current));
     setSettleError(null);
     try {
+      if (sessionId === selectedSessionId && !(await reply.confirmLeave())) return;
       await settleGuestMessageMutation({ sessionId, messageId });
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
@@ -409,30 +424,52 @@ export function ChatsView() {
     replyError: reply.error,
     replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
-    onAddBusinessFact: (message: AdminMessage) =>
-      setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
-    actions: selectedSession ? (
+    onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
+  };
+
+  function renderDetail(compact = false) {
+    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode) => (
+      <AdminSessionDetail
+        key={selectedSession?._id ?? "none"}
+        {...detailProps}
+        compact={compact}
+        emptyList={!loadingSessions && sessions.length === 0}
+        onBack={compact ? () => selectSession(null) : undefined}
+        actions={actions}
+        replyAction={replyAction}
+        actionError={actionError}
+        followUp={followUp}
+      />
+    );
+    return selectedSession ? (
       <AdminSessionActions
+        key={selectedSession._id}
         session={{ ...selectedSession, latestGuestMessageId:
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
+        beforeLeave={reply.confirmLeave}
         onDeleted={() => {
           if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
         }}
         onStatusChanged={(nextStatus) => {
           // A completed mutation must not replace navigation requested while it was pending.
           if (navigationQueryRef.current !== searchParams.toString()) return;
-          if (nextStatus === "open") updateParams({ ...queueParams("open"), session: selectedSession._id });
-          else if (nextStatus === "resolved") {
-            // Keep the transcript and its completion feedback visible.
-          } else {
-            const index = sessions.findIndex((session) => session._id === selectedSession._id);
-            const next = sessions[index + 1] ?? sessions[index - 1];
-            selectSession(isLargeViewport ? (next?._id ?? null) : null);
+          if (nextStatus === "open") {
+            updateParams({ ...queueParams("open"), session: selectedSession._id });
+            return;
           }
+          const index = sessions.findIndex((session) => session._id === selectedSession._id);
+          const next = sessions[index + 1] ?? sessions[index - 1];
+          if (nextStatus === "resolved") {
+            // No reply needed: the chat is handled, so open the next one at every size.
+            setCleared(visitorLabel(selectedSession));
+            selectSession(next?._id ?? null);
+          } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
-      />
-    ) : null,
-  };
+      >
+        {({ actions, followUp, actionError, replyAction }) => detail(actions, followUp, actionError, replyAction)}
+      </AdminSessionActions>
+    ) : detail();
+  }
 
   useEffect(() => {
     if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
@@ -473,10 +510,10 @@ export function ChatsView() {
   const emptyList: { message: string; action?: ReactNode } =
     sessionsResult && !sessionsResult.isDone && sessions.length === 0
       ? {
-          message: "No matching conversations on this page.",
+          message: "No matching chats on this page.",
           action: (
             <Button type="button" size="sm" onClick={handleNextPage}>
-              Check older conversations
+              Check older chats
             </Button>
           ),
         }
@@ -514,7 +551,7 @@ export function ChatsView() {
             }
           : adminStatus !== "open"
             ? {
-                message: adminStatus === "done" ? "No completed conversations yet." : `No ${adminStatus} chats here.`,
+                message: adminStatus === "done" ? "No completed chats yet." : `No ${adminStatus} chats here.`,
                 action: (
                   <Button type="button" size="sm" onClick={() => setQueue("open")}>
                     Show open chats
@@ -531,7 +568,7 @@ export function ChatsView() {
                   ),
                 }
               : {
-                  message: "No chats yet. Guest conversations from every channel appear here.",
+                  message: "No chats yet. Guest chats from every channel appear here.",
                 };
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -574,7 +611,7 @@ export function ChatsView() {
         CHAT_SHORTCUT_KEYS,
       );
       // Open dialogs and popovers own the keyboard.
-      if (!key || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      if (!key || document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
       event.preventDefault();
       onShortcut(key);
     }
@@ -585,7 +622,7 @@ export function ChatsView() {
   return (
     <>
       <div className="min-h-0 flex-1 p-3 sm:p-5">
-        <div className="grid h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[20rem_minmax(0,1fr)]">
+        <div className="grid h-full min-h-0 overflow-hidden max-lg:rounded-none max-lg:border-0 rounded-xl border border-border/60 bg-card shadow-sm lg:grid-cols-[22rem_minmax(0,1fr)]">
           <aside
             aria-label="Chat list"
             className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-card lg:border-r lg:border-border/60"
@@ -593,12 +630,12 @@ export function ChatsView() {
             <div className="grid gap-3 p-4 pb-3">
               {/* Phones show the page title only; shortcuts are offered where there's a mouse and keyboard. */}
               <div className="flex items-center justify-between max-md:contents">
-                <h2 className="text-base font-semibold max-md:sr-only">Conversations</h2>
+                <h2 className="font-serif text-2xl font-semibold max-md:sr-only">Chats</h2>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="hidden h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-fine:inline-flex"
+                  className="hidden h-8 gap-1.5 px-2 text-xs font-medium text-muted-foreground pointer-fine:inline-flex pointer-coarse:hidden"
                   onClick={() => setShortcutsOpen(true)}
                 >
                   <Keyboard className="size-4" aria-hidden="true" />
@@ -609,7 +646,7 @@ export function ChatsView() {
                 tabs={queueTabs}
                 value={queue}
                 onValueChange={setQueue}
-                label="Conversation queue"
+                label="Chat queue"
                 controls="admin-chat-list"
                 fill
               />
@@ -627,8 +664,8 @@ export function ChatsView() {
                       if (event.key === "Escape") event.currentTarget.blur();
                     }}
                     className="h-9 rounded-lg pl-9"
-                    placeholder="Search conversations"
-                    aria-label="Search conversations"
+                    placeholder="Search chats"
+                    aria-label="Search chats"
                     aria-keyshortcuts="/"
                   />
                 </div>
@@ -652,12 +689,12 @@ export function ChatsView() {
                   <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
                     <p className="text-sm font-semibold text-foreground">Filters</p>
                     <div className="space-y-2">
-                      <p className="admin-eyebrow">Conversation status</p>
+                      <p className="admin-eyebrow">Chat status</p>
                       <SegmentedTabs
                         tabs={adminStatusTabs}
                         value={adminStatus}
                         onValueChange={setAdminStatus}
-                        label="Conversation status"
+                        label="Chat status"
                         fill
                       />
                     </div>
@@ -781,6 +818,11 @@ export function ChatsView() {
             </div>
 
             <div id="admin-chat-list" aria-busy={loadingSessions} className="min-h-0 overflow-y-auto px-2 pb-2">
+              {cleared ? (
+                <p role="status" className="px-3 py-2 text-xs text-muted-foreground">
+                  No reply needed · {cleared}
+                </p>
+              ) : null}
               {settleError ? (
                 <p role="alert" className="border-b border-border px-4 py-3 text-sm font-medium text-destructive">
                   {settleError}
@@ -806,7 +848,7 @@ export function ChatsView() {
                     key={session._id}
                     data-session-id={session._id}
                     className={cn(
-                      "group relative mb-0.5 flex items-center rounded-lg border border-transparent transition hover:bg-muted/60",
+                      "group relative mb-0.5 flex items-center rounded-xl border border-transparent transition hover:bg-muted/60",
                       selected &&
                         "border-gold/15 bg-gold/10 before:absolute before:inset-y-4 before:left-0 before:w-0.5 before:rounded-full before:bg-gold-text",
                     )}
@@ -815,24 +857,20 @@ export function ChatsView() {
                       type="button"
                       onClick={() => selectSession(session._id)}
                       aria-current={selected ? "true" : undefined}
-                      className="min-w-0 flex-1 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="min-w-0 flex-1 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       {/* Two lines, so the landscape iPad shows about ten: who, where and how long; then what they said. */}
                       <span className="flex min-w-0 items-center gap-1.5">
                         <ChannelIcon channel={session.channel} className="h-3.5 w-3.5 shrink-0" />
                         <span className="sr-only">{sourceLabel(session.channel)} ·</span>
-                        <span className="min-w-0 truncate text-sm font-semibold text-foreground" title={visitorLabel(session)}>
+                        <span className="min-w-0 truncate text-[15px] font-medium text-foreground" title={visitorLabel(session)}>
                           {visitorLabel(session)}
                         </span>
-                        {place ? (
-                          <span className="min-w-0 max-w-[45%] shrink-[2] truncate text-xs text-muted-foreground" title={place}>
-                            · {place}
-                          </span>
-                        ) : null}
-                        <span className={cn("ml-auto shrink-0 pl-2 text-xs", waiting ? cn("font-medium", TONES.warning.text) : "text-muted-foreground")}>
+                        <span className={cn("ml-auto shrink-0 pl-2 text-xs", waiting ? "font-semibold text-amber-800 dark:text-amber-300" : "text-muted-foreground")}>
                           {waiting ? `Waiting ${relativeTime(session.latestMessageAt, now).replace(/ ago$/, "")}` : relativeTime(session.latestMessageAt, now)}
                         </span>
                       </span>
+                      {place ? <span className="mt-1 block text-xs text-muted-foreground">{place}</span> : null}
                       <span className="mt-0.5 flex min-w-0 items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground" title={preview}>
                           {preview}
@@ -898,21 +936,15 @@ export function ChatsView() {
             ) : (
               <div className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
                 {loadingSessions
-                  ? "Loading conversations…"
-                  : `${sessions.length} ${sessions.length === 1 ? "conversation" : "conversations"} in this view`}
+                  ? "Loading chats…"
+                  : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} in this view`}
               </div>
             )}
           </aside>
 
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">
             {/* Mobile uses the dialog below. Until the viewport is known, CSS keeps this hidden on small screens. */}
-            {largeViewport !== false ? (
-              <AdminSessionDetail
-                key={selectedSession?._id ?? "none"}
-                {...detailProps}
-                emptyList={!loadingSessions && sessions.length === 0}
-              />
-            ) : null}
+            {largeViewport !== false ? renderDetail() : null}
           </section>
         </div>
       </div>
@@ -924,7 +956,7 @@ export function ChatsView() {
       >
         <DialogContent
           data-testid="admin-chat-detail-dialog"
-          className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
+          className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 max-md:rounded-none max-md:border-0 max-md:max-h-dvh max-md:pb-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
           showCloseButton={false}
         >
           <DialogTitle className="sr-only">
@@ -933,12 +965,7 @@ export function ChatsView() {
           <DialogDescription className="sr-only">
             Visitor context and transcript for the selected chat session.
           </DialogDescription>
-          <AdminSessionDetail
-            key={selectedSession?._id ?? "none"}
-            compact
-            onBack={() => selectSession(null)}
-            {...detailProps}
-          />
+          {renderDetail(true)}
         </DialogContent>
       </Dialog>
       <BusinessFactFormDialog
@@ -967,24 +994,5 @@ export function ChatsView() {
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-const CHAT_SHORTCUT_KEYS = ["j", "k", "r", "e", "/", "?"] as const;
-const CHAT_SHORTCUTS: Array<[string[], string]> = [
-  [["j"], "Next chat"],
-  [["k"], "Previous chat"],
-  [["r"], "Reply to this chat"],
-  [["e"], "No reply needed: settle the guest's message and open the next chat"],
-  [["/"], "Search chats"],
-  [["?"], "Show these shortcuts"],
-  [["Esc"], "Leave a text box or close a dialog"],
-];
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="rounded border border-border bg-muted px-1.5 font-mono text-xs leading-5 text-foreground">
-      {children}
-    </kbd>
   );
 }

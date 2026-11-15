@@ -1,5 +1,6 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, gateResponse } from '../support/checkout-act';
+import { gateResponse } from '../support/checkout-act';
 import { createElement, useState, type ComponentProps, type ReactNode, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -7,7 +8,8 @@ import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type Order
 import { createFixtureBackend } from '../support/checkout-backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
 import { OrdersBrowser } from '@/components/checkout/OrderStrip';
-import { OrderLifecycle } from '@/components/checkout/OrderLifecycle';
+import { DiscardOrderDialog, OrderLifecycle } from '@/components/checkout/OrderLifecycle';
+import { Dialog } from '@/components/ui/dialog';
 import { AppointmentFeeControls } from '@/components/admin/AppointmentFeeAction';
 import { FinancialHistory } from '@/components/checkout/FinancialHistory';
 import type { Doc, Id } from 'convex/_generated/dataModel';
@@ -18,8 +20,15 @@ let root: Root, current: OrderView, review: RestoreReview | undefined;
 const saved = 'fxbill000002' as OrderId;
 const appt = 'fxappt000002' as Id<'appointments'>;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
-const button = (text: string) => buttons().find(b => b.textContent?.trim() === text)!;
+const button = (text: string) => buttons().find(b => (b.textContent?.trim() === text || (text === 'Cash' && b.textContent?.trim().startsWith('Cash ฿'))))!;
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text).click(); });
+/** Discard in the open confirm. */
+const confirmDiscard = async () => {
+  const confirm = document.querySelector('[role="alertdialog"]')!;
+  expect(confirm, 'discard confirm').toBeTruthy();
+  expect(confirm.textContent).toContain('Discard order #1042?');
+  await act(async () => [...confirm.querySelectorAll<HTMLButtonElement>('button')].find(b => /^(Discard|Retry discard)$/.test(b.textContent?.trim() ?? ''))!.click());
+};
 const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 async function run<T>(promise: Promise<T>) { await tick(); return await promise; }
 async function show(backend: CheckoutBackend, child: ReactElement) { await act(async () => root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, child))); }
@@ -40,38 +49,35 @@ const expandHistory = async (title: string) => act(async () => {
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.useFakeTimers(); root = createRoot(document.body.appendChild(document.createElement('div'))); });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it('directly discards the selected order, guards pending dismissal, and reopens retained rows read only', async () => {
+it('discards the open order from its ⋯ after a confirm naming it, and reopens retained rows read only', async () => {
   const backend = await createFixtureBackend();
-  const discard = gateResponse(backend.useActions().discardOrder);
-  vi.spyOn(backend.useActions(), 'discardOrder').mockImplementation(discard.write);
   await show(backend, createElement(Harness, { id: saved }));
-  await click('Orders'); await click('Discard');
-  const dialog = document.querySelector('[role="dialog"]')!;
-  await act(async () => dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
-  expect(document.querySelector('[role="dialog"]')).toBeTruthy();
-  expect(button('Back to orders').disabled).toBe(true);
-  discard.release();
+  const more = document.querySelector<HTMLButtonElement>('aside [aria-label="More order actions"]')!;
+  await act(async () => { more.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })); more.click(); });
   await tick();
-  expect(document.body.textContent).toContain('bookings are not cancelled');
-  await click('Back to orders'); await click('Discarded');
-  const row = document.querySelector<HTMLButtonElement>('[aria-current="true"]')!;
-  await act(async () => row.click());
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(el => el.textContent === 'Discard order…')!;
+  expect(item, 'Discard order… item').toBeTruthy();
+  await act(async () => item.click());
+  await confirmDiscard(); await tick();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   expect(document.body.textContent).toContain('Read only');
   expect(document.body.textContent).toContain('Foot spa 45'); expect(document.body.textContent).toContain('Coconut water');
   expect(button('Cash')).toBeUndefined(); expect(button('Add booking').disabled).toBe(true);
-  await expandHistory("Order history");
+  await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain('Order discarded');
   await probe(backend); expect(current.order.customerId).toBe('fxcust000002'); expect(current.lines).toHaveLength(2);
   const denied = expect(backend.useActions().addItem({ orderId: saved, item: { kind: 'extra', name: 'Refused', price: 100 } })).rejects.toThrow('discarded'); await tick(); await denied;
 });
-it('retries a lost discard response with the identical key and revision after it leaves Unpaid', async () => {
+it('retries a lost discard response with the identical key and revision', async () => {
   const backend = await createFixtureBackend(); const actions = backend.useActions(), original = actions.discardOrder;
   const discard = vi.spyOn(actions, 'discardOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Response lost'); });
-  await show(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }));
-  await click('Discard'); await tick();
-  expect(document.body.textContent).toContain('Response lost'); await click('Retry discard'); await tick();
+  await probe(backend); const view = current; const onClose = vi.fn();
+  await show(backend, createElement(Dialog, { open: true }, createElement(DiscardOrderDialog, { view, onClose })));
+  await confirmDiscard(); await tick();
+  expect(document.body.textContent).toContain('Response lost'); expect(onClose).not.toHaveBeenCalled();
+  await confirmDiscard(); await tick();
   expect(discard).toHaveBeenCalledTimes(2); expect(discard.mock.calls[1][0]).toEqual(discard.mock.calls[0][0]);
-  expect(document.body.textContent).toContain('discarded. Contents');
+  expect(onClose).toHaveBeenCalledOnce();
   await probe(backend); expect(current.order.revision).toBe(3);
 });
 it('reviews source conflicts and explicitly restores without competing rows, preserving removal history and links', async () => {
@@ -82,7 +88,7 @@ it('reviews source conflicts and explicitly restores without competing rows, pre
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt })); expect(other.orderId).not.toBe(orderId);
   const onOpen = vi.fn();
-  await show(backend, createElement(OrderLifecycle, { orderId, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen }));
+  await show(backend, createElement(OrderLifecycle, { orderId, onDone: vi.fn(), onPending: vi.fn(), onOpen }));
   expect(document.body.textContent).toContain('is now on Order');
   await click('Restore without 1 conflicting row'); await tick();
   await click('Open restored order'); expect(onOpen).toHaveBeenCalledWith(orderId);
@@ -96,7 +102,7 @@ it('refuses an all-conflict restore and restores a source paid elsewhere as a re
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt })); await probe(backend, orderId);
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-paid-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt }));
-  await show(backend, createElement(OrderLifecycle, { orderId, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
+  await show(backend, createElement(OrderLifecycle, { orderId, onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
   expect(document.body.textContent).toContain('Every row conflicts'); expect(button('Restore without 1 conflicting row').disabled).toBe(true);
   await probe(backend, other.orderId);
   await run(actions.settleOrder({ orderId: other.orderId, expectedRevision: current.order.revision, expectedDue: 160000, idempotencyKey: 'paid-other-source', tenders: [{ method: 'card', amount: 160000 }] }));
@@ -149,21 +155,21 @@ it('pages financial ledgers beyond 20/50 and retries a failed continuation indep
   const backend: CheckoutBackend = { ...base, useCorrectionHistory: id => { const page = base.useCorrectionHistory(id); if (down) throw new Error('Network'); return { ...page, loadMore: n => { down = true; page.loadMore(n); } }; } };
   vi.spyOn(console, 'error').mockImplementation(() => {});
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
-  const section = () => document.querySelector('[aria-label="All payment amendments"]')!;
+  await expandHistory("History · all ledgers");
+  const section = () => document.querySelector('[aria-label="Payment corrections"]')!;
   expect(section().textContent).toContain('#61'); expect(section().textContent).not.toContain('Reason 1Recorded');
-  await click('Load older payment amendments'); expect(section().textContent).toContain("Couldn't load");
+  await click('Load older payment corrections'); expect(section().textContent).toContain("Couldn't load");
   down = false;
   await act(async () => { const details = document.querySelector('details')!; details.open = false; details.dispatchEvent(new Event('toggle')); });
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   expect(section().textContent).toContain("Couldn't load");
   await click('Try again');
   // Retry remount starts a new cursor, then can continue normally.
   backend.useCorrectionHistory = base.useCorrectionHistory;
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
-  for (let i = 0; i < 3; i++) await click('Load older payment amendments');
-  expect(section().querySelectorAll('li')).toHaveLength(61); expect(section().textContent).toContain('#1'); expect(button('Load older payment amendments')).toBeUndefined();
+  await expandHistory("History · all ledgers");
+  for (let i = 0; i < 3; i++) await click('Load older payment corrections');
+  expect(section().querySelectorAll('li')).toHaveLength(61); expect(section().textContent).toContain('#1'); expect(button('Load older payment corrections')).toBeUndefined();
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('No entries recorded');
 });
 it('retries a lost restore response with the identical revision and explicit row choice', async () => {
@@ -171,7 +177,7 @@ it('retries a lost restore response with the identical revision and explicit row
   await run(actions.discardOrder({ orderId: saved, expectedRevision: 2, idempotencyKey: 'restore-retry-discard' }));
   const original = actions.restoreOrder;
   const restore = vi.spyOn(actions, 'restoreOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Restore response lost'); });
-  await show(backend, createElement(OrderLifecycle, { orderId: saved, mode: 'restore', onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
+  await show(backend, createElement(OrderLifecycle, { orderId: saved, onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
   await click('Restore order'); await tick(); await click('Retry restore'); await tick();
   expect(restore.mock.calls[1][0]).toEqual(restore.mock.calls[0][0]); expect(document.body.textContent).toContain('restored. Review');
   await probe(backend); expect(current.order.revision).toBe(4); expect(current.lines).toHaveLength(2);
@@ -182,8 +188,15 @@ it('shows appointment refunds with source, provenance and net snapshot while pag
   const refunds: Doc<'appointmentRefunds'>[] = [{ _id: 'appointment-refund' as Id<'appointmentRefunds'>, _creationTime: now, orderId: saved, appointmentId: appt, amount: 5000, currency: 'THB', method: 'transfer', reason: 'Partial service return', recordedBy: 'cashier@example.com', recordedAt: now, effectiveAt: now - 1000, idempotencyKey: 'fixture-appointment-refund', netBefore: 10000, netAfter: 5000 }];
   const backend = await createFixtureBackend({ financialHistory: { audit: audits }, appointmentRefunds: refunds });
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   const ledger = document.querySelector('[aria-label="All appointment refunds"]')!;
+  const technical = ledger.querySelector<HTMLDetailsElement>('details')!;
+  expect(technical.open).toBe(false);
+  expect(technical.textContent).toContain(appt);
+  const visibleCopy = ledger.cloneNode(true) as HTMLElement;
+  visibleCopy.querySelectorAll('details').forEach(details => details.remove());
+  expect(visibleCopy.textContent).toContain('Linked appointment');
+  expect(visibleCopy.textContent).not.toContain(appt);
   expect(ledger.textContent).toContain('Recorded · ฿50 · transfer'); expect(ledger.textContent).toContain('Partial service return'); expect(ledger.textContent).toContain(appt); expect(ledger.textContent).toContain('Net balance after this return: ฿100 → ฿50'); expect(ledger.textContent).toContain('cashier@example.com');
   for (let i = 0; i < 3; i++) await click('Load older receipt activity');
   expect(document.querySelectorAll('[aria-label="All receipt activity"] li')).toHaveLength(61);
@@ -256,7 +269,7 @@ it('shows an actual receipt-attributed appointment return with net balance and k
   expect(current.refunds[0]).toMatchObject({ sourceType: 'appointment', appointmentId: appt, amount: 20000 });
   expect(current.payments[0].amount).toBe(160000); expect(current.totals.total).toBe(160000);
   await show(backend, createElement(FinancialHistory, { orderId, view: current }));
-  await expandHistory("Browse all financial history");
+  await expandHistory("History · all ledgers");
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('Received on this receipt ฿1,600 · Net retained ฿1,400');
   const denied = expect(actions.voidUnreceivedOrder({ orderId, expectedCorrectionRevision: 0, idempotencyKey: 'refunded-reversal-denied', reason: 'Cannot reverse returned money' })).rejects.toThrow('refunded'); await tick(); await denied;
   await probe(backend, orderId); expect(current.order.state).toBe('paid'); expect(current.payments[0].amount).toBe(160000);

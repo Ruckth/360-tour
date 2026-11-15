@@ -1,5 +1,5 @@
 import { toCsv } from "@/lib/admin/csv";
-import { formatStamp } from "../marketing-format";
+import { exportStamp } from "../marketing-format";
 import { slugPath, type Breakdown, type BreakdownRow, type Prepared, type Roas, type TotalRow } from "./report-model";
 
 // The dashboard's CSV export, built in the browser from the same read. Amounts are plain numbers in
@@ -21,7 +21,7 @@ export function csvMeta(p: Prepared, propertyName: string): string[][] {
     [`# Conversion: distinct consented sessions behind paid web stays / sessions started in range; breakdowns follow the session link and campaign`],
     [`# Dates: ${report.from} to ${report.to}`],
     [`# Property: ${propertyName}`],
-    [`# As of: ${formatStamp(report.asOf)} ${report.timeZone}`],
+    [`# As of: ${exportStamp(report.asOf)} ${report.timeZone}`],
     ...(report.truncated ? [[`# Incomplete: the read limit was reached, so figures are partial`]] : []),
     ...(report.excluded.nonThb ? [[`# Left out: ${report.excluded.nonThb} sales in another currency`]] : []),
   ];

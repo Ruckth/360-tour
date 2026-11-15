@@ -1,12 +1,13 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+import { Disclosure } from "@/components/ui/disclosure";
 import { usePaginatedQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { STATUS_LABELS, formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatResortDateTime } from "@/lib/staff-bookings";
 
 type Change = Doc<"appointmentChanges">;
 type Value = Change["changes"][number]["from"];
@@ -61,7 +62,7 @@ export function AppointmentHistory({
   function show(field: string, value: Value, currency: string): string {
     if (value === null || value === "") return "—";
     if (typeof value === "number") {
-      if (TIME_FIELDS.has(field)) return formatResortDateTime(value);
+      if (TIME_FIELDS.has(field)) return staffDateTime(value);
       if (["price", "amountPaid", "amountRefunded", "refundAmount"].includes(field)) return formatMoney(value, currency);
       return String(value);
     }
@@ -73,8 +74,8 @@ export function AppointmentHistory({
   }
 
   return (
-    <section aria-labelledby="appointment-history" className="grid gap-2">
-      <h3 id="appointment-history" className="admin-eyebrow">History</h3>
+    // One closed section per record (rule 4).
+    <Disclosure label="History" summaryId="appointment-history" contentClassName="grid gap-2 pb-2">
       {status === "LoadingFirstPage" ? (
         <Skeleton className="h-12" />
       ) : history.length === 0 ? (
@@ -86,7 +87,7 @@ export function AppointmentHistory({
               <p className="font-medium">
                 {entry.changes.some(change => change.field === "created") ? "Appointment created" : KIND_LABELS[entry.kind]}
                 <span className="font-normal text-muted-foreground">
-                  {" "}· {formatResortDateTime(entry.at)} · {entry.actor === "guest" ? "Guest, in chat" : entry.actor}
+                  {" "}· {staffDateTime(entry.at)} · {entry.actor === "guest" ? "Guest, in chat" : entry.actor}
                 </span>
               </p>
               {entry.reason ? <p className="text-muted-foreground">Reason: {entry.reason}</p> : null}
@@ -102,6 +103,6 @@ export function AppointmentHistory({
         </ol>
       )}
       {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(25)}>{status === "LoadingMore" ? "Loading history…" : "Load earlier history"}</Button> : null}
-    </section>
+    </Disclosure>
   );
 }

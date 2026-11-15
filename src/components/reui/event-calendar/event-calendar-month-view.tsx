@@ -1,7 +1,6 @@
 "use client"
 
 import {
-  useCallback,
   useEffect,
   useId,
   useLayoutEffect,
@@ -162,42 +161,10 @@ function EventCalendarMonthView({
   const cap = maxEventsPerCell ?? viewConfig.maxEventsPerCell
   const contained = viewConfig.scrollMode !== "page"
 
-  // "auto" fits as many event rows as the cell height allows and rolls the rest
-  // into "+N more". Only the contained mode gives a cell a bounded height to
-  // measure; page mode grows to fit, so "auto" there keeps the fixed fallback.
-  const autoFit = cap === "auto" && contained
-  // slotProbe resolves the event-row height (--ec-month-bar-h) to px, honoring
-  // the current font size and any consumer override; contentProbe is the first
-  // cell's flex-1 content area, whose height is the event space per cell.
-  const slotProbeRef = useRef<HTMLDivElement | null>(null)
-  const contentProbeRef = useRef<HTMLDivElement | null>(null)
-  const [autoCap, setAutoCap] = useState<number | null>(null)
-  const measureCap = useCallback(() => {
-    const content = contentProbeRef.current
-    const slot = slotProbeRef.current
-    if (!content || !slot) return
-    const laneH = slot.getBoundingClientRect().height
-    if (laneH <= 0) return
-    const cs = getComputedStyle(content)
-    const inner = content.clientHeight - (parseFloat(cs.paddingTop) || 0)
-    const gap = parseFloat(cs.rowGap) || 0
-    // N rows occupy N*laneH - gap (the last row has no trailing gap)
-    setAutoCap(Math.max(1, Math.floor((inner + gap) / laneH)))
-  }, [])
-  useIsoLayoutEffect(() => {
-    if (!autoFit) {
-      setAutoCap(null)
-      return
-    }
-    const content = contentProbeRef.current
-    if (!content || typeof ResizeObserver === "undefined") return
-    measureCap()
-    const observer = new ResizeObserver(measureCap)
-    observer.observe(content)
-    return () => observer.disconnect()
-    // re-observe the first cell after a re-layout (row count or month change)
-  }, [autoFit, measureCap, weeks.length, anchorDate])
-  const resolvedCap = cap === "auto" ? (autoFit ? (autoCap ?? 3) : 3) : cap
+  // Automatic month rows grow with their events. Never hide a stay because
+  // another, empty week happened to leave less viewport height for this row.
+  const autoFit = false
+  const resolvedCap = cap === "auto" ? 0 : cap
 
   const defaultProps = {
     "data-slot": "event-calendar-month-view",
@@ -206,7 +173,7 @@ function EventCalendarMonthView({
     "aria-label": title,
     className: cn(
       "flex flex-col border-t",
-      contained && "min-h-0 flex-1 overflow-hidden",
+      contained && "min-h-0 flex-1 overflow-y-auto",
       viewConfig.classNames?.monthView,
       className
     ),
@@ -271,15 +238,10 @@ function EventCalendarMonthView({
         <div
           data-slot="event-calendar-month-body"
           className={cn(
-            "grid",
-            contained && "min-h-0 flex-1",
+            "grid shrink-0 [grid-auto-rows:minmax(5.5rem,auto)]",
             viewConfig.classNames?.monthBody
           )}
-          style={{
-            gridTemplateRows: contained
-              ? `repeat(${weeks.length}, minmax(0, 1fr))`
-              : `repeat(${weeks.length}, minmax(var(--ec-month-row-min-h, 8rem), auto))`,
-          }}
+
         >
           {weeks.map((week, rowIndex) => (
             <EventCalendarMonthWeek
@@ -289,17 +251,10 @@ function EventCalendarMonthView({
               showWeekNumber={effective.weekNumbers}
               cap={resolvedCap}
               autoFit={autoFit}
-              contentRef={rowIndex === 0 ? contentProbeRef : undefined}
             />
           ))}
         </div>
-        {autoFit && (
-          <div
-            ref={slotProbeRef}
-            aria-hidden
-            className="pointer-events-none invisible absolute h-[var(--ec-month-bar-h,1.75rem)] w-0"
-          />
-        )}
+
       </>
     ),
   }
@@ -326,7 +281,7 @@ function EventCalendarMonthWeek({
   week,
   gridTemplateColumns,
   showWeekNumber,
-  cap,
+  cap: requestedCap,
   autoFit,
   contentRef,
 }: {
@@ -341,7 +296,8 @@ function EventCalendarMonthWeek({
 }) {
   const settings = useEventCalendarSettings()
   const viewConfig = useEventCalendarViewConfig()
-  const { bars, rowStart } = useEventCalendarWeek(week[0])
+  const instance = useEventCalendar()
+  const { bars: originalBars, rowStart } = useEventCalendarWeek(week[0])
   const colOffset = showWeekNumber ? 1 : 0
   const dayMs = 86400000
   const rowStartMs = zonedStartOfDay(
@@ -367,23 +323,41 @@ function EventCalendarMonthWeek({
     }
     return start === -1 ? null : { col: start, span: end - start + 1 }
   }
-  // bars fit within the cap; deeper lanes fall into each day's "+N more"
-  const visibleBars = bars.filter((b) => (b.lane ?? 0) < cap)
   const covers = (b: EventCalendarSegment, dayOffset: number) =>
-    (b.colStart ?? 0) <= dayOffset &&
-    dayOffset < (b.colStart ?? 0) + (b.colSpan ?? 1)
-  // Occurrence keys of the bars hidden in each column (lane >= cap). Threaded to
-  // the cell so its "+N more" popover can list the hidden bars WITHOUT re-listing
-  // the visible ones (day buckets carry no lane, so the week row - which owns bar
-  // laning - is the only place that knows which bars are hidden).
-  const hiddenBarKeysByCol = week.map(
-    (_, col) =>
-      new Set(
-        bars
-          .filter((b) => (b.lane ?? 0) >= cap && covers(b, offsets[col]))
-          .map((b) => b.occurrence.key)
-      )
-  )
+    (b.colStart ?? 0) <= dayOffset && dayOffset < (b.colStart ?? 0) + (b.colSpan ?? 1)
+  // Keep the index's stable lane for the entire week segment. Repacking
+  // day by day split continuing stays and could drop their middle days.
+  const bars = originalBars
+  const index = instance.internals.getIndex()
+  const cap = requestedCap || Math.max(1, ...week.map((day, col) => {
+    const lastLane = Math.max(-1, ...bars.filter(b => covers(b, offsets[col])).map(b => b.lane ?? 0))
+    return lastLane + 1 + (index.byDay.get(getDayKey(day, settings.timeZone))?.timed.length ?? 0)
+  }))
+  const dayCaps = week.map((day, col) => {
+    const bucket = index.byDay.get(getDayKey(day, settings.timeZone))
+    const total = originalBars.filter(b => covers(b, offsets[col])).length + (bucket?.timed.length ?? 0)
+    return autoFit && total > cap ? Math.max(0, cap - 1) : cap
+  })
+  // Split once more at an overflow boundary so a bar can be visible on one
+  // day and hidden on the next without an empty cell claiming overflow.
+  const visibleBars = bars.flatMap(bar => {
+    const fragments: EventCalendarSegment[] = []
+    for (let offset = bar.colStart ?? 0; offset < (bar.colStart ?? 0) + (bar.colSpan ?? 1); offset++) {
+      const col = offsets.indexOf(offset)
+      if (col < 0 || (bar.lane ?? 0) >= dayCaps[col]) continue
+      const last = fragments.at(-1)
+      const isEnd = bar.isEnd && offset + 1 === (bar.colStart ?? 0) + (bar.colSpan ?? 1)
+      if (last && (last.colStart ?? 0) + (last.colSpan ?? 1) === offset) {
+        last.colSpan = (last.colSpan ?? 1) + 1; last.isEnd = isEnd; last.continuesAfter = !isEnd
+      } else fragments.push({ ...bar, colStart: offset, colSpan: 1,
+        isStart: bar.isStart && offset === bar.colStart, isEnd,
+        continuesBefore: bar.continuesBefore || offset !== bar.colStart, continuesAfter: !isEnd })
+    }
+    return fragments
+  })
+  const hiddenBarKeysByCol = week.map((_, col) => new Set(bars
+    .filter(b => (b.lane ?? 0) >= dayCaps[col] && covers(b, offsets[col]))
+    .map(b => b.occurrence.key)))
 
   // Live move/resize ghost at the PROPOSED day span. Standardized treatment
   // (EVENT_CALENDAR_GHOST): move = the event carried as a full clone, resize =
@@ -509,16 +483,9 @@ function EventCalendarMonthWeek({
         <EventCalendarMonthCell
           key={day.getTime()}
           day={day}
-          cap={cap}
-          // Reserve lane space only for bars that pass through THIS cell, so a
-          // short multi-day event does not push down timed events in unrelated
-          // cells of the same row. Reserve down to the deepest covering bar
-          // lane so timed events always sit below every bar in their own cell.
-          reservedLanes={visibleBars.reduce(
-            (max, b) =>
-              covers(b, offsets[col]) ? Math.max(max, (b.lane ?? 0) + 1) : max,
-            0
-          )}
+          cap={dayCaps[col]}
+          overflowReserved={dayCaps[col] < cap}
+          occupiedLanes={visibleBars.filter(b => covers(b, offsets[col])).map(b => b.lane ?? 0)}
           hiddenBarKeys={hiddenBarKeysByCol[col]}
           isLast={col === week.length - 1}
           autoFit={autoFit}
@@ -546,7 +513,7 @@ function EventCalendarMonthWeek({
             if (!pos) return null
             return (
               <div
-                key={bar.occurrence.key}
+                key={`${bar.occurrence.key}:${bar.colStart}`}
                 className={cn(
                   "pointer-events-auto min-w-0 px-1",
                   viewConfig.classNames?.monthBar
@@ -632,7 +599,8 @@ function EventCalendarMonthWeek({
 function EventCalendarMonthCell({
   day,
   cap,
-  reservedLanes,
+  occupiedLanes,
+  overflowReserved,
   hiddenBarKeys,
   isLast,
   autoFit,
@@ -640,7 +608,8 @@ function EventCalendarMonthCell({
 }: {
   day: Date
   cap: number
-  reservedLanes: number
+  occupiedLanes: number[]
+  overflowReserved: boolean
   /** Occurrence keys of the bars hidden in THIS column (lane >= cap), from the
    *  week row. Lets the cell list hidden bars in its overflow popover without
    *  re-listing the bars already visible in the row overlay. */
@@ -791,16 +760,15 @@ function EventCalendarMonthCell({
     hiddenBarKeys.has(s.occurrence.key)
   )
   const m = segments.timed.length
-  const timedSlots = Math.max(0, cap - reservedLanes)
+  const freeLanes = Array.from({ length: cap }, (_, i) => i).filter(i => !occupiedLanes.includes(i))
+  const timedSlots = freeLanes.length
 
   // Static (at-rest) split: what the cell shows with no drag, and - crucially -
   // what the "+N more" popover lists. The popover carries ONLY the hidden events
   // (hidden bars + timed past the cap), never the chips already visible in the
-  // cell, so it never duplicates them. autoFit gives up one timed row to the
-  // "+N more" indicator so the visible chips fit the clipped cell height.
-  const staticOverflow = extraHidden > 0 || m > timedSlots
-  const staticShown =
-    autoFit && staticOverflow ? Math.max(0, timedSlots - 1) : timedSlots
+  // cell, so it never duplicates them. The week has already reserved space
+  // for overflow before assigning the per-day cap.
+  const staticShown = timedSlots
   const overflowSegments = [
     ...hiddenBarSegs,
     ...segments.timed.slice(staticShown),
@@ -831,7 +799,7 @@ function EventCalendarMonthCell({
     // rows for timed items INCLUDING the phantom, before the "+N more" row
     const vis = !dropOverflow
       ? m + 1
-      : autoFit
+      : autoFit && !overflowReserved
         ? Math.max(0, timedSlots - 1)
         : timedSlots
     placeholderAtMore = insertRank >= vis
@@ -871,6 +839,7 @@ function EventCalendarMonthCell({
         {
           "--ec-event-color": inlineDrop.color ?? "var(--color-primary)",
           height: "calc(var(--ec-month-bar-h, 1.75rem) - 0.125rem)",
+          gridRow: (freeLanes[Math.max(0, placeholderIndex)] ?? cap) + 1,
         } as CSSProperties
       }
     />
@@ -881,26 +850,13 @@ function EventCalendarMonthCell({
       <div
         ref={contentRef}
         className={cn(
-          // gap-0.5 pairs with the 0.125rem subtraction in the lane spacer
-          // below; changing the gap requires renderMonthCell
-          // px-1 matches the all-day bar wrapper inset so single-day chips and
-          // multi-day bars line up on the same left/right edge in a cell
-          "flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden px-1 pt-1.5",
+          // Explicit grid rows let timed chips occupy gaps between bar lanes.
+          // The inset matches the continuous bars in the week overlay.
+          "relative grid min-h-0 flex-1 content-start overflow-hidden px-1 pt-1.5",
           viewConfig.classNames?.monthCellContent
         )}
+        style={{ gridTemplateRows: `repeat(${Math.max(1, cap)}, var(--ec-month-bar-h, 1.75rem))` }}
       >
-        {reservedLanes > 0 && (
-          <div
-            aria-hidden
-            className="shrink-0"
-            style={{
-              // lane height already carries the 2px inter-lane gap; subtract
-              // it so spacer + the column's own gap-0.5 = the SAME 2px rhythm
-              // between the last bar and the first timed chip
-              height: `calc(${reservedLanes} * var(--ec-month-bar-h, 1.75rem) - 0.125rem)`,
-            }}
-          />
-        )}
         {visibleTimed.flatMap((segment, i) => {
           const chip = (
             <EventCalendarEvent
@@ -924,7 +880,8 @@ function EventCalendarMonthCell({
               // the chip flex-shrinks to whatever room the cell has left, so
               // cells with a reserved bar lane or a second chip render shorter
               // chips.
-              className="shrink-0"
+              className="min-w-0 self-start"
+              style={{ gridRow: (freeLanes[i + (placeholderIndex >= 0 && i >= placeholderIndex ? 1 : 0)] ?? cap) + 1, height: "calc(var(--ec-month-bar-h, 1.75rem) - 0.125rem)" }}
             />
           )
           return i === placeholderIndex ? [dropPlaceholder, chip] : [chip]
@@ -1011,6 +968,13 @@ function EventCalendarMonthCell({
     <div
       ref={rootRef}
       role="gridcell"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault()
+          settings.onSlotClick?.({ date: day, allDay: true, view: "month" }, e as unknown as React.MouseEvent)
+        }
+      }}
       data-slot="event-calendar-month-cell"
       data-today={isToday || undefined}
       data-outside={isOutside || undefined}
@@ -1029,13 +993,14 @@ function EventCalendarMonthCell({
         { locale: settings.locale }
       )}
       className={cn(
-        "group/ec-cell relative flex min-h-0 min-w-0 flex-col overflow-hidden",
+        "group/ec-cell relative flex min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring min-w-0 flex-col overflow-hidden",
         !isLast && "border-e",
         isOutside && !settings.showOutsideDays && "invisible",
+        isOutside && "bg-muted/30",
         isOff && offClassName,
         isToday &&
           cn(
-            "bg-primary/3 border-b-primary/40 relative border-b-2",
+            "bg-primary/3 relative",
             viewConfig.todayClassName
           ),
         viewConfig.dayClassName?.(day),
@@ -1139,7 +1104,7 @@ function EventCalendarMoreIndicator({
         data-drop-into={dropInto ? "" : undefined}
         data-drop-invalid={dropInto && !dropInto.valid ? "" : undefined}
         className={cn(
-          "text-muted-foreground hover:text-foreground cursor-pointer truncate rounded-sm px-1.5 text-start",
+          "text-muted-foreground hover:text-foreground absolute bottom-1 left-1 z-20 h-6 pointer-coarse:h-11 pointer-coarse:min-w-11 cursor-pointer truncate rounded-sm bg-card px-1.5 text-start text-xs",
           // While a dragged chip will land in this overflow bucket, the "+N more"
           // link itself becomes the drop placeholder: dashed, event-tinted, one
           // chip tall, so the drop target is unmistakable.

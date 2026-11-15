@@ -91,6 +91,7 @@ const credit: CreditRow = {
 };
 function Fixture() {
   const [partners, setPartners] = useState([partner]);
+  const [campaigns, setCampaigns] = useState([campaign]);
   const [selected, setSelected] = useState("all");
   const [state, setState] = useState("all");
   const [row, setRow] = useState(credit);
@@ -120,7 +121,7 @@ function Fixture() {
         <AffiliatesView
           partners={partners}
           partial={false}
-          campaigns={[campaign]}
+          campaigns={campaigns}
           coupons={[]}
           properties={[]}
           origin="https://example.com"
@@ -152,6 +153,17 @@ function Fixture() {
               );
             },
             coupon: async () => null,
+            saveCampaign: viewer
+              ? undefined
+              : async (args) => {
+                  document.body.dataset.campaign = JSON.stringify(args);
+                  const id = "campaign2" as Id<"marketingCampaigns">;
+                  setCampaigns((current) => [
+                    ...current,
+                    { ...campaign, ...args, _id: id, status: "draft" },
+                  ]);
+                  return id;
+                },
           }}
         >
           <CreditList

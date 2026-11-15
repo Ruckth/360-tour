@@ -8,6 +8,8 @@ import type { AdminSession } from "@/components/admin/admin-chat-types";
 type DetailProps = {
   selectedSession: AdminSession | null;
   actions: ReactNode;
+  replyAction: ReactNode;
+  followUp: ReactNode;
   compact?: boolean;
   replyDraft: string;
   onReplyDraftChange: (value: string) => void;
@@ -65,6 +67,8 @@ vi.mock("@/components/admin/AdminSessionDetail", () => ({
       "div",
       { "data-selected": props.selectedSession?._id ?? "none", "data-compact": String(Boolean(props.compact)) },
       props.actions,
+      props.replyAction,
+      props.followUp,
       createElement(
         "button",
         { type: "button", disabled: props.replyPending, onClick: () => void props.onSendReply() },
@@ -96,12 +100,20 @@ async function render() {
     root.render(createElement(ChatsView));
   });
 }
-async function click(label: string) {
-  const button = [...document.querySelectorAll("button")].find((candidate) => candidate.textContent?.trim() === label);
-  expect(button).toBeDefined();
+// The ⋯ menu (base-ui) opens on a full pointer sequence and lists its actions as menu items.
+async function press(el: Element) {
   await act(async () => {
-    button!.click();
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
   });
+}
+async function openMenu() {
+  await press(document.querySelector('[aria-label="More chat actions"]')!);
+}
+async function click(label: string) {
+  const button = [...document.querySelectorAll<HTMLElement>('button, [role="menuitem"]')].find((candidate) => candidate.textContent?.trim() === label);
+  expect(button).toBeDefined();
+  if (button!.getAttribute("role") === "menuitem") await press(button!);
+  else await act(async () => { button!.click(); });
 }
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -258,20 +270,23 @@ describe("inbox navigation", () => {
     expect(document.querySelector('[data-selected="session-a"]')).toBeNull();
   });
 
-  it("keeps a conversation visible after No reply needed", async () => {
+  it.each([true, false])("No reply needed in the header opens the next chat (desktop: %s)", async (desktop) => {
+    mocks.desktop = desktop;
     mocks.detail = { session: { ...session("session-a"), latestGuestMessageId: "guest-a" }, replyWindow: { applies: false } };
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
     mocks.replace.mockClear();
     await click("No reply needed");
     expect(mocks.mutation).toHaveBeenCalledWith({ sessionId: "session-a", status: "resolved", expectedGuestMessageId: "guest-a" });
-    expect(mocks.replace).not.toHaveBeenCalled();
+    const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
+    expect(destination).toContain("session=session-b");
+    expect(destination).not.toContain("session=session-a");
+    expect(document.querySelector('[role="status"]')?.textContent).toContain("No reply needed");
   });
 
   it("shows follow-up save errors inside the open dialog and keeps the task", async () => {
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
-    await click("Add follow-up / Keep open");
+    await openMenu();
+    await click("Add follow-up");
     const input = document.querySelector<HTMLInputElement>('input[id="follow-up-session-a"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Check housekeeping");
@@ -284,6 +299,31 @@ describe("inbox navigation", () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.querySelector('[role="alert"]')?.textContent).toBe("Connection lost. Try again.");
     expect(input.value).toBe("Check housekeeping");
+  });
+
+  it("wires direct follow-up actions to the selected conversation and resets the editor on navigation", async () => {
+    mocks.page = [{ ...session("session-a"), staffTask: "Follow up A" }, { ...session("session-b"), staffTask: "Follow up B" }];
+    mocks.detail = { session: { ...session("session-a"), staffTask: "Follow up A" }, replyWindow: { applies: false } };
+    await render();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Edit follow-up"]')!.click());
+    const input = document.getElementById("follow-up-session-a") as HTMLInputElement;
+    expect(input.value).toBe("Follow up A");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Unsaved A");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    mocks.search = new URLSearchParams("view=all&session=session-b");
+    mocks.detail = { session: { ...session("session-b"), staffTask: "Follow up B" }, replyWindow: { applies: false } };
+    await render();
+    expect(document.getElementById("follow-up-session-a")).toBeNull();
+    expect(mocks.mutation).not.toHaveBeenCalled();
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Edit follow-up"]')!.click());
+    const current = document.getElementById("follow-up-session-b") as HTMLInputElement;
+    expect(current.value).toBe("Follow up B");
+    mocks.replace.mockClear();
+    await act(async () => current.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-b", task: "Follow up B" });
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 
   it("queries only the debounced search", async () => {
@@ -372,8 +412,8 @@ describe("inbox navigation", () => {
     const pending = deferred();
     mocks.mutation.mockReturnValueOnce(pending.promise);
     await render();
-    await act(async () => { document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click(); });
-    await click("Archive conversation");
+    await openMenu();
+    await click("Archive chat");
     mocks.search = new URLSearchParams(
       navigation === "selection" ? "view=all&session=session-b" : "view=all&state=done",
     );
@@ -400,10 +440,8 @@ describe("inbox navigation", () => {
       replyWindow: { applies: false },
     };
     await render();
-    await act(async () => {
-      document.querySelector<HTMLButtonElement>('[aria-label="More conversation actions"]')!.click();
-    });
-    await click("Archive conversation");
+    await openMenu();
+    await click("Archive chat");
     const destination = mocks.replace.mock.calls.at(-1)?.[0] as string;
     expect(destination).toContain("state=done");
     expect(destination.includes("session=session-b")).toBe(desktop);

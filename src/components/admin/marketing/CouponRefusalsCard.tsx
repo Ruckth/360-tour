@@ -64,7 +64,7 @@ export function CouponRefusalsCard({ summary, days = 30 }: { summary?: CouponRef
   const { rows, refused, notUsed } = refusalRows(summary);
   const max = Math.max(1, ...rows.map((row) => row.count));
   return (
-    <SideCard id={id} title={title} description="Codes typed that didn’t apply. Guests kept the direct offer when eligible.">
+    <SideCard id={id} title={title} description="Codes typed that didn’t apply · guests kept the direct offer">
       <div className="flex items-baseline justify-between gap-2 px-4 pt-3">
         <span className="text-sm text-muted-foreground">Refused</span>
         <span className="text-xl font-semibold tabular-nums text-foreground">{n(refused)}</span>
@@ -90,7 +90,7 @@ export function CouponRefusalsCard({ summary, days = 30 }: { summary?: CouponRef
         <div className="flex items-baseline justify-between gap-3 border-t border-border bg-muted/30 px-4 py-2.5">
           <span className="min-w-0">
             <span className="block text-sm font-medium text-foreground">{REFUSAL_LABELS.coupon_worse}</span>
-            <span className="block text-xs text-muted-foreground">The code was valid. No use was counted.</span>
+            <span className="block text-xs text-muted-foreground">Valid code, no use counted</span>
           </span>
           <span className="text-sm font-semibold tabular-nums text-foreground">{n(notUsed)}</span>
         </div>
@@ -110,7 +110,7 @@ export function CouponRefusalsCard({ summary, days = 30 }: { summary?: CouponRef
           </dl>
         </div>
       ) : null}
-      <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">Counted when a guest or staff member saw the refusal. Diagnostic only.</p>
+      <p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">Counted when a guest or staff member saw the refusal · diagnostic only</p>
     </SideCard>
   );
 }

@@ -1,4 +1,5 @@
 import { Globe2, MessageCircle } from "lucide-react";
+import { staffDateTime } from "@/lib/staff-time";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import { adminChatVisitorLabel } from "@/components/admin/admin-chat-labels";
 import type { AdminSession, SessionChannelFilter } from "@/components/admin/admin-chat-types";
@@ -21,10 +22,7 @@ export function relativeTime(timestamp?: number, now = Date.now()) {
 
 export function formatDateTime(timestamp?: number) {
   if (!timestamp) return "Unknown";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(timestamp));
+  return staffDateTime(timestamp);
 }
 
 /** One line of plain text from a message that may carry Markdown, for list previews. */

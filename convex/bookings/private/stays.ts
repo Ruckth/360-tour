@@ -188,6 +188,7 @@ export function toAdminBooking(booking: Doc<'bookings'>) {
 		guests: booking.guests,
 		nights: booking.nights,
 		total: booking.total,
+		owed: stayMoney(booking).owed,
 		promotion: booking.promotion,
 		currency: booking.currency,
 		status: booking.status,

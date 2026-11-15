@@ -65,8 +65,12 @@ const client = {
 };
 
 export function useConvex() { return client; }
-export function usePaginatedQuery() {
-  return { results: [], status: "Exhausted", loadMore: () => undefined };
+/** A registered query handler answers the whole list at once; anything else pages empty. */
+export function usePaginatedQuery(query?: Parameters<typeof getFunctionName>[0], args?: unknown) {
+  useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
+  const handler = query && args !== "skip" ? queryHandlers.get(getFunctionName(query)) : undefined;
+  const results = handler ? (handler(args as never) as unknown[]) : [];
+  return { results, status: "Exhausted", isLoading: false, loadMore: () => undefined };
 }
 
 const money = { total: 2890000, currency: "THB", gross: 2890000, refunded: 0, net: 2890000, owed: 0, credit: 0, refundable: 0, refundContext: "credit",  };
@@ -76,8 +80,10 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   const name = getFunctionName(query);
   // Picker fixtures supply their catalog through the real component's initial props.
   if (name === "services/admin:listServices" || name === "services/admin:listStaff") return undefined;
+  if (name === "bookings/admin:stayAppointments") return { appointments: [], complete: true };
+  if (name === "services/admin:listSchedule") return { staff: [], services: [], appointments: [], blocks: [], shifts: [], patternHistory: [] };
   if (name === "pos/orders:ordersForBooking") return {
-    balance: { total: 2890000, paid: 2890000, owed: 0, refunded: 0, credit: 0 },
+    balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
     activeOrder: null,
     orders: [],
     discardedOrders: [],
@@ -101,8 +107,8 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   if (name === "bookings/admin:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
-    subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB",
-    status: "completed", paymentStatus: "paid", amountPaid: 2890000, source: "admin",
+    subtotal: 34000, discountAmount: 5100, total: 28900, owed: 0, currency: "THB",
+    status: "completed", paymentStatus: "paid", amountPaid: 28900, source: "admin",
     propertyName: "Tideglass Pool Residence", hasStripePayment: false, checkoutLive: false,
     revision: 0, propertyStatus: "active", priceOverride: null, money, historical: true,
     guestEmailsOff: true, confirmationEmailed: false, notifyByDefault: false,

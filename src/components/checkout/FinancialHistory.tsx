@@ -1,30 +1,126 @@
 "use client";
 
 import { roundMoney } from "convex/shared/orderMath";
-import type { ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Spinner } from "@/components/ui/spinner";
 import { useCheckoutBackend, type CustomerPage, type FinancialRows, type OrderId, type OrderView } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
-import { historyTime } from "./OrderHistory";
+import { OrderHistoryList, historyTime } from "./OrderHistory";
+import { PaymentFacts } from "./PaymentRecord";
 import { TENDER_LABELS, correctionTitle } from "./checkout-ui";
 import { HistoryDetails } from "./HistoryDetails";
 import { refundMethodName, satangMoney } from "./refunds";
 
 /** These are separate ledgers with independent native cursors, never a merged/capped array. */
 export function FinancialHistory({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
-  return <HistoryDetails orderId={orderId} title="Browse all financial history">
+  return <HistoryDetails orderId={orderId} title="History" hint="all ledgers">
     <p className="mb-3 text-xs text-muted-foreground">Original receipt stays as issued. Each ledger pages independently. All times are Bangkok time. Refunds record money returned separately; this screen does not send refunds.</p>
     <div className="grid gap-5">
-      <Ledger title="All payment amendments"><Corrections orderId={orderId} /></Ledger>
-      <Ledger title="All receipt activity"><Audit orderId={orderId} /></Ledger>
+      <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
+      <Ledger title="All receipt activity"><Audit orderId={orderId} view={view} /></Ledger>
       <Ledger title="All stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger>
       <Ledger title="All line refunds"><LineRefunds orderId={orderId} view={view} /></Ledger>
     </div>
   </HistoryDetails>;
 }
+const HISTORY_TABS = [
+  { id: "items", label: "Items" },
+  { id: "payments", label: "Payments" },
+  { id: "refunds", label: "Refunds" },
+] as const;
+type HistoryTab = (typeof HISTORY_TABS)[number]["id"];
+
+/**
+ * The receipt's one History: a closed section with Items · Payments · Refunds. Nothing loads until
+ * it is opened, and a tab's ledgers load when the tab is first shown; a visited tab stays mounted,
+ * so its loaded pages survive switching tabs or closing the section (until another order opens).
+ */
+export function ReceiptHistory({ view, className }: { view: OrderView; className?: string }) {
+  return <ReceiptHistoryDetails key={view.order._id} view={view} className={className} />;
+}
+
+function ReceiptHistoryDetails({ view, className }: { view: OrderView; className?: string }) {
+  const [tab, setTab] = useState<HistoryTab>("items");
+  const [visited, setVisited] = useState<Set<HistoryTab>>(() => new Set(["items"]));
+  const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const orderId = view.order._id;
+  // Stays and appointments get their own refund ledgers only when this receipt paid for one.
+  const sources = view.sources.length > 0 || view.links.length > 0 || view.refunds.length > 0 || view.lines.some((line) => line.bookingId || line.appointmentId);
+  function show(next: HistoryTab, focus = false) {
+    setTab(next);
+    setVisited((seen) => (seen.has(next) ? seen : new Set(seen).add(next)));
+    if (focus) tabs.current[next]?.focus();
+  }
+  function onKeyDown(event: KeyboardEvent) {
+    const index = HISTORY_TABS.findIndex((item) => item.id === tab);
+    const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      show(HISTORY_TABS[event.key === "Home" ? 0 : HISTORY_TABS.length - 1].id, true);
+    } else if (step) {
+      event.preventDefault();
+      show(HISTORY_TABS[(index + step + HISTORY_TABS.length) % HISTORY_TABS.length].id, true);
+    }
+  }
+  const panel = (id: HistoryTab, children: ReactNode) => visited.has(id) ? (
+    <div key={id} role="tabpanel" id={`receipt-history-${id}`} aria-labelledby={`receipt-history-tab-${id}`} hidden={tab !== id} className="grid gap-5 pt-3">
+      {children}
+    </div>
+  ) : null;
+  return (
+    <Disclosure
+      data-testid="receipt-history"
+      label="History"
+      lazy="first-open"
+      className={cn("rounded-xl border border-border bg-card px-5 print:hidden", className)}
+      contentClassName="pb-0"
+    >
+        <div className="pb-3">
+          <div role="tablist" aria-label="History" className="inline-flex gap-1 rounded-lg bg-muted p-1" onKeyDown={onKeyDown}>
+            {HISTORY_TABS.map((item) => (
+              <button
+                key={item.id}
+                ref={(el) => { tabs.current[item.id] = el; }}
+                type="button"
+                role="tab"
+                id={`receipt-history-tab-${item.id}`}
+                aria-selected={tab === item.id}
+                aria-controls={`receipt-history-${item.id}`}
+                tabIndex={tab === item.id ? 0 : -1}
+                onClick={() => show(item.id)}
+                className={cn(
+                  "min-h-9 rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11",
+                  tab === item.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          {panel("items", <>
+            <OrderHistoryList orderId={orderId} intro={false} />
+            <Ledger title="Receipt activity"><Audit orderId={orderId} view={view} /></Ledger>
+          </>)}
+          {panel("payments", <>
+            <PaymentFacts view={view} />
+            <Ledger title="Payment corrections"><Corrections orderId={orderId} view={view} /></Ledger>
+          </>)}
+          {panel("refunds", <>
+            <Ledger title="Line refunds"><LineRefunds orderId={orderId} view={view} /></Ledger>
+            {sources ? <Ledger title="Stay refunds"><BookingRefunds orderId={orderId} view={view} /></Ledger> : null}
+            {sources ? <Ledger title="Appointment refunds"><AppointmentRefunds orderId={orderId} view={view} /></Ledger> : null}
+          </>)}
+          <p className="mt-3 text-xs text-muted-foreground">Bangkok time · the issued receipt never changes</p>
+        </div>
+    </Disclosure>
+  );
+}
+
 function Ledger({ title, children }: { title: string; children: ReactNode }) {
   return <section aria-label={title} className="grid gap-2"><h3 className="font-semibold">{title}</h3><InlineErrorBoundary message={`Couldn't load ${title.toLowerCase()}. Try again.`}>{children}</InlineErrorBoundary></section>;
 }
@@ -36,30 +132,48 @@ function Page<T extends { _id: string }>({ page, label, render }: { page: Custom
     {page.status === "CanLoadMore" || page.status === "LoadingMore" ? <Button variant="outline" disabled={page.status === "LoadingMore"} onClick={() => page.loadMore(20)}>{page.status === "LoadingMore" ? "Loading older entries…" : `Load older ${label}`}</Button> : null}
   </>;
 }
-function Corrections({ orderId }: { orderId: OrderId }) {
+/** The row and booking reference from a link correction, now in the single paged history. */
+function linkSummary(view: OrderView, change: OrderView["corrections"][number]) {
+  const row = view.lines.find((line) => line._id === change.lineId)?.name ?? "A row";
+  const link = view.links.find((item) => item._id === change.linkId);
+  return `${row} → ${link?.target.reference ?? "its booking"}${change.amount !== undefined ? ` · ${formatMoney(change.amount)}` : ""}`;
+}
+function Corrections({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useCorrectionHistory(orderId);
-  return <Page page={page} label="payment amendments" render={r => <>
-    <p className="font-medium">{correctionTitle(r.kind)} · #{r.sequence}</p>{r.amount !== undefined ? <p>Applied {formatMoney(r.amount)}</p> : null}<p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
+  return <Page page={page} label="payment corrections" render={r => <>
+    <p className="font-medium">{correctionTitle(r.kind)} · #{r.sequence}</p>{view && (r.kind === "linked" || r.kind === "unlinked") ? <p>{linkSummary(view, r)}</p> : r.amount !== undefined ? <p>Applied {formatMoney(r.amount)}</p> : null}<p>{r.reason}</p><p>Recorded {historyTime(r.recordedAt)} by {r.actor}</p>
     {r.tendersBefore ? <p>Before: {r.tendersBefore.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.tendersAfter ? <p>After: {r.tendersAfter.map(t => `${TENDER_LABELS[t.method].short} ${formatMoney(t.amount)}${t.received !== undefined ? ` (handed over ${formatMoney(t.received)})` : ""}`).join(" + ")}</p> : null}
     {r.effectiveAtBefore !== undefined ? <p>Received date: {historyTime(r.effectiveAtBefore)} → {r.effectiveAtAfter !== undefined ? historyTime(r.effectiveAtAfter) : "Unknown"}</p> : null}
     {r.customerBefore !== undefined || r.customerAfter !== undefined ? <><p>Customer before: {r.customerBefore?.name ?? "No named customer"} · {r.customerBefore?.phone} · {r.customerBefore?.email}</p><p>Customer after: {r.customerAfter?.name ?? "No named customer"} · {r.customerAfter?.phone} · {r.customerAfter?.email}</p></> : null}
   </>} />;
 }
-function Audit({ orderId }: { orderId: OrderId }) {
-  const page = useCheckoutBackend().useAuditHistory(orderId);
-  return <Page page={page} label="receipt activity" render={r => <><p className="font-medium capitalize">{r.kind.replaceAll("_", " ")}</p><p>{r.note}</p>{r.fromPrice !== undefined ? <p>Before: {formatMoney(r.fromPrice)}</p> : null}{r.toPrice !== undefined ? <p>After: {formatMoney(r.toPrice)}</p> : null}{r.customerId ? <p>Customer reference: {r.customerId}</p> : null}<p>Recorded {historyTime(r.at)} by {r.actor}</p></>} />;
+/** Prefer references already loaded with the receipt; never surface an internal ID as a label. */
+function linkedSourceLabel(view: OrderView | undefined, id: string, kind: "booking" | "appointment") {
+  return view?.sources.find(source => source.id === id)?.reference ??
+    view?.links.find(link => link.target.id === id)?.target.reference ??
+    view?.lines.find(line => (kind === "booking" ? line.bookingId : line.appointmentId) === id)?.name ??
+    (kind === "booking" ? "Linked stay" : "Linked appointment");
 }
-function Refund({ row }: { row: FinancialRows["bookingRefunds"] | FinancialRows["appointmentRefunds"] }) {
-  return <><p className="font-medium">Recorded · {formatMoney(row.amount, row.currency)} · {row.method}</p><p>{row.reason}</p><p>Effective {historyTime(row.effectiveAt)} · Recorded {historyTime(row.recordedAt)} by {row.recordedBy}</p><p>{"bookingId" in row ? `Stay: ${row.bookingId}` : `Appointment: ${row.appointmentId}`}</p>{row.netBefore !== undefined && row.netAfter !== undefined ? <p>Net balance after this return: {formatMoney(row.netBefore, row.currency)} → {formatMoney(row.netAfter, row.currency)}</p> : null}{"providerRefundId" in row && row.providerRefundId ? <p>Provider refund: {row.providerRefundId}</p> : null}</>;
+function TechnicalDetails({ children }: { children: ReactNode }) {
+  return <Disclosure label="Technical details" contentClassName="pb-0"><div className="grid gap-1 text-xs text-muted-foreground">{children}</div></Disclosure>;
+}
+function Audit({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
+  const page = useCheckoutBackend().useAuditHistory(orderId);
+  return <Page page={page} label="receipt activity" render={r => <><p className="font-medium capitalize">{r.kind.replaceAll("_", " ")}</p><p>{r.note}</p>{r.fromPrice !== undefined ? <p>Before: {formatMoney(r.fromPrice)}</p> : null}{r.toPrice !== undefined ? <p>After: {formatMoney(r.toPrice)}</p> : null}{r.customerId ? <><p>{view?.customer?._id === r.customerId ? view.customer.name : "Customer"}</p><TechnicalDetails><p>Customer reference: {r.customerId}</p></TechnicalDetails></> : null}<p>Recorded {historyTime(r.at)} by {r.actor}</p></>} />;
+}
+function Refund({ row, view }: { row: FinancialRows["bookingRefunds"] | FinancialRows["appointmentRefunds"]; view?: OrderView }) {
+  const kind = "bookingId" in row ? "booking" : "appointment";
+  const id = "bookingId" in row ? row.bookingId : row.appointmentId;
+  return <><p className="font-medium">Recorded · {formatMoney(row.amount, row.currency)} · {row.method}</p><p>{row.reason}</p><p>Effective {historyTime(row.effectiveAt)} · Recorded {historyTime(row.recordedAt)} by {row.recordedBy}</p><p>{linkedSourceLabel(view, id, kind)}</p>{row.netBefore !== undefined && row.netAfter !== undefined ? <p>Net balance after this return: {formatMoney(row.netBefore, row.currency)} → {formatMoney(row.netAfter, row.currency)}</p> : null}<TechnicalDetails><p>{kind === "booking" ? "Stay" : "Appointment"} reference: {id}</p>{"providerRefundId" in row && row.providerRefundId ? <p>Provider refund: {row.providerRefundId}</p> : null}</TechnicalDetails></>;
 }
 function BookingRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useBookingRefundHistory(orderId);
-  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="booking" /><Page page={page} label="stay refunds" render={row => <Refund row={row} />} /></>;
+  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="booking" /><Page page={page} label="stay refunds" render={row => <Refund row={row} view={view} />} /></>;
 }
 function AppointmentRefunds({ orderId, view }: { orderId: OrderId; view?: OrderView }) {
   const page = useCheckoutBackend().useAppointmentRefundHistory(orderId);
-  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="appointment" /><Page page={page} label="appointment refunds" render={row => <Refund row={row} />} /></>;
+  return <><RefundBalances view={view} rows={page.results} complete={page.status === "Exhausted"} kind="appointment" /><Page page={page} label="appointment refunds" render={row => <Refund row={row} view={view} />} /></>;
 }
 
 function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows: Array<{ amount: number; currency: string; bookingId?: string; appointmentId?: string }>; complete: boolean; kind: "booking" | "appointment" }) {
@@ -73,7 +187,7 @@ function RefundBalances({ view, rows, complete, kind }: { view?: OrderView; rows
     const lines = view.lines.filter(line => kind === "booking" ? line.bookingId === id : line.appointmentId === id);
     const gross = roundMoney(lines.reduce((n, line) => n + line.net - (line.deposit ?? 0), 0));
     const issued = view.order.state === "paid" || (view.order.state === "void" && !view.paymentRecord.voidUnreceived);
-    return <p key={id}><span className="font-medium">{view.sources.find(s => s.id === id)?.reference ?? id}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(roundMoney(gross - sum.amount), sum.currency)}` : ""}</p>;
+    return <p key={id}><span className="font-medium">{linkedSourceLabel(view, id, kind)}</span> · {complete ? "Refunded" : "Refunds shown"} {formatMoney(sum.amount, sum.currency)}{complete && issued && lines.length ? ` · Received on this receipt ${formatMoney(gross, sum.currency)} · Net retained ${formatMoney(roundMoney(gross - sum.amount), sum.currency)}` : ""}</p>;
   })}{!complete ? <p>Load older refunds to see complete per-source net balances.</p> : null}</div>;
 }
 

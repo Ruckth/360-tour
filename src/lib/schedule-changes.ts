@@ -2,8 +2,9 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/shared/appointmentWindow";
-import type { RosterBreak } from 'convex/shared/serviceScheduleTypes';
-import { formatResortFullDate, formatResortTime, resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
+import type { RosterBreak } from "convex/shared/serviceScheduleTypes";
+import { resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
+import { staffDate, staffTime } from "@/lib/staff-time";
 
 /** Pure helpers behind the calendar's proposed changes: nothing here saves anything. */
 
@@ -45,10 +46,10 @@ export function breakFromDrag(
 
 /** Include the end date when a service or cleanup crosses midnight in Bangkok. */
 export const endTime = (start: number, end: number) => resortIsoDate(start) === resortIsoDate(end)
-  ? formatResortTime(end)
-  : `${formatResortFullDate(end)}, ${formatResortTime(end)}`;
+  ? staffTime(end)
+  : `${staffDate(end, { weekday: true })}, ${staffTime(end)}`;
 
-export const timeRange = (start: number, end: number) => `${formatResortTime(start)} – ${endTime(start, end)}`;
+export const timeRange = (start: number, end: number) => `${staffTime(start)} – ${endTime(start, end)}`;
 
 function occupiedUntil(occupancy: Occupancy) {
   const turnaround = turnaroundMinutes(occupancy);
@@ -58,7 +59,7 @@ function occupiedUntil(occupancy: Occupancy) {
 /** Date, service time, staff and the end of the turnaround, before and after a schedule change. */
 export function scheduleRows(before: Occupancy, after: Occupancy): ChangeRow[] {
   return [
-    { label: "Date", before: formatResortFullDate(before.start), after: formatResortFullDate(after.start) },
+    { label: "Date", before: staffDate(before.start, { weekday: true }), after: staffDate(after.start, { weekday: true }) },
     { label: "Service time", before: timeRange(before.start, before.end), after: timeRange(after.start, after.end) },
     { label: "Staff", before: before.staffName, after: after.staffName },
     { label: "Occupied until", before: occupiedUntil(before), after: occupiedUntil(after) },

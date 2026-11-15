@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const port = Number(process.env.E2E_COMPONENT_PORT ?? 4319);
+const port = Number(process.env.BOOKING_UI_PORT ?? process.env.E2E_COMPONENT_PORT ?? 4319);
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({

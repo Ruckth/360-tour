@@ -22,21 +22,14 @@ const OWNER_VIEW: StaffAccessView = {
   },
 };
 
-type StaffContext = { access: StaffAccessView; pendingApprovals: number };
-const Context = createContext<StaffContext | undefined>(undefined);
+const Context = createContext<StaffAccessView | undefined>(undefined);
 
-export function StaffAccessProvider({ access, pendingApprovals = 0, children }: { access: StaffAccessView; pendingApprovals?: number; children?: ReactNode }) {
-  const value = useMemo(() => ({ access, pendingApprovals }), [access, pendingApprovals]);
-  return <Context.Provider value={value}>{children}</Context.Provider>;
+export function StaffAccessProvider({ access, children }: { access: StaffAccessView; children?: ReactNode }) {
+  return <Context.Provider value={access}>{children}</Context.Provider>;
 }
 
 export function useStaffAccess(): StaffAccessView {
-  return useContext(Context)?.access ?? OWNER_VIEW;
-}
-
-/** Effective approval requests waiting for this manager or owner (0 for everyone else). */
-export function usePendingApprovalCount(): number {
-  return useContext(Context)?.pendingApprovals ?? 0;
+  return useContext(Context) ?? OWNER_VIEW;
 }
 
 /** The sidebar sections this person can open. */

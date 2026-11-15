@@ -1,5 +1,8 @@
+import { act } from "../support/checkout-act";
+import { gateResponse } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, gateResponse } from '../support/checkout-act';
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { NextIntlClientProvider } from "next-intl";
@@ -29,7 +32,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(400); }
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const panel = () => document.querySelector<HTMLElement>('aside[aria-label="Order"]')!;
 const button = (text: string | RegExp, within: ParentNode = panel()) =>
-  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? el.textContent?.trim() === text : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
+  [...within.querySelectorAll("button")].find((el) => (typeof text === "string" ? ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))) : text.test(el.textContent ?? ""))) as HTMLButtonElement | undefined;
 const row = (name: string) => [...panel().querySelectorAll("li")].find((li) => li.querySelector("button")?.textContent?.startsWith(name))!;
 const field = () => panel().querySelector<HTMLInputElement>('form[aria-label="Add coupon"] input')!;
 const due = () => panel().querySelector('[data-testid="order-due"]')?.textContent;
@@ -108,7 +111,9 @@ describe("adding a coupon at checkout", () => {
     const chip = panel().querySelector('[data-testid="order-coupon"]')!;
     expect(chip.textContent).toContain("DCNT-SPA-500");
     expect(chip.textContent).toContain("Saves ฿500");
-    expect(chip.textContent).toContain("฿500 off spa services of ฿1,500 or more");
+    // The terms sit behind an ⓘ, not as a sentence in the order.
+    expect(chip.textContent).not.toContain("฿500 off spa services");
+    expect(chip.querySelector('[aria-label="Terms of DCNT-SPA-500"]')).toBeTruthy();
     expect(panel().querySelector('[data-testid="order-coupon-total"]')?.textContent).toBe("Coupon DCNT-SPA-500-฿500");
     expect(panel().textContent).not.toContain("Discounts");
     expect(due()).toBe("฿1,750");
@@ -121,7 +126,7 @@ describe("adding a coupon at checkout", () => {
     // A staff discount stays its own row in the totals.
     await click(row("Breakfast basket").querySelector("button"));
     await act(async () => type(panel().querySelector<HTMLInputElement>('input[aria-label="Discount"]')!, "50"));
-    await click(button("Apply"));
+    await click(button(/^Apply ฿50 /));
     await settle();
     expect(panel().textContent).toContain("Discounts-฿50");
     expect(panel().querySelector('[data-testid="order-coupon-total"]')?.textContent).toContain("-฿500");
@@ -129,7 +134,11 @@ describe("adding a coupon at checkout", () => {
     await click(panel().querySelector('button[aria-label="Remove coupon DCNT-SPA-500"]'));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon"]')).toBeNull();
-    expect(button(/^Add coupon/)).toBeDefined();
+    // While a line is open the empty coupon row moves to its compact header trigger.
+    const addCoupon = panel().querySelector<HTMLButtonElement>('[data-add-coupon][aria-label="Add coupon"]');
+    expect(addCoupon).not.toBeNull();
+    await click(addCoupon);
+    expect(field()).not.toBeNull();
     expect(due()).toBe("฿2,200");
   });
 
@@ -265,7 +274,7 @@ describe("paying with a coupon", () => {
   async function payByCard(fixture: Fixture, orderId: OrderId) {
     await show(fixture, orderId);
     await click(button("Card"));
-    await click(button(/^Confirm .* received$/));
+    await click(button(/^Confirm ฿[\d,.]+ card$/));
     await settle();
   }
 
@@ -322,7 +331,7 @@ describe("paying with a coupon", () => {
     await show(fixture, orderId);
     await click(button("Card"));
     expect(panel().textContent).toContain("Includes coupon DCNT-SPA-500 · -฿500");
-    await click(button("Confirm ฿1,750 received"));
+    await click(button("Confirm ฿1,750 card"));
     await settle();
     const view = await readOrder(fixture, orderId);
     expect(view.order.state).toBe("paid");
@@ -341,7 +350,7 @@ describe("receipts with a coupon", () => {
 
   it("prints a coupon line per row, apart from the staff discount, and in the totals", async () => {
     const { fixture, orderId } = await paidOrder();
-    await render(createElement(CheckoutBackendProvider, { backend: fixture as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(ReceiptView, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
+    await render(createElement(CheckoutBackendProvider, { backend: fixture as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
     const receipt = document.querySelector("article.pos-receipt")!;
     expect([...receipt.querySelectorAll('[data-testid="receipt-line-coupon"]')].map((el) => el.textContent)).toEqual(["Coupon DCNT-SPA-500-฿333.33", "Coupon DCNT-SPA-500-฿166.67"]);
     expect(receipt.textContent).not.toContain("Discount-");
@@ -369,7 +378,7 @@ describe("order history", () => {
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);
-    const history = [...document.querySelectorAll("summary")].find((el) => el.textContent?.includes("Order history"));
+    const history = [...document.querySelectorAll("summary")].find((el) => el.textContent === "History");
     await click(history);
     const entry = [...document.querySelectorAll('section[aria-label="Order history"] li')].find((li) => li.querySelector("p")?.textContent === "Coupon applied")!;
     expect(entry).toBeDefined();
@@ -409,3 +418,5 @@ describe("customer display", () => {
     expect(document.querySelector('[data-testid="display-coupon-saved"]')).toBeNull();
   });
 });
+
+function ReceiptWithConfirm(props: ReceiptProps<typeof ReceiptView>) { return createElement(ConfirmProvider, null, createElement(ReceiptView, props)); }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
 import {
   ArrowLeft,
@@ -8,7 +9,9 @@ import {
   Clock3,
   Hand,
   Info,
+  Mail,
   MessageCircle,
+  Phone,
   Send,
 } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
@@ -45,13 +48,36 @@ export function chronologicalTranscriptMessages<T>(newestFirst: readonly T[]): T
   return [...newestFirst].reverse();
 }
 
-function contactLabel(session: AdminSession) {
-  const app = session.visitorContactApp ? sourceLabel(session.visitorContactApp) : "Contact";
-  return session.visitorContactHandle
-    ? `${app}: ${session.visitorContactHandle}`
-    : session.visitorPhone
-      ? `${sourceLabel("whatsapp")}: ${session.visitorPhone}`
-      : "No contact app";
+/** Contact details behind info; app handles can also identify the guest in the header. */
+function ContactLine({ session, handlesOnly = false }: { session: AdminSession; handlesOnly?: boolean }) {
+  const handle = session.visitorContactHandle;
+  const phone = handlesOnly ? undefined : session.visitorPhone;
+  const email = handlesOnly ? undefined : session.visitorEmail;
+  if (!handle && !phone && !email) return null;
+  const item = "inline-flex min-w-0 max-w-full items-center gap-1 rounded hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  return (
+    <address aria-label="Contact" className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs not-italic text-muted-foreground">
+      {handle ? (
+        <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+          {session.visitorContactApp ? <ChannelIcon channel={session.visitorContactApp} className="size-3 shrink-0" /> : null}
+          <span className="sr-only">{session.visitorContactApp ? sourceLabel(session.visitorContactApp) : "Contact"}:</span>
+          <span className="truncate">{handle}</span>
+        </span>
+      ) : null}
+      {phone ? (
+        <a href={`tel:${phone.replace(/[^\d+]/g, "")}`} className={item}>
+          <Phone className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{phone}</span>
+        </a>
+      ) : null}
+      {email ? (
+        <a href={`mailto:${email}`} className={item}>
+          <Mail className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{email}</span>
+        </a>
+      ) : null}
+    </address>
+  );
 }
 
 type DeliveryEvent = AdminLineEvent | AdminFacebookEvent | AdminWhatsAppEvent | AdminInstagramEvent;
@@ -122,6 +148,31 @@ function DetailRow({ label, children }: { label: string; children: ReactNode }) 
   );
 }
 
+/** Lifecycle, automation and follow-up are independent facts. */
+function conversationStatus(session: AdminSession): { label: string; tone: Tone; reason?: string } {
+  if (session.adminStatus === "archived") return { label: "Archived", tone: "muted" };
+  if (session.adminStatus === "resolved") return {
+    label: "Done",
+    tone: "success",
+    reason: session.inboxReason === "awaiting_guest" ? "Waiting for guest"
+      : session.resolutionSource === "ai" ? "AI answered"
+      : session.resolutionSource === "staff" ? "Staff answered"
+      : session.inboxReason === "no_reply_needed" ? "No reply needed" : "Marked done",
+  };
+  const reasons: Partial<Record<NonNullable<AdminSession["inboxReason"]>, string>> = {
+    handoff: "Staff help needed",
+    send_failed: "Reply failed",
+    sending: "Sending reply…",
+    answering: "AI answering…",
+    review_required: "Staff review needed",
+  };
+  return {
+    label: session.needsReply ? "Needs you" : "In progress",
+    tone: session.needsReply ? "warning" : "info",
+    reason: session.inboxReason ? reasons[session.inboxReason] : undefined,
+  };
+}
+
 export function AdminSessionDetail({
   canLoadOlderMessages,
   compact = false,
@@ -144,6 +195,9 @@ export function AdminSessionDetail({
   replyWindow,
   onAddBusinessFact,
   actions,
+  replyAction,
+  actionError,
+  followUp,
   onBack,
   emptyList,
 }: {
@@ -167,10 +221,15 @@ export function AdminSessionDetail({
   replyStatus: string | null;
   replyWindow?: ChannelReplyWindow;
   onAddBusinessFact?: (message: AdminMessage) => void;
-  /** Primary status action and the occasional-action menu, rendered inside the header. */
+  /** Occasional-action menu, rendered on the guest-name row. */
   actions?: ReactNode;
+  /** Status action: on the metadata row on phones, beside the menu on wider screens. */
+  replyAction?: ReactNode;
+  actionError?: ReactNode;
   /** Set when the list beside this pane is empty: the pane says so instead of "choose one". */
   emptyList?: boolean;
+  /** Existing task and its direct actions, owned by the same controller as the menu. */
+  followUp?: ReactNode;
   onBack?: () => void;
 }) {
   const transcriptScrollRef = useRef<HTMLDivElement>(null);
@@ -253,11 +312,11 @@ export function AdminSessionDetail({
           <span className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <MessageCircle className="size-5" aria-hidden="true" />
           </span>
-          <h2 className="text-base font-semibold">{emptyList ? "No conversation to open" : "No conversation open"}</h2>
+          <h2 className="text-base font-semibold">{emptyList ? "No chat to open" : "No chat open"}</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {emptyList
-              ? "The list beside this pane is empty for this search and these filters. Change them there to see conversations."
-              : "Choose a conversation from the list to read it and reply."}
+              ? "Change the search or filters in the list to see chats."
+              : "Choose a chat from the list to read it and reply."}
           </p>
         </div>
       </div>
@@ -291,107 +350,47 @@ export function AdminSessionDetail({
     : "";
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
   const replyHintId = `${replyInputId}-hint`;
+  const status = conversationStatus(session);
+  // An AI escalation stays flagged (inboxHandoff) even after the guest writes again and the reason becomes staff_reply.
+  const escalatedGuestId = session.needsReply && (session.inboxHandoff || session.inboxReason === "handoff") ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
+  const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "Waiting for staff" : session.keepWithStaff ? "Waiting for staff" : "AI on";
+
+  const automationChip = session.aiPaused || session.inboxState === "processing" ? automationLabel : null;
 
   return (
     <Sheet>
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto]">
+      <div className="grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto]">
         <div className="border-b border-border/60">
-          <div className="flex items-center justify-between gap-2 p-3 sm:px-6 sm:py-4">
-            <div className="flex min-w-0 items-center gap-3">
-              {compact && onBack ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  className="size-9 shrink-0"
-                  aria-label="Back to conversations"
-                  onClick={onBack}
-                >
-                  <ArrowLeft className="size-4" aria-hidden="true" />
-                </Button>
-              ) : null}
-              <span
-                aria-hidden="true"
-                className="hidden size-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground sm:flex"
-              >
-                {guestName
-                  .split(/\s+/)
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase()}
-              </span>
-              <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2>
-                <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                  <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
-                  <span className="shrink-0">{sourceLabel(session.channel)}</span>
-                  <span aria-hidden="true">·</span>
-                  <span className="truncate">{propertyLabel}</span>
-                </p>
+          <div data-testid="chat-header" className="grid gap-2 p-3 sm:px-6 sm:py-4">
+            <div data-testid="chat-header-name" className="flex min-w-0 items-center gap-1 sm:gap-3">
+              {compact && onBack ? <Button type="button" size="icon" variant="ghost" className="size-9 shrink-0 -ml-1" aria-label="Back to chats" onClick={onBack}><ArrowLeft className="size-4" aria-hidden="true" /></Button> : null}
+              <div className="min-w-0 flex-1"><h2 className="truncate text-base font-semibold text-foreground">{guestName}</h2></div>
+              <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1">
+                <SheetTrigger asChild><Button type="button" variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label="Chat details"><Info className="size-4" aria-hidden="true" /></Button></SheetTrigger>
+                <div className="hidden sm:block">{replyAction}</div>
+                {actions}
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
-              <SheetTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="size-9 text-muted-foreground"
-                  aria-label="Contact & details"
-                >
-                  <Info className="size-4" aria-hidden="true" />
-                </Button>
-              </SheetTrigger>
-              {actions}
+            <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
+              <div className="flex min-w-20 flex-1 items-center gap-2">
+                <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
+                {automationChip ? <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{automationChip}</span> : null}
+                <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+              </div>
+              {replyAction}
+            </div>
+            <div className="hidden min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground sm:flex">
+              <ChannelIcon channel={session.channel} className="size-3 shrink-0" />
+              <span className="sr-only sm:not-sr-only sm:shrink-0">{sourceLabel(session.channel)}</span>
+              <span aria-hidden="true" className="hidden sm:inline">·</span>
+              <span className="min-w-0 truncate">{propertyLabel}</span>
+              <StatusBadge tone={status.tone} label={status.label} className="ml-1 text-xs" />
+              {status.reason ? <span className="shrink-0 text-xs">{status.reason}</span> : null}
+              {automationChip ? <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{automationChip}</span> : null}
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/40 px-4 py-2 text-xs text-muted-foreground sm:px-6">
-            <span className="inline-flex min-w-0 items-center gap-1.5">
-              {session.aiPaused ? (
-                <Hand className="size-3.5 shrink-0" aria-hidden="true" />
-              ) : (
-                <Bot className="size-3.5 shrink-0" aria-hidden="true" />
-              )}
-              {session.adminStatus === "archived"
-                ? "Archived conversation"
-                : session.adminStatus === "resolved"
-                  ? session.inboxReason === 'awaiting_guest' ? 'Done automatically · Waiting for guest'
-                    : session.resolutionSource === 'ai' ? 'Done automatically · AI answered'
-                    : session.resolutionSource === 'staff' ? 'Done automatically · Staff answered'
-                    : session.inboxReason === 'no_reply_needed' ? 'No reply needed' : 'Marked Done'
-                  : session.inboxReason === 'handoff' ? 'Staff handoff · A person needs to help'
-                  : session.inboxReason === 'send_failed' ? 'Reply failed · Staff attention needed'
-                  : session.inboxReason === 'sending' ? 'Sending reply…'
-                  : session.inboxReason === 'answering' ? 'AI is answering…'
-                  : session.inboxReason === 'review_required' ? 'Older chat · Check the guest got an answer'
-                  : session.staffTask ? 'Staff follow-up in progress'
-                  : session.aiPaused
-                    ? "Staff is replying · AI paused"
-                    : "AI is active · Your reply takes over"}
-            </span>
-            <StatusBadge
-              tone={
-                session.adminStatus === "archived"
-                  ? "muted"
-                  : session.adminStatus === "resolved"
-                    ? "success"
-                    : session.needsReply
-                      ? "warning"
-                      : "info"
-              }
-              label={
-                session.adminStatus === "archived"
-                  ? "Archived"
-                  : session.adminStatus === "resolved"
-                    ? "Done"
-                    : session.needsReply
-                      ? "Needs you"
-                      : "In progress"
-              }
-            />
-          </div>
-          {session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null}
+          {actionError}
+          {followUp ?? (session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null)}
           {session.inboxSendError ? <p role="alert" className="border-t border-border/40 px-4 py-2 text-xs text-destructive sm:px-6">{session.inboxSendError}</p> : null}
         </div>
 
@@ -419,13 +418,13 @@ export function AdminSessionDetail({
             {canLoadOlderMessages && !loadingOlderMessages && !loadingTranscript ? (
               <button
                 type="button"
-                className="block w-full rounded py-2 text-center text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="block min-h-11 w-full rounded py-2 text-center text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={requestOlderMessages}
               >
                 Load older messages
               </button>
             ) : null}
-            {messages.map((message) => {
+            {messages.map((message, index) => {
               const author = messageAuthor(message);
               const fromGuest = author === "guest";
               const variant = fromGuest ? "received" : "sent";
@@ -437,10 +436,12 @@ export function AdminSessionDetail({
                   variant={variant}
                 >
                   <div className={cn("min-w-0", !fromGuest && "text-right")}>
-                    <span className="mb-1 block truncate text-xs font-medium text-muted-foreground">
+                    <span className={cn("mb-1 block truncate text-xs font-medium text-muted-foreground", index > 0 && messageAuthor(messages[index - 1]) === author && "sr-only")}>
                       {author === "ai" ? "AI" : author === "staff" ? "Staff" : guestName}
                     </span>
                     <ChatBubbleMessage
+                      // What the guest and replies said is content, not explanation (sentence budget).
+                      data-sentence-budget="ignore"
                       className={cn("whitespace-pre-wrap text-left shadow-sm", BUBBLE_SURFACE[author])}
                       variant={variant}
                     >
@@ -452,15 +453,14 @@ export function AdminSessionDetail({
                     >
                       {formatDateTime(message.timestamp)}
                     </ChatBubbleTimestamp>
-                    {fromGuest && onAddBusinessFact ? (
+                    {fromGuest && message._id === escalatedGuestId && onAddBusinessFact ? (
                       <button
                         type="button"
                         onClick={() => onAddBusinessFact(message)}
-                        // Every guest question keeps a tap route, including earlier messages.
-                        className="mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100"
+                        className={cn("mt-1 inline-flex items-center gap-1 rounded text-xs font-medium text-muted-foreground opacity-0 underline-offset-2 hover:text-foreground hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:min-h-11 pointer-coarse:opacity-100")}
                       >
                         <BookmarkPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                        Answer as a business fact
+                        Save answer for AI
                       </button>
                     ) : null}
                   </div>
@@ -486,8 +486,7 @@ export function AdminSessionDetail({
               <div>
                 <p className="text-sm font-semibold">{sourceLabel(session.channel)} reply window has ended</p>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Standard replies in this inbox are available for 24 hours after the guest’s last message. Other
-                  messaging options require a separate setup. A new guest message opens the reply window again.
+                  {sourceLabel(session.channel)} allows replies within 24 hours of the guest’s last message. You can reply when they write again.
                 </p>
                 {replyWindow?.applies && replyWindow.lastGuestMessageAt ? (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -496,16 +495,18 @@ export function AdminSessionDetail({
                 ) : null}
               </div>
             </div>
+            {replyError ? <p role="alert" className="mt-2 text-xs text-destructive">{replyError}</p> : null}
+            {replyStatus ? <p role="status" className="mt-2 text-xs text-muted-foreground">{replyStatus}</p> : null}
           </div>
         ) : (
           <form
-            className="border-t border-border/60 bg-card p-3 sm:p-5"
+            className="border-t border-border/60 bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-5"
             onSubmit={(event) => {
               event.preventDefault();
               void onSendReply();
             }}
           >
-            <label className="mb-2 block text-xs text-muted-foreground" htmlFor={replyInputId}>
+            <label className="sr-only" htmlFor={replyInputId}>
               Reply via {sourceLabel(session.channel)}
             </label>
             <div className="flex items-end gap-2">
@@ -514,7 +515,7 @@ export function AdminSessionDetail({
                 aria-label="Type an admin reply"
                 aria-describedby={replyHintId}
                 // A 3:1 field edge and a solid focus ring, 44px tall at every size.
-                className="min-h-11 border-input focus-visible:ring-ring md:min-h-11"
+                className="min-h-11 border-input py-2 leading-6 focus-visible:ring-ring max-md:rounded-xl md:min-h-11"
                 value={replyDraft}
                 onChange={(event) => onReplyDraftChange(event.target.value)}
                 onKeyDown={(event) => {
@@ -527,10 +528,11 @@ export function AdminSessionDetail({
                 }}
                 maxLength={1000}
                 disabled={replyPending || loadingTranscript || !replyWindow}
-                placeholder="Type a reply…"
+                placeholder={`Reply on ${sourceLabel(session.channel)}…`}
               />
               <Button
                 type="submit"
+                className="min-h-11 max-md:rounded-xl disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
                 disabled={replyPending || loadingTranscript || !replyWindow || !replyDraft.trim()}
                 aria-describedby={replyHintId}
               >
@@ -564,22 +566,35 @@ export function AdminSessionDetail({
       </div>
       <SheetContent className="w-[26rem] overflow-y-auto sm:max-w-[calc(100vw-2rem)]">
         <SheetHeader>
-          <SheetTitle>Contact & details</SheetTitle>
+          <SheetTitle>Chat details</SheetTitle>
           <SheetDescription>
             {guestName} · {sourceLabel(session.channel)}
           </SheetDescription>
         </SheetHeader>
+        <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
+          <ContactLine session={session} />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <StatusBadge tone={status.tone} label={status.label} />
+            {status.reason ? <span>{status.reason}</span> : null}
+            <span className="inline-flex items-center gap-1.5">{session.aiPaused ? <Hand aria-hidden className="size-3.5" /> : <Bot aria-hidden className="size-3.5" />}{automationLabel}</span>
+          </div>
+          {session.aiPaused && session.keepWithStaff ? <p className="text-xs text-muted-foreground">Staff handles the next question.</p> : null}
+        </div>
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
-            <DetailRow label="Handled by">
-              {session.aiPaused ? (session.assignedAdminEmail ?? "Staff") : "AI assistant"}
-            </DetailRow>
-            <DetailRow label="Email">{session.visitorEmail ?? "None"}</DetailRow>
-            <DetailRow label="Contact">{contactLabel(session)}</DetailRow>
+            <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
             <DetailRow label="Started">{formatDateTime(session.createdAt)}</DetailRow>
+            <DetailRow label="Presence">
+              {session.isActive ? "Online" : "Offline"} · last seen {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
+            </DetailRow>
+            {session.currentPath ? <DetailRow label="Page">{session.currentPath}</DetailRow> : null}
+          </dl>
+        </div>
+        {/* Support and debugging only: closed by default. */}
+        <Disclosure label="More" hint="technical" className="mt-4 border-t border-border pt-2 text-xs">
+          <dl className="grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Visitor ID">{session.visitorId ?? "None"}</DetailRow>
             <DetailRow label="Session ID">{session._id}</DetailRow>
-            {session.currentPath ? <DetailRow label="Page">{session.currentPath}</DetailRow> : null}
             {delivery ? (
               <DetailRow label="Delivery">
                 <span className="flex flex-wrap items-center gap-2">
@@ -604,14 +619,7 @@ export function AdminSessionDetail({
               </>
             ) : null}
           </dl>
-        </div>
-        <details className="mt-2 border-t border-border pt-4 text-xs">
-          <summary className="cursor-pointer font-medium text-muted-foreground">Presence</summary>
-          <p className="mt-2 text-muted-foreground">
-            {session.isActive ? "Online" : "Offline"} · Last seen{" "}
-            {relativeTime(session.lastSeenAt ?? session.createdAt, now)}
-          </p>
-        </details>
+        </Disclosure>
       </SheetContent>
     </Sheet>
   );

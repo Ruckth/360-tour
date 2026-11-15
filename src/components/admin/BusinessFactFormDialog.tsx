@@ -53,11 +53,13 @@ const STATUS_LABEL: Record<BusinessFactStatus, string> = STATUS_LABELS.businessF
 function initialValues(target: FactFormTarget): FactFormValues {
   if (target.fact) return factFormValues(target.fact);
   if (target.fromUnknown) {
+    // Only an approved fact resolves the report, so a fact from a question starts approved.
     return {
       ...EMPTY_FACT_FORM,
       title: target.fromUnknown.question.slice(0, FACT_LIMITS.title),
       body: "",
       propertyId: target.fromUnknown.propertyId ?? "",
+      status: "approved",
     };
   }
   if (target.fromMessage) {
@@ -191,7 +193,7 @@ function FactForm({
         </DialogDescription>
       </DialogHeader>
       <form className="@container grid gap-4" onSubmit={submit}>
-        <div className="grid gap-4 @lg:grid-cols-[minmax(0,1fr)_12rem]">
+        <div className={fromUnknown ? "grid gap-4" : "grid gap-4 @lg:grid-cols-[minmax(0,1fr)_12rem]"}>
           <div className="grid gap-2">
             <Label htmlFor="fact-title">Title</Label>
             <Input
@@ -202,21 +204,24 @@ function FactForm({
               placeholder="Breakfast policy"
             />
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="fact-status">Status</Label>
-            <Select value={form.status} onValueChange={(value) => update("status", value as BusinessFactStatus)}>
-              <SelectTrigger id="fact-status" className="h-10 rounded-lg">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {BUSINESS_FACT_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {STATUS_LABEL[status]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* A fact from a question is saved approved, which resolves the report; no status to pick. */}
+          {fromUnknown ? null : (
+            <div className="grid gap-2">
+              <Label htmlFor="fact-status">Status</Label>
+              <Select value={form.status} onValueChange={(value) => update("status", value as BusinessFactStatus)}>
+                <SelectTrigger id="fact-status" className="h-10 rounded-lg">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {BUSINESS_FACT_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {STATUS_LABEL[status]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-2">
@@ -282,7 +287,7 @@ function FactForm({
 
         {fromUnknown ? (
           <p className="text-xs text-muted-foreground">
-            Approving this fact resolves the missing-information report for &quot;{fromUnknown.question}&quot;.
+            Saving this fact approves it and resolves the missing-information report for &quot;{fromUnknown.question}&quot;.
           </p>
         ) : null}
 

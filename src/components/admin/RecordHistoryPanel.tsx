@@ -3,8 +3,11 @@
 import { usePaginatedQuery } from "convex/react";
 import { makeFunctionReference, type PaginationOptions, type PaginationResult } from "convex/server";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
+import { staffDateTime } from "@/lib/staff-time";
+import { personLabel } from "./person-label";
 
 export type HistoryEntry = Doc<"recordChanges">;
 // Explicit references until the parent runs local codegen; no untyped generated API cast.
@@ -167,7 +170,7 @@ function display(value: unknown, field: string): string {
   }
   if (field === "weekday" && typeof value === "number") return DAYS[value] ?? "Unknown weekday";
   if ((field === "start" || field === "end") && typeof value === "number")
-    return `${new Date(value).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)`;
+    return `${staffDateTime(value)} (Bangkok)`;
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (Array.isArray(value)) {
     if (!value.length) return "None";
@@ -206,12 +209,15 @@ export function RecordHistoryPanel({
   entityId,
   title = "History",
   onRestore,
+  restoreLabel = "Restore to before this",
   disabled = false,
 }: {
   entityType: string;
   entityId?: string;
   title?: string;
+  /** Shows one restore button per change, which puts the record back as it was before it. */
   onRestore?: (entry: HistoryEntry, side: "before" | "after") => Promise<void>;
+  restoreLabel?: string;
   disabled?: boolean;
 }) {
   const { results, status, loadMore } = usePaginatedQuery(listHistory, { entityType, entityId }, { initialNumItems: 10 });
@@ -219,11 +225,6 @@ export function RecordHistoryPanel({
     <section aria-label={title} className="min-w-0 space-y-3 border-t border-border pt-4">
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       <p className="text-xs text-muted-foreground">History begins with changes recorded now. Earlier edits were not recorded.</p>
-      {entityType === "settings" ? (
-        <p className="text-xs text-muted-foreground">
-          Applying an earlier configuration creates a new change. AI instructions and provider secrets are retained.
-        </p>
-      ) : null}
       {status === "LoadingFirstPage" ? (
         <p role="status" className="text-sm text-muted-foreground">
           Loading history…
@@ -236,10 +237,10 @@ export function RecordHistoryPanel({
           <li key={entry._id} className="space-y-2 py-3 first:pt-0">
             <p className="text-sm font-medium text-foreground">{KINDS[entry.kind] ?? "Record changed"}</p>
             <p className="break-words text-xs text-muted-foreground">
-              {entry.actor} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{new Date(entry.recordedAt).toLocaleString()}</time>
+              {personLabel(entry.actor)} · Recorded <time dateTime={new Date(entry.recordedAt).toISOString()}>{staffDateTime(entry.recordedAt)}</time>
             </p>
             <p className="text-xs text-muted-foreground">
-              Effective {new Date(entry.effectiveAt).toLocaleString("en-GB", { timeZone: "Asia/Bangkok" })} (Bangkok)
+              Effective {staffDateTime(entry.effectiveAt)} (Bangkok)
             </p>
             {entry.reason ? <p className="break-words text-sm text-muted-foreground">{entry.reason}</p> : null}
             <dl className="grid gap-2 text-sm">
@@ -252,16 +253,11 @@ export function RecordHistoryPanel({
                 </div>
               ))}
             </dl>
-            {onRestore ? (
-              <div className="flex flex-wrap gap-2">
-                {(["before", "after"] as const).map((side) =>
-                  entry[side] ? (
-                    <Button key={side} type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void onRestore(entry, side)}>
-                      Apply {side} this change
-                    </Button>
-                  ) : null,
-                )}
-              </div>
+            {/* "After this change" is the next change's "before", so one button per change covers both. */}
+            {onRestore && entry.before ? (
+              <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => void onRestore(entry, "before")}>
+                {restoreLabel}
+              </Button>
             ) : null}
           </li>
         ))}
@@ -276,15 +272,11 @@ export function RecordHistoryPanel({
 }
 
 /** Closed history sections do not subscribe to their nested pages. */
-export function HistoryDisclosure({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
+export function HistoryDisclosure({ label = "History", hint, children }: { label?: string; hint?: string; children: ReactNode }) {
   return (
-    <details className="border-t border-border py-2" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="cursor-pointer break-words rounded-sm text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {label}
-      </summary>
-      {open ? <div className="mt-3 space-y-3">{children}</div> : null}
-    </details>
+    <Disclosure label={label} hint={hint} lazy="while-open" className="border-t border-border" contentClassName="space-y-3">
+      {children}
+    </Disclosure>
   );
 }
 

@@ -3,16 +3,15 @@
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { staffDateTime } from "@/lib/staff-time";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
+import { discountText } from "./discount-input";
+import type { LineDiscount } from "convex/shared/orderMath";
 import { HistoryDetails } from "./HistoryDetails";
 
-export const historyTime = (at: number) =>
-  new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Bangkok",
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(at);
+/** When a history entry happened, as the admin shows every moment (staff-time.ts). */
+export const historyTime = (at: number) => staffDateTime(at);
 const labels: Record<string, string> = {
   line_added: "Item added",
   line_updated: "Item changed",
@@ -33,7 +32,7 @@ const fields: Record<string, string> = {
   qty: "Quantity",
   unitPrice: "Unit price",
   currency: "Currency",
-  deposit: "Paid before checkout",
+  deposit: "Paid in advance",
   staffId: "Staff reference",
   startAt: "Service date",
   serviceDate: "Service date",
@@ -112,10 +111,7 @@ export function HistoryValues({
       {row.priceOverride === null ? <p>Price override: Cleared</p> : null}
       {row.discount && typeof row.discount === "object" ? (
         <p>
-          Discount: {String((row.discount as Record<string, unknown>).value)}{" "}
-          {(row.discount as Record<string, unknown>).type === "percent"
-            ? "%"
-            : "THB"}
+          Discount: {(row.discount as LineDiscount).type === "percent" ? discountText(row.discount as LineDiscount) : formatMoney((row.discount as LineDiscount).value)}
         </p>
       ) : null}
       {row.priceOverride && typeof row.priceOverride === "object" ? (
@@ -142,24 +138,40 @@ export function HistoryValues({
 
 export function OrderHistory({ orderId }: { orderId: OrderId }) {
   return (
-    <HistoryDetails orderId={orderId} title="Order history">
-      <InlineErrorBoundary
-        resetKey={orderId}
-        message="Couldn't load order history. Retry to continue."
-      >
-        <HistoryPage orderId={orderId} />
-      </InlineErrorBoundary>
+    <HistoryDetails orderId={orderId} title="History">
+      <OrderHistoryList orderId={orderId} />
     </HistoryDetails>
   );
 }
-function HistoryPage({ orderId }: { orderId: OrderId }) {
+
+/**
+ * The paged item changes on their own, for a tab inside another history (the receipt's Items).
+ * `intro` false leaves out the explanation, where the surrounding history states it.
+ */
+export function OrderHistoryList({ orderId, intro = true }: { orderId: OrderId; intro?: boolean }) {
+  return (
+    <InlineErrorBoundary
+      resetKey={orderId}
+      message="Couldn't load order history. Retry to continue."
+    >
+      <HistoryPage orderId={orderId} intro={intro} />
+    </InlineErrorBoundary>
+  );
+}
+function HistoryPage({ orderId, intro }: { orderId: OrderId; intro: boolean }) {
   const page = useCheckoutBackend().useOrderHistory(orderId);
+  return <HistoryPageContent page={page} intro={intro} />;
+}
+
+function HistoryPageContent({ page, intro }: { page: ReturnType<ReturnType<typeof useCheckoutBackend>["useOrderHistory"]>; intro: boolean }) {
   return (
     <section aria-label="Order history" className="grid gap-3 pb-3">
-      <p className="text-xs text-muted-foreground">
-        Newly recorded item changes, including removed contents. Earlier changes
-        may not have been recorded. All times are Bangkok time.
-      </p>
+      {intro ? (
+        <p className="text-xs text-muted-foreground">
+          Newly recorded item changes, including removed contents. Earlier changes
+          may not have been recorded. All times are Bangkok time.
+        </p>
+      ) : null}
       {page.status === "LoadingFirstPage" ? (
         <Spinner label="Loading order history" />
       ) : null}

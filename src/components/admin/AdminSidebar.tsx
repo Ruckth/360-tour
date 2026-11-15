@@ -9,7 +9,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
-import { ApprovalCountBadge } from "@/components/admin/ApprovalCountBadge";
 import { useAdminNav } from "@/components/admin/staff-access";
 import {
   Sidebar,
@@ -174,7 +173,6 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                       <Link href={href} aria-current={highlighted ? "page" : undefined} onClick={close}>
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
-                        {href === "/admin/checkout" ? <ApprovalCountBadge className="ml-auto" /> : null}
                       </Link>
                     </SidebarMenuButton>
                     {children?.length && !searching ? (

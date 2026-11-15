@@ -1,4 +1,5 @@
 import type { CouponProblem } from "convex/shared/offers";
+import { staffDateTime } from "@/lib/staff-time";
 import { ConvexError } from "convex/values";
 import { localeLabels, type Locale } from "@/i18n/routing";
 import { errorText } from "@/lib/staff-bookings";
@@ -22,7 +23,7 @@ import type {
 
 // Pure labels and summaries for the marketing screens. No React, so they're unit-tested.
 
-// Dates are YYYY-MM-DD strings in Asia/Bangkok, money is whole baht, as in the offer engine.
+// Dates are YYYY-MM-DD strings in Asia/Bangkok, money is integer satang, as in the offer engine.
 
 export const thb = (amount: number) => formatMoney(amount, "THB");
 
@@ -60,7 +61,7 @@ export function formatRange(from?: string, to?: string) {
 export { resortTodayIso as bangkokToday } from 'convex/shared/time';
 export { nightsBetweenIso as nightsBetween } from 'convex/shared/dates';
 
-const stamp = new Intl.DateTimeFormat("en-GB", {
+const exportStampFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Bangkok",
   day: "numeric",
   month: "short",
@@ -70,9 +71,14 @@ const stamp = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
-/** A saved-at time in Bangkok: "3 Nov 2026, 10:12". */
+/** A time in exported files, always with the year: "3 Nov 2026, 10:12" (Bangkok). */
+export function exportStamp(ms: number) {
+  return exportStampFormat.format(ms).replace(/ at /, ", ");
+}
+
+/** A saved-at time in Bangkok, as the admin shows every moment: "3 Nov, 10:12" (staff-time.ts). */
 export function formatStamp(ms: number) {
-  return stamp.format(ms).replace(/ at /, ", ");
+  return staffDateTime(ms);
 }
 
 export const CAMPAIGN_STATUS: Record<CampaignStatus, StatusMeta> = {
@@ -122,12 +128,12 @@ export function benefitLabel(benefit: CouponBenefit) {
   return benefit.kind === "percent" ? `${benefit.percent / 100}% off` : `${thb(benefit.amount)} off`;
 }
 
-/** "Accommodation, all villas" / "Accommodation: Mossbell Garden Suite" / "Spa services" … */
+/** Consistent guest-facing scope names for selectors, summaries and lists. */
 export function scopeLabel(scope: CouponScope, propertySlugs: readonly string[] | undefined, villaName: (slug: string) => string) {
   const villas = propertySlugs?.length ? propertySlugs.map(villaName).join(", ") : "all villas";
-  if (scope === "services") return "Spa services";
-  if (scope === "accommodation") return `Accommodation, ${villas}`;
-  return `Accommodation (${villas}) + spa services`;
+  if (scope === "services") return "Spa";
+  if (scope === "accommodation") return `Stays, ${villas}`;
+  return `Stays (${villas}) & spa`;
 }
 
 type Rules = Pick<
@@ -135,15 +141,15 @@ type Rules = Pick<
   "benefit" | "bookFrom" | "bookTo" | "stayFrom" | "stayTo" | "minNights" | "minEligibleSubtotal" | "maxSaving"
 >;
 
-/** "Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000", or "No limits". */
-export function couponRulesLine(rules: Rules) {
+/** "Book 1–30 Nov 2026 · stay 1 Nov–20 Dec 2026 · min 2 nights · max saving ฿3,000", or "No minimum". */
+export function couponRulesLine(rules: Rules, { includeDates = true }: { includeDates?: boolean } = {}) {
   const items: string[] = [];
-  if (rules.bookFrom || rules.bookTo) items.push(`book ${formatRange(rules.bookFrom, rules.bookTo)}`);
-  if (rules.stayFrom || rules.stayTo) items.push(`stay ${formatRange(rules.stayFrom, rules.stayTo)}`);
+  if (includeDates && (rules.bookFrom || rules.bookTo)) items.push(`book ${formatRange(rules.bookFrom, rules.bookTo)}`);
+  if (includeDates && (rules.stayFrom || rules.stayTo)) items.push(`stay ${formatRange(rules.stayFrom, rules.stayTo)}`);
   if (rules.minNights) items.push(`min ${rules.minNights} ${rules.minNights === 1 ? "night" : "nights"}`);
   if (rules.minEligibleSubtotal) items.push(`min spend ${thb(rules.minEligibleSubtotal)}`);
   if (rules.benefit.kind === "percent" && rules.maxSaving) items.push(`max saving ${thb(rules.maxSaving)}`);
-  return items.length ? capitalize(items.join(" · ")) : "Ongoing, no minimum";
+  return items.length ? capitalize(items.join(" · ")) : "No minimum";
 }
 
 /**

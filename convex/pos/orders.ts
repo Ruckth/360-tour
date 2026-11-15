@@ -1,3 +1,4 @@
+import type { QueryCtx } from '../_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -175,27 +176,7 @@ export const listOrders = adminQuery({
 		const orders = page.page;
 		const rows = [];
 		for (const order of orders) {
-			const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
-			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
-			rows.push({
-				_id: order._id,
-				orderNumber: order.orderNumber,
-				title: orderTitle(order.orderNumber),
-				state: orderState(order),
-				itemCount: order.itemCount,
-				total: order.total,
-				...refundAmounts,
-				due: await remaining(ctx, order),
-				currency: order.currency,
-				updatedAt: order.updatedAt,
-				receiptNumber: order.receiptNumber,
-				customerName: await customerName(ctx, order),
-				/** The order's booking, as in its header (see orderSourceRefs). */
-				bookingReference: sources[0]?.reference,
-				/** How many more bookings it is for. */
-				otherBookings: Math.max(sources.length - 1, 0),
-				...discardedField(order)
-			});
+				rows.push(await orderListRow(ctx, order));
 		}
 		return { ...page, page: rows };
 	}
@@ -343,5 +324,50 @@ export const appointmentFees = adminQuery({
 			});
 		}
 		return fees;
+	}
+});
+
+async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
+		const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
+			return {
+				_id: order._id,
+				orderNumber: order.orderNumber,
+				title: orderTitle(order.orderNumber),
+				state: orderState(order),
+				itemCount: order.itemCount,
+				total: order.total,
+				...refundAmounts,
+				due: await remaining(ctx, order),
+				currency: order.currency,
+				updatedAt: order.updatedAt,
+				receiptNumber: order.receiptNumber,
+				customerName: await customerName(ctx, order),
+				/** The order's booking, as in its header (see orderSourceRefs). */
+				bookingReference: sources[0]?.reference,
+				/** How many more bookings it is for. */
+				otherBookings: Math.max(sources.length - 1, 0),
+				...discardedField(order)
+			};
+}
+
+/** Open orders with items that this checkout actor can recall, in the Orders browser's order. */
+export const listOpenOrders = staffQuery({
+  capability: 'checkout',
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const actor = ctx.staff;
+		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
+		const page = await ctx.db.query('orders')
+			.withIndex('by_hasItems_and_status_and_updatedAt', q => q.eq('hasItems', true).eq('status', 'draft'))
+			.order('desc')
+			.paginate({ ...args.paginationOpts, numItems });
+		// Paginate before the access check: never scan beyond this bounded page to fill it.
+		// The current read rule permits every draft/held order, irrespective of its creator.
+		const rows = [];
+		for (const order of page.page) {
+			if (canReadCheckoutOrder(actor, order)) rows.push(await orderListRow(ctx, order));
+		}
+		return { ...page, page: rows };
 	}
 });

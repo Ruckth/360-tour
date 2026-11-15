@@ -105,7 +105,7 @@ export type Breakdown = {
 };
 
 export const BUCKET_LABEL: Record<Exclude<RowKind, "tracked">, { name: string; sub: string }> = {
-  unknown: { name: "Unknown / untracked", sub: "Web bookings with no tracked link" },
+  unknown: { name: "Not tracked", sub: "Web bookings with no tracked link" },
   staff: { name: "Staff-entered", sub: "Admin bookings, checkout orders and desk payments" },
   messaging: { name: "Messaging", sub: "Stays booked through LINE, WhatsApp, Messenger or Instagram" },
   none: { name: "No coupon", sub: "Direct-booking offer or full price" },
@@ -118,6 +118,7 @@ export const slugPath = (slug: string) => `/${slug.replace(/^\/+/, "")}`;
 
 export const PRESETS = [
   { id: "last7", label: "Last 7 days" },
+  { id: "lastweek", label: "Last week" },
   { id: "last30", label: "Last 30 days" },
   { id: "last90", label: "Last 90 days" },
   { id: "month", label: "This month" },
@@ -126,12 +127,21 @@ export const PRESETS = [
 export type PresetId = (typeof PRESETS)[number]["id"];
 export type RangeChoice = { preset: PresetId | "custom"; from: string; to: string };
 
-/** Rolling ranges end yesterday, so every day in them is complete; This month runs to today. */
+/**
+ * Rolling ranges end yesterday, so every day in them is complete; This month runs to today. Last
+ * week is the previous Monday to Sunday.
+ */
 export function presetRange(id: PresetId, today: string): { from: string; to: string } {
   const yesterday = addDays(today, -1);
   switch (id) {
     case "last7":
       return { from: addDays(today, -7), to: yesterday };
+    case "lastweek": {
+      // 0 = Monday … 6 = Sunday, from the calendar date (no time zone involved).
+      const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+      const monday = addDays(today, -weekday - 7);
+      return { from: monday, to: addDays(monday, 6) };
+    }
     case "last30":
       return { from: addDays(today, -30), to: yesterday };
     case "last90":
@@ -356,6 +366,11 @@ function trackedRow(p: Prepared, base: Omit<BreakdownRow, keyof Money | "kind" |
 /** Only rows with something to show, plus active setup that hasn't had results yet. */
 const hasActivity = (row: BreakdownRow) => row.lines.length > 0 || !!row.sessions || row.roas?.kind === "value";
 
+export function utmSourceLabel(source: string) {
+  const known: Record<string, string> = { facebook: "Facebook", google: "Google", line: "LINE", instagram: "Instagram", tiktok: "TikTok", youtube: "YouTube" };
+  return known[source.toLowerCase()] ?? source.replace(/(^|[ _-])(\w)/g, (_, separator: string, letter: string) => `${separator ? " " : ""}${letter.toUpperCase()}`);
+}
+
 function sourceRows(p: Prepared, tracked: SaleLine[]): BreakdownRow[] {
   const sources = new Set<string>();
   for (const c of p.campaigns.values()) if (ACTIVE.has(c.status) || p.spend.has(c.id)) sources.add(c.source);
@@ -368,7 +383,7 @@ function sourceRows(p: Prepared, tracked: SaleLine[]): BreakdownRow[] {
     const n = campaignIds.size;
     return trackedRow(p, {
       key: `source:${source}`,
-      name: source,
+      name: utmSourceLabel(source),
       sub: `${n} ${n === 1 ? "campaign" : "campaigns"}`,
       sessions: p.allProperties ? (p.sessions.bySource.get(source) ?? 0) : null,
       roas: roasFor(p, [...campaignIds].filter(spendsUnder(p, source)), lines),
@@ -390,7 +405,7 @@ function campaignRows(p: Prepared, tracked: SaleLine[], source?: string): Breakd
     return trackedRow(p, {
       key: `campaign:${id}`,
       name: campaignName(p, id),
-      sub: campaign ? `${campaign.source} · ${campaign.medium}` : touch ? `${touch.source} · ${touch.medium}` : undefined,
+      sub: campaign ? `${utmSourceLabel(campaign.source)} · ${campaign.medium}` : touch ? `${utmSourceLabel(touch.source)} · ${touch.medium}` : undefined,
       status: campaign && campaign.status !== "active" ? campaign.status : undefined,
       sessions: p.allProperties ? (p.sessions.byCampaign.get(id) ?? 0) : null,
       roas: !source || spendsUnder(p, source)(id) ? roasFor(p, [id], lines) : undefined,
@@ -511,7 +526,7 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
   if (view !== "coupon" && top) {
     totals.push(totalRow("tracked", "Tracked total", business.tracked, business.trackedSessions, business.convertedSessions, business.roas));
   } else if (!top) {
-    const name = last.level === "source" ? last.id : campaignName(p, last.id);
+    const name = last.level === "source" ? utmSourceLabel(last.id) : campaignName(p, last.id);
     const sessions = p.allProperties ? rows.reduce((total, row) => total + (row.sessions ?? 0), 0) : null;
     const roas = last.level === "source" ? roasFor(p, rows.map((row) => row.key.replace(/^campaign:/, "")).filter(spendsUnder(p, last.id)), scoped) : roasFor(p, [last.id], scoped);
     totals.push(totalRow("scope", `Total for ${name}`, sumLines(scoped), sessions, convertedSessions(p, session => {
@@ -526,7 +541,7 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
 
 /** Display name of a drill step for breadcrumbs. */
 export function stepName(p: Prepared, step: DrillStep) {
-  return step.level === "source" ? step.id : campaignName(p, step.id);
+  return step.level === "source" ? utmSourceLabel(step.id) : campaignName(p, step.id);
 }
 
 /** Sales for the sheet: refunded first, then newest. */
@@ -545,7 +560,7 @@ export type ChartData = { interval: "day" | "week"; series: ChartSeries[]; bucke
 
 /** Validated categorical slots from the design (docs/previews/marketing/src/dashboard.html). */
 export const CHART_COLOR_VARS =
-  "[--chart-s1:#3568b2] [--chart-s2:#d58d25] [--chart-s3:#009589] [--chart-s4:#d45b3d] [--chart-s5:#8c5cad] [--chart-s0:#b3aea6] [--chart-s0b:#dcd8d2] dark:[--chart-s1:#5589d7] dark:[--chart-s2:#c68627] dark:[--chart-s3:#00998c] dark:[--chart-s4:#c9593d] dark:[--chart-s5:#9868ba] dark:[--chart-s0:#5c6068] dark:[--chart-s0b:#3e424a]";
+  "[--chart-s1:#3568b2] [--chart-s2:#d58d25] [--chart-s3:#009589] [--chart-s4:#d45b3d] [--chart-s5:#8c5cad] [--chart-s0:#b3aea6] dark:[--chart-s1:#5589d7] dark:[--chart-s2:#c68627] dark:[--chart-s3:#00998c] dark:[--chart-s4:#c9593d] dark:[--chart-s5:#9868ba] dark:[--chart-s0:#5c6068]";
 const SOURCE_COLORS = ["var(--chart-s1)", "var(--chart-s2)", "var(--chart-s3)", "var(--chart-s4)"];
 const OTHER = { key: "__other", label: "Other sources", color: "var(--chart-s5)" };
 const UNTRACKED = { key: "__untracked", label: "Not tracked", color: "var(--chart-s0)" };
@@ -597,7 +612,7 @@ export function chartData(p: Prepared, metric: ChartMetric): ChartData {
   for (const point of points) if (point.key !== UNTRACKED.key) add(totals, point.key, point.value);
   const ranked = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([key]) => key);
   const named = ranked.length > SOURCE_COLORS.length + 1 ? ranked.slice(0, SOURCE_COLORS.length) : ranked.slice(0, SOURCE_COLORS.length + 1);
-  const series: ChartSeries[] = named.map((key, i) => ({ key, label: key, color: SOURCE_COLORS[i] ?? OTHER.color }));
+  const series: ChartSeries[] = named.map((key, i) => ({ key, label: utmSourceLabel(key), color: SOURCE_COLORS[i] ?? OTHER.color }));
   if (ranked.length > named.length) series.push(OTHER);
   series.push(UNTRACKED);
   const keyFor = (key: string) => (key === UNTRACKED.key || named.includes(key) ? key : OTHER.key);

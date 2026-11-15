@@ -1,5 +1,5 @@
-import { format } from "date-fns";
-import type { MarketingAttribution } from 'convex/shared/marketingAttribution';
+import { staffDateTime } from "@/lib/staff-time";
+import type { MarketingAttribution } from "convex/shared/marketingAttribution";
 
 const EVIDENCE: Record<MarketingAttribution["evidence"], string> = {
   tracked: "Tracked visit",
@@ -11,7 +11,7 @@ export function BookingMarketingSource({ attribution }: { attribution: Marketing
   if (!attribution) return null;
   const { last, first, evidence } = attribution;
   const details = last ? [last.campaignName, last.placement].filter(Boolean).join(" · ") : "";
-  const when = last?.touchedAt ? format(new Date(last.touchedAt), "d MMM yyyy, HH:mm") : "";
+  const when = last?.touchedAt ? staffDateTime(last.touchedAt) : "";
   return (
     <span className="mt-1.5 block" data-testid="booking-marketing-source">
       {last ? (

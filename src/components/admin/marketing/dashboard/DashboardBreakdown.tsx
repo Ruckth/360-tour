@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -68,7 +70,7 @@ function columns(b: Breakdown, cash: boolean): Column[] {
     { key: "name", label: b.path.length ? (b.path[b.path.length - 1].level === "source" ? "Campaign" : "Link") : label },
     ...(b.showSessions ? [{ key: "sessions" as const, label: "Sessions" }] : []),
     { key: "paid", label: cash ? "First paid" : b.view === "coupon" ? "Paid uses" : "Paid" },
-    ...(b.showSessions ? [{ key: "conv" as const, label: "Session conversion" }] : []),
+    ...(b.showSessions ? [{ key: "conv" as const, label: "Booked rate" }] : []),
     { key: "discount", label: "Discounts" },
     { key: "collected", label: "Collected" },
     { key: "refunded", label: "Refunds" },
@@ -144,7 +146,7 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
       type="button"
       onClick={() => onOpen(row)}
       className={cn(
-        "group flex w-full min-w-0 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "group flex w-full min-w-0 pointer-coarse:min-h-11 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         card && "after:absolute after:inset-0 after:content-['']",
       )}
     >
@@ -217,7 +219,7 @@ export function DashboardBreakdown({
         aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
         className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-52 px-4 text-left", TINT) : "px-2.5 text-right")}
       >
-        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
+        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
           {col.label}
           <Icon aria-hidden className={cn("size-3.5", !active && "opacity-50")} />
         </button>
@@ -233,7 +235,7 @@ export function DashboardBreakdown({
             <NameButton row={row} onOpen={onOpen} />
           </td>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top font-sans tabular-nums">
             <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
           </td>
         ),
@@ -250,7 +252,7 @@ export function DashboardBreakdown({
             {row.note ? <span className="block text-xs font-normal text-muted-foreground">{row.note}</span> : null}
           </th>
         ) : (
-          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right font-semibold tabular-nums">
+          <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right font-semibold font-sans tabular-nums">
             {col.key === "roas" && !row.roas ? null : <Cell row={row} col={col.key} />}
           </td>
         ),
@@ -267,7 +269,7 @@ export function DashboardBreakdown({
             <NameButton row={row} onOpen={onOpen} card />
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-base font-semibold tabular-nums text-foreground">{thb(row.net)}</p>
+            <p className="text-base font-semibold font-sans tabular-nums text-foreground">{thb(row.net)}</p>
             <p className="text-xs text-muted-foreground">net</p>
           </div>
           <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-muted-foreground" />
@@ -276,7 +278,7 @@ export function DashboardBreakdown({
           {metricCols.map((col) => (
             <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3")}>
               <dt className="text-muted-foreground">{col.label}</dt>
-              <dd className="font-medium tabular-nums text-foreground">
+              <dd className="font-medium font-sans tabular-nums text-foreground">
                 <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
               </dd>
             </div>
@@ -288,7 +290,7 @@ export function DashboardBreakdown({
 
   const crumbs = b.path.length ? (
     <nav aria-label="Drill-down" className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/20 px-4 py-2 text-sm">
-      <button type="button" onClick={() => onPath([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+      <button type="button" onClick={() => onPath([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
         All {b.view === "source" ? "sources" : "campaigns"}
       </button>
       {b.path.map((step, i) => (
@@ -299,7 +301,7 @@ export function DashboardBreakdown({
               {stepName(p, step)}
             </span>
           ) : (
-            <button type="button" onClick={() => onPath(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+            <button type="button" onClick={() => onPath(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
               {stepName(p, step)}
             </button>
           )}
@@ -338,7 +340,7 @@ export function DashboardBreakdown({
                 id="breakdown-sort"
                 value={sort.key}
                 onChange={(event) => onSort({ key: event.target.value as SortKey, dir: event.target.value === "name" ? "asc" : "desc" })}
-                className="h-10 appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:[color-scheme:dark]"
+                className="h-10 pointer-coarse:min-h-11 appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:[color-scheme:dark]"
               >
                 {cols.map((col) => (
                   <option key={col.key} value={col.key}>
@@ -351,7 +353,7 @@ export function DashboardBreakdown({
             <button
               type="button"
               onClick={() => onSort({ ...sort, dir: sort.dir === "asc" ? "desc" : "asc" })}
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="inline-flex h-10 pointer-coarse:min-h-11 items-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {sort.dir === "asc" ? <ArrowUp aria-hidden className="size-4" /> : <ArrowDown aria-hidden className="size-4" />}
               {sortLabel}
@@ -368,7 +370,7 @@ export function DashboardBreakdown({
             {b.totals.map((row) => (
               <div key={row.key} className="flex items-baseline justify-between gap-3">
                 <dt className="font-semibold text-foreground">{row.name}</dt>
-                <dd className="text-right tabular-nums">
+                <dd className="text-right font-sans tabular-nums">
                   <span className="font-semibold text-foreground">{thb(row.net)}</span>
                   <span className="block text-xs text-muted-foreground">
                     {num(row.paid)} {p.cash ? "first paid" : "paid"}
@@ -386,7 +388,7 @@ export function DashboardBreakdown({
   }
 
   return (
-    <section id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 border border-border bg-card">
+    <Card role="region" id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 ">
       <div className="grid gap-3 border-b border-border px-4 pt-3">
         <div className="min-w-0">
           <h2 id="breakdown-title" className="text-base font-semibold text-foreground">
@@ -403,6 +405,6 @@ export function DashboardBreakdown({
         {p.cash && b.view !== "coupon" ? " First paid counts sales receiving their first payment; coupon-only counts checkout settlements with no own cash received. The Finance view hides sessions and conversion: they belong to visits." : ""}
         {!p.allProperties && b.showSessions ? " Sessions, conversion and ROAS are for All properties only." : ""}
       </p>
-    </section>
+    </Card>
   );
 }

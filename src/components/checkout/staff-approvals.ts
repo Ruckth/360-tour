@@ -70,7 +70,7 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
     case "refund":
       return [`asks to refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
-      return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${formatPercent(request.percent)}%)` : ""}`;
+      return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${Math.round(basisPointsToPercent(request.percent) * 10) / 10}%)` : ""}${lineName ? ` on ${lineName}` : ""}`;
     case "customPrice":
       if (payload.action === "addCustomItem") return `asks to add “${payload.name}” at ${formatMoney(payload.price)}`;
       return `asks for a custom price${request.amount ? ` (${formatMoney(request.amount)} off)` : ""}`;
@@ -78,6 +78,41 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
       return `asks to void a paid sale (${formatMoney(request.amount)})`;
     case "paymentFix":
       return payload.action === "voidUnreceivedOrder" ? "asks to void a payment that wasn’t received" : `asks to fix a payment (${formatMoney(request.amount)})`;
+  }
+}
+
+/** What a decision names: "15% discount" when the cashier typed a percent, else as approvalWhat. */
+export function approvalDecisionWhat(request: Pick<ApprovalView, "payload" | "amount">, lineName?: string) {
+  const { payload } = request;
+  if (payload.kind === "discount" && payload.discount.type === "percent") return `${formatPercent(payload.discount.value)}% discount`;
+  return approvalWhat(request, lineName);
+}
+
+/** "Order #1042" → "#1042". */
+export function orderRef(title: string) {
+  return title.replace(/^Order\s+/, "");
+}
+
+/** The result of approving or declining, as one line: "Approved 15% discount on #1042". */
+export function approvalResultText(status: ApprovalStatus, replayed: boolean, what: string, title: string) {
+  // Before the order loads its title is just "Order"; then leave the order out.
+  const ref = orderRef(title);
+  const known = ref.startsWith("#");
+  const on = known ? ` on ${ref}` : "";
+  if (replayed) return `${what.charAt(0).toUpperCase()}${what.slice(1)}${on} was already handled`;
+  switch (status) {
+    case "applied":
+      return `Approved ${what}${on}`;
+    case "rejected":
+      return `Declined ${what}${on}`;
+    case "stale":
+      return `${known ? ref : "The order"} changed, so the request no longer applies`;
+    case "expired":
+      return `The request${on} expired`;
+    case "cancelled":
+      return `The request${on} was cancelled`;
+    case "pending":
+      return known ? `${ref} is still waiting` : "Still waiting";
   }
 }
 
@@ -95,7 +130,7 @@ export function approvalOutcome(request: Pick<ApprovalView, "status" | "approver
     case "stale":
       return "Order changed. Send a new request if you still need it.";
     case "cancelled":
-      return "Request cancelled.";
+      return "Request withdrawn.";
   }
 }
 

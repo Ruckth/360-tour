@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type Componen
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -42,7 +43,7 @@ export const canAddCoupon = (view: OrderView | null | undefined): view is OrderV
  * what it saves and its terms; when an edit leaves it not fitting the order, a warning with Remove.
  * Only open orders with items have one. Writes go through `run`, after any edit still saving.
  */
-export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { view: OrderView; run: Run; busy: boolean; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen, hideAdd = false }: { view: OrderView; run: Run; busy: boolean; open: boolean; onOpenChange: (open: boolean) => void; hideAdd?: boolean }) {
   const actions = useCheckoutBackend().useActions();
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -95,17 +96,19 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
       <div data-testid="order-coupon" className="mb-2 grid gap-1 rounded-lg border border-gold/40 bg-gold/5 px-3 py-2">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <CouponChip code={promotion.code} />
-          <span className="text-sm font-medium tabular-nums">Saves {formatMoney(promotion.discount)}</span>
+          <span className="text-sm font-medium font-sans tabular-nums">Saves {formatMoney(promotion.discount)}</span>
+          {/* The terms are there when asked for; the saving is what the till needs. */}
+          {promotion.terms ? <InfoTip label={`Terms of ${promotion.code}`}>{promotion.terms}</InfoTip> : null}
           <Button size="sm" variant="ghost" className="ml-auto h-7 px-2 text-xs" disabled={busy} onClick={remove} aria-label={`Remove coupon ${promotion.code}`}>
             Remove
           </Button>
         </div>
-        {promotion.terms ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{promotion.terms}</p> : null}
       </div>
     );
   }
 
   if (!open) {
+    if (hideAdd) return null;
     return (
       <button
         type="button"
@@ -114,8 +117,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen }: { 
         className={cn("mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-sm font-medium text-muted-foreground transition hover:border-gold/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none", SHORT_SCREEN_HIDDEN)}
       >
         <TicketPercent aria-hidden className="size-4 shrink-0 text-gold-text" />
-        <span className="min-w-0 flex-1">Add coupon</span>
-        <span className="shrink-0 text-xs font-normal">Code, QR or link</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-2"><span>Add coupon</span><span className="text-xs font-normal">Code, QR or link</span></span>
         <ChevronRight aria-hidden className="size-4 shrink-0" />
       </button>
     );

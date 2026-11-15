@@ -5,11 +5,11 @@ import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
-import { CalendarDays, Clock, Filter, History, PlusIcon, Users } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import { EventCalendar } from "@/components/reui/event-calendar/event-calendar";
+import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
-import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { AdminCalendarHeader, AdminCalendarSearch } from "@/components/admin/AdminCalendarHeader";
 import type {
   CalendarEvent,
   CalendarView,
@@ -29,6 +29,8 @@ import { StaffRosterView } from "@/components/admin/StaffRosterView";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -49,13 +51,14 @@ import {
   appointmentStatus,
   appointmentStatusColor,
   displayStatus,
-  formatResortTime,
   resortIsoDate,
   resortMidnight,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
+import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
+import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
 
 type Appointment = Doc<"appointments">;
@@ -74,15 +77,33 @@ type Proposal = { ghostId: string; ghost?: Ghost } & (
 
 // Cancelled appointments have their own toggle.
 const STATUS_FILTERS: AppointmentStatus[] = ["booked", "arrived", "in_service", "completed", "no_show"];
+const STATUS_ICONS = { booked: Clock, arrived: UserCheck, in_service: Play, completed: Check, unpaid: CircleDollarSign, no_show: UserX, cancelled: Ban };
 const BLOCK_COLOR = CALENDAR_TONE_COLORS.muted;
 /** listSchedule's limit. */
 const MAX_SCHEDULE_DAYS = 14;
 // Stable reference: the calendar rebuilds its settings when this object changes.
-const CALENDAR_I18N = { viewNames: { resource: "Day" } };
+const CALENDAR_I18N = { viewNames: { resource: "Day", agenda: "List" }, formats: STAFF_CALENDAR_FORMATS };
 
 function todayRange() {
   const from = resortMidnight(resortIsoDate(Date.now()));
   return { from, to: from + DAY_MS };
+}
+
+const STAFF_VIEWS = ["resource", "week", "agenda"] as const satisfies CalendarView[];
+
+/** A set of ids remembered on this device (JSON in localStorage). */
+function useStoredSet(key: string): [Set<string>, (next: Set<string>) => void] {
+  const [stored, setStored] = useStoredState(key, "[]");
+  const value = useMemo(() => {
+    try {
+      const parsed: unknown = JSON.parse(stored);
+      return new Set(Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []);
+    } catch {
+      return new Set<string>();
+    }
+  }, [stored]);
+  const update = useCallback((next: Set<string>) => setStored(JSON.stringify([...next])), [setStored]);
+  return [value, update];
 }
 
 const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as const);
@@ -143,7 +164,7 @@ export function AdminStaffTabs({ children }: { children: ReactNode }) {
             onClick={() => void openTab(index)}
             onKeyDown={(event) => onTabKeyDown(event, index)}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "-mb-px min-h-11 shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               tab === key
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -172,13 +193,19 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 
 function StaffCalendar() {
   const [range, setRange] = useState(todayRange);
-  const [view, setView] = useState<CalendarView>("resource");
+  const [search, setSearch] = useState("");
+  // This device remembers the view and filters (rule 5); the date always starts today.
+  const [storedView, setView] = useStoredState("admin.staff.view", "auto");
+  const phone = useIsMobile(640);
+  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
   const [date, setDate] = useState(() => new Date());
-  const [hiddenStaff, setHiddenStaff] = useState<Set<string>>(() => new Set());
-  const [hiddenServices, setHiddenServices] = useState<Set<string>>(() => new Set());
-  const [hiddenStatuses, setHiddenStatuses] = useState<Set<string>>(() => new Set());
+  const [hiddenStaff, setHiddenStaff] = useStoredSet("admin.staff.hiddenStaff");
+  const [hiddenServices, setHiddenServices] = useStoredSet("admin.staff.hiddenServices");
+  const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
-  const [showCancelled, setShowCancelled] = useState(false);
+  const [storedCancelled, setStoredCancelled] = useStoredState("admin.staff.showCancelled", "no");
+  const showCancelled = storedCancelled === "yes";
+  const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
@@ -197,20 +224,28 @@ function StaffCalendar() {
     [data?.staff, hiddenStaff],
   );
 
-  const cancelledCount = (data?.appointments ?? []).filter((a) => a.status === "cancelled").length;
   const appointments = useMemo(
     () =>
       (data?.appointments ?? []).filter(
         (a) =>
           !hiddenStaff.has(a.staffId) &&
+          (!search.trim() || `${appointmentGuestLabel(a)} ${serviceById.get(a.serviceId)?.name ?? ""} ${staffById.get(a.staffId)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) &&
           !hiddenServices.has(a.serviceId) &&
           !hiddenStatuses.has(a.status) &&
           (showCancelled || a.status !== "cancelled"),
       ),
-    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled],
+    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
   );
 
-  const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length;
+  const visibleStarts = appointments.filter(a => a.start < range.to && a.end > range.from && a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
+  const firstAppointmentHour = visibleStarts.length ? Math.min(...visibleStarts) : 8;
+  // Scroll to the earliest appointment once per range, when data first arrives — never again while staff
+  // search, filter or another device books an earlier slot.
+  const scrollKey = `${range.from}:${range.to}`;
+  const [initialScroll, setInitialScroll] = useState<{ key: string; hour: number } | null>(null);
+  if (data && initialScroll?.key !== scrollKey) setInitialScroll({ key: scrollKey, hour: firstAppointmentHour });
+  const scrollToHour = initialScroll?.key === scrollKey ? initialScroll.hour : firstAppointmentHour;
+  const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show" && a.start < range.to && a.end > range.from).length;
   const countByStaff = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of appointments) {
@@ -237,7 +272,7 @@ function StaffCalendar() {
         start: new Date(ghost?.start ?? appointment.start),
         end: new Date(ghost?.end ?? appointment.end),
         resourceId: ghost?.staffId ?? appointment.staffId,
-        color: appointmentStatusColor(displayStatus(appointment)),
+        color: appointment.status === "booked" ? "var(--color-slate-700)" : appointmentStatusColor(displayStatus(appointment)),
         readOnly: !canCorrectAppointmentTime(appointment, now),
         // The booked length is kept; a different length is a different service.
         resizable: false,
@@ -318,12 +353,13 @@ function StaffCalendar() {
       const eventData = occurrence.event.data;
       if (!eventData) return null;
       if (eventData.kind === "off") {
-        return <span aria-label="Not working" className="absolute inset-0 rounded-[inherit] bg-muted" />;
+        return <span data-calendar-off className="absolute inset-0 flex items-center justify-center rounded-[inherit] bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs text-muted-foreground">Not working</span>;
       }
       if (eventData.kind !== "appointment") {
+        if (currentView === "agenda") return <span className="text-sm">{occurrence.event.title}</span>;
         return (
-          <span className="absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)] text-xs font-medium text-muted-foreground">
-            <Clock aria-hidden className="size-3.5 shrink-0" />
+          <span className={cn("absolute inset-0 flex items-center justify-center gap-1.5 rounded-[inherit] text-xs font-medium text-muted-foreground", eventData.kind === "turnaround" ? "border border-dashed border-border bg-muted/60" : "bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_9%,transparent)_7px_8px)]")}>
+            {eventData.kind === "turnaround" ? <Timer aria-hidden className="size-3.5 shrink-0" /> : <Coffee aria-hidden className="size-3.5 shrink-0" />}
             <span className="truncate">{eventData.kind === "turnaround" ? "Turnaround" : eventData.block.label}</span>
           </span>
         );
@@ -331,10 +367,13 @@ function StaffCalendar() {
       const { appointment } = eventData;
       const service = serviceById.get(appointment.serviceId);
       const staffName = currentView === "resource" ? null : staffById.get(occurrence.event.resourceId ?? appointment.staffId)?.name;
+      const status = displayStatus(appointment);
+      const StatusIcon = STATUS_ICONS[status];
       // Short timed chips only have room for one row. Keep their identity visible.
       if (!appointment.guestName && currentView !== "agenda" && occurrence.event.end.getTime() - occurrence.event.start.getTime() < 45 * 60_000) {
         return (
-          <span className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-4 text-muted-foreground">
+          <span data-appointment-chip className="flex min-w-0 flex-1 items-center gap-1 text-xs leading-4 text-muted-foreground">
+            <StatusIcon aria-label={appointmentStatus(status).label} className="size-3 shrink-0" />
             <span className="truncate">Unnamed</span>
             <span className="shrink-0 font-mono text-xs" title={appointment.confirmationCode}>
               {appointment.confirmationCode.slice(-6)}
@@ -342,17 +381,28 @@ function StaffCalendar() {
           </span>
         );
       }
+      if (currentView === "agenda") return (
+        <span className="flex w-full min-w-0 items-center justify-between gap-3">
+          <span className="grid min-w-0 gap-1 text-left">
+            <span className={cn("text-[15px] font-medium", appointment.status === "cancelled" && "line-through")}>{appointment.guestName || "Unnamed guest"}</span>
+            {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground">Ref {appointment.confirmationCode.slice(-6)}</span> : null}
+            <span className="text-xs text-muted-foreground">{staffTime(occurrence.event.start.getTime())}–{staffTime(occurrence.event.end.getTime())} · {service?.name ?? "Service"}{staffName ? ` · ${staffName}` : ""}</span>
+          </span>
+          <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /></span>
+        </span>
+      );
       return (
-        <span className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
+        <span data-appointment-chip className="flex h-full min-w-0 flex-1 flex-col gap-0.5 self-start">
           <span className="flex min-w-0 items-center gap-1.5">
-            <span className={cn("truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground")}>
+            <StatusIcon aria-label={appointmentStatus(status).label} className="size-3 shrink-0 @[12rem]:hidden" />
+            <span className={cn("truncate text-sm font-semibold", !appointment.guestName && "text-muted-foreground", appointment.status === "cancelled" && "line-through")}>
               {appointment.guestName || "Unnamed guest"}
             </span>
-            <StatusBadge {...appointmentStatus(displayStatus(appointment))} className="hidden @[12rem]:inline-flex" />
+            <StatusBadge {...appointmentStatus(status)} className={cn("hidden @[12rem]:inline-flex", appointment.status === "cancelled" && "border border-current bg-transparent")} />
           </span>
           {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className="truncate text-xs text-muted-foreground">
-            {formatResortTime(occurrence.event.start.getTime())} • {service?.name ?? "Service"}
+            {staffTime(occurrence.event.start.getTime())} · {service?.name ?? "Service"}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>
@@ -367,7 +417,7 @@ function StaffCalendar() {
       if (!person) return resource.title;
       const count = countByStaff.get(resource.id) ?? 0;
       return (
-        <span className="flex min-w-0 items-center gap-2.5 py-1 text-start">
+        <span className="relative flex min-h-11 w-full min-w-0 items-center gap-2.5 py-1 pr-28 text-start">
           <StaffAvatar staff={person} className="size-9" />
           <span className="min-w-0">
             <span className="block truncate text-sm font-semibold text-foreground">{person.name}</span>
@@ -376,10 +426,11 @@ function StaffCalendar() {
               {count === 1 ? "1 appointment" : `${count} appointments`}
             </span>
           </span>
+          <OffscreenAppointmentCue resourceId={resource.id} appointments={appointments.filter(a => a.staffId === resource.id && a.status !== "cancelled")} />
         </span>
       );
     },
-    [staffById, countByStaff],
+    [staffById, countByStaff, appointments],
   );
 
   /** Drops the calendar can't turn into a proposal are refused before they land. */
@@ -421,14 +472,14 @@ function StaffCalendar() {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
+      <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
           onViewChange={setView}
           date={date}
           onDateChange={setDate}
-          views={["resource", "week", "agenda"]}
+          views={[...STAFF_VIEWS]}
           // listSchedule serves at most 14 days; the list defaults to 30.
           agendaDayCount={7}
           resources={resources}
@@ -437,11 +488,14 @@ function StaffCalendar() {
           dayEndHour={23}
           interval={60}
           snapDuration={15}
-          scrollToHour={8}
+          scrollToHour={Math.max(6, Math.min(22, scrollToHour))}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: false }}
+          classNames={{ event: "[&:has([data-appointment-chip])]:border-l-[3px] [&:has([data-appointment-chip])]:border-l-(--ec-event-color) [&:has([data-appointment-chip])]:bg-card [&:has([data-appointment-chip])]:hover:bg-muted", dayColumn: "[&>div:has([data-calendar-off])]:w-full! [&>div:has([data-calendar-off])]:left-0!" }}
           renderEvent={renderEvent}
+          renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p><Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
           canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
@@ -501,12 +555,25 @@ function StaffCalendar() {
             setRange((current) => (current.from === from && current.to === to ? current : { from, to }));
           }}
           loading={data === undefined}
-          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
+          // Only the phone list grows with the page; from tablet up the calendar fills a fixed-height card and scrolls inside it.
+          scrollMode={view === "agenda" && phone ? "page" : "contained"}
+          className={view === "agenda" && phone ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
-          <AdminCalendarHeader>
+          <AdminCalendarHeader primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+                <Button
+                  size="sm"
+                  aria-label="New appointment"
+                  disabled={!data || activeServices.length === 0}
+                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
+                >
+                  <PlusIcon aria-hidden className="size-4" />
+                  <span className="sm:hidden">New</span><span className="hidden sm:inline">New appointment</span>
+                </Button>
+              </DisabledReason>}>
+            <AdminCalendarSearch label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
-              {bookedCount} booked in view
+              {bookedCount} {bookedCount === 1 ? "appointment" : "appointments"}
             </span>
             <CheckList
               icon={<Users aria-hidden className="size-4" />}
@@ -524,6 +591,7 @@ function StaffCalendar() {
               icon={<Filter aria-hidden className="size-4" />}
               label="Filters"
               count={filterCount}
+              extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
               groups={[
                 {
                   title: "Services",
@@ -539,28 +607,7 @@ function StaffCalendar() {
                 },
               ]}
             />
-            <Button size="sm" variant={showCancelled ? "secondary" : "outline"} aria-pressed={showCancelled} onClick={() => setShowCancelled(!showCancelled)}>
-              <History aria-hidden className="size-4" />
-              {showCancelled ? "Hide cancelled" : "Show cancelled"}
-              {cancelledCount ? (
-                <Badge variant="secondary" className="ms-0.5 h-5 min-w-5 justify-center rounded-full px-1.5">
-                  {cancelledCount}
-                </Badge>
-              ) : null}
-            </Button>
             {data === undefined ? <Spinner label="Loading appointments" /> : null}
-            <div className="sm:ms-auto">
-              <DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
-                <Button
-                  size="sm"
-                  disabled={!data || activeServices.length === 0}
-                  onClick={() => setDraft({ date: resortIsoDate(Math.max(range.from, Date.now())) })}
-                >
-                  <PlusIcon aria-hidden className="size-4" />
-                  New appointment
-                </Button>
-              </DisabledReason>
-            </div>
           </AdminCalendarHeader>
           {data && (data.staff.length === 0 || activeServices.length === 0) ? (
             <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
@@ -581,22 +628,25 @@ function StaffCalendar() {
           ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {APPOINTMENT_STATUSES.map((key) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: appointmentStatusColor(key) }} />
+        <div className={view === "agenda" ? "hidden" : "hidden shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex"}>
+          {APPOINTMENT_STATUSES.map((key) => {
+            const StatusIcon = STATUS_ICONS[key];
+            return <span key={key} className="flex items-center gap-1.5">
+              <StatusIcon aria-hidden className="size-3" style={{ color: key === "booked" ? "var(--color-slate-700)" : appointmentStatusColor(key) }} />
               {appointmentStatus(key).label}
-            </span>
-          ))}
+            </span>;
+          })}
           <span className="flex items-center gap-1.5">
-            <Clock aria-hidden className="size-3" />
-            Break / turnaround / time off
+            <Coffee aria-hidden className="size-3" />
+            Break or time off
           </span>
-          <span className="ms-auto hidden sm:inline">
-            Drag a booking or break to propose a change; you confirm before it saves. Times are Bangkok time.
+          <span className="flex items-center gap-1.5"><Timer aria-hidden className="size-3 rounded-sm border border-dashed border-border bg-muted/60" />Turnaround</span>
+          <span className="flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" />Not working</span>
+          <span className="ms-auto hidden sm:inline pointer-coarse:hidden">
+            Drag a booking or break to propose a change · Bangkok time
           </span>
         </div>
-      </div>
+      </Card>
 
       <AppointmentSheet
         key={selected?._id ?? "closed"}
@@ -663,6 +713,36 @@ function StaffCalendar() {
   );
 }
 
+/** A column's next off-screen booking remains reachable without guessing a scroll. */
+function OffscreenAppointmentCue({ resourceId, appointments }: { resourceId: string; appointments: Appointment[] }) {
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [cue, setCue] = useState<{ start: number; direction: string } | null>(null);
+  useEffect(() => {
+    const root = anchor.current?.closest('[data-slot="event-calendar-resource-view"]');
+    const viewport = root?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+    const column = Array.from(root?.querySelectorAll<HTMLElement>('[data-ec-resource]') ?? []).find(el => el.dataset.ecResource === resourceId && el.dataset.slot === 'event-calendar-day-column');
+    if (!viewport || !column) return;
+    const update = () => {
+      const windowRect = viewport.getBoundingClientRect();
+      const columnRect = column.getBoundingClientRect();
+      const start = Number(column.dataset.ecBoundsStart);
+      const minutes = Number(column.dataset.ecBoundsEnd) - start;
+      const offscreen = appointments.map(a => {
+        const [h, m] = staffTime(a.start).split(':').map(Number);
+        const top = columnRect.top + (h * 60 + m - start) / minutes * columnRect.height;
+        return { start: a.start, top };
+      }).sort((a, b) => a.start - b.start).find(a => a.top > windowRect.bottom - 24 || a.top < windowRect.top);
+      setCue(offscreen ? { start: offscreen.start, direction: offscreen.top < windowRect.top ? '↑' : '↓' } : null);
+    };
+    update();
+    viewport.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update); observer.observe(viewport);
+    return () => { viewport.removeEventListener('scroll', update); observer.disconnect(); };
+  }, [resourceId, appointments]);
+  const calendar = useEventCalendar();
+  return <span ref={anchor} className="absolute right-0 top-1/2 -translate-y-1/2">{cue ? <Button size="sm" variant="ghost" className="min-h-11 px-2 text-[13px] pointer-coarse:text-sm" aria-label={`Show appointment at ${staffTime(cue.start)}`} onClick={() => calendar.api.scrollToTime(new Date(cue.start))}>{cue.direction === "↓" ? "Next" : "Earlier"} {staffTime(cue.start)} {cue.direction}</Button> : null}</span>;
+}
+
 type CheckGroup = {
   title: string;
   items: Array<{ id: string; label: string; detail?: string }>;
@@ -670,7 +750,7 @@ type CheckGroup = {
   onChange: (next: Set<string>) => void;
 };
 
-function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: string; count?: number; groups: CheckGroup[] }) {
+function CheckList({ icon, label, count, groups, extra }: { icon: ReactNode; label: string; count?: number; groups: CheckGroup[]; extra?: ReactNode }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -685,6 +765,7 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-0">
+        {extra}
         {groups.map((group) => (
           <div key={group.title} role="group" aria-label={group.title} className="border-b border-border p-2 last:border-b-0">
             <div className="flex items-center justify-between px-2 pb-1">
@@ -693,14 +774,14 @@ function CheckList({ icon, label, count, groups }: { icon: ReactNode; label: str
               </span>
               <button
                 type="button"
-                className="rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-11 rounded-sm px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => group.onChange(new Set())}
               >
                 Show all
               </button>
             </div>
             {group.items.map((item) => (
-              <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
+              <label key={item.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md focus-within:ring-2 focus-within:ring-ring px-2 py-1.5 text-sm hover:bg-muted">
                 <input
                   type="checkbox"
                   className="size-4 accent-foreground"

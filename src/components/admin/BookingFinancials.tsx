@@ -8,18 +8,26 @@ import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { formatReceiptNumber } from "convex/shared/orderMath";
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
+import { InfoTip } from "@/components/ui/info-tip";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { receiptPath } from "@/components/checkout/checkout-source";
-import { formatResortDateTime } from "@/lib/staff-bookings";
+import { Spinner } from "@/components/ui/spinner";
+import { errorText } from "@/lib/staff-bookings";
+import { staffDateTime } from "@/lib/staff-time";
+import { useStayCheckout, useStaySpa } from "./stay-spa";
 import { cn } from "@/lib/utils";
+import { BookingPromotionLine } from "./BookingPromotion";
+import { bookingPromotion, discountLines } from "@/lib/booking/coupon";
 import { DisabledReason } from "./DisabledReason";
-import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
+import { EffectiveTimeFields, MethodPicker, NotifyGuestField, ReceivedAtField, useEffectiveTime } from "./BookingMoneyFields";
+import { BookingHistory } from "./BookingHistory";
 import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney } from "./labels";
 import {
@@ -29,12 +37,14 @@ import {
   REFUND_METHODS,
   newAttemptKey,
   parseAmount,
+  staffLabel,
   type DeskPaymentMethod,
   type RefundMethod,
 } from "./admin-bookings-shared";
 
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.bookingFinancials>>;
+const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 type Payment = Financials["payments"][number];
 
 type Dialog =
@@ -50,86 +60,195 @@ type Dialog =
  * given back by staff, online payments stay the provider's record, and checkout payments are
  * corrected from their receipt.
  */
-export function BookingFinancials({ booking }: { booking: BookingDetail }) {
+/**
+ * The stay's money in the booking sheet: the money block on top, the sheet's own content
+ * (`children`) under it, and one closed History holding payments and refunds, past orders
+ * (`orders`), the price and every change. Recording never moves money: refunds are given back by
+ * staff, online payments stay the provider's record, and checkout payments are corrected from
+ * their receipt.
+ */
+export function BookingFinancials({
+  booking,
+  initialAction,
+  beforeTakePayment,
+  orders,
+  villaName,
+  children,
+}: {
+  booking: BookingDetail;
+  initialAction?: "pay";
+  beforeTakePayment?: () => Promise<boolean>;
+  orders?: ReactNode;
+  villaName?: (id: string) => string;
+  children?: ReactNode;
+}) {
   const data = useQuery(api.bookings.admin.bookingFinancials, { bookingId: booking._id });
-  const [dialog, setDialog] = useState<Dialog | null>(null);
-  const [notice, setNotice] = useState("");
+  const history = (records?: ReactNode) => (
+    <Card className="p-4 shadow-none"><BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName ?? (() => "Villa")}>
+      {records}
+      {orders}
+    </BookingHistory></Card>
+  );
+  if (data === undefined) return <><Skeleton className="h-20 w-full" aria-label="Loading payments" />{children}{history()}</>;
+  if (data === null) return <>{children}{history()}</>;
+  return <LoadedBookingFinancials booking={booking} data={data} initialAction={initialAction} history={history} beforeTakePayment={beforeTakePayment}>{children}</LoadedBookingFinancials>;
+}
 
-  if (data === undefined) return <Skeleton className="h-20 w-full" aria-label="Loading payments" />;
-  if (data === null) return null;
+function LoadedBookingFinancials({
+  booking,
+  data,
+  initialAction,
+  beforeTakePayment,
+  history,
+  children,
+}: {
+  booking: BookingDetail;
+  data: Financials;
+  initialAction?: "pay";
+  beforeTakePayment?: () => Promise<boolean>;
+  history: (records: ReactNode) => ReactNode;
+  children?: ReactNode;
+}) {
   const { money } = data;
+  const promotion = bookingPromotion(booking);
   const cancelled = booking.status === "cancelled";
   const canPay = !cancelled && money.owed > 0 && booking.paymentStatus !== "failed";
+  // Wait for canonical financial data before taking the initial shortcut. A blocked
+  // shortcut stays on the details; subsequent query updates never reopen the form.
+  const [dialog, setDialog] = useState<Dialog | null>(() =>
+    initialAction === "pay" && canPay && !booking.checkoutLive ? { kind: "pay" } : null,
+  );
+  const [notice, setNotice] = useState("");
   const close = (done?: string) => {
     setDialog(null);
     if (done) setNotice(done);
   };
+  const chargeable = !cancelled && booking.paymentStatus !== "failed";
+  const spa = useStaySpa(chargeable ? booking : null);
+  const spaTotal = spa?.total ?? 0;
+  const due = chargeable ? money.owed + spaTotal : 0;
+  const openCheckout = useStayCheckout();
+  const [opening, setOpening] = useState(false);
+  const [problems, setProblems] = useState<string[]>([]);
+  const headline = cancelled
+    ? { label: money.net > 0 ? "Kept" : "Settled", amount: money.net }
+    : due > 0
+      ? { label: "Balance due", amount: due }
+      : money.credit > 0
+        ? { label: "Credit", amount: money.credit }
+        : { label: "Paid in full", amount: money.net };
+  const recordCount = data.payments.length + data.refunds.length;
+
+  async function takePayment() {
+    if (!spa || opening) return;
+    setOpening(true);
+    setProblems([]);
+    try {
+      if (beforeTakePayment && !(await beforeTakePayment())) return;
+      setProblems(await openCheckout(booking._id));
+    } catch (err) {
+      setProblems([errorText(err, "Couldn't open checkout for this stay.")]);
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  const records = (
+    <>
+      {recordCount ? (
+        <div className="grid gap-3 font-sans tabular-nums">
+          <h4 className="admin-eyebrow">Payments and refunds</h4>
+          {data.payments.length ? (
+            <ul className="grid gap-2">
+              {data.payments.map((payment) => (
+                <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
+              ))}
+            </ul>
+          ) : null}
+          {data.refunds.length ? (
+            <ul className="grid gap-1 text-sm" aria-label="Refunds">
+              {data.refunds.map((refund) => (
+                <li key={refund._id} className="grid gap-0.5">
+                  <p>
+                    Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
+                    <span className="text-muted-foreground"> · {staffDateTime(refund.effectiveAt)}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {refund.reason}
+                    {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {staffLabel(refund.recordedBy)}
+                  </p>
+                  {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
+                  {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
+                    <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="grid gap-1 font-sans tabular-nums text-muted-foreground">
+        <h4 className="admin-eyebrow pt-2">Price</h4>
+        <p>{formatMoney(booking.nights > 0 ? Math.round(booking.subtotal / booking.nights) : 0, booking.currency)} × {booking.nights} {booking.nights === 1 ? "night" : "nights"} = {formatMoney(booking.subtotal, booking.currency)}</p>
+        {discountLines(booking.discountAmount, promotion ? { code: promotion.code, amount: promotion.discount } : null).map((line) =>
+          line.kind === "coupon" && promotion ? (
+            <BookingPromotionLine key="coupon" promotion={promotion} currency={booking.currency} redemption={booking.redemption} />
+          ) : (
+            <p key="direct">Direct discount −{formatMoney(line.amount, booking.currency)}</p>
+          ),
+        )}
+        {booking.priceOverride ? <p>Custom price (villa rate {formatMoney(booking.priceOverride.quotedTotal, booking.currency)}): {booking.priceOverride.reason}</p> : null}
+      </div>
+    </>
+  );
 
   return (
-    <section aria-labelledby="booking-payments" className="grid gap-3">
-      <h3 id="booking-payments" className="admin-eyebrow">Payments and refunds</h3>
-      <p className="text-sm">
-        Paid {formatMoney(money.net, money.currency)}
-        {money.refunded > 0 ? ` · Refunded ${formatMoney(money.refunded, money.currency)}` : ""}
-        {" · "}
-        <span className="font-medium">
-          {money.owed > 0 && !cancelled
-            ? `Balance due ${formatMoney(money.owed, money.currency)}`
-            : money.credit > 0
-              ? `Credit ${formatMoney(money.credit, money.currency)}`
-              : cancelled && money.net > 0
-                ? `${formatMoney(money.net, money.currency)} kept`
-                : "Settled"}
-        </span>
-      </p>
-
-
-      {data.payments.length ? (
-        <ul className="grid gap-2">
-          {data.payments.map((payment) => (
-            <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
-          ))}
-        </ul>
-      ) : null}
-
-
-
-      {data.refunds.length ? (
-        <ul className="grid gap-1 text-sm" aria-label="Refunds">
-          {data.refunds.map((refund) => (
-            <li key={refund._id} className="grid gap-0.5">
-              <p>
-                Refunded {formatMoney(refund.amount, refund.currency)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}
-                <span className="text-muted-foreground"> · {formatResortDateTime(refund.effectiveAt)}</span>
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {refund.reason}
-                {refund.order ? ` · from ${refund.order.title}` : ""} · recorded by {refund.recordedBy}
-              </p>
-              {refund.providerRefundId ? <p className="break-all text-xs text-muted-foreground">Stripe refund {refund.providerRefundId}</p> : null}
-              {refund.method === "stripe" && !refund.providerRefundId && !refund.providerEventId ? (
-                <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "linkStripe", refund })}>Link Stripe refund evidence</Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <div className="flex flex-wrap gap-2">
-        {canPay ? (
-          <DisabledReason reason={booking.checkoutLive && "Wait for the guest's Stripe checkout to finish or expire."}>
-            <Button size="sm" variant="secondary" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
-              Record payment
+    <>
+      <Card role="region" aria-labelledby="booking-payments" className="grid gap-4 p-4 shadow-none">
+        <div data-sentence-budget="ignore">
+          <h3 id="booking-payments" className="text-xs font-medium text-muted-foreground">{headline.label}</h3>
+          <p className="font-sans text-4xl font-semibold tracking-tight tabular-nums [overflow-wrap:anywhere]">{formatMoney(headline.amount, money.currency)}</p>
+          {spaTotal > 0 && due > 0 ? (
+            <p className="font-sans text-[13px] tabular-nums text-muted-foreground">
+              Stay {formatMoney(money.owed, money.currency)} · Spa {formatMoney(spaTotal, money.currency)}
+            </p>
+          ) : null}
+          {money.refunded > 0 ? <p className="text-xs text-muted-foreground">Refunded {formatMoney(money.refunded, money.currency)}</p> : null}
+        </div>
+        {booking.paymentStatus === "failed" ? <p className="text-sm text-destructive">Payment failed.</p> : null}
+        <div className="grid grid-cols-1 items-center gap-2 sm:flex sm:flex-wrap max-sm:[&>span]:w-full">
+          {due > 0 ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <Button className="w-full sm:w-auto" disabled={booking.checkoutLive || !spa || opening} onClick={() => void takePayment()}>
+                {opening ? <Spinner className="text-current" /> : null}
+                Take payment
+              </Button>
+            </DisabledReason>
+          ) : null}
+          {canPay ? (
+            <DisabledReason reason={booking.checkoutLive && CHECKOUT_LIVE}>
+              <span className="inline-flex w-full items-center justify-center gap-1 sm:w-auto"><Button variant="ghost" className="min-h-11 flex-none" disabled={booking.checkoutLive} onClick={() => setDialog({ kind: "pay" })}>
+                Record external payment…
+              </Button><InfoTip label="About external payments">Record money taken outside checkout, e.g. a bank transfer.</InfoTip></span>
+            </DisabledReason>
+          ) : null}
+          {money.refundable > 0 ? (
+            <Button variant="outline" onClick={() => setDialog({ kind: "refund" })}>
+              Record refund
             </Button>
-          </DisabledReason>
+          ) : null}
+        </div>
+        {booking.checkoutLive ? <p className="text-xs text-muted-foreground">{CHECKOUT_LIVE}</p> : null}
+        {problems.length ? (
+          <div role="alert" className="grid gap-1 text-sm text-destructive">
+            {problems.map((problem) => <p key={problem}>{problem}</p>)}
+          </div>
         ) : null}
-        {money.refundable > 0 ? (
-          <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund" })}>
-            Record refund
-          </Button>
-        ) : null}
-      </div>
+      </Card>
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
+
+      {children}
+      {history(records)}
 
       {dialog?.kind === "pay" ? <RecordPaymentDialog booking={booking} owed={money.owed} onClose={close} /> : null}
       {dialog?.kind === "linkStripe" ? <LinkStripeRefundDialog booking={booking} refund={dialog.refund} onClose={close} /> : null}
@@ -144,7 +263,7 @@ export function BookingFinancials({ booking }: { booking: BookingDetail }) {
           onClose={close}
         />
       ) : null}
-    </section>
+    </>
   );
 }
 
@@ -175,19 +294,19 @@ function PaymentRow({ payment, refundable, onAction }: { payment: Payment; refun
         ) : null}
       </p>
       <p className="text-xs text-muted-foreground">
-        Received {formatResortDateTime(payment.effectiveAt)} · recorded {formatResortDateTime(payment.recordedAt)} by {payment.recordedBy}
-        {payment.amendedBy ? ` · corrected by ${payment.amendedBy}` : ""}
+        Received {staffDateTime(payment.effectiveAt)} · recorded {staffDateTime(payment.recordedAt)} by {staffLabel(payment.recordedBy)}
+        {payment.amendedBy ? ` · corrected by ${staffLabel(payment.amendedBy)}` : ""}
         {payment.note ? ` · ${payment.note}` : ""}
       </p>
       {payment.refunded > 0 ? <p className="text-xs text-muted-foreground">{formatMoney(payment.refunded, payment.currency)} of it refunded</p> : null}
-      {cancelled ? <p className="text-xs text-muted-foreground">Cancelled as recorded in error: {payment.cancelReason}</p> : null}
+      {cancelled ? <p className="text-xs text-muted-foreground">Voided, entered by mistake: {payment.cancelReason}</p> : null}
       {!cancelled ? (
         <div className="flex flex-wrap items-center gap-1.5">
           {payment.amendBlocker === null ? (
-            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "amend", payment })}>Correct method or date</Button>
+            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "amend", payment })}>Correct…</Button>
           ) : null}
           {payment.cancelBlocker === null ? (
-            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "cancelEntry", payment })}>Not received…</Button>
+            <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "cancelEntry", payment })}>Entered by mistake…</Button>
           ) : null}
           {refundable && payment.refundable > 0 ? (
             <Button size="sm" variant="ghost" onClick={() => onAction({ kind: "refund", target: `payment:${payment._id}` })}>Refund from this</Button>
@@ -209,10 +328,11 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
   const done = useDone(onClose, "Stripe refund evidence linked. Stripe can now retry reconciliation.");
   return <ChangeConfirmDialog
     title="Link Stripe refund evidence"
+    dirty={chargeId !== "" || refundId !== ""}
     description="Use the charge and refund IDs from Stripe for this recorded refund. Linking prevents the same returned money being counted twice; it does not send a refund."
     rows={[{ label: "Recorded refund", before: formatMoney(refund.amount, refund.currency), after: formatMoney(refund.amount, refund.currency) }]}
     confirmLabel={submitted ? "Retry linking" : "Link refund"}
-    keepLabel="Close"
+    keepLabel={null}
     confirmDisabled={!/^ch_[A-Za-z0-9]+$/.test(chargeId.trim()) || !/^re_[A-Za-z0-9]+$/.test(refundId.trim())}
     onConfirm={async () => {
       attempt.current ??= { bookingId: booking._id, refundId: refund._id, expectedRevision: revision, chargeId: chargeId.trim(), providerRefundId: refundId.trim() };
@@ -228,7 +348,8 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
   </ChangeConfirmDialog>;
 }
 
-function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
+/** Records money the guest already paid at the desk; one attempt key and the reviewed revision per open. */
+export function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
   const recordPayment = useMutation(api.bookings.commands.recordPayment.recordPayment);
   const [reviewed] = useState(() => ({ revision: booking.revision, owed, key: newAttemptKey("pay") }));
   const [method, setMethod] = useState<DeskPaymentMethod>("cash");
@@ -237,17 +358,19 @@ function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetai
   const firstConfirmation = !booking.confirmationEmailed;
   const done = useDone(onClose, "Payment recorded.");
   const [notify, setNotify] = useState(booking.notifyByDefault);
+  const [openingNotify] = useState(notify);
 
   return (
     <ChangeConfirmDialog
-      title="Record payment"
-      description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid at the desk, with the date it was received. This does not charge the guest.`}
+      title="Record a payment taken elsewhere"
+      dirty={method !== "cash" || when.edited || note !== "" || notify !== openingNotify}
+      description={`Record ${formatMoney(reviewed.owed, booking.currency)} the guest already paid.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net + reviewed.owed, booking.currency) },
-        { label: "Balance", before: formatMoney(reviewed.owed, booking.currency), after: formatMoney(0, booking.currency) },
+        { label: "Balance due", before: formatMoney(reviewed.owed, booking.currency), after: formatMoney(0, booking.currency) },
       ]}
       confirmLabel={`Record ${formatMoney(reviewed.owed, booking.currency)}`}
-      keepLabel="Close"
+      keepLabel={null}
       confirmDisabled={when.at === null}
       onConfirm={async () => {
         await recordPayment({
@@ -260,7 +383,7 @@ function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetai
       onClose={done.close}
     >
       <MethodPicker label="Paid by" methods={DESK_PAYMENT_METHODS} value={method} onChange={setMethod} />
-      <EffectiveTimeFields id="pay-when" label="Received on" value={when} />
+      <ReceivedAtField id="pay-when" label="Received on" value={when} />
       <div className="grid gap-2">
         <Label htmlFor="pay-note">Note (optional)</Label>
         <Input id="pay-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Slip number, who took it…" />
@@ -289,10 +412,12 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const amountProblem = amount === null || amount <= 0 ? "Enter an amount, at most 2 decimals." : amount > cap ? `At most ${formatMoney(cap, money.currency)}.` : null;
   const after = amount !== null ? money.net - amount : money.net;
   const done = useDone(onClose, "Refund recorded. Remember: recording it does not return the money.");
+  const [opening] = useState({ target, amountText, method });
 
   return (
     <ChangeConfirmDialog
       title="Record refund"
+      dirty={target !== opening.target || amountText !== opening.amountText || method !== opening.method || when.edited || reason !== ""}
       description={
         money.refundContext === "credit"
           ? "Record money given back for what the guest paid above the price of the stay. Recording does not return money: give it back first (for Stripe payments, refund in the Stripe dashboard)."
@@ -302,8 +427,8 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
         { label: "Paid", before: formatMoney(money.net, money.currency), after: formatMoney(after, money.currency) },
         { label: "Refunded", before: formatMoney(money.refunded, money.currency), after: formatMoney(money.refunded + (amount ?? 0), money.currency) },
       ]}
-      confirmLabel="Record refund"
-      keepLabel="Close"
+      confirmLabel={amount !== null && !amountProblem ? `Record refund ${formatMoney(amount, money.currency)}` : "Record refund"}
+      keepLabel={null}
       destructive
       confirmDisabled={!attempt && (Boolean(amountProblem) || !reason.trim() || when.at === null)}
       onConfirm={async () => {
@@ -351,16 +476,19 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
   const [reason, setReason] = useState("");
   const done = useDone(onClose, "Payment corrected.");
   const changed = method !== payment.method || when.at !== payment.effectiveAt || note.trim() !== (payment.note ?? "");
+  const [opening] = useState({ method, note });
 
   return (
     <ChangeConfirmDialog
       title="Correct payment"
-      description="Fix how or when this payment was received. The amount stays; if no money was received, use Not received instead."
+      dirty={method !== opening.method || when.edited || note !== opening.note || reason !== ""}
+      description="The amount stays as recorded."
       rows={[
         { label: "Method", before: MONEY_METHOD_LABELS[payment.method] ?? payment.method, after: MONEY_METHOD_LABELS[method] },
-        { label: "Received", before: formatResortDateTime(payment.effectiveAt), after: when.at === null ? "—" : formatResortDateTime(when.at) },
+        { label: "Received", before: staffDateTime(payment.effectiveAt), after: when.at === null ? "—" : staffDateTime(when.at) },
       ]}
       confirmLabel="Save correction"
+      keepLabel={null}
       confirmDisabled={!changed || !reason.trim() || when.at === null}
       onConfirm={async () => {
         await amendPayment({
@@ -378,7 +506,7 @@ function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDet
         <Input id="amend-note" maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} />
       </div>
       <div className="grid gap-2">
-        <Label htmlFor="amend-reason">Reason for the correction (required)</Label>
+        <Label htmlFor="amend-reason">Reason (required)</Label>
         <Textarea id="amend-reason" required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
       </div>
     </ChangeConfirmDialog>
@@ -401,16 +529,17 @@ function CancelEntryDialog({
   const cancelPayment = useMutation(api.bookings.commands.cancelPayment.cancelPayment);
   const [revision] = useState(booking.revision);
   const [reason, setReason] = useState("");
-  const done = useDone(onClose, "Payment entry cancelled.");
+  const done = useDone(onClose, "Payment entry voided.");
   return (
     <ChangeConfirmDialog
-      title="Payment not received?"
-      description={`Use this only when ${formatMoney(amount, booking.currency)} was recorded by mistake and never received. Nothing is refunded; the entry stays in the history, marked cancelled.`}
+      title="Entered by mistake"
+      dirty={reason !== ""}
+      description={`Void ${formatMoney(amount, booking.currency)} that nobody received; it stays in History.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net - amount, booking.currency) },
-        { label: "Balance", before: formatMoney(booking.money.owed, booking.currency), after: formatMoney(owedAfter, booking.currency) },
+        { label: "Balance due", before: formatMoney(booking.money.owed, booking.currency), after: formatMoney(owedAfter, booking.currency) },
       ]}
-      confirmLabel="Cancel this entry"
+      confirmLabel={`Void ${formatMoney(amount, booking.currency)}`}
       keepLabel="Keep payment"
       destructive
       confirmDisabled={!reason.trim()}

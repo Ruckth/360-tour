@@ -13,7 +13,7 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
  */
 
 type PosCommands = typeof api.pos.commands;
-type Pos = typeof api.pos.orders & typeof api.pos.catalog & typeof api.pos.sourceReads & { [K in keyof PosCommands]: PosCommands[K][K & keyof PosCommands[K]] };
+type Pos = typeof api.pos.orders & typeof api.pos.catalog.catalog & typeof api.pos.sourceReads & { [K in keyof PosCommands]: PosCommands[K][K & keyof PosCommands[K]] };
 export type RestoreReview = FunctionReturnType<Pos["restoreCheck"]>;
 export type AppointmentFee = FunctionReturnType<Pos["appointmentFees"]>[number];
 export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "orderRefunds";
@@ -21,7 +21,7 @@ export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appo
 export type LineRefund = FunctionReturnType<typeof api.pos.orderHistoryPages.orderRefunds>["page"][number];
 export type FinancialRows = { corrections: import("convex/_generated/dataModel").Doc<"orderCorrections">; audit: import("convex/_generated/dataModel").Doc<"orderAudit">; bookingRefunds: Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "_id" | "orderId" | "bookingId" | "amount" | "currency" | "method" | "reason" | "effectiveAt" | "recordedAt" | "recordedBy"> & Partial<Pick<import("convex/_generated/dataModel").Doc<"bookingRefunds">, "netBefore" | "netAfter" | "providerRefundId">>; appointmentRefunds: import("convex/_generated/dataModel").Doc<"appointmentRefunds">; orderRefunds: LineRefund };
 type Customers = typeof api.pos.customers;
-export type Catalog = FunctionReturnType<Pos["catalog"]>;
+export type Catalog = FunctionReturnType<typeof api.pos.catalog.stableCatalog> & { frequent: FunctionReturnType<typeof api.pos.catalog.recentCatalogRanking> };
 export type OrderView = NonNullable<FunctionReturnType<Pos["getOrder"]>>;
 export type OrderHistoryRow = FunctionReturnType<Pos["orderHistory"]>["page"][number];
 export type OrderLine = OrderView["lines"][number];
@@ -57,7 +57,7 @@ export type OrdersPage = {
 type PosAction =
   | "openOrderFor" | "addItem" | "attach" | "updateLine" | "overrideLinePrice" | "removeLine" | "updateSourceLine"
   | "discardOrder" | "restoreOrder" | "addAppointmentFee"
-  | "linkCustomer" | "unlinkCustomer" | "saveOrder" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
+  | "linkCustomer" | "unlinkCustomer" | "clearOrder" | "settleOrder" | "voidOrder" | "amendOrderPayment" | "voidUnreceivedOrder"
   | "linkPaidLine" | "unlinkPaidLine" | "refundLine"
   | "applyOrderCoupon" | "removeOrderCoupon" | "recheckOrderCoupon";
 type ApprovalAction = "create" | "approve" | "reject" | "cancel";
@@ -85,6 +85,8 @@ export type CheckoutBackend = {
   useOrder(orderId: OrderId | null): OrderView | null | undefined;
   useOrderHistory(orderId: OrderId): CustomerPage<OrderHistoryRow>;
   useOrders(filter: OrderFilter): OrdersPage;
+  /** Open orders with items that this checkout actor can recall (pos.listOpenOrders). */
+  useOpenOrders(): OrdersPage;
   /** undefined while loading; [] for a query under two characters. */
   useCustomerSearch(query: string): Customer[] | undefined;
   useCustomerPage(query: string, archived: boolean): CustomerPage<Customer>;

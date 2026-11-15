@@ -16,7 +16,8 @@ const touch = (slug: string, patch: Partial<MarketingTouch> = {}): MarketingTouc
   entry: "link",
   ...patch,
 });
-const touchedAt = new Date(2026, 10, 7, 14, 5).getTime();
+// 14:05 in Bangkok, the zone every admin time is shown in.
+const touchedAt = Date.parse("2026-11-07T14:05:00+07:00");
 const tracked = (patch: Partial<MarketingAttribution> = {}): MarketingAttribution => ({
   model: "last_touch_30d@1",
   evidence: "tracked",
@@ -44,7 +45,7 @@ afterEach(async () => {
 describe("booking sheet source row", () => {
   it("shows a tracked visit with its link, campaign, placement and date", async () => {
     await render(tracked());
-    expect(lines()).toEqual(["/f1 · facebook / paid_social", "November escape · Beach flyer", "7 Nov 2026, 14:05 · Tracked visit"]);
+    expect(lines()).toEqual(["/f1 · facebook / paid_social", "November escape · Beach flyer", expect.stringMatching(/^7 Nov( 2026)?, 14:05 · Tracked visit$/)]);
   });
 
   it("labels a link seen only in this visit, without a date", async () => {

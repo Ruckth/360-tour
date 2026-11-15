@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextIntlClientProvider } from "next-intl";
 import { evaluateOffer, type CouponRules, type OfferResult } from "convex/shared/offers";
 import messages from "../../messages/en.json";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import { BookingPromotionLine } from "@/components/admin/BookingPromotion";
 import { CouponLedger } from "@/components/admin/marketing/CouponLedger";
@@ -50,7 +51,7 @@ const quote = (nights: number, pricePerNight = 450000): OfferResult =>
 
 let root: Root;
 const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, node)));
+const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement | undefined;
 const text = () => document.body.textContent ?? "";
 const type = (id: string, value: string) => act(async () => {
@@ -127,7 +128,7 @@ describe("new booking with a coupon code", () => {
     expect(button("Create booking")?.disabled).toBe(false);
   });
 
-  it("shows coupon_unavailable next to the code and keeps the form", async () => {
+  it("shows coupon_unavailable once in the footer and keeps the form", async () => {
     preview.mockResolvedValue(quote(2));
     mutations.createBooking.mockRejectedValueOnce(new ConvexError({ code: "coupon_unavailable", message: "This offer has been fully used.", problem: { code: "sold_out" } }));
     await openDialog();
@@ -135,7 +136,7 @@ describe("new booking with a coupon code", () => {
     await settle();
     await submit();
     expect(client.mutation).toHaveBeenCalledWith(expect.anything(), { code: "DCNT-F1-20", problem: "sold_out", surface: "admin_booking" });
-    const alert = document.querySelector("#nb-coupon-status [role='alert']");
+    const alert = document.querySelector("form [role='alert']");
     expect(alert?.textContent).toBe("This offer has been fully used.");
     expect((document.getElementById("nb-name") as HTMLInputElement).value).toBe("Maya Chen");
     expect(document.getElementById("nb-coupon")?.getAttribute("aria-invalid")).toBe("true");
@@ -215,6 +216,6 @@ describe("coupon usage", () => {
 
   it("explains an empty ledger", async () => {
     await render(createElement(CouponLedger, { code: "DCNT-F1-20", redemptions: [] }));
-    expect(text()).toContain("No uses yet. Bookings made with DCNT-F1-20 show here");
+    expect(text()).toContain("No uses of DCNT-F1-20 yet");
   });
 });

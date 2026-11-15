@@ -41,6 +41,20 @@ describe("admin chat dashboard source", () => {
     expect(suggestionsSource).not.toContain("adminBackfillThaiGeneratedSuggestions");
   });
 
+  it("opens Questions on Missing information, beside Business facts, with no Legacy tab", () => {
+    const view = readFileSync(
+      new URL("../../src/components/admin/BusinessFactsView.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(view).toContain('const VIEW_MODES = ["missing", "facts"] as const;');
+    expect(view).toContain('facts: "Business facts"');
+    expect(view).toContain('missing: "Missing information"');
+    expect(view).toContain(': "missing";');
+    expect(view).not.toContain(`legacy: "`);
+    expect(view).not.toContain("LegacyArchivePanel");
+  });
+
   it("never renders an empty resolve dropdown in Missing information", () => {
     const panelSource = readFileSync(
       new URL("../../src/components/admin/MissingInformationPanel.tsx", import.meta.url),
@@ -53,7 +67,8 @@ describe("admin chat dashboard source", () => {
 
     // Structured sources are always offered, so SelectContent always has at least one item.
     expect(panelSource).toContain("STRUCTURED_SOURCES.map");
-    expect(panelSource).toContain("resolveOptions(reportPropertyId)");
+    expect(panelSource).toContain("compatibleFacts(facts, reportPropertyId)");
+    expect(panelSource).toContain("<ComboboxEmpty");
     expect(selectSource).not.toContain("h-[var(--radix-select-trigger-height)]");
   });
 });

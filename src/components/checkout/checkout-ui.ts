@@ -1,18 +1,55 @@
 import { tz } from "@date-fns/tz";
 import { format } from "date-fns";
 import { formatMoney } from "@/components/admin/labels";
-import { RESORT_ZONE, formatResortDate, formatResortFullDate, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { RESORT_ZONE, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { staffDate, staffDateTime, staffTime } from "@/lib/staff-time";
 import type { ServiceSchedule } from "convex/shared/serviceSchedule";
 import { MAX_ORDER, changeDue, formatReceiptNumber, lineCouponDiscount, roundMoney, type TenderMethod } from "convex/shared/orderMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/shared/posCoupons";
 import type { OrderView } from "./backend";
 
-export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; hint: string }> = {
-  cash: { short: "Cash", long: "Cash", hint: "" },
-  promptpay: { short: "PromptPay", long: "PromptPay QR", hint: "Show the shop's PromptPay QR. Confirm only once the transfer shows in the bank app." },
-  card: { short: "Card", long: "Card", hint: "Charge the amount on the card terminal, then confirm here." },
-  transfer: { short: "Transfer", long: "Bank transfer", hint: "Confirm once the transfer has arrived in the account." },
+/**
+ * One name per method everywhere in checkout: PromptPay, Transfer, Cash, Card. `confirm` names the
+ * method after the money on its button: "Confirm ฿1,200 card", "Confirm ฿500 cash + ฿700 card".
+ */
+export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; confirm: string; hint: string }> = {
+  cash: { short: "Cash", long: "Cash", confirm: "cash", hint: "" },
+  promptpay: { short: "PromptPay", long: "PromptPay", confirm: "PromptPay", hint: "Show the shop's QR and confirm once the transfer shows in the bank app." },
+  card: { short: "Card", long: "Card", confirm: "card", hint: "Charge the amount on the card terminal, then confirm here." },
+  transfer: { short: "Transfer", long: "Transfer", confirm: "transfer", hint: "Confirm once the transfer has arrived in the account." },
 };
+
+/** "฿500 cash + ฿700 card": tenders as the money buttons name them, money first. */
+export const tendersText = (tenders: readonly { method: TenderMethod; amount: number }[]) =>
+  tenders.map((tender) => `${formatMoney(tender.amount)} ${TENDER_LABELS[tender.method].confirm}`).join(" + ");
+
+/** "Confirm ฿1,200 card": the money button for one non-cash tender. */
+export const tenderConfirmLabel = (method: TenderMethod, amount: number) => `Confirm ${tendersText([{ method, amount }])}`;
+
+/**
+ * The cash money button: "Confirm ฿1,200 cash · no change", "Confirm ฿1,500 cash · change ฿300",
+ * or "Short ฿200" while less than the amount due is entered (the button is off then).
+ */
+export function cashConfirmLabel(due: number, received: number) {
+  if (received < due) return { ready: false, text: `Short ${formatMoney(roundMoney(due - received))}` };
+  const change = roundMoney(received - due);
+  return { ready: true, text: `Confirm cash · ${formatMoney(received)} received · ${change ? `change ${formatMoney(change)}` : "no change"}` };
+}
+
+/** The first round amount strictly above `due` in steps of `step`. */
+const nextUp = (due: number, step: number) => (Math.floor(due / step) + 1) * step;
+
+/**
+ * Cash a guest is likely to hand over for `due`, in Thai notes: the next ฿500 and ฿1,000 up (฿1,200 →
+ * ฿1,500 · ฿2,000), or the next ฿100 and ฿500 for under ฿500 (฿180 → ฿200 · ฿500). When both land on
+ * the same amount the second is one larger note on (฿950 → ฿1,000 · ฿2,000). Never above `max`.
+ */
+export function cashNotes(due: number, max = MAX_ORDER): number[] {
+  const [small, large] = due < 50_000 ? [10_000, 50_000] : [50_000, 100_000];
+  const first = nextUp(due, small);
+  const second = nextUp(due, large);
+  return [first, second === first ? first + large : second].filter((note) => note <= max);
+}
 
 /**
  * On touch screens (phones and iPads), every button, field and menu option inside a checkout area
@@ -20,7 +57,7 @@ export const TENDER_LABELS: Record<TenderMethod, { short: string; long: string; 
  * including portaled dialogs, sheets and select menus, which don't inherit it.
  */
 export const TOUCH_TARGETS =
-  "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_[role=option]]:min-h-11";
+  "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_textarea]:min-h-11 pointer-coarse:[&_select]:min-h-11 pointer-coarse:[&_a[href]]:min-h-11 pointer-coarse:[&_a[href]]:min-w-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
 /**
  * A row of up to four equal buttons (tenders, cash shortcuts): four columns while each can be
@@ -46,14 +83,11 @@ export const formatResort = (at: number, pattern: string) => format(at, pattern,
 
 /** When an order was last changed: the time today (the resort's day), with the date on other days. */
 export function orderTime(at: number, now = Date.now()) {
-  return formatResort(at, resortIsoDate(at) === resortIsoDate(now) ? "HH:mm" : "d MMM, HH:mm");
+  return resortIsoDate(at) === resortIsoDate(now) ? staffTime(at) : staffDateTime(at, { now });
 }
 
-/** "Mon, Oct 26" for a resort date this year, with the year otherwise. */
-function scheduleDay(date: string, now: number) {
-  const at = resortMidnight(date);
-  return date.slice(0, 4) === resortIsoDate(now).slice(0, 4) ? formatResortDate(at) : formatResortFullDate(at);
-}
+/** "Mon 26 Oct" for a resort date this year, with the year otherwise. */
+const scheduleDay = (date: string, now: number) => staffDate(resortMidnight(date), { weekday: true, now });
 
 /**
  * A service row's planned date and time as staff read it (lib/serviceSchedule.ts): "Not scheduled",
@@ -77,12 +111,12 @@ export function receiptSchedule(schedule: ServiceSchedule | undefined) {
   if (day && time) return `${day}, ${time}`;
   if (day) return `${day} · time to be confirmed`;
   if (time) return `${time} · date to be confirmed`;
-  return "To be scheduled";
+  return null;
 }
 
 /** How an order correction is titled in its history. */
 export function correctionTitle(kind: "amended" | "void_unreceived" | "linked" | "unlinked") {
-  return { amended: "Payment recording amended", void_unreceived: "Mistaken payment entry voided", linked: "Row linked after payment", unlinked: "Link undone" }[kind];
+  return { amended: "Payment recording corrected", void_unreceived: "Mistaken payment entry voided", linked: "Row linked after payment", unlinked: "Link undone" }[kind];
 }
 
 /** Who a receipt is issued to: the name frozen at payment (or a legacy order's copied name). */
@@ -150,7 +184,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...(totals.coupon ? [row("Subtotal", formatMoney(roundMoney(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
     row("Total", formatMoney(totals.total)),
     row("VAT 7% included", formatMoney(totals.vat)),
-    ...(totals.deposit ? [row("Paid before checkout", formatMoney(-totals.deposit))] : []),
+    ...(totals.deposit ? [row("Paid in advance", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
     ...(change ? [row("Change", formatMoney(change))] : []),
     ...(refunded ? [row("Refunded", formatMoney(-refunded)), row("Net", formatMoney(totals.total - refunded))] : []),

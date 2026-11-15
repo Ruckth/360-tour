@@ -465,7 +465,7 @@ function CampaignEditor({
   });
 
   return (
-    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={campaign ? "Save changes" : "Create campaign"}>
+    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={campaign ? "Save" : "Create campaign"}>
       {!canEdit ? <p className="text-sm text-muted-foreground">Read-only. {access.capabilities.draft ? "Your role can edit drafts only." : "Your role can inspect campaign details."}</p> : null}
       <fieldset disabled={!canEdit} className="grid min-w-0 gap-6">
       {campaign && access.capabilities.publish ? (

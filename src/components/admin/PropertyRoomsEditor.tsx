@@ -1,5 +1,6 @@
 "use client";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -167,14 +168,13 @@ function RoomCard({
         </Button>
       </div>
       {rooms.length > 1 ? (
-        <details>
-          <summary className="cursor-pointer rounded-sm text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Advanced: exact hotspot positions</summary>
-          <div className="mt-2">
+        <Disclosure label="More" hint="exact hotspot positions">
+          <div>
             <RoomHotspotList key={JSON.stringify(room.hotspots)} room={room} rooms={rooms} />
           </div>
-        </details>
+        </Disclosure>
       ) : null}
-      <HistoryDisclosure label="Room history"><RecordHistoryPanel entityType="room" entityId={room._id} /></HistoryDisclosure>
+      <HistoryDisclosure><RecordHistoryPanel entityType="room" entityId={room._id} /></HistoryDisclosure>
       {editingHotspots ? <HotspotEditorDialog room={room} rooms={rooms} onClose={() => setEditingHotspots(false)} /> : null}
     </li>
   );

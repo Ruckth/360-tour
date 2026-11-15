@@ -1,27 +1,45 @@
 "use client";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode } from "convex/shared/offers";
-import { Archive, ArrowLeft, Lock, Pause, Play, Send, Wand2 } from "lucide-react";
+import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "lucide-react";
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
-import { useRouter } from "next/navigation";
-import { useEffect, useId, useState, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { StickyActionBar } from "@/components/ui/sticky-action-bar";
+import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FieldLabel as Label } from "@/components/ui/label";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "../ConfirmDialog";
+import { personLabel } from "../person-label";
 import { StatusBadge } from "../StatusBadge";
-import { Callout, ChoiceGroup, CouponChip, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice } from "./MarketingBits";
+import { Callout, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice, type Notice } from "./MarketingBits";
 import { CouponLedger } from "./CouponLedger";
+import { CouponQrDialog, couponCardLink, type CouponQrActions } from "./CouponQrDialog";
 import { TestQuotePanel } from "./TestQuotePanel";
-import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, rulesChanged, type CouponForm, type CouponFormErrors } from "./coupon-form";
+import {
+  EMPTY_COUPON_FORM,
+  couponFormErrors,
+  couponFormFrom,
+  couponFormKey,
+  couponRulesFrom,
+  discountEcho,
+  discountFieldText,
+  discountFromText,
+  rulesChanged,
+  type CouponForm,
+  type CouponFormErrors,
+} from "./coupon-form";
 import {
   COUPON_STATE,
   LINK_STATUS,
@@ -49,7 +67,10 @@ type CouponEditorProps = {
   properties?: MarketingProperty[];
   today: string;
   listHref: string;
-  actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote">;
+  /** Where short links live, and the name printed on the QR card. */
+  origin: string;
+  brand: string;
+  actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote"> & CouponQrActions;
   /** After the first save of a new coupon, e.g. to move to its page. */
   onCreated: (couponId: Id<"coupons">) => void;
   /** Renders the change history of a saved coupon (MarketingScreens passes RecordHistoryPanel). */
@@ -58,20 +79,26 @@ type CouponEditorProps = {
   refusals?: (couponId: Id<"coupons">) => ReactNode;
 };
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, actions, onCreated, history, refusals }: CouponEditorProps) {
+/**
+ * What the first save said, kept for the coupon's own page: `onCreated` moves there, and the
+ * builder is mounted again for the saved coupon.
+ */
+const savedNotices = new Map<string, Notice>();
+
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals }: CouponEditorProps) {
   const { capabilities } = useMarketingAccess();
   if (isNew && !capabilities.draft) return <div className="mx-auto max-w-3xl p-6"><h2 className="text-xl font-semibold">Creating coupons requires draft access</h2><ButtonLink href={listHref} variant="outline" className="mt-3">Back to coupons</ButtonLink></div>;
   if (!isNew && detail === undefined) return <EditorSkeleton />;
   if (!isNew && detail === null) {
     return (
-      <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
-        <section className="grid justify-items-center gap-3 border border-border bg-card px-4 py-12 text-center">
+      <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
+        <Card className="grid justify-items-center gap-3 px-4 py-12 text-center">
           <p className="text-base font-semibold text-foreground">Coupon not found</p>
           <p className="max-w-md text-sm text-muted-foreground">It may have been removed, or the address is wrong.</p>
           <ButtonLink href={listHref} size="sm" variant="outline">
             Back to coupons
           </ButtonLink>
-        </section>
+        </Card>
       </div>
     );
   }
@@ -85,6 +112,8 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
       properties={properties}
       today={today}
       listHref={listHref}
+      origin={origin}
+      brand={brand}
       actions={actions}
       onCreated={onCreated}
       history={history}
@@ -95,10 +124,10 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
 
 function EditorSkeleton() {
   return (
-    <div role="status" className="mx-auto grid w-full max-w-7xl gap-4 px-4 py-4 sm:px-6">
+    <div role="status" className="mx-auto grid w-full max-w-3xl gap-4 px-4 py-4 sm:px-6">
       <span className="sr-only">Loading coupon</span>
       <Skeleton className="h-8 w-56" />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-4">
         <div className="grid gap-4">
           <Skeleton className="h-40 w-full" />
           <Skeleton className="h-40 w-full" />
@@ -109,19 +138,17 @@ function EditorSkeleton() {
   );
 }
 
-function Panel({ title, description, aside, children, id }: { title: string; description?: string; aside?: ReactNode; children: ReactNode; id?: string }) {
+/** A sub-heading inside the coupon card or More rules: no box of its own. */
+function Group({ title, children, id, aside }: { title: string; children: ReactNode; id?: string; aside?: ReactNode }) {
   return (
-    <section aria-labelledby={id} className="min-w-0 border border-border bg-card">
-      <header className="flex items-start gap-3 border-b border-border px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <h3 id={id} className="text-base font-semibold text-foreground">
-            {title}
-          </h3>
-          {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
-        </div>
+    <section aria-labelledby={id} className="grid min-w-0 gap-3">
+      <div className="flex items-center gap-3">
+        <h4 id={id} className="flex-1 text-sm font-semibold text-foreground">
+          {title}
+        </h4>
         {aside}
-      </header>
-      <div className="grid gap-4 p-4">{children}</div>
+      </div>
+      {children}
     </section>
   );
 }
@@ -142,6 +169,16 @@ const STATUS_ACTIONS: Record<CouponStatus, { status: CouponStatus; label: string
   archived: [],
 };
 
+/** Fields folded into "More rules"; an error in one opens it. */
+const MORE_RULE_KEYS: readonly (keyof CouponFormErrors)[] = ["maxSaving", "bookTo", "stayTo", "minNights", "minSubtotal", "usageLimit", "budget"];
+
+/** True when a saved coupon uses any rule kept under "More rules", so its page opens them. */
+function usesMoreRules(form: CouponForm) {
+  return Boolean(
+    form.campaignId || form.maxSaving || form.bookFrom || form.bookTo || form.stayFrom || form.stayTo || form.minNights || form.minSubtotal || form.usageLimit || form.budget || form.terms,
+  );
+}
+
 function CouponBuilder({
   detail,
   coupons,
@@ -149,6 +186,8 @@ function CouponBuilder({
   properties,
   today,
   listHref,
+  origin,
+  brand,
   actions,
   onCreated,
   history,
@@ -160,6 +199,8 @@ function CouponBuilder({
   properties: MarketingProperty[];
   today: string;
   listHref: string;
+  origin: string;
+  brand: string;
   actions: CouponEditorProps["actions"];
   onCreated: CouponEditorProps["onCreated"];
   history?: CouponEditorProps["history"];
@@ -167,17 +208,29 @@ function CouponBuilder({
 }) {
   const access = useMarketingAccess();
   const canEdit = canEditMarketing(access, detail);
+  const canPublish = access.capabilities.publish;
   const id = useId();
-  const router = useRouter();
   const confirm = useConfirm();
   const { notice, show, clear } = useNotice();
   const baseline = detail ? couponFormFrom(detail) : EMPTY_COUPON_FORM;
   const [form, setForm] = useState<CouponForm>(baseline);
+  // The discount as typed ("20%" or "500"); the form keeps its kind and number.
+  const [discountText, setDiscountText] = useState(() => discountFieldText(baseline));
+  const [moreOpen, setMoreOpen] = useState(() => usesMoreRules(baseline));
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
   const { pending: statusPending, run } = useConfirmedChange<Id<"coupons">>(show);
   const statusBusy = statusPending !== null;
   const set = <K extends keyof CouponForm>(key: K, value: CouponForm[K]) => setForm((current) => ({ ...current, [key]: value }));
+
+  // The first save of a new coupon reports here, on the coupon's own page.
+  useEffect(() => {
+    const saved = detail ? savedNotices.get(detail._id) : undefined;
+    if (!saved || !detail) return;
+    savedNotices.delete(detail._id);
+    show(saved.text, saved.tone);
+  }, [detail, show]);
 
   const archived = detail?.status === "archived";
   const codeLocked = (detail?.used ?? 0) > 0;
@@ -186,6 +239,8 @@ function CouponBuilder({
   const firstError = (Object.keys(errors) as (keyof CouponFormErrors)[])[0];
   const shown = (key: keyof CouponFormErrors) => (submitted ? errors[key] : undefined);
   const rules = couponRulesFrom(form);
+  const validDiscount = !errors.value && Number(form.value.replace(/,/g, "")) > 0;
+  const summaryScope = form.scope === "accommodation" ? "Stays" : form.scope === "services" ? "Spa" : "Stays & spa";
   const code = normalizeCouponCode(form.code);
   const changedRules = detail ? rulesChanged(rules, detail.rules) : true;
   // Compared on what would be saved, so formatting ("1500" vs "1,500"), villa order or spaces aren't edits.
@@ -194,45 +249,71 @@ function CouponBuilder({
   const villaName = (slug: string) => properties.find((property) => property.slug === slug)?.name ?? slug;
   const state = detail ? couponState(detail, today) : null;
   const liveCampaigns = campaigns.filter((campaign) => campaign.status !== "archived" || campaign._id === form.campaignId);
+  // The QR card needs a published coupon, and either a live link or the rights to make one.
+  const cardLink = detail ? couponCardLink(detail.links) : undefined;
+  const canQr = detail?.status === "active" && (cardLink?.status === "active" || (access.capabilities.draft && canPublish));
 
+  // A new coupon has no version yet, so it says nothing about versions until it is saved.
   const saveHint = !canEdit ? "Read-only for your Marketing role" : !detail
-    ? "Saved as version 1"
+    ? ""
     : !dirty
       ? "No changes"
       : changedRules
         ? `Saving creates version ${nextVersion}`
         : "Saving keeps version " + detail.currentVersion;
 
-  async function save(event?: FormEvent) {
-    event?.preventDefault();
+  function focusError(key: keyof CouponFormErrors) {
+    if (MORE_RULE_KEYS.includes(key)) setMoreOpen(true);
+    // After the disclosure has opened.
+    window.requestAnimationFrame(() => document.getElementById(`${id}-${key}`)?.focus());
+  }
+
+  /** Saves the form; with "publish" it confirms first, then publishes only after the save succeeded. */
+  async function save(intent: "save" | "publish") {
     if (!canEdit) return;
     setSubmitted(true);
     if (firstError) {
-      document.getElementById(`${id}-${firstError}`)?.focus();
+      focusError(firstError);
       return;
     }
+    if (
+      intent === "publish" &&
+      !(await confirm({ title: `Publish ${code}?`, description: "Guests can use it from now on, within its dates and limits.", confirmLabel: "Save & publish" }))
+    )
+      return;
     setSaving(true);
+    const campaignId = form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined;
+    let result: Awaited<ReturnType<typeof actions.saveCoupon>>;
     try {
-      const result = await actions.saveCoupon({
-        couponId: detail?._id,
-        code,
-        campaignId: form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined,
-        ...rules,
-      });
-      setSubmitted(false);
-      // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
-      setForm(couponFormFrom({ code, campaignId: form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined, rules }));
-      if (!detail) onCreated(result.couponId);
-      else show(changedRules ? `Saved version ${result.version}` : "Saved");
+      result = await actions.saveCoupon({ couponId: detail?._id, code, campaignId, ...rules });
     } catch (error) {
       show(marketingErrorText(error, "Couldn’t save the coupon."), "danger");
-    } finally {
       setSaving(false);
+      return;
     }
+    setSubmitted(false);
+    // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
+    const stored = couponFormFrom({ code, campaignId, rules });
+    setForm(stored);
+    setDiscountText(discountFieldText(stored));
+    let saved: Notice = { tone: "success", text: detail ? (changedRules ? `Saved version ${result.version}` : "Saved") : `Saved ${code} as a draft` };
+    if (intent === "publish") {
+      try {
+        await actions.setCouponStatus({ couponId: result.couponId, status: "active" });
+        saved = { tone: "success", text: `${code} is live` };
+      } catch (error) {
+        saved = { tone: "danger", text: `Saved ${code} as a draft, but it isn’t live. ${marketingErrorText(error, "Publishing failed.")}` };
+      }
+    }
+    setSaving(false);
+    if (!detail) {
+      savedNotices.set(result.couponId, saved);
+      onCreated(result.couponId);
+    } else show(saved.text, saved.tone);
   }
 
   async function changeStatus(status: CouponStatus) {
-    if (!detail || !access.capabilities.publish) return;
+    if (!detail || !canPublish) return;
     const copy: Record<CouponStatus, { title: string; description: string; label: string; done: string }> = {
       active: {
         title: detail.status === "draft" ? `Publish ${detail.code}?` : `Resume ${detail.code}?`,
@@ -268,59 +349,74 @@ function CouponBuilder({
     );
   }
 
-  // Reloading or closing the tab with unsaved edits asks first (the back link has its own confirm).
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
-
-  async function leave(event: MouseEvent) {
-    if (!dirty) return;
-    event.preventDefault();
-    if (await confirm({ title: "Discard your changes?", description: "Edits that aren’t saved are lost.", confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true })) {
-      router.push(listHref);
-    }
-  }
+  useUnsavedGuard(dirty);
 
   const field = (key: keyof CouponFormErrors) => ({
     id: `${id}-${key}`,
     "aria-invalid": shown(key) ? true : undefined,
-    "aria-describedby": `${id}-${key}-error ${id}-${key}-hint`,
+    "aria-describedby": [
+      shown(key) && `${id}-${key}-error`,
+      (["maxSaving", "minSubtotal", "minNights", "usageLimit", "budget"].includes(key) || key === "code" && codeLocked || key === "value" && !shown(key) && discountEcho(form, properties)) && `${id}-${key}-hint`,
+    ].filter(Boolean).join(" ") || undefined,
   });
   const err = (key: keyof CouponFormErrors) => <FieldError id={`${id}-${key}-error`}>{shown(key)}</FieldError>;
-  const disabled = archived || !canEdit;
+  const disabled = archived || !canEdit || saving;
 
-  const saveButton = (className?: string) => !canEdit ? null : (
-    <Button type="submit" form={`${id}-form`} size="sm" disabled={saving || archived || (detail !== undefined && !dirty)} className={className}>
-      {saving ? <Spinner label="Saving" className="text-current" /> : null}
-      {detail ? "Save" : "Create coupon"}
-    </Button>
-  );
+  const spinner = saving ? <Spinner label="Saving" className="text-current" /> : null;
+  // One primary action: Save & publish for a new coupon, QR card for a live one with nothing to save.
+  const headerActions = () =>
+    !detail ? (
+      !canEdit ? null : canPublish ? (
+        <>
+          <Button type="button" size="sm" variant="outline" className="max-sm:hidden" disabled={saving} onClick={() => void save("save")}>Save as draft</Button>
+          <Button type="button" size="sm" disabled={saving} onClick={() => void save("publish")}>
+            {spinner}
+            Save &amp; publish
+          </Button>
+          <MoreMenu className="sm:hidden" label="More save options" disabled={saving} items={[{ label: "Save as draft", onSelect: () => void save("save") }]} />
+        </>
+      ) : (
+        <Button type="submit" form={`${id}-form`} size="sm" disabled={saving}>
+          {spinner}
+          Save draft
+        </Button>
+      )
+    ) : (
+      <>
+        {canQr ? (
+          <Button type="button" size="sm" variant={dirty ? "outline" : "default"} onClick={() => setQrOpen(true)}>
+            <QrCode aria-hidden className="size-4" />
+            QR card
+          </Button>
+        ) : null}
+        {canEdit ? (
+          <Button type="submit" form={`${id}-form`} size="sm" variant={dirty ? "default" : "outline"} disabled={saving || archived || !dirty}>
+            {spinner}
+            Save
+          </Button>
+        ) : null}
+      </>
+    );
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-4 pb-24 sm:px-6 sm:pb-4">
-      <ButtonLink href={listHref} variant="ghost" size="sm" className="-ml-2" onClick={(event) => void leave(event)}>
+    <div className="mx-auto w-full max-w-3xl min-w-0 px-4 py-4 pb-[calc(5rem+var(--admin-tab-bar,0px)+env(safe-area-inset-bottom))] sm:px-6 sm:pb-6" data-coupon-editor="">
+      <ButtonLink href={listHref} variant="ghost" size="sm" className="-ml-2">
         <ArrowLeft aria-hidden className="size-4" />
         Coupons
       </ButtonLink>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="min-w-0 break-all font-mono text-2xl font-semibold tracking-tight text-foreground">{detail ? detail.code : "New coupon"}</h2>
+        <h2 className={cn("min-w-0 break-all text-3xl tracking-tight text-foreground", detail ? "font-mono font-semibold" : "font-serif")}>{detail ? detail.code : "New coupon"}</h2>
         {state ? <StatusBadge {...COUPON_STATE[state]} /> : null}
         {detail ? <span className="rounded-md border border-border px-1.5 py-0.5 font-mono text-xs font-semibold text-muted-foreground">v{detail.currentVersion}</span> : null}
-        <div className="ms-auto hidden items-center gap-3 sm:flex">
-          <span className="text-xs text-muted-foreground" aria-live="polite">
-            {saveHint}
-          </span>
-          {saveButton()}
+        <div className="ms-auto hidden items-center gap-2 sm:flex">
+          {saveHint ? (
+            <span className="me-1 text-xs text-muted-foreground" aria-live="polite">
+              {saveHint}
+            </span>
+          ) : null}
+          {headerActions()}
         </div>
       </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {detail
-          ? "Any change to the offer saves a new version. Bookings keep the version they agreed to."
-          : "It starts as a draft. Publish it when the test quotes look right."}
-      </p>
 
       <div className="mt-3">
         <NoticeBar notice={notice} onClose={clear} />
@@ -331,280 +427,269 @@ function CouponBuilder({
         </Callout>
       ) : null}
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <form id={`${id}-form`} noValidate onSubmit={save} className="grid min-w-0 gap-4">
-          <fieldset disabled={disabled} className="grid min-w-0 gap-4">
-            <Panel id={`${id}-sec-code`} title="Code" description="What guests type at checkout or show at reception.">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-code`}>Code</Label>
-                  {codeLocked ? (
-                    <div className="flex h-10 items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 text-muted-foreground">
-                      <Lock aria-hidden className="size-4 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold text-foreground">{detail?.code}</span>
-                      <span className="text-xs font-semibold">Locked</span>
-                    </div>
-                  ) : (
-                    <Input
-                      {...field("code")}
-                      value={form.code}
-                      onChange={(event) => set("code", event.target.value.toUpperCase().replace(/\s+/g, "-"))}
-                      placeholder="DCNT-F1-20"
-                      autoComplete="off"
-                      autoCapitalize="characters"
-                      spellCheck={false}
-                      className="font-mono font-semibold tracking-wide"
-                    />
-                  )}
-                  {codeLocked ? null : err("code")}
-                  <FieldHint id={`${id}-code-hint`}>
-                    {codeLocked
-                      ? `Used ${detail?.used} ${detail?.used === 1 ? "time" : "times"}, so the code can’t change.`
-                      : "Letters, numbers and dashes. Saved in capitals; guests can type it in any case."}
-                  </FieldHint>
-                </div>
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-campaign`}>
-                    Campaign <span className="font-normal text-muted-foreground">(optional)</span>
-                  </Label>
-                  <Select value={form.campaignId || NO_CAMPAIGN} onValueChange={(value) => set("campaignId", value === NO_CAMPAIGN ? "" : value)} disabled={disabled}>
-                    <SelectTrigger id={`${id}-campaign`} className="h-10 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NO_CAMPAIGN}>No campaign</SelectItem>
-                      {liveCampaigns.map((campaign) => (
-                        <SelectItem key={campaign._id} value={campaign._id}>
-                          {campaign.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FieldHint>Groups it with the campaign’s links in reports.</FieldHint>
-                </div>
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                The code is a label people remember. The rules below decide the discount, so typing a different number at checkout never changes the
-                price.
-              </p>
-            </Panel>
-
-            <Panel id={`${id}-sec-benefit`} title="Benefit" description="What the guest saves.">
-              <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] sm:items-start">
-                <div className="grid content-start gap-2">
-                  <span id={`${id}-kind`} className="text-sm font-medium leading-none text-foreground">
-                    Type
-                  </span>
-                  <ToggleGroup aria-labelledby={`${id}-kind`} value={form.kind} onValueChange={(value) => set("kind", value)} disabled={disabled}>
-                    <ToggleGroupItem value="percent" className="flex-1 sm:min-w-20">
-                      Percent
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="fixed" className="flex-1 sm:min-w-20">
-                      Fixed ฿
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-value`}>Discount</Label>
-                  <NumberField
-                    {...field("value")}
-                    prefix={form.kind === "fixed" ? "฿" : undefined}
-                    suffix={form.kind === "percent" ? "%" : undefined}
-                    value={form.value}
-                    onChange={(event) => set("value", event.target.value)}
-                    className="font-semibold"
-                  />
-                  {err("value")}
-                </div>
-                {form.kind === "percent" ? (
-                  <div className="grid content-start gap-2">
-                    <Label htmlFor={`${id}-maxSaving`}>
-                      Max saving <span className="font-normal text-muted-foreground">(optional)</span>
-                    </Label>
-                    <NumberField {...field("maxSaving")} prefix="฿" placeholder="No cap" value={form.maxSaving} onChange={(event) => set("maxSaving", event.target.value)} />
-                    {err("maxSaving")}
-                    <FieldHint id={`${id}-maxSaving-hint`}>Caps the discount on big bookings.</FieldHint>
+      <div className="mt-4 grid items-start gap-4">
+        <form
+          id={`${id}-form`}
+          noValidate
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            void save(!detail && canPublish ? "publish" : "save");
+          }}
+          className="grid min-w-0 gap-4"
+        >
+          <Card className="p-5 sm:p-6">
+          <fieldset disabled={disabled} className="grid min-w-0 gap-6">
+            <legend className="sr-only">Coupon</legend>
+            <div className="grid gap-4 sm:grid-cols-2 sm:items-start">
+              <div className="grid content-start gap-2">
+                <Label htmlFor={`${id}-code`}>Code</Label>
+                {codeLocked ? (
+                  <div className="flex h-10 items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 text-muted-foreground">
+                    <Lock aria-hidden className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate font-mono text-sm font-semibold text-foreground">{detail?.code}</span>
+                    <span className="text-xs font-semibold">Locked</span>
                   </div>
+                ) : (
+                  <Input
+                    {...field("code")}
+                    value={form.code}
+                    onChange={(event) => set("code", event.target.value.toUpperCase().replace(/\s+/g, "-"))}
+                    placeholder="e.g. SUMMER15"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    className="h-11 pointer-coarse:h-12 font-mono font-semibold tracking-wide placeholder:font-sans placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground"
+                  />
+                )}
+                {codeLocked ? (
+                  <FieldHint id={`${id}-code-hint`}>
+                    Used {detail?.used} {detail?.used === 1 ? "time" : "times"}, so the code can’t change.
+                  </FieldHint>
+                ) : (
+                  err("code")
+                )}
+              </div>
+              <div className="grid content-start gap-2">
+                <Label htmlFor={`${id}-value`}>Discount</Label>
+                <div className="flex items-start gap-2">
+                <Input
+                  {...field("value")}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder={form.kind === "percent" ? "e.g. 20" : "e.g. 500"}
+                  value={discountText}
+                  onChange={(event) => {
+                    setDiscountText(event.target.value);
+                    setForm((current) => ({ ...current, ...discountFromText(current.kind === "percent" && event.target.value.trim() && !/[%฿]/.test(event.target.value) ? `${event.target.value}%` : event.target.value, current.kind) }));
+                  }}
+                  className="money h-11 pointer-coarse:h-12 min-w-0 font-semibold placeholder:font-normal placeholder:text-muted-foreground"
+                />
+                <ToggleGroup variant="segmented" tone="subtle" value={form.kind} onValueChange={(kind: CouponForm["kind"]) => { set("kind", kind); setDiscountText(kind === "percent" && form.value ? `${form.value}%` : form.value); }} aria-label="Discount unit" className="shrink-0">
+                  <ToggleGroupItem value="percent" aria-label="Percent" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">%</ToggleGroupItem><ToggleGroupItem value="fixed" aria-label="Baht" className="group-data-[variant=segmented]/toggle:h-10 pointer-coarse:group-data-[variant=segmented]/toggle:h-10">฿</ToggleGroupItem>
+                </ToggleGroup>
+                </div>
+                {shown("value") ? err("value") : discountEcho(form, properties) ? (
+                  <FieldHint id={`${id}-value-hint`}>{discountEcho(form, properties)}</FieldHint>
                 ) : null}
               </div>
-            </Panel>
+            </div>
 
-            <Panel id={`${id}-sec-scope`} title="Scope" description="What the code can discount. Deposits and fees are never discounted.">
-              <ChoiceGroup
-                name={`${id}-scope`}
-                label="Covers"
-                value={form.scope}
-                onChange={(value) => set("scope", value)}
-                columns="sm:grid-cols-3"
-                options={[
-                  { value: "accommodation", label: "Accommodation", hint: "Villa nights" },
-                  { value: "services", label: "Spa services", hint: "Treatments, not extras" },
-                  { value: "accommodation_and_services", label: "Both", hint: "Villas and spa" },
-                ]}
-              />
-              {form.scope !== "services" ? (
-                <fieldset className="grid gap-3" aria-describedby={`${id}-villas-error`}>
-                  <legend className="mb-2 text-sm font-medium leading-none text-foreground">Villas</legend>
-                  <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-                    <label className="flex min-h-10 items-center gap-2">
-                      <input type="radio" name={`${id}-all-villas`} checked={form.allVillas} onChange={() => set("allVillas", true)} className="size-4 accent-foreground" />
-                      All villas
-                    </label>
-                    <label className="flex min-h-10 items-center gap-2">
-                      <input type="radio" name={`${id}-all-villas`} checked={!form.allVillas} onChange={() => set("allVillas", false)} className="size-4 accent-foreground" />
-                      Choose villas
-                    </label>
-                  </div>
-                  {!form.allVillas ? (
-                    <div id={`${id}-villas`} tabIndex={-1} className="grid gap-2 outline-none sm:grid-cols-2 xl:grid-cols-3">
-                      {properties.map((property) => (
-                        <label
-                          key={property._id}
-                          className="flex min-h-11 items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-foreground/40 has-[:checked]:bg-muted/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={form.villas.includes(property.slug)}
-                            onChange={(event) =>
-                              set("villas", event.target.checked ? [...form.villas, property.slug] : form.villas.filter((slug) => slug !== property.slug))
-                            }
-                            className="mt-0.5 size-4 accent-foreground"
-                          />
-                          <span className="min-w-0">
-                            <span className="block font-medium text-foreground">{property.name}</span>
-                            <span className="block text-xs text-muted-foreground">
-                              {thb(property.pricePerNight)} / night · up to {property.maxGuests}
-                              {property.status !== "active" ? ` · ${property.status}` : ""}
-                            </span>
+            <fieldset className="grid min-w-0 gap-2">
+              <legend className="mb-2 text-xs font-normal text-muted-foreground">Applies to</legend>
+              <ToggleGroup variant="segmented" tone="subtle" value={form.scope} onValueChange={(value: CouponForm["scope"]) => set("scope", value)} aria-label="Applies to" className="w-full flex-wrap">
+                <ToggleGroupItem value="accommodation" className="whitespace-nowrap px-3">Stays</ToggleGroupItem>
+                <ToggleGroupItem value="services" className="whitespace-nowrap px-3">Spa</ToggleGroupItem>
+                <ToggleGroupItem value="accommodation_and_services" className="whitespace-nowrap px-3">Both</ToggleGroupItem>
+              </ToggleGroup>
+            </fieldset>
+            {form.scope !== "services" ? (
+              <fieldset className="-mt-2 grid gap-3" aria-describedby={shown("villas") ? `${id}-villas-error` : undefined}>
+                <legend className="mb-2 text-xs font-normal text-muted-foreground">Villas</legend>
+                <ToggleGroup variant="segmented" tone="subtle" value={form.allVillas ? "all" : "choose"} onValueChange={(value) => set("allVillas", value === "all")} aria-label="Villas" className="w-full">
+                  <ToggleGroupItem value="all">All villas</ToggleGroupItem><ToggleGroupItem value="choose">Choose villas</ToggleGroupItem>
+                </ToggleGroup>
+                {!form.allVillas ? (
+                  <div id={`${id}-villas`} tabIndex={-1} className="grid gap-2 outline-none sm:grid-cols-2 xl:grid-cols-3">
+                    {properties.map((property) => (
+                      <label
+                        key={property._id}
+                        className="flex min-h-11 items-start gap-2 rounded-lg border border-border px-3 py-2 text-sm has-[:checked]:border-foreground/40 has-[:checked]:bg-muted/50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={form.villas.includes(property.slug)}
+                          onChange={(event) =>
+                            set("villas", event.target.checked ? [...form.villas, property.slug] : form.villas.filter((slug) => slug !== property.slug))
+                          }
+                          className="mt-0.5 size-4 accent-foreground"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-medium text-foreground">{property.name}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {thb(property.pricePerNight)} / night · up to {property.maxGuests}
+                            {property.status !== "active" ? ` · ${property.status}` : ""}
                           </span>
-                        </label>
-                      ))}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                ) : null}
+                {err("villas")}
+              </fieldset>
+            ) : null}
+
+            <Disclosure
+              label="More"
+              hint="campaign, dates, limits, terms"
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+              className="border-t border-border pt-2"
+              contentClassName="mt-2 grid gap-6"
+            >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid content-start gap-2">
+                    <Label htmlFor={`${id}-campaign`}>Campaign</Label>
+                    <Select value={form.campaignId || NO_CAMPAIGN} onValueChange={(value) => set("campaignId", value === NO_CAMPAIGN ? "" : value)} disabled={disabled}>
+                      <SelectTrigger id={`${id}-campaign`} className="h-10 w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NO_CAMPAIGN}>No campaign</SelectItem>
+                        {liveCampaigns.map((campaign) => (
+                          <SelectItem key={campaign._id} value={campaign._id}>
+                            {campaign.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FieldHint>Groups it with the campaign’s links in reports</FieldHint>
+                  </div>
+                  {form.kind === "percent" ? (
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor={`${id}-maxSaving`}>Max saving</Label>
+                      <NumberField {...field("maxSaving")} prefix="฿" placeholder="No cap" value={form.maxSaving} onChange={(event) => set("maxSaving", event.target.value)} />
+                      {err("maxSaving")}
+                      <FieldHint id={`${id}-maxSaving-hint`}>Caps the discount on big bookings</FieldHint>
                     </div>
                   ) : null}
-                  {err("villas")}
-                </fieldset>
-              ) : null}
-            </Panel>
-
-            <Panel id={`${id}-sec-dates`} title="Dates" description="When guests can book, and when they can stay or have a treatment.">
-              <div className="grid gap-4 md:grid-cols-2">
-                <DateWindow
-                  legend="Booking window"
-                  hint="When the booking or sale is made."
-                  fromId={`${id}-bookFrom`}
-                  toId={`${id}-bookTo`}
-                  fromLabel="Opens"
-                  toLabel="Closes"
-                  from={form.bookFrom}
-                  to={form.bookTo}
-                  onFrom={(value) => set("bookFrom", value)}
-                  onTo={(value) => set("bookTo", value)}
-                  error={shown("bookTo")}
-                  disabled={disabled}
-                />
-                <DateWindow
-                  legend="Stay or treatment window"
-                  hint="Every night or treatment must fall inside."
-                  fromId={`${id}-stayFrom`}
-                  toId={`${id}-stayTo`}
-                  fromLabel="From"
-                  toLabel="Until"
-                  from={form.stayFrom}
-                  to={form.stayTo}
-                  onFrom={(value) => set("stayFrom", value)}
-                  onTo={(value) => set("stayTo", value)}
-                  error={shown("stayTo")}
-                  disabled={disabled}
-                />
-              </div>
-              <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">Dates are inclusive, in Asia/Bangkok time. Leave them empty for no limit.</p>
-            </Panel>
-
-            <Panel id={`${id}-sec-limits`} title="Minimums and limits" description="Keep the code from costing more than you planned.">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-minSubtotal`}>Minimum eligible spend</Label>
-                  <NumberField {...field("minSubtotal")} prefix="฿" placeholder="None" value={form.minSubtotal} onChange={(event) => set("minSubtotal", event.target.value)} />
-                  {err("minSubtotal")}
-                  <FieldHint id={`${id}-minSubtotal-hint`}>Counts the items the code covers only.</FieldHint>
                 </div>
-                {form.scope !== "services" ? (
-                  <div className="grid content-start gap-2">
-                    <Label htmlFor={`${id}-minNights`}>Minimum nights</Label>
-                    <NumberField {...field("minNights")} placeholder="None" value={form.minNights} onChange={(event) => set("minNights", event.target.value)} />
-                    {err("minNights")}
-                    <FieldHint id={`${id}-minNights-hint`}>Shorter stays keep the direct offer.</FieldHint>
+
+                <Group id={`${id}-sec-dates`} title="Dates">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <DateWindow
+                      legend="Booking window"
+                      hint="When the booking or sale is made"
+                      fromId={`${id}-bookFrom`}
+                      toId={`${id}-bookTo`}
+                      fromLabel="Opens"
+                      toLabel="Closes"
+                      from={form.bookFrom}
+                      to={form.bookTo}
+                      onFrom={(value) => set("bookFrom", value)}
+                      onTo={(value) => set("bookTo", value)}
+                      error={shown("bookTo")}
+                      disabled={disabled}
+                    />
+                    <DateWindow
+                      legend="Stay or treatment window"
+                      hint="Every night or treatment falls inside"
+                      fromId={`${id}-stayFrom`}
+                      toId={`${id}-stayTo`}
+                      fromLabel="From"
+                      toLabel="Until"
+                      from={form.stayFrom}
+                      to={form.stayTo}
+                      onFrom={(value) => set("stayFrom", value)}
+                      onTo={(value) => set("stayTo", value)}
+                      error={shown("stayTo")}
+                      disabled={disabled}
+                    />
                   </div>
-                ) : null}
-              </div>
-              <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-usageLimit`}>Total uses</Label>
-                  <NumberField {...field("usageLimit")} placeholder="No limit" value={form.usageLimit} onChange={(event) => set("usageLimit", event.target.value)} />
-                  {err("usageLimit")}
-                  <FieldHint id={`${id}-usageLimit-hint`}>{detail ? `${detail.used.toLocaleString("en-US")} used so far.` : "Paid bookings and sales."}</FieldHint>
-                </div>
-                <div className="grid content-start gap-2">
-                  <Label htmlFor={`${id}-budget`}>Discount budget</Label>
-                  <NumberField {...field("budget")} prefix="฿" placeholder="No budget" value={form.budget} onChange={(event) => set("budget", event.target.value)} />
-                  {err("budget")}
-                  <FieldHint id={`${id}-budget-hint`}>
-                    {detail ? `${thb(detail.discountGranted)} given so far. ` : ""}New checkouts stop when discounts reach this.
-                  </FieldHint>
-                </div>
-              </div>
-            </Panel>
+                  <p className="text-xs text-muted-foreground">Inclusive, Asia/Bangkok time · empty means no limit</p>
+                </Group>
 
-            <Panel
-              id={`${id}-sec-terms`}
-              title="Customer terms"
-              description="Shown at checkout, on the QR card and on receipts."
-              aside={
-                <Button type="button" variant="outline" size="sm" onClick={() => set("terms", generatedTerms(rules))}>
-                  <Wand2 aria-hidden className="size-4" />
-                  Write from rules
-                </Button>
-              }
-            >
-              <Label htmlFor={`${id}-terms`} className="sr-only">
-                Customer terms
-              </Label>
-              <Textarea
-                id={`${id}-terms`}
-                rows={4}
-                value={form.terms}
-                onChange={(event) => set("terms", event.target.value)}
-                placeholder={generatedTerms(rules)}
-                className="leading-relaxed"
-              />
-              <FieldHint>Left empty, guests see terms written from the rules, like the placeholder.</FieldHint>
-            </Panel>
+                <Group id={`${id}-sec-limits`} title="Minimums and limits">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor={`${id}-minSubtotal`}>Minimum eligible spend</Label>
+                      <NumberField {...field("minSubtotal")} prefix="฿" placeholder="None" value={form.minSubtotal} onChange={(event) => set("minSubtotal", event.target.value)} />
+                      {err("minSubtotal")}
+                      <FieldHint id={`${id}-minSubtotal-hint`}>Counts the covered items only</FieldHint>
+                    </div>
+                    {form.scope !== "services" ? (
+                      <div className="grid content-start gap-2">
+                        <Label htmlFor={`${id}-minNights`}>Minimum nights</Label>
+                        <NumberField {...field("minNights")} placeholder="None" value={form.minNights} onChange={(event) => set("minNights", event.target.value)} />
+                        {err("minNights")}
+                        <FieldHint id={`${id}-minNights-hint`}>Shorter stays keep the direct offer</FieldHint>
+                      </div>
+                    ) : null}
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor={`${id}-usageLimit`}>Total uses</Label>
+                      <NumberField {...field("usageLimit")} placeholder="No limit" value={form.usageLimit} onChange={(event) => set("usageLimit", event.target.value)} />
+                      {err("usageLimit")}
+                      <FieldHint id={`${id}-usageLimit-hint`}>{detail ? `${detail.used.toLocaleString("en-US")} used so far` : "Paid bookings and sales"}</FieldHint>
+                    </div>
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor={`${id}-budget`}>Discount budget</Label>
+                      <NumberField {...field("budget")} prefix="฿" placeholder="No budget" value={form.budget} onChange={(event) => set("budget", event.target.value)} />
+                      {err("budget")}
+                      <FieldHint id={`${id}-budget-hint`}>
+                        {detail ? `${thb(detail.discountGranted)} given so far · ` : ""}New checkouts stop at this amount
+                      </FieldHint>
+                    </div>
+                  </div>
+                </Group>
+
+                <Group
+                  id={`${id}-sec-terms`}
+                  title="Customer terms"
+                  aside={
+                    <Button type="button" variant="outline" size="sm" onClick={() => set("terms", generatedTerms(rules))}>
+                      <Wand2 aria-hidden className="size-4" />
+                      Write from rules
+                    </Button>
+                  }
+                >
+                  <Label htmlFor={`${id}-terms`} className="sr-only">
+                    Customer terms
+                  </Label>
+                  <Textarea
+                    id={`${id}-terms`}
+                    rows={4}
+                    value={form.terms}
+                    onChange={(event) => set("terms", event.target.value)}
+                    placeholder={generatedTerms(rules)}
+                    className="leading-relaxed"
+                  />
+                  <FieldHint>Shown at checkout, on the QR card and receipts · empty uses the placeholder</FieldHint>
+                </Group>
+            </Disclosure>
           </fieldset>
+          </Card>
         </form>
 
         <aside className="grid min-w-0 gap-4" aria-label="Summary, status, test and history">
-          <section aria-labelledby={`${id}-summary`} className="border border-border bg-card">
-            <header className="flex items-center gap-2 border-b border-border px-4 py-3">
+          {validDiscount ? <Card role="region" aria-labelledby={`${id}-summary`}>
+            <header className="flex items-center gap-2 px-5 pt-5 sm:px-6 sm:pt-6">
               <h3 id={`${id}-summary`} className="flex-1 text-base font-semibold text-foreground">
                 Summary
               </h3>
               {state ? <StatusBadge {...COUPON_STATE[state]} /> : <StatusBadge tone="neutral" label="Not saved" />}
             </header>
-            <div className="grid gap-3 p-4">
+            <div className="grid gap-3 p-5 sm:p-6">
               <div>
-                <p className="break-all font-mono text-xl font-semibold tracking-wide text-foreground">{code || "—"}</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {(rules.benefit.kind === "percent" ? rules.benefit.percent : rules.benefit.amount) > 0 ? benefitLabel(rules.benefit) : "Set the discount"}
-                  {rules.benefit.kind === "percent" && rules.maxSaving ? `, up to ${thb(rules.maxSaving)}` : ""}
-                </p>
+                <p className="money text-[28px] leading-tight font-semibold tracking-tight">{benefitLabel(rules.benefit)}</p>
+                {code ? <p className="mt-2 break-all font-mono text-sm font-semibold tracking-wide text-muted-foreground">{code}</p> : null}
+                {rules.benefit.kind === "percent" && rules.maxSaving ? <p className="money mt-1 text-[13px] text-muted-foreground">Up to {thb(rules.maxSaving)}</p> : null}
               </div>
               <dl className="divide-y divide-border border-t border-border text-sm">
                 {(
                   [
-                    ["Covers", scopeLabel(rules.scope, rules.propertySlugs, villaName)],
+                    ["Applies to", scopeLabel(rules.scope, rules.propertySlugs, villaName)],
                     ["Booking", formatRange(rules.bookFrom, rules.bookTo)],
                     ["Stay", formatRange(rules.stayFrom, rules.stayTo)],
-                    ["Rules", couponRulesLine(rules)],
+                    ["Rules", couponRulesLine(rules, { includeDates: false })],
                   ] as const
                 ).map(([term, value]) => (
                   <div key={term} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3 py-2">
@@ -641,19 +726,13 @@ function CouponBuilder({
                 </div>
               ) : null}
             </div>
-          </section>
+          </Card> : null}
 
-          {access.capabilities.publish && detail && STATUS_ACTIONS[detail.status].length ? (
+          {canPublish && detail && STATUS_ACTIONS[detail.status].length ? (
             <SideCard
               id={`${id}-status`}
               title="Status"
-              description={
-                detail.status === "draft"
-                  ? "A draft can be tested but guests can’t use it."
-                  : detail.status === "paused"
-                    ? "Paused: quotes ignore it until you resume."
-                    : "Live: guests can use it within its dates and limits."
-              }
+              description={detail.status === "draft" ? "Guests can’t use a draft yet" : detail.status === "paused" ? "Quotes ignore it until you resume" : "Guests can use it within its dates and limits"}
             >
               <div className="flex flex-wrap gap-2 p-4">
                 {STATUS_ACTIONS[detail.status].map(({ status, label, icon: Icon, destructive }) => (
@@ -661,7 +740,7 @@ function CouponBuilder({
                     key={status}
                     type="button"
                     size="sm"
-                    variant={status === "active" && detail.status === "draft" ? "default" : "outline"}
+                    variant={status === "active" && detail.status === "draft" && !dirty ? "default" : "outline"}
                     disabled={statusBusy}
                     className={cn("flex-1", destructive && "text-destructive")}
                     onClick={() => void changeStatus(status)}
@@ -674,21 +753,17 @@ function CouponBuilder({
             </SideCard>
           ) : null}
 
+          {/* A quote runs on saved rules, so the test appears once there are some. */}
+          {detail ? (
+            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} />
+          ) : null}
+
           {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}
 
           {detail ? refusals?.(detail._id) : null}
 
-          <TestQuotePanel
-            code={detail?.code}
-            savedVersion={detail?.currentVersion}
-            dirty={dirty}
-            properties={properties}
-            today={today}
-            testQuote={actions.testQuote}
-          />
-
           {detail ? (
-            <SideCard id={`${id}-versions`} title="Versions" description="Changing a rule saves a new version. Old versions never change.">
+            <SideCard id={`${id}-versions`} title="Versions" description="A rule change adds a version; old ones never change">
               <ol className="grid gap-2 p-4">
                 {[...detail.versions]
                   .sort((a, b) => b.version - a.version)
@@ -701,7 +776,7 @@ function CouponBuilder({
                       </div>
                       <p className="text-xs text-muted-foreground">{couponRulesLine(version)}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatStamp(version.createdAt)} · {version.createdByEmail}
+                        {formatStamp(version.createdAt)} · {personLabel(version.createdByEmail)}
                       </p>
                     </li>
                   ))}
@@ -722,24 +797,37 @@ function CouponBuilder({
                   ))}
                 </ul>
               ) : (
-                <p className="p-4 text-sm text-muted-foreground">
-                  None yet. Attach <CouponChip code={detail.code} /> to a link in Links & QR to put it on a QR card.
-                </p>
+                <p className="p-4 text-sm text-muted-foreground">None yet{canQr ? " · QR card makes one" : ""}</p>
               )}
             </SideCard>
           ) : null}
 
-          {detail && history ? <div className="border border-border bg-card px-4 [&>details]:border-t-0">{history(detail._id)}</div> : null}
+          {detail && history ? <Card className="px-4 [&>details]:border-t-0">{history(detail._id)}</Card> : null}
         </aside>
       </div>
 
-      <div className="fixed inset-x-0 bottom-[var(--admin-tab-bar,0px)] z-20 flex items-center gap-2 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:hidden">
+      <StickyActionBar position="fixed" data-admin-bottom-bar="sm" className="flex-nowrap gap-2 sm:hidden">
         <p className="min-w-0 flex-1 text-xs text-muted-foreground">
-          <span className="block truncate font-mono text-sm font-semibold text-foreground">{code || "New coupon"}</span>
-          <span aria-hidden>{saveHint}</span>
+          <span className={cn("block text-pretty text-[13px] text-foreground", !validDiscount && code && "truncate font-mono text-sm font-semibold")}>{validDiscount ? `${benefitLabel(rules.benefit)} · ${summaryScope}` : code || "Add a code and discount"}</span>
+          {saveHint ? <span aria-hidden>{saveHint}</span> : null}
         </p>
-        {saveButton()}
-      </div>
+        {headerActions()}
+      </StickyActionBar>
+
+      {detail && canQr ? (
+        <CouponQrDialog
+          open={qrOpen}
+          onClose={() => setQrOpen(false)}
+          coupon={detail}
+          campaigns={campaigns}
+          properties={properties}
+          origin={origin}
+          brand={brand}
+          today={today}
+          actions={actions}
+          canCreateCampaign={access.capabilities.draft}
+        />
+      ) : null}
     </div>
   );
 }
@@ -794,7 +882,7 @@ function DateWindow({
             placeholder="No end"
             disabled={disabled}
             aria-invalid={error ? true : undefined}
-            aria-describedby={`${toId}-error`}
+            aria-describedby={error ? `${toId}-error` : undefined}
           />
         </div>
       </div>

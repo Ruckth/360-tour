@@ -43,7 +43,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const buttons = () => [...document.querySelectorAll("button")];
-const button = (text: string) => buttons().find((el) => el.textContent?.trim() === text)!;
+const button = (text: string) => buttons().find((el) => ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === text || (text === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))))!;
 const buttonStarting = (text: string) => buttons().find((el) => el.textContent?.trim().startsWith(text))!;
 const byLabel = (label: string) => document.querySelector<HTMLElement>(`[aria-label="${label}"]`)!;
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
@@ -76,25 +76,26 @@ describe("checkout order screen", () => {
     const backend = await createFixtureBackend();
     await showPage(backend);
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
-    expect(document.body.textContent).toContain("No booking");
-    expect(byLabel("Add customer")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("No booking");
+    expect(byLabel("Customer")).toBeTruthy();
     await act(async () => buttonStarting("Thai massage 60").click());
     await settle();
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1043");
     expect(document.body.textContent).not.toMatch(/walk-?in/i);
   });
 
-  it("saves and closes an order, then reopens it from Orders with its items", async () => {
+  it("keeps an order when New order starts the next one, and reopens it from Orders with its items", async () => {
     vi.useFakeTimers();
     const backend = await createFixtureBackend();
     await showPage(backend);
     await act(async () => buttonStarting("Foot spa 45").click());
     await settle();
     const saved = shown.orderId!;
-    await act(async () => button("Save & close").click());
+    // Every change is saved as it is made, so there is no separate Save & close.
+    expect(button("Save & close")).toBeUndefined();
+    await act(async () => button("New order").click());
     await settle();
     expect(shown.orderId).toBeNull();
-    expect(document.querySelector('[role="status"]')?.textContent).toContain("Order #1043 saved");
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("New order");
 
     await act(async () => button("Orders").click());
@@ -124,7 +125,7 @@ describe("checkout order screen", () => {
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1041");
     expect(document.body.textContent).toContain("Guest: Anna Schmidt");
 
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => type(byLabel("Search customers") as HTMLInputElement, "Somchai"));
     await act(async () => buttonStarting("Somchai Prasert").click());
     await settle();
@@ -134,7 +135,7 @@ describe("checkout order screen", () => {
     await act(async () => byLabel("Customer: Somchai Prasert. Change customer").click());
     await act(async () => button("Remove").click());
     await settle();
-    expect(byLabel("Add customer")).toBeTruthy();
+    expect(byLabel("Customer")).toBeTruthy();
     expect(document.querySelector('[data-testid="order-title"]')?.textContent).toBe("Order #1041");
   });
 
@@ -143,7 +144,7 @@ describe("checkout order screen", () => {
     const backend = await createFixtureBackend();
     const { orderId } = await create(backend);
     await showOrder(backend, orderId);
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => type(byLabel("Search customers") as HTMLInputElement, "Anna Schmidt"));
     const results = byLabel("Customers");
     expect([...results.querySelectorAll("button")].filter((el) => el.textContent?.includes("Anna Schmidt"))).toHaveLength(2);
@@ -174,10 +175,10 @@ describe("checkout order screen", () => {
     const sale = shown.orderId!;
     expect(tile().textContent).toContain("12 on the order");
     expect(header()).toContain("Order #1043");
-    expect(header()).toContain("No booking");
+    expect(header()).not.toContain("No booking");
 
     // A separate payer, then Add booking → Anna → her stay (it already has Order #1041, empty).
-    await act(async () => byLabel("Add customer").click());
+    await act(async () => byLabel("Customer").click());
     await act(async () => button("New customer").click());
     await act(async () => type(document.querySelector<HTMLInputElement>("#customer-name")!, "Payer Pat"));
     await act(async () => button("Add and link").click());
@@ -204,8 +205,8 @@ describe("checkout order screen", () => {
     expect(byLabel("Unpaid orders").textContent).not.toContain("Order #1041");
     await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 
-    // Save & close, reopen from Orders: same order, same booking.
-    await act(async () => button("Save & close").click());
+    // Start a new order, reopen this one from Orders: same order, same booking.
+    await act(async () => button("New order").click());
     await settle();
     expect(shown.orderId).toBeNull();
     await act(async () => button("Orders").click());
@@ -219,7 +220,7 @@ describe("checkout order screen", () => {
 
     // 12 × 1,200 plus the stay's 26,000 still owed.
     await act(async () => button("Card").click());
-    await act(async () => button("Confirm ฿40,400 received").click());
+    await act(async () => button("Confirm ฿40,400 card").click());
     await settle();
 
     // Extras after payment go on the stay's own Order #1041, which shows the stay.
@@ -266,7 +267,6 @@ describe("checkout order screen", () => {
     const settleOrder = vi.spyOn(actions, "settleOrder");
     await showOrder(backend, orderId);
     await act(async () => button(mode === "card" ? "Card" : mode === "cash" ? "Cash" : "Split payment").click());
-    if (mode === "cash") await act(async () => button("Exact").click());
 
     // Another cashier changes the order while this cashier is taking payment.
     const edit = change === "total"
@@ -281,28 +281,10 @@ describe("checkout order screen", () => {
     // Explicitly reviewing the updated order starts a new, valid payment attempt.
     await act(async () => button("Review updated order").click());
     await act(async () => button("Card").click());
-    await act(async () => button(`Confirm ฿${change === "total" ? "1,050" : "1,000"} received`).click());
+    await act(async () => button(`Confirm ฿${change === "total" ? "1,050" : "1,000"} card`).click());
     await settle();
     expect(settleOrder).toHaveBeenCalledOnce();
     expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedDue: change === "total" ? 105000 : 100000, expectedRevision: 2 }));
-  });
-
-  it("doesn't re-arm an open payment when the order is only saved elsewhere", async () => {
-    vi.useFakeTimers();
-    const backend = await createFixtureBackend();
-    const actions = backend.useActions();
-    const { orderId } = await create(backend);
-    const settleOrder = vi.spyOn(actions, "settleOrder");
-    await showOrder(backend, orderId);
-    await act(async () => button("Card").click());
-    const save = actions.saveOrder({ orderId });
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); await save; });
-    // Saving changed nothing on the order, so the payment the cashier reviewed is still valid.
-    expect(document.querySelector('[role="alert"]')).toBeNull();
-    await act(async () => button("Confirm ฿1,000 received").click());
-    await settle();
-    expect(settleOrder).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 1, expectedDue: 100000 }));
-    await expect(settleOrder.mock.results[0].value).resolves.toMatchObject({ replayed: false });
   });
 
   it("starts a fresh payment when another order with the same total is opened (C5-01)", async () => {
@@ -312,7 +294,6 @@ describe("checkout order screen", () => {
     const b = (await create(backend, "Tea", 10000)).orderId;
     await showOrder(backend, a);
     await act(async () => button("Cash").click());
-    await act(async () => button("Exact").click());
     expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("100");
     await showOrder(backend, b);
     expect(document.querySelector("#cash-received")).toBeNull();
@@ -329,10 +310,10 @@ describe("checkout order screen", () => {
     await step;
     await showOrder(backend, orderId);
     await act(async () => button("Cash").click());
-    await act(async () => button("Exact").click());
-    await act(async () => button("+฿100").click());
-    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10000000");
-    expect(button("Confirm cash").disabled).toBe(false);
+    expect(document.querySelector<HTMLInputElement>("#cash-received")?.value).toBe("10,000,000");
+    // No note chip above the till's limit.
+    expect(document.querySelector('[aria-label="Notes handed over"]')).toBeNull();
+    expect(button("Confirm cash · ฿10,000,000 received · no change").disabled).toBe(false);
   });
 
   it("shows no struck-out list price on an undiscounted row with satang (K6-02)", async () => {
@@ -406,7 +387,7 @@ describe("checkout order writes", () => {
     expect(seen).toEqual([B]);
   });
 
-  it("doesn't leave the order opened while Save & close was still saving (C4-08)", async () => {
+  it("doesn't run a write's follow-up once another order was opened while it was saving (C4-08)", async () => {
     const B = "order-b" as OrderId;
     await render(A);
     const saving = deferred<null>();
@@ -418,7 +399,7 @@ describe("checkout order writes", () => {
     await act(async () => { await save; });
     expect(left).toEqual([]);
     expect(changes).toEqual([B]);
-    // Saving the order that is still on screen does leave it.
+    // A write on the order still on screen runs its follow-up.
     await act(async () => { await writes.run(async () => null, () => left.push("B")); });
     expect(left).toEqual(["B"]);
   });

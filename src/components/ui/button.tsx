@@ -9,8 +9,8 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
-        primary: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90",
+        default: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-[box-shadow,transform] disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
+        primary: "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-[box-shadow,transform] disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100",
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline: "border-border bg-background text-foreground hover:bg-muted",
@@ -21,7 +21,7 @@ export const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-4 py-2 text-sm",
-        sm: "h-9 px-3 text-xs",
+        sm: "h-9 px-3 text-[13px] pointer-coarse:text-sm",
         md: "h-10 px-4 py-2.5 text-sm",
         lg: "h-12 px-6 text-sm md:text-base",
         nav: "h-9 px-4 text-sm",

@@ -11,6 +11,8 @@
 	--background: oklch(0.985 0.003 80);
 	--foreground: oklch(0.18 0.02 260);
 	--card: oklch(1 0 0);
+	/* Staff-entered: a hue apart from navy Tracked links and purple Messaging, ≥3:1 against the grey Not tracked mark and the card. */
+	--chart-s0b: #92400e;
 	--card-foreground: oklch(0.18 0.02 260);
 	--popover: oklch(1 0 0);
 	--popover-foreground: oklch(0.18 0.02 260);
@@ -48,6 +50,7 @@
 }
 
 .dark {
+	--chart-s0b: #5eead4;
 	--background: oklch(0.16 0.015 260);
 	--foreground: oklch(0.94 0.005 80);
 	--card: oklch(0.22 0.015 260);
@@ -214,5 +217,18 @@
 @media (prefers-reduced-motion: reduce) {
 	.display-line-in {
 		animation: none;
+	}
+}
+
+/* Opt-in money typography; keep the baht symbol and digits in the same sans face. */
+@utility money {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shared calendar tools may need another row as touch-sized labels grow. */
+@media (width < 40rem) {
+	[data-testid="calendar-toolbar"] > .border-t {
+		flex-wrap: wrap;
 	}
 }

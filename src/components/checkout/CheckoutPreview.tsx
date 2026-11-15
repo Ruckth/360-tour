@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CheckoutBackendProvider, type OrderId } from "./backend";
 import { CheckoutView } from "./CheckoutView";
 import { checkoutDesignStates, createFixtureBackend, type CheckoutDesignState } from "./fixture-backend";
@@ -17,7 +18,9 @@ export function CheckoutPreview({ embedded = false }: { embedded?: boolean }) {
   const [receiptId, setReceiptId] = useState<OrderId | null>(null);
 
   return (
-    <CheckoutBackendProvider key={state} backend={backend}>
+    // ReceiptView guards refund drafts with a confirm dialog, so the standalone preview needs the provider too.
+    <ConfirmProvider>
+    <CheckoutBackendProvider backend={backend}>
       {/* Checkout and receipt follow the app's light or dark theme, as under the admin shell. */}
       <div className={embedded ? "flex min-h-0 flex-1 flex-col" : "flex h-dvh flex-col bg-background text-foreground"}>
         {embedded ? null : (
@@ -52,5 +55,6 @@ export function CheckoutPreview({ embedded = false }: { embedded?: boolean }) {
         )}
       </div>
     </CheckoutBackendProvider>
+    </ConfirmProvider>
   );
 }

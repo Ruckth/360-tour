@@ -41,8 +41,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Toast, useToast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { appointmentGuestLabel, errorText, formatResortDate, formatResortTime, resortIsoDate } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, errorText, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 
 type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
@@ -51,7 +53,6 @@ type Conflict = Extract<FunctionReturnType<typeof api.services.roster.applyCells
 type CopyResult = FunctionReturnType<typeof api.services.roster.copyWeek>;
 type Plan = { shifts: Array<{ start: string; end: string }>; breaks: Array<{ start: string; end: string; label: string }> };
 type Pos = { row: number; col: number };
-type Notice = { text: string; details?: string[] };
 type ConflictState = { title: string; conflicts: Conflict[]; retry?: () => void };
 
 /** Shift presets; client-side for now. */
@@ -76,9 +77,9 @@ const PRESETS: Array<Plan & { id: string; label: string; hint: string; icon: Luc
 const WEEK_CHOICES = ["4", "10", "20", "custom"] as const;
 
 const utcDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
-const monthDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
-const fullDay = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
+/** "Mon 14 Nov" for a resort date. */
+const fullDay = { format: (iso: string) => staffDate(resortMidnight(iso), { weekday: true }) };
 
 /** The Monday of the week containing `iso`. */
 function mondayOf(iso: string) {
@@ -86,8 +87,7 @@ function mondayOf(iso: string) {
 }
 
 function weekRange(start: string, end: string) {
-  const year = new Date(utcDay(end)).getUTCFullYear();
-  return `${monthDay.format(utcDay(start))} – ${monthDay.format(utcDay(end))}, ${year}`;
+  return `${staffDate(resortMidnight(start))} – ${staffDate(resortMidnight(end))}`;
 }
 
 const cellKey = (staffId: string, date: string) => `${staffId}|${date}`;
@@ -102,7 +102,9 @@ export function StaffRosterView() {
   const [focus, setFocus] = useState<Pos>({ row: 0, col: 0 });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState<Notice | null>(null);
+  // Successes go to the toast; warnings about the change (time off, skipped cells) stay here.
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const toast = useToast();
   const [conflicts, setConflicts] = useState<ConflictState | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [copyOpen, setCopyOpen] = useState(false);
@@ -160,7 +162,7 @@ export function StaffRosterView() {
   function goToWeek(next: string) {
     setWeekStart(next);
     replaceSelection(new Set());
-    setNotice(null);
+    setWarnings([]);
     setError("");
   }
 
@@ -299,10 +301,11 @@ export function StaffRosterView() {
     setConflicts(null);
     replaceSelection(new Set());
     const details = [
-      ...result.warnings.map((w) => `${w.staffName} has time off on ${fullDay.format(utcDay(w.date))} (${w.label}). Scheduled anyway.`),
+      ...result.warnings.map((w) => `${w.staffName} has time off on ${fullDay.format(w.date)} (${w.label}). Scheduled anyway.`),
       ...(result.skipped.length ? [`Skipped ${plural(new Set(result.skipped.map((c) => cellKey(c.staffId, c.date))).size, "cell")} with appointments.`] : []),
     ];
-    setNotice({ text: result.changed ? `${label}: ${plural(result.changed, "cell")} updated.` : "Nothing to change.", details });
+    setWarnings(details);
+    toast.show(result.changed ? `${label}: ${plural(result.changed, "cell")} updated.` : "Nothing to change.");
   }
 
   async function onMakeDefault() {
@@ -318,7 +321,8 @@ export function StaffRosterView() {
       setConflicts({ title: "The new default hours would leave appointments outside working hours", conflicts: result.conflicts });
       return;
     }
-    setNotice({ text: result.staffUpdated ? `Default hours updated for ${plural(result.staffUpdated, "person")}.` : "This week already matches the default." });
+    setWarnings([]);
+    toast.show(result.staffUpdated ? `Default hours updated for ${plural(result.staffUpdated, "person")}.` : "This week already matches the default.");
   }
 
   async function onUndo(batchId: Id<"rosterBatches">) {
@@ -328,16 +332,16 @@ export function StaffRosterView() {
       setConflicts({ title: "Undo would leave appointments booked since outside working hours", conflicts: result.conflicts });
       return;
     }
-    setNotice({ text: result.running ? "Undoing in the background…" : "Undone." });
+    setWarnings([]);
+    toast.show(result.running ? "Undoing in the background…" : "Undone.");
   }
 
   function onCopied(result: CopyResult, weeks: number) {
     setCopyOpen(false);
     const parts = [`${result.created} added`, `${result.updated} replaced`];
     if (result.skippedCount) parts.push(`${result.skippedCount} skipped`);
-    setNotice({
-      text: `Copied to the next ${plural(weeks, "week")}: ${parts.join(", ")}.${result.running ? " Finishing in the background…" : ""}`,
-    });
+    setWarnings([]);
+    toast.show(`Copied to the next ${plural(weeks, "week")}: ${parts.join(", ")}.${result.running ? " Finishing in the background…" : ""}`);
   }
 
   const lastBatch = data?.lastBatch ?? null;
@@ -429,11 +433,11 @@ export function StaffRosterView() {
           {error}
         </p>
       ) : null}
-      {notice || lastBatch ? (
+      {warnings.length || lastBatch ? (
         <div role="status" className="flex flex-wrap items-start gap-x-3 gap-y-1 border-b border-border px-4 py-2 text-sm">
           <div className="min-w-0 flex-1">
-            <p>{notice?.text ?? `Last change: ${lastBatch?.label}.`}</p>
-            {notice?.details?.map((detail) => (
+            {lastBatch ? <p>Last change: {lastBatch.label}.</p> : null}
+            {warnings.map((detail) => (
               <p key={detail} className={cn("text-xs", TONES.warning.text)}>
                 {detail}
               </p>
@@ -451,8 +455,8 @@ export function StaffRosterView() {
               {lastBatch.running ? "Copying…" : lastBatch.undoing ? "Undoing…" : "Undo"}
             </Button>
           ) : null}
-          {notice ? (
-            <Button size="icon" variant="ghost" className="size-9" aria-label="Dismiss" onClick={() => setNotice(null)}>
+          {warnings.length ? (
+            <Button size="icon" variant="ghost" className="size-9" aria-label="Dismiss" onClick={() => setWarnings([])}>
               <X aria-hidden className="size-4" />
             </Button>
           ) : null}
@@ -494,7 +498,7 @@ export function StaffRosterView() {
                     <button
                       type="button"
                       aria-pressed={full}
-                      aria-label={`Select ${fullDay.format(utcDay(date))}`}
+                      aria-label={`Select ${fullDay.format(date)}`}
                       className={cn(
                         "flex h-12 w-full flex-col items-center justify-center text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
                         full && "bg-primary/10",
@@ -661,6 +665,7 @@ export function StaffRosterView() {
         <CopyWeekDialog weekStart={weekStart} onClose={() => setCopyOpen(false)} onDone={onCopied} />
       ) : null}
       <ConflictsDialog state={conflicts} busy={busy} onClose={() => setConflicts(null)} />
+      <Toast {...toast} />
     </section>
   );
 }
@@ -668,7 +673,7 @@ export function StaffRosterView() {
 function cellLabel(name: string, cell: Cell) {
   const hours = cell.shifts.length ? cell.shifts.map((s) => `${s.start} to ${s.end}`).join(" and ") : "off";
   return [
-    `${name}, ${fullDay.format(utcDay(cell.date))}: ${hours}`,
+    `${name}, ${fullDay.format(cell.date)}: ${hours}`,
     cell.override ? "changed from default" : "",
     cell.timeOff.length ? `time off: ${cell.timeOff.join(", ")}` : "",
     cell.appointments ? plural(cell.appointments, "appointment") : "",
@@ -902,7 +907,7 @@ function CopyWeekDialog({
                   <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs">
                     {result.skipped.map((cell) => (
                       <li key={cellKey(cell.staffId, cell.date)} className="flex gap-2">
-                        <span className="w-32 shrink-0 font-medium">{fullDay.format(utcDay(cell.date))}</span>
+                        <span className="w-32 shrink-0 font-medium">{fullDay.format(cell.date)}</span>
                         <span className="min-w-0 truncate">
                           {cell.staffName} —{" "}
                           {cell.reason === "override"
@@ -955,7 +960,7 @@ function ConflictsDialog({ state, busy, onClose }: { state: ConflictState | null
             <li key={`${c.appointmentId}-${c.date}`} className="flex flex-wrap gap-x-3 px-3 py-2">
               <span className="font-medium">{c.staffName}</span>
               <span className="text-muted-foreground">
-                {formatResortDate(c.start)}, {formatResortTime(c.start)}–{formatResortTime(c.end)}
+                {staffDate(c.start, { weekday: true })}, {staffTime(c.start)}–{staffTime(c.end)}
               </span>
               <span className="min-w-0 flex-1 truncate">
                 {appointmentGuestLabel(c)} · {c.serviceName}

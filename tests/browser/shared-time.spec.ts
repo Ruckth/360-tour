@@ -11,7 +11,7 @@ for (const timezoneId of ['America/Los_Angeles', 'Pacific/Auckland']) {
         const page = await context.newPage();
         await page.clock.setFixedTime(new Date(utcTime));
         await page.goto('/tests/browser/index.html?checkIn=2030-01-10&checkOut=2030-01-12');
-        await expect(page.getByRole('dialog', { name: 'New booking' })).toBeVisible();
+        await expect(page.getByRole('dialog', { name: historical ? 'Record past stay' : 'New booking' })).toBeVisible();
         await page.getByLabel('Email (optional)').fill('guest@example.test');
         // Actual dialog notification policy follows the resort day in both browser zones.
         if (historical) await expect(page.locator('#nb-notify')).not.toBeChecked();
@@ -53,9 +53,9 @@ test('hotel calendar refuses a browser-local day that is already past at the res
     // Los Angeles is still Jan 10; the resort has crossed midnight into Jan 11.
     await expect(cell).toHaveAttribute('data-ec-day', String(Date.parse('2030-01-10T08:00:00Z')));
     await cell.click();
-    await expect(page.getByRole('dialog', { name: 'New booking' })).not.toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
     // The same real calendar accepts the resort's current day after navigation.
-    await page.locator('[data-slot="event-calendar-nav-next"]').click();
+    await page.locator('[data-slot="event-calendar-nav-next"]:visible').click();
     await expect(cell).toHaveAttribute('data-ec-day', String(Date.parse('2030-01-11T08:00:00Z')));
     await cell.click();
     await expect(page.getByRole('dialog', { name: 'New booking' })).toBeVisible();

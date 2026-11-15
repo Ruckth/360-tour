@@ -1,12 +1,13 @@
 "use client";
+import { satangToBaht } from "convex/shared/money";
+import { parseMoneyInput } from "@/lib/money-input";
 
-import { satangToBaht } from 'convex/shared/money';
-import { parseMoneyInput } from '@/lib/money-input';
+
+import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
 import { useState, type FormEvent } from 'react';
-import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -102,7 +103,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
           </div>
         </div>
         {rate.url ? <p className="break-all text-xs text-muted-foreground">{rate.url}</p> : null}
-        <p className="text-xs text-muted-foreground">Last checked: {format(rate.updatedAt, 'd MMM yyyy, HH:mm')}</p>
+        <p className="text-xs text-muted-foreground">Last checked: {staffDateTime(rate.updatedAt)}</p>
         {now - rate.updatedAt > STALE_AFTER_DAYS * DAY_MS ? <p className={`text-xs ${TONES.warning.text}`}>Rate is {Math.floor((now - rate.updatedAt) / DAY_MS)} days old, please re-check and save it again.</p> : null}
       </div>) : <p className="text-muted-foreground">No OTA rates yet. Without them, guests see no price comparison.</p>}
     </div>

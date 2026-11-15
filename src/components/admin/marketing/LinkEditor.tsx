@@ -197,7 +197,7 @@ export function LinkEditor({
   const couponLive = coupon ? couponState(coupon, today) : null;
 
   return (
-    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={link ? "Save changes" : "Create link"}>
+    <SheetForm readOnly={!canEdit} onSubmit={save} onCancel={onCancel} saving={saving} error={saveError} submitLabel={link ? "Save" : "Create link"}>
       {!canEdit ? <p className="text-sm text-muted-foreground">Read-only. {canonicalPartnerLink || link?.affiliateId ? "Partner links are managed from Affiliates." : access.capabilities.draft ? "Your role can edit drafts only." : "Your role can inspect link details."}</p> : null}
       {preset?.from?.affiliateId && !access.capabilities.partners ? <p className="text-sm text-muted-foreground">This copy is an ordinary tracking link. Its partner association is not copied.</p> : null}
       <fieldset disabled={!canEdit} className="grid min-w-0 gap-6">

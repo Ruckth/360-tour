@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Check, Link2, Search } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -9,91 +9,64 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { REASON_CHIPS } from "@/components/ui/reason-chips";
+import { ReasonField } from "@/components/ui/reason-field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { formatReceiptNumber } from "convex/shared/orderMath";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
 import { newAttemptKey, useCheckoutBackend, type LinkCandidate, type OrderLine, type OrderLink, type OrderView } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
-import { scheduleLabel } from "./checkout-ui";
 import { checkoutErrorText } from "./refunds";
 
 /** Paid rows that can be applied to an appointment (service) or stay (room) after payment. */
 /** A row with line refunds can't be linked (LINE_HAS_REFUNDS); a linked row has none. */
-const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 || line.refundedAmountSatang ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
+export const linkTarget = (line: OrderLine) => (line.fee || line.net <= 0 || line.refundedAmountSatang ? null : line.kind === "service" ? "appointment" : line.kind === "room" ? "booking" : null);
+
+/** Linking moves paid money (paymentFix): a cashier links only when the rules allow it. */
+export function useCanLink() {
+  const access = useStaffAccess();
+  return access.role !== "cashier" || access.cashierRules.paymentFix === "cashier";
+}
 
 /**
- * After payment: payment, scheduling and booking are separate. Each paid service or room row can be
- * linked to its appointment or stay (pos.linkPaidLine) and unlinked with a reason. Outside the
- * printed receipt, which never changes.
+ * After payment, on the receipt line itself: payment, scheduling and booking are separate, so a
+ * paid service or room row links to its appointment or stay (pos.linkPaidLine) and unlinks with a
+ * reason, right beside its Refund. Screen-only: the printed receipt never changes. Staff who can't
+ * link see the link state only.
  */
-export function AfterPayment({ view }: { view: OrderView }) {
-  const rows = view.lines.filter((line) => linkTarget(line));
-  if (!rows.length) return null;
-  const active = new Map(view.links.filter((link) => link.status === "active").map((link) => [link.lineId, link]));
-  const services = rows.filter((line) => line.kind === "service");
-  const rooms = rows.filter((line) => line.kind === "room");
-  const unlinkedServices = services.filter((line) => !active.has(line._id)).length;
-  const unlinkedRooms = rooms.filter((line) => !active.has(line._id)).length;
-  const paid = view.order.status === "paid";
-  return (
-    <section aria-label="After payment" className="grid w-full max-w-md gap-3 print:hidden">
-      <h2 className="font-semibold">After payment</h2>
-      <dl className="grid gap-1 text-sm">
-        <Status label="Payment" value={paid ? `Paid · ${formatReceiptNumber(view.order.receiptNumber ?? 0)}` : "Void"} done={paid} />
-        {services.length ? <Status label="Scheduling" value={unlinkedServices ? `${unlinkedServices} to link to an appointment` : "Linked"} done={!unlinkedServices} /> : null}
-        {rooms.length ? <Status label="Booking" value={unlinkedRooms ? `${unlinkedRooms} not applied to a stay` : "Applied to a stay"} done={!unlinkedRooms} /> : null}
-      </dl>
-      <ul className="grid gap-2">
-        {rows.map((line) => <LinkRow key={line._id} view={view} line={line} link={active.get(line._id) ?? null} paid={paid} />)}
-      </ul>
-    </section>
-  );
-}
-
-function Status({ label, value, done }: { label: string; value: string; done: boolean }) {
-  return (
-    <div className="flex flex-wrap justify-between gap-2">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className={cn("font-medium", done ? "text-emerald-700 dark:text-emerald-300" : "text-amber-800 dark:text-amber-300")}>{value}</dd>
-    </div>
-  );
-}
-
-function LinkRow({ view, line, link, paid }: { view: OrderView; line: OrderLine; link: OrderLink | null; paid: boolean }) {
+export function LineLink({ view, line }: { view: OrderView; line: OrderLine }) {
   const [open, setOpen] = useState<"link" | "unlink" | null>(null);
-  // Linking moves paid money (paymentFix): a cashier links only when the rules allow it.
-  const access = useStaffAccess();
-  const canLink = access.role !== "cashier" || access.cashierRules.paymentFix === "cashier";
-  const target = linkTarget(line)!;
-  const when = line.kind === "service" ? scheduleLabel(line.schedule) : null;
+  const canLink = useCanLink();
+  const target = linkTarget(line);
+  const link = view.links.find((row) => row.lineId === line._id && row.status === "active") ?? null;
+  const paid = view.order.status === "paid";
+  if (!target || !paid) return null;
   return (
-    <li className="grid gap-1 rounded-lg border border-border p-3 text-sm" data-testid="after-payment-row">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""} · {formatMoney(line.net)}</span>
-        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", link ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300" : "bg-amber-50 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300")}>
-          {link ? `Linked · ${link.target.reference}` : target === "appointment" ? "No appointment" : "No stay"}
+    <>
+      {link ? (
+        <span data-testid="line-link" className={cn("inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-xs font-medium", TONE_LINKED)}>
+          <Check aria-hidden className="size-3.5" /> Linked · {link.target.reference}
         </span>
-      </div>
-      {when ? <p className="text-xs text-muted-foreground">Planned: {when}</p> : null}
-      {link ? <p className="text-xs text-muted-foreground">{link.target.name}{link.target.guestName ? ` · ${link.target.guestName}` : ""} · by {link.linkedBy}</p> : null}
-      {paid && canLink ? (
-        <div>
-          {link ? (
-            <Button size="sm" variant="ghost" onClick={() => setOpen("unlink")}>Unlink…</Button>
-          ) : (
-            <Button size="sm" variant="outline" onClick={() => setOpen("link")}>
-              <Link2 aria-hidden className="size-3.5" /> {target === "appointment" ? "Link appointment" : "Link to stay"}
-            </Button>
-          )}
-        </div>
+      ) : null}
+      {canLink ? (
+        link ? (
+          <Button type="button" size="sm" variant="ghost" className="h-11 px-3 font-sans text-sm" aria-label={`Unlink ${line.name}`} onClick={() => setOpen("unlink")}>Unlink…</Button>
+        ) : (
+          <Button type="button" size="sm" variant="outline" className="h-11 px-3 font-sans text-sm" onClick={() => setOpen("link")}>
+            <Link2 aria-hidden className="size-3.5" /> {target === "appointment" ? "Link appointment" : "Link to stay"}
+          </Button>
+        )
       ) : null}
       {open === "link" ? <LinkDialog view={view} line={line} target={target} onClose={() => setOpen(null)} /> : null}
       {open === "unlink" && link ? <UnlinkDialog view={view} line={line} link={link} onClose={() => setOpen(null)} /> : null}
-    </li>
+    </>
   );
 }
+
+const TONE_LINKED = "bg-emerald-50 text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300";
 
 /** Saves one reviewed write with one attempt key, so a retried click never links or unlinks twice. */
 function useOnceWrite() {
@@ -128,10 +101,31 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   const [chosen, setChosen] = useState<LinkCandidate | null>(null);
   const [reason, setReason] = useState("");
   const [notifyGuest, setNotifyGuest] = useState(false);
+  const [selectionEdited, setSelectionEdited] = useState(false);
+  const { confirmDiscard } = useUnsavedGuard(selectionEdited || Boolean(query.trim() || reason.trim()) || notifyGuest);
   const candidates = backend.useLinkCandidates({ orderId: view.order._id, lineId: line._id, query });
   const cashier = useStaffAccess().role === "cashier";
+  // The only appointment or stay that fits opens straight on its review; Back still shows the list.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (autoPicked.current || query || !candidates) return;
+    autoPicked.current = true;
+    const fits = candidates.filter((candidate) => !candidate.problem);
+    if (fits.length === 1) setChosen(fits[0]);
+  }, [candidates, query]);
   const { saving, error, save } = useOnceWrite();
   const what = target === "appointment" ? "appointment" : "stay";
+
+  async function close() {
+    if (!saving && await confirmDiscard()) onClose();
+  }
+  async function back() {
+    if (saving || !await confirmDiscard()) return;
+    setChosen(null);
+    setReason("");
+    setNotifyGuest(false);
+    setSelectionEdited(false);
+  }
 
   async function confirm() {
     if (!chosen) return;
@@ -145,7 +139,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   }
 
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
+    <Dialog open onOpenChange={(next) => { if (!next) void close(); }}>
       <CheckoutDialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{chosen ? `Review link · ${line.name}` : `Link ${line.name} to its ${what}`}</DialogTitle>
@@ -182,7 +176,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
                     <span className="block text-xs text-muted-foreground">{candidate.detail} · {candidate.guestName} · {candidate.kind === "booking" ? `owes ${formatMoney(candidate.owed)}` : formatMoney(candidate.price)}</span>
                     {candidate.problem ? <span className="block text-xs text-amber-800 dark:text-amber-300">{candidate.problem}</span> : null}
                   </span>
-                  <Button size="sm" variant="outline" disabled={Boolean(candidate.problem)} onClick={() => setChosen(candidate)}>
+                  <Button size="sm" variant="outline" disabled={Boolean(candidate.problem)} onClick={() => { setChosen(candidate); setSelectionEdited(true); }}>
                     {candidate.problem ? "Can't link" : "Review"}
                   </Button>
                 </li>
@@ -192,8 +186,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
         )}
         {chosen ? (
           <div className="grid gap-2">
-            <Label htmlFor={`link-reason-${line._id}`}>Reason (required)</Label>
-            <Textarea id={`link-reason-${line._id}`} value={reason} maxLength={500} disabled={saving} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Guest booked the prepaid massage for Thursday" />
+            <ReasonField value={reason} onChange={setReason} chips={REASON_CHIPS.link} id={`link-reason-${line._id}`} disabled={saving} />
             {chosen.kind === "booking" ? (
               <label className="flex min-h-11 items-center gap-2 text-sm">
                 <input type="checkbox" checked={notifyGuest} disabled={saving} onChange={(e) => setNotifyGuest(e.target.checked)} />
@@ -204,7 +197,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
         ) : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          {chosen ? <Button variant="outline" disabled={saving} onClick={() => setChosen(null)}>Back</Button> : <Button variant="outline" onClick={onClose}>Cancel</Button>}
+          {chosen ? <Button variant="outline" disabled={saving} onClick={() => { void back(); }}>Back</Button> : <Button variant="outline" onClick={() => { void close(); }}>Cancel</Button>}
           {chosen ? (
             <Button disabled={!reason.trim() || saving} onClick={confirm}>
               {saving ? <Spinner className="text-current" /> : <Check aria-hidden className="size-4" />} Confirm link
@@ -216,9 +209,8 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   );
 }
 
-/** What the link changes and what it leaves alone, before it is confirmed. */
+/** What the link changes, before it is confirmed. (The receipt, its tenders and total never change; no new payment is taken.) */
 function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chosen: LinkCandidate }) {
-  const receipt = formatReceiptNumber(view.order.receiptNumber ?? 0);
   const planned = line.schedule?.date;
   const after = Math.max(chosen.owed - line.net, 0);
   return (
@@ -235,7 +227,6 @@ function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chos
       ) : (
         <p>Stay: owes {formatMoney(chosen.owed)} → {after ? `still owes ${formatMoney(after)}` : "paid"} · adds a checkout payment of {formatMoney(line.net)} from {view.order.title}</p>
       )}
-      <p className="text-muted-foreground">Not changed: receipt {receipt}, its tenders and total. No new payment is taken.</p>
     </div>
   );
 }
@@ -243,7 +234,11 @@ function Review({ view, line, chosen }: { view: OrderView; line: OrderLine; chos
 function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: OrderLine; link: OrderLink; onClose: () => void }) {
   const actions = useCheckoutBackend().useActions();
   const [reason, setReason] = useState("");
+  const { confirmDiscard } = useUnsavedGuard(Boolean(reason.trim()));
   const { saving, error, save } = useOnceWrite();
+  async function close() {
+    if (!saving && await confirmDiscard()) onClose();
+  }
   async function confirm() {
     const ok = await save((idempotencyKey) => actions.unlinkPaidLine({
       orderId: view.order._id, linkId: link._id, expectedCorrectionRevision: view.paymentRecord.correctionRevision, idempotencyKey, reason,
@@ -251,7 +246,7 @@ function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: Or
     if (ok) onClose();
   }
   return (
-    <Dialog open onOpenChange={(next) => { if (!next && !saving) onClose(); }}>
+    <Dialog open onOpenChange={(next) => { if (!next) void close(); }}>
       <CheckoutDialogContent role="alertdialog" className="max-w-md">
         <DialogHeader>
           <DialogTitle>Unlink {line.name} from {link.target.reference}?</DialogTitle>
@@ -260,12 +255,12 @@ function UnlinkDialog({ view, line, link, onClose }: { view: OrderView; line: Or
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">
-          <Label htmlFor={`unlink-reason-${link._id}`}>Reason (required)</Label>
+          <Label htmlFor={`unlink-reason-${link._id}`}>Reason</Label>
           <Textarea id={`unlink-reason-${link._id}`} value={reason} maxLength={500} disabled={saving} onChange={(e) => setReason(e.target.value)} autoFocus />
         </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <DialogFooter>
-          <Button variant="outline" disabled={saving} onClick={onClose}>Cancel</Button>
+          <Button variant="outline" disabled={saving} onClick={() => { void close(); }}>Cancel</Button>
           <Button variant="destructive" disabled={!reason.trim() || saving} onClick={confirm}>
             {saving ? <Spinner className="text-current" /> : null} Unlink
           </Button>

@@ -4,13 +4,14 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
+import { satangToBaht } from "convex/shared/money";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { EffectiveTimeFields, MethodPicker, NotifyGuestField, useEffectiveTime } from "./BookingMoneyFields";
+import { MethodPicker, NotifyGuestField, ReceivedAtField, useEffectiveTime } from "./BookingMoneyFields";
 import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney, STATUS_LABELS } from "./labels";
 import { REFUND_METHODS, newAttemptKey, parseAmount, type RefundMethod } from "./admin-bookings-shared";
@@ -33,7 +34,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
   const selected = target ?? sources[0]?.value ?? "";
   const source = sources.find(s => s.value === selected);
   const [attempt, setAttempt] = useState<Parameters<typeof cancelStay>[0] | null>(null);
-  const [amountText, setAmountText] = useState(String(money.net));
+  const [amountText, setAmountText] = useState(String(satangToBaht(money.net)));
   const [method, setMethod] = useState<RefundMethod>(booking.hasStripePayment ? "stripe" : "cash");
   const [refundReason, setRefundReason] = useState("");
   const [reason, setReason] = useState("");
@@ -48,18 +49,18 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
 
   return (
     <ChangeConfirmDialog
-      title="Cancel this booking?"
+      title="Cancel this stay?"
       description={
         paid
-          ? "The booking is cancelled and its nights released. Cancelling does not refund anything: keep the payment, or record the refund you are giving back."
-          : "The booking is cancelled and its nights released."
+          ? "Cancelling refunds nothing: keep the payment, or record the refund you give back."
+          : "Its nights are released."
       }
       rows={[
         { label: "Status", before: hotelLabels[booking.status] ?? booking.status, after: "Cancelled" },
         ...(paid ? [{ label: "Kept", before: formatMoney(money.net, money.currency), after: formatMoney(kept, money.currency) }] : []),
       ]}
-      confirmLabel={refunding ? "Cancel & record refund" : "Cancel booking"}
-      keepLabel="Keep booking"
+      confirmLabel={refunding ? "Cancel & record refund" : "Cancel stay"}
+      keepLabel="Keep stay"
       destructive
       confirmDisabled={!attempt && (when.at === null || Boolean(amountProblem) || (refunding && (!refundReason.trim() || !source || !data?.complete)))}
       footnote={refunding ? "Recording does not return money. For Stripe payments, refund in the Stripe dashboard first." : undefined}
@@ -101,7 +102,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
           </div>
         </>
       ) : null}
-      <EffectiveTimeFields id="cancel-when" label={refunding ? "Cancelled and refunded on" : "Cancelled on"} value={when} />
+      <ReceivedAtField id="cancel-when" verb="Cancelled" label={refunding ? "Cancelled and refunded on" : "Cancelled on"} value={when} />
       <div className="grid gap-2">
         <Label htmlFor="cancel-reason">Cancellation reason (optional)</Label>
         <Input id="cancel-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
@@ -134,7 +135,7 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
       description="Its payments and refunds stay as recorded. The nights are checked again and held if it is confirmed."
       rows={[
         { label: "Status", before: "Cancelled", after: holds ? "Confirmed" : "Pending" },
-        { label: "Payment", before: formatMoney(booking.money.net, booking.currency) + " kept", after: paid ? "Paid " + formatMoney(booking.money.net, booking.currency) : `Unpaid, ${formatMoney(booking.total, booking.currency)} due` },
+        { label: "Payment", before: formatMoney(booking.money.net, booking.currency) + " kept", after: paid ? "Paid " + formatMoney(booking.money.net, booking.currency) : `Balance due ${formatMoney(booking.total, booking.currency)}` },
       ]}
       confirmLabel="Reopen booking"
       keepLabel="Keep cancelled"

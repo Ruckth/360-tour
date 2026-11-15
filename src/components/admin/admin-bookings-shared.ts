@@ -2,11 +2,11 @@ import { resolveNotify } from 'convex/shared/bookingMoney';
 
 import { bahtToSatang } from 'convex/shared/money';
 import type { FunctionReturnType } from "convex/server";
+import { staffDate } from "@/lib/staff-time";
+import { resortMidnight, resortIsoDate } from "@/lib/staff-bookings";
 import type { api } from "convex/_generated/api";
-import type { AdminBooking } from '../../lib/admin/booking-types';
-import { format } from "date-fns";
-import { addDaysIso, isoToDate } from '@/lib/booking/dates';
-import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
+type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
+import { addDaysIso, isoToDate } from "@/lib/booking/dates";
 import type { ConfirmOptions } from "./ConfirmDialog";
 import { formatMoney, paymentLabel } from "./labels";
 import { CALENDAR_TONE_COLORS, STATUS_TONES, TONES, statusMeta } from "./status-tones";
@@ -45,9 +45,9 @@ export function isoNights(start: string, end: string) {
   return nights;
 }
 
+/** "Sat 14 Nov" for a stay date (with the year outside the current one). */
 export function displayDate(iso: string) {
-  const date = isoToDate(iso);
-  return date ? format(date, "EEE d MMM yyyy") : iso;
+  return isoToDate(iso) ? staffDate(resortMidnight(iso), { weekday: true }) : iso;
 }
 
 export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentStatus">) {
@@ -73,10 +73,10 @@ export function cancelConfirmOptions(booking: { guestEmail?: string; notifyByDef
       : " The guest is not emailed (past stay)."
     : "";
   return {
-    title: "Cancel this booking?",
-    description: `The booking is cancelled and its dates are released.${email}`,
-    confirmLabel: "Cancel booking",
-    cancelLabel: "Keep booking",
+    title: "Cancel this stay?",
+    description: `Its dates are released.${email}`,
+    confirmLabel: "Cancel stay",
+    cancelLabel: "Keep stay",
     destructive: true,
   };
 }
@@ -86,7 +86,7 @@ export const MONEY_METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
   promptpay: "PromptPay",
   card: "Card",
-  transfer: "Bank transfer",
+  transfer: "Transfer",
   other: "Other",
   stripe: "Stripe",
   provider: "Online payment",
@@ -113,7 +113,7 @@ export function newAttemptKey(prefix: string) {
 
 /** Today as the server's booking calendar date (the resort day), which decides the email default. */
 export function serverTodayIso() {
-  return todayIsoResort();
+  return resortIsoDate(Date.now());
 }
 
 /** The server's default for emailing the guest about a change to this stay. */
@@ -127,6 +127,16 @@ export function parseAmount(text: string): number | null {
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return Number.isFinite(value) ? bahtToSatang(value) : null;
+}
+
+/**
+ * Who did something, as staff read it: records keep the sign-in email, so show the part before
+ * the @ ("ploy"), or the value as stored when it is already a name ("Guest, in chat").
+ */
+export function staffLabel(actor: string | undefined) {
+  if (!actor) return "";
+  const at = actor.indexOf("@");
+  return at > 0 ? actor.slice(0, at) : actor;
 }
 
 export function payLink(bookingId: string, accessToken: string) {

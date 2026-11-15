@@ -1,5 +1,7 @@
 "use client";
 
+import { Clock, ChevronDown } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { useRef } from "react";
 import { Button } from "./button";
 import {
@@ -26,10 +28,12 @@ const hours = Array.from({ length: 24 }, (_, index) =>
 );
 
 export type TimePickerProps = PickerValueProps & {
+  variant?: "default" | "compact";
   id?: string;
   label: string;
   minuteStep?: number;
   allowEmpty?: boolean;
+  placeholder?: string;
   className?: string;
   onBlur?: () => void;
   "aria-invalid"?: boolean;
@@ -38,8 +42,10 @@ export type TimePickerProps = PickerValueProps & {
 
 export function TimePicker({
   label,
+  variant = "default",
   minuteStep = 1,
   allowEmpty = false,
+  placeholder = "Choose time",
   className,
   ...props
 }: TimePickerProps) {
@@ -51,8 +57,7 @@ export function TimePicker({
   // Preserve the value-attribute step base used by native time inputs.
   const stepBase = props.defaultValue ?? props.value ?? "";
   const minutes = timeMinuteOptions(minuteStep, field.value, stepBase);
-  return (
-    <div className={cn("min-w-0", className)}>
+  const controls = (
       <div className="flex items-center gap-2">
         <div className="grid min-w-0 flex-1 grid-cols-2 gap-2">
           <Select
@@ -63,8 +68,8 @@ export function TimePicker({
             disabled={props.disabled}
           >
             <SelectTrigger
-              ref={trigger}
-              id={props.id}
+              ref={variant === "default" ? trigger : undefined}
+              id={variant === "default" ? props.id : undefined}
               aria-label={`${label} hour`}
               aria-invalid={props["aria-invalid"]}
               aria-describedby={props["aria-describedby"]}
@@ -118,6 +123,24 @@ export function TimePicker({
           </Button>
         ) : null}
       </div>
+  );
+  return (
+    <div className={cn("min-w-0", className)}>
+      {variant === "compact" ? (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button ref={trigger} id={props.id} type="button" variant="outline" disabled={props.disabled} aria-label={`${label}, ${field.value || "not set"}`} aria-invalid={props["aria-invalid"]} aria-describedby={props["aria-describedby"]} onBlur={props.onBlur} className="h-10 w-full justify-between font-normal">
+              <Clock aria-hidden className="size-4 text-muted-foreground" />
+              <span className="flex-1 text-left font-sans tabular-nums">{field.value || placeholder}</span>
+              <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-3">
+            <p className="mb-2 text-xs text-muted-foreground">{label}</p>
+            {controls}
+          </PopoverContent>
+        </Popover>
+      ) : controls}
       <PickerFormControl
         name={props.name}
         value={field.value}

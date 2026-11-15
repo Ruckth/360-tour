@@ -6,7 +6,7 @@ import type { OrderId } from "./backend";
 
 /**
  * Runs an order write in order; the task gets its sale's order id (undefined before the first item).
- * `then` runs after it succeeds, only if that sale is still on screen (e.g. leaving an order after Save & close).
+ * `then` runs after it succeeds, only if that sale is still on screen (e.g. closing the customer dialog after a link).
  */
 export type Run = (task: (orderId: OrderId | undefined) => Promise<unknown>, then?: () => void) => Promise<boolean>;
 
@@ -18,14 +18,20 @@ type Sale = { orderId: OrderId | null };
  * Switching orders starts a new sale: writes tapped earlier still land on their own order, and
  * when they finish they no longer move the screen back to it.
  */
-export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId: OrderId | null) => void, onError: (message: string) => void) {
+export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId: OrderId | null) => void, onError: (message: string) => void, onEarlierError?: (message: string) => void) {
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   // Writes queued or running, so controls that must see the settled order (the coupon field) can wait.
   const [pending, setPending] = useState(0);
   const sale = useRef<Sale>({ orderId });
+  const earlierFailure = useRef<{ orderId: OrderId | null; message: string } | null>(null);
   useEffect(() => {
     if (sale.current.orderId !== orderId) sale.current = { orderId };
-  }, [orderId]);
+    if (earlierFailure.current?.orderId === orderId) {
+      onError(earlierFailure.current.message);
+      onEarlierError?.("");
+      earlierFailure.current = null;
+    }
+  }, [orderId, onError, onEarlierError]);
 
   const run = useCallback<Run>(
     (task, then) => {
@@ -43,7 +49,13 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
           if (then && sale.current === mine) then();
           return true;
         } catch (err) {
-          if (sale.current === mine) onError(errorText(err, "That didn't save. Try again."));
+          const message = errorText(err, "That didn't save. Try again.");
+          if (sale.current === mine || (mine.orderId !== null && sale.current.orderId === mine.orderId)) onError(message);
+          else {
+            // A failed write on a sale that never got an order can't be recalled; never pin it onto the next new sale.
+            if (mine.orderId !== null) earlierFailure.current = { orderId: mine.orderId, message };
+            (onEarlierError ?? onError)(`A change on the previous order did not save: ${message}`);
+          }
           return false;
         } finally {
           setPending((n) => n - 1);
@@ -52,7 +64,7 @@ export function useOrderWrites(orderId: OrderId | null, onOrderChange: (orderId:
       queue.current = next;
       return next;
     },
-    [onOrderChange, onError],
+    [onOrderChange, onError, onEarlierError],
   );
 
   const switchTo = useCallback(

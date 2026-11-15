@@ -5,7 +5,8 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { AdminBooking } from '../../lib/admin/booking-types';
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { Check, CircleDashed, Clock, Ban, PlusIcon, XIcon } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useEffect, useMemo, useState } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
@@ -16,7 +17,7 @@ import type {
   EventCalendarProposedUpdate,
   EventCalendarResource,
 } from "@/components/reui/event-calendar/event-calendar-types";
-import { AdminCalendarHeader } from "@/components/admin/AdminCalendarHeader";
+import { AdminCalendarHeader, AdminCalendarSearch } from "@/components/admin/AdminCalendarHeader";
 import { Button, ButtonLink } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,16 +27,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { addDaysIso, nightsBetweenIso } from '@/lib/booking/dates';
 import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
+import { STAFF_CALENDAR_FORMATS, staffDateTime } from "@/lib/staff-time";
+import { Toast, useToast } from "@/components/ui/toast";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
-import { BookingQuickActions, type QuickTarget } from "./BookingQuickActions";
-import { BookingSheet, useBookingEditQuote } from "./BookingSheet";
+import { BookingQuickActions, type QuickAction, type QuickTarget } from "./BookingQuickActions";
+import { RecordPaymentDialog } from "./BookingFinancials";
+import { CancelStayDialog } from "./BookingCorrectionDialogs";
+import { NewAppointmentDialog, type AppointmentDraft } from "./NewAppointmentDialog";
+import { TodayStrip } from "./TodayStrip";
+import { MoreMenu } from "@/components/ui/more-menu";
+import { BookingSheet, useBookingEditQuote, type BookingSheetAction } from "./BookingSheet";
 import { bookingEditPrice, reviewedPrice } from "./booking-edit-price";
 import { DateBlockDialog, type BlockTarget } from "./DateBlockDialog";
 import { IcalSourcesDialog } from "./IcalSourcesDialog";
@@ -50,6 +58,7 @@ import {
   hotelStatus,
   hotelStatusColor,
   notifyDefault,
+  serverTodayIso,
   statusKey,
   stayConflicts,
   type AdminProperty,
@@ -61,7 +70,7 @@ import {
 } from "@/lib/admin/booking-calendar-events";
 
 // Stable reference: the calendar rebuilds its settings when this object changes.
-const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" } };
+const CALENDAR_I18N = { viewNames: { resource: "Villas", agenda: "List" }, formats: STAFF_CALENDAR_FORMATS };
 const VIEWS = ["month", "resource", "agenda"] as const satisfies CalendarView[];
 type HotelView = (typeof VIEWS)[number];
 
@@ -100,20 +109,32 @@ function isUnchanged({ booking, propertyId, checkIn, checkOut }: Move) {
   return propertyId === booking.propertyId && checkIn === booking.checkIn && checkOut === booking.checkOut;
 }
 
+/** The hotel calendar and today's stays. */
 export function AdminBookingsView() {
+  return <HotelBookings />;
+}
+
+function HotelBookings() {
   const [range, setRange] = useState(initialRange);
-  const [storedView, setView] = useStoredState("admin.hotel.view", "month");
+  const [storedView, setView] = useStoredState("admin.hotel.view", "auto");
   const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
-  const [selectedId, setSelectedId] = useState<Id<"bookings"> | null>(null);
+  const [selected, setSelected] = useState<{ id: Id<"bookings">; initialAction?: BookingSheetAction } | null>(null);
   const [quick, setQuick] = useState<QuickTarget | null>(null);
   const [creating, setCreating] = useState<NewBookingPrefill | null>(null);
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [managingCalendars, setManagingCalendars] = useState(false);
   const [managingRates, setManagingRates] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
+  // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const toast = useToast();
+  const report = (next: { text: string; error?: boolean }) => (next.error ? setNotice(next) : toast.show(next.text));
   const [moving, setMoving] = useState<Move | null>(null);
+  const [stayDialog, setStayDialog] = useState<Extract<QuickAction, { kind: "pay" | "cancel" }> | null>(null);
+  const [spaDraft, setSpaDraft] = useState<AppointmentDraft | null>(null);
+  // Below `sm` the villa filter moves into ⋯ and search folds to an icon.
+  const phone = useIsMobile(640);
 
   const data = useQuery(api.bookings.admin.listForAdmin, range);
   const profile = useQuery(api.settings.settings.publicProfile, {});
@@ -121,7 +142,7 @@ export function AdminBookingsView() {
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
   const today = resortTodayIso();
 
-  const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : "month";
+  const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : phone ? "agenda" : "month";
   // A remembered villa that no longer exists falls back to all villas.
   const villa = storedVilla === "all" || !data || data.properties.some((p) => p._id === storedVilla) ? storedVilla : "all";
   const villaName = (id: string) => data?.properties.find((p) => p._id === id)?.name ?? "Villa";
@@ -141,14 +162,21 @@ export function AdminBookingsView() {
   );
 
   const events = useMemo<CalendarEvent<EventData>[]>(
-    () => buildHotelCalendarEvents({ data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel }),
+    () => buildHotelCalendarEvents({ data, villa, showCancelled, checkInTime, checkOutTime, sourceLabel }).map(event => {
+      const item = event.data;
+      return item?.kind === "booking" ? { ...event, title: `${item.booking.guestName}, ${data?.properties.find(p => p._id === item.booking.propertyId)?.name ?? "Villa"}, ${displayDate(item.booking.checkIn)} to ${displayDate(item.booking.checkOut)}, ${hotelStatus(statusKey(item.booking)).label}` } : event;
+    }),
     [data, villa, showCancelled, checkInTime, checkOutTime],
   );
+
+  function openDetails(id: Id<"bookings">, initialAction?: BookingSheetAction) {
+    setSelected({ id, initialAction });
+  }
 
   function openFromSearch(booking: AdminBooking) {
     if (villa !== "all" && villa !== booking.propertyId) setVilla("all");
     if (booking.status === "cancelled") setShowCancelled(true);
-    setSelectedId(booking._id);
+    openDetails(booking._id);
   }
 
   /** Where a drag may drop: an active villa, no past check-in (unless unchanged), no overlap with held dates. */
@@ -173,21 +201,83 @@ export function AdminBookingsView() {
     return (active.find((p) => data && !stayConflicts(data, p._id, checkIn, checkOut)) ?? active[0])?._id;
   }
 
+  function quickAction(action: QuickAction) {
+    if (action.kind !== "bookSpa") {
+      setStayDialog(action);
+      return;
+    }
+    const { booking } = action;
+    // Today while the guest is staying, else the first day of the stay.
+    const resortToday = serverTodayIso();
+    const date = booking.checkIn > resortToday ? booking.checkIn : resortToday;
+    setSpaDraft({
+      date,
+      stay: {
+        bookingId: booking._id, guestName: booking.guestName, guestPhone: booking.guestPhone,
+        guestEmail: booking.guestEmail, villaName: villaName(booking.propertyId),
+      },
+    });
+  }
+
+  function openQuick(booking: AdminBooking, element: Element) {
+    const { left, top, width, height } = element.getBoundingClientRect();
+    setQuick({ booking, rect: { left, top, width, height } });
+  }
+
   function openNew(checkIn: string, checkOut: string, propertyId?: string) {
     setQuick(null);
     setCreating({ propertyId: propertyId ?? villaFor(checkIn, checkOut), checkIn, checkOut });
   }
 
   return (
-    // From tablet up it fills the viewport under the 4rem admin header: the calendar scrolls inside, the legend stays in view.
-    <div className="mx-auto flex w-full max-w-7xl flex-col px-4 py-4 sm:px-6 md:h-[calc(100dvh-4rem)] md:min-h-[36rem]">
-      <div className="flex min-h-0 flex-1 flex-col border border-border bg-card [&_*]:border-border">
+    // Month rows grow with their stays; the page carries the full month.
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-3 py-4 sm:px-6">
+      <TodayStrip villaName={villaName} onOpen={openQuick} />
+
+      {phone && villa !== "all" ? <Button variant="outline" onClick={() => setVilla("all")} aria-label={`Showing ${villaName(villa)} only. Show all villas`}>{villaName(villa)}<XIcon aria-hidden className="size-4" /></Button> : null}
+      <Card className="flex min-h-0 flex-1 flex-col overflow-hidden [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
           onViewChange={setView}
           views={[...VIEWS]}
           resources={resources}
+          fixedWeeks={false}
+          agendaDayCount={14}
+          renderEvent={({ occurrence }) => {
+            const item = occurrence.event.data;
+            if (item?.kind !== "booking") return <span className="w-full truncate bg-[repeating-linear-gradient(135deg,transparent_0_7px,color-mix(in_oklab,var(--color-foreground)_12%,transparent)_7px_8px)] text-xs">{occurrence.event.title}</span>;
+            const b = item.booking;
+            const status = statusKey(b);
+            const Icon = status === "paid" ? Check : status === "cancelled" ? Ban : status === "pending" ? CircleDashed : Clock;
+            return <span className={`flex w-full min-w-0 items-start gap-1.5 ${status === "cancelled" ? "line-through" : ""}`}>
+              <Icon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              <span className="grid min-w-0 text-xs leading-4">
+                <span className="truncate font-medium">{b.guestName}</span>
+                <span className="truncate font-normal">{villaName(b.propertyId)}</span>
+              </span>
+              {status === "pending" ? <span aria-hidden className="absolute inset-0 rounded-[inherit] border border-dashed border-current" /> : null}
+            </span>;
+          }}
+          renderAgendaEvent={({ occurrence, segment }) => {
+            const item = occurrence.event.data;
+            if (item?.kind !== "booking") return <span className="text-sm">{occurrence.event.title}</span>;
+            const b = item.booking;
+            const day = isoDate(segment.day);
+            const phase = day === b.checkIn ? "Arrives" : day === b.checkOut ? "Leaves" : "In house";
+            return <span className="flex w-full min-w-0 items-center justify-between gap-3">
+              <span className="grid min-w-0 gap-1 text-left">
+                <span className="truncate text-[15px] font-medium">{b.guestName}</span>
+                <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><span className="truncate">{villaName(b.propertyId)}</span><span className="shrink-0">· {phase}</span></span>
+                <span className="text-xs text-muted-foreground">{displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
+              </span>
+              <span className="grid shrink-0 justify-items-end gap-1">
+                {b.owed > 0 || statusKey(b) !== "paid" ? <span className={`money font-sans text-[15px] font-medium tabular-nums ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span> : null}
+                <StatusBadge {...hotelStatus(statusKey(b))} />
+              </span>
+            </span>;
+          }}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No stays in this period.</p><Button onClick={() => setCreating({})} disabled={!data}>New booking</Button></div>}
           dayStartHour={8}
           dayEndHour={20}
           interval={60}
@@ -196,12 +286,19 @@ export function AdminBookingsView() {
           canSelectSlot={(slot) => isoDate(slot.start) >= today}
           onSelectSlot={(slot) => {
             const checkIn = isoDate(slot.start);
+            if (checkIn < today) return;
             const end = slot.allDay ? isoDate(slot.end) : "";
             openNew(checkIn, end > checkIn ? end : addDaysIso(checkIn, 1), slot.resourceId);
           }}
           onSlotClick={(slot) => {
+            // The tap that dismisses a booking's quick actions only closes them; it never starts a booking underneath.
+            if (quick) {
+              setQuick(null);
+              return;
+            }
             // In the Villas view a click on a villa's all-day cell starts a one-night booking there.
             const checkIn = isoDate(slot.date);
+            if (slot.view === "month" && checkIn >= today) openNew(checkIn, addDaysIso(checkIn, 1));
             if (slot.view === "resource" && slot.allDay && slot.resourceId && checkIn >= today) {
               openNew(checkIn, addDaysIso(checkIn, 1), slot.resourceId);
             }
@@ -229,8 +326,7 @@ export function AdminBookingsView() {
             if (eventData?.kind === "booking") {
               const chip =
                 (event.target as HTMLElement).closest("[data-slot=event-calendar-event]") ?? (event.currentTarget as HTMLElement);
-              const { left, top, width, height } = chip.getBoundingClientRect();
-              setQuick({ booking: eventData.booking, rect: { left, top, width, height } });
+              openQuick(eventData.booking, chip);
             } else if (eventData?.kind === "hostBlock") setBlockTarget({ kind: "host", block: eventData.block });
             else if (eventData?.kind === "otaBlock") setBlockTarget({ ...eventData, kind: "ota" });
           }}
@@ -238,57 +334,59 @@ export function AdminBookingsView() {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "booking") {
               setQuick(null);
-              setSelectedId(eventData.booking._id);
+              openDetails(eventData.booking._id);
             }
           }}
           onRangeChange={({ range: visible }) =>
-            setRange({ from: isoDate(visible.start), to: isoDate(addDays(visible.end, 1)) })
+            setRange({ from: isoDate(addDays(visible.start, -1)), to: isoDate(addDays(visible.end, 1)) })
           }
+          classNames={{
+            monthCellFooter: "absolute left-0 top-1 justify-start pb-0",
+            monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground",
+            monthCellContent: "pt-7",
+            monthBarOverlay: "pt-7",
+            moreIndicator: "mt-auto h-6 pointer-coarse:h-11 w-fit max-w-full shrink-0 rounded-full bg-muted px-2 text-xs",
+          }}
           loading={data === undefined}
-          className="h-[36rem] w-full md:h-auto md:min-h-0 md:flex-1"
+          scrollMode={view === "month" || (phone && view === "agenda") ? "page" : "contained"}
+          className={view === "month" || (phone && view === "agenda") ? "[--ec-month-bar-h:2.375rem] w-full" : "[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full"}
         >
-          <AdminCalendarHeader>
+          <AdminCalendarHeader compact primaryAction={<Button size="sm" aria-label="New booking" disabled={!data} onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}><PlusIcon aria-hidden className="size-4" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New booking</span></Button>}>
             <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
-            <VillaPicker
-              properties={data?.properties ?? []} value={villa} onChange={setVilla}
-              includeAll compact disabled={!data}
-              className="flex-1 sm:w-48 sm:flex-none"
-            />
-            <Button
-              size="sm"
-              variant={showCancelled ? "secondary" : "outline"}
-              aria-pressed={showCancelled}
-              onClick={() => setShowCancelled((value) => !value)}
-            >
-              Show cancelled
-            </Button>
+            {phone ? (
+              villa !== "all" ? (
+                // The villa filter lives in ⋯ on a phone; a filtered calendar says so and clears in one tap.
+                <Button size="sm" variant="secondary" className="hidden max-w-40 sm:inline-flex" aria-label={`Showing ${villaName(villa)} only. Show all villas`} onClick={() => setVilla("all")}>
+                  <span className="truncate">{villaName(villa)}</span>
+                  <XIcon aria-hidden className="size-3.5" />
+                </Button>
+              ) : null
+            ) : (
+              <VillaPicker
+                properties={data?.properties ?? []} value={villa} onChange={setVilla}
+                includeAll compact disabled={!data}
+                className="w-36"
+              />
+            )}
             {data === undefined ? <Spinner label="Loading bookings" /> : null}
-            <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
-              <Button size="sm" variant="outline" onClick={() => setManagingCalendars(true)} disabled={!data}>
-                OTA calendars
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setManagingRates(true)} disabled={!data}>
-                OTA rates
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setCleaningUp(true)} disabled={!data}>
-                Clean up
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined })}
+            <div className="ms-auto flex items-center gap-2">
+              <MoreMenu
+                label="More calendar tools"
                 disabled={!data}
-              >
-                Block dates
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}
-                disabled={!data}
-              >
-                <PlusIcon aria-hidden="true" className="size-4" />
-                New booking
-              </Button>
+                items={[
+                  ...(phone
+                    ? [
+                        { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
+                        ...(data?.properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
+                      ]
+                    : []),
+                  { label: "Show cancelled", checked: showCancelled, onSelect: () => setShowCancelled((value) => !value) },
+                  { label: "Block dates", onSelect: () => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined }) },
+                  { label: "OTA calendars", onSelect: () => setManagingCalendars(true) },
+                  { label: "OTA rates", onSelect: () => setManagingRates(true) },
+                  { label: "Clean up old bookings", onSelect: () => setCleaningUp(true) },
+                ]}
+              />
             </div>
           </AdminCalendarHeader>
           {data && data.properties.length === 0 ? (
@@ -307,28 +405,56 @@ export function AdminBookingsView() {
           ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-          {HOTEL_STATUSES.map((key) => (
-            <span key={key} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: hotelStatusColor(key) }} />
-              {hotelStatus(key).label}
-            </span>
-          ))}
+        <div className={view === "agenda" ? "hidden" : "hidden shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex"}>
+          {HOTEL_STATUSES.map((key) => {
+            const Icon = key === "paid" ? Check : key === "cancelled" ? Ban : key === "pending" ? CircleDashed : Clock;
+            return <span key={key} className="flex items-center gap-1.5">
+              {key === "hostBlock" || key === "otaBlock" ? <span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" /> : <Icon aria-hidden className="size-3.5" style={{ color: hotelStatusColor(key) }} />}
+              {key === "pending" ? "Pending · dashed border" : key === "confirmed" ? "Confirmed · balance due" : hotelStatus(key).label}
+            </span>;
+          })}
           <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
-            {notice?.text ?? "Drag across days to book or block · drag a booking to move it, or its edge to change dates"}
+            {/* The drag hint is for a mouse or pen; on touch the chips open on a tap. */}
+            {notice?.text ?? <span className="pointer-coarse:hidden">Drag across days to book or block · drag a booking to move it, or its edge to change dates</span>}
           </span>
         </div>
-      </div>
+      </Card>
 
-      <BookingSheet bookingId={selectedId} properties={data?.properties ?? []} onClose={() => setSelectedId(null)} />
+      <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={data?.properties ?? []} onClose={() => setSelected(null)} />
       {quick ? (
         <BookingQuickActions
           key={quick.booking._id}
           target={quick}
           villaName={villaName(quick.booking.propertyId)}
           onClose={() => setQuick(null)}
-          onOpenDetails={() => setSelectedId(quick.booking._id)}
-          onNotice={setNotice}
+          onOpenDetails={() => openDetails(quick.booking._id)}
+          onAction={quickAction}
+          onNotice={report}
+        />
+      ) : null}
+      {stayDialog?.kind === "pay" ? (
+        <RecordPaymentDialog
+          booking={stayDialog.booking}
+          owed={stayDialog.booking.money.owed}
+          onClose={(done) => {
+            const name = stayDialog.booking.guestName;
+            setStayDialog(null);
+            if (done) toast.show(`${name}: ${done}`);
+          }}
+        />
+      ) : null}
+      {stayDialog?.kind === "cancel" ? <CancelStayDialog booking={stayDialog.booking} onClose={() => setStayDialog(null)} /> : null}
+      {spaDraft ? (
+        <NewAppointmentDialog
+          draft={spaDraft}
+          services={[]}
+          staff={[]}
+          onClose={() => setSpaDraft(null)}
+          onCreated={(_id, start) => {
+            const name = spaDraft.stay?.guestName ?? "Guest";
+            setSpaDraft(null);
+            toast.show(`${name}: spa booked for ${staffDateTime(start)}, added to the balance due.`);
+          }}
         />
       ) : null}
       {data && blockTarget ? (
@@ -349,11 +475,11 @@ export function AdminBookingsView() {
           onClose={() => setMoving(null)}
           onMoved={(text) => {
             setMoving(null);
-            setNotice({ text });
+            toast.show(text);
           }}
           onOpenBooking={(id) => {
             setMoving(null);
-            setSelectedId(id);
+            openDetails(id);
           }}
         />
       ) : null}
@@ -365,7 +491,7 @@ export function AdminBookingsView() {
           onClose={() => setCreating(null)}
           onCreated={(id) => {
             setCreating(null);
-            setSelectedId(id);
+            openDetails(id);
           }}
           onBlockInstead={(target) => {
             setCreating(null);
@@ -373,6 +499,7 @@ export function AdminBookingsView() {
           }}
         />
       ) : null}
+      <Toast {...toast} />
     </div>
   );
 }
@@ -528,6 +655,7 @@ export function MoveBookingDialog({
 function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPick: (booking: AdminBooking) => void }) {
   const { goTo } = useEventCalendarNavigation();
   const [text, setText] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
   useEffect(() => {
     const id = setTimeout(() => setQuery(text.trim()), 250);
@@ -536,21 +664,8 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
   const active = query.length >= 2 && text.trim().length >= 2;
   const results = useQuery(api.bookings.admin.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
-
   return (
-    <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
-      <SearchIcon aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input
-        type="search"
-        value={text}
-        onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") setText("");
-        }}
-        placeholder="Guest, phone or code"
-        aria-label="Search bookings"
-        className="h-9 ps-8"
-      />
+    <AdminCalendarSearch label="Search bookings" placeholder="Guest, phone or code" value={text} onChange={setText} open={searchOpen} onOpenChange={setSearchOpen}>
       {active ? (
         <div className="absolute inset-x-0 top-full z-30 mt-1 max-h-80 min-w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg">
           {results === undefined ? (
@@ -568,6 +683,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
                       goTo(new Date(`${booking.checkIn}T12:00:00`));
                       onPick(booking);
                       setText("");
+                      setSearchOpen(false);
                     }}
                   >
                     <span className="flex items-center justify-between gap-2 font-medium">
@@ -587,6 +703,6 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
           )}
         </div>
       ) : null}
-    </div>
+    </AdminCalendarSearch>
   );
 }

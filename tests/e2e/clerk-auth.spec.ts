@@ -3,6 +3,7 @@ import { clerk } from "@clerk/testing/playwright";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { recordExactCash } from "../support/exact-cash-payment";
 
 function backend() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL!;
@@ -127,9 +128,7 @@ test("owner checkout interactions persist a local cash receipt across reload", a
   const reviewed = await owner.query(api.pos.orders.getOrder, { orderId });
   expect(reviewed?.totals.due).toBe(item.price * 2);
   // Local cash recording only: this path cannot contact a payment/refund provider.
-  await page.getByRole("button", { name: "Cash", exact: true }).click();
-  await page.getByRole("button", { name: "Exact", exact: true }).click();
-  await page.getByRole("button", { name: "Confirm cash", exact: true }).click();
+  await recordExactCash(order);
   await expect(
     page.getByRole("article", { name: "Receipt", exact: true }),
   ).toContainText(item.name);
