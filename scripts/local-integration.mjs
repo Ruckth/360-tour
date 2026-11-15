@@ -14,7 +14,6 @@ import {
   disabledServices,
   requireLocalBackend,
   createPrivateOutput,
-  integrationChecks,
 } from "./local-integration-config.mjs";
 
 process.umask(0o077); // Local deployment credentials and authenticated test artifacts stay private.
@@ -311,8 +310,8 @@ try {
   console.log(
     "Fresh local backend seeded; dedicated Clerk test identities ready.",
   );
-  const checks = integrationChecks(process.argv.slice(2));
-  await run("pnpm", [checks.preparation]);
+  const verify = process.argv.includes("--verify");
+  await run("pnpm", [verify ? "verify" : "build"]);
   await launch(
     "pnpm",
     ["exec", "next", "start", "-p", String(app)],
@@ -327,7 +326,7 @@ try {
       return false;
     }
   }, "Next server");
-  if (checks.bookingUI) await run("pnpm", ["test:booking-ui"]);
+  if (verify) await run("pnpm", ["test:booking-ui"]);
   const separator = process.argv.indexOf("--");
   const command =
     separator < 0

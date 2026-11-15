@@ -9,20 +9,12 @@ import {
   disabledServiceKeys,
   disabledServices,
   requireLocalBackend,
-  integrationChecks,
 } from "../../scripts/local-integration-config.mjs";
 
 const require = createRequire(import.meta.url);
 const nextRequire = createRequire(require.resolve("next/package.json"));
 
 describe("local integration isolation", () => {
-  it("keeps local verification complete while CI runs both browser suites after a single build", () => {
-    expect(integrationChecks([])).toEqual({ preparation: "build", bookingUI: false });
-    expect(integrationChecks(["--verify"])).toEqual({ preparation: "verify", bookingUI: true });
-    for (const args of [["--e2e-only"], ["--verify", "--e2e-only"]]) {
-      expect(integrationChecks(args)).toEqual({ preparation: "build", bookingUI: true });
-    }
-  });
   it("redacts SDK credentials and identities even across output chunks without hiding failure evidence", () => {
     const chunks: string[] = [];
     const output = createPrivateOutput(

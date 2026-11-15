@@ -39,18 +39,6 @@ export const disabledServiceKeys = [
 export const disabledServices = Object.fromEntries(
   disabledServiceKeys.map((key) => [key, ""]),
 );
-
-/** CI checks run in parallel jobs; the build still needs this backend's URL.
- * @param {string[]} args
- */
-export function integrationChecks(args) {
-  const verify = args.includes("--verify");
-  const e2eOnly = args.includes("--e2e-only");
-  return {
-    preparation: verify && !e2eOnly ? "verify" : "build",
-    bookingUI: verify || e2eOnly,
-  };
-}
 /** @param {string} value */
 export function requireLocalBackend(value) {
   const url = new URL(value);

@@ -54,6 +54,41 @@ jobs:
         if: matrix.shard == 1
         run: pnpm test:guards
 
+  components:
+    # Booking component suites run against Vite with mocked Clerk and Next: no backend, no credentials.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Read installed Playwright version
+        id: playwright-version
+        # Frozen install resolves this exact version from pnpm-lock.yaml.
+        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - run: pnpm test:booking-ui --shard=${{ matrix.shard }}/2
+
   integration:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
     # No pull_request_target or authenticated artifact upload.
@@ -114,17 +149,15 @@ jobs:
           key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             convex-${{ runner.os }}-${{ runner.arch }}-
-      - name: Build and verify browser suites with fresh local Convex and real Clerk sign-in
-        # Next embeds this harness's ephemeral backend URL; build once in its lifetime.
-        # Both booking component coverage and real-backend E2E still run.
-        run: pnpm verify:integration --e2e-only
+      - name: Build and run real-backend E2E with fresh local Convex and real Clerk sign-in
+        run: pnpm test:e2e
       - name: Verify persistent local dev restart, real Clerk and failure cleanup
         run: pnpm test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
 
   verify:
     name: verify
-    needs: [static, unit, integration]
+    needs: [static, unit, components, integration]
     if: always()
     runs-on: ubuntu-24.04
     steps:
