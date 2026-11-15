@@ -9,7 +9,52 @@ concurrency:
   group: verify-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  verify:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm knip
+      - run: pnpm arch:score --phase "$(cat .arch-phase)"
+
+  unit:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    env:
+      VITEST_MAX_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Unit, DOM and Convex shard
+        run: pnpm test:unit --project unit --project dom --project convex --shard=${{ matrix.shard }}/2
+      - name: Serial repository guards (once overall)
+        if: matrix.shard == 1
+        run: pnpm test:guards
+
+  integration:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
     # No pull_request_target or authenticated artifact upload.
     runs-on: ubuntu-24.04
@@ -38,13 +83,59 @@ jobs:
           test -n "$CLERK_JWT_ISSUER_DOMAIN"
           [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" == pk_test_* ]]
           [[ "$CLERK_SECRET_KEY" == sk_test_* ]]
-      - run: pnpm arch:score --phase "$(cat .arch-phase)"
-      - run: pnpm knip
-      - run: pnpm exec eslint . --max-warnings 0
+      - name: Read installed Playwright version
+        id: playwright-version
+        # Frozen install resolves this exact version from pnpm-lock.yaml.
+        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
       - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
-      - name: Verify with fresh local Convex and real Clerk browser sign-in
-        run: pnpm verify:integration
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - name: Cache Next build intermediates
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('src/**', 'convex/**', 'public/**', 'next.config.*', 'tsconfig*.json', 'package.json', 'scripts/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - name: Cache downloadable Convex backend binaries
+        uses: actions/cache@v4
+        with:
+          # Only binaries/dashboard; private deployment and auth state stay in output/.
+          path: ~/.cache/360-tour/convex
+          key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            convex-${{ runner.os }}-${{ runner.arch }}-
+      - name: Build and verify browser suites with fresh local Convex and real Clerk sign-in
+        # Next embeds this harness's ephemeral backend URL; build once in its lifetime.
+        # Both booking component coverage and real-backend E2E still run.
+        run: pnpm verify:integration --e2e-only
       - name: Verify persistent local dev restart, real Clerk and failure cleanup
         run: pnpm test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
+
+  verify:
+    name: verify
+    needs: [static, unit, integration]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every job to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          node --input-type=module <<'JS'
+          const jobs = JSON.parse(process.env.NEEDS_JSON);
+          for (const [name, job] of Object.entries(jobs)) {
+            console.log(`${name}: ${job.result}`);
+          }
+          if (Object.values(jobs).some(job => job.result !== 'success')) process.exit(1);
+          JS
