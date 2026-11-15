@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
+import { bookingUIPort } from './scripts/worktree-ports.mjs';
 
-const port = Number(process.env.BOOKING_UI_PORT ?? process.env.E2E_COMPONENT_PORT ?? 4319);
+const port = bookingUIPort(process.cwd());
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({

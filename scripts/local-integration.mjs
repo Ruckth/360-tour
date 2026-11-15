@@ -55,7 +55,7 @@ await fs.chmod(work, 0o700);
 const home = path.join(work, "home"),
   project = path.join(work, "backend");
 await fs.mkdir(home, { mode: 0o700 });
-await localConvexCache(root, home);
+await localConvexCache(home);
 await fs.mkdir(project, { mode: 0o700 });
 await fs.cp(path.join(root, "convex"), path.join(project, "convex"), {
   recursive: true,
@@ -112,6 +112,7 @@ const env = {
   CLERK_JWT_ISSUER_DOMAIN: supplied.CLERK_JWT_ISSUER_DOMAIN,
   E2E_BASE_URL: baseURL,
   E2E_COMPONENT_PORT: String(component),
+  BOOKING_UI_PORT: String(component),
   E2E_MODE: "integration",
   E2E_CHAT_LOCAL: "1",
   E2E_SEED_FILE: path.join(work, "seed.json"),

@@ -9,6 +9,7 @@ import { requireLocalBackend, createPrivateOutput } from './local-integration-co
 import { localProcesses, waitFor } from './local-processes.mjs';
 import { seedEmpty } from './seed-empty.mjs';
 import { localConvexCache } from './local-convex-cache.mjs';
+import { localDevPort } from './worktree-ports.mjs';
 
 process.umask(0o077);
 const root = await fs.realpath(process.cwd());
@@ -28,6 +29,7 @@ try {
   if (process.argv.length > 2) throw new Error('pnpm dev accepts no reset or remote-target options; configure .env.dev.local');
   refuseInheritedTarget(process.env);
   const config = await readDevConfig(path.join(root, '.env.dev.local'));
+  config.port = localDevPort(root, config.port);
   secrets = Object.values(config).map(String);
   // Never follow a transplanted state directory into another checkout.
   await fs.mkdir(work, { recursive: true, mode: 0o700 });
@@ -44,7 +46,7 @@ try {
   }
   const home = path.join(work, 'home');
   for (const dir of [home, project]) await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  await localConvexCache(root, home);
+  await localConvexCache(home);
   for (const name of ['node_modules']) {
     const link = path.join(project, name);
     try { await fs.symlink(path.join(root, name), link, 'dir'); }

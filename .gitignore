@@ -53,6 +53,7 @@ output/ui-loop/
 /tmp/
 /graphify-out/
 /.local-dev/
+/.worktree-ports.json
 
 # Generated UX captures and agent review output stay local.
 /docs/screenshots/
