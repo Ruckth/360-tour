@@ -10,8 +10,9 @@ import { Button } from "@/components/ui/button";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 
-type ActionSlots = { actions: ReactNode; followUp: ReactNode; actionError: ReactNode };
+type ActionSlots = { actions: ReactNode; replyAction: ReactNode; followUp: ReactNode; actionError: ReactNode };
 
 /**
  * One controller for the header actions and the existing follow-up's direct actions. The header
@@ -38,6 +39,8 @@ export function AdminSessionActions({
   const setKeepWithStaff = useMutation(api.adminChat.setKeepWithStaff);
   const [taskOpen, setTaskOpen] = useState(false);
   const [task, setTask] = useState("");
+  const [openingTask, setOpeningTask] = useState("");
+  const { confirmDiscard } = useUnsavedGuard(taskOpen && task !== openingTask);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -66,12 +69,14 @@ export function AdminSessionActions({
   function openTask(trigger: HTMLButtonElement | null) {
     taskTrigger.current = trigger;
     setError(null);
-    setTask(session.staffTask ?? "");
+    const value = session.staffTask ?? "";
+    setTask(value);
+    setOpeningTask(value);
     setTaskOpen(true);
   }
 
-  function closeTask() {
-    if (busy.current) return;
+  async function closeTask() {
+    if (busy.current || !(await confirmDiscard())) return;
     setTaskOpen(false);
     setTask("");
     setError(null);
@@ -118,8 +123,8 @@ export function AdminSessionActions({
     </div>
   ) : null;
 
-  const actions = (
-    <div className="flex items-center justify-end gap-0 sm:gap-1.5">
+  const replyAction = (
+    <div className="flex-none">
       {status === "open" ? (
         <Button
           type="button"
@@ -128,7 +133,7 @@ export function AdminSessionActions({
           disabled={pending}
           title="No reply needed (e)"
           aria-label="No reply needed"
-          className="h-9 px-2 text-[13px] pointer-coarse:text-sm sm:px-3"
+          className="h-9 whitespace-nowrap px-2 text-[13px] pointer-coarse:text-sm sm:px-3"
           onClick={() => void run(() => changeStatus("resolved"))}
         >
           <CheckCheck aria-hidden="true" className="size-4" />
@@ -140,33 +145,35 @@ export function AdminSessionActions({
           {session.resolutionSource && session.resolutionSource !== "manual" ? "Undo" : "Reopen"}
         </Button>
       )}
-      <span ref={menuWrapper} className="contents">
-        <MoreMenu
-          label="More chat actions"
-          disabled={pending}
-          className="size-9 text-muted-foreground"
-          items={[
-            { label: session.staffTask ? "Edit follow-up" : "Add follow-up", onSelect: () => openTask(null) },
-            { label: "Complete follow-up", hidden: !session.staffTask, onSelect: completeTask },
-            {
-              label: session.aiPaused ? "Resume AI" : "Take over from AI",
-              onSelect: () => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused })),
-            },
-            {
-              label: session.keepWithStaff ? "Let AI handle the next issue" : "Keep the next issue with staff",
-              onSelect: () => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff })),
-            },
-            { label: "Archive chat", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
-            { label: "Delete chat", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
-          ]}
-        />
-      </span>
     </div>
+  );
+  const actions = (
+    <span ref={menuWrapper} className="contents">
+      <MoreMenu
+        label="More chat actions"
+        disabled={pending}
+        className="size-9 text-muted-foreground"
+        items={[
+          { label: session.staffTask ? "Edit follow-up" : "Add follow-up", onSelect: () => openTask(null) },
+          { label: "Complete follow-up", hidden: !session.staffTask, onSelect: completeTask },
+          {
+            label: session.aiPaused ? "Resume AI" : "Take over from AI",
+            onSelect: () => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused })),
+          },
+          {
+            label: session.keepWithStaff ? "Let AI handle the next issue" : "Keep the next issue with staff",
+            onSelect: () => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff })),
+          },
+          { label: "Archive chat", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
+          { label: "Delete chat", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
+        ]}
+      />
+    </span>
   );
 
   return <>
-      {children ? children({ actions, followUp, actionError: error && !taskOpen ? <p role="alert" className="w-full border-t border-border px-4 py-3 text-sm text-destructive">{error}</p> : null }) : <>{actions}{error && !taskOpen ? <p role="alert" className="w-full text-sm text-destructive">{error}</p> : null}</>}
-      <Dialog open={taskOpen} onOpenChange={open => !open && closeTask()}>
+      {children ? children({ actions, replyAction, followUp, actionError: error && !taskOpen ? <p role="alert" className="w-full border-t border-border px-4 py-3 text-sm text-destructive">{error}</p> : null }) : <><div className="flex items-center justify-end gap-1.5">{replyAction}{actions}</div>{error && !taskOpen ? <p role="alert" className="w-full text-sm text-destructive">{error}</p> : null}</>}
+      <Dialog open={taskOpen} onOpenChange={open => !open && void closeTask()}>
         <DialogContent className="sm:max-w-md" showCloseButton={!pending} onCloseAutoFocus={event => {
           const trigger = taskTrigger.current?.isConnected ? taskTrigger.current : menuTrigger();
           if (trigger?.isConnected) { event.preventDefault(); trigger.focus(); }
@@ -176,13 +183,13 @@ export function AdminSessionActions({
             event.preventDefault();
             const value = task.trim();
             if (!value) return;
-            void run(async () => { await setStaffTask({ sessionId, task: value }); setTaskOpen(false); setTask(""); });
+            void run(async () => { await setStaffTask({ sessionId, task: value }); setOpeningTask(value); setTask(value); setTaskOpen(false); });
           }}>
             <label htmlFor={`follow-up-${sessionId}`} className="text-sm font-medium">What needs to be done?</label>
             <Input id={`follow-up-${sessionId}`} value={task} onChange={event => setTask(event.target.value)} disabled={pending} maxLength={300} placeholder="Check with housekeeping and update the guest" autoFocus required />
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" disabled={pending} onClick={closeTask}>Cancel</Button>
+              <Button type="button" variant="outline" disabled={pending} onClick={() => void closeTask()}>Cancel</Button>
               <Button type="submit" disabled={pending || !task.trim()}>Save</Button>
             </div>
           </form>

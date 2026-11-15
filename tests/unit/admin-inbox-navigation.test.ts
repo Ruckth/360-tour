@@ -8,6 +8,7 @@ import type { AdminSession } from "@/components/admin/admin-chat-types";
 type DetailProps = {
   selectedSession: AdminSession | null;
   actions: ReactNode;
+  replyAction: ReactNode;
   followUp: ReactNode;
   compact?: boolean;
   replyDraft: string;
@@ -66,6 +67,7 @@ vi.mock("@/components/admin/AdminSessionDetail", () => ({
       "div",
       { "data-selected": props.selectedSession?._id ?? "none", "data-compact": String(Boolean(props.compact)) },
       props.actions,
+      props.replyAction,
       props.followUp,
       createElement(
         "button",

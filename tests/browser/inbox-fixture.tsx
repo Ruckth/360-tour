@@ -45,10 +45,11 @@ function Fixture() {
   return <ConfirmProvider>
     <div data-fixture-ready style={{ height: "100dvh", minHeight: 0 }}>
       <AdminSessionActions key={session._id} session={session} onDeleted={() => {}}>
-        {({ actions, followUp, actionError }) => <AdminSessionDetail
+        {({ actions, followUp, actionError, replyAction }) => <AdminSessionDetail
           selectedSession={session}
           compact
           actions={actions}
+          replyAction={replyAction}
           actionError={actionError}
           followUp={followUp}
           onBack={() => {}}

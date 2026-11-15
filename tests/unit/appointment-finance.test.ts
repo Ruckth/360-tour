@@ -6,6 +6,7 @@ import type { Doc } from 'convex/_generated/dataModel';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../../messages/en.json';
+import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { AppointmentFinancials, AppointmentMoneyDialog, AppointmentMoneyBlock } from '@/components/admin/AppointmentFinancials';
 const mocks = vi.hoisted(() => ({ push: vi.fn(), pay: vi.fn(), refund: vi.fn(), correct: vi.fn(), query: vi.fn() }));
 vi.mock('convex/react', () => ({
@@ -22,7 +23,7 @@ const appointment = { _id: 'appointment1', price: 1200, currency: 'THB', status:
 const payment = { _id: 'payment1', amount: 1200, currency: 'THB', method: 'cash', effectiveAt: now - 1000, recordedAt: now, recordedBy: 'desk@example.com', status: 'recorded', refunded: 0 } as Doc<'appointmentPayments'>;
 const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, node)));
+const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
 const button = (text: string) => [...document.querySelectorAll('button')].find(el => el.textContent?.trim() === text);
 const startsWith = (text: string) => [...document.querySelectorAll('button')].find(el => el.textContent?.trim().startsWith(text));
 const click = (el: Element | undefined) => act(async () => (el as HTMLElement).click());
@@ -135,4 +136,49 @@ it('uses a disabled payment button that cannot route while another action is pen
   expect(document.querySelector('a')).toBeNull();
   await click(take);
   expect(mocks.push).not.toHaveBeenCalled();
+});
+
+for (const kind of ['pay', 'refund', 'amend', 'cancel', 'legacyCancel'] as const) {
+  it(`guards the ${kind} draft on dismissal and bypasses the prompt after success`, async () => {
+    const onClose = vi.fn();
+    const dialog: ComponentProps<typeof AppointmentMoneyDialog>['dialog'] = kind === 'refund'
+      ? { kind, paymentId: payment._id, max: 1000 }
+      : kind === 'amend' || kind === 'cancel' ? { kind, payment }
+      : kind === 'legacyCancel' ? { kind, legacyChangeId: 'legacy-change' as Doc<'appointmentChanges'>['_id'] }
+      : { kind };
+    await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog, onClose }));
+    if (kind === 'pay') await click(button('Card'));
+    else await type('af-reason', 'Reviewed correction');
+    if (kind === 'refund') await type('af-amount', '250');
+    await click(button('Close'));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Discard unsaved changes?');
+    expect(onClose).not.toHaveBeenCalled();
+    await click(button('Keep editing'));
+    if (kind !== 'pay') expect((document.getElementById('af-reason') as HTMLTextAreaElement).value).toBe('Reviewed correction');
+    const confirm = kind === 'pay' ? 'Record ฿1,200' : kind === 'refund' ? 'Record refund ฿250' : kind === 'amend' ? 'Save correction' : 'Void entry';
+    await click(button(confirm));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(kind === 'pay' ? mocks.pay : kind === 'refund' ? mocks.refund : mocks.correct).toHaveBeenCalledOnce();
+  });
+}
+it('closes an unchanged appointment draft without prompting, including a reverted method', async () => {
+  const onClose = vi.fn();
+  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'pay' }, onClose }));
+  await click(button('Card')); await click(button('Cash')); await click(button('Close'));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+});
+
+it.each(['method', 'time', 'amount'] as const)('guards an appointment %s edit independently of its reason', async field => {
+  const onClose = vi.fn();
+  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'refund', paymentId: payment._id, max: 1000 }, onClose }));
+  if (field === 'method') await click(button('Card'));
+  if (field === 'time') await type('af-time', '08:30');
+  if (field === 'amount') await type('af-amount', '250');
+  await click(button('Close'));
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Discard unsaved changes?');
+  await click(button('Discard'));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(mocks.refund).not.toHaveBeenCalled();
 });

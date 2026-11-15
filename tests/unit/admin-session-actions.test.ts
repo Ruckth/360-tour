@@ -23,8 +23,8 @@ const deleted = vi.fn(), statusChanged = vi.fn();
 async function render(session = initial) {
   const props: ComponentProps<typeof AdminSessionActions> = {
     session, onDeleted: deleted, onStatusChanged: statusChanged,
-    children: ({ actions, followUp, actionError }) => createElement(AdminSessionDetail, {
-      selectedSession: session, actions, followUp, actionError, messages: [], now: 100, canLoadOlderMessages: false,
+    children: ({ actions, followUp, actionError, replyAction }) => createElement(AdminSessionDetail, {
+      selectedSession: session, actions, followUp, actionError, replyAction, messages: [], now: 100, canLoadOlderMessages: false,
       loadOlderMessages: vi.fn(), loadingTranscript: false, loadingOlderMessages: false,
       replyDraft: "Draft stays here", onReplyDraftChange: vi.fn(), onSendReply: vi.fn(),
       replyPending: false, replyError: null, replyStatus: null, replyWindow: { applies: false },
@@ -163,4 +163,20 @@ it("keeps failed actions visible without firing success callbacks and preserves 
   expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ destructive: true, confirmLabel: "Delete chat" }));
   expect(mocks.mutation).toHaveBeenLastCalledWith("adminChat:deleteArchivedSession", { sessionId: "session-a" });
   expect(deleted).toHaveBeenCalledOnce();
+});
+
+it("compares follow-up text with its opening value and resets the baseline after Save", async () => {
+  await render(); await click(byLabel("Edit follow-up"));
+  await type("Changed follow-up");
+  mocks.confirm.mockResolvedValueOnce(false);
+  await click(button("Cancel"));
+  expect(mocks.confirm).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ title: "Discard unsaved changes?", cancelLabel: "Keep editing", confirmLabel: "Discard" }));
+  expect(input().value).toBe("Changed follow-up");
+  mocks.confirm.mockClear();
+  await submit();
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await render({ ...initial, staffTask: "Changed follow-up" });
+  await click(byLabel("Edit follow-up")); await click(button("Cancel"));
+  expect(mocks.confirm).not.toHaveBeenCalled();
 });

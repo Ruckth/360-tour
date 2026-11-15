@@ -427,7 +427,7 @@ export function ChatsView() {
   };
 
   function renderDetail(compact = false) {
-    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode) => (
+    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode) => (
       <AdminSessionDetail
         key={selectedSession?._id ?? "none"}
         {...detailProps}
@@ -435,6 +435,7 @@ export function ChatsView() {
         emptyList={!loadingSessions && sessions.length === 0}
         onBack={compact ? () => selectSession(null) : undefined}
         actions={actions}
+        replyAction={replyAction}
         actionError={actionError}
         followUp={followUp}
       />
@@ -464,7 +465,7 @@ export function ChatsView() {
           } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
       >
-        {({ actions, followUp, actionError }) => detail(actions, followUp, actionError)}
+        {({ actions, followUp, actionError, replyAction }) => detail(actions, followUp, actionError, replyAction)}
       </AdminSessionActions>
     ) : detail();
   }

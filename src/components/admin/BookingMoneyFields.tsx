@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { resortDateTime, resortIsoDate, resortTime24, useNow } from "@/lib/staff-bookings";
 import { MONEY_METHOD_LABELS } from "./admin-bookings-shared";
+import { cn } from "@/lib/utils";
 
 /**
  * Form pieces shared by the booking money dialogs: the business date something happened (any
@@ -117,12 +118,13 @@ export function MethodPicker<T extends string>({
   value: T;
   onChange: (value: T) => void;
 }) {
+  const labelId = useId();
   return (
     <div className="grid gap-2">
-      <span className="text-sm font-medium" id={`method-${label}`}>{label}</span>
-      <ToggleGroup value={value} onValueChange={onChange} aria-labelledby={`method-${label}`} className="flex-wrap gap-1 rounded-full bg-muted p-1">
+      <span className="text-sm font-medium" id={labelId}>{label}</span>
+      <ToggleGroup variant="segmented" tone="subtle" value={value} onValueChange={onChange} aria-labelledby={labelId} className={cn("flex-wrap gap-1 rounded-full bg-muted p-1", methods.length > 5 && "grid grid-cols-[repeat(auto-fit,minmax(6rem,1fr))] rounded-2xl sm:flex sm:rounded-full")}>
         {methods.map((method) => (
-          <ToggleGroupItem key={method} value={method} className="min-h-11 rounded-full border-0 bg-transparent px-4 data-[state=on]:bg-foreground data-[state=on]:text-background">
+          <ToggleGroupItem key={method} value={method} className="min-h-11 min-w-11 rounded-full px-1 group-data-[variant=segmented]/toggle:flex-auto max-sm:group-data-[variant=segmented]/toggle:text-[13px] sm:px-3">
             {MONEY_METHOD_LABELS[method] ?? method}
           </ToggleGroupItem>
         ))}
