@@ -377,7 +377,9 @@ export function AdminSessionDetail({
             <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
               <div className="flex min-w-20 flex-1 items-center gap-2">
                 <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
-                <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+                {automationChip
+                  ? <span className="min-w-0 truncate rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">{automationChip}</span>
+                  : <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>}
               </div>
               {replyAction}
             </div>

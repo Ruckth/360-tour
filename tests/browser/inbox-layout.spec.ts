@@ -12,6 +12,7 @@ for (const { width, font } of [
     await page.locator("[data-fixture-ready]").waitFor();
     await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, font);
     if (width < 640) {
+      await expect(page.getByTestId("chat-header-meta").getByText("AI paused", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Chat details", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Chat details", exact: true }).getByText("AI paused", { exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
