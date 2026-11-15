@@ -55,4 +55,3 @@ export function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: Or
     </>
   );
 }
-

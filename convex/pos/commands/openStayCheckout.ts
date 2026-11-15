@@ -27,4 +27,3 @@ export const openStayCheckout = staffMutation({
 		return { orderId, added, skipped };
 	}
 });
-
