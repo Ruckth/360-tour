@@ -23,7 +23,7 @@ import type {
 
 // Pure labels and summaries for the marketing screens. No React, so they're unit-tested.
 
-// Dates are YYYY-MM-DD strings in Asia/Bangkok, money is whole baht, as in the offer engine.
+// Dates are YYYY-MM-DD strings in Asia/Bangkok, money is integer satang, as in the offer engine.
 
 export const thb = (amount: number) => formatMoney(amount, "THB");
 

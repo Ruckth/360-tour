@@ -637,3 +637,14 @@ it.each(["method", "time", "note", "notify"] as const)("tracks and clears an ext
   expect(onClose).toHaveBeenCalledOnce();
   expect(document.querySelector('[role="alertdialog"]')).toBeNull();
 });
+
+it.each([false, true])("closes an untouched stay price draft without treating satang as edited baht (custom: %s)", async custom => {
+  const original = { ...booking, ...(custom ? { priceOverride: { total: 1600000, quotedTotal: 1700000, reason: "Reviewed price", by: "desk@example.com", at: NOW } } : {}) } as BookingDetail;
+  const onClose = vi.fn();
+  const villa = { _id: booking.propertyId, slug: "pool-villa", name: "Pool Villa", status: "active" as const, maxGuests: 6, pricePerNight: 1000000, currency: "THB", directDiscountPercent: 1500 };
+  await render(createElement(EditBookingDialog, { booking: original, properties: [villa], onClose }));
+  await click(button("Close"));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  expect(mutations.editBooking).not.toHaveBeenCalled();
+});

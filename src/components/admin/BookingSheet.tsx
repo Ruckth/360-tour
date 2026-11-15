@@ -422,7 +422,7 @@ export function EditBookingDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const dirty = propertyId !== original.propertyId || dates.checkIn !== original.checkIn || dates.checkOut !== original.checkOut || guests !== String(original.guests) || guestName !== original.guestName || guestPhone !== original.guestPhone || guestEmail !== (original.guestEmail ?? "") || custom !== Boolean(original.priceOverride) || customTotal !== String(original.priceOverride?.total ?? original.total) || customReason !== (original.priceOverride?.reason ?? "") || Boolean(villaReason) || notifyChoice !== null;
+  const dirty = propertyId !== original.propertyId || dates.checkIn !== original.checkIn || dates.checkOut !== original.checkOut || guests !== String(original.guests) || guestName !== original.guestName || guestPhone !== original.guestPhone || guestEmail !== (original.guestEmail ?? "") || custom !== Boolean(original.priceOverride) || customTotal !== String(satangToBaht(original.priceOverride?.total ?? original.total)) || customReason !== (original.priceOverride?.reason ?? "") || Boolean(villaReason) || notifyChoice !== null;
   const { confirmDiscard } = useUnsavedGuard(dirty);
   const close = async () => { if (!saving && await confirmDiscard()) onClose(); };
 
