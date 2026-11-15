@@ -107,7 +107,7 @@ function RefundSource({ refund, sources }: { refund: { sourceType?: "booking" | 
   const appointment = refund.sourceType === "appointment" || Boolean(refund.appointmentId);
   const id = appointment ? refund.appointmentId : refund.bookingId;
   const reference = sources.find(source => source.id === id)?.reference;
-  return <>{reference ?? (appointment ? "Linked appointment" : "Linked stay")}</>;
+  return <>{reference ? `${appointment ? "Appointment" : "Stay"} ${reference}` : appointment ? "Linked appointment" : "Linked stay"}</>;
 }
 
 /** A task panel opened from the receipt's ⋯; the toolbar's Close ends it (refused while a write runs). */

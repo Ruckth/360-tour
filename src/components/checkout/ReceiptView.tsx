@@ -231,7 +231,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   async function closeTask(message?: string) {
     // The toolbar's Close waits for a running write; a finished one closes with its result.
     if (taskBusy && !message) return;
-    if (!message && !(await confirmDiscard())) return;
+    // Only the task's own edits prompt here; an open refund draft stays mounted and keeps its own guard.
+    if (!message && taskDirty && !(await confirmDiscard())) return;
     flushSync(() => {
       setTask(null);
       setTaskBusy(false);

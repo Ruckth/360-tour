@@ -93,7 +93,6 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
     { key: "messaging", label: "Messaging", money: messaging, color: "var(--chart-s5)" },
   ].filter((part) => part.key === "tracked" || part.money.sales > 0 || part.money.net < 0);
   const hasNegativeNet = parts.some((part) => part.money.net < 0);
-  const netAmount = (amount: number) => amount < 0 ? `−${thb(Math.abs(amount))}` : thb(amount);
 
   const trackingBreakdown = <>
     {hasNegativeNet ? <p className="text-[13px] text-muted-foreground">Refunds exceed income for some sources.</p> : (
@@ -102,7 +101,7 @@ export function DashboardTiles({ p, totals, onAddSpend }: { p: Prepared; totals:
       </div>
     )}
     <ul aria-label="Net collected by tracking" className="grid gap-2 text-[13px] text-muted-foreground">
-      {parts.map((part) => <li key={part.key} className="flex items-center gap-2"><span aria-hidden className="size-2 rounded-full" style={{ background: part.color }} /><span className="flex-1">{part.label}</span><span className="money font-medium text-foreground">{netAmount(part.money.net)}</span></li>)}
+      {parts.map((part) => <li key={part.key} className="flex items-center gap-2"><span aria-hidden className="size-2 rounded-full" style={{ background: part.color }} /><span className="flex-1">{part.label}</span><span className="money font-medium text-foreground">{thb(part.money.net)}</span></li>)}
     </ul>
   </>;
 

@@ -58,7 +58,7 @@ for (const width of [390, 1180, 1440]) {
       await expect(kpis.getByRole("img", { name: /^Net collected by tracking:/ })).toHaveCount(0);
       const breakdown = kpis.getByRole("list", { name: "Net collected by tracking", exact: true });
       await expect(breakdown.getByRole("listitem")).toHaveCount(4);
-      for (const [label, amount] of [["Tracked links", "฿1,000"], ["Not tracked", "฿2,000"], ["Staff-entered", "−฿3,000"], ["Messaging", "−฿500"]]) {
+      for (const [label, amount] of [["Tracked links", "฿1,000"], ["Not tracked", "฿2,000"], ["Staff-entered", "-฿3,000"], ["Messaging", "-฿500"]]) {
         const row = breakdown.getByRole("listitem").filter({ hasText: label });
         await expect(row.getByText(amount, { exact: true })).toBeVisible();
       }
