@@ -5,6 +5,8 @@ const port = bookingUIPort(process.cwd());
 const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
+  // Shard by test, not by file, so CI shards finish together.
+  fullyParallel: true,
   workers: 2,
   outputDir: "test-results/components",
   testDir: "./tests/browser",
