@@ -42,7 +42,7 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   await amount.fill("1200.01");
   await expect(form.getByText("Up to ฿1,200.")).toBeVisible();
   await amount.fill("300");
-  await form.getByRole("radio", { name: "Short treatment" }).click();
+  await form.getByRole("radio", { name: "Cut short" }).click();
   await form.getByRole("button", { name: "Record refund ฿300" }).click();
 
   await expect(note(page, "Refunded ฿300 · Short treatment")).toBeFocused();

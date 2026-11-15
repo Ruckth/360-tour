@@ -189,13 +189,13 @@ export function OrderPanel({
   // scrolls, so every action stays reachable; at normal text only the rows scroll.
   return (
     <div ref={panelRef} className="flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-2">
-        <div className="flex min-w-0 flex-1 basis-40 items-center gap-3">
-          {paying ? null : <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
+      <div className="flex flex-wrap max-sm:flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border/70 px-4 py-3 sm:px-5 lg:py-4 [@media(max-height:32rem)]:py-1">
+        <div className="flex min-w-0 flex-1 sm:basis-40 items-center gap-3">
+          {paying ? null : <span aria-hidden className="hidden sm:grid size-10 shrink-0 place-items-center rounded-full border border-border bg-muted/60 text-gold-text">
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
           </span>}
           <div className="min-w-0 flex-1">
-            <h2 className={cn("leading-tight font-semibold lining-nums [overflow-wrap:anywhere]", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? "Balance due" : title}</h2>
+            <h2 className={cn("min-w-0 truncate leading-tight font-semibold lining-nums", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? "Balance due" : title}</h2>
             {paying ? <p className="mt-1 text-[40px] leading-tight font-semibold font-sans tabular-nums">{formatMoney(totals.due)}</p> : null}
             <p className="text-[13px] text-muted-foreground">
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
@@ -205,7 +205,7 @@ export function OrderPanel({
             </p>
           </div>
         </div>
-        <div className="ml-auto flex min-w-0 max-w-full flex-wrap items-center justify-end gap-2">
+        <div className="ml-auto flex shrink-0 max-w-full flex-wrap max-sm:flex-nowrap items-center justify-end gap-2">
         {paying ? (
           <Button variant="ghost" size="sm" className="min-h-11 text-sm" disabled={paymentSubmitting} onClick={() => {
             const active = panelRef.current?.querySelector<HTMLButtonElement>('[aria-label="Take payment by"] [aria-pressed="true"]');
@@ -263,11 +263,13 @@ export function OrderPanel({
       ) : (
         <>
           {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
-          <div className="relative flex min-h-[min(14rem,28dvh)] flex-1 flex-col [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]">
+          <div className={cn("flex flex-1 flex-col", moreBelow
+            ? "min-h-[calc(min(14rem,28dvh)+1.5rem)] [@media(max-height:36rem)]:min-h-[calc(max(3rem,14dvh)+1.5rem)]"
+            : "min-h-[min(14rem,28dvh)] [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]")}>
           <div ref={itemsRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             {lines.length === 0 ? (
               <div className="grid flex-1 place-items-center px-6 py-8 text-center text-sm text-muted-foreground">
-                <div className="grid justify-items-center gap-2"><ReceiptText aria-hidden className="size-8 text-muted-foreground/60" /><p className="text-[15px] font-medium text-foreground">No items yet</p><p className="text-[13px] text-pretty">Tap an item to add it.</p></div>
+                <div className="grid justify-items-center gap-2"><ReceiptText aria-hidden className="size-8 text-muted-foreground/60" /><p className="text-[15px] font-medium text-foreground">No items yet</p><p className="text-[13px] text-pretty">Choose an item to add it.</p></div>
               </div>
             ) : (
               <ul className="divide-y divide-border/70 px-1">
@@ -290,10 +292,10 @@ export function OrderPanel({
             {orderId && view && view.order.revision > 0 ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
           </div>
 
-          {moreBelow ? <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-12 items-end justify-center bg-linear-to-t from-card via-card/95 to-transparent pb-1.5"><span className="flex items-center gap-1 rounded-full bg-card px-2 text-xs text-muted-foreground"><ChevronDown aria-hidden className="size-3" />More item options</span></div> : null}
+          {moreBelow ? <div className="pointer-events-none flex min-h-6 shrink-0 items-center justify-center py-1"><span className="flex items-center gap-1 rounded-full bg-card px-2 text-xs text-muted-foreground"><ChevronDown aria-hidden className="size-3" />More item options</span></div> : null}
           </div>
 
-          {lines.length || (shown && !shownLine) ? <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5">
+          {lines.length || (shown && !shownLine) ? <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5 [@media(max-height:32rem)]:pt-1 [@media(max-height:32rem)]:pb-[calc(0.25rem+env(safe-area-inset-bottom))]">
             {/* Outside the empty-order branch: a request for the first custom item starts on an empty order. */}
             {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
             {lines.length ? <>

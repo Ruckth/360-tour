@@ -186,6 +186,13 @@ it('shows appointment refunds with source, provenance and net snapshot while pag
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
   await expandHistory("History · all ledgers");
   const ledger = document.querySelector('[aria-label="All appointment refunds"]')!;
+  const technical = ledger.querySelector<HTMLDetailsElement>('details')!;
+  expect(technical.open).toBe(false);
+  expect(technical.textContent).toContain(appt);
+  const visibleCopy = ledger.cloneNode(true) as HTMLElement;
+  visibleCopy.querySelectorAll('details').forEach(details => details.remove());
+  expect(visibleCopy.textContent).toContain('Linked appointment');
+  expect(visibleCopy.textContent).not.toContain(appt);
   expect(ledger.textContent).toContain('Recorded · ฿50 · transfer'); expect(ledger.textContent).toContain('Partial service return'); expect(ledger.textContent).toContain(appt); expect(ledger.textContent).toContain('Net balance after this return: ฿100 → ฿50'); expect(ledger.textContent).toContain('cashier@example.com');
   for (let i = 0; i < 3; i++) await click('Load older receipt activity');
   expect(document.querySelectorAll('[aria-label="All receipt activity"] li')).toHaveLength(61);
