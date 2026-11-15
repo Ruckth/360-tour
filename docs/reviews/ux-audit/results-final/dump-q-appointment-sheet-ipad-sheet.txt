@@ -1,7 +1,0 @@
-button "Thursday, November 12, 2026, go to date" @98
-a "Take payment" @174
-button "Already paid…" @174
-button "Mark arrived" @249
-button "More appointment actions" @247
-summary "History" @695
-button "Close" @8

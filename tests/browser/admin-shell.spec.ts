@@ -3,7 +3,7 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
 
 /*
  * P1 · Shell and approvals, on the real admin frame (admin-shell-fixture.tsx). Taps are counted the
- * way the click audit counts them (docs/reviews/ux-audit/click-audit.md on ux/click-audit):
+ * following the admin UX conventions (docs/guides/admin-ux.md):
  *   approve from Chats   before: 3 taps + a page change (Checkout, N approvals, Approve) → 2, same page
  *   Checkout on a phone  before: 2 taps (Menu, Checkout) → 1
  */

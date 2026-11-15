@@ -9,7 +9,7 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
  *   - Create → Save & publish → QR card → Print on the coupon page: 8 taps and 2 typed fields,
  *     one confirm, no other page (was about 18 taps and 2 page switches through Links & QR).
  *   - At most one explanatory sentence in the coupon editor.
- * Round 2 (docs/reviews/ux-audit/r2-admin.md): one Discount field like checkout's ("20% or 500")
+ * Coupon conventions (docs/guides/admin-ux.md): one Discount field like checkout's ("20% or 500")
  * instead of the Percent / Fixed ฿ toggle (13 → 11 controls at the start); Print in the QR card's
  * footer, on screen on a phone (was 1 scroll); "is live" is a status line without Dismiss.
  * Set UX_P8_SHOTS to a folder to keep screenshots.

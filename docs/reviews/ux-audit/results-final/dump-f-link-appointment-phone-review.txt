@@ -1,6 +1,0 @@
-button "Guest asked" @628
-button "Booked under another name" @628
-input "" @676
-button "Back" @780
-button "Confirm link" @732
-button "Close" @374

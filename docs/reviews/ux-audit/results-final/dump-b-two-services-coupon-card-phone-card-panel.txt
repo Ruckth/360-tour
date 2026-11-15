@@ -1,8 +1,0 @@
-button "Close order" @82
-button "Cash" @151
-button "PromptPay QR" @151
-button "Card" @151
-button "Transfer" @151
-button "Split payment" @207
-button "Change payment time" @295
-button "Confirm card ฿1,300" @403

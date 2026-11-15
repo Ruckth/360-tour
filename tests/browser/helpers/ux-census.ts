@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 /*
- * Counting what a person sees, as the click audit did (docs/reviews/ux-audit on ux/click-audit):
+ * Counting what a person sees:
  * controls inside the viewport, and whether a target needs a scroll before it can be tapped.
  */
 

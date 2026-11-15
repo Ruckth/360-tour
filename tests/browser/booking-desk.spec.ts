@@ -6,8 +6,7 @@ import { DESK_VIEWPORTS, Taps, openDesk } from "./helpers/desk-taps";
 /*
  * P5 bookings and the round-2 desk pass: the desk journeys, counted on the desk fixture
  * (booking-desk-fixture.tsx) at iPad landscape and phone size. Targets are from
- * docs/plans/ux-simplification-plan.md ("What we'll measure") and the final audit
- * (docs/reviews/ux-audit/final-audit.md on ux/final-audit); counts are taps from the page where
+ * the regression assertions below and docs/guides/admin-ux.md; counts are taps from the page where
  * the work happens. The fixture's "today" is Thursday 12 Nov 2026, 10:00 in Bangkok.
  */
 test.use({ timezoneId: "Asia/Bangkok" });

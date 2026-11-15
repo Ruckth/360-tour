@@ -1,4 +1,0 @@
-button "About approvals" @180
-button "Decline" @208
-button "Approve" @208
-button "Close" @8

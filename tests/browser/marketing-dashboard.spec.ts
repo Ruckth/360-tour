@@ -182,7 +182,7 @@ test("the range is remembered on this device, Last week included, and attributio
 });
 
 /*
- * Round 2 (docs/reviews/ux-audit/r2-admin.md): on a phone, 8 controls stood before the first number
+ * Before the dashboard simplification, on a phone, 8 controls stood before the first number
  * (dates, property, Marketing, Finance, View options, Definitions, Export CSV, Refresh) and the
  * context line ended "(last_touch_30d@1)".
  */

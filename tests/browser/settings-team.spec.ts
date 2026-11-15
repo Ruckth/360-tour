@@ -3,7 +3,7 @@ import { expectAtMostSentences } from "./helpers/sentence-budget";
 
 /*
  * P7 · Settings and Team, measured on the staff-roles fixture (staff-roles-fixture.tsx).
- * Counting follows docs/reviews/ux-audit/click-audit.md: opening a native <select> and picking
+ * Counting treats each click as one tap: opening a native <select> and picking
  * from it is 2 taps; a filled text field is 1 field; a scroll is a target outside the viewport.
  */
 const SIZES = { ipad: { width: 1180, height: 820 }, phone: { width: 390, height: 844 } } as const;
@@ -16,7 +16,7 @@ const SIZES = { ipad: { width: 1180, height: 820 }, phone: { width: 390, height:
 const BEFORE_GRANT_MARKETING = { taps: 4, fields: 1, pageChanges: 1 } as const;
 
 /**
- * Round 2 (docs/reviews/ux-audit/r2-admin.md), measured on the same fixture before the change:
+ * Before the Team simplification, measured on the same fixture:
  * People held 8 native selects (2 per person) and 11 controls; on the phone the discount limit
  * started below the fold (1 scroll to reach it, 1 more to reach Save).
  */

@@ -1,4 +1,0 @@
-button "Close order" @82
-button "Back to order" @151
-summary "Payment date and time 2026-11-12 · 22:46 · Bangkok" @322
-button "Confirm ฿1,300 received" @439

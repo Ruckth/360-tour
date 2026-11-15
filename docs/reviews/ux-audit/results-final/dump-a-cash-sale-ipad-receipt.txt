@@ -1,5 +1,0 @@
-button "Print" @96
-button "Share" @96
-button "New sale" @96
-button "More receipt actions" @94
-button "Refund Thai massage 60" @316

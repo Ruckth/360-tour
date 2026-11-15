@@ -53,3 +53,8 @@ output/ui-loop/
 /tmp/
 /graphify-out/
 /.local-dev/
+
+# Generated UX captures and agent review output stay local.
+/docs/screenshots/
+/docs/reviews/ux-audit/
+/docs/reviews/ux-main-sync/

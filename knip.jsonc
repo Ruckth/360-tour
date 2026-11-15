@@ -8,8 +8,6 @@
     "convex/maintenance/*.ts!",
     "tests/**/*.test.ts",
     "tests/**/*.spec.ts",
-    "tests/browser/ux-audit/*.audit.ts",
-    "tests/browser/ux-audit/playwright.ux.config.ts",
     "tests/e2e/auth.setup.ts",
     "tests/browser/*fixture*.tsx",
     "tests/browser/*-mock.{ts,tsx}",

@@ -1,4 +1,0 @@
-textarea "" @441
-button "Back" @537
-button "Confirm link" @537
-button "Close" @227

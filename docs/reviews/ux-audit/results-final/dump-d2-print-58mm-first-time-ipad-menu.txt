@@ -1,8 +1,0 @@
-button "Print" @96
-button "Share" @96
-button "New sale" @96
-button "More receipt actions" @94
-button "Refund Thai massage 60" @316
-div[menuitem] "Use 58 mm paper" @149
-div[menuitem] "Correct payment" @193
-div[menuitem] "Void…" @246
