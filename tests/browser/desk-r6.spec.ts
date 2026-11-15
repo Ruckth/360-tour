@@ -16,8 +16,10 @@ async function methodTargets(group: Locator, count: number) {
       range.selectNodeContents(element);
       return { box: element.getBoundingClientRect().toJSON(), text: range.getBoundingClientRect().toJSON() };
     });
-    expect(box.height).toBeGreaterThanOrEqual(44);
-    expect(box.width).toBeGreaterThanOrEqual(44);
+    // Fractional transforms can report 43.999969px for a 44px target after resizing.
+    const geometryEpsilon = 0.001;
+    expect(box.height + geometryEpsilon).toBeGreaterThanOrEqual(44);
+    expect(box.width + geometryEpsilon).toBeGreaterThanOrEqual(44);
     expect(text.left).toBeGreaterThanOrEqual(box.left + 3);
     expect(text.right).toBeLessThanOrEqual(box.right - 3);
   }
