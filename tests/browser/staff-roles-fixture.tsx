@@ -245,6 +245,11 @@ const team = {
   rules: { ...rules },
   staleOnce: params.get("stale") === "1",
 };
+if (params.get("teamInvite") === "expired") {
+  const grant = team.people[0].staffGrant!;
+  grant.expired = true;
+  grant.expiresAt = now - DAY;
+}
 registerFixtureFunctions({
   queries: {
     "staffAccess:listPeople": () => team.people,
@@ -252,7 +257,7 @@ registerFixtureFunctions({
     "settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
     "settings:setupChecklist": () => undefined,
     "settings:channelHealth": () => ({
-      channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: params.get("channelHealth") === "states" && index === 3 ? null : now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failed7d: index === 1 ? 2 : 0, failedCapped: false, latestError: null })),
+      channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: params.get("channelHealth") === "states" && index === 3 ? null : now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failed7d: index === 1 ? 2 : params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failedCapped: false, latestError: null })),
       ical: [
         { _id: "ical-1", propertyName: "Tideglass Pool Residence", platform: "airbnb", lastSyncedAt: now - 1_800_000, lastSyncError: null },
         { _id: "ical-2", propertyName: "Sea Fern Villa", platform: "booking", lastSyncedAt: null, lastSyncError: "Calendar link returned 404" },

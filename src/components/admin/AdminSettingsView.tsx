@@ -40,7 +40,7 @@ import { NumberField } from "./marketing/MarketingBits";
 import { TeamSettings } from "./TeamSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
-import { statusMeta, type StatusMeta } from "./status-tones";
+import { statusMeta, TONES, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
 const TABS = ADMIN_SETTINGS_TABS;
@@ -144,11 +144,11 @@ const SECTIONS: Record<
     description: "Timing and stay limits for online villa bookings; staff-created bookings are exempt from stay limits and unpaid expiry.",
     fields: () => [
       { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", unit: "min", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
-      { name: "chatQuoteValidityMinutes", label: "Chat summary valid for", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
-      { name: "preArrivalDaysBefore", label: "Pre-arrival email days before check-in", type: "number", unit: "days", hint: "Includes late bookings up to the day before arrival." },
-      { name: "reviewDaysAfter", label: "Review email days after check-out", type: "number", unit: "days", hint: "Catches up through 7 days after check-out." },
-      { name: "minNights", label: "Minimum nights", type: "number", unit: "nights" },
-      { name: "maxAdvanceDays", label: "Maximum advance booking days", type: "number", unit: "days" },
+      { name: "chatQuoteValidityMinutes", label: "Chat booking quote expires after", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
+      { name: "preArrivalDaysBefore", label: "Pre-arrival email", type: "number", unit: "days before", hint: "Includes late bookings up to the day before arrival." },
+      { name: "reviewDaysAfter", label: "Review request email", type: "number", unit: "days after", hint: "Catches up through 7 days after check-out." },
+      { name: "minNights", label: "Minimum stay", type: "number", unit: "nights" },
+      { name: "maxAdvanceDays", label: "Book up to", type: "number", unit: "days ahead" },
       { name: "sameDayCutoff", label: "Same-day booking cutoff", type: "time", hint: "Resort time (Asia/Bangkok). Leave blank for no cutoff." },
     ],
     values: (s) => Object.fromEntries(Object.entries(s.bookingRules).map(([key, value]) => [key, String(value)])),
@@ -383,7 +383,9 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           />
         ) : field.unit ? (
           <>
-            <NumberField {...common} suffix={field.unit} className={cn("pr-16", error && "border-destructive")} />
+            <div className="sm:max-w-56">
+              <NumberField {...common} suffix={field.unit} className={cn("pr-28", error && "border-destructive")} />
+            </div>
             <span id={`${id}-unit`} className="sr-only">{field.unit === "min" ? "minutes" : field.unit}</span>
           </>
         ) : (
@@ -497,13 +499,13 @@ function ChannelsPanel() {
                       <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.map(channelSetupLabel).join(", ")}</p>
                     ) : null}
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-                      <Stat label="Last event" value={channel.lastEventAt ? formatTime(channel.lastEventAt) : "Never"} />
+                      <Stat label="Last message in" value={channel.lastEventAt ? formatTime(channel.lastEventAt) : "Never"} />
                       <Stat label="Last reply" value={channel.lastRepliedAt ? formatTime(channel.lastRepliedAt) : "Never"} />
-                      <Stat label="Failed (24 h)" value={String(channel.failed24h)} alert={channel.failed24h > 0} />
+                      <Stat label="Failed replies · 24 h" value={String(channel.failed24h)} alert={channel.failed24h > 0} />
                       <Stat
-                        label="Failed (7 d)"
+                        label="Failed replies · 7 d"
                         value={`${channel.failed7d}${channel.failedCapped ? "+" : ""}`}
-                        alert={channel.failed7d > 0}
+                        warning={channel.failed7d > 0}
                       />
                     </dl>
                     {channel.latestError ? (
@@ -511,6 +513,8 @@ function ChannelsPanel() {
                         <span className="font-semibold text-foreground">Latest error ({formatTime(channel.latestError.at)}):</span>{" "}
                         {channel.latestError.message}
                       </p>
+                    ) : channel.failed24h > 0 || channel.failed7d > 0 ? (
+                      <p className="mt-3 text-[13px] text-muted-foreground">{channel.failed7d}{channel.failedCapped ? "+" : ""} {channel.failed7d === 1 && !channel.failedCapped ? "reply" : "replies"} failed in the last 7 days</p>
                     ) : null}
                   </li>
                 );
@@ -557,11 +561,11 @@ function Panel({ title, description, children, grouped = false }: { title: strin
   );
 }
 
-function Stat({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
+function Stat({ label, value, alert, warning }: { label: string; value: string; alert?: boolean; warning?: boolean }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("font-medium", alert ? "text-destructive" : "text-foreground")}>{value}</dd>
+      <dd className={cn("font-medium", alert ? "text-destructive" : warning ? TONES.warning.text : "text-foreground")}>{value}</dd>
     </div>
   );
 }

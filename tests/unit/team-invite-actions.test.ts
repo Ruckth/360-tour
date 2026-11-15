@@ -104,9 +104,9 @@ it("asks before removing either role, and leaves the other alone", async () => {
 it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
   await render();
   expect(buttonsIn(row(pending.email))).toEqual(["Change roles for Lek", "More for Lek"]);
-  expect(buttonsIn(row(expired.email))).toEqual(["Renew", "Change roles for May"]);
+  expect(buttonsIn(row(expired.email))).toEqual(["Change roles for May", "Renew invitation for May"]);
   expect(buttonsIn(row(active.email))).toEqual(["Change roles for Mint"]);
-  await act(async () => [...row(expired.email).querySelectorAll("button")][0].click());
+  await act(async () => row(expired.email).querySelector<HTMLButtonElement>('button[aria-label="Renew invitation for May"]')!.click());
   expect(mocks.calls).toEqual([["staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for May.");
 });
