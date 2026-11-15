@@ -25,6 +25,6 @@ Taste calls that fresh graders reversed between rounds. They are settled; grader
 | Refund methods on phone | One five-option subtle track (`text-[13px]` on phone). | Graders alternately asked for one track and a 3-column grid. |
 | "Split" in the payment track | Inside the strong track as its fifth option. | Graders alternately asked inside and outside. |
 | Phone order header | One row: title truncates, the decorative receipt glyph is hidden on phone, Coupon keeps its icon **and** visible "Coupon" text, then ⋯ and ✕ in the corner. | r5 asked for a visible Coupon label, r5 grades then flagged the resulting wrap; this keeps both. |
-| Phone chat header | Two rows. Row 1: Back · guest name · ⓘ · ⋯. Row 2: status badge + channel · property (truncates), with "No reply needed" (visible text, `flex-none`) at its right end. | r5 asked for a visible label, r5 grades flagged the third row; this keeps the label in two rows. |
+| Phone chat header | Two rows. Row 1: Back · guest name · ⓘ · ⋯. Row 2: status badge (+ the "AI paused"/"AI replying" chip when it applies) + channel · property (truncates, always present), with "No reply needed" (visible text, `flex-none`) at its right end. | r5 asked for a visible label, r5 grades flagged the third row; this keeps the label in two rows. |
 | Missing information property (phone) | Wraps onto its own line; never truncates. | Graders alternately asked to truncate and to wrap. |
 | Refund form context line | "Order #… · service" stays visible inside the open refund form. | Locked in r4; r5 asked to hide it again. |

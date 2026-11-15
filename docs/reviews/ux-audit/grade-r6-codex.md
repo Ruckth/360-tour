@@ -87,3 +87,7 @@ These are the 70 individual PNGs opened; all are under `docs/screenshots/audit-r
 - `extra-{stay,appointment}-sheet-{phone,ipad}.png`, `r6-{stay,appointment}-sheet-desktop.png` (6).
 
 Remaining sub-9 row: **Chats / Consistency — 8: paused/replying AI states replace the channel/property metadata required by the locked phone header.**
+
+## Follow-up (after this grade)
+
+R6-1 fixed in the next commit: on phone the AI paused / AI replying chip now sits beside the always-present channel · property text (truncates), so the locked row-2 content is kept. `inbox-layout.spec.ts` asserts both on phone.
