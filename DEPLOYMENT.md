@@ -21,7 +21,7 @@ Use these settings in the Vercel project:
 | Build command | `pnpm vercel-build` |
 | Output directory | Leave unset |
 
-`pnpm vercel-build` runs the guarded [Phase 3f build workflow](docs/architecture/phase3f-operations.md). Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'pnpm build'` path with an explicit production-key guard and never seeds.
+`pnpm vercel-build` runs `pnpm typecheck` before the guarded [Phase 3f build workflow](docs/architecture/phase3f-operations.md). Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'pnpm build'` path with an explicit production-key guard and never seeds.
 
 Ordering matters: installed Convex 1.34.1 runs `--cmd` **before** its backend push, and `--preview-run` afterward. The previous combined command could cache an empty catalog on a fresh Preview; simply adding `--preview-run` does not fix that order. Root owns Preview key/default configuration and actual live acceptance.
 
@@ -117,6 +117,7 @@ pnpm exec convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
 `pnpm seed` uses this same canonical internal function with the default scenario. There is no `seed:seedStaffServices` endpoint; do not try to add fixtures to an existing deployment. Preview initialization may use the following **only for a fresh empty Preview**; running it again against populated data refuses rather than upgrading it:
 
 ```sh
+pnpm typecheck
 npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run maintenance/seed:seedAll
 ```
 
