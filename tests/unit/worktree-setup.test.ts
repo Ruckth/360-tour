@@ -31,11 +31,11 @@ describe('worktree setup', () => {
     const source = await temp(), worktree = await temp(), messages: string[] = [];
     const log = (message: string) => { messages.push(message); };
     await copyEnvFiles(source, worktree, log);
-    expect(messages).toHaveLength(2);
-    expect(messages[0]).toContain(path.join(source, '.env.dev.local'));
-    for (const name of ['.env.dev.local', '.env.e2e.local']) await fs.writeFile(path.join(source, name), 'private-fixture', { mode: 0o644 });
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toContain(path.join(source, '.env.local'));
+    for (const name of ['.env.local', '.env.dev.local', '.env.e2e.local']) await fs.writeFile(path.join(source, name), 'private-fixture', { mode: 0o644 });
     await copyEnvFiles(source, worktree, log);
-    for (const name of ['.env.dev.local', '.env.e2e.local']) {
+    for (const name of ['.env.local', '.env.dev.local', '.env.e2e.local']) {
       expect(await fs.readFile(path.join(worktree, name), 'utf8')).toBe('private-fixture');
       expect((await fs.stat(path.join(worktree, name))).mode & 0o777).toBe(0o600);
       await fs.writeFile(path.join(worktree, name), 'retained');

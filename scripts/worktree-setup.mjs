@@ -25,7 +25,7 @@ export async function lockfilesMatch(main, root) {
  * @param {string} sourceDir @param {string} root @param {(message: string) => void} [log]
  */
 export async function copyEnvFiles(sourceDir, root, log = console.log) {
-  for (const name of ['.env.dev.local', '.env.e2e.local']) {
+  for (const name of ['.env.local', '.env.dev.local', '.env.e2e.local']) {
     const destination = path.join(root, name), source = path.join(sourceDir, name);
     if (await exists(destination)) continue;
     let contents;

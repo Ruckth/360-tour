@@ -22,5 +22,5 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md) before changing application code. It d
 
 ## New worktrees
 
-- Run `pnpm worktree:setup` (T3 runs it as the worktree setup script). It clones dependencies, copies `.env.dev.local` / `.env.e2e.local` from `~/.config/360-tour/` (mode 600) and assigns this checkout its own dev and booking-UI ports.
+- Run `pnpm worktree:setup` (T3 runs it as the worktree setup script). It clones dependencies, copies `.env.local` (frontend keys only, no `CONVEX_DEPLOYMENT`), `.env.dev.local` and `.env.e2e.local` from `~/.config/360-tour/` (mode 600) and assigns this checkout its own dev and booking-UI ports.
 - `pnpm dev:convex` and `pnpm seed` refuse unless `ALLOW_CLOUD_DEV=1`. The vendored Convex skills in `.agents/skills/` say to run `npx convex dev`; here use `pnpm dev`.
