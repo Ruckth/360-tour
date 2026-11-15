@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { openDesk } from "./helpers/desk-taps";
 
-test.use({ hasTouch: true, isMobile: true });
+// The desk fixture models Bangkok operating hours, independent of the runner's timezone.
+test.use({ hasTouch: true, isMobile: true, timezoneId: "Asia/Bangkok" });
 
 for (const width of [390, 1180]) {
   test(`${width}px: chat status is singular and the composer controls align`, async ({ page }) => {

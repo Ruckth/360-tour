@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { openDesk } from "./helpers/desk-taps";
 
-test.use({ hasTouch: true, isMobile: true, viewport: { width: 1180, height: 820 } });
+// The desk fixture models Bangkok operating hours, independent of the runner's timezone.
+test.use({ hasTouch: true, isMobile: true, timezoneId: "Asia/Bangkok", viewport: { width: 1180, height: 820 } });
 test('busy hotel week retains complete stay bars and tapping an empty day prefills dates', async ({ page }) => {
   await openDesk(page);
   const lena = page.locator('[data-slot=event-calendar-month-bar-overlay] [data-slot=event-calendar-event]').filter({ hasText: 'Lena Fischer' });
