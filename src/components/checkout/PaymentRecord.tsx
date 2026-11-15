@@ -295,7 +295,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
                     onClick={() => setRow(0, { method: pressed ? recorded : method })}
                     className={cn(
                       "inline-flex min-h-10 items-center rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
-                      pressed ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-foreground hover:border-input",
+                      pressed ? "border-foreground bg-foreground/5 text-foreground ring-1 ring-foreground" : "border-border bg-muted text-foreground hover:border-input",
                     )}
                   >
                     {TENDER_LABELS[method].short}

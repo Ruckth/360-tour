@@ -117,8 +117,7 @@ export function OrderCoupon({ view, run, busy, open, onOpenChange: setOpen, hide
         className={cn("mb-2 flex min-h-10 w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-1.5 text-left text-sm font-medium text-muted-foreground transition hover:border-gold/70 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none", SHORT_SCREEN_HIDDEN)}
       >
         <TicketPercent aria-hidden className="size-4 shrink-0 text-gold-text" />
-        <span className="min-w-0 flex-1">Add coupon</span>
-        <span className="shrink-0 text-xs font-normal">Code, QR or link</span>
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-2"><span>Add coupon</span><span className="text-xs font-normal">Code, QR or link</span></span>
         <ChevronRight aria-hidden className="size-4 shrink-0" />
       </button>
     );
