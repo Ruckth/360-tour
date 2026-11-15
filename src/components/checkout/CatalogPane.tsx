@@ -289,7 +289,7 @@ function CustomItemDialog({ onAdd, needsManager, initialName = "", label = "Cust
           </div>
           <div className="grid gap-2">
             <Label htmlFor="custom-item-price">Price (฿, VAT included)</Label>
-            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} autoFocus={Boolean(initialName)} />
+            <Input id="custom-item-price" inputMode="decimal" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} autoFocus={Boolean(initialName)} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => setOpen(false)}>Cancel</Button>

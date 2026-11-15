@@ -6,6 +6,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { staffDateTime } from "@/lib/staff-time";
 import { useCheckoutBackend, type OrderId } from "./backend";
 import { InlineErrorBoundary } from "./ErrorBoundary";
+import { discountText } from "./discount-input";
+import type { LineDiscount } from "convex/shared/orderMath";
 import { HistoryDetails } from "./HistoryDetails";
 
 /** When a history entry happened, as the admin shows every moment (staff-time.ts). */
@@ -109,10 +111,7 @@ export function HistoryValues({
       {row.priceOverride === null ? <p>Price override: Cleared</p> : null}
       {row.discount && typeof row.discount === "object" ? (
         <p>
-          Discount: {String((row.discount as Record<string, unknown>).value)}{" "}
-          {(row.discount as Record<string, unknown>).type === "percent"
-            ? "%"
-            : "THB"}
+          Discount: {(row.discount as LineDiscount).type === "percent" ? discountText(row.discount as LineDiscount) : formatMoney((row.discount as LineDiscount).value)}
         </p>
       ) : null}
       {row.priceOverride && typeof row.priceOverride === "object" ? (

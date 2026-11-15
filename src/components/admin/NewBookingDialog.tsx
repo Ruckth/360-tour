@@ -7,6 +7,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { normalizeCouponCode, type OfferResult } from "convex/shared/offers";
 import { calculateDirectQuote } from "convex/shared/pricing";
+import { basisPointsToPercent } from "convex/shared/money";
 import { nightsBetweenIso } from "@/lib/booking/dates";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { DeskPhoneCountrySelect } from "./DeskPhoneCountrySelect";
@@ -385,7 +386,7 @@ export function NewBookingDialog({
                 <Label id="nb-custom-label" htmlFor="nb-custom">Custom price</Label>
                 <button id="nb-custom" type="button" role="switch" aria-labelledby="nb-custom-label" aria-checked={custom} disabled={saving} onClick={() => setCustom(!custom)} className="flex h-11 shrink-0 items-center justify-between gap-3 rounded-md border border-input bg-card px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
                   <span className="grid min-w-0 gap-0.5 text-left font-normal">
-                    {!custom && property && dates.checkIn && dates.checkOut && !conflicts ? <span className="font-sans text-xs tabular-nums text-muted-foreground">{formatMoney(property.pricePerNight, property.currency)}/night{property.directDiscountPercent ? ` · direct −${property.directDiscountPercent}%` : ""}</span> : null}
+                    {!custom && property && dates.checkIn && dates.checkOut && !conflicts ? <span className="font-sans text-xs tabular-nums text-muted-foreground">{formatMoney(property.pricePerNight, property.currency)}/night{property.directDiscountPercent ? ` · direct −${basisPointsToPercent(property.directDiscountPercent)}%` : ""}</span> : null}
                   </span>
                   <span aria-hidden className={`flex h-6 w-10 shrink-0 items-center rounded-full p-0.5 ${custom ? "bg-foreground justify-end" : "bg-muted-foreground/70 justify-start"}`}><span className="size-5 rounded-full bg-background shadow-sm" /></span>
                 </button>

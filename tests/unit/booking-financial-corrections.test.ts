@@ -296,6 +296,18 @@ describe("cancel and reopen", () => {
     }));
   });
 
+  it("prefills the cancellation refund in baht and refuses more than was paid", async () => {
+    await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
+    await click(button("Record a refund"));
+    expect((document.getElementById("cancel-refund-amount") as HTMLInputElement).value).toBe("25500");
+    await type("cancel-refund-reason", "Full refund");
+    await type("cancel-refund-amount", "25501");
+    expect(button("Cancel & record refund")?.disabled).toBe(true);
+    await type("cancel-refund-amount", "25500");
+    await click(button("Cancel & record refund"));
+    expect(mutations.cancelStay).toHaveBeenCalledWith(expect.objectContaining({ refund: expect.objectContaining({ amount: 2550000 }) }));
+  });
+
   it("selects a cancellation refund source and freezes it after a lost response", async () => {
     mutations.cancelStay.mockRejectedValueOnce(new Error("Response lost")).mockResolvedValue(null);
     await render(createElement(CancelStayDialog, { booking: paidFuture, onClose: vi.fn() }));
