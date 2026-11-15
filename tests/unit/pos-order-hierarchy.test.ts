@@ -1,11 +1,12 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, useState, type ComponentProps } from "react";
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { OrdersBrowser } from "@/components/checkout/OrderStrip";
 
 /*
@@ -54,10 +55,10 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 it("lists items before their history and names the customer once beside the catalog, but keeps it in the phone sheet", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   await showCheckout(backend, saved);
   expect(historyDetails(panel())?.open).toBe(false);
-  await run(backend.useActions().addItem({ orderId: saved, item: { kind: "extra", name: "Recorded item", price: 10 } }));
+  await run(backend.useActions().addItem({ orderId: saved, item: { kind: "extra", name: "Recorded item", price: 1000 } }));
   const customer = read.view!.customer!.name;
   const items = panel().querySelector("ul")!;
   expect(items.textContent).toContain("Foot spa 45");
@@ -77,10 +78,10 @@ it("lists items before their history and names the customer once beside the cata
 });
 
 it("keeps every existing line edit, No booking, and Clear order behind its confirmation", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const { orderId } = await run(actions.addItem({ item: { kind: "service", serviceId: "fxsvc000001" as Id<"services"> } }));
-  await run(actions.addItem({ orderId, item: { kind: "extra", name: "Tea", price: 100 } }));
+  await run(actions.addItem({ orderId, item: { kind: "extra", name: "Tea", price: 10000 } }));
   await showCheckout(backend, orderId);
   expect(document.body.textContent).not.toContain("No booking");
   const massage = read.view!.lines[0];
@@ -108,7 +109,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
   // Percent discount, typed as one value, then removal.
   await type(row(massage.name)!.querySelector<HTMLInputElement>('input[aria-label="Discount"]'), "10%");
   await press([...row(massage.name)!.querySelectorAll("button")].find(b => b.textContent?.startsWith("Apply 10% ("))); await tick();
-  expect(line(massage.name)!.discount).toEqual({ type: "percent", value: 10 });
+  expect(line(massage.name)!.discount).toEqual({ type: "percent", value: 1000 });
   expect(line(massage.name)!.net).toBe(Math.round(listPrice * 0.9 * 100) / 100);
   await press(within(row(massage.name)!, "Remove")); await tick();
   expect(line(massage.name)!.discount).toBeUndefined();
@@ -156,7 +157,7 @@ it("keeps every existing line edit, No booking, and Clear order behind its confi
 });
 
 it("lists unpaid orders without a Discard button and offers Restore… beside each discarded row, reviewed first", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const restore = vi.spyOn(actions, "restoreOrder");
   await act(async () => root.render(provide(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }))));
@@ -187,13 +188,13 @@ it("lists unpaid orders without a Discard button and offers Restore… beside ea
 });
 
 it('hides History on an untouched empty order and subscribes only when its first recorded change is expanded', async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const history = vi.spyOn(backend, 'useOrderHistory');
   const { orderId } = await run(backend.useActions().createOrder({}));
   await showCheckout(backend, orderId);
   expect(historyDetails(panel())).toBeUndefined();
   expect(history).not.toHaveBeenCalled();
-  await run(backend.useActions().addItem({ orderId, item: { kind: 'extra', name: 'First tea', price: 50 } }));
+  await run(backend.useActions().addItem({ orderId, item: { kind: 'extra', name: 'First tea', price: 5000 } }));
   const details = historyDetails(panel())!;
   expect(details.open).toBe(false);
   expect(history).not.toHaveBeenCalled();

@@ -27,8 +27,8 @@ export function DashboardScreen() {
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<ReportState>({ status: "loading" });
   const [stay, setStay] = useState<Id<"bookings"> | null>(null);
-  const saveSpend = useMutation(api.marketingReport.saveSpend);
-  const properties = useQuery(api.properties.adminList, access.role === "admin" && stay ? {} : "skip");
+  const saveSpend = useMutation(api.marketing.report.saveSpend);
+  const properties = useQuery(api.catalog.properties.adminList, access.role === "admin" && stay ? {} : "skip");
 
   // A preset follows the calendar: when the Bangkok day changes, its dates move on and the report is read again.
   const preset = request.range.preset;
@@ -38,7 +38,7 @@ export function DashboardScreen() {
   useEffect(() => {
     let live = true;
     setState((current) => (current.status === "ready" && current.report.from === from && current.report.to === to && current.report.basis === basis ? { status: "ready", report: current.report, refreshing: true } : { status: "loading" }));
-    convex.query(api.marketingReport.getReport, { from, to, basis }).then(
+    convex.query(api.marketing.report.getReport, { from, to, basis }).then(
       (report) => live && setState({ status: "ready", report }),
       (error: unknown) => {
         if (!live) return;

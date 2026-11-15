@@ -1,5 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test, type Page } from "./fixtures";
 
 /**
  * Reduced motion on the home hero: a still first poster — no video source / mp4 request, no
@@ -37,9 +36,6 @@ async function expectStillPoster(page: Page) {
   expect(motion.videosPlaying).toBe(false);
 }
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 test("reduced motion from the start: still first poster and no video for over 7s", async ({ page }) => {
   const videoRequests = trackVideoRequests(page);

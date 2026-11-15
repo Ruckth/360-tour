@@ -1,4 +1,7 @@
 "use client";
+import { satangToBaht } from "convex/shared/money";
+import { parseMoneyInput } from "@/lib/money-input";
+
 
 import { staffDateTime } from "@/lib/staff-time";
 import { Disclosure } from "@/components/ui/disclosure";
@@ -7,7 +10,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { MANUAL_PAYMENT_METHODS, REFUND_METHODS } from "convex/lib/financeValidators";
+import { MANUAL_PAYMENT_METHODS, REFUND_METHODS } from "convex/shared/financeValidators";
 import { Link } from "@/i18n/navigation";
 import { receiptPath } from "@/components/checkout/checkout-source";
 import { ChangeConfirmDialog } from "./ChangeConfirmDialog";
@@ -23,23 +26,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type Appointment = Doc<"serviceAppointments">;
-type Finance = FunctionReturnType<typeof api.adminServices.getAppointmentFinancials>;
-type Dialog = { kind: "pay" } | { kind: "refund"; paymentId?: Id<"appointmentPayments">; billId?: Id<"bills">; max: number } | { kind: "amend" | "cancel"; payment: Doc<"appointmentPayments"> } | { kind: "legacyCancel"; legacyChangeId: Id<"appointmentChanges"> };
+type Appointment = Doc<"appointments">;
+type Finance = FunctionReturnType<typeof api.services.admin.getAppointmentFinancials>;
+type Dialog = { kind: "pay" } | { kind: "refund"; paymentId?: Id<"appointmentPayments">; orderId?: Id<"orders">; max: number } | { kind: "amend" | "cancel"; payment: Doc<"appointmentPayments"> };
 
 export function AppointmentFinancials({ appointment }: { appointment: Appointment }) {
-  const data = useQuery(api.adminServices.getAppointmentFinancials, { appointmentId: appointment._id });
+  const data = useQuery(api.services.admin.getAppointmentFinancials, { appointmentId: appointment._id });
   const [dialog, setDialog] = useState<Dialog | null>(null);
   if (!data) return <p className="text-sm text-muted-foreground">Loading payment records…</p>;
   const money = (n: number) => formatMoney(n, appointment.currency);
-  const records = data.orders.length + data.payments.length + data.refunds.length + (data.unitemised > 0 ? 1 : 0);
+  const records = data.orders.length + data.payments.length + data.refunds.length;
   if (records === 0 && appointment.paymentStatus !== "refunded" && !dialog) return null;
   return <Disclosure className="font-sans tabular-nums" aria-label="Appointment payments" label={`Payments and refunds (${records})`} contentClassName="grid gap-3 pb-2">
     <p className="text-sm">Paid {money(data.money.net)} · Refunded {money(data.money.refunded)}</p>
-    {data.orders.map(order => <div key={order.billId} className="grid gap-2 border-t border-border pt-3 text-sm">
-      <Link className="underline underline-offset-2" href={receiptPath(order.billId)}>Receipt {order.receiptNumber ?? "record"} · {money(order.charged)}</Link>
+    {data.orders.map(order => <div key={order.orderId} className="grid gap-2 border-t border-border pt-3 text-sm">
+      <Link className="underline underline-offset-2" href={receiptPath(order.orderId)}>Receipt {order.receiptNumber ?? "record"} · {money(order.charged)}</Link>
       <p className="text-muted-foreground">Correct the tender or payment date, or void a payment recorded in error, from this receipt.</p>
-      {data.money.net > 0 && order.refundable > 0 ? <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund", billId: order.billId, max: Math.min(order.refundable, data.money.net) })}>Refund from receipt</Button> : null}
+      {data.money.net > 0 && order.refundable > 0 ? <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund", orderId: order.orderId, max: Math.min(order.refundable, data.money.net) })}>Refund from receipt</Button> : null}
     </div>)}
     {data.payments.map(payment => <div key={payment._id} className="grid gap-2 border-t border-border pt-3 text-sm">
       <p>{money(payment.amount)} · {MONEY_METHOD_LABELS[payment.method] ?? payment.method} · {payment.status === "cancelled" ? "Voided: entered by mistake" : "Recorded at the desk"}</p>
@@ -50,7 +53,6 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
         {data.money.net > 0 && payment.amount > payment.refunded ? <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund", paymentId: payment._id, max: Math.min(payment.amount - payment.refunded, data.money.net) })}>Refund from payment</Button> : null}
       </div> : null}
     </div>)}
-    {data.unitemised > 0 && !data.orders.length ? <div className="grid gap-2 text-sm"><p>Earlier payment: {money(data.unitemised)}. Original method, actor and time were not itemised.</p>{data.legacyManualPayment ? <><p>The original change history identifies a manual Mark paid entry. Its original tender and received date remain unknown.</p><Button size="sm" variant="outline" onClick={() => setDialog({ kind: "legacyCancel", legacyChangeId: data.legacyManualPayment!.changeId })}>Entered by mistake…</Button></> : null}{data.money.net > 0 && !data.payments.some(p => p.status === "recorded") ? <Button size="sm" variant="outline" onClick={() => setDialog({ kind: "refund", max: data.money.net })}>Record refund</Button> : null}</div> : null}
     {data.refunds.map(refund => <div key={refund._id} className="border-t border-border pt-3 text-sm">
       <p>Refund {money(refund.amount)} · {MONEY_METHOD_LABELS[refund.method] ?? refund.method}</p><p>{refund.reason}</p>
       <p className="text-muted-foreground">Returned {staffDateTime(refund.effectiveAt)} · Recorded {staffDateTime(refund.recordedAt)} · {staffLabel(refund.recordedBy)}</p>
@@ -66,7 +68,7 @@ export function AppointmentFinancials({ appointment }: { appointment: Appointmen
  */
 /** What is still due on the appointment (0 while loading), and its financial record. */
 export function useAppointmentOwed(appointment: Appointment) {
-  const data = useQuery(api.adminServices.getAppointmentFinancials, { appointmentId: appointment._id });
+  const data = useQuery(api.services.admin.getAppointmentFinancials, { appointmentId: appointment._id });
   const chargeable = appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show";
   return { data, owed: data && chargeable ? data.money.owed : 0 };
 }
@@ -98,26 +100,26 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
   const retry = useRef<(() => Promise<unknown>) | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [attempt, setAttempt] = useState<Parameters<typeof refund>[0] | null>(null);
-  const [amount, setAmount] = useState(dialog.kind === "refund" ? String(dialog.max) : String(appointment.price));
+  const [amount, setAmount] = useState(dialog.kind === "refund" ? String(satangToBaht(dialog.max)) : String(satangToBaht(appointment.price)));
   const [method, setMethod] = useState<string>((dialog.kind === "amend" ? dialog.payment.method : "cash"));
   const [reason, setReason] = useState("");
   const effective = useEffectiveTime(dialog.kind === "amend" ? dialog.payment.effectiveAt : undefined);
   const [opening] = useState({ amount, method });
   const dirty = amount !== opening.amount || method !== opening.method || reason !== "" || effective.edited;
-  const pay = useMutation(api.adminServices.markAppointmentPaid);
-  const refund = useMutation(api.adminServices.refundAppointment);
-  const correct = useMutation(api.adminServices.correctAppointmentPaymentEntry);
+  const pay = useMutation(api.services.commands.markAppointmentPaid.markAppointmentPaid);
+  const refund = useMutation(api.services.commands.refundAppointment.refundAppointment);
+  const correct = useMutation(api.services.commands.correctAppointmentPaymentEntry.correctAppointmentPaymentEntry);
   const isRefund = dialog.kind === "refund";
-  const isCancel = dialog.kind === "cancel" || dialog.kind === "legacyCancel";
+  const isCancel = dialog.kind === "cancel";
   const title = isRefund ? "Record refund" : dialog.kind === "pay" ? "Record a payment taken elsewhere" : isCancel ? "Entered by mistake" : "Correct payment";
-  const confirmLabel = attempt ? "Retry same refund" : isRefund ? `Record refund ${formatMoney(Number(amount) || 0, appointment.currency)}` : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)}` : isCancel ? "Void entry" : "Save correction";
-  const validAmount = !isRefund || (Number.isFinite(Number(amount)) && Number(amount) > 0 && Number(amount) <= dialog.max && Math.round(Number(amount) * 100) / 100 === Number(amount));
+  const confirmLabel = attempt ? "Retry same refund" : isRefund ? `Record refund ${formatMoney(parseMoneyInput(amount) || 0, appointment.currency)}` : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)}` : isCancel ? "Void entry" : "Save correction";
+  const validAmount = !isRefund || (Number.isSafeInteger(parseMoneyInput(amount)) && parseMoneyInput(amount) > 0 && parseMoneyInput(amount) <= dialog.max);
   async function save() {
     if (retry.current) { await retry.current(); return; }
     const common = { appointmentId: original.appointment._id, expectedRevision: original.revision };
     if (dialog.kind === "refund") {
       // Freeze the submitted refund after an ambiguous error. Editing starts a fresh dialog/attempt.
-      const input = attempt ?? { ...common, idempotencyKey: key, amount: Number(amount), currency: appointment.currency, method: method as typeof REFUND_METHODS[number], reason: reason.trim(), effectiveAt: effective.at!, ...(dialog.paymentId ? { paymentId: dialog.paymentId } : {}), ...(dialog.billId ? { billId: dialog.billId } : {}) };
+      const input = attempt ?? { ...common, idempotencyKey: key, amount: parseMoneyInput(amount), currency: appointment.currency, method: method as typeof REFUND_METHODS[number], reason: reason.trim(), effectiveAt: effective.at!, ...(dialog.paymentId ? { paymentId: dialog.paymentId } : {}), ...(dialog.orderId ? { orderId: dialog.orderId } : {}) };
       setAttempt(input);
       retry.current = () => refund(input);
     } else if (dialog.kind === "pay") {
@@ -125,13 +127,13 @@ export function AppointmentMoneyDialog({ appointment, revision, dialog, onClose 
       retry.current = () => pay(input);
     }
     else {
-      const input = { ...common, idempotencyKey: key, ...(dialog.kind === "legacyCancel" ? { legacyChangeId: dialog.legacyChangeId } : { paymentId: dialog.payment._id }), action: isCancel ? "cancel" as const : "amend" as const, reason: reason.trim(), ...(dialog.kind === "amend" ? { ...(method !== "unrecorded" ? { method: method as typeof MANUAL_PAYMENT_METHODS[number] } : {}), effectiveAt: effective.at! } : {}) };
+      const input = { ...common, idempotencyKey: key, paymentId: dialog.payment._id, action: isCancel ? "cancel" as const : "amend" as const, reason: reason.trim(), ...(dialog.kind === "amend" ? { ...(method !== "unrecorded" ? { method: method as typeof MANUAL_PAYMENT_METHODS[number] } : {}), effectiveAt: effective.at! } : {}) };
       retry.current = () => correct(input);
     }
     setSubmitted(true);
     await retry.current!();
   }
-  return <ChangeConfirmDialog dirty={dirty} title={title} description={isRefund ? "Record money already given back to the guest." : isCancel ? "Void this entry; no money was received." : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)} the guest already paid.` : "The amount stays as recorded."} rows={[{ label: "Amount", before: formatMoney(appointment.price, appointment.currency), after: isRefund ? formatMoney(Number(amount) || 0, appointment.currency) : isCancel ? "No money received" : formatMoney(appointment.price, appointment.currency) }]} confirmLabel={confirmLabel} keepLabel={isCancel ? "Keep payment" : null} destructive={isCancel} confirmDisabled={!validAmount || (!isCancel && !effective.at) || (dialog.kind !== "pay" && !reason.trim())} onConfirm={save} onClose={onClose}>
+  return <ChangeConfirmDialog dirty={dirty} title={title} description={isRefund ? "Record money already given back to the guest." : isCancel ? "Void this entry; no money was received." : dialog.kind === "pay" ? `Record ${formatMoney(appointment.price, appointment.currency)} the guest already paid.` : "The amount stays as recorded."} rows={[{ label: "Amount", before: formatMoney(appointment.price, appointment.currency), after: isRefund ? formatMoney(parseMoneyInput(amount) || 0, appointment.currency) : isCancel ? "No money received" : formatMoney(appointment.price, appointment.currency) }]} confirmLabel={confirmLabel} keepLabel={isCancel ? "Keep payment" : null} destructive={isCancel} confirmDisabled={!validAmount || (!isCancel && !effective.at) || (dialog.kind !== "pay" && !reason.trim())} onConfirm={save} onClose={onClose}>
     <fieldset disabled={submitted} className="grid gap-4">
       {isRefund ? <div className="grid gap-2"><Label htmlFor="af-amount">Refund amount (up to {formatMoney(dialog.max, appointment.currency)})</Label><Input id="af-amount" type="number" inputMode="decimal" min="0.01" max={dialog.max} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></div> : null}
       {!isCancel ? <><MethodPicker label={isRefund ? "Refund method" : "Payment method"} methods={isRefund ? REFUND_METHODS : dialog.kind === "amend" && dialog.payment.method === "unrecorded" ? ["unrecorded", ...MANUAL_PAYMENT_METHODS] : MANUAL_PAYMENT_METHODS} value={method} onChange={setMethod} />{dialog.kind === "pay" ? <ReceivedAtField id="af" label="Payment date" value={effective} /> : <EffectiveTimeFields id="af" label={isRefund ? "Refund date" : "Payment date"} value={effective} />}</> : null}

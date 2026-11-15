@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { useTranslations } from "next-intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { SwipeRail } from "@/components/ui/SwipeRail";
@@ -29,6 +31,7 @@ export function VillaSelector({
       <button
         key={item.slug}
         type="button"
+        aria-pressed={selected}
         onClick={() => onSelect(item)}
         disabled={unavailable}
         className={cn(
@@ -57,7 +60,7 @@ export function VillaSelector({
           <p className="text-sm font-semibold text-foreground">{item.name}</p>
           <p className="text-xs text-muted-foreground">
             {currencyPrefix(item.currency)}
-            {item.pricePerNight.toLocaleString()}
+            {satangToBaht(item.pricePerNight).toLocaleString()}
             {villaT("perNight")}
           </p>
         </div>

@@ -1,18 +1,19 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, useEffect, type ComponentProps } from "react";
+import { createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type FinancialRows, type OrderId, type OrderView } from "@/components/checkout/backend";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { historyTime } from "@/components/checkout/OrderHistory";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import type { StaffAccessView } from "@/components/admin/admin-access";
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { pickReceiptAction, receiptActions } from "./receipt-menu";
 
 /*
@@ -61,11 +62,12 @@ const toggle = (title: string, open = true) => act(async () => {
   details.dispatchEvent(new Event("toggle"));
 });
 
-async function paidSale(backend = createFixtureBackend()) {
+async function paidSale(backend?: Awaited<ReturnType<typeof createFixtureBackend>>) {
+  backend ??= await createFixtureBackend();
   const actions = backend.useActions();
-  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 100 } }));
+  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Tea", price: 10000 } }));
   await probe(backend, orderId);
-  await run(actions.settleOrder({ orderId, idempotencyKey: "record-paid-0001", expectedDue: 100, expectedRevision: current.order.revision, effectiveAt: Date.parse("2026-10-01T03:00:00Z"), tenders: [{ method: "card", amount: 100 }] }));
+  await run(actions.settleOrder({ orderId, idempotencyKey: "record-paid-0001", expectedDue: 10000, expectedRevision: current.order.revision, effectiveAt: Date.parse("2026-10-01T03:00:00Z"), tenders: [{ method: "card", amount: 10000 }] }));
   return { backend, actions, orderId };
 }
 
@@ -112,9 +114,9 @@ it("puts Print · New sale and ⋯ above the receipt, outside what prints", asyn
 
 it("keeps void and refund meaning visible outside any collapsed disclosure", async () => {
   const orderId = "fxbill000002" as OrderId;
-  const backend = createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", billId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 50, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
+  const backend = await createFixtureBackend({ recordedRefunds: [{ sourceType: "booking", orderId: orderId, _id: "refund-1" as Id<"bookingRefunds">, bookingId: "fxbkg000001" as Id<"bookings">, amount: 5000, currency: "THB", method: "transfer", reason: "Returned overpayment", effectiveAt: Date.parse("2026-10-30T00:00:00Z"), recordedAt: Date.now(), recordedBy: "cashier@example.com" }] });
   const actions = backend.useActions();
-  await run(actions.settleOrder({ orderId, idempotencyKey: "record-refund-01", expectedDue: 780, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 780 }] }));
+  await run(actions.settleOrder({ orderId, idempotencyKey: "record-refund-01", expectedDue: 78000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 78000 }] }));
   await run(actions.voidOrder({ orderId, reason: "Charged the wrong guest" }));
   await receipt(backend, orderId);
 
@@ -147,7 +149,7 @@ it("states a mistaken-entry void visibly, without calling the entry money receiv
 
 it("has one closed History, and each tab's ledgers load only when first shown", async () => {
   const { backend: base, orderId } = await paidSale();
-  const hooks = ["useOrderHistory", "useCorrectionHistory", "useAuditHistory", "useBookingRefundHistory", "useAppointmentRefundHistory", "useBillRefundHistory"] as const;
+  const hooks = ["useOrderHistory", "useCorrectionHistory", "useAuditHistory", "useBookingRefundHistory", "useAppointmentRefundHistory", "useOrderRefundHistory"] as const;
   const mounted = vi.fn();
   const backend: CheckoutBackend = { ...base };
   for (const hook of hooks) {
@@ -170,7 +172,7 @@ it("has one closed History, and each tab's ledgers load only when first shown", 
   await tab("Payments");
   expect(mounted).toHaveBeenLastCalledWith("useCorrectionHistory");
   await tab("Refunds");
-  expect(mounted).toHaveBeenLastCalledWith("useBillRefundHistory");
+  expect(mounted).toHaveBeenLastCalledWith("useOrderRefundHistory");
   // A plain sale paid for no stay or appointment: their ledgers don't load.
   expect(mounted).toHaveBeenCalledTimes(4);
   // Visited tabs stay mounted.
@@ -215,7 +217,7 @@ it("updates the current record, its count and the open history together; the iss
   await click("Transfer");
   await click("Wrong method picked");
   await click("Save · Transfer ฿100"); await tick();
-  expect(amend.mock.calls[1][0]).toMatchObject({ expectedCorrectionRevision: 1, tenders: [{ method: "transfer", amount: 100 }] });
+  expect(amend.mock.calls[1][0]).toMatchObject({ expectedCorrectionRevision: 1, tenders: [{ method: "transfer", amount: 10000 }] });
   expect(fact("Payments")).toBe("Transfer · ฿100 · corrected");
   expect(fact("Corrections")).toBe("2");
   expect(ledger().querySelectorAll("li")).toHaveLength(2);
@@ -227,7 +229,7 @@ it("updates the current record, its count and the open history together; the iss
 it("keeps line refunds separate from the payment correction count and history, and turns Void… off", async () => {
   const { backend, actions, orderId } = await paidSale();
   await run(actions.refundLine({
-    orderId, lineId: current.lines[0]._id, amount: 2500, currency: "THB", method: "card",
+    orderId, lineId: current.lines[0]._id, amount: 250000, currency: "THB", method: "card",
     reason: "Returned part of the sale", idempotencyKey: "record-line-refund-01",
   }));
   await receipt(backend, orderId);
@@ -256,7 +258,7 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   await click("Retry same refund"); await tick();
   expect(refund).toHaveBeenCalledTimes(2);
   expect(refund.mock.calls[1][0]).toEqual(refund.mock.calls[0][0]);
-  expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10_000, method: "card", reason: "Wrong charge" });
+  expect(refund.mock.calls[0][0]).toMatchObject({ amount: 10000, method: "card", reason: "Wrong charge" });
   expect(document.querySelector("[data-line-note]")?.textContent?.trim()).toBe("Refunded ฿100 · Wrong charge");
 });
 
@@ -298,20 +300,20 @@ it("keeps raw ledger references in closed Technical details while showing human 
   const { backend: base, orderId } = await paidSale();
   const now = Date.now();
   const stayId = "internal-stay-id" as Id<"bookings">;
-  const appointmentId = "internal-appointment-id" as Id<"serviceAppointments">;
+  const appointmentId = "internal-appointment-id" as Id<"appointments">;
   const customerId = "internal-customer-id" as Id<"customers">;
   const stay: FinancialRows["bookingRefunds"] = {
-    _id: "stay-return" as Id<"bookingRefunds">, billId: orderId, bookingId: stayId,
-    amount: 20, currency: "THB", method: "transfer", reason: "Stay return", effectiveAt: now,
-    recordedAt: now, recordedBy: "manager@example.com", netBefore: 100, netAfter: 80, providerRefundId: "internal-provider-id",
+    _id: "stay-return" as Id<"bookingRefunds">, orderId: orderId, bookingId: stayId,
+    amount: 2000, currency: "THB", method: "transfer", reason: "Stay return", effectiveAt: now,
+    recordedAt: now, recordedBy: "manager@example.com", netBefore: 10000, netAfter: 8000, providerRefundId: "internal-provider-id",
   };
   const appointment: FinancialRows["appointmentRefunds"] = {
-    _id: "appointment-return" as Id<"appointmentRefunds">, _creationTime: now, billId: orderId, appointmentId,
-    amount: 10, currency: "THB", method: "cash", reason: "Service return", effectiveAt: now,
+    _id: "appointment-return" as Id<"appointmentRefunds">, _creationTime: now, orderId: orderId, appointmentId,
+    amount: 1000, currency: "THB", method: "cash", reason: "Service return", effectiveAt: now,
     recordedAt: now, recordedBy: "manager@example.com", idempotencyKey: "ledger-test-return", netBefore: 50, netAfter: 40,
   };
   const audit: FinancialRows["audit"] = {
-    _id: "customer-activity" as Id<"billAudit">, _creationTime: now, billId: orderId, at: now,
+    _id: "customer-activity" as Id<"orderAudit">, _creationTime: now, orderId: orderId, at: now,
     kind: "customer_linked", actor: "manager@example.com", note: "Customer selected", customerId,
   };
   const backend: CheckoutBackend = {

@@ -1,6 +1,6 @@
 import type { Id } from "convex/_generated/dataModel";
-import { mergeSiteSettings } from "convex/lib/siteSettings";
-import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/lib/staffTypes";
+import { mergeSiteSettings } from "convex/shared/siteSettings";
+import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/shared/staffTypes";
 import { ConvexError } from "convex/values";
 import { NextIntlClientProvider } from "next-intl";
 import { useState, useSyncExternalStore } from "react";
@@ -14,7 +14,7 @@ import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "./checkout-transport";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import en from "../../messages/en.json";
@@ -48,7 +48,7 @@ const scenario = params.get("scenario") ?? "";
 const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", cashier: "mint@auraliscove.co" } as const;
 const rules: CashierRules = {
   ...DEFAULT_CASHIER_RULES,
-  discountLimitPercent: Number(params.get("limit") ?? DEFAULT_CASHIER_RULES.discountLimitPercent),
+  discountLimitPercent: params.has("limit") ? Number(params.get("limit")) * 100 : DEFAULT_CASHIER_RULES.discountLimitPercent,
   refund: params.get("refund") === "cashier" ? "cashier" : "manager",
 };
 
@@ -70,12 +70,12 @@ const useAccess = () => useSyncExternalStore((fn) => { accessListeners.add(fn); 
 
 // ---------- Checkout ----------
 
-const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) } : rules;
+const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) * 100 } : rules;
 // Refund receipts are rung up by the owner, then handed to whoever the page is for.
 const refundScenario = scenario.startsWith("refund");
-const backend = createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
+const backend = await createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
-let spaLineId: Id<"billLines"> | undefined;
+let spaLineId: Id<"orderLines"> | undefined;
 let spaOrderId: OrderId | undefined;
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
@@ -85,7 +85,7 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
     spaLineId = lineId;
     spaOrderId = orderId;
     if (scenario === "paid") {
-      await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 1200 }] });
+      await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: "browser-staff-paid", tenders: [{ method: "cash", amount: 120000 }] });
       return { orderId, receipt: true };
     }
     return { orderId, receipt: false };
@@ -93,34 +93,34 @@ async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boole
   if (refundScenario) {
     const massage = await actions.addItem({ item: service(1) });
     await actions.addItem({ orderId: massage.orderId, item: service(7) });
-    let due = 1800;
+    let due = 180000;
     if (params.get("attached") === "1") {
-      await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"serviceAppointments"> });
-      due += 1600;
+      await actions.attach({ orderId: massage.orderId, appointmentId: "fxappt000002" as Id<"appointments"> });
+      due += 160000;
     }
     await actions.settleOrder({ orderId: massage.orderId, expectedRevision: params.get("attached") === "1" ? 3 : 2, expectedDue: due, idempotencyKey: "browser-refund-paid", tenders: [{ method: "card", amount: due }] });
     if (scenario === "refund-pending") {
-      backend.setStaff({ role: "cashier", email: EMAILS.cashier, rules: serverRules });
+      await backend.setStaff({ role: "cashier", email: EMAILS.cashier, rules: serverRules });
       await backend.seedApproval({
         orderId: massage.orderId, requesterEmail: EMAILS.cashier, reason: "Shortened treatment",
         payload: { kind: "refund", lineId: massage.lineId, amountSatang: 30000, currency: "THB", method: "card", idempotencyKey: "browser-refund-request", reason: "Shortened treatment" },
       });
     }
-    backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
+    await backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
     return { orderId: massage.orderId, receipt: true };
   }
   if (scenario === "discounted") {
     // Set as a manager-approved discount would leave it (use serverLimit=100 so the fixture accepts it).
     const { orderId, lineId } = await actions.addItem({ item: service(1) });
-    await actions.updateLine({ lineId, discount: { type: "percent", value: 15 } });
+    await actions.updateLine({ lineId, discount: { type: "percent", value: 1500 } });
     return { orderId, receipt: false };
   }
   if (scenario === "pending") {
     // Two cashier requests on two orders: a 15% discount on a ฿1,200 massage, ฿100 off a foot spa.
     const first = await actions.addItem({ item: service(1) });
-    await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 15 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
+    await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 1500 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
     const second = await actions.addItem({ item: service(7) });
-    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 100 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
+    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 10000 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
     return { orderId: first.orderId, receipt: false };
   }
   return { orderId: null, receipt: false };
@@ -157,6 +157,7 @@ declare global {
     fixture: {
       setRole: (next: typeof role) => void;
       refundAttempts: () => ReturnType<typeof backend.refundAttempts>;
+      recordedRefunds: () => ReturnType<typeof backend.recordedRefunds>;
       loseNextRefundResponse: () => void;
       lineId: (name: string) => string | undefined;
       refundFromAnotherTill: (lineName: string, satang: number) => void;
@@ -203,12 +204,13 @@ fixtureActions.settleOrder = async (args) => {
   return settleOrder(args);
 };
 window.fixture = {
-  setRole: (next) => {
-    backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
+  setRole: async (next) => {
+    await backend.setStaff({ role: next, email: EMAILS[next], rules: serverRules });
     access = accessFor(next);
     accessListeners.forEach((fn) => fn());
   },
   refundAttempts: () => backend.refundAttempts(),
+  recordedRefunds: () => backend.recordedRefunds(),
   loseNextRefundResponse: () => backend.loseNextRefundResponse(),
   lineId: (name) => document.querySelector<HTMLElement>(`[data-refund-trigger][aria-label="Refund ${name}"]`)?.dataset.refundTrigger,
   refundFromAnotherTill: (lineName, satang) => backend.refundFromAnotherTill(lineName, satang),
@@ -252,21 +254,21 @@ if (params.get("teamInvite") === "expired") {
 }
 registerFixtureFunctions({
   queries: {
-    "staffAccess:listPeople": () => team.people,
-    "staffAccess:getCashierRules": () => team.rules,
-    "settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
-    "settings:setupChecklist": () => undefined,
-    "settings:channelHealth": () => ({
+    "auth/staffAccess:listPeople": () => team.people,
+    "auth/staffAccess:getCashierRules": () => team.rules,
+    "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
+    "settings/settings:setupChecklist": () => undefined,
+    "settings/settings:channelHealth": () => ({
       channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: params.get("channelHealth") === "states" && index === 3 ? null : now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failed7d: index === 1 ? 2 : params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failedCapped: false, latestError: null })),
       ical: [
         { _id: "ical-1", propertyName: "Tideglass Pool Residence", platform: "airbnb", lastSyncedAt: now - 1_800_000, lastSyncError: null },
         { _id: "ical-2", propertyName: "Sea Fern Villa", platform: "booking", lastSyncedAt: null, lastSyncError: "Calendar link returned 404" },
       ],
     }),
-    "settings:serverConfig": () => ({ RESEND_API_KEY: true, OPENAI_API_KEY: true, STRIPE_SECRET_KEY: false, LINE_CHANNEL_SECRET: true }),
+    "settings/settings:serverConfig": () => ({ RESEND_API_KEY: true, OPENAI_API_KEY: true, STRIPE_SECRET_KEY: false, LINE_CHANNEL_SECRET: true }),
   },
   mutations: {
-    "staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
+    "auth/staffAccess:setGrant": ({ email, role: next }: { email: string; role: "manager" | "cashier" | null }) => {
       const current = team.people.find((person) => person.email === email);
       if (next === null) {
         team.people = team.people.filter((person) => person.email !== email || person.marketingGrant).map((person) => (person.email === email ? { ...person, role: null, staffGrant: null } : person));
@@ -278,7 +280,7 @@ registerFixtureFunctions({
         : [...team.people, { email, role: next, staffGrant: grant, marketingGrant: null }].sort((a, b) => a.email.localeCompare(b.email));
       return grant.id;
     },
-    "marketingAccess:setGrant": ({ email, role: next }: { email: string; role: MarketingGrant["role"] | null }) => {
+    "marketing/access:setGrant": ({ email, role: next }: { email: string; role: MarketingGrant["role"] | null }) => {
       const known = team.people.some((person) => person.email === email);
       const fresh: MarketingGrant | null = next ? { id: `mkt-${email}`, role: next, claimed: false, expiresAt: Date.now() + 14 * DAY, expired: false, updatedAt: Date.now() } : null;
       team.people = known
@@ -288,16 +290,16 @@ registerFixtureFunctions({
         : [...team.people, ...(fresh ? [{ email, role: null, staffGrant: null, marketingGrant: fresh }] : [])].sort((a, b) => a.email.localeCompare(b.email));
       return null;
     },
-    "staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
+    "auth/staffAccess:updateInvitation": ({ grantId, action }: { grantId: string; action: "resend" | "expire" }) => {
       const expiresAt = action === "resend" ? Date.now() + 14 * DAY : Date.now();
       team.people = team.people.map((person) => (person.staffGrant?.id === grantId ? { ...person, staffGrant: { ...person.staffGrant, expiresAt, expired: action === "expire" } } : person));
       return { expiresAt };
     },
-    "staffAccess:updateCashierRules": ({ expectedRevision, ...next }: CashierRules & { expectedRevision: number }) => {
+    "settings/cashierRules:updateCashierRules": ({ expectedRevision, ...next }: CashierRules & { expectedRevision: number }) => {
       if (team.staleOnce) {
         // Another owner saved a moment earlier.
         team.staleOnce = false;
-        team.rules = { ...team.rules, discountLimitPercent: 12, revision: team.rules.revision + 1 };
+        team.rules = { ...team.rules, discountLimitPercent: 1200, revision: team.rules.revision + 1 };
         notifyFixtureStore();
       }
       if (expectedRevision !== team.rules.revision) throw new ConvexError({ code: "STALE_RULES", message: "Cashier rules changed. Reload and try again." });

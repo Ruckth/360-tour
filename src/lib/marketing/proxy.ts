@@ -1,4 +1,4 @@
-import { validateMarketingSlug } from "../../../convex/lib/marketingSlugs";
+import { validateMarketingSlug } from "../../../convex/shared/marketingSlugs";
 
 /** Only bare short links are resolved, before next-intl sees the request. */
 export function marketingSlugForPath(pathname: string): string | null {

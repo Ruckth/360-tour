@@ -1,12 +1,13 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
-import { act, createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { orderTime, receiptText } from "@/components/checkout/checkout-ui";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import type { Id } from "convex/_generated/dataModel";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 
@@ -50,11 +51,11 @@ it("runs on a device whose zone is not Bangkok", () => {
 it("prints the receipt, its share text and the void note in Bangkok time", async () => {
   // 05:30 on 2 Nov in Bangkok is still 1 Nov on the device.
   vi.setSystemTime(new Date("2026-11-01T22:30:00Z"));
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
-  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Massage", price: 1200 } }));
+  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Massage", price: 120000 } }));
   await show(backend, createElement(Probe, { backend, orderId }));
-  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 1200, idempotencyKey: "tz-receipt-0001", tenders: [{ method: "cash", amount: 1200 }] }));
+  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 120000, idempotencyKey: "tz-receipt-0001", tenders: [{ method: "cash", amount: 120000 }] }));
 
   await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
   expect(document.querySelector('[aria-label="Receipt"]')!.textContent).toContain("Issued 2 Nov 2026, 05:30");
@@ -76,7 +77,7 @@ it("lists today's orders by the Bangkok day, with the date on other days", () =>
 
 it("keeps coupon savings and Bangkok issue time together on the receipt and shared text", async () => {
   vi.setSystemTime(new Date("2026-11-01T22:30:00Z"));
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const { orderId } = await run(actions.addItem({ item: { kind: "service", serviceId: "fxsvc000001" as Id<"services"> } }));
   await run(actions.addItem({ orderId, item: { kind: "service", serviceId: "fxsvc000007" as Id<"services"> } }));

@@ -74,11 +74,6 @@ export const STATUS_LABELS = {
     archived: "Archived",
     ai_paused: "AI paused",
   },
-  answer: {
-    draft: "Draft",
-    approved: "Approved",
-    archived: "Archived",
-  },
   businessFact: {
     draft: "Draft",
     approved: "Approved",
@@ -116,11 +111,11 @@ const integerMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, 
 const decimalMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
- * `formatMoney(12000, "THB")` → "฿12,000"; amounts with satang show both decimals ("฿99.50").
+ * `formatMoney(1200000, "THB")` → "฿12,000"; amounts with satang show both decimals ("฿99.50").
  * Unknown currencies read "SGD 12,000".
  */
 export function formatMoney(amount: number, currency = "THB") {
-  const cents = Math.round(Math.abs(amount) * 100);
+  const cents = Math.abs(amount);
   const digits = (cents % 100 ? decimalMoney : integerMoney).format(cents / 100);
   const symbol = CURRENCY_SYMBOLS[currency];
   const sign = amount < 0 && cents > 0 ? "-" : "";

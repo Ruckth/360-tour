@@ -1,4 +1,8 @@
 "use client";
+import { CloseNothingDue } from "./CloseNothingDue";
+import { satangToBaht } from "convex/shared/money";
+import { parseMoneyInput } from "@/lib/money-input";
+
 
 import { ArrowLeft, ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -24,8 +28,8 @@ import {
 } from "@/lib/staff-bookings";
 import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, round2, type BillTotals, type TenderMethod } from "convex/lib/billMath";
-import type { ApprovalPayload } from "convex/lib/staffTypes";
+import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/shared/orderMath";
+import type { ApprovalPayload } from "convex/shared/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
 import { newAttemptKey, useCheckoutBackend, type ApprovalRequest, type Catalog, type CheckoutActions, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
@@ -45,16 +49,12 @@ import type { Run } from "./useOrderWrites";
 type Ask = { what: string; payload: ApprovalPayload; reason?: string };
 
 const EMPTY_LINES: OrderLine[] = [];
-const EMPTY_TOTALS: BillTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
+const EMPTY_TOTALS: OrderTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
-/**
- * The date and time a service row's editor shows, in resort time (Bangkok). A legacy row with a
- * start shows its date and time, so editing one part keeps the other; a legacy "now" row and an
- * unscheduled row show both blank. Nothing is filled in from the clock.
- */
-export function serviceScheduleValue(line: Pick<OrderLine, "schedule" | "startAt">): { date: string; time: string } {
+/** Optional schedule fields remain blank until staff chooses them. */
+export function serviceScheduleValue(line: Pick<OrderLine, "schedule">): { date: string; time: string } {
   if (line.schedule) return { date: line.schedule.date ?? "", time: line.schedule.time ?? "" };
-  return line.startAt !== undefined ? { date: resortIsoDate(line.startAt), time: resortTime24(line.startAt) } : { date: "", time: "" };
+  return { date: "", time: "" };
 }
 
 /** A legacy row's start: "14:00" today, "Mon 26 Oct, 14:00" on another day this year, with the year otherwise. */
@@ -149,7 +149,7 @@ export function OrderPanel({
   // A request on a line shows on that line; any other (a custom item, a void) above the tenders.
   const shown = shownRequest(approvals, now);
   const shownLine = shown && lines.some((line) => line._id === shown.lineId) ? shown.lineId : null;
-  const staffDiscount = round2(totals.discount - totals.coupon);
+  const staffDiscount = roundMoney(totals.discount - totals.coupon);
 
   // Content and viewport changes both affect the continuation cue (expanded rows, live writes,
   // keyboard, or rotation). ResizeObserver watches the scroller and its content.
@@ -361,57 +361,6 @@ export function OrderPanel({
  * with no tenders, one attempt key per try, so a retry after a lost answer closes it once. An order
  * with a stay offers the guest's booking confirmation email right beside it (off, as on the pay step).
  */
-function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView; disabled: boolean; onPaid: (orderId: OrderId) => void; onReview: () => void }) {
-  const actions = useCheckoutBackend().useActions();
-  const attempt = useRef<Parameters<CheckoutActions["settleOrder"]>[0] | null>(null);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
-  const withStay = view.sources.some((source) => source.kind === "booking");
-  const [notifyGuest, setNotifyGuest] = useState(false);
-  async function close() {
-    if (pending) return;
-    // The order changed since the last try: a new close is a new attempt.
-    if (attempt.current && attempt.current.expectedRevision !== view.order.revision) attempt.current = null;
-    attempt.current ??= {
-      orderId: view.order._id,
-      idempotencyKey: newAttemptKey(),
-      expectedDue: view.totals.due,
-      expectedRevision: view.order.revision,
-      expectedCustomerRevision: view.customer && "revision" in view.customer ? view.customer.revision : undefined,
-      tenders: [],
-      notifyGuest,
-    };
-    setPending(true);
-    setError("");
-    try {
-      await actions.settleOrder(attempt.current);
-      onPaid(attempt.current.orderId);
-    } catch (err) {
-      setError(errorText(err, "The order didn't close. Try again."));
-      setPending(false);
-    }
-  }
-  return (
-    <>
-      {error ? <p role="alert" className="mb-2 text-sm text-destructive">{error}</p> : null}
-      {withStay ? (
-        <label className="mb-2 flex min-h-11 items-center gap-2 text-sm">
-          <input type="checkbox" checked={notifyGuest} disabled={pending || Boolean(error)} onChange={(e) => setNotifyGuest(e.target.checked)} />
-          Send booking payment confirmation email
-        </label>
-      ) : null}
-      <Button className="h-12 w-full rounded-xl" disabled={disabled || pending} onClick={() => void close()}>
-        {pending ? <Spinner label="Closing order" className="text-current" /> : null}
-        {error ? "Retry close" : "Close order · nothing due"}
-      </Button>
-      {/* Staff entering an earlier sale set when it happened on the payment step. */}
-      <Button variant="link" size="sm" className="mt-1 h-auto w-full p-0 text-xs text-muted-foreground" disabled={disabled || pending} onClick={onReview}>
-        Happened earlier? Set the date
-      </Button>
-    </>
-  );
-}
-
 /** A typed amount that is a number: "" and a lone "." are not. */
 const isAmount = (text: string) => text !== "" && Number.isFinite(Number(text));
 
@@ -460,7 +409,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
       return null;
     }
   });
-  const listPrice = round2(line.unitPrice * line.qty);
+  const listPrice = roundMoney(line.unitPrice * line.qty);
   const issue = line.sourceIssue;
   // Already part of `net`: shown so staff can tell it from a line discount.
   const couponShare = line.couponDiscount ? lineCouponDiscount(line) : 0;
@@ -511,7 +460,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
           what={ask.what}
           onCancel={() => setAsk(null)}
           onSend={async (reason) => {
-            const failed = await send(line.billId, ask.payload, reason);
+            const failed = await send(line.orderId, ask.payload, reason);
             if (!failed) setAsk(null);
             return failed;
           }}
@@ -695,12 +644,12 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   const cashier = access.role === "cashier";
   const send = useSendApproval();
   const [ask, setAsk] = useState<Ask | null>(null);
-  const draftKey = `${line.billId}:${line._id}:price`;
+  const draftKey = `${line.orderId}:${line._id}:price`;
   const [priceOpen, setPriceOpen] = useCheckoutDraftState(`${draftKey}:open`, false);
   const [price, setPrice] = useCheckoutDraftState(draftKey, "");
   const [note, setNote] = useCheckoutDraftState(`${draftKey}:reason`, "");
   const [approvalDirty, setApprovalDirty] = useState(false);
-  const priceDirty = priceOpen && (price !== (line.priceOverride ? String(line.priceOverride.price) : "") || note !== (line.priceOverride?.note ?? ""));
+  const priceDirty = priceOpen && (price !== (line.priceOverride ? String(satangToBaht(line.priceOverride.price)) : "") || note !== (line.priceOverride?.note ?? ""));
   const { confirmDiscard } = useCheckoutDraft(priceDirty || approvalDirty, () => {
     setPriceOpen(false);
     setPrice("");
@@ -726,12 +675,12 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
   });
 
   async function applyPrice() {
-    const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: Number(price), note: note.trim() }, reason: note.trim() };
+    const request: Ask = { what: "custom price", payload: { kind: "customPrice", action: "overrideLinePrice", lineId, price: parseMoneyInput(price), note: note.trim() }, reason: note.trim() };
     if (priceNeedsManager) {
       setAsk(request);
       return;
     }
-    if (await orAsk(() => actions.overrideLinePrice({ lineId, price: Number(price), note }), request)) {
+    if (await orAsk(() => actions.overrideLinePrice({ lineId, price: parseMoneyInput(price), note }), request)) {
       setPriceOpen(false);
       setPrice("");
       setNote("");
@@ -740,7 +689,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
 
   // A changed price can be corrected (price or reason) in place, without restoring it first.
   function editPrice() {
-    setPrice(line.priceOverride ? String(line.priceOverride.price) : "");
+    setPrice(line.priceOverride ? String(satangToBaht(line.priceOverride.price)) : "");
     setNote(line.priceOverride?.note ?? "");
     setPriceOpen(true);
   }
@@ -750,7 +699,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
     const row = editor.current?.closest("li");
     if (row) reveal(row);
   }, []);
-  const unchangedPrice = line.priceOverride !== undefined && Number(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
+  const unchangedPrice = line.priceOverride !== undefined && parseMoneyInput(price) === line.priceOverride.price && note.trim() === line.priceOverride.note;
 
   return (
     <div ref={editor} className="mx-3 mb-3 divide-y divide-border overflow-hidden rounded-xl bg-muted/50 px-3">
@@ -784,7 +733,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
               <div className="grid gap-2">
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`price-${lineId}`} className="sr-only">New unit price</Label>
-                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE))} placeholder={String(line.unitPrice)} autoFocus />
+                  <Input id={`price-${lineId}`} inputMode="decimal" className="h-9 w-28" value={price} onChange={(e) => setPrice(amountInput(e.target.value, MAX_PRICE / 100))} placeholder={String(satangToBaht(line.unitPrice))} autoFocus />
                   <span className="text-xs text-muted-foreground">was {formatMoney(line.unitPrice)}</span>
                 </div>
                 <Textarea aria-label="Reason for the price change" value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} placeholder="Why? (required, kept in the audit log)" className="min-h-16 text-sm" />
@@ -809,7 +758,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
           onDraftChange={setApprovalDirty}
           onCancel={() => { void confirmDiscard().then((discard) => { if (discard) setAsk(null); }); }}
           onSend={async (reason) => {
-            const failed = await send(line.billId, ask.payload, reason);
+            const failed = await send(line.orderId, ask.payload, reason);
             if (!failed) {
               setAsk(null);
               setPriceOpen(false);
@@ -840,7 +789,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
   const cashier = access.role === "cashier";
   const send = useSendApproval();
   const id = useId();
-  const draftKey = `${line.billId}:${line._id}:discount`;
+  const draftKey = `${line.orderId}:${line._id}:discount`;
   const { setDiscountNotice } = useCheckoutDiscountNotice();
   const [text, setText] = useCheckoutDraftState(draftKey, discountText(line.discount));
   const [syncedText, setSyncedText] = useCheckoutDraftState(`${draftKey}:synced`, discountText(line.discount));
@@ -909,7 +858,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
           refused = true;
           setServerAsk(true);
           if (!document.getElementById(`checkout-discount-${lineId}`)) setDiscountNotice(previous => ({
-            orderId: line.billId,
+            orderId: line.orderId,
             lineId,
             discount: discountText(line.discount),
             message: `${previous && previous.lineId !== lineId ? "Latest: " : ""}${discountText(typed)}${typed.type === "amount" ? " baht" : ""} off ${line.name} needs a manager — not applied.`,
@@ -934,7 +883,7 @@ function DiscountField({ line, run, waiting, onSent }: { line: OrderLine; run: R
     lock.current = true;
     setSending(true);
     setError("");
-    const failed = await send(line.billId, { kind: "discount", lineId, discount: typed }, reason.trim());
+    const failed = await send(line.orderId, { kind: "discount", lineId, discount: typed }, reason.trim());
     lock.current = false;
     setSending(false);
     if (failed) setError(failed);

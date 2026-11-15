@@ -9,7 +9,7 @@ import {
   canEditTurnaround,
   canCorrectAppointmentTime,
   turnaroundMinutes,
-} from "convex/lib/appointmentWindow";
+} from "convex/shared/appointmentWindow";
 import { ChevronRight, Pencil, Repeat, X } from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { AppointmentCorrectionDialog } from "@/components/admin/AppointmentCorrectionDialog";
@@ -51,7 +51,7 @@ import { staffDate, staffDateTime } from "@/lib/staff-time";
 
 type Staff = Doc<"staff">;
 type Service = Doc<"services">;
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -100,8 +100,8 @@ export function AppointmentSheet({
   onBookAgain: (appointment: Appointment) => void;
   onClose: () => void;
 }) {
-  const updateStatus = useMutation(api.adminServices.updateAppointmentStatus);
-  const originalReference = useQuery(api.adminServices.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
+  const updateStatus = useMutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus);
+  const originalReference = useQuery(api.services.admin.getAppointmentReference, appointment?.rebookedFromId ? { appointmentId: appointment.rebookedFromId } : "skip");
   const [feePending, setFeePending] = useState(false);
   const [pending, setPending] = useState<StatusAction | null>(null);
   const [editing, setEditing] = useState(false);
@@ -112,11 +112,11 @@ export function AppointmentSheet({
   const [draftDirty, setDraftDirty] = useState(false);
   const { confirmDiscard } = useUnsavedGuard(draftDirty);
   const [stayOpen, setStayOpen] = useState(false);
-  const stay = useQuery(api.adminBookings.getForAdmin, appointment?.bookingId ? { bookingId: appointment.bookingId } : "skip");
+  const stay = useQuery(api.bookings.admin.getForAdmin, appointment?.bookingId ? { bookingId: appointment.bookingId } : "skip");
   const now = useNow();
   // Same read as the money block (one subscription): while a balance is due, Take payment is the
   // one filled button and the next step goes outline.
-  const finance = useQuery(api.adminServices.getAppointmentFinancials, appointment ? { appointmentId: appointment._id } : "skip");
+  const finance = useQuery(api.services.admin.getAppointmentFinancials, appointment ? { appointmentId: appointment._id } : "skip");
   const balanceDue = Boolean(
     appointment && finance && appointment.paymentStatus === "unpaid" && appointment.status !== "cancelled" && appointment.status !== "no_show" && finance.money.owed > 0,
   );
@@ -373,7 +373,7 @@ function AppointmentEditForm({
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const updateDetails = useMutation(api.adminServices.updateAppointmentDetails);
+  const updateDetails = useMutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails);
   const [original] = useState(appointment);
   const contactRequired = original.source !== "admin" || Boolean(original.chatSessionId);
   const revision = appointmentRevision(original);

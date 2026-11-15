@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { useRouter, useSelectedLayoutSegment } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/lib/appointmentWindow";
+import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
 import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
@@ -61,7 +61,7 @@ import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsa
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 type EventData =
   | { kind: "appointment"; appointment: Appointment }
   /** The appointment's turnaround; it moves with the appointment and only its end resizes. */
@@ -207,13 +207,13 @@ function StaffCalendar() {
   const showCancelled = storedCancelled === "yes";
   const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [selectedId, setSelectedId] = useState<Id<"serviceAppointments"> | null>(null);
+  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
   const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
 
-  const data = useQuery(api.adminServices.listSchedule, range);
+  const data = useQuery(api.services.admin.listSchedule, range);
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);

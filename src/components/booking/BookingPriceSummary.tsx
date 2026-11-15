@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { Info, TicketPercent } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
@@ -40,7 +42,7 @@ export function PriceLines({
 }) {
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
-  const money = (amount: number) => `${currencyPrefix(currency)}${amount.toLocaleString()}`;
+  const money = (amount: number) => `${currencyPrefix(currency)}${satangToBaht(amount).toLocaleString()}`;
   return (
     <div className={cn("space-y-1.5", className)}>
       <div className="flex justify-between gap-3">
@@ -99,7 +101,7 @@ export function BookingPriceSummary({
 }) {
   const villaT = useTranslations("Villa");
   const comparison = useOtaComparison(property.slug);
-  const money = (amount: number) => `${currencyPrefix(property.currency)}${amount.toLocaleString()}`;
+  const money = (amount: number) => `${currencyPrefix(property.currency)}${satangToBaht(amount).toLocaleString()}`;
   return (
     <Card className="h-fit min-w-0 p-4 shadow-lg md:p-5">
       <div className="flex gap-3 lg:block">

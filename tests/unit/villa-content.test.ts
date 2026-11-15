@@ -1,3 +1,4 @@
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { describe, expect, it } from "vitest";
 import { properties } from "@/lib/data/properties";
 import { getPublicMessages } from "@/lib/i18n/messages-loader";
@@ -13,12 +14,12 @@ const seededPool = properties.find((property) => property.id === "pool-villa")!;
 
 function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVillaList["villas"][number] {
   return {
-    _id: "p1" as never,
+    _id: "p1" as import("convex/_generated/dataModel").Id<"properties">,
     slug: "pool-villa",
     name: "Tideglass Pool Residence",
     tagline: seededPool.tagline,
     description: seededPool.description,
-    pricePerNight: 9000,
+    pricePerNight: 900000,
     currency: "THB",
     maxGuests: 4,
     bedrooms: 2,
@@ -27,7 +28,7 @@ function dbVilla(overrides: Partial<DbVillaList["villas"][number]> = {}): DbVill
     images: ["/a.webp"],
     amenities: ["Private Pool"],
     tourRoomIds: [],
-    directDiscountPercent: 10,
+    directDiscountPercent: 1000,
     translations: [],
     contentEditedAt: null,
     reviewCount: 0,
@@ -69,17 +70,17 @@ describe("villa copy locale resolution", () => {
   });
 });
 
-describe("villa catalog fallback", () => {
-  it("uses bundled villas when Convex is unavailable or empty", () => {
+describe("backend villa catalog", () => {
+  it("shows no inventory when Convex is unavailable or empty", () => {
     for (const list of [undefined, { hasProperties: false, villas: [] }]) {
       const catalog = catalogEn(list);
-      expect(catalog.source).toBe("static");
-      expect(catalog.villas.map((villa) => villa.id)).toEqual(properties.map((property) => property.id));
+      expect(catalog.source).toBe("db");
+      expect(catalog.villas).toEqual([]);
     }
   });
 
-  it("computes bundled ratings from the reviews shown, not invented totals", () => {
-    const pool = catalogEn(undefined).villas.find((villa) => villa.id === "pool-villa");
+  it("uses only the database review aggregate for public ratings", () => {
+    const pool = catalogEn({hasProperties:true,villas:[dbVilla({reviewCount:6,averageRating:4.83})]}).villas[0];
     expect(pool?.rating?.count).toBe(6);
     expect(pool?.rating?.average).toBeCloseTo(4.83, 2);
   });
@@ -91,7 +92,7 @@ describe("villa catalog fallback", () => {
       { hasProperties: true, villas: [dbVilla({ reviewCount: 2, averageRating: 4.5 }), dbVilla({ slug: "new", name: "New" })] },
     );
     expect(catalog.source).toBe("db");
-    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 9000, directDiscountPercent: 10, rating: { average: 4.5, count: 2 } });
+    expect(catalog.villas[0]).toMatchObject({ id: "pool-villa", pricePerNight: 900000, directDiscountPercent: 1000, rating: { average: 4.5, count: 2 } });
     expect(catalog.villas[1]).toMatchObject({ id: "new", rating: null });
   });
 
@@ -99,4 +100,9 @@ describe("villa catalog fallback", () => {
     expect(summarizeRatings([])).toBeNull();
     expect(summarizeRatings([{ rating: 5 }, { rating: 4 }, { rating: 4 }])).toEqual({ average: 4.33, count: 3 });
   });
+});
+
+it('quotes the actual database catalog using its stored discount', () => {
+  const villa = catalogEn({hasProperties:true,villas:[dbVilla({pricePerNight:850000,directDiscountPercent:1500})]}).villas[0];
+  expect(calculateDirectQuote({ pricePerNight: villa.pricePerNight, directDiscountPercent: villa.directDiscountPercent, currency: villa.currency }, 2)).toMatchObject({ subtotal: 1700000, discountAmount: 255000, directTotal: 1445000 });
 });

@@ -13,7 +13,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { useStoredState } from "@/lib/use-stored-state";
-import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, round2 } from "convex/lib/billMath";
+import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, roundMoney } from "convex/shared/orderMath";
 import { cn } from "@/lib/utils";
 import { OrderApprovalStatus } from "./ApprovalRequest";
 import { useCheckoutBackend, type OrderId } from "./backend";
@@ -104,7 +104,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const canShare = useCanShare();
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
-  const [refunding, setRefunding] = useState<Id<"billLines"> | null>(null);
+  const [refunding, setRefunding] = useState<Id<"orderLines"> | null>(null);
   const [refundDirty, setRefundDirty] = useState(false);
   const [refundBusy, setRefundBusy] = useState(false);
   const [taskDirty, setTaskDirty] = useState(false);
@@ -188,11 +188,11 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const bookings = receiptBookings(view);
   const change = changeDue(payments);
   const coupon = couponLabel(view);
-  const staffDiscount = round2(totals.discount - totals.coupon);
+  const staffDiscount = roundMoney(totals.discount - totals.coupon);
   // POS line refunds, in satang. Past the history limit the totals are lower bounds, so none are shown.
   const truncated = Boolean(view.refundHistoryTruncated);
   const refunded = truncated ? 0 : refundedSatang(view);
-  const net = (Math.round(totals.total * 100) - refunded) / 100;
+  const net = totals.total - refunded;
   const paid = order.status === "paid";
   const waiting = approvals?.some((r) => r.status === "pending") ?? false;
   // A cashier who must ask can't send a second request while one waits.
@@ -211,7 +211,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   }
 
   /** Closes the form. Cancel returns focus to the line's Refund; a finished refund or request shows, focused, under its line. */
-  function closeRefund(lineId: Id<"billLines">, message?: string) {
+  function closeRefund(lineId: Id<"orderLines">, message?: string) {
     flushSync(() => {
       setRefunding(null);
       setRefundDirty(false);

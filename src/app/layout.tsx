@@ -5,7 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "../app.css";
 import { SiteShell } from "@/components/global/SiteShell";
-import { getClerkPublishableKey, isClerkConfigured } from "@/lib/clerk-config";
+import { getClerkPublishableKey, requireClerkConfiguration } from "@/lib/clerk-config";
 import { getLocalizedResort, getPublicMessages } from "@/lib/i18n/server-content";
 import { themeInitScript } from "@/lib/theme";
 import { Providers } from "./providers";
@@ -64,9 +64,10 @@ export default async function RootLayout({
   const convexUrl =
     process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
   const clerkPublishableKey = getClerkPublishableKey();
-  const clerkEnabled = isClerkConfigured();
+  requireClerkConfiguration();
+  if (!convexUrl) throw new Error("NEXT_PUBLIC_CONVEX_URL is required");
   const app = (
-    <Providers convexUrl={convexUrl} clerkEnabled={clerkEnabled}>
+    <Providers convexUrl={convexUrl}>
       <SiteShell>{children}</SiteShell>
     </Providers>
   );
@@ -89,11 +90,7 @@ export default async function RootLayout({
       </head>
       <body>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          {clerkEnabled ? (
-            <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
-          ) : (
-            app
-          )}
+          <ClerkProvider publishableKey={clerkPublishableKey}>{app}</ClerkProvider>
         </NextIntlClientProvider>
       </body>
     </html>

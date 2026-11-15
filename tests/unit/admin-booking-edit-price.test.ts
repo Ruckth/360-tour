@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { bookingEditPrice, couponNote, type BookingEditQuote } from "@/components/admin/booking-edit-price";
 import { errorText } from "@/lib/staff-bookings";
 
-const current = { total: 7200, currency: "THB", promotionCode: "DCNT-F1-20" };
+const current = { total: 720000, currency: "THB", promotionCode: "DCNT-F1-20" };
 const quote = (overrides: Partial<BookingEditQuote> = {}): BookingEditQuote => ({
-  subtotal: 13500,
-  discountAmount: 2700,
-  total: 10800,
+  subtotal: 1350000,
+  discountAmount: 270000,
+  total: 1080000,
   currency: "THB",
-  promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 2700 },
+  promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 270000 },
   couponRemoved: false,
   repriced: true,
   ...overrides,
@@ -20,9 +20,9 @@ describe("edit booking price panel", () => {
     // The audit's case: extending the 7,200 coupon stay to three nights saves 10,800, not 11,475.
     expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote() } })).toEqual({
       kind: "changed",
-      total: 10800,
+      total: 1080000,
       currency: "THB",
-      difference: 3600,
+      difference: 360000,
       note: "Repriced with DCNT-F1-20 (v1)",
     });
   });
@@ -30,27 +30,27 @@ describe("edit booking price panel", () => {
   it("says when the coupon no longer applies", () => {
     const result = bookingEditPrice({
       current,
-      quote: { status: "ready", quote: quote({ promotion: null, couponRemoved: true, total: 11475, discountAmount: 2025 }) },
+      quote: { status: "ready", quote: quote({ promotion: null, couponRemoved: true, total: 1147500, discountAmount: 202500 }) },
     });
-    expect(result).toMatchObject({ kind: "changed", total: 11475, difference: 4275, note: "Coupon DCNT-F1-20 no longer applies — direct rate" });
+    expect(result).toMatchObject({ kind: "changed", total: 1147500, difference: 427500, note: "Coupon DCNT-F1-20 no longer applies — direct rate" });
   });
 
   it("keeps the price for guest-only edits the server doesn't reprice", () => {
-    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ repriced: false, total: 9600 }) } })).toEqual({
+    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ repriced: false, total: 960000 }) } })).toEqual({
       kind: "unchanged",
-      total: 7200,
+      total: 720000,
       currency: "THB",
     });
   });
 
   it("shows the coupon note even when a reprice lands on the same total", () => {
-    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ total: 7200 }) } })).toMatchObject({ kind: "changed", difference: 0 });
+    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ total: 720000 }) } })).toMatchObject({ kind: "changed", difference: 0 });
   });
 
   it("drops the difference when the currency changes", () => {
-    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ currency: "USD", total: 300, promotion: null }) } })).toEqual({
+    expect(bookingEditPrice({ current, quote: { status: "ready", quote: quote({ currency: "USD", total: 30000, promotion: null }) } })).toEqual({
       kind: "changed",
-      total: 300,
+      total: 30000,
       currency: "USD",
       difference: null,
       note: null,
@@ -64,14 +64,14 @@ describe("edit booking price panel", () => {
   });
 
   it("uses the custom price as typed, whatever the quote says", () => {
-    expect(bookingEditPrice({ current, custom: 9000, quote: { status: "loading" } })).toEqual({
+    expect(bookingEditPrice({ current, custom: 900000, quote: { status: "loading" } })).toEqual({
       kind: "changed",
-      total: 9000,
+      total: 900000,
       currency: "THB",
-      difference: 1800,
+      difference: 180000,
       note: null,
     });
-    expect(bookingEditPrice({ current, custom: null, quote: { status: "ready", quote: quote() } })).toEqual({ kind: "unchanged", total: 7200, currency: "THB" });
+    expect(bookingEditPrice({ current, custom: null, quote: { status: "ready", quote: quote() } })).toEqual({ kind: "unchanged", total: 720000, currency: "THB" });
   });
 
   it("names the old code only when it's known", () => {

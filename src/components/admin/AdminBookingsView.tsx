@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { AdminBooking } from "convex/adminBookings";
+import type { AdminBooking } from '../../lib/admin/booking-types';
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { Check, CircleDashed, Clock, Ban, PlusIcon, XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -29,7 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
-import { addDaysIso, nightsBetweenIso, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, nightsBetweenIso } from '@/lib/booking/dates';
+import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
 import { STAFF_CALENDAR_FORMATS, staffDateTime } from "@/lib/staff-time";
 import { Toast, useToast } from "@/components/ui/toast";
@@ -135,11 +136,11 @@ function HotelBookings() {
   // Below `sm` the villa filter moves into ⋯ and search folds to an icon.
   const phone = useIsMobile(640);
 
-  const data = useQuery(api.adminBookings.listForAdmin, range);
-  const profile = useQuery(api.settings.publicProfile, {});
+  const data = useQuery(api.bookings.admin.listForAdmin, range);
+  const profile = useQuery(api.settings.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
-  const today = todayIsoLocal();
+  const today = resortTodayIso();
 
   const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : phone ? "agenda" : "month";
   // A remembered villa that no longer exists falls back to all villas.
@@ -524,8 +525,8 @@ export function MoveBookingDialog({
   onOpenBooking: (bookingId: Id<"bookings">) => void;
 }) {
   const { booking, propertyId, checkIn, checkOut } = move;
-  const editBooking = useMutation(api.adminBookings.editBooking);
-  const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
+  const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
+  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: booking._id });
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -659,7 +660,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
     return () => clearTimeout(id);
   }, [text]);
   const active = query.length >= 2 && text.trim().length >= 2;
-  const results = useQuery(api.adminBookings.searchBookings, active ? { query } : "skip");
+  const results = useQuery(api.bookings.admin.searchBookings, active ? { query } : "skip");
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
   return (
     <AdminCalendarSearch label="Search bookings" placeholder="Guest, phone or code" value={text} onChange={setText} open={searchOpen} onOpenChange={setSearchOpen}>

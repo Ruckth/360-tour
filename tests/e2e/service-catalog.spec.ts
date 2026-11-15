@@ -1,11 +1,7 @@
-import { expect, test } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test } from "./fixtures";
 import en from "../../messages/en.json" with { type: "json" };
 import th from "../../messages/th.json" with { type: "json" };
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 for (const [prefix, messages] of [
   ["", en],
@@ -14,20 +10,14 @@ for (const [prefix, messages] of [
   test(`@smoke service catalog search preserves category and language (${prefix || "en"})`, async ({
     page,
   }) => {
-    test.skip(
-      process.env.E2E_MODE === "integration",
-      "This assertion requires the disconnected demo backend",
-    );
-    await page.goto(`${prefix}/services?category=Spa%20%26%20Wellness`);
+    await page.goto(`${prefix}/services?category=Wellness`);
     await expect(
       page.getByRole("heading", {
         name: messages.ServiceCatalog.title,
         exact: true,
       }),
     ).toBeVisible();
-    await expect(page.getByRole("status")).toContainText(
-      messages.ServiceCatalog.unavailable,
-    );
+    await expect(page.locator("article").first()).toBeVisible();
     await page
       .getByRole("textbox", {
         name: messages.ServiceCatalog.search,
@@ -41,7 +31,7 @@ for (const [prefix, messages] of [
       })
       .click();
     await expect(page).toHaveURL(
-      new RegExp(`${prefix}/services\\?category=Spa.*q=Massage`),
+      new RegExp(`${prefix}/services\\?category=Wellness.*q=Massage`),
     );
     await expect(
       page.getByRole("textbox", {
@@ -53,6 +43,6 @@ for (const [prefix, messages] of [
       .getByRole("link", { name: messages.ServiceCatalog.all, exact: true })
       .click();
     await expect(page).toHaveURL(`${prefix}/services?q=Massage`);
-    await expect(page.locator("article")).toHaveCount(0);
+    await expect(page.locator("article")).toHaveCount(2);
   });
 }

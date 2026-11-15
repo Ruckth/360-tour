@@ -1,10 +1,12 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
@@ -40,8 +42,8 @@ import {
   type RefundMethod,
 } from "./admin-bookings-shared";
 
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
-type Financials = NonNullable<FunctionReturnType<typeof api.adminBookings.bookingFinancials>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
+type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.bookingFinancials>>;
 const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
 type Payment = Financials["payments"][number];
 
@@ -50,8 +52,7 @@ type Dialog =
   | { kind: "pay" }
   | { kind: "refund"; target?: string }
   | { kind: "amend"; payment: Payment }
-  | { kind: "cancelEntry"; payment: Payment }
-  | { kind: "cancelLegacy"; amount: number };
+  | { kind: "cancelEntry"; payment: Payment };
 
 /**
  * The stay's money in the booking sheet: what was received (each payment with how and when),
@@ -81,7 +82,7 @@ export function BookingFinancials({
   villaName?: (id: string) => string;
   children?: ReactNode;
 }) {
-  const data = useQuery(api.adminBookings.bookingFinancials, { bookingId: booking._id });
+  const data = useQuery(api.bookings.admin.bookingFinancials, { bookingId: booking._id });
   const history = (records?: ReactNode) => (
     <Card className="p-4 shadow-none"><BookingHistory bookingId={booking._id} currency={booking.currency} villaName={villaName ?? (() => "Villa")}>
       {records}
@@ -111,7 +112,7 @@ function LoadedBookingFinancials({
   const { money } = data;
   const promotion = bookingPromotion(booking);
   const cancelled = booking.status === "cancelled";
-  const canPay = !cancelled && money.owed > 0 && !money.legacyRefund && booking.paymentStatus !== "failed";
+  const canPay = !cancelled && money.owed > 0 && booking.paymentStatus !== "failed";
   // Wait for canonical financial data before taking the initial shortcut. A blocked
   // shortcut stays on the details; subsequent query updates never reopen the form.
   const [dialog, setDialog] = useState<Dialog | null>(() =>
@@ -122,7 +123,7 @@ function LoadedBookingFinancials({
     setDialog(null);
     if (done) setNotice(done);
   };
-  const chargeable = !cancelled && !money.legacyRefund && booking.paymentStatus !== "failed";
+  const chargeable = !cancelled && booking.paymentStatus !== "failed";
   const spa = useStaySpa(chargeable ? booking : null);
   const spaTotal = spa?.total ?? 0;
   const due = chargeable ? money.owed + spaTotal : 0;
@@ -136,7 +137,7 @@ function LoadedBookingFinancials({
       : money.credit > 0
         ? { label: "Credit", amount: money.credit }
         : { label: "Paid in full", amount: money.net };
-  const recordCount = data.payments.length + data.refunds.length + data.legacyOrders.length;
+  const recordCount = data.payments.length + data.refunds.length;
 
   async function takePayment() {
     if (!spa || opening) return;
@@ -161,18 +162,6 @@ function LoadedBookingFinancials({
             <ul className="grid gap-2">
               {data.payments.map((payment) => (
                 <PaymentRow key={payment._id} payment={payment} refundable={money.refundable > 0} onAction={setDialog} />
-              ))}
-            </ul>
-          ) : null}
-          {data.legacyOrders.length ? (
-            <ul className="grid gap-1 text-sm text-muted-foreground">
-              {data.legacyOrders.map((order) => (
-                <li key={order._id} className="flex flex-wrap items-center justify-between gap-2">
-                  <Link className="underline-offset-2 hover:underline" href={receiptPath(order._id)}>
-                    {order.title}{order.receiptNumber !== undefined ? ` · ${formatReceiptNumber(order.receiptNumber)}` : ""}
-                  </Link>
-                  <span>Took {formatMoney(order.charged, money.currency)} for the stay</span>
-                </li>
               ))}
             </ul>
           ) : null}
@@ -257,19 +246,6 @@ function LoadedBookingFinancials({
         ) : null}
       </Card>
       {notice ? <p role="status" className="text-sm text-muted-foreground">{notice}</p> : null}
-      {money.legacyRefund ? (
-        <p className="text-xs text-muted-foreground">Marked refunded before refund amounts were recorded: the whole payment counts as refunded.</p>
-      ) : null}
-      {data.unitemised > 0 ? (
-        <div className="grid gap-1 text-sm text-muted-foreground">
-          <p>{formatMoney(data.unitemised, money.currency)} was recorded before payments were itemised.</p>
-          {data.legacyManual.cancellable ? (
-            <Button size="sm" variant="ghost" className="justify-self-start" onClick={() => setDialog({ kind: "cancelLegacy", amount: data.legacyManual.cancellable ? data.legacyManual.amount : 0 })}>
-              Entered by mistake…
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
 
       {children}
       {history(records)}
@@ -278,12 +254,12 @@ function LoadedBookingFinancials({
       {dialog?.kind === "linkStripe" ? <LinkStripeRefundDialog booking={booking} refund={dialog.refund} onClose={close} /> : null}
       {dialog?.kind === "refund" ? <RefundDialog booking={booking} data={data} initialTarget={dialog.target} onClose={close} /> : null}
       {dialog?.kind === "amend" ? <AmendPaymentDialog booking={booking} payment={dialog.payment} onClose={close} /> : null}
-      {dialog?.kind === "cancelEntry" || dialog?.kind === "cancelLegacy" ? (
+      {dialog?.kind === "cancelEntry" ? (
         <CancelEntryDialog
           booking={booking}
-          owedAfter={money.owed + (dialog.kind === "cancelEntry" ? dialog.payment.amount : dialog.amount)}
-          amount={dialog.kind === "cancelEntry" ? dialog.payment.amount : dialog.amount}
-          paymentId={dialog.kind === "cancelEntry" ? dialog.payment._id : undefined}
+          owedAfter={money.owed + (dialog.payment.amount)}
+          amount={dialog.payment.amount}
+          paymentId={dialog.payment._id}
           onClose={close}
         />
       ) : null}
@@ -343,7 +319,7 @@ function PaymentRow({ payment, refundable, onAction }: { payment: Payment; refun
 }
 
 function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: BookingDetail; refund: Financials["refunds"][number]; onClose: (done?: string) => void }) {
-  const link = useMutation(api.payments.linkRecordedStripeRefund);
+  const link = useMutation(api.bookings.payments.stripe.linkRecordedStripeRefund);
   const [revision] = useState(booking.revision);
   const [chargeId, setChargeId] = useState("");
   const [refundId, setRefundId] = useState("");
@@ -374,7 +350,7 @@ function LinkStripeRefundDialog({ booking, refund, onClose }: { booking: Booking
 
 /** Records money the guest already paid at the desk; one attempt key and the reviewed revision per open. */
 export function RecordPaymentDialog({ booking, owed, onClose }: { booking: BookingDetail; owed: number; onClose: (done?: string) => void }) {
-  const recordPayment = useMutation(api.adminBookings.recordPayment);
+  const recordPayment = useMutation(api.bookings.commands.recordPayment.recordPayment);
   const [reviewed] = useState(() => ({ revision: booking.revision, owed, key: newAttemptKey("pay") }));
   const [method, setMethod] = useState<DeskPaymentMethod>("cash");
   const [note, setNote] = useState("");
@@ -420,7 +396,7 @@ export function RecordPaymentDialog({ booking, owed, onClose }: { booking: Booki
 }
 
 function RefundDialog({ booking, data, initialTarget, onClose }: { booking: BookingDetail; data: Financials; initialTarget?: string; onClose: (done?: string) => void }) {
-  const recordRefund = useMutation(api.adminBookings.recordRefund);
+  const recordRefund = useMutation(api.bookings.commands.recordRefund.recordRefund);
   const { money } = data;
   const [reviewed] = useState(() => ({ revision: data.revision, key: newAttemptKey("refund") }));
   const [attempt, setAttempt] = useState<Parameters<typeof recordRefund>[0] | null>(null);
@@ -428,7 +404,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
   const [target, setTarget] = useState(initialTarget ?? targets[0]?.value ?? "none");
   const chosen = targets.find((t) => t.value === target);
   const cap = Math.min(money.refundable, chosen?.left ?? money.refundable);
-  const [amountText, setAmountText] = useState(String(cap));
+  const [amountText, setAmountText] = useState(String(satangToBaht(cap)));
   const [method, setMethod] = useState<RefundMethod>(chosen?.stripe ? "stripe" : "cash");
   const [reason, setReason] = useState("");
   const when = useEffectiveTime();
@@ -491,7 +467,7 @@ function RefundDialog({ booking, data, initialTarget, onClose }: { booking: Book
 }
 
 function AmendPaymentDialog({ booking, payment, onClose }: { booking: BookingDetail; payment: Payment; onClose: (done?: string) => void }) {
-  const amendPayment = useMutation(api.adminBookings.amendPayment);
+  const amendPayment = useMutation(api.bookings.commands.amendPayment.amendPayment);
   const [revision] = useState(booking.revision);
   const initialMethod = (DESK_PAYMENT_METHODS as readonly string[]).includes(payment.method) ? (payment.method as DeskPaymentMethod) : "cash";
   const [method, setMethod] = useState<DeskPaymentMethod>(initialMethod);
@@ -547,10 +523,10 @@ function CancelEntryDialog({
   booking: BookingDetail;
   amount: number;
   owedAfter: number;
-  paymentId?: Id<"bookingPayments">;
+  paymentId: Id<"bookingPayments">;
   onClose: (done?: string) => void;
 }) {
-  const cancelPayment = useMutation(api.adminBookings.cancelPayment);
+  const cancelPayment = useMutation(api.bookings.commands.cancelPayment.cancelPayment);
   const [revision] = useState(booking.revision);
   const [reason, setReason] = useState("");
   const done = useDone(onClose, "Payment entry voided.");
@@ -558,7 +534,7 @@ function CancelEntryDialog({
     <ChangeConfirmDialog
       title="Entered by mistake"
       dirty={reason !== ""}
-      description={`Void ${formatMoney(amount, booking.currency)} that was never received; it stays in History.`}
+      description={`Void ${formatMoney(amount, booking.currency)} that nobody received; it stays in History.`}
       rows={[
         { label: "Paid", before: formatMoney(booking.money.net, booking.currency), after: formatMoney(booking.money.net - amount, booking.currency) },
         { label: "Balance due", before: formatMoney(booking.money.owed, booking.currency), after: formatMoney(owedAfter, booking.currency) },
@@ -570,7 +546,7 @@ function CancelEntryDialog({
       onConfirm={async () => {
         await cancelPayment({
           bookingId: booking._id, expectedRevision: revision, reason,
-          ...(paymentId ? { paymentId } : { legacy: true }),
+          paymentId,
         });
         done.saved();
       }}

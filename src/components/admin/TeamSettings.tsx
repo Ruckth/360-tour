@@ -1,10 +1,12 @@
 "use client";
 
+import { basisPointsToPercent, percentToBasisPoints } from 'convex/shared/money';
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import type { CashierRules } from "convex/lib/staffTypes";
+import type { CashierRules } from "convex/shared/staffTypes";
 import { Check, RotateCw, UserPlus } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
@@ -29,7 +31,7 @@ import { ROLE_LABELS } from "./staff-access";
 import { TONES } from "./status-tones";
 import { NumberField } from "./marketing/MarketingBits";
 
-type Person = FunctionReturnType<typeof api.staffAccess.listPeople>[number];
+type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
 /** Stored Marketing roles. "manager" is shown as Lead; the stored value is unchanged. */
 type MarketingRole = "manager" | "marketer" | "finance" | "viewer";
@@ -83,7 +85,7 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
   useEffect(() => { onDirtyChange?.(inviteDirty || rulesDirty); return () => onDirtyChange?.(false); }, [inviteDirty, rulesDirty, onDirtyChange]);
   // The containing settings page owns navigation; standalone uses keep the same guard.
   const localGuard = useUnsavedGuard(!confirmDiscard && (inviteDirty || rulesDirty));
-  const people = useQuery(api.staffAccess.listPeople, {});
+  const people = useQuery(api.auth.staffAccess.listPeople, {});
   return (
     <div className="grid max-w-4xl gap-4">
       <header className="px-1 pt-1"><h2 className="font-serif text-3xl">Team</h2><p className="mt-1 text-pretty text-[13px] text-muted-foreground">Sign-in access and cashier permissions.</p></header>
@@ -116,9 +118,9 @@ const ROLES_TIP = (
 );
 
 function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { people: Person[] | undefined; inviteDirty: boolean; onDirtyChange: (dirty: boolean) => void; confirmDiscard: () => Promise<boolean> }) {
-  const setStaffGrant = useMutation(api.staffAccess.setGrant);
-  const updateInvitation = useMutation(api.staffAccess.updateInvitation);
-  const setMarketingGrant = useMutation(api.marketingAccess.setGrant);
+  const setStaffGrant = useMutation(api.auth.staffAccess.setGrant);
+  const updateInvitation = useMutation(api.auth.staffAccess.updateInvitation);
+  const setMarketingGrant = useMutation(api.marketing.access.setGrant);
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
   const peopleList = useRef<HTMLUListElement>(null);
@@ -405,11 +407,11 @@ const isStaleRules = (err: unknown) => {
 };
 
 type Draft = { limit: string } & Record<RuleKey, Permission>;
-const draftOf = (rules: CashierRules): Draft => ({ limit: String(rules.discountLimitPercent), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
+const draftOf = (rules: CashierRules): Draft => ({ limit: String(basisPointsToPercent(rules.discountLimitPercent)), refund: rules.refund ?? "manager", voidPaidSale: rules.voidPaidSale, customPrice: rules.customPrice, paymentFix: rules.paymentFix });
 const sameDraft = (a: Draft, b: Draft) => Number(a.limit) === Number(b.limit) && a.limit.trim() !== "" && RULES.every(({ key }) => a[key] === b[key]);
 
 function CashierRulesPanel({ hasCashiers, onDirtyChange }: { hasCashiers: boolean | undefined; onDirtyChange?: (dirty: boolean) => void }) {
-  const rules = useQuery(api.staffAccess.getCashierRules, {});
+  const rules = useQuery(api.settings.cashierRules.getCashierRules, {});
   return (
     <Section
       title="Rules for all cashiers"
@@ -424,7 +426,7 @@ function CashierRulesPanel({ hasCashiers, onDirtyChange }: { hasCashiers: boolea
 
 function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChange?: (dirty: boolean) => void }) {
   const id = useId();
-  const update = useMutation(api.staffAccess.updateCashierRules);
+  const update = useMutation(api.settings.cashierRules.updateCashierRules);
   const [revision, setRevision] = useState(rules.revision);
   const [base, setBase] = useState<Draft>(() => draftOf(rules));
   const [draft, setDraft] = useState<Draft>(() => draftOf(rules));
@@ -453,7 +455,7 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
     try {
       const saved = await update({
         expectedRevision: revision,
-        discountLimitPercent: Number(draft.limit),
+        discountLimitPercent: percentToBasisPoints(Number(draft.limit)),
         voidPaidSale: draft.voidPaidSale,
         customPrice: draft.customPrice,
         paymentFix: draft.paymentFix,

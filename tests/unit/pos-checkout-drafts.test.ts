@@ -1,14 +1,15 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, createElement, useEffect, useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
+import { createElement, useEffect, useState, type ComponentProps, type Dispatch, type SetStateAction } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDraftOrder, useCheckoutDraftState, useCheckoutDiscountNotice, useCheckoutPaymentSubmitting } from '@/components/checkout/CheckoutDrafts';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderView } from '@/components/checkout/backend';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 import { OrderPanel } from '@/components/checkout/OrderPanel';
 
 let root: Root;
-let backend: ReturnType<typeof createFixtureBackend>;
+let backend: Awaited<ReturnType<typeof createFixtureBackend>>;
 let view: OrderView;
 let setMounted: Dispatch<SetStateAction<boolean>>;
 let setDraft: Dispatch<SetStateAction<string>>;
@@ -30,8 +31,9 @@ function Harness({ panel = false }: { panel?: boolean }) {
   const catalog = backend.useCatalog();
   const [mounted, set] = useState(true);
   useEffect(() => {
-    view = current; notice = currentNotice; payment = currentPayment; setMounted = set;
+    if (current) view = current; notice = currentNotice; payment = currentPayment; setMounted = set;
   }, [current, currentNotice, currentPayment, set]);
+  if (!current) return null;
   return panel ? createElement(OrderPanel, { view: current, title: current.order.title, catalog, run: async task => { await task(orderId); return true; }, onPaid: () => {} }) : mounted ? createElement(Editor) : null;
 }
 const show = async (panel = false) => {
@@ -45,9 +47,9 @@ function dirty() {
   window.dispatchEvent(event);
   return event.defaultPrevented;
 }
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  backend = createFixtureBackend();
+  backend = await createFixtureBackend();
   key = `${orderId}:fxline000002:price`;
   root = createRoot(document.body.appendChild(document.createElement('div')));
 });
@@ -94,7 +96,7 @@ it('clears a notice after its line disappears or its discount changes', async ()
   const lineId = view.lines[0]._id;
   const refusal = { orderId, lineId, discount: '', message: 'Refused discount' };
   await act(async () => notice.setDiscountNotice(refusal));
-  await act(async () => { await backend.useActions().updateLine({ lineId, discount: { type: 'percent', value: 5 } }); });
+  await act(async () => { await backend.useActions().updateLine({ lineId, discount: { type: 'percent', value: 500 } }); });
   expect(notice.discountNotice).toBeNull();
   await act(async () => notice.setDiscountNotice({ ...refusal, discount: '5%' }));
   await act(async () => { await backend.useActions().removeLine({ lineId }); });
@@ -119,7 +121,7 @@ it('clears a notice when its manager request is sent elsewhere, including a late
   const lineId = view.lines[0]._id;
   const refusal = { orderId, lineId, discount: '', message: 'Refused discount', review: true };
   await act(async () => notice.setDiscountNotice(refusal));
-  await act(async () => { await backend.seedApproval({ orderId, requesterEmail: 'cashier@example.com', reason: 'Guest waited', payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 20 } } }); });
+  await act(async () => { await backend.seedApproval({ orderId, requesterEmail: 'cashier@example.com', reason: 'Guest waited', payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 2000 } } }); });
   expect(notice.discountNotice).toBeNull();
   await act(async () => { await backend.useActions().removeLine({ lineId }); });
   await act(async () => notice.setDiscountNotice(refusal));

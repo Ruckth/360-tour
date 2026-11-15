@@ -1,3 +1,4 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent read-side photo regressions. All records exist only in convex-test.
 import { convexTest } from 'convex-test';
@@ -11,37 +12,37 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   vi.stubEnv('ADMIN_EMAILS', 'audit@example.com');
   const t = convexTest(schema, modules);
   const admin = t.withIdentity({ email: 'audit@example.com', tokenIdentifier: 'audit' });
-  const staffId = await admin.mutation(api.adminServices.createStaff, {
+  const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [],
   });
-  const serviceId = await admin.mutation(api.adminServices.createService, {
+  const serviceId = await admin.mutation(api.services.commands.createService.createService, {
     slug: 'audit-service', name: 'Audit service', description: '', category: 'Audit', durationMin: 60,
-    bufferMin: 0, price: 100, currency: 'THB', staffIds: [staffId],
+    bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId],
   });
   await t.run(ctx => ctx.db.patch(serviceId, { imageUrl: '/initial.jpg' }));
   const { propertyId, bookingId } = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', {
-      slug: 'audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 100,
+      slug: 'audit-villa', name: 'Audit villa', tagline: '', description: '', pricePerNight: 10000,
       currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'],
       amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active',
     });
-    const bookingId = await ctx.db.insert('bookings', {
+    const bookingId = await insertFixture(ctx, 'bookings', {
       propertyId, guestName: 'Audit guest', guestPhone: '0800000000', checkIn: '2026-10-29', checkOut: '2026-10-30',
-      guests: 1, nights: 1, subtotal: 100, discountAmount: 0, total: 100, currency: 'THB',
+      guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB',
       amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'AUDIT-PHOTO', createdAt: Date.now(),
     });
     return { propertyId, bookingId };
   });
-  const { orderId } = await admin.mutation(api.pos.openOrderFor, { bookingId });
-  await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'room', propertyId } });
-  for (let i = 0; i < 3; i++) await admin.mutation(api.pos.addItem, { orderId, item: { kind: 'service', serviceId } });
-  const read = () => admin.query(api.pos.getOrder, { orderId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'room', propertyId } });
+  for (let i = 0; i < 3; i++) await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
+  const read = () => admin.query(api.pos.orders.getOrder, { orderId });
   const stored = () => t.run(async ctx => ({
     order: await ctx.db.get(orderId),
-    lines: await ctx.db.query('billLines').collect(),
-    audit: await ctx.db.query('billAudit').collect(),
-    payments: await ctx.db.query('billPayments').collect(),
+    lines: await ctx.db.query('orderLines').collect(),
+    audit: await ctx.db.query('orderAudit').collect(),
+    payments: await ctx.db.query('orderPayments').collect(),
   }));
   const before = await stored();
   const initial = await read();
@@ -59,6 +60,6 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   await t.run(ctx => ctx.db.delete(bookingId));
   expect((await read())?.lines).toHaveLength(5);
   expect(await stored()).toEqual(before);
-  await expect(t.query(api.pos.catalog, {})).rejects.toThrow();
-  await expect(t.query(api.pos.getOrder, { orderId })).rejects.toThrow();
+  await expect(t.query(api.pos.catalog.catalog, {})).rejects.toThrow();
+  await expect(t.query(api.pos.orders.getOrder, { orderId })).rejects.toThrow();
 });

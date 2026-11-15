@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { slugify } from "convex/lib/slug";
+import { slugify } from "convex/shared/slug";
 import { ChevronRight, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,7 +24,7 @@ export function propertyPath(propertyId: string) {
 }
 
 export function AdminPropertiesView() {
-  const properties = useQuery(api.properties.adminList, {});
+  const properties = useQuery(api.catalog.properties.adminList, {});
   const [status, setStatus] = useState<PropertyStatus | "all">("all");
   const [creating, setCreating] = useState(false);
   const shown = properties?.filter((property) => status === "all" || property.status === status);
@@ -116,7 +116,7 @@ export function AdminPropertiesView() {
 }
 
 function NewVillaDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const create = useMutation(api.adminProperties.create);
+  const create = useMutation(api.catalog.adminProperties.create);
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");

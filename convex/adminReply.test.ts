@@ -5,18 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
-
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 
 async function insertSession(t: ReturnType<typeof convexTest>, channel: "web" | "line" | "facebook") {
   return await t.run((ctx) =>
-    ctx.db.insert("chatSessions", {
+    ctx.db.insert("conversations", {
       channel,
       ...(channel === "line" ? { visitorContactHandle: "Uline123" } : {}),
       ...(channel === "facebook" ? { visitorContactHandle: "fb-user-123" } : {}),
@@ -32,7 +26,7 @@ describe("admin replies", () => {
     const sessionId = await insertSession(t, "web");
 
     await expect(
-      t.mutation(api.adminReply.claim, {
+      t.mutation(api.messaging.adminReply.claim, {
         sessionId,
         requestId: "reply-1",
         content: "Hello from admin",
@@ -46,17 +40,17 @@ describe("admin replies", () => {
     const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "web");
 
-    const claim = await admin.mutation(api.adminReply.claim, {
+    const claim = await admin.mutation(api.messaging.adminReply.claim, {
       sessionId,
       requestId: "reply-2",
       content: "Hello from admin",
     });
     expect(claim).toMatchObject({ state: "new", channel: "web" });
 
-    await admin.mutation(api.adminReply.complete, { requestId: "reply-2" });
-    await admin.mutation(api.adminReply.complete, { requestId: "reply-2" });
+    await admin.mutation(api.messaging.adminReply.complete, { requestId: "reply-2" });
+    await admin.mutation(api.messaging.adminReply.complete, { requestId: "reply-2" });
 
-    const messages = await admin.query(api.adminChat.listTranscriptMessages, {
+    const messages = await admin.query(api.messaging.adminChat.listTranscriptMessages, {
       sessionId,
       paginationOpts: { numItems: 10, cursor: null },
     });
@@ -76,7 +70,7 @@ describe("admin replies", () => {
     const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await t.run((ctx) =>
-      ctx.db.insert("chatMessages", {
+      ctx.db.insert("messages", {
         sessionId,
         role: "user",
         content: "Hi",
@@ -84,7 +78,7 @@ describe("admin replies", () => {
       }),
     );
     expect(
-      await admin.mutation(api.adminReply.claim, { sessionId, requestId: "reply-5", content: "Hello" }),
+      await admin.mutation(api.messaging.adminReply.claim, { sessionId, requestId: "reply-5", content: "Hello" }),
     ).toMatchObject({ state: "new", channel: "facebook", recipient: "fb-user-123" });
   });
 
@@ -95,12 +89,12 @@ describe("admin replies", () => {
     const sessionId = await insertSession(t, "line");
     const args = { sessionId, requestId: "reply-3", content: "LINE reply" };
 
-    expect(await admin.mutation(api.adminReply.claim, args)).toMatchObject({
+    expect(await admin.mutation(api.messaging.adminReply.claim, args)).toMatchObject({
       state: "new",
       channel: "line",
       recipient: "Uline123",
     });
-    expect(await admin.mutation(api.adminReply.claim, args)).toMatchObject({
+    expect(await admin.mutation(api.messaging.adminReply.claim, args)).toMatchObject({
       state: "pending",
     });
   });
@@ -111,7 +105,7 @@ describe("admin replies", () => {
     const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await expect(
-      admin.mutation(api.adminReply.claim, {
+      admin.mutation(api.messaging.adminReply.claim, {
         sessionId,
         requestId: "reply-4",
         content: "Too late",

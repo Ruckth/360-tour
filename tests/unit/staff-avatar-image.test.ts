@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { MAX_AVATAR_BYTES, avatarUploadProblem } from "convex/lib/imageUploads";
+import { MAX_AVATAR_BYTES, avatarUploadProblem } from "convex/shared/imageUploads";
 import { AVATAR_MAX_SOURCE_BYTES, avatarSourceProblem, avatarTargetSize, encodeAvatar } from "@/lib/staff-avatar-image";
 
 const blob = (type: string, size: number) => new Blob([new Uint8Array(size)], { type });

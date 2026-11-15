@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 function Page({ start }: { start: OrderId | null }) {
@@ -27,7 +28,7 @@ const priceInput = () => panel().querySelector<HTMLInputElement>('input[id^="pri
 const reasonInput = () => panel().querySelector<HTMLTextAreaElement>('textarea[aria-label="Reason for the price change"]')!;
 
 async function orderWithGift(backend: CheckoutBackend) {
-  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Gift basket", price: 1000 } });
+  const adding = backend.useActions().addItem({ item: { kind: "extra", name: "Gift basket", price: 100000 } });
   await vi.advanceTimersByTimeAsync(200);
   return (await adding).orderId;
 }
@@ -46,7 +47,7 @@ afterEach(async () => {
 
 describe("editing a changed price", () => {
   it("corrects an existing price change and its reason in place, without restoring it first", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const orderId = await orderWithGift(backend);
     await show(backend, orderId);
     await click(row("Gift basket").querySelector("button"));
@@ -79,13 +80,13 @@ describe("editing a changed price", () => {
     await act(async () => root.render(createElement(Read)));
     const changes = read.view?.audit.filter((entry) => entry.kind === "price_override").reverse();
     expect(changes?.map(({ fromPrice, toPrice, note }) => ({ fromPrice, toPrice, note }))).toEqual([
-      { fromPrice: 1000, toPrice: 800, note: "Loyal guets" },
-      { fromPrice: 800, toPrice: 750, note: "Loyal guest" },
+      { fromPrice: 100000, toPrice: 80000, note: "Loyal guets" },
+      { fromPrice: 80000, toPrice: 75000, note: "Loyal guest" },
     ]);
   });
 
   it("saves a discount on blur without sending a duplicate while that save is in flight", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await show(backend, await orderWithGift(backend));
     const update = vi.spyOn(backend.useActions(), "updateLine");
     await click(row("Gift basket").querySelector("button"));
@@ -106,7 +107,7 @@ describe("editing a changed price", () => {
   });
 
   it("doesn't offer to apply a price or discount that is only a decimal point", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await show(backend, await orderWithGift(backend));
     await click(row("Gift basket").querySelector("button"));
 
@@ -130,7 +131,7 @@ describe("editing a changed price", () => {
 
 describe("write errors and order switches", () => {
   it("drops a failed write's banner when the cashier moves on to a new order", async () => {
-    const base = createFixtureBackend();
+    const base = await createFixtureBackend();
     const actions = { ...base.useActions(), addItem: () => Promise.reject(new Error("Network down")) };
     const backend: CheckoutBackend = { ...base, useActions: () => actions };
     await show(backend, await orderWithGift(base));

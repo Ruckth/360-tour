@@ -19,8 +19,8 @@ vi.mock('convex/react', () => ({
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
 const now = Date.UTC(2026,10,1,5);
-const appointment = { _id: 'appointment1', price: 1200, currency: 'THB', status: 'completed', paymentStatus: 'paid', revision: 4 } as Doc<'serviceAppointments'>;
-const payment = { _id: 'payment1', amount: 1200, currency: 'THB', method: 'cash', effectiveAt: now - 1000, recordedAt: now, recordedBy: 'desk@example.com', status: 'recorded', refunded: 0 } as Doc<'appointmentPayments'>;
+const appointment = { _id: 'appointment1', price: 120000, currency: 'THB', status: 'completed', paymentStatus: 'paid', revision: 4 } as Doc<'appointments'>;
+const payment = { _id: 'payment1', amount: 120000, currency: 'THB', method: 'cash', effectiveAt: now - 1000, recordedAt: now, recordedBy: 'desk@example.com', status: 'recorded', refunded: 0 } as Doc<'appointmentPayments'>;
 const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
 const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
@@ -40,7 +40,7 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.useRealTimers(); });
 it('shows accurate net/refunded balances, actual receipt path, legacy unknowns and refund provenance', async () => {
-  mocks.query.mockReturnValue({ revision: 4, money: { gross: 1200, refunded: 200, net: 1000, owed: 0 }, unitemised: 1200, payments: [], orders: [{ billId: 'order1', receiptNumber: 42, charged: 1200, refundable: 1000 }], refunds: [{ _id: 'refund1', amount: 200, method: 'cash', reason: 'Courtesy', effectiveAt: now - 60000, recordedAt: now, recordedBy: 'desk@example.com' }] });
+  mocks.query.mockReturnValue({ revision: 4, money: { gross: 120000, refunded: 20000, net: 100000, owed: 0 }, unitemised: 1200, payments: [], orders: [{ orderId: 'order1', receiptNumber: 42, charged: 120000, refundable: 100000 }], refunds: [{ _id: 'refund1', amount: 20000, method: 'cash', reason: 'Courtesy', effectiveAt: now - 60000, recordedAt: now, recordedBy: 'desk@example.com' }] });
   await render(createElement(AppointmentFinancials, { appointment }));
   expect(document.body.textContent).toContain('Paid ฿1,000 · Refunded ฿200');
   expect(document.querySelector('a')?.getAttribute('href')).toContain('order1');
@@ -52,7 +52,7 @@ it('shows accurate net/refunded balances, actual receipt path, legacy unknowns a
 });
 it('validates a refund cap/reason, retains failed draft and retries exactly the original attempt', async () => {
   const onClose = vi.fn(); mocks.refund.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce(null);
-  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'refund', paymentId: payment._id, max: 1000 }, onClose }));
+  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'refund', paymentId: payment._id, max: 100000 }, onClose }));
   expect(startsWith('Record refund')?.disabled).toBe(true);
   await type('af-reason', 'Partial service refund'); await type('af-amount', '1000.01');
   expect(startsWith('Record refund')?.disabled).toBe(true);
@@ -64,7 +64,7 @@ it('validates a refund cap/reason, retains failed draft and retries exactly the 
   await click(button('Retry same refund'));
   expect(mocks.refund).toHaveBeenCalledTimes(2);
   expect(mocks.refund.mock.calls[1]).toEqual(mocks.refund.mock.calls[0]);
-  expect(mocks.refund.mock.calls[0][0]).toMatchObject({ expectedRevision: 4, amount: 250, method: 'cash', currency: 'THB', reason: 'Partial service refund', paymentId: 'payment1' });
+  expect(mocks.refund.mock.calls[0][0]).toMatchObject({ expectedRevision: 4, amount: 25000, method: 'cash', currency: 'THB', reason: 'Partial service refund', paymentId: 'payment1' });
   expect(onClose).toHaveBeenCalledOnce();
 });
 it('blocks duplicate submits and dismissal while payment is pending, preserving business date and reviewed revision', async () => {
@@ -91,20 +91,20 @@ it('requires a reason for mistaken entry cancellation and preserves the same cor
   expect(mocks.correct.mock.calls[0][0]).toMatchObject({ action: 'cancel', expectedRevision: 4, paymentId: payment._id, reason: 'No money was received' });
 });
 
-it('mounts proven legacy Entered by mistake, requires review/reason and freezes pending/lost-response retries', async () => {
-  const data = { revision: 4, legacyManualPayment: { changeId: 'legacy-change' }, money: { gross: 1200, refunded: 0, net: 1200, owed: 0 }, unitemised: 1200, payments: [], orders: [], refunds: [] };
+it('mounts a recorded payment cancellation, requires review/reason and freezes pending/lost-response retries', async () => {
+  const data = { revision: 4, money: { gross: 120000, refunded: 0, net: 120000, owed: 0 }, payments: [payment], orders: [], refunds: [] };
   mocks.query.mockReturnValue(data);
   let reject!: (error: Error) => void;
   mocks.correct.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; })).mockResolvedValueOnce(null);
   await render(createElement(AppointmentFinancials, { appointment }));
-  expect(document.body.textContent).toContain('original tender and received date remain unknown');
+  expect(document.body.textContent).toContain('Recorded at the desk');
   await click(button('Entered by mistake…'));
   expect(button('Void entry')?.disabled).toBe(true);
   await type('af-reason', 'Old manual paid entry was a mistake');
   await click(button('Void entry'));
   expect(mocks.correct).toHaveBeenCalledOnce();
-  expect(mocks.correct.mock.calls[0][0]).toMatchObject({ appointmentId: appointment._id, expectedRevision: 4, legacyChangeId: 'legacy-change', action: 'cancel', reason: 'Old manual paid entry was a mistake' });
-  expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('paymentId');
+  expect(mocks.correct.mock.calls[0][0]).toMatchObject({ appointmentId: appointment._id, expectedRevision: 4, paymentId: payment._id, action: 'cancel', reason: 'Old manual paid entry was a mistake' });
+  expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('legacyChangeId');
   expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('method');
   expect(mocks.correct.mock.calls[0][0]).not.toHaveProperty('effectiveAt');
   expect(button('Keep payment')?.disabled).toBe(true);
@@ -123,7 +123,7 @@ it('mounts proven legacy Entered by mistake, requires review/reason and freezes 
   expect(document.querySelector('[role="alertdialog"]')).toBeNull();
 });
 it.each(['unknown', 'refunded', 'receipt', 'provider'])('does not expose manual Entered by mistake for %s money', async kind => {
-  mocks.query.mockReturnValue({ revision: 4, legacyManualPayment: null, money: { gross: 1200, refunded: kind === 'refunded' ? 100 : 0, net: 1100, owed: 0 }, unitemised: kind === 'provider' ? 0 : 1200, payments: kind === 'provider' ? [{ ...payment, method: 'provider' }] : [], orders: kind === 'receipt' ? [{ billId: 'order1', charged: 1200, refundable: 1200 }] : [], refunds: [] });
+  mocks.query.mockReturnValue({ revision: 4, legacyManualPayment: null, money: { gross: 1200, refunded: kind === 'refunded' ? 100 : 0, net: 1100, owed: 0 }, unitemised: kind === 'provider' ? 0 : 1200, payments: kind === 'provider' ? [{ ...payment, method: 'provider' }] : [], orders: kind === 'receipt' ? [{ orderId: 'order1', charged: 1200, refundable: 1200 }] : [], refunds: [] });
   await render(createElement(AppointmentFinancials, { appointment }));
   expect(button('Entered by mistake…')).toBeUndefined();
 });
@@ -138,13 +138,13 @@ it('uses a disabled payment button that cannot route while another action is pen
   expect(mocks.push).not.toHaveBeenCalled();
 });
 
-for (const kind of ['pay', 'refund', 'amend', 'cancel', 'legacyCancel'] as const) {
+for (const kind of ['pay', 'refund', 'amend', 'cancel', 'cancelUnrecorded'] as const) {
   it(`guards the ${kind} draft on dismissal and bypasses the prompt after success`, async () => {
     const onClose = vi.fn();
     const dialog: ComponentProps<typeof AppointmentMoneyDialog>['dialog'] = kind === 'refund'
-      ? { kind, paymentId: payment._id, max: 1000 }
+      ? { kind, paymentId: payment._id, max: 100000 }
+      : kind === 'cancelUnrecorded' ? { kind: 'cancel', payment: { ...payment, method: 'unrecorded' } }
       : kind === 'amend' || kind === 'cancel' ? { kind, payment }
-      : kind === 'legacyCancel' ? { kind, legacyChangeId: 'legacy-change' as Doc<'appointmentChanges'>['_id'] }
       : { kind };
     await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog, onClose }));
     if (kind === 'pay') await click(button('Card'));
@@ -172,7 +172,7 @@ it('closes an unchanged appointment draft without prompting, including a reverte
 
 it.each(['method', 'time', 'amount'] as const)('guards an appointment %s edit independently of its reason', async field => {
   const onClose = vi.fn();
-  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'refund', paymentId: payment._id, max: 1000 }, onClose }));
+  await render(createElement(AppointmentMoneyDialog, { appointment, revision: 4, dialog: { kind: 'refund', paymentId: payment._id, max: 100000 }, onClose }));
   if (field === 'method') await click(button('Card'));
   if (field === 'time') await type('af-time', '08:30');
   if (field === 'amount') await type('af-amount', '250');

@@ -15,12 +15,14 @@ const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn(), q
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
 vi.mock("convex/react", () => ({
   useMutation: (ref: FunctionReference<"mutation">) => {
+    if (getFunctionName(ref) === "marketing/report:noteCouponRefusal") return async () => null;
     const name = getFunctionName(ref).split(":").pop() as keyof typeof mutations;
     if (!mutations[name]) throw new Error(`Unexpected mutation ${name}`);
     return mutations[name];
   },
   useQuery: (ref: FunctionReference<"query">, args: unknown) => {
     if (args === "skip") return undefined;
+    if (getFunctionName(ref) === "marketing/report:noteCouponRefusal") return async () => null;
     const name = getFunctionName(ref).split(":").pop() as keyof typeof queries;
     return queries[name]?.(args);
   },
@@ -54,8 +56,8 @@ vi.mock("@/components/admin/DeskBookingRangePicker", () => ({
 }));
 
 const NOW = Date.parse("2026-10-28T03:00:00Z");
-const villa = { _id: "p1", slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 10000, directDiscountPercent: 0, currency: "THB" };
-const oldVilla = { ...villa, _id: "p2", slug: "old-villa", name: "Old Villa", status: "archived" };
+const villa: import("@/components/admin/admin-bookings-shared").AdminProperty = { _id: "p1" as import("convex/_generated/dataModel").Id<"properties">, slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 0, currency: "THB" };
+const oldVilla: import("@/components/admin/admin-bookings-shared").AdminProperty = { ...villa, _id: "p2" as import("convex/_generated/dataModel").Id<"properties">, slug: "old-villa", name: "Old Villa", status: "archived" };
 
 const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
 let root: Root;
@@ -81,7 +83,7 @@ beforeEach(() => {
   for (const mutation of Object.values(mutations)) mutation.mockReset().mockResolvedValue(null);
   for (const query of Object.values(queries)) query.mockReset();
   queries.findGuests.mockReturnValue([]);
-  queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 0, total: 30000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+  queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 0, total: 3000000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => {
@@ -99,7 +101,7 @@ async function fillGuest() {
 
 describe("new booking", () => {
   const props = (prefill: { propertyId?: string; checkIn: string; checkOut: string }, onCreated = vi.fn()) => ({
-    properties: [villa, oldVilla] as never, prefill, onClose: vi.fn(), onCreated, onBlockInstead: vi.fn(),
+    properties: [villa, oldVilla], prefill, onClose: vi.fn(), onCreated, onBlockInstead: vi.fn(),
   });
 
   it("does not email the guest about a past stay unless staff tick it, and sends the choice explicitly", async () => {
@@ -167,7 +169,7 @@ describe("new booking", () => {
     await type("nb-custom-reason", "  Returning guest rate ");
     expect(button("Create booking")?.disabled).toBe(false);
     await submit();
-    expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ priceOverride: { total: 15000, reason: "Returning guest rate" } }));
+    expect(mutations.createBooking).toHaveBeenLastCalledWith(expect.objectContaining({ priceOverride: { total: 1500000, reason: "Returning guest rate" } }));
   });
 
   it("records a past stay in an archived villa only with a reason, and refuses it for a current stay", async () => {
@@ -201,7 +203,7 @@ describe("new booking", () => {
     expect(button("Close")).toBeUndefined();
     await submit();
     expect(mutations.createBooking).toHaveBeenCalledTimes(1);
-    await act(async () => fail(new Error("[CONVEX M(adminBookings:createBooking)] Uncaught Error: These dates are no longer available.\n at x")));
+    await act(async () => fail(new Error("[CONVEX M(bookings/commands/createBooking:createBooking)] Uncaught Error: These dates are no longer available.\n at x")));
     expect(alertText()).toContain("These dates are no longer available.");
     expect((document.getElementById("nb-name") as HTMLInputElement).value).toBe("Mia");
     expect((document.getElementById("nb-notify") as HTMLInputElement).checked).toBe(true);
@@ -216,12 +218,12 @@ describe("new booking", () => {
 describe("moving a booking on the calendar", () => {
   const booking = {
     _id: "b1", propertyId: "p1", guestName: "Mia", guestPhone: "+66 81", guestEmail: "mia@example.com", checkIn: "2026-11-20", checkOut: "2026-11-22",
-    guests: 2, nights: 2, total: 20000, currency: "THB", status: "confirmed", paymentStatus: "pending", amountPaid: undefined, source: "admin", createdAt: 0, revision: 4,
+    guests: 2, nights: 2, total: 2000000, currency: "THB", status: "confirmed", paymentStatus: "pending", amountPaid: undefined, source: "admin", createdAt: 0, revision: 4,
   };
   const move = { booking, propertyId: "p1", checkIn: "2026-11-21", checkOut: "2026-11-24" } as unknown as Move;
   const detail = (overrides: Record<string, unknown> = {}) => ({ ...booking, revision: 4, priceOverride: null, guestEmailsOff: false, ...overrides });
   const props = (overrides: Partial<ComponentProps<typeof MoveBookingDialog>> = {}) => ({
-    move, properties: [villa] as never, onClose: vi.fn(), onMoved: vi.fn(), onOpenBooking: vi.fn(), ...overrides,
+    move, properties: [villa], onClose: vi.fn(), onMoved: vi.fn(), onOpenBooking: vi.fn(), ...overrides,
   });
 
   it("sends the revision captured at the drop and an explicit email choice, with pending and retry", async () => {
@@ -238,7 +240,7 @@ describe("moving a booking on the calendar", () => {
     await click(button("Move booking"));
     expect(button("Move booking")?.disabled).toBe(true);
     expect(button("Keep dates")?.disabled).toBe(true);
-    await act(async () => fail(new Error("[CONVEX M(adminBookings:editBooking)] Uncaught Error: Network glitch\n at x")));
+    await act(async () => fail(new Error("[CONVEX M(bookings/commands/editBooking:editBooking)] Uncaught Error: Network glitch\n at x")));
     expect(alertText()).toContain("Network glitch");
     expect(onClose).not.toHaveBeenCalled();
     await click(button("Try again"));
@@ -246,7 +248,7 @@ describe("moving a booking on the calendar", () => {
     expect(mutations.editBooking.mock.calls[1][0]).toEqual(mutations.editBooking.mock.calls[0][0]);
     expect(mutations.editBooking.mock.calls[0][0]).toMatchObject({
       bookingId: "b1", expectedRevision: 4, propertyId: "p1", checkIn: "2026-11-21", checkOut: "2026-11-24", notifyGuest: false,
-      expectedPrice: { total: 30000, currency: "THB" },
+      expectedPrice: { total: 3000000, currency: "THB" },
     });
     expect(onMoved).toHaveBeenCalledWith(expect.stringContaining("Mia: moved to"));
   });
@@ -260,7 +262,7 @@ describe("moving a booking on the calendar", () => {
   });
 
   it("does not move a custom-priced stay at the villa rate, and offers to open the booking", async () => {
-    queries.getForAdmin.mockReturnValue(detail({ priceOverride: { total: 15000, quotedTotal: 20000, reason: "Friends rate", by: "a", at: 0 } }));
+    queries.getForAdmin.mockReturnValue(detail({ priceOverride: { total: 1500000, quotedTotal: 2000000, reason: "Friends rate", by: "a", at: 0 } }));
     const onOpenBooking = vi.fn();
     await render(createElement(MoveBookingDialog, props({ onOpenBooking })));
     expect(text()).toContain("This stay has a custom price of ฿15,000: Friends rate");
@@ -272,7 +274,7 @@ describe("moving a booking on the calendar", () => {
 
   it("explains a custom-price refusal from the server and offers the booking", async () => {
     queries.getForAdmin.mockReturnValue(detail());
-    mutations.editBooking.mockRejectedValueOnce(new Error("[CONVEX M(adminBookings:editBooking)] Uncaught Error: This booking has a custom price. Enter the price for the new stay, or go back to the villa rate.\n at x"));
+    mutations.editBooking.mockRejectedValueOnce(new Error("[CONVEX M(bookings/commands/editBooking:editBooking)] Uncaught Error: This booking has a custom price. Enter the price for the new stay, or go back to the villa rate.\n at x"));
     const onOpenBooking = vi.fn();
     await render(createElement(MoveBookingDialog, props({ onOpenBooking })));
     await click(button("Move booking"));
@@ -296,11 +298,11 @@ describe("moving a booking on the calendar", () => {
 
   it("reviews the server's coupon price and submits it instead of a direct-rate estimate", async () => {
     queries.getForAdmin.mockReturnValue(detail());
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 6000, total: 24000, currency: "THB", promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 6000 }, couponRemoved: false, repriced: true });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 3000000, discountAmount: 600000, total: 2400000, currency: "THB", promotion: { code: "DCNT-F1-20", couponVersion: 1, discount: 600000 }, couponRemoved: false, repriced: true });
     await render(createElement(MoveBookingDialog, props()));
     expect(text()).toContain("New total ฿24,000");
     await click(button("Move booking"));
-    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 24000, currency: "THB" } }));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 2400000, currency: "THB" } }));
     expect(queries.quoteBookingEdit).toHaveBeenCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-11-21", checkOut: "2026-11-24", guests: 2 });
   });
 
@@ -318,10 +320,10 @@ describe("moving a booking on the calendar", () => {
 
   it("shows the quoted currency and sends it for the server to check", async () => {
     queries.getForAdmin.mockReturnValue(detail());
-    queries.quoteBookingEdit.mockReturnValue({ subtotal: 300, discountAmount: 0, total: 300, currency: "USD", promotion: null, couponRemoved: false, repriced: true });
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 0, total: 30000, currency: "USD", promotion: null, couponRemoved: false, repriced: true });
     await render(createElement(MoveBookingDialog, props()));
     expect(text()).toContain("New total $300");
     await click(button("Move booking"));
-    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 300, currency: "USD" } }));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 30000, currency: "USD" } }));
   });
 });

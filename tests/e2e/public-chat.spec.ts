@@ -1,9 +1,23 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import hi from "../../messages/hi.json" with { type: "json" };
+import { seedTranscript, serverTranscript, expectServerReplies, expectInitialSuggestionsTracked } from './backend';
+import { expect, test, type Locator, type Page } from "./fixtures";
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
+async function initialChipTexts(page: Page) {
+  const chips = page.getByTestId("chat-messages").getByTestId("chat-suggestions").getByRole("button");
+  await expect(chips).toHaveCount(6);
+  await expectInitialSuggestionsTracked(page);
+  return chips.allTextContents();
+}
+
+async function expectFreshFollowUpChips(page: Page, initial: string[]) {
+  const messages = page.getByTestId("chat-messages");
+  const chips = messages.getByTestId("chat-suggestions").getByRole("button");
+  await expect(chips).toHaveCount(2);
+  for (const text of initial)
+    await expect(messages.getByRole("button", { name: text, exact: true })).toHaveCount(0);
+  expect(new Set(await chips.allTextContents()).size).toBe(2);
+}
+
 
 const localizedSmoke = [
   { path: "/th", nav: "จอง", chat: "เปิดแชตคอนเซียจ", close: "ปิดแชต", placeholder: "พิมพ์คำถาม" },
@@ -20,13 +34,11 @@ const localizedSmoke = [
 
 const CHAT_SESSION_STORAGE_KEY = "sv_chat_session_id";
 const CHAT_MESSAGE_CACHE_PREFIX = "sv_chat_messages:";
-const CHAT_MESSAGE_CACHE_VERSION = 1;
 const CONTACT_PREFILL_MESSAGE =
   "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
 const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
 const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
-type SeededChatMessage = { role: "user" | "assistant"; content: string };
 
 async function getVisibleBoundingBox(locator: Locator) {
   let box: Awaited<ReturnType<Locator["boundingBox"]>> = null;
@@ -86,11 +98,25 @@ async function expectPrefilledEmail(link: Locator) {
 
 async function expectVillaTileImageVisible(tile: Locator) {
   const image = tile.locator("img").first();
+  // DOM visibility alone includes offscreen images; lazy loading starts on viewport intersection.
+  await tile.scrollIntoViewIfNeeded();
   await expect(image).toBeVisible();
+  await expect(image).toBeInViewport();
   await expect(image).toHaveCSS("opacity", "1");
-  await expect
-    .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
-    .toBeGreaterThan(0);
+  try {
+    await expect
+      .poll(() => image.evaluate((node) => (node as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  } catch (error) {
+    const state = await image.evaluate((node) => {
+      const img = node as HTMLImageElement;
+      const rect = img.getBoundingClientRect();
+      return { src: img.getAttribute('src'), currentSrc: img.currentSrc, loading: img.loading,
+        complete: img.complete, naturalWidth: img.naturalWidth, top: rect.top,
+        bottom: rect.bottom, viewport: innerHeight };
+    });
+    throw new Error(`Public villa image did not load: ${JSON.stringify(state)}`, { cause: error });
+  }
 }
 
 async function installMockVisualViewport(page: Page, userAgent: string) {
@@ -140,53 +166,8 @@ async function installMockVisualViewport(page: Page, userAgent: string) {
   }, { mockedUserAgent: userAgent });
 }
 
-async function seedChatMessageCache(
-  page: Page,
-  sessionId: string,
-  messages: SeededChatMessage[],
-) {
-  await page.addInitScript(
-    ({ cachePrefix, cacheVersion, sessionKey, seededMessages, seededSessionId }) => {
-      let latestExchange: { userMessage: string; assistantMessage: string } | null = null;
-      for (let assistantIndex = seededMessages.length - 1; assistantIndex >= 0; assistantIndex -= 1) {
-        if (seededMessages[assistantIndex]?.role !== "assistant") continue;
 
-        for (let userIndex = assistantIndex - 1; userIndex >= 0; userIndex -= 1) {
-          if (seededMessages[userIndex]?.role === "user") {
-            latestExchange = {
-              userMessage: seededMessages[userIndex].content,
-              assistantMessage: seededMessages[assistantIndex].content,
-            };
-            break;
-          }
-        }
-
-        if (latestExchange) break;
-      }
-
-      window.localStorage.setItem(sessionKey, seededSessionId);
-      window.localStorage.setItem(
-        `${cachePrefix}${seededSessionId}`,
-        JSON.stringify({
-          version: cacheVersion,
-          sessionId: seededSessionId,
-          messages: seededMessages,
-          latestExchange,
-          updatedAt: Date.now(),
-        }),
-      );
-    },
-    {
-      cachePrefix: CHAT_MESSAGE_CACHE_PREFIX,
-      cacheVersion: CHAT_MESSAGE_CACHE_VERSION,
-      sessionKey: CHAT_SESSION_STORAGE_KEY,
-      seededMessages: messages,
-      seededSessionId: sessionId,
-    },
-  );
-}
-
-test("@smoke home page opens chat, shows fallback replies, and exposes contact capture", async ({ page }) => {
+test("@smoke home page opens chat, shows server replies, and exposes contact capture", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText("Auralis Cove Retreat").first()).toBeVisible();
@@ -194,54 +175,53 @@ test("@smoke home page opens chat, shows fallback replies, and exposes contact c
 
   await expect(page.getByRole("button", { name: /Restart chat/i })).toBeVisible();
   await expect(page.getByText("Share contact details")).toBeVisible();
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
   const chatFooter = page.getByTestId("chat-footer");
 
   await expect(
-    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
+    messages.getByRole("button", { name: /Can I check my dates/i }),
   ).toBeVisible();
   await expect(
     chatFooter.getByRole("button", { name: /Can I check my dates/i }),
   ).toHaveCount(0);
 
+  const initial = await initialChipTexts(page);
   await page.getByRole("button", { name: /How many guests can each villa sleep/i }).click();
-  // Suggestion chips are question-only now: disconnected, a non-booking chip gets
-  // the honest "live chat will connect once Convex is configured" notice rather than
-  // a canned policy answer. The chip set still rotates to follow-up questions.
+  await expectServerReplies(page, 1);
   await expect(
-    page.getByText(/live chat will connect once Convex is configured/i),
+    messages.getByRole("button", { name: /Which villa is best for a family or group/i }),
   ).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
   await expect(
-    chatMessages.getByRole("button", { name: /Which villa is best for a family or group/i }),
-  ).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /Can I check my dates/i })).toBeVisible();
-  await expect(
-    chatMessages.getByRole("button", { name: /How many guests can each villa sleep/i }),
+    messages.getByRole("button", { name: /How many guests can each villa sleep/i }),
   ).toHaveCount(0);
 
+  // With external model calls disabled, the real backend hands unknown questions to staff.
+  // Start a new conversation before testing another automatic reply; never fake a resumed AI turn.
+  await expect(page.getByRole("status").filter({ hasText: "A team member will reply here shortly." })).toBeVisible();
+  await page.getByRole("button", { name: /Restart chat/i }).click();
+  await expect(page.getByText("Ask anything?")).toBeVisible();
+  const bookingInitial = await initialChipTexts(page);
   await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
   await page.getByRole("button", { name: "Send message" }).click();
   // A booking-intent question still surfaces the booking card via the action hint,
   // but the reply is the booking prompt (no retired "saves 15%" policy claim).
-  await expect(page.getByText(/Use the booking card below/i)).toBeVisible();
+  await expectServerReplies(page, 1);
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(chatMessages.getByRole("button", { name: /What will my stay cost/i })).toBeVisible();
-  await expect(
-    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, bookingInitial);
 
+  await page.getByRole("button", { name: /Restart chat/i }).click();
+  await expect(page.getByText("Ask anything?")).toBeVisible();
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
   await expect(page.getByText("Do you have airport pickup?")).toBeVisible();
-  // Disconnected, a policy question gets the same honest notice as the earlier chip (no coded
-  // airport-pickup claim), so the notice now appears twice.
-  await expect(chatMessages.getByText(/live chat will connect once Convex is configured/i)).toHaveCount(2);
+  await expectServerReplies(page, 1);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(
-    chatMessages.getByRole("button", { name: /Can I check my dates/i }),
+    messages.getByRole("button", { name: /Can I check my dates/i }),
   ).toBeVisible();
 
   await page.getByText("Share contact details").click();
@@ -306,9 +286,8 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
   await expect(page).toHaveURL(/\/th$/);
 });
 
-test("localized chat page keeps cached messages and updates suggestion language", async ({ page }) => {
-  const sessionId = "cached-locale-session";
-  await seedChatMessageCache(page, sessionId, [
+test("localized chat page keeps server messages and updates suggestion language", async ({ page }) => {
+  await seedTranscript(page, "localized-session", [
     { role: "user", content: "What do I get when I book direct?" },
     {
       role: "assistant",
@@ -325,10 +304,9 @@ test("localized chat page keeps cached messages and updates suggestion language"
   await expect(page.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" })).toBeVisible();
 });
 
-test("mobile chat page restores cached messages and keeps the first new send", async ({ page }) => {
-  const sessionId = "cached-mobile-session";
+test("mobile chat page restores server messages and keeps the first new send", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
-  await seedChatMessageCache(page, sessionId, [
+  await seedTranscript(page, "mobile-session", [
     { role: "user", content: "Cached question about airport pickup" },
     { role: "assistant", content: "Cached answer about private transfers" },
   ]);
@@ -344,25 +322,14 @@ test("mobile chat page restores cached messages and keeps the first new send", a
   await expect(page.getByText("Cached question about airport pickup")).toBeVisible();
   await expect(page.getByText("Cached answer about private transfers")).toBeVisible();
   await expect(page.getByText("First new message after cache restore")).toBeVisible();
-  await expect
-    .poll(async () =>
-      page.evaluate(
-        ({ cachePrefix, seededSessionId }) => {
-          const raw = window.localStorage.getItem(`${cachePrefix}${seededSessionId}`);
-          if (!raw) return "";
-          const cache = JSON.parse(raw) as { messages?: Array<{ content?: string }> };
-          return cache.messages?.map((message) => message.content ?? "").join("\n") ?? "";
-        },
-        { cachePrefix: CHAT_MESSAGE_CACHE_PREFIX, seededSessionId: sessionId },
-      ),
-    )
-    .toContain("First new message after cache restore");
+  await expect.poll(async () => (await serverTranscript(page)).map(row => row.content).join('\n')).toContain("First new message after cache restore");
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('sv_chat_messages:')))).toEqual([]);
 });
 
-test("restart chat clears cached mobile messages", async ({ page }) => {
-  const sessionId = "cached-restart-session";
+test("restart chat starts a new persisted session", async ({ page }) => {
+  let sessionId = "cached-restart-session";
   await page.setViewportSize({ width: 390, height: 760 });
-  await seedChatMessageCache(page, sessionId, [
+  sessionId = await seedTranscript(page, sessionId, [
     { role: "user", content: "Cached restart question" },
     { role: "assistant", content: "Cached restart answer" },
   ]);
@@ -371,14 +338,14 @@ test("restart chat clears cached mobile messages", async ({ page }) => {
 
   await expect(page.getByText("Cached restart question")).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
 
   await expect(page.getByText("Cached restart question")).toHaveCount(0);
   await expect(page.getByText("Cached restart answer")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(page.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(6);
 
-  await chatMessages.evaluate((node) => {
+  await messages.evaluate((node) => {
     const element = node as HTMLElement;
     element.scrollTop = element.scrollHeight;
     element.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -438,7 +405,7 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
 
   const chatFooter = page.getByTestId("chat-footer");
   const floatingContactActions = page.getByTestId("floating-contact-actions");
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
   const input = page.getByPlaceholder("Ask a question");
   const whatsappLink = floatingContactActions.getByRole("link", { name: /Open WhatsApp chat/i });
   const lineLink = floatingContactActions.getByRole("link", { name: /Open LINE chat/i });
@@ -458,7 +425,7 @@ test("mobile chat page keeps the composer visible while typing", async ({ page }
   await input.fill("Hello from mobile");
 
   await expect(chatFooter).toHaveCSS("position", "static");
-  await expect(chatMessages).toHaveCSS("overflow-y", "auto");
+  await expect(messages).toHaveCSS("overflow-y", "auto");
   await expect(floatingContactActions).toBeHidden();
   await expect(chatFooter.getByText("Share contact details")).toBeHidden();
 
@@ -559,7 +526,7 @@ test("instagram in-app browser shows the external browser chat gate", async ({ p
     });
   });
 
-  await page.goto("/chat");
+  await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   const gate = page.getByTestId("chat-browser-gate");
   await expect(gate).toBeVisible();
@@ -582,7 +549,7 @@ test("LINE in-app browser shows the external browser chat gate", async ({ page }
     });
   });
 
-  await page.goto("/chat");
+  await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByTestId("chat-browser-gate")).toBeVisible();
   await expect(page.getByText("Opening chat in Safari")).toBeVisible();
@@ -705,7 +672,7 @@ for (const browserCase of [
   test(`${browserCase.name} resized viewport keeps messages scrollable above the docked composer`, async ({
     page,
   }) => {
-    const sessionId = `resized-keyboard-${browserCase.name.toLowerCase().replace(/\s+/g, "-")}`;
+    const label = `resized-keyboard-${browserCase.name.toLowerCase().replace(/\s+/g, "-")}`;
     const seededMessages = Array.from({ length: 8 }).flatMap((_, index) => [
       {
         role: "user" as const,
@@ -719,12 +686,12 @@ for (const browserCase of [
 
     await page.setViewportSize({ width: 390, height: 760 });
     await installMockVisualViewport(page, browserCase.userAgent);
-    await seedChatMessageCache(page, sessionId, seededMessages);
+    await seedTranscript(page, label, seededMessages);
     await page.goto("/chat");
 
     const chatPanel = page.getByTestId("chat-panel");
     const chatFooter = page.getByTestId("chat-footer");
-    const chatMessages = page.getByTestId("chat-messages");
+    const messages = page.getByTestId("chat-messages");
     const input = page.getByPlaceholder("Ask a question");
 
     await expect(page.getByText("Assistant keyboard answer 8")).toBeVisible();
@@ -741,7 +708,7 @@ for (const browserCase of [
 
     await expect(chatPanel).toHaveAttribute("data-keyboard-layout", "resizedViewport");
     await expect(chatFooter).toHaveCSS("position", "static");
-    await expect(chatMessages).toHaveCSS("overflow-y", "auto");
+    await expect(messages).toHaveCSS("overflow-y", "auto");
     await expect
       .poll(async () =>
         chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
@@ -753,7 +720,7 @@ for (const browserCase of [
       )
       .toBeLessThan(530);
 
-    const metrics = await chatMessages.evaluate((node) => {
+    const metrics = await messages.evaluate((node) => {
       const originalScrollTop = node.scrollTop;
       node.scrollTop = 0;
       const topScrollTop = node.scrollTop;
@@ -787,7 +754,7 @@ test("LINE/Safari resized viewport uses docked page layout instead of overlay fa
 
   const chatPanel = page.getByTestId("chat-panel");
   const chatFooter = page.getByTestId("chat-footer");
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
   const input = page.getByPlaceholder("Ask a question");
 
   await input.focus();
@@ -802,7 +769,7 @@ test("LINE/Safari resized viewport uses docked page layout instead of overlay fa
 
   await expect(chatPanel).toHaveAttribute("data-keyboard-layout", "resizedViewport");
   await expect(chatFooter).toHaveCSS("position", "static");
-  await expect(chatMessages).toHaveCSS("overflow-y", "auto");
+  await expect(messages).toHaveCSS("overflow-y", "auto");
   await expect
     .poll(async () =>
       chatPanel.evaluate((node) => Number.parseFloat(window.getComputedStyle(node).height)),
@@ -845,6 +812,7 @@ test("unknown mobile browser with zero inset avoids synthetic overlay fallback",
 });
 
 test("thai booking chat shows a prefilled booking handoff", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-28T03:00:00Z"));
   await page.goto("/th");
 
   await page.getByRole("button", { name: "เปิดแชตคอนเซียจ" }).click();
@@ -889,7 +857,7 @@ test("thai booking prompt asks only for missing fields and shows villa cards", a
   await page.getByRole("button", { name: "ส่งข้อความ" }).click();
 
   const bookingCard = page.getByTestId("chat-booking-card");
-  await expect(page.getByText(/เลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์/)).toBeVisible();
+  await expectServerReplies(page, 1);
   await expect(bookingCard).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-villa-swipe-hint")).toContainText("เลื่อนดูวิลล่า");
@@ -907,11 +875,7 @@ test("thai availability suggestion shows the booking card and keeps it attached"
   const bookingCard = page.getByTestId("chat-booking-card");
   await expect(bookingCard).toBeVisible();
   await expect(page.getByTestId("chat-tour-card")).toHaveCount(0);
-  // Chip is question-only now; the availability chip still shows the booking card
-  // via its action hint, with the booking prompt as the reply.
-  await expect(
-    page.getByText("ยินดีช่วยค่ะ ใช้การ์ดด้านล่างเลือกวิลล่า วันที่เช็กอิน และเช็กเอาต์ได้เลยนะคะ", { exact: true }),
-  ).toBeVisible();
+  await expectServerReplies(page, 1);
   await expect(bookingCard.getByTestId("chat-villa-selector")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-booking-check-in")).toBeVisible();
   await expect(bookingCard.getByTestId("chat-booking-check-out")).toBeVisible();
@@ -964,6 +928,7 @@ test("chat action cards stay attached after a newer message", async ({ page }) =
 });
 
 test("english booking chat lets visitors choose a missing villa before booking", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-28T03:00:00Z"));
   const checkIn = "2026-10-30";
   const checkOut = "2026-11-03";
   await page.goto("/");
@@ -1050,11 +1015,11 @@ test("thai chat initializes with six question chips before regular chat", async 
   await page.setViewportSize({ width: 390, height: 760 });
   await page.goto("/th/chat?returnTo=%2Fth");
 
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
   const chatFooter = page.getByTestId("chat-footer");
-  const initialPromptGroup = chatMessages.getByTestId("chat-initial-prompts");
-  const initialSuggestions = chatMessages.getByTestId("chat-suggestions");
-  await expect(chatMessages.getByText("ฉันช่วยเลือกวิลล่าที่เหมาะสม")).toHaveCount(0);
+  const initialPromptGroup = messages.getByTestId("chat-initial-prompts");
+  const initialSuggestions = messages.getByTestId("chat-suggestions");
+  await expect(messages.getByText("ฉันช่วยเลือกวิลล่าที่เหมาะสม")).toHaveCount(0);
   await expect(initialPromptGroup.getByText("ถามได้เลย")).toBeVisible();
   await expect(initialSuggestions.getByRole("button")).toHaveCount(6);
   await expect(initialSuggestions).toHaveCSS("justify-content", "center");
@@ -1070,18 +1035,15 @@ test("thai chat initializes with six question chips before regular chat", async 
   expect(firstInitialChipBox).not.toBeNull();
   expect(firstInitialChipBox!.height).toBeGreaterThanOrEqual(44);
 
+  const initial = await initialChipTexts(page);
   await initialSuggestions.getByRole("button", { name: "แต่ละวิลล่าพักได้กี่คน?" }).click();
-  await expect(chatMessages.getByText("แต่ละวิลล่าพักได้กี่คน?")).toBeVisible();
-  // Question-only chip: disconnected, a non-booking chip now returns the honest
-  // "live chat connects once Convex is configured" notice, not a canned sleeps-count.
-  await expect(chatMessages.getByText(/แชตสดจะเชื่อมต่อเมื่อกำหนดค่า Convex/)).toBeVisible();
-  await expect(chatMessages.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(2);
+  await expect(messages.getByText("แต่ละวิลล่าพักได้กี่คน?")).toBeVisible();
+  await expectServerReplies(page, 1);
+  await expect(messages.getByTestId("chat-suggestions").getByRole("button")).toHaveCount(2);
   await expect(
-    chatMessages.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" }),
+    messages.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" }),
   ).toBeVisible();
-  await expect(
-    chatMessages.getByRole("button", { name: "เช็กวันที่ที่ต้องการได้ไหม?" }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
   await expect(chatFooter.getByRole("button", { name: "วิลล่าไหนเหมาะกับครอบครัวหรือกลุ่ม?" })).toHaveCount(0);
 });
 
@@ -1089,28 +1051,24 @@ test("german chat suggestions float under assistant messages and update", async 
   await page.goto("/de");
 
   await page.getByRole("button", { name: "Concierge-Chat öffnen" }).click({ force: true });
-  const chatMessages = page.getByTestId("chat-messages");
+  const messages = page.getByTestId("chat-messages");
   const chatFooter = page.getByTestId("chat-footer");
 
   await expect(
-    chatMessages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
+    messages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toBeVisible();
   await expect(
     chatFooter.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
   ).toHaveCount(0);
 
+  const initial = await initialChipTexts(page);
   await page.getByRole("button", { name: "Welche Vorteile habe ich bei Direktbuchung?" }).click();
   // Question-only chip: the direct-booking chip still surfaces the booking card
   // through its action hint, but the reply is the booking prompt — no retired
   // "Direktbuchung spart etwa 15%" discount claim.
-  await expect(page.getByText(/Buchungskarte/i)).toBeVisible();
+  await expectServerReplies(page, 1);
   await expect(page.getByTestId("chat-booking-card")).toBeVisible();
-  await expect(
-    chatMessages.getByRole("button", { name: "Was kostet mein Aufenthalt?" }),
-  ).toBeVisible();
-  await expect(
-    chatMessages.getByRole("button", { name: "Kann ich meine Reisedaten prüfen?" }),
-  ).toBeVisible();
+  await expectFreshFollowUpChips(page, initial);
 });
 
 test("all visible translated locales render localized nav and chat UI", async ({ page }) => {
@@ -1198,6 +1156,6 @@ test("@smoke locale routing handles canonical English, removed Arabic, and sampl
   await page.goto("/ja/rooms/garden-suite");
   await expect(page.getByRole("link", { name: "ヴィラ一覧" })).toBeVisible();
 
-  await page.goto("/hi/booking/pay?bookingId=demo");
-  await expect(page.getByRole("heading", { name: "डेमो भुगतान पुष्टि करें" })).toBeVisible();
+  await page.goto("/hi/booking/pay");
+  await expect(page.getByRole("heading", { name: hi.Booking.confirmPayment })).toBeVisible();
 });

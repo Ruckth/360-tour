@@ -12,8 +12,8 @@ const villas: ComponentProps<typeof VillaPicker>["properties"] = [
   { _id: "villa2", name: "Pool Villa", slug: "pool", status: "active", imageUrl: photo, maxGuests: 6, pricePerNight: 6000, directDiscountPercent: 0, currency: "THB" },
 ] as ComponentProps<typeof VillaPicker>["properties"];
 const services = [
-  { _id: "service1", name: "Thai Massage", category: "Wellness", durationMin: 60, price: 1000, currency: "THB", imageUrl: photo, description: "Relaxing massage" },
-  { _id: "service2", name: "Oil Massage", category: "Wellness", durationMin: 90, price: 1500, currency: "THB", imageUrl: photo, description: "Oil massage" },
+  { _id: "service1", name: "Thai Massage", category: "Wellness", durationMin: 60, price: 100000, currency: "THB", imageUrl: photo, description: "Relaxing massage" },
+  { _id: "service2", name: "Oil Massage", category: "Wellness", durationMin: 90, price: 150000, currency: "THB", imageUrl: photo, description: "Oil massage" },
 ] as Doc<"services">[];
 let root: Root;
 beforeEach(() => {

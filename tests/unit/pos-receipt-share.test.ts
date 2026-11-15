@@ -1,12 +1,13 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
-import { act, createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
+import { createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { receiptText } from "@/components/checkout/checkout-ui";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { RECEIPT_PAPER_KEY, ReceiptView } from "@/components/checkout/ReceiptView";
 import type { Id } from "convex/_generated/dataModel";
 import { pickReceiptAction } from "./receipt-menu";
@@ -26,11 +27,11 @@ const status = () => document.querySelector('[role="status"]')?.textContent ?? "
 
 /** A paid receipt for a massage, shown in ReceiptView. */
 async function paidReceipt() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
-  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Massage", price: 1200 } }));
+  const { orderId } = await run(actions.addItem({ item: { kind: "extra", name: "Massage", price: 120000 } }));
   await show(backend, createElement(Probe, { backend, orderId }));
-  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 1200, idempotencyKey: "share-receipt-0001", tenders: [{ method: "cash", amount: 1200 }] }));
+  await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: 120000, idempotencyKey: "share-receipt-0001", tenders: [{ method: "cash", amount: 120000 }] }));
   await show(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
 }
 
@@ -106,12 +107,12 @@ describe("receipt share and print", () => {
 });
 
 it("calls money paid before checkout Paid in advance on the receipt and its shared text", async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   // The fixture stay has a 10,000 deposit taken online.
   const { orderId } = await run(actions.openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> }));
   await show(backend, createElement(Probe, { backend, orderId }));
-  expect(view!.totals.deposit).toBe(10_000);
+  expect(view!.totals.deposit).toBe(1_000_000);
   const due = view!.totals.due;
   await run(actions.settleOrder({ orderId, expectedRevision: view!.order.revision, expectedDue: due, idempotencyKey: "deposit-receipt-01", tenders: [{ method: "cash", amount: due }] }));
   await show(backend, createElement(Probe, { backend, orderId }));

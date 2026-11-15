@@ -1,4 +1,7 @@
 "use client";
+import { parseMoneyInput } from "@/lib/money-input";
+import { satangToBaht } from "convex/shared/money";
+
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
@@ -18,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { TENDER_METHODS, formatReceiptNumber, round2, type TenderMethod } from "convex/lib/billMath";
+import { TENDER_METHODS, formatReceiptNumber, roundMoney, type TenderMethod } from "convex/shared/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,
@@ -154,7 +157,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
   const [initialDate] = useState(() => paymentDateInput(view.paymentRecord.effectiveAt ?? Date.now()));
   const [date, setDate] = useState(initialDate);
   const [tenders, setTenders] = useState<TenderRow[]>(() =>
-    view.paymentRecord.tenders.map((t) => ({ ...t, amountInput: String(t.amount), receivedInput: t.received === undefined ? "" : String(t.received) })),
+    view.paymentRecord.tenders.map((t) => ({ ...t, amountInput: String(satangToBaht(t.amount)), receivedInput: t.received === undefined ? "" : String(satangToBaht(t.received)) })),
   );
   const [payer, setPayer] = useState<Customer | null | undefined>(undefined);
   const [reason, setReason] = useState("");
@@ -168,7 +171,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
   const chips = single && tenders.length === 1 && recorded;
   const locked = saving || attempted;
   // Every tender needs an amount above zero; the server refuses a ฿0 row.
-  const amountsValid = tenders.every((row) => Number(row.amountInput) > 0);
+  const amountsValid = tenders.every((row) => parseMoneyInput(row.amountInput) > 0);
   // Save only once something differs from the recorded payment: the server refuses "Nothing changed."
   const changed =
     payer !== undefined ||
@@ -176,14 +179,14 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
     tenders.length !== reviewedRecord.tenders.length ||
     tenders.some((row, i) => {
       const was = reviewedRecord.tenders[i];
-      return row.method !== was.method || Number(row.amountInput) !== was.amount || (row.receivedInput === "" ? undefined : Number(row.receivedInput)) !== was.received;
+      return row.method !== was.method || parseMoneyInput(row.amountInput) !== was.amount || (row.receivedInput === "" ? undefined : parseMoneyInput(row.receivedInput)) !== was.received;
     });
 
   const dirty = reason !== "" || payer !== undefined || date !== initialDate ||
     tenders.length !== reviewedRecord.tenders.length || tenders.some((row, i) => {
       const was = reviewedRecord.tenders[i];
-      return !was || row.method !== was.method || row.amountInput !== String(was.amount) ||
-        row.receivedInput !== (was.received === undefined ? "" : String(was.received));
+      return !was || row.method !== was.method || row.amountInput !== String(satangToBaht(was.amount)) ||
+        row.receivedInput !== (was.received === undefined ? "" : String(satangToBaht(was.received)));
     });
   useEffect(() => { onDraftChange(dirty); return () => onDraftChange(false); }, [dirty, onDraftChange]);
 
@@ -203,7 +206,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
         reason,
         effectiveAt: date === paymentDateInput(reviewedRecord.effectiveAt ?? Date.now()) ? (reviewedRecord.effectiveAt ?? effectiveAt) : effectiveAt,
         ...(tenders.length
-          ? { tenders: tenders.map((t) => ({ method: t.method, amount: Number(t.amountInput), ...(t.method === "cash" && t.receivedInput ? { received: Number(t.receivedInput) } : {}) })) }
+          ? { tenders: tenders.map((t) => ({ method: t.method, amount: parseMoneyInput(t.amountInput), ...(t.method === "cash" && t.receivedInput ? { received: parseMoneyInput(t.receivedInput) } : {}) })) }
           : {}),
         ...(payer !== undefined ? { customer: { customerId: payer?._id ?? null, expectedCustomerRevision: payer?.revision } } : {}),
       };
@@ -253,7 +256,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
   }
 
   // The money button says the money once something changed: "Save · PromptPay ฿1,800".
-  const money = changed && tenders.length ? tenders.map((t) => `${TENDER_LABELS[t.method].short} ${formatMoney(Number(t.amountInput) || 0)}`).join(" + ") : "";
+  const money = changed && tenders.length ? tenders.map((t) => `${TENDER_LABELS[t.method].short} ${formatMoney(parseMoneyInput(t.amountInput) || 0)}`).join(" + ") : "";
   const label = saving
     ? ask ? "Sending…" : "Saving…"
     : attempted
@@ -262,7 +265,7 @@ export function CorrectPayment({ view, onDone, onBusyChange, onDraftChange }: Ta
         ? money ? `Send ${money} to manager` : "Send to manager"
         : money ? `Save · ${money}` : "Save";
   // "Wrong amount typed" joins the quick reasons once an amount (under More) differs; the method is what usually changes.
-  const amountChanged = tenders.some((row, i) => Number(row.amountInput) !== reviewedRecord.tenders[i]?.amount);
+  const amountChanged = tenders.some((row, i) => parseMoneyInput(row.amountInput) !== reviewedRecord.tenders[i]?.amount);
   const reasonChips = chips && !amountChanged ? REASON_CHIPS.correct.filter((chip) => chip !== "Wrong amount typed") : REASON_CHIPS.correct;
 
   return (
@@ -397,7 +400,7 @@ function PayerChoice({ selected, onSelect }: { selected: Customer | null | undef
 export function voidReopens(view: Pick<OrderView, "lines" | "links">) {
   const linked = new Set(view.links.filter((link) => link.status === "active").map((link) => link.lineId));
   const rows = view.lines.filter((line) => line.bookingId || line.appointmentId || linked.has(line._id));
-  return { attached: rows.length > 0, amount: round2(rows.reduce((sum, line) => sum + line.net - (line.deposit ?? 0), 0)) };
+  return { attached: rows.length > 0, amount: roundMoney(rows.reduce((sum, line) => sum + line.net - (line.deposit ?? 0), 0)) };
 }
 
 type VoidChoice = "received" | "unreceived";

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConvexError } from "convex/values";
 import type { Id } from "convex/_generated/dataModel";
-import { evaluateOffer, type QuoteLine } from "convex/lib/offers";
+import { evaluateOffer, type QuoteLine } from "convex/shared/offers";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
@@ -65,24 +65,24 @@ describe("coupon form validation", () => {
 });
 
 describe("test quote direct-offer row", () => {
-  const stay: QuoteLine = { id: "accommodation", kind: "accommodation", propertySlug: "a", checkIn: "2026-12-01", checkOut: "2026-12-03", nights: 2, amount: 9000 };
-  const spa: QuoteLine = { id: "service-0", kind: "service", label: "Massage", amount: 2000 };
+  const stay: QuoteLine = { id: "accommodation", kind: "accommodation", propertySlug: "a", checkIn: "2026-12-01", checkOut: "2026-12-03", nights: 2, amount: 900000 };
+  const spa: QuoteLine = { id: "service-0", kind: "service", label: "Massage", amount: 200000 };
   const coupon = (scope: "services" | "accommodation", percent: number) =>
     ({ code: "X", version: 1, status: "active", benefit: { kind: "percent", percent }, scope, used: 0, discountGranted: 0 }) as const;
 
   it("is applied when a services coupon stacks on it", () => {
-    const result = evaluateOffer({ lines: [stay, spa], directDiscountPercent: 15, today: "2026-11-08", coupon: coupon("services", 20) });
+    const result = evaluateOffer({ lines: [stay, spa], directDiscountPercent: 1500, today: "2026-11-08", coupon: coupon("services", 2000) });
     expect(result.applied).toBe("coupon");
     expect(directOfferApplied(result)).toBe(true);
   });
 
   it("is not applied when an accommodation coupon replaces it", () => {
-    const result = evaluateOffer({ lines: [stay], directDiscountPercent: 15, today: "2026-11-08", coupon: coupon("accommodation", 20) });
+    const result = evaluateOffer({ lines: [stay], directDiscountPercent: 1500, today: "2026-11-08", coupon: coupon("accommodation", 2000) });
     expect(directOfferApplied(result)).toBe(false);
   });
 
   it("is applied when it wins on its own", () => {
-    const result = evaluateOffer({ lines: [stay], directDiscountPercent: 15, today: "2026-11-08", coupon: coupon("accommodation", 10) });
+    const result = evaluateOffer({ lines: [stay], directDiscountPercent: 1500, today: "2026-11-08", coupon: coupon("accommodation", 1000) });
     expect(directOfferApplied(result)).toBe(true);
   });
 });
@@ -93,16 +93,16 @@ describe("marketingErrorText", () => {
   });
 
   it("falls back to the dev message, then the fallback", () => {
-    expect(marketingErrorText(new Error("[CONVEX M(marketing:saveLink)] Uncaught Error: Slug taken\n  at handler"), "fallback")).toBe("Slug taken");
+    expect(marketingErrorText(new Error("[CONVEX M(marketing/commands/saveLink:saveLink)] Uncaught Error: Slug taken\n  at handler"), "fallback")).toBe("Slug taken");
     expect(marketingErrorText("nope", "fallback")).toBe("fallback");
   });
 });
 
 describe("qrDirectPercent", () => {
   const villas = [
-    { slug: "a", status: "active", directDiscountPercent: 10 },
-    { slug: "b", status: "active", directDiscountPercent: 20 },
-    { slug: "c", status: "draft", directDiscountPercent: 5 },
+    { slug: "a", status: "active", directDiscountPercent: 1000 },
+    { slug: "b", status: "active", directDiscountPercent: 2000 },
+    { slug: "c", status: "draft", directDiscountPercent: 500 },
   ] as const;
 
   it("uses the destination villa's own percent", () => {
@@ -272,7 +272,7 @@ describe("change history in the marketing editors", () => {
     campaignName: campaign.name, shortUrlPath: "/f1",
   } as LinkRow;
   const rules = {
-    _id: "v1" as Id<"couponVersions">, _creationTime: 0, couponId: "k1" as Id<"coupons">, version: 1, benefit: { kind: "percent", percent: 10 },
+    _id: "v1" as Id<"couponVersions">, _creationTime: 0, couponId: "k1" as Id<"coupons">, version: 1, benefit: { kind: "percent", percent: 1000 },
     scope: "accommodation", createdAt: 0, createdByEmail: "a@example.com",
   } as CouponDetail["rules"];
   const coupon = {
@@ -325,7 +325,7 @@ describe("change history in the marketing editors", () => {
   });
 
   it("labels the marketing fields the backend records", () => {
-    expect(historyChanges({ before: { benefit: { kind: "percent", percent: 10 }, maxSaving: 1500 }, after: { benefit: { kind: "fixed", amount: 500 }, maxSaving: 3000 } })).toEqual([
+    expect(historyChanges({ before: { benefit: { kind: "percent", percent: 1000 }, maxSaving: 150000 }, after: { benefit: { kind: "fixed", amount: 50000 }, maxSaving: 300000 } })).toEqual([
       { field: "benefit", label: "Discount", before: "10% off", after: "฿500 off" },
       { field: "maxSaving", label: "Maximum saving", before: "฿1,500", after: "฿3,000" },
     ]);

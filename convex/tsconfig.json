@@ -1,22 +1,27 @@
 {
-	"compilerOptions": {
-		"target": "ESNext",
-		"lib": ["ES2021", "DOM"],
-		"allowJs": true,
-		"skipLibCheck": true,
-		"strict": true,
-		"forceConsistentCasingInFileNames": true,
-		"esModuleInterop": true,
-		"module": "ESNext",
-		"moduleResolution": "Bundler",
-		"resolveJsonModule": true,
-		"isolatedModules": true,
-		"noEmit": true,
-		"jsx": "react-jsx",
-		"paths": {
-			"@convex-dev/migrations/test": ["../types/convex-migrations-test.d.ts"]
-		}
-	},
-	"include": ["./**/*.ts"],
-	"exclude": ["./node_modules", "./_generated"]
+  "compilerOptions": {
+    "target": "ESNext",
+    "lib": [
+      "ES2021",
+      "DOM"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "./node_modules",
+    "./_generated"
+  ]
 }

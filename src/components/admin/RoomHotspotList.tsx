@@ -10,14 +10,14 @@ import { Input } from "@/components/ui/input";
 import { HOTSPOT_RADIUS, SPHERE_RADIUS } from "@/lib/tour-geometry";
 import { NATIVE_SELECT, SaveBar, useSaver } from "./property-form";
 
-type Room = Doc<"rooms">;
+type Room = Doc<"tourScenes">;
 type Draft = { id?: string; label: string; targetRoomSlug: string; position: [string, string, string] };
 
 const AXES = ["x", "y", "z"] as const;
 
 /** Hotspots as an editable list with exact positions; the visual editor is `HotspotEditorDialog`. */
 export function RoomHotspotList({ room, rooms }: { room: Room; rooms: Room[] }) {
-  const setHotspots = useMutation(api.adminProperties.setHotspots);
+  const setHotspots = useMutation(api.catalog.adminProperties.setHotspots);
   const save = useSaver();
   const targets = rooms.filter((other) => other._id !== room._id);
   const [drafts, setDrafts] = useState<Draft[]>(() =>

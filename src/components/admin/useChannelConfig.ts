@@ -24,7 +24,8 @@ export function useChannelConfig(): ChannelConfig {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    // The effect owns cancellation; failures are handled inside the operation.
+    void (async () => {
       try {
         const token = await getToken({ template: "convex" });
         const response = await fetch("/api/admin/config-status", {

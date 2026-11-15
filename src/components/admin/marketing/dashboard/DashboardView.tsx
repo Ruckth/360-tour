@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 
 import type { Id } from "convex/_generated/dataModel";
-import type { ReportBasis, ReportData, SpendDraft } from "convex/lib/marketingReport";
+import type { ReportBasis, ReportData, SpendDraft } from "convex/shared/marketingReport";
 import { BarChart3, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";

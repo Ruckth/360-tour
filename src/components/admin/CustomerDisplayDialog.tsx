@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { DisplayDriver } from "convex/displays";
+import type { DisplayDriver } from 'convex/shared/displayTypes';
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";
@@ -213,7 +213,7 @@ function PairingPanel({ clientId, orderId, displays, driver, now }: { clientId: 
 
 /** Another checkout tab drives the display: an explicit take-over, which shows this tab's order in the same step. */
 function TakeOver({ clientId, orderId }: { clientId: string; orderId: string | null | undefined }) {
-  const takeDisplay = useMutation(api.displays.takeDisplay);
+  const takeDisplay = useMutation(api.pos.displays.takeDisplay);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -254,7 +254,7 @@ const FOLLOWING: Record<DisplayDriver, string> = {
  * checkout it follows. Disconnect acts at once, so it sits after the safer "Pair a different display".
  */
 function DisplayStatus({ displays, driver, now, onPairAnother }: { displays: Display[]; driver: DisplayDriver; now: number; onPairAnother?: () => void }) {
-  const revoke = useMutation(api.displays.revoke);
+  const revoke = useMutation(api.pos.displays.revoke);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -315,10 +315,10 @@ function DisplayStatus({ displays, driver, now, onPairAnother }: { displays: Dis
 
 /**
  * A link only when staff ask for one: opening the dialog to check status, take over or disconnect
- * puts no QR on screen. Making a new link cancels the last one (convex/displays.ts).
+ * puts no QR on screen. Making a new link cancels the last one (convex/pos/displays.ts).
  */
 function usePairLink(clientId: string) {
-  const createPairLink = useMutation(api.displays.createPairLink);
+  const createPairLink = useMutation(api.pos.displays.createPairLink);
   const [link, setLink] = useState<PairLink | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -424,7 +424,7 @@ function SendLink({ link, error: createError, loading, create, replacing }: Retu
 }
 
 function EnterCode({ clientId, replacing, onPaired }: { clientId: string; replacing: string | null; onPaired: (name: string) => void }) {
-  const approveCode = useMutation(api.displays.approveCode);
+  const approveCode = useMutation(api.pos.displays.approveCode);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -485,7 +485,7 @@ function EnterCode({ clientId, replacing, onPaired }: { clientId: string; replac
  * as "This computer" and disconnected like any other). Pairing it disconnects the previous display.
  */
 function ThisComputer({ clientId, replacing, onOpen }: { clientId: string; replacing: string | null; onOpen: () => void }) {
-  const createPairLink = useMutation(api.displays.createPairLink);
+  const createPairLink = useMutation(api.pos.displays.createPairLink);
   const [error, setError] = useState<string | null>(null);
 
   async function open() {

@@ -115,11 +115,6 @@ export const STATUS_TONES: { [D in StatusDomain]: Record<StatusKey<D>, Tone> } =
     archived: "muted",
     ai_paused: "accent",
   },
-  answer: {
-    draft: "neutral",
-    approved: "success",
-    archived: "muted",
-  },
   businessFact: {
     draft: "neutral",
     approved: "success",

@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { act, createElement, useSyncExternalStore, type ReactNode } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OrderId } from "@/components/checkout/backend";
@@ -37,8 +38,8 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(browser.url().split("?")[1] ?? ""),
 }));
 vi.mock("@/components/checkout/convex-backend", async () => {
-  const { createFixtureBackend } = await import("@/components/checkout/fixture-backend");
-  return { convexCheckoutBackend: createFixtureBackend() };
+  const { createFixtureBackend } = await import("../support/checkout-backend");
+  return { convexCheckoutBackend: await createFixtureBackend() };
 });
 vi.mock("@/components/admin/useShowOrderOnDisplay", () => ({ useShowOrderOnDisplay: () => ({ error: null, retry: () => undefined }) }));
 vi.mock("@/components/admin/CustomerDisplayDialog", () => ({ CustomerDisplayControl: () => null }));
@@ -71,10 +72,10 @@ const receiptShown = () => document.querySelector("[data-receipt]")?.getAttribut
 
 async function paidOrder() {
   const actions = backend.useActions();
-  const added = actions.addItem({ item: { kind: "extra", name: "Massage", price: 1200 } });
+  const added = actions.addItem({ item: { kind: "extra", name: "Massage", price: 120000 } });
   await settle();
   const { orderId } = await added;
-  const settled = actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: `nav-${orderId}`, tenders: [{ method: "cash", amount: 1200 }] });
+  const settled = actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: `nav-${orderId}`, tenders: [{ method: "cash", amount: 120000 }] });
   return { orderId, settled };
 }
 
@@ -92,7 +93,7 @@ afterEach(async () => {
 
 it("goes back from the receipt of an order paid at checkout to the page before checkout", async () => {
   const actions = backend.useActions();
-  const added = actions.addItem({ item: { kind: "extra", name: "Massage", price: 1200 } });
+  const added = actions.addItem({ item: { kind: "extra", name: "Massage", price: 120000 } });
   await settle();
   const { orderId } = await added;
   browser.reset(["/admin/bookings", `/admin/checkout?order=${orderId}`]);
@@ -101,7 +102,7 @@ it("goes back from the receipt of an order paid at checkout to the page before c
   expect(receiptShown()).toBeNull();
 
   // Taking payment turns the live order paid, and the checkout moves on to its receipt.
-  const paid = actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 1200, idempotencyKey: `nav-pay-${orderId}`, tenders: [{ method: "cash", amount: 1200 }] });
+  const paid = actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: `nav-pay-${orderId}`, tenders: [{ method: "cash", amount: 120000 }] });
   await settle();
   await paid;
   await settle();

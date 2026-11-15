@@ -518,7 +518,7 @@ function createEventCalendarStore<TData>(
 
   const setField = <K extends ControlledKey>(
     key: K,
-    value: EventCalendarState<TData>[K extends "events" ? "events" : K]
+    value: EventCalendarState<TData>[K]
   ) => {
     const controlled = options[key] !== undefined
     if (!controlled) {
@@ -526,16 +526,16 @@ function createEventCalendarStore<TData>(
       ;(internal as any)[key] = value
       invalidate()
     }
-    const callbacks: Record<ControlledKey, ((v: never) => void) | undefined> = {
-      view: settings.onViewChange as never,
-      date: settings.onDateChange as never,
-      dayCount: settings.onDayCountChange as never,
-      events: settings.onEventsChange as never,
-      selection: settings.onSelectionChange as never,
-      interactions: settings.onInteractionsChange as never,
-      viewSettings: settings.onViewSettingsChange as never,
+    const callbacks: { [P in ControlledKey]: ((value: EventCalendarState<TData>[P]) => void) | undefined } = {
+      view: settings.onViewChange,
+      date: settings.onDateChange,
+      dayCount: settings.onDayCountChange,
+      events: settings.onEventsChange,
+      selection: settings.onSelectionChange,
+      interactions: settings.onInteractionsChange,
+      viewSettings: settings.onViewSettingsChange,
     }
-    callbacks[key]?.(value as never)
+    callbacks[key]?.(value)
     if (!controlled) notify()
   }
 

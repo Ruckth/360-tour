@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeGuestPhone } from "@/lib/booking/phone";
+import { normalizeGuestPhone } from "convex/shared/phone";
 
 describe("returning guest phone input", () => {
   it.each([

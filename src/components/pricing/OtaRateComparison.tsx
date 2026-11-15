@@ -1,19 +1,20 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { calculateBookingQuote } from "@/lib/booking/quote";
-import { useConvexQuery } from "@/lib/react/convex";
+import { calculateDirectQuote } from "convex/shared/pricing";
+import { useQuery } from "convex/react";
 import { cn } from "@/lib/utils";
 import { currencyPrefix } from "@/lib/villas";
 
-export type OtaComparison = FunctionReturnType<typeof api.properties.getOtaComparison>;
+export type OtaComparison = FunctionReturnType<typeof api.catalog.properties.getOtaComparison>;
 type OtaRate = NonNullable<OtaComparison>["rates"][number];
 
-// Hoisted: useConvexQuery refetches whenever the function reference changes.
-const otaComparisonQuery = api.properties.getOtaComparison;
+const otaComparisonQuery = api.catalog.properties.getOtaComparison;
 
 const PLATFORM_NAMES: Record<OtaRate["platform"], string> = {
   booking_com: "Booking.com",
@@ -23,7 +24,7 @@ const PLATFORM_NAMES: Record<OtaRate["platform"], string> = {
 };
 
 export function useOtaComparison(slug: string) {
-  return useConvexQuery<OtaComparison>(otaComparisonQuery, { slug }, null).data;
+  return useQuery(otaComparisonQuery, { slug });
 }
 
 /**
@@ -52,14 +53,9 @@ export function OtaRateComparison({
   const locale = useLocale();
   if (rates.length === 0) return null;
 
-  const money = (amount: number) => `${currencyPrefix(currency)}${amount.toLocaleString()}`;
+  const money = (amount: number) => `${currencyPrefix(currency)}${satangToBaht(amount).toLocaleString()}`;
   const stayNights = nights && nights > 0 ? nights : 1;
-  const directTotal = calculateBookingQuote({
-    pricePerNight,
-    nights: stayNights,
-    discountPercent,
-    currency,
-  }).directTotal;
+  const directTotal = calculateDirectQuote({ pricePerNight: pricePerNight, directDiscountPercent: discountPercent, currency: currency }, stayNights).directTotal;
   const rows = rates
     .map((rate) => {
       const total = rate.nightlyRate * stayNights;

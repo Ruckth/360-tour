@@ -13,7 +13,7 @@ const client = vi.hoisted(() => ({
   mutation: vi.fn(),
   action: vi.fn(),
 }));
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => client }));
 let root: Root;
 const summary = {
   property: "Pool Villa",
@@ -21,7 +21,7 @@ const summary = {
   checkOut: "2026-12-03",
   guests: 2,
   nights: 2,
-  total: 200,
+  total: 20000,
   currency: "THB",
   cancellationPolicy: "Free cancellation",
   unpaidHoldMinutes: 30,
@@ -61,7 +61,7 @@ afterEach(async () => {
 it("only reads the proposal on opening and shows its summary, policy and hold", async () => {
   await render();
   expect(getFunctionName(client.query.mock.calls[0][0])).toBe(
-    "bookings:getConfirmProposal",
+    "bookings/bookings:getConfirmProposal",
   );
   expect(client.query.mock.calls[0][1]).toEqual({ token: "signed-proposal" });
   expect(client.mutation).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ it("a double click confirms once and goes straight into Stripe checkout", async 
   });
   expect(client.mutation).toHaveBeenCalledTimes(1);
   expect(getFunctionName(client.mutation.mock.calls[0][0])).toBe(
-    "bookings:confirmProposal",
+    "bookings/bookings:confirmProposal",
   );
   expect(client.action.mock.calls[0][1]).toEqual({
     bookingId: "booking",

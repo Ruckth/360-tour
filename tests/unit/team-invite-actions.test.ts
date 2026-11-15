@@ -9,8 +9,8 @@ vi.mock("convex/react", async () => {
   return {
     useQuery: (ref: Parameters<typeof getFunctionName>[0]) => {
       const name = getFunctionName(ref);
-      if (name === "staffAccess:listPeople") return mocks.people;
-      if (name === "staffAccess:getCashierRules") return { discountLimitPercent: 10, voidPaidSale: "manager", customPrice: "manager", paymentFix: "manager", refund: "manager", revision: 0 };
+      if (name === "auth/staffAccess:listPeople") return mocks.people;
+      if (name === "auth/staffAccess:getCashierRules") return { discountLimitPercent: 1000, voidPaidSale: "manager", customPrice: "manager", paymentFix: "manager", refund: "manager", revision: 0 };
       return undefined;
     },
     useMutation: (ref: Parameters<typeof getFunctionName>[0]) => {
@@ -84,7 +84,7 @@ it("grants Marketing access from the row, through the unchanged Marketing mutati
   await render();
   await change(row(active.email));
   await pick(select(row(active.email), "Marketing role"), "marketer");
-  expect(mocks.calls).toEqual([["marketingAccess:setGrant", { email: active.email, role: "marketer" }]]);
+  expect(mocks.calls).toEqual([["marketing/access:setGrant", { email: active.email, role: "marketer" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited Mint to Marketing as Editor.");
   expect(mocks.confirm).not.toHaveBeenCalled();
 });
@@ -98,7 +98,7 @@ it("asks before removing either role, and leaves the other alone", async () => {
   await change(row(active.email));
   await pick(select(row(active.email), "Desk role"), "");
   expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Remove Mint from the desk?", cancelLabel: "Keep access", destructive: true }));
-  expect(mocks.calls).toEqual([["staffAccess:setGrant", { email: active.email, role: null }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: active.email, role: null }]]);
 });
 
 it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
@@ -107,7 +107,7 @@ it("keeps invite actions in ⋯, and shows Renew only when the invite has expire
   expect(buttonsIn(row(expired.email))).toEqual(["Change roles for May", "Renew invitation for May"]);
   expect(buttonsIn(row(active.email))).toEqual(["Change roles for Mint"]);
   await act(async () => row(expired.email).querySelector<HTMLButtonElement>('button[aria-label="Renew invitation for May"]')!.click());
-  expect(mocks.calls).toEqual([["staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for May.");
 });
 
@@ -128,8 +128,8 @@ it("invites with a Desk role, a Marketing role, or both", async () => {
   await pick(marketing, "viewer");
   await act(async () => form.requestSubmit());
   expect(mocks.calls).toEqual([
-    ["staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager" }],
-    ["marketingAccess:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
+    ["auth/staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager" }],
+    ["marketing/access:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
   ]);
 });
 

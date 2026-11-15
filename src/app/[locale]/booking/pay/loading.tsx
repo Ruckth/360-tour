@@ -1,1 +1,5 @@
-export { default } from "@/app/booking/pay/loading";
+import { PaymentLoading } from "@/components/loading/RouteLoading";
+
+export default function Loading() {
+  return <PaymentLoading />;
+}

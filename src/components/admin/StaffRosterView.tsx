@@ -1,5 +1,7 @@
 "use client";
 
+import { addDays } from 'convex/shared/dates';
+
 import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -45,10 +47,10 @@ import { appointmentGuestLabel, errorText, resortIsoDate, resortMidnight } from 
 import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 
-type Week = FunctionReturnType<typeof api.roster.getWeek>;
+type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
 type Cell = Week["cells"][number];
-type Conflict = Extract<FunctionReturnType<typeof api.roster.applyCells>, { ok: false }>["conflicts"][number];
-type CopyResult = FunctionReturnType<typeof api.roster.copyWeek>;
+type Conflict = Extract<FunctionReturnType<typeof api.services.roster.applyCells>, { ok: false }>["conflicts"][number];
+type CopyResult = FunctionReturnType<typeof api.services.roster.copyWeek>;
 type Plan = { shifts: Array<{ start: string; end: string }>; breaks: Array<{ start: string; end: string; label: string }> };
 type Pos = { row: number; col: number };
 type ConflictState = { title: string; conflicts: Conflict[]; retry?: () => void };
@@ -78,11 +80,6 @@ const utcDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
 const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
 /** "Mon 14 Nov" for a resort date. */
 const fullDay = { format: (iso: string) => staffDate(resortMidnight(iso), { weekday: true }) };
-
-function addDays(iso: string, days: number) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
-}
 
 /** The Monday of the week containing `iso`. */
 function mondayOf(iso: string) {
@@ -117,12 +114,12 @@ export function StaffRosterView() {
   const anchorBase = useRef<Set<string>>(new Set());
   const confirm = useConfirm();
 
-  const data = useQuery(api.roster.getWeek, { weekStart });
-  const historyStaff = useQuery(api.adminServices.listStaff, { includeArchived: true }) ?? [];
-  const applyCells = useMutation(api.roster.applyCells);
-  const resetCells = useMutation(api.roster.resetCells);
-  const makeDefault = useMutation(api.roster.makeDefault);
-  const undo = useMutation(api.roster.undo);
+  const data = useQuery(api.services.roster.getWeek, { weekStart });
+  const historyStaff = useQuery(api.services.admin.listStaff, { includeArchived: true }) ?? [];
+  const applyCells = useMutation(api.services.roster.applyCells);
+  const resetCells = useMutation(api.services.roster.resetCells);
+  const makeDefault = useMutation(api.services.roster.makeDefault);
+  const undo = useMutation(api.services.roster.undo);
 
   const staff = useMemo(() => data?.staff ?? [], [data?.staff]);
   const dates = useMemo(() => data?.dates ?? [], [data?.dates]);
@@ -805,7 +802,7 @@ function CopyWeekDialog({
   onClose: () => void;
   onDone: (result: CopyResult, weeks: number) => void;
 }) {
-  const copyWeek = useMutation(api.roster.copyWeek);
+  const copyWeek = useMutation(api.services.roster.copyWeek);
   const [choice, setChoice] = useState<(typeof WEEK_CHOICES)[number]>("10");
   const [custom, setCustom] = useState("12");
   const [conflict, setConflict] = useState<"skip" | "overwrite">("skip");

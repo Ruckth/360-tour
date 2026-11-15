@@ -3,7 +3,7 @@ import type { Id } from "convex/_generated/dataModel";
 /**
  * Business-fact authoring shapes and pure helpers.
  *
- * Validation/normalization here mirrors the server limits in `convex/businessFacts.ts`
+ * Validation/normalization here mirrors the server limits in `convex/concierge/businessFacts.ts`
  * (title 160, body 2400, searchText 1200, source 500) so the editor fails fast and shows
  * the same message the mutation would, before any round trip. The server stays authoritative;
  * these helpers never relax a server rule, they only pre-check it.
@@ -12,7 +12,7 @@ import type { Id } from "convex/_generated/dataModel";
 export type BusinessFactStatus = "draft" | "approved" | "archived";
 export const BUSINESS_FACT_STATUSES: readonly BusinessFactStatus[] = ["draft", "approved", "archived"];
 
-/** A business fact as returned by `api.businessFacts.adminList`. */
+/** A business fact as returned by `api.concierge.businessFacts.adminList`. */
 export type AdminBusinessFact = {
   _id: Id<"businessFacts">;
   title: string;

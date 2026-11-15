@@ -2,7 +2,7 @@
 
 import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
-import { normalizeCouponCode } from "convex/lib/offers";
+import { normalizeCouponCode } from "convex/shared/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "lucide-react";
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";

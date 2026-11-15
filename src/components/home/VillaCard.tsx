@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
@@ -81,7 +83,7 @@ export function VillaCard({
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
         <div className="absolute bottom-3 right-3 rounded-full bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm">
           {currencyPrefix(property.currency)}
-          {property.pricePerNight.toLocaleString()}
+          {satangToBaht(property.pricePerNight).toLocaleString()}
           <span className="text-[10px] font-normal text-white/60 md:text-xs">
             {t("perNight")}
           </span>

@@ -46,16 +46,15 @@ describe("resolveTourRooms", () => {
     expect(resolveTourRooms([], [dbRooms[1]], th)[0].name).not.toBe("Living Area");
   });
 
-  it("falls back to the bundled rooms when the villa has no DB rooms or Convex is unavailable", () => {
+  it("shows no invented rooms when the backend has no rooms or is unavailable", () => {
     for (const db of [[], null, undefined]) {
       const rooms = resolveTourRooms(["pv-pool", "pv-living", "missing"], db, en);
-      expect(rooms.map((room) => room.id)).toEqual(["pv-pool", "pv-living"]);
-      expect(rooms[0].hotspots.map((hotspot) => hotspot.targetRoomId)).toEqual(["pv-living"]);
+      expect(rooms).toEqual([]);
     }
   });
 
   it("skips hotspots whose target is not in the tour", () => {
-    const rooms = resolveTourRooms(["pv-living"], null, en);
+    const rooms = resolveTourRooms(["pv-living"], [dbRooms[1]], en);
     expect(rooms).toHaveLength(1);
     expect(rooms[0].hotspots).toEqual([]);
   });

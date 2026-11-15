@@ -18,7 +18,7 @@ export default async function LocaleLayout({
 }) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
-  const hasReviews = await hasFeaturedReviews(locale);
+  const hasReviews = await hasFeaturedReviews();
 
   return <PublicSiteShell hasReviews={hasReviews}>{children}</PublicSiteShell>;
 }

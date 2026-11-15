@@ -1,10 +1,11 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 
 let root: Root;
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(300); });
@@ -28,12 +29,12 @@ afterEach(async () => {
 
 /** A ฿100 order with a 100% discount: nothing left to pay. */
 async function freeOrder() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
-  const adding = actions.addItem({ item: { kind: "extra", name: "Water", price: 100 } });
+  const adding = actions.addItem({ item: { kind: "extra", name: "Water", price: 10000 } });
   await settle();
   const { orderId, lineId } = await adding;
-  const discounting = actions.updateLine({ lineId, discount: { type: "percent", value: 100 } });
+  const discounting = actions.updateLine({ lineId, discount: { type: "percent", value: 10000 } });
   await settle();
   await discounting;
   return { backend, actions, orderId };

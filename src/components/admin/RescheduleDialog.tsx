@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { appointmentRevision, movedWindow } from "convex/lib/appointmentWindow";
+import { appointmentRevision, movedWindow } from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -21,7 +21,7 @@ import {
 } from "@/lib/staff-bookings";
 import { staffTime } from "@/lib/staff-time";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 
 /**
  * Date, time and qualified staff for an upcoming booked appointment, with the before → after
@@ -44,14 +44,14 @@ export function RescheduleDialog({
   onClose: () => void;
   onFailed?: (message: string) => void;
 }) {
-  const reschedule = useMutation(api.adminServices.rescheduleAppointment);
+  const reschedule = useMutation(api.services.commands.rescheduleAppointment.rescheduleAppointment);
   // The comparison and the stale check use the appointment as it was when this opened.
   const [original] = useState(appointment);
   const [staffId, setStaffId] = useState<Id<"staff">>(initial?.staffId ?? original.staffId);
   const [start, setStart] = useState(initial?.start ?? original.start);
   const [date, setDate] = useState(resortIsoDate(start));
   const now = useNow();
-  const options = useQuery(api.adminServices.rescheduleOptions, { appointmentId: original._id, date });
+  const options = useQuery(api.services.admin.rescheduleOptions, { appointmentId: original._id, date });
 
   const staffName = (id: Id<"staff">) => staffById.get(id)?.name ?? options?.staff.find((s) => s._id === id)?.name ?? "Staff";
   const staffChoices = options?.staff ?? [];
@@ -62,7 +62,7 @@ export function RescheduleDialog({
   const after = movedWindow(original, start);
 
   const [reason, setReason] = useState("");
-  const review = useQuery(api.adminServices.previewAppointmentTime, { appointmentId: original._id, serviceId: original.serviceId, staffId, start });
+  const review = useQuery(api.services.admin.previewAppointmentTime, { appointmentId: original._id, serviceId: original.serviceId, staffId, start });
   const problem = review?.problem ?? (options === undefined
         ? null
         : !staffChoices.some((s) => s._id === staffId)

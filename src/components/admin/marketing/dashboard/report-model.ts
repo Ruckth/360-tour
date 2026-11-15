@@ -1,3 +1,5 @@
+import { addDays } from 'convex/shared/dates';
+export { addDays } from 'convex/shared/dates';
 import {
   MAX_REPORT_DAYS,
   reportDayCount,
@@ -6,7 +8,7 @@ import {
   type ReportData,
   type ReportSale,
   type ReportTouch,
-} from "convex/lib/marketingReport";
+} from "convex/shared/marketingReport";
 
 // The dashboard's numbers, worked out in the browser from one getReport read. No React, so every
 // rule here is unit-tested (tests/unit/marketing-dashboard-model.test.ts).
@@ -113,10 +115,6 @@ export const BUCKET_LABEL: Record<Exclude<RowKind, "tracked">, { name: string; s
 export const slugPath = (slug: string) => `/${slug.replace(/^\/+/, "")}`;
 
 // ---------------------------------------------------------------- dates
-
-export function addDays(iso: string, days: number) {
-  return new Date(Date.parse(`${iso}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
-}
 
 export const PRESETS = [
   { id: "last7", label: "Last 7 days" },

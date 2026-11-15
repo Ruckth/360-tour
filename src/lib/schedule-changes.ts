@@ -1,8 +1,8 @@
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/lib/appointmentWindow";
-import type { RosterBreak } from "convex/lib/serviceSlots";
+import { TURNAROUND_STEP_MIN, turnaroundMinutes } from "convex/shared/appointmentWindow";
+import type { RosterBreak } from "convex/shared/serviceScheduleTypes";
 import { resortIsoDate, resortTime24 } from "@/lib/staff-bookings";
 import { staffDate, staffTime } from "@/lib/staff-time";
 
@@ -10,8 +10,8 @@ import { staffDate, staffTime } from "@/lib/staff-time";
 
 const MINUTE = 60_000;
 
-type Appointment = Doc<"serviceAppointments">;
-export type ScheduleData = FunctionReturnType<typeof api.adminServices.listSchedule>;
+type Appointment = Doc<"appointments">;
+export type ScheduleData = FunctionReturnType<typeof api.services.admin.listSchedule>;
 /** A roster break on the calendar, with the date and day plan it was read from. */
 export type BreakBlock = Extract<ScheduleData["blocks"][number], { kind: "break" }>;
 export type ScheduleProposal = { start: number; staffId: Id<"staff"> };

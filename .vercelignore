@@ -3,3 +3,8 @@
 node_modules
 archive
 *.tsbuildinfo
+.local-dev
+output
+test-results
+.env.dev.local
+.env.e2e.local

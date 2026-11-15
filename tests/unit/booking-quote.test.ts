@@ -1,34 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 
-describe("calculateBookingQuote", () => {
+describe("calculateDirectQuote", () => {
   it("calculates subtotal, discount, and direct total", () => {
     expect(
-      calculateBookingQuote({
-        pricePerNight: 8500,
-        nights: 3,
-        discountPercent: 15,
-        currency: "THB",
-      }),
+      calculateDirectQuote({ pricePerNight: 850000, directDiscountPercent: 1500, currency: "THB" }, 3),
     ).toEqual({
-      pricePerNight: 8500,
+      pricePerNight: 850000,
       nights: 3,
-      subtotal: 25500,
-      discountPercent: 15,
-      discountAmount: 3825,
-      directTotal: 21675,
+      subtotal: 2550000,
+      discountPercent: 1500,
+      discountAmount: 382500,
+      directTotal: 2167500,
       currency: "THB",
     });
   });
 
   it("clamps negative nights to zero", () => {
     expect(
-      calculateBookingQuote({
-        pricePerNight: 4500,
-        nights: -2,
-        discountPercent: 15,
-        currency: "THB",
-      }),
+      calculateDirectQuote({ pricePerNight: 450000, directDiscountPercent: 1500, currency: "THB" }, -2),
     ).toMatchObject({
       nights: 0,
       subtotal: 0,
@@ -39,12 +29,7 @@ describe("calculateBookingQuote", () => {
 
   it("rounds fractional discount amounts", () => {
     expect(
-      calculateBookingQuote({
-        pricePerNight: 3333,
-        nights: 1,
-        discountPercent: 12.5,
-        currency: "THB",
-      }).discountAmount,
-    ).toBe(417);
+      calculateDirectQuote({ pricePerNight: 333300, directDiscountPercent: 1250, currency: "THB" }, 1).discountAmount,
+    ).toBe(41663);
   });
 });

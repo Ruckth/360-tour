@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { appointmentRevision } from "convex/lib/appointmentWindow";
+import { appointmentRevision } from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { STATUS_LABELS } from "@/components/admin/labels";
@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-type Appointment = Doc<"serviceAppointments">;
+type Appointment = Doc<"appointments">;
 const STATUSES: Appointment["status"][] = ["booked", "arrived", "in_service", "completed", "cancelled", "no_show"];
 
 /** Retains the reviewed revision and all input after a failed/pending save. */
@@ -25,8 +25,8 @@ export function AppointmentCorrectionDialog({ appointment, payment = false, onCl
   const [status, setStatus] = useState<Appointment["status"]>(original.status);
   const [reason, setReason] = useState("");
   const when = useEffectiveTime();
-  const correct = useMutation(api.adminServices.correctAppointmentStatus);
-  const pay = useMutation(api.adminServices.markAppointmentPaid);
+  const correct = useMutation(api.services.commands.correctAppointmentStatus.correctAppointmentStatus);
+  const pay = useMutation(api.services.commands.markAppointmentPaid.markAppointmentPaid);
   const requiresReason = !payment && ["completed", "cancelled", "no_show", "in_service"].includes(original.status);
 
   async function save() {

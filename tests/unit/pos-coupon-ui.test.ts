@@ -1,22 +1,24 @@
+import { act } from "../support/checkout-act";
+import { gateResponse } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
-import type { DisplayOrderState } from "convex/lib/displayView";
+import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { NextIntlClientProvider } from "next-intl";
-import { act, createElement, useState, type ComponentProps, type ReactNode } from "react";
+import { createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../messages/display/en.json";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
 import { receiptText } from "@/components/checkout/checkout-ui";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { HistoryValues } from "@/components/checkout/OrderHistory";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { Screen } from "@/components/display/DisplayScreens";
 
-type Fixture = ReturnType<typeof createFixtureBackend>;
+type Fixture = Awaited<ReturnType<typeof createFixtureBackend>>;
 let root: Root;
 
 function Page({ start }: { start: OrderId | null }) {
@@ -52,7 +54,7 @@ async function spaOrder(backend: CheckoutBackend) {
   const first = actions.addItem({ item: svc(1) });
   await vi.advanceTimersByTimeAsync(200);
   const { orderId, lineId } = await first;
-  const rest = Promise.all([actions.addItem({ orderId, item: svc(7) }), actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 450 } })]);
+  const rest = Promise.all([actions.addItem({ orderId, item: svc(7) }), actions.addItem({ orderId, item: { kind: "extra", name: "Breakfast basket", price: 45000 } })]);
   await vi.advanceTimersByTimeAsync(400);
   await rest;
   return { orderId, massage: lineId };
@@ -87,7 +89,7 @@ afterEach(async () => {
 
 describe("adding a coupon at checkout", () => {
   it("puts focus back on Add coupon after cancelling", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     await click(button(/^Add coupon/));
@@ -99,7 +101,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("applies a typed code, splits it over the spa rows and shows it apart from staff discounts", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     expect(due()).toBe("฿2,250");
@@ -117,9 +119,9 @@ describe("adding a coupon at checkout", () => {
     expect(due()).toBe("฿1,750");
     // ฿500 over ฿1,200 + ฿600, the breakfast basket not covered.
     expect(row("Thai massage 60").textContent).toContain("Coupon -฿333");
-    expect(row("Foot spa 45").textContent).toContain("Coupon -฿167");
+    expect(row("Foot spa 45").textContent).toContain("Coupon -฿166.67");
     expect(row("Breakfast basket").textContent).not.toContain("Coupon");
-    expect(row("Thai massage 60").textContent).toContain("฿867");
+    expect(row("Thai massage 60").textContent).toContain("฿866.67");
 
     // A staff discount stays its own row in the totals.
     await click(row("Breakfast basket").querySelector("button"));
@@ -141,7 +143,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("takes a pasted or scanned offer link and refuses other sites' links before any lookup", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     const apply = vi.spyOn(backend.useActions(), "applyOrderCoupon");
@@ -165,7 +167,7 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("explains a code that can't be used on this order", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const report = vi.spyOn(backend.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
@@ -189,21 +191,24 @@ describe("adding a coupon at checkout", () => {
   });
 
   it("waits for order edits still saving before the field can be used", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await show(backend, orderId);
     await click(button(/^Add coupon/));
     await act(async () => type(field(), "DCNT-SPA-500"));
     // Another tap on the catalog: its write is in flight.
+    const pending = gateResponse(backend.useActions().addItem);
+    vi.spyOn(backend.useActions(), 'addItem').mockImplementationOnce(pending.write);
     await click([...document.querySelectorAll("button")].find((el) => /^Hot stone 60/.test(el.getAttribute("aria-label") ?? el.textContent ?? "")));
     expect(field().disabled).toBe(true);
     expect(button("Apply")?.disabled).toBe(true);
+    pending.release();
     await settle();
     expect(field().disabled).toBe(false);
   });
 
   it("shows only on open orders with items", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     await show(backend, null);
     expect(button(/^Add coupon/)).toBeUndefined();
   });
@@ -211,7 +216,7 @@ describe("adding a coupon at checkout", () => {
 
 describe("a coupon that no longer fits", () => {
   it("warns, blocks payment with the reason, and can be removed", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(backend, orderId);
@@ -234,16 +239,16 @@ describe("a coupon that no longer fits", () => {
   });
 
   it("checks again once a paused coupon is live, restoring the saving and payment", async () => {
-    const backend = createFixtureBackend();
+    const backend = await createFixtureBackend();
     const { orderId } = await spaOrder(backend);
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
-    backend.setCouponSnapshot("DCNT-SPA-500", { status: "paused" });
-    await write(backend.useActions().addItem({ orderId, item: { kind: "extra", name: "Water", price: 50 } }));
+    await backend.setCouponSnapshot("DCNT-SPA-500", { status: "paused" });
+    await write(backend.useActions().addItem({ orderId, item: { kind: "extra", name: "Water", price: 5000 } }));
     await show(backend, orderId);
     const warning = panel().querySelector('[data-testid="order-coupon-problem"]')!;
     expect(warning.textContent).toContain("This coupon is paused or not published yet.");
 
-    backend.setCouponSnapshot("DCNT-SPA-500", { status: "active" });
+    await backend.setCouponSnapshot("DCNT-SPA-500", { status: "active" });
     await click(button("Check again", warning));
     await settle();
     expect(panel().querySelector('[data-testid="order-coupon-problem"]')).toBeNull();
@@ -252,7 +257,7 @@ describe("a coupon that no longer fits", () => {
   });
 
   it("never offers the coupon to a stay priced with its own booking coupon", async () => {
-    const backend = createFixtureBackend({ bookings: [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 3000 } }] });
+    const backend = await createFixtureBackend({ bookings: [{ id: "fxbkg000001" as Id<"bookings">, promotion: { code: "DCNT-F1-20", discount: 300000 } }] });
     const { orderId } = await write(backend.useActions().openOrderFor({ bookingId: "fxbkg000001" as Id<"bookings"> }));
     await write(backend.useActions().addItem({ orderId, item: svc(1) }));
     await write(backend.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
@@ -274,11 +279,11 @@ describe("paying with a coupon", () => {
   }
 
   it("refuses a coupon sold out at payment, records no payment, and offers a re-check or removal", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal").mockRejectedValue(new Error("diagnostics offline"));
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L2-300" }));
-    fixture.setCouponSnapshot("DCNT-L2-300", { used: 50 });
+    await fixture.setCouponSnapshot("DCNT-L2-300", { used: 50 });
     await payByCard(fixture, orderId);
 
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
@@ -303,12 +308,12 @@ describe("paying with a coupon", () => {
   });
 
   it("refuses a coupon whose saving changed and re-checks it at the new saving", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const report = vi.spyOn(fixture.useActions(), "noteCouponRefusal");
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-L-10" }));
     // The discount budget is read live at payment (the benefit and its cap are frozen with the applied version): ฿100 is left.
-    fixture.setCouponSnapshot("DCNT-L-10", { discountBudget: 9900 });
+    await fixture.setCouponSnapshot("DCNT-L-10", { discountBudget: 990000 });
     await payByCard(fixture, orderId);
     const alert = panel().querySelector('[data-testid="pay-coupon-problem"]')!;
     expect(alert.textContent).toContain("The coupon now saves ฿100.");
@@ -320,7 +325,7 @@ describe("paying with a coupon", () => {
   });
 
   it("shows the coupon in the amount due and consumes it when paid", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);
@@ -330,16 +335,16 @@ describe("paying with a coupon", () => {
     await settle();
     const view = await readOrder(fixture, orderId);
     expect(view.order.state).toBe("paid");
-    expect(view.promotion).toMatchObject({ code: "DCNT-SPA-500", discount: 500, problem: null });
+    expect(view.promotion).toMatchObject({ code: "DCNT-SPA-500", discount: 50000, problem: null });
   });
 });
 
 describe("receipts with a coupon", () => {
   async function paidOrder() {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     const applied = await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
-    await write(fixture.useActions().settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 1750, idempotencyKey: "coupon-receipt", tenders: [{ method: "cash", amount: 1750, received: 2000 }] }));
+    await write(fixture.useActions().settleOrder({ orderId, expectedRevision: applied.revision, expectedDue: 175000, idempotencyKey: "coupon-receipt", tenders: [{ method: "cash", amount: 175000, received: 200000 }] }));
     return { fixture, orderId, view: await readOrder(fixture, orderId) };
   }
 
@@ -347,7 +352,7 @@ describe("receipts with a coupon", () => {
     const { fixture, orderId } = await paidOrder();
     await render(createElement(CheckoutBackendProvider, { backend: fixture as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })));
     const receipt = document.querySelector("article.pos-receipt")!;
-    expect([...receipt.querySelectorAll('[data-testid="receipt-line-coupon"]')].map((el) => el.textContent)).toEqual(["Coupon DCNT-SPA-500-฿333", "Coupon DCNT-SPA-500-฿167"]);
+    expect([...receipt.querySelectorAll('[data-testid="receipt-line-coupon"]')].map((el) => el.textContent)).toEqual(["Coupon DCNT-SPA-500-฿333.33", "Coupon DCNT-SPA-500-฿166.67"]);
     expect(receipt.textContent).not.toContain("Discount-");
     expect(receipt.querySelector('[data-testid="receipt-coupon-total"]')?.textContent).toBe("Coupon DCNT-SPA-500-฿500");
     expect(receipt.textContent).toContain("Subtotal฿2,250");
@@ -360,7 +365,7 @@ describe("receipts with a coupon", () => {
     const text = receiptText(view, "Auralis Cove Retreat");
     // Rows before the coupon, each share under its row, then subtotal less coupon is the total: counted once.
     expect(text).toContain("Thai massage 60  ฿1,200\n  Coupon DCNT-SPA-500  -฿333");
-    expect(text).toContain("Foot spa 45  ฿600\n  Coupon DCNT-SPA-500  -฿167");
+    expect(text).toContain("Foot spa 45  ฿600\n  Coupon DCNT-SPA-500  -฿166.67");
     expect(text).toContain("Subtotal  ฿2,250\nCoupon DCNT-SPA-500  -฿500\nTotal  ฿1,750");
     expect(text).toContain("You saved ฿500 with DCNT-SPA-500");
     expect(text).toContain("Cash  ฿2,000\nChange  ฿250");
@@ -369,7 +374,7 @@ describe("receipts with a coupon", () => {
 
 describe("order history", () => {
   it("names coupon events and their fields", async () => {
-    const fixture = createFixtureBackend();
+    const fixture = await createFixtureBackend();
     const { orderId } = await spaOrder(fixture);
     await write(fixture.useActions().applyOrderCoupon({ orderId, code: "DCNT-SPA-500" }));
     await show(fixture, orderId);
@@ -383,7 +388,7 @@ describe("order history", () => {
   });
 
   it("formats a removed coupon", async () => {
-    await render(createElement(HistoryValues, { value: { code: "DCNT-L-10", couponVersion: 2, discount: 180 } }));
+    await render(createElement(HistoryValues, { value: { code: "DCNT-L-10", couponVersion: 2, discount: 18000 } }));
     expect(document.body.textContent).toBe("Coupon: DCNT-L-10Coupon version: v2Discount: ฿180");
   });
 });
@@ -396,20 +401,20 @@ describe("customer display", () => {
 
   it("shows each row's coupon share and the coupon in the totals, apart from discounts", async () => {
     await display({
-      ...shared, state: "order", activeAt: Date.now(), subtotal: 2250, discount: 550, coupon: { code: "DCNT-SPA-500", saving: 500 }, deposit: 0, total: 1700, vat: 111.21, due: 1700,
-      lines: [line("Thai massage 60", 867, 333), line("Foot spa 45", 433, 167), line("Breakfast basket", 400, 0, 50)],
+      ...shared, state: "order", activeAt: Date.now(), subtotal: 225000, discount: 55000, coupon: { code: "DCNT-SPA-500", saving: 50000 }, deposit: 0, total: 170000, vat: 11121, due: 170000,
+      lines: [line("Thai massage 60", 86667, 33333), line("Foot spa 45", 43333, 16667), line("Breakfast basket", 40000, 0, 5000)],
     });
     const text = document.body.textContent ?? "";
-    expect(text).toContain("Thai massage 60฿333 off with DCNT-SPA-500฿867");
+    expect(text).toContain("Thai massage 60฿333.33 off with DCNT-SPA-500฿866.67");
     expect(text).toContain("Breakfast basket฿50 off฿400");
     expect(text).toContain("Discounts−฿50");
     expect(text).toContain("Coupon DCNT-SPA-500−฿500");
   });
 
   it("thanks the guest with what the coupon saved", async () => {
-    await display({ ...shared, state: "paid", total: 1750, vat: 114.49, amountPaid: 1750, receiptNumber: 318, paidAt: Date.now(), coupon: { code: "DCNT-SPA-500", saving: 500 } });
+    await display({ ...shared, state: "paid", total: 175000, vat: 11449, amountPaid: 175000, receiptNumber: 318, paidAt: Date.now(), coupon: { code: "DCNT-SPA-500", saving: 50000 } });
     expect(document.querySelector('[data-testid="display-coupon-saved"]')?.textContent).toBe("You saved ฿500 with DCNT-SPA-500");
-    await display({ ...shared, state: "paid", total: 1750, vat: 114.49, amountPaid: 1750, receiptNumber: 318, paidAt: Date.now(), coupon: null });
+    await display({ ...shared, state: "paid", total: 175000, vat: 11449, amountPaid: 175000, receiptNumber: 318, paidAt: Date.now(), coupon: null });
     expect(document.querySelector('[data-testid="display-coupon-saved"]')).toBeNull();
   });
 });

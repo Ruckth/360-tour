@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_REUSABLE_CHAT_MESSAGE_LIMIT,
   isReusableChatMessageCount,
-} from "convex/lib/chatReuse";
+} from "convex/shared/chatReuse";
 
 describe("isReusableChatMessageCount", () => {
   it("reuses a chat below the default message cap", () => {

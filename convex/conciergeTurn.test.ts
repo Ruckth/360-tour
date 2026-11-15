@@ -1,7 +1,7 @@
 import { expect, test, vi } from 'vitest';
-import { runConciergeTurn } from './lib/conciergeTurn';
-import { BOOKING_TOOLS, TOOLS } from './lib/chatTools';
-import type { LlmResponse } from './lib/chatLlm';
+import { runConciergeTurn } from './concierge/turn';
+import { BOOKING_TOOLS, TOOLS } from './concierge/model';
+import type { LlmResponse } from './concierge/llm';
 
 const call = (name: string, finishReason = 'tool_calls'): LlmResponse => ({ content: null, finishReason, tool_calls: [{ id: 'call', type: 'function', function: { name, arguments: '{}' } }] });
 
@@ -10,7 +10,7 @@ test('does not execute pending writes after the round budget, even if the provid
 	const execute = vi.fn(async () => JSON.stringify({ properties: [] }));
 	const result = await runConciergeTurn({ message: 'yes', messages: [], tools: [...TOOLS, ...BOOKING_TOOLS], deadlineAt: Date.now() + 20000, request: async () => replies.shift()!, execute });
 		expect(result.failed).toBe(true); expect(result.content).not.toContain('Your booking is confirmed');
-		expect(execute).toHaveBeenCalledTimes(1); expect(execute).not.toHaveBeenCalledWith('confirm_booking', expect.anything());
+		expect(execute).toHaveBeenCalledTimes(1); expect(execute).not.toHaveBeenCalledWith('confirm_booking', expect.anything(), expect.any(String));
 });
 
 test('rejects an oversized batch before executing its first tool', async () => {

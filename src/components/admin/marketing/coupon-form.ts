@@ -1,4 +1,7 @@
-import { normalizeCouponCode } from "convex/lib/offers";
+import { satangToBaht } from "convex/shared/money";
+import { basisPointsToPercent } from "convex/shared/money";
+import { bahtToSatang } from "convex/shared/money";
+import { normalizeCouponCode } from "convex/shared/offers";
 import { formatMoney } from "@/components/admin/labels";
 import { parseDiscount } from "@/components/checkout/discount-input";
 import type { CouponDetail, CouponScope, CouponVersion, SaveCouponArgs } from "./types";
@@ -100,8 +103,8 @@ export function couponFormFrom(detail: { code: string; campaignId?: CouponDetail
     code: detail.code,
     campaignId: detail.campaignId ?? "",
     kind: rules.benefit.kind,
-    value: rules.benefit.kind === "percent" ? String(rules.benefit.percent) : wholeText(rules.benefit.amount),
-    maxSaving: wholeText(rules.maxSaving),
+    value: rules.benefit.kind === "percent" ? String(basisPointsToPercent(rules.benefit.percent)) : wholeText(satangToBaht(rules.benefit.amount)),
+    maxSaving: wholeText(rules.maxSaving === undefined ? undefined : satangToBaht(rules.maxSaving)),
     scope: rules.scope,
     allVillas: !rules.propertySlugs?.length,
     villas: rules.propertySlugs ?? [],
@@ -110,9 +113,9 @@ export function couponFormFrom(detail: { code: string; campaignId?: CouponDetail
     stayFrom: rules.stayFrom ?? "",
     stayTo: rules.stayTo ?? "",
     minNights: wholeText(rules.minNights),
-    minSubtotal: wholeText(rules.minEligibleSubtotal),
+    minSubtotal: wholeText(rules.minEligibleSubtotal === undefined ? undefined : satangToBaht(rules.minEligibleSubtotal)),
     usageLimit: wholeText(rules.usageLimit),
-    budget: wholeText(rules.discountBudget),
+    budget: wholeText(rules.discountBudget === undefined ? undefined : satangToBaht(rules.discountBudget)),
     terms: rules.terms ?? "",
   };
 }
@@ -130,8 +133,10 @@ const num = (value: string) => {
   return parsed === undefined || Number.isNaN(parsed) ? undefined : parsed;
 };
 
+const moneyNum = (text: string) => { const n = num(text); return n === undefined ? undefined : bahtToSatang(n); };
+
 export function couponRulesFrom(form: CouponForm): CouponRules {
-  const value = num(form.value) ?? 0;
+  const value = bahtToSatang(num(form.value) ?? 0);
   const hasVillas = form.scope !== "services";
   return {
     benefit: form.kind === "percent" ? { kind: "percent", percent: value } : { kind: "fixed", amount: value },
@@ -142,10 +147,10 @@ export function couponRulesFrom(form: CouponForm): CouponRules {
     stayFrom: form.stayFrom || undefined,
     stayTo: form.stayTo || undefined,
     minNights: hasVillas ? num(form.minNights) : undefined,
-    minEligibleSubtotal: num(form.minSubtotal),
-    maxSaving: form.kind === "percent" ? num(form.maxSaving) : undefined,
+    minEligibleSubtotal: moneyNum(form.minSubtotal),
+    maxSaving: form.kind === "percent" ? moneyNum(form.maxSaving) : undefined,
     usageLimit: num(form.usageLimit),
-    discountBudget: num(form.budget),
+    discountBudget: moneyNum(form.budget),
     terms: form.terms.trim() || undefined,
   };
 }

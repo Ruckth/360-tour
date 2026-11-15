@@ -2,14 +2,8 @@
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { resortTodayIso } from "./lib/dates";
+import { resortTodayIso } from './shared/time';
 import schema from "./schema";
-
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
 
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
@@ -24,11 +18,11 @@ async function setup(now: string) {
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     await ctx.db.insert("properties", {
-      slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 100, currency: "THB", maxGuests: 4,
+      slug: "villa", name: "Villa", tagline: "", description: "", pricePerNight: 10000, currency: "THB", maxGuests: 4,
       bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: "active",
     });
   });
-  const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.create, {
+  const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.bookings.create, {
     propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com", guestPhone: "+66911111111", checkIn, checkOut, guests: 2,
   });
   return { t, book, admin: t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" }) };
@@ -53,7 +47,7 @@ describe("public booking uses the resort day (Asia/Bangkok)", () => {
 
   it("keeps historical admin entry", async () => {
     const { admin } = await setup("2030-01-10T18:00:00Z");
-    await expect(admin.mutation(api.adminBookings.createBooking, {
+    await expect(admin.mutation(api.bookings.commands.createBooking.createBooking, {
       propertySlug: "villa", guestName: "Past", guestPhone: "66911111111", checkIn: "2030-01-01", checkOut: "2030-01-03", guests: 2,
     })).resolves.toBeTruthy();
   });

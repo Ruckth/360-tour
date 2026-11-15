@@ -1,3 +1,5 @@
+import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
+import { registerFixtureFunctions } from "./convex-mock";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { BookingSheet } from "@/components/admin/BookingSheet";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -24,9 +26,9 @@ const properties: AdminProperty[] = [
     imageUrl: photo,
     maxGuests: 6,
     status: "active",
-    pricePerNight: 8500,
+    pricePerNight: 850000,
     currency: "THB",
-    directDiscountPercent: 15,
+    directDiscountPercent: 1500,
   },
   {
     _id: "garden-id" as Id<"properties">,
@@ -34,7 +36,7 @@ const properties: AdminProperty[] = [
     name: "Garden Villa",
     maxGuests: 4,
     status: "active",
-    pricePerNight: 4200,
+    pricePerNight: 420000,
     currency: "THB",
     directDiscountPercent: 0,
   },
@@ -50,15 +52,22 @@ const services: Doc<"services">[] = Array.from({ length: 30 }, (_, index) => ({
   category: index === 0 ? "Massage" : "Wellness",
   durationMin: 60,
   bufferMin: 0,
-  price: 1000,
+  price: 100000,
   currency: "THB",
   staffIds: [],
   status: "active",
   imageUrl: index === 0 ? photo : undefined,
 }));
 
+// Static server answers; the real hotel calendar owns selection and resort-day policy.
+const hotelData = { properties, bookings: [], dateBlocks: [], blocks: [], complete: true };
+if (params.get("mode") === "hotel-calendar") registerFixtureFunctions({
+  queries: { "bookings/admin:listForAdmin": () => hotelData },
+});
+
 function Fixture() {
   const [filter, setFilter] = useState("all");
+  if (params.get("mode") === "hotel-calendar") return <ConfirmProvider><AdminBookingsView /></ConfirmProvider>;
   if (params.get("mode") === "public-calendar") return (
     <BookingRangePicker checkIn="2025-02-14" checkOut="2025-02-17" onChange={() => {}}
       unavailableDates={["2025-02-15"]} isDateDisabled={() => true} />

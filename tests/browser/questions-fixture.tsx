@@ -49,7 +49,7 @@ let reportSeq = 0;
 function report(userQuestion: string, minutesAgo: number, extra: Partial<AdminUnknownQuestion> = {}): AdminUnknownQuestion {
   return {
     _id: `unknown-${++reportSeq}` as Id<"chatUnknownQuestions">,
-    sessionId: `chat-${reportSeq}` as Id<"chatSessions">,
+    sessionId: `chat-${reportSeq}` as Id<"conversations">,
     userQuestion,
     normalizedQuestion: userQuestion.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim(),
     status: "new",
@@ -98,14 +98,14 @@ function groups(status: string, search?: string): AdminUnknownGroup[] {
 registerFixtureFunctions({
   queries: {
     "properties:adminList": () => properties,
-    "chatKnowledge:adminListUnknownGroups": stable("groups", ({ status, search }: { status: string; search?: string }) => ({
+    "concierge/knowledge:adminListUnknownGroups": stable("groups", ({ status, search }: { status: string; search?: string }) => ({
       groups: groups(status, search),
       truncated: false,
     })),
-    "businessFacts:adminList": stable("facts", ({ status }: { status?: string }) => facts.filter((item) => !status || item.status === status)),
+    "concierge/businessFacts:adminList": stable("facts", ({ status }: { status?: string }) => facts.filter((item) => !status || item.status === status)),
   },
   mutations: {
-    "businessFacts:adminResolveUnknownGroups": (args: { normalizedQuestions: string[]; factId?: string; structuredSource?: string }) => {
+    "concierge/businessFacts:adminResolveUnknownGroups": (args: { normalizedQuestions: string[]; factId?: string; structuredSource?: string }) => {
       record("adminResolveUnknownGroups", args);
       if (failResolve) { failResolve = false; throw new Error("Fixture resolve unavailable"); }
       const title = facts.find((item) => item._id === args.factId)?.title;
@@ -113,13 +113,13 @@ registerFixtureFunctions({
       for (const item of touched) Object.assign(item, { status: "resolved", resolvedFactTitle: title, resolvedSource: args.structuredSource });
       return { resolved: touched.length, remaining: 0, remainingIsLowerBound: false, hasMore: false, unknownQuestionIds: touched.map((item) => item._id) };
     },
-    "chatKnowledge:adminIgnoreUnknownGroups": (args: { normalizedQuestions: string[] }) => {
+    "concierge/knowledge:adminIgnoreUnknownGroups": (args: { normalizedQuestions: string[] }) => {
       record("adminIgnoreUnknownGroups", args);
       const touched = reports.filter((item) => item.status === "new" && args.normalizedQuestions.includes(item.normalizedQuestion));
       for (const item of touched) item.status = "ignored";
       return { ignored: touched.length, remaining: 0, remainingIsLowerBound: false, unknownQuestionIds: touched.map((item) => item._id) };
     },
-    "chatKnowledge:adminReopenUnknownGroups": (args: { normalizedQuestions?: string[]; unknownQuestionIds?: string[] }) => {
+    "concierge/knowledge:adminReopenUnknownGroups": (args: { normalizedQuestions?: string[]; unknownQuestionIds?: string[] }) => {
       record("adminReopenUnknownGroups", args);
       const touched = reports.filter(
         (item) =>
@@ -129,7 +129,7 @@ registerFixtureFunctions({
       for (const item of touched) Object.assign(item, { status: "new", resolvedFactTitle: undefined, resolvedSource: undefined });
       return { reopened: touched.length, remaining: 0, remainingIsLowerBound: false };
     },
-    "businessFacts:adminSave": (args: { title: string; body: string; propertyId?: Id<"properties">; unknownQuestionId?: string }) => {
+    "concierge/businessFacts:adminSave": (args: { title: string; body: string; propertyId?: Id<"properties">; unknownQuestionId?: string }) => {
       record("adminSave", args);
       const saved = fact(`fact-${facts.length + 1}`, args.title, args.body, args.propertyId);
       facts.push(saved);

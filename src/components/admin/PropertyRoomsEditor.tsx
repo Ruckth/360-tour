@@ -4,7 +4,7 @@ import { Disclosure } from "@/components/ui/disclosure";
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { slugify } from "convex/lib/slug";
+import { slugify } from "convex/shared/slug";
 import { ArrowDown, ArrowUp, MapPin, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,11 @@ import { RoomHotspotList } from "./RoomHotspotList";
 import { TONES } from "./status-tones";
 import { Field, IMAGE_ACCEPT, panoramaWarning, SaveBar, SaveStatus, Section, Thumb, useImageUpload, useSaver } from "./property-form";
 
-type Room = Doc<"rooms">;
+type Room = Doc<"tourScenes">;
 
 /** 360° tour rooms in tour order: add, rename, replace panorama, reorder, delete, edit hotspots. */
 export function PropertyRoomsEditor({ propertyId, rooms }: { propertyId: Id<"properties">; rooms: Room[] }) {
-  const reorderRooms = useMutation(api.adminProperties.reorderRooms);
+  const reorderRooms = useMutation(api.catalog.adminProperties.reorderRooms);
   const reorder = useSaver();
 
   function move(index: number, by: -1 | 1) {
@@ -79,8 +79,8 @@ function RoomCard({
   onMoveDown?: () => void;
   reordering: boolean;
 }) {
-  const updateRoom = useMutation(api.properties.updateRoom);
-  const deleteRoom = useMutation(api.adminProperties.deleteRoom);
+  const updateRoom = useMutation(api.catalog.properties.updateRoom);
+  const deleteRoom = useMutation(api.catalog.adminProperties.deleteRoom);
   const upload = useImageUpload();
   const confirm = useConfirm();
   const save = useSaver();
@@ -181,7 +181,7 @@ function RoomCard({
 }
 
 function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
-  const createRoom = useMutation(api.adminProperties.createRoom);
+  const createRoom = useMutation(api.catalog.adminProperties.createRoom);
   const upload = useImageUpload();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");

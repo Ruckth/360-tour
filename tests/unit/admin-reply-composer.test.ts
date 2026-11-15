@@ -11,14 +11,14 @@ vi.mock("@clerk/nextjs", () => ({
   useAuth: () => ({ getToken: async () => auth.token }),
 }));
 
-const A = "session-a" as Id<"chatSessions">;
-const B = "session-b" as Id<"chatSessions">;
+const A = "session-a" as Id<"conversations">;
+const B = "session-b" as Id<"conversations">;
 let root: Root;
 let composer: AdminReplyComposer;
 
 function Harness({ sessionId, replyToMessageId }: {
-  sessionId: Id<"chatSessions"> | null;
-  replyToMessageId?: Id<"chatMessages">;
+  sessionId: Id<"conversations"> | null;
+  replyToMessageId?: Id<"messages">;
 }) {
   const current = useAdminReplyComposer(sessionId, replyToMessageId);
   useEffect(() => {
@@ -26,7 +26,7 @@ function Harness({ sessionId, replyToMessageId }: {
   });
   return null;
 }
-async function render(sessionId: Id<"chatSessions"> | null, replyToMessageId?: Id<"chatMessages">) {
+async function render(sessionId: Id<"conversations"> | null, replyToMessageId?: Id<"messages">) {
   await act(async () => {
     root.render(createElement(ConfirmProvider, null, createElement(Harness, { sessionId, replyToMessageId })));
   });
@@ -59,13 +59,13 @@ afterEach(async () => {
 
 describe("useAdminReplyComposer", () => {
   it("preserves an older draft and requires review when a new guest message arrives", async () => {
-    const first = "guest-first" as Id<"chatMessages">;
-    const next = "guest-next" as Id<"chatMessages">;
+    const first = "guest-first" as Id<"messages">;
+    const next = "guest-next" as Id<"messages">;
     const fetchMock = vi.fn().mockResolvedValue(response(true, { channel: "web" }));
     vi.stubGlobal("fetch", fetchMock);
     await render(A, first);
     await act(async () => composer.setDraft("Check-in is at 3 PM."));
-    await render(B, "guest-b" as Id<"chatMessages">);
+    await render(B, "guest-b" as Id<"messages">);
     await render(A, next);
     await act(async () => composer.send());
     expect(fetchMock).not.toHaveBeenCalled();
@@ -81,8 +81,8 @@ describe("useAdminReplyComposer", () => {
   });
 
   it("keeps a draft for a newer guest turn when an earlier identical reply finishes", async () => {
-    const first = "guest-first" as Id<"chatMessages">;
-    const next = "guest-next" as Id<"chatMessages">;
+    const first = "guest-first" as Id<"messages">;
+    const next = "guest-next" as Id<"messages">;
     const reply = deferred<Response>();
     const fetchMock = vi.fn().mockReturnValue(reply.promise);
     vi.stubGlobal("fetch", fetchMock);

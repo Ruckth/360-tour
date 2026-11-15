@@ -1,10 +1,10 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import schema from './schema';
 
-declare global { interface ImportMeta { glob(pattern: string): Record<string, () => Promise<unknown>>; } }
 const modules = import.meta.glob('./**/*.ts');
 const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
 const today = day(0);
@@ -25,9 +25,9 @@ it.each([false, true])('sends confirmation through the real Resend SDK using fet
 	}));
 	vi.stubGlobal('fetch', fetchMock);
 	const t = convexTest(schema, modules);
-	const result = await t.action(internal.emails.sendBookingConfirmation, {
+	const result = await t.action(internal.bookings.emails.sendBookingConfirmation, {
 		guestName: 'Guest <script>', guestEmail: 'guest@example.com', propertyName: 'Pool Villa',
-		checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, guests: 2, total: 300, currency: 'THB'
+		checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, guests: 2, total: 30000, currency: 'THB'
 	});
 	expect(result).toEqual(providerError ? { sent: false, reason: 'Sender not verified' } : { sent: true });
 	expect(fetchMock).toHaveBeenCalledOnce();
@@ -48,14 +48,14 @@ async function bookingTest(checkInOffset = 2, checkOutOffset = 5) {
 	const t = convexTest(schema, modules);
 	const bookingId = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
-			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100,
+			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000,
 			currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40,
 			images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active'
 		});
-		return await ctx.db.insert('bookings', {
+		return await insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '123',
-			checkIn: day(checkInOffset), checkOut: day(checkOutOffset), guests: 1, nights: 3, subtotal: 300,
-			discountAmount: 0, total: 300, currency: 'THB', paymentStatus: 'paid',
+			checkIn: day(checkInOffset), checkOut: day(checkOutOffset), guests: 1, nights: 3, subtotal: 30000,
+			discountAmount: 0, total: 30000, currency: 'THB', paymentStatus: 'paid',
 			status: 'confirmed', createdAt: Date.now()
 		});
 	});
@@ -64,18 +64,18 @@ async function bookingTest(checkInOffset = 2, checkOutOffset = 5) {
 
 it('throttles staff alerts for a session to one per 30 minutes', async () => {
 	const t = convexTest(schema, modules);
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', {
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', {
 		channel: 'web', visitorName: 'Guest', createdAt: Date.now()
 	}));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	const first = await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt);
 	expect(first).toBeTruthy();
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
-	await t.mutation(api.chatKnowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'Please connect me to someone' });
+	await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId, userQuestion: 'What is the answer?' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBe(first);
 	const stale = Date.now() - 31 * 60 * 1000;
 	await t.run(async ctx => await ctx.db.patch(sessionId, { lastStaffAlertAt: stale }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeGreaterThan(stale);
 });
 
@@ -83,12 +83,12 @@ it('claims each lifecycle email once across repeated cron runs', async () => {
 	vi.stubEnv('RESEND_API_KEY', 'test');
 	vi.stubEnv('EMAIL_FROM', 'test@example.com');
 	const { t, bookingId } = await bookingTest();
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
 	expect((await t.run(async ctx => await ctx.db.get(bookingId)))?.preArrivalEmailQueuedAt).toBeTruthy();
 	const past = await bookingTest(-4, -1);
-	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today })).toBe(1);
-	expect(await past.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review', today })).toBe(0);
+	expect(await past.t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review', today })).toBe(1);
+	expect(await past.t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review', today })).toBe(0);
 	expect((await past.t.run(async ctx => await ctx.db.get(past.bookingId)))?.reviewEmailQueuedAt).toBeTruthy();
 });
 
@@ -97,16 +97,16 @@ it('skips pre-arrival mail when the booking is cancelled before the cron', async
 	vi.stubEnv('EMAIL_FROM', 'test@example.com');
 	const { t, bookingId } = await bookingTest();
 	await t.run(async ctx => await ctx.db.patch(bookingId, { status: 'cancelled' }));
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
-	expect(await t.action(internal.emails.sendPreArrival, { bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(0);
+	expect(await t.action(internal.bookings.emails.sendPreArrival, { bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
 	const claimed = await bookingTest();
-	expect(await claimed.t.mutation(internal.crons.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
+	expect(await claimed.t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival', today })).toBe(1);
 	await claimed.t.run(async ctx => await ctx.db.patch(claimed.bookingId, { status: 'cancelled' }));
-	expect(await claimed.t.action(internal.emails.sendPreArrival, { bookingId: claimed.bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
+	expect(await claimed.t.action(internal.bookings.emails.sendPreArrival, { bookingId: claimed.bookingId })).toEqual({ sent: false, reason: 'booking_not_eligible' });
 });
 
 it('detects staff requests without flagging booking questions', async () => {
-	const { asksForStaff } = await import('./chatKnowledge');
+	const { asksForStaff } = await import('./messaging/staffRequests');
 	expect(asksForStaff('Can I talk to the host?')).toBe(true);
 	expect(asksForStaff('Is there someone I can speak to?')).toBe(true);
 	expect(asksForStaff('ขอคุยกับพนักงาน')).toBe(true);
@@ -129,8 +129,8 @@ it('detects staff requests without flagging booking questions', async () => {
 it('caps staff alerts globally so anonymous sessions cannot flood the owner', async () => {
 	const t = convexTest(schema, modules);
 	await t.run(async ctx => await ctx.db.insert('rateLimits', { key: 'staff-alert:global', count: 30, expiresAt: Date.now() + 60 * 60 * 1000 }));
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: Date.now() }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: Date.now() }));
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeFalsy();
 });
 
@@ -141,8 +141,8 @@ it('uses a rolling hour for the global staff alert cap', async () => {
 		key: 'staff-alert:global', count: 30, expiresAt: now + 60 * 60 * 1000,
 		timestamps: [now - 61 * 60 * 1000, ...Array(29).fill(now - 30 * 60 * 1000)]
 	}));
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'web', createdAt: now }));
-	await t.mutation(internal.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'web', createdAt: now }));
+	await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: 'I need a human agent' });
 	expect(await t.run(async ctx => (await ctx.db.get(sessionId))?.lastStaffAlertAt)).toBeTruthy();
 	const limit = await t.run(async ctx => await ctx.db.query('rateLimits')
 		.withIndex('by_key', q => q.eq('key', 'staff-alert:global')).unique());
@@ -154,8 +154,8 @@ it('treats missing email configuration as a non-fatal skip', async () => {
 	vi.stubEnv('EMAIL_FROM', '');
 	const { t, bookingId } = await bookingTest();
 	await t.run(async ctx => await ctx.db.patch(bookingId, { cancellationEmailQueuedAt: Date.now(), status: 'cancelled' }));
-	expect(await t.action(internal.emails.sendCancellation, { bookingId })).toEqual({ sent: false, reason: 'missing_config' });
-	expect(await t.mutation(internal.crons.queueLifecycleEmails, { kind: 'review' })).toBe(0);
-	const sessionId = await t.run(async ctx => await ctx.db.insert('chatSessions', { channel: 'line', createdAt: Date.now() }));
-	await expect(t.action(internal.emails.sendStaffAlert, { sessionId, channel: 'line', guestName: 'Guest', lastMessage: 'Help' })).resolves.toBeNull();
+	expect(await t.action(internal.bookings.emails.sendCancellation, { bookingId })).toEqual({ sent: false, reason: 'missing_config' });
+	expect(await t.mutation(internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review' })).toBe(0);
+	const sessionId = await t.run(async ctx => await ctx.db.insert('conversations', { channel: 'line', createdAt: Date.now() }));
+	await expect(t.action(internal.messaging.alerts.sendStaffAlert, { sessionId, channel: 'line', guestName: 'Guest', lastMessage: 'Help' })).resolves.toBeNull();
 });

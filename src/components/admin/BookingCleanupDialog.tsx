@@ -30,8 +30,8 @@ const BATCH = 100;
 export function BookingCleanupDialog({ properties, onClose }: { properties: AdminProperty[]; onClose: () => void }) {
   const [days, setDays] = useState("7");
   const olderThanDays = Math.max(0, Number(days) || 0);
-  const candidates = useQuery(api.adminBookings.listCleanupCandidates, { olderThanDays });
-  const deleteBookings = useMutation(api.adminBookings.deleteBookings);
+  const candidates = useQuery(api.bookings.admin.listCleanupCandidates, { olderThanDays });
+  const deleteBookings = useMutation(api.bookings.commands.deleteBookings.deleteBookings);
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);

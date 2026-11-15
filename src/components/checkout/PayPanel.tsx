@@ -1,4 +1,7 @@
 "use client";
+import { parseMoneyInput } from "@/lib/money-input";
+import { satangToBaht } from "convex/shared/money";
+
 
 import { ArrowLeft, Check, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
@@ -16,10 +19,10 @@ import { cn } from "@/lib/utils";
 import {
   MAX_TENDERS,
   TENDER_METHODS,
-  round2,
+  roundMoney,
   type Tender,
   type TenderMethod,
-} from "convex/lib/billMath";
+} from "convex/shared/orderMath";
 import {
   newAttemptKey,
   useCheckoutBackend,
@@ -513,7 +516,7 @@ function CashForm({
   onPay: (tenders: Tender[]) => void;
 }) {
   // Opens at the amount due, so an exact cash sale is one tap; a note chip sets what was handed over.
-  const [received, setReceived] = useState(() => amountInput(String(due)));
+  const [received, setReceived] = useState(() => amountInput(String(satangToBaht(due))));
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   // Keyboard viewport changes keep the focused amount clear of the pinned confirmation bar.
@@ -526,8 +529,8 @@ function CashForm({
     viewport?.addEventListener("resize", reveal);
     return () => viewport?.removeEventListener("resize", reveal);
   }, []);
-  const value = Number(received) || 0;
-  const displayed = focused || !received ? received : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value);
+  const value = parseMoneyInput(received) || 0;
+  const displayed = focused || !received ? received : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(satangToBaht(value));
   const label = cashConfirmLabel(due, value);
   const notes = cashNotes(due);
 
@@ -562,14 +565,14 @@ function CashForm({
       </div>
       {notes.length ? (
         <div role="group" aria-label="Notes handed over" className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,5rem),1fr))] gap-2">
-          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:ring-2 aria-pressed:ring-foreground aria-pressed:bg-foreground/5" aria-pressed={value === due} onClick={() => setReceived(String(due))}>Exact</Button>
+          <Button variant="outline" className="h-11 px-2 font-sans tabular-nums aria-pressed:ring-2 aria-pressed:ring-foreground aria-pressed:bg-foreground/5" aria-pressed={value === due} onClick={() => setReceived(String(satangToBaht(due)))}>Exact</Button>
           {notes.map((note) => (
             <Button
               key={note}
               variant="outline"
               aria-pressed={value === note}
               className="h-11 px-2 font-sans tabular-nums aria-pressed:ring-2 aria-pressed:ring-foreground aria-pressed:bg-foreground/5"
-              onClick={() => setReceived(String(note))}
+              onClick={() => setReceived(String(satangToBaht(note)))}
             >
               {formatMoney(note)}
             </Button>
@@ -579,12 +582,12 @@ function CashForm({
       {value > due ? (
         <div role="status" className="flex items-center justify-between gap-3 rounded-xl bg-muted/50 p-4">
           <span className="text-sm">Change</span>
-          <output className="text-[32px] leading-none font-semibold text-emerald-700 font-sans tabular-nums dark:text-emerald-400">{formatMoney(round2(value - due))}</output>
+          <output className="text-[32px] leading-none font-semibold text-emerald-700 font-sans tabular-nums dark:text-emerald-400">{formatMoney(roundMoney(value - due))}</output>
         </div>
       ) : value < due ? (
         <div role="status" className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-4 text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">
           <span className="text-sm">Short</span>
-          <output className="text-[32px] leading-none font-semibold font-sans tabular-nums">{formatMoney(round2(due - value))}</output>
+          <output className="text-[32px] leading-none font-semibold font-sans tabular-nums">{formatMoney(roundMoney(due - value))}</output>
         </div>
       ) : null}
       {/* Keep the action in view when the phone keyboard reduces the viewport. */}
@@ -626,14 +629,14 @@ function SplitForm({
   ]);
   const typed = rows.slice(0, -1);
   const last = rows[rows.length - 1];
-  const rest = round2(due - typed.reduce((total, row) => total + (Number(row.amount) || 0), 0));
+  const rest = roundMoney(due - typed.reduce((total, row) => total + (parseMoneyInput(row.amount) || 0), 0));
   const tenders: Tender[] = [
-    ...typed.map((row) => ({ method: row.method, amount: Number(row.amount) || 0 })),
+    ...typed.map((row) => ({ method: row.method, amount: parseMoneyInput(row.amount) || 0 })),
     { method: last.method, amount: Math.max(0, rest) },
   ];
-  const remaining = round2(due - tenders.reduce((total, tender) => total + tender.amount, 0));
+  const remaining = roundMoney(due - tenders.reduce((total, tender) => total + tender.amount, 0));
   const ready = tenders.every((tender) => tender.amount > 0);
-  const emptyPayment = typed.findIndex((row) => !(Number(row.amount) > 0));
+  const emptyPayment = typed.findIndex((row) => !(parseMoneyInput(row.amount) > 0));
   const validation = emptyPayment >= 0
     ? `Enter an amount for payment ${emptyPayment + 1}.`
     : rest <= 0 ? "Leave an amount for the final payment, or use a single payment." : "";
@@ -657,7 +660,7 @@ function SplitForm({
               </div> : (
                 <div className="relative col-span-2 row-start-2 min-w-0 @min-[18rem]:col-span-1 @min-[18rem]:col-start-2 @min-[18rem]:row-start-1">
                   <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center font-sans text-muted-foreground">฿</span>
-                  <Input id={`split-${validationId}-${index}`} inputMode="decimal" autoComplete="off" aria-label={`Payment ${index + 1} amount`} className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums" aria-invalid={!(Number(row.amount) > 0) || remaining < 0 ? true : undefined} aria-describedby={validationId} value={row.amount} {...selectAll} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />
+                  <Input id={`split-${validationId}-${index}`} inputMode="decimal" autoComplete="off" aria-label={`Payment ${index + 1} amount`} className="h-11 min-w-0 pl-7 text-right font-sans tabular-nums" aria-invalid={!(parseMoneyInput(row.amount) > 0) || remaining < 0 ? true : undefined} aria-describedby={validationId} value={row.amount} {...selectAll} onChange={(e) => update(index, { amount: amountInput(e.target.value) })} placeholder="0" />
                 </div>
               )}
               {rows.length > 2 ? <Button size="icon" variant="ghost" className="col-start-2 row-start-1 ml-1 size-11 shrink-0 @min-[18rem]:col-start-3" aria-label={`Remove payment ${index + 1}`} onClick={() => setRows(rows.filter((_, i) => i !== index))}><X aria-hidden className="size-4" /></Button> : <span className="col-start-2 row-start-1 @min-[18rem]:col-start-3" />}

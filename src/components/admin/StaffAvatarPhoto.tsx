@@ -33,7 +33,7 @@ export function StaffAvatarPhotoButton({
 
 /** Staff list avatar: a picked photo is uploaded and saved right away. */
 export function StaffListPhotoButton({ staff, onError }: { staff: Doc<"staff">; onError: (message: string) => void }) {
-  const updateStaff = useMutation(api.adminServices.updateStaff);
+  const updateStaff = useMutation(api.services.commands.updateStaff.updateStaff);
   const saveWithPhoto = usePhotoUpload();
   return (
     <StaffAvatarPhotoButton

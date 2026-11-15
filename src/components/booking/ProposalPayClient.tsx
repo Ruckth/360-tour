@@ -1,5 +1,7 @@
 "use client";
 
+import { satangToBaht } from 'convex/shared/money';
+
 import { useCouponCopy } from "./coupon-copy";
 import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
@@ -12,14 +14,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { formatPickerDate } from "@/lib/dates/format";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { useConvex } from 'convex/react';
 
 type Summary = NonNullable<
-  FunctionReturnType<typeof api.bookings.getConfirmProposal>
+  FunctionReturnType<typeof api.bookings.bookings.getConfirmProposal>
 >;
 
 export function ProposalPayClient({ token }: { token: string }) {
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
@@ -41,9 +43,8 @@ export function ProposalPayClient({ token }: { token: string }) {
     setError("");
     async function load() {
       try {
-        if (!convex) throw new Error("unavailable");
         // Read only: unfurlers, reloads and opening the page never create a booking.
-        const result = await convex.query(api.bookings.getConfirmProposal, {
+        const result = await convex.query(api.bookings.bookings.getConfirmProposal, {
           token,
         });
         if (!active) return;
@@ -62,12 +63,12 @@ export function ProposalPayClient({ token }: { token: string }) {
   }, [convex, token, t]);
 
   async function confirmAndPay() {
-    if (!convex || submitting.current) return;
+    if (submitting.current) return;
     submitting.current = true;
     setLoading(true);
     setError("");
     try {
-      const booking = await convex.mutation(api.bookings.confirmProposal, {
+      const booking = await convex.mutation(api.bookings.bookings.confirmProposal, {
         token: activeToken,
         marketing: captureForBooking() ?? {},
       });
@@ -82,7 +83,7 @@ export function ProposalPayClient({ token }: { token: string }) {
         window.history.replaceState(null, "", url);
         return;
       }
-      const checkout = await convex.action(api.payments.createCheckout, {
+      const checkout = await convex.action(api.bookings.payments.stripe.createCheckout, {
         bookingId: booking.bookingId,
         accessToken: booking.accessToken,
       });
@@ -131,7 +132,7 @@ export function ProposalPayClient({ token }: { token: string }) {
               <dd>{summary.guests}</dd>
               <dt>{t("total")}</dt>
               <dd>
-                {summary.currency} {summary.total.toLocaleString(locale)}
+                {summary.currency} {satangToBaht(summary.total).toLocaleString(locale)}
               </dd>
             </dl>
             {summary.coupon ? (

@@ -44,11 +44,11 @@ vi.mock("convex/react", () => ({
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
     if (args === "skip") return undefined;
     const name = getFunctionName(reference);
-    if (name === "adminChat:listSessions") {
+    if (name === "messaging/adminChat:listSessions") {
       mocks.listArgs.push(args as Record<string, unknown>);
       return mocks.listResult;
     }
-    if (name === "adminChat:getSessionDetail") return mocks.detail;
+    if (name === "messaging/adminChat:getSessionDetail") return mocks.detail;
     return mocks.empty;
   },
   usePaginatedQuery: () => mocks.transcript,
@@ -534,7 +534,7 @@ describe("settling guest messages", () => {
     return {
       ...session(id),
       latestMessage: {
-        _id: `${id}-message` as never,
+        _id: `${id}-message` as import("convex/_generated/dataModel").Id<"messages">,
         role: "user" as const,
         content: `Question from ${id}`,
         timestamp: 1,

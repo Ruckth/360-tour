@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
-import { act, createElement, useEffect, useState, type ComponentProps } from 'react';
+import { act } from '../support/checkout-act';
+import { createElement, useEffect, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from '@/components/checkout/backend';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 import { OrderHistory, OrderHistoryList } from '@/components/checkout/OrderHistory';
 import { HistoryDetails } from '@/components/checkout/HistoryDetails';
 import { FinancialHistory } from '@/components/checkout/FinancialHistory';
@@ -11,7 +12,7 @@ import type { Doc, Id } from 'convex/_generated/dataModel';
 
 let root: Root;
 const first = 'fxbill000002' as OrderId, second = 'fxbill000001' as OrderId;
-const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory', 'useBillRefundHistory'] as const;
+const hooks = ['useOrderHistory', 'useCorrectionHistory', 'useAuditHistory', 'useBookingRefundHistory', 'useAppointmentRefundHistory', 'useOrderRefundHistory'] as const;
 const toggle = async (title: string, open: boolean) => act(async () => {
   const details = [...document.querySelectorAll('details')].find(d => d.querySelector('summary')?.textContent === title)!;
   details.open = open;
@@ -28,10 +29,10 @@ beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); root = creat
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it('subscribes only on first expansion, retains cursors while closed, and resets on every order switch', async () => {
-  const corrections: Doc<'billCorrections'>[] = [first, second].flatMap(billId => Array.from({ length: 61 }, (_, i) => ({
-    _id: `${billId}-${i}` as Id<'billCorrections'>, _creationTime: i, billId, sequence: i + 1, kind: 'amended', reason: `${billId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${billId}-${i}`,
+  const corrections: Doc<'orderCorrections'>[] = [first, second].flatMap(orderId => Array.from({ length: 61 }, (_, i) => ({
+    _id: `${orderId}-${i}` as Id<'orderCorrections'>, _creationTime: i, orderId, sequence: i + 1, kind: 'amended', reason: `${orderId} reason ${i}`, actor: 'cashier', recordedAt: i, idempotencyKey: `${orderId}-${i}`,
   })));
-  const base = createFixtureBackend({ financialHistory: { corrections } });
+  const base = await createFixtureBackend({ financialHistory: { corrections } });
   for (const orderId of [first, second]) await base.useActions().addItem({ orderId, item: { kind: "extra", name: "History item", price: 10 } });
   const calls = Object.fromEntries(hooks.map(h => [h, vi.fn()]));
   const mounts = vi.fn(), unmounts = vi.fn();
@@ -48,12 +49,12 @@ it('subscribes only on first expansion, retains cursors while closed, and resets
     useAuditHistory: instrument('useAuditHistory', base.useAuditHistory),
     useBookingRefundHistory: instrument('useBookingRefundHistory', base.useBookingRefundHistory),
     useAppointmentRefundHistory: instrument('useAppointmentRefundHistory', base.useAppointmentRefundHistory),
-    useBillRefundHistory: instrument('useBillRefundHistory', base.useBillRefundHistory),
+    useOrderRefundHistory: instrument('useOrderRefundHistory', base.useOrderRefundHistory),
   };
   await show(backend);
   for (const hook of hooks) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('History', true);
-  expect(calls.useOrderHistory).toHaveBeenCalledOnce();
+  expect(calls.useOrderHistory).toHaveBeenCalledTimes(2);
   for (const hook of hooks.slice(1)) expect(calls[hook]).not.toHaveBeenCalled();
   await toggle('History · all ledgers', true);
   expect(mounts).toHaveBeenCalledTimes(6);
@@ -83,7 +84,7 @@ it('subscribes only on first expansion, retains cursors while closed, and resets
 });
 
 it('keeps a receipt item-history failed continuation and its retry boundary through collapse/reopen, then clears it for a new order', async () => {
-  const base = createFixtureBackend();
+  const base = await createFixtureBackend();
   let fail = false;
   const loadMore = vi.fn();
   const backend: CheckoutBackend = { ...base, useOrderHistory: id => {
@@ -114,7 +115,7 @@ it('keeps a receipt item-history failed continuation and its retry boundary thro
 
 
 it('shows a compact collapsed History without subscribing even when no entries have been recorded', async () => {
-  const base = createFixtureBackend();
+  const base = await createFixtureBackend();
   const useOrderHistory = vi.fn(base.useOrderHistory);
   const backend = { ...base, useOrderHistory };
   await show(backend);

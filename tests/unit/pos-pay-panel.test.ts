@@ -1,9 +1,10 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { PayPanel } from "@/components/checkout/PayPanel";
 import { cashConfirmLabel, cashNotes } from "@/components/checkout/checkout-ui";
 
@@ -34,8 +35,8 @@ function Probe({ backend, orderId, mode, onBack, onPaid }: { backend: CheckoutBa
   return view ? createElement(PayPanel, { view, mode, onBack, onPaid }) : null;
 }
 
-async function openPanel(mode: ComponentProps<typeof PayPanel>["mode"], price = 1200) {
-  const backend = createFixtureBackend();
+async function openPanel(mode: ComponentProps<typeof PayPanel>["mode"], price = 120000) {
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const added = actions.addItem({ item: { kind: "extra", name: "Tea", price } });
   await tick();
@@ -62,22 +63,22 @@ afterEach(async () => { await act(async () => root.unmount()); document.body.inn
 
 describe("cash wording", () => {
   it("offers the next notes up", () => {
-    expect(cashNotes(1200)).toEqual([1500, 2000]);
-    expect(cashNotes(1000)).toEqual([1500, 2000]);
-    expect(cashNotes(1450)).toEqual([1500, 2000]);
-    expect(cashNotes(180)).toEqual([200, 500]);
-    expect(cashNotes(60)).toEqual([100, 500]);
-    expect(cashNotes(450)).toEqual([500, 1000]);
-    expect(cashNotes(950)).toEqual([1000, 2000]);
-    expect(cashNotes(30.3)).toEqual([100, 500]);
-    expect(cashNotes(9_999_000)).toEqual([9_999_500, 10_000_000]);
-    expect(cashNotes(10_000_000)).toEqual([]);
+    expect(cashNotes(120000)).toEqual([150000, 200000]);
+    expect(cashNotes(100000)).toEqual([150000, 200000]);
+    expect(cashNotes(145000)).toEqual([150000, 200000]);
+    expect(cashNotes(18000)).toEqual([20000, 50000]);
+    expect(cashNotes(6000)).toEqual([10000, 50000]);
+    expect(cashNotes(45000)).toEqual([50000, 100000]);
+    expect(cashNotes(95000)).toEqual([100000, 200000]);
+    expect(cashNotes(3030)).toEqual([10000, 50000]);
+    expect(cashNotes(999900000)).toEqual([999950000, 1000000000]);
+    expect(cashNotes(1000000000)).toEqual([]);
   });
 
   it("says the money on the button", () => {
-    expect(cashConfirmLabel(1200, 1200)).toEqual({ ready: true, text: "Confirm cash · ฿1,200 received · no change" });
-    expect(cashConfirmLabel(1200, 1500)).toEqual({ ready: true, text: "Confirm cash · ฿1,500 received · change ฿300" });
-    expect(cashConfirmLabel(1200, 1000)).toEqual({ ready: false, text: "Short ฿200" });
+    expect(cashConfirmLabel(120000, 120000)).toEqual({ ready: true, text: "Confirm cash · ฿1,200 received · no change" });
+    expect(cashConfirmLabel(120000, 150000)).toEqual({ ready: true, text: "Confirm cash · ฿1,500 received · change ฿300" });
+    expect(cashConfirmLabel(120000, 100000)).toEqual({ ready: false, text: "Short ฿200" });
   });
 });
 
@@ -99,7 +100,7 @@ describe("pay panel", () => {
     await click("฿1,500");
     await click("Confirm cash · ฿1,500 received · change ฿300"); await tick();
     expect(settle).toHaveBeenCalledOnce();
-    expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 1200, tenders: [{ method: "cash", amount: 1200, received: 1500 }] });
+    expect(settle.mock.calls[0][0]).toMatchObject({ expectedDue: 120000, tenders: [{ method: "cash", amount: 120000, received: 1500 }] });
     expect(onPaid).toHaveBeenCalledOnce();
   });
 
@@ -140,7 +141,7 @@ describe("pay panel", () => {
     expect(document.body.textContent).toContain("Covered");
     expect(document.querySelector('[aria-label="Payment 2 amount"]')?.textContent).toBe("฿700");
     await click("Confirm ฿500 cash + ฿700 card"); await tick();
-    expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "cash", amount: 500 }, { method: "card", amount: 700 }] });
+    expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "cash", amount: 50000 }, { method: "card", amount: 70000 }] });
     await click("Retry payment"); await tick();
     expect(settle.mock.calls[1][0]).toEqual(settle.mock.calls[0][0]);
     expect(onPaid).toHaveBeenCalledOnce();
@@ -165,7 +166,7 @@ describe("pay panel", () => {
     expect(button("Card")?.getAttribute("aria-pressed")).toBe("true");
     expect(document.querySelector("#cash-received")).toBeNull();
     await click("Confirm ฿1,200 card"); await tick();
-    expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "card", amount: 1200 }] });
+    expect(settle.mock.calls[0][0]).toMatchObject({ tenders: [{ method: "card", amount: 120000 }] });
     expect(onBack).not.toHaveBeenCalled();
   });
 

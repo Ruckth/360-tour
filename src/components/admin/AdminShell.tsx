@@ -2,7 +2,7 @@
 
 import { Menu } from "@base-ui/react/menu";
 import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "convex/_generated/api";
 import { LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -19,14 +19,12 @@ import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { useOptionalConvex, useOptionalConvexAuth } from "@/lib/react/convex";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
 /** Auth gates, sidebar and header for every `/admin/*` page. Pages render only once the admin is connected. */
 export function AdminShell({ children }: { children: ReactNode }) {
-  const convex = useOptionalConvex();
-  const convexAuth = useOptionalConvexAuth();
+  const convexAuth = useConvexAuth();
   const { isLoaded, isSignedIn, user } = useUser();
 
   if (!isLoaded) {
@@ -55,20 +53,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (!convex) {
-    return (
-      <div className="grid min-h-dvh place-items-center px-5">
-        <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
-          <h1 className="font-serif text-3xl font-semibold">Convex is not configured</h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Add `NEXT_PUBLIC_CONVEX_URL` so the admin dashboard can query chat sessions.
-          </p>
-        </section>
-      </div>
-    );
-  }
-
-  if (convexAuth.isAuthEnabled && convexAuth.isLoading) {
+  if (convexAuth.isLoading) {
     return (
       <div className="grid min-h-dvh place-items-center">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -79,7 +64,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (convexAuth.isAuthEnabled && !convexAuth.isAuthenticated) {
+  if (!convexAuth.isAuthenticated) {
     return (
       <div className="grid min-h-dvh place-items-center px-5">
         <section className="max-w-lg border border-border bg-card p-6 shadow-xl">
@@ -114,7 +99,7 @@ function GateCard({ title, children }: { title: string; children: ReactNode }) {
 
 /** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
-  const access = useQuery(api.staffAccess.myAccess, {});
+  const access = useQuery(api.auth.staffAccess.myAccess, {});
   if (access === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center">
@@ -132,7 +117,7 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
 
 /** As Marketing invitations: the invited account activates its own access, explicitly. */
 function ClaimInvitation({ access }: { access: StaffAccessView }) {
-  const claim = useMutation(api.staffAccess.claimInvite);
+  const claim = useMutation(api.auth.staffAccess.claimInvite);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState("");
   const role = access.pendingInvitation ? ROLE_LABELS[access.pendingInvitation.role] : "";

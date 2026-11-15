@@ -1,7 +1,8 @@
 "use client";
 
+import { parseMoneyInput } from "@/lib/money-input";
 import type { Id } from "convex/_generated/dataModel";
-import { validateSpend, type ReportSpend, type SpendDraft } from "convex/lib/marketingReport";
+import { validateSpend, type ReportSpend, type SpendDraft } from "convex/shared/marketingReport";
 import { Trash2 } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,12 +15,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "../ConfirmDialog";
 import { useMarketingAccess } from "./MarketingAccess";
 import { FieldError, FieldHint, NumberField } from "./MarketingBits";
-import { parseWhole, wholeText } from "./coupon-form";
+import { wholeText } from "./coupon-form";
 import { bangkokToday, formatRange, marketingErrorText, thb } from "./marketing-format";
 
 /**
  * Release 3b contract: add or edit one spend entry. Used from the campaign sheet's Spend section and
- * from the dashboard's "Add spend". Validation is `validateSpend` from convex/lib/marketingReport.
+ * from the dashboard's "Add spend". Validation is `validateSpend` from convex/shared/marketingReport.
  * Layout follows the "Add spend" dialog in docs/previews/marketing/src/dashboard.html and the
  * "Edit · spend" state in coupons-campaigns.html.
  */
@@ -63,7 +64,7 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
     const start = entry ?? defaults;
     return {
       campaignId: (start?.campaignId ?? campaigns[0]?.id ?? "") as string,
-      amount: wholeText(start?.amount),
+      amount: wholeText(start?.amount === undefined ? undefined : start.amount / 100),
       from: start?.from ?? `${today.slice(0, 8)}01`,
       to: start?.to ?? today,
       note: start?.note ?? "",
@@ -74,7 +75,7 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
   const [serverError, setServerError] = useState("");
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((current) => ({ ...current, [key]: value }));
 
-  const amount = parseWhole(form.amount) ?? Number.NaN;
+  const amount = parseMoneyInput(form.amount.replaceAll(",", ""));
   const note = form.note.trim();
   // validateSpend returns the first problem only; checking each field against otherwise valid values shows them all at once.
   const errors: Record<Field, string> = {
@@ -186,7 +187,7 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
           <Label htmlFor={`${id}-amount`}>
             Amount <span className="font-normal text-muted-foreground">(THB, incl. VAT)</span>
           </Label>
-          <NumberField id={`${id}-amount`} prefix="฿" placeholder="12,000" value={form.amount} onChange={(event) => set("amount", event.target.value)} {...describe("amount")} />
+          <NumberField inputMode="decimal" id={`${id}-amount`} prefix="฿" placeholder="12,000" value={form.amount} onChange={(event) => set("amount", event.target.value)} {...describe("amount")} />
           <FieldError id={`${id}-amount-error`}>{shown("amount")}</FieldError>
         </div>
 

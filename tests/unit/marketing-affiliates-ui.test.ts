@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import type { CreditRow } from "convex/marketingAffiliates";
+import type { CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import {
   CreditList,
   CreditReview,
@@ -34,7 +34,7 @@ const row: CreditRow = {
   sourceKey: "order:one",
   state: "pending",
   eligible: true,
-  eligibleNet: 700,
+  eligibleNet: 70000,
   approvedNet: 0,
   revision: 4,
   createdAt: 0,
@@ -78,7 +78,7 @@ const detail: CreditDetail = {
       actor: "finance@example.com",
       kind: "amount_changed",
       state: "pending",
-      eligibleNet: 700,
+      eligibleNet: 70000,
       approvedNet: 0,
       recordedAt: 0,
     },

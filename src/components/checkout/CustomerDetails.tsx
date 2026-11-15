@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { formatMoney } from "@/components/admin/labels";
 import { errorText } from "@/lib/staff-bookings";
-import { customerPhoneError } from "@/lib/booking/phone";
+import { customerPhoneError } from "convex/shared/phone";
 import { newAttemptKey, useCheckoutBackend, type CheckoutActions, type CustomerDetail, type CustomerId, type CustomerPage, type NewCustomer } from "./backend";
 import { historyTime } from "./OrderHistory";
 import { InlineErrorBoundary } from "./ErrorBoundary";

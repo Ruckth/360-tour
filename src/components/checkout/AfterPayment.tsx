@@ -13,7 +13,7 @@ import { REASON_CHIPS } from "@/components/ui/reason-chips";
 import { ReasonField } from "@/components/ui/reason-field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { cn } from "@/lib/utils";
 import type { Id } from "convex/_generated/dataModel";
@@ -131,7 +131,7 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
     if (!chosen) return;
     const ok = await save((idempotencyKey) => actions.linkPaidLine({
       orderId: view.order._id, lineId: line._id,
-      ...(chosen.kind === "appointment" ? { appointmentId: chosen.id as Id<"serviceAppointments"> } : { bookingId: chosen.id as Id<"bookings"> }),
+      ...(chosen.kind === "appointment" ? { appointmentId: chosen.id as Id<"appointments"> } : { bookingId: chosen.id as Id<"bookings"> }),
       expectedCorrectionRevision: view.paymentRecord.correctionRevision, expectedTargetRevision: chosen.revision, idempotencyKey, reason,
       ...(chosen.kind === "booking" ? { notifyGuest } : {}),
     }), `Couldn't link this ${what}.`);

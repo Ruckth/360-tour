@@ -4,13 +4,13 @@ import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import Link from "next/link";
-import { formatReceiptNumber } from "convex/lib/billMath";
+import { formatReceiptNumber } from "convex/shared/orderMath";
 import { ButtonLink } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { orderPath, receiptPath } from "@/components/checkout/checkout-source";
 import { formatMoney } from "./labels";
 
-type Source = { bookingId: Id<"bookings"> } | { appointmentId: Id<"serviceAppointments"> };
+type Source = { bookingId: Id<"bookings"> } | { appointmentId: Id<"appointments"> };
 
 const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded: "Discarded" } as const;
 
@@ -22,7 +22,7 @@ const STATE_LABELS = { unpaid: "Unpaid", paid: "Paid", void: "Voided", discarded
  * charging it. `history` shows only the past and discarded orders: the sheet's money block has the balance and opens checkout.
  */
 export function BookingOrders({ source, currency, closed, history: historyOnly = false }: { source: Source; currency: string; closed: boolean; history?: boolean }) {
-  const summary = useQuery(api.pos.ordersForBooking, source);
+  const summary = useQuery(api.pos.orders.ordersForBooking, source);
   const openHref = "bookingId" in source ? `/admin/checkout?booking=${source.bookingId}` : `/admin/checkout?appointment=${source.appointmentId}`;
 
   if (summary === undefined) return <Skeleton className="h-16 w-full" aria-label="Loading orders" />;

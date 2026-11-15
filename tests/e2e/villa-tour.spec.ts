@@ -1,9 +1,5 @@
-import { expect, test } from "@playwright/test";
-import { bypassDemoDisclaimer } from "./demo-disclaimer";
+import { expect, test } from "./fixtures";
 
-test.beforeEach(async ({ page }) => {
-  await bypassDemoDisclaimer(page);
-});
 
 test("@smoke villa detail page renders gallery, 360 entry, and chat trigger", async ({ page }) => {
   await page.goto("/rooms/pool-villa");

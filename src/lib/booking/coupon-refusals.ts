@@ -1,5 +1,8 @@
-import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalProblem, type CouponRefusalSurface } from "convex/lib/marketingReport";
-import { normalizeCouponCode } from "convex/lib/offers";
+import { useCallback, useMemo } from "react";
+import { useMutation } from "convex/react";
+import { api } from "convex/_generated/api";
+import { COUPON_REFUSAL_PROBLEMS, type CouponRefusalProblem, type CouponRefusalSurface } from "convex/shared/marketingReport";
+import { normalizeCouponCode } from "convex/shared/offers";
 
 export type RefusalNote = { code: string; problem: CouponRefusalProblem; surface: CouponRefusalSurface };
 const isProblem = (value: unknown): value is CouponRefusalProblem => typeof value === "string" && COUPON_REFUSAL_PROBLEMS.some(problem => problem === value);
@@ -23,4 +26,11 @@ export function couponRefusalDetails(error: unknown): { problem: CouponRefusalPr
   if (!data || typeof data !== "object" || !("code" in data)) return null;
   const problem = data.code === "coupon_changed" ? "coupon_changed" : data.code === "coupon_unavailable" && "problem" in data && data.problem && typeof data.problem === "object" && "code" in data.problem ? data.problem.code : null;
   return isProblem(problem) ? { problem, ...("couponCode" in data && typeof data.couponCode === "string" ? { couponCode: data.couponCode } : {}) } : null;
+}
+
+/** One diagnostic per code/problem on this page; failures never block checkout. */
+export function useCouponRefusalReporter(surface: CouponRefusalSurface) {
+  const note = useMutation(api.marketing.report.noteCouponRefusal);
+  const report = useMemo(() => createCouponRefusalReporter(note), [note]);
+  return useCallback((code: string, problem: unknown) => report("page", code, problem, surface), [report, surface]);
 }

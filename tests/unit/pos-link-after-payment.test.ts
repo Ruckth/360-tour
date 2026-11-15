@@ -1,12 +1,13 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
-import { act, createElement, type ComponentProps } from "react";
+import { createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId } from "@/components/checkout/backend";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 
 /** Linking a paid service row to its appointment from the receipt screen, against the fixture backend. */
@@ -14,7 +15,7 @@ import { ReceiptView } from "@/components/checkout/ReceiptView";
 let root: Root;
 const SOMCHAI = "fxcust000002" as CustomerId;
 const THAI_90 = "fxsvc000002" as Id<"services">;
-const SOMCHAI_APPOINTMENT = "fxappt000002" as Id<"serviceAppointments">;
+const SOMCHAI_APPOINTMENT = "fxappt000002" as Id<"appointments">;
 const tick = (ms = 200) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("button")];
 const button = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
@@ -33,12 +34,12 @@ const printed = () => {
 };
 
 async function paidMassage() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
   const pending = async <T,>(promise: Promise<T>) => { await tick(); return promise; };
   const { orderId } = await pending(actions.addItem({ item: { kind: "service", serviceId: THAI_90 } }));
   await pending(actions.linkCustomer({ orderId, customerId: SOMCHAI }));
-  await pending(actions.settleOrder({ orderId, idempotencyKey: "paid-massage-01", expectedDue: 1600, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "cash", amount: 1600 }] }));
+  await pending(actions.settleOrder({ orderId, idempotencyKey: "paid-massage-01", expectedDue: 160000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "cash", amount: 160000 }] }));
   const provider = { backend: backend as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>;
   await act(async () => root.render(createElement(CheckoutBackendProvider, provider, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} }))));
   return { backend, orderId };
@@ -81,7 +82,7 @@ it("pays an unscheduled service, links it from its receipt line to the guest's a
 
   expect(document.querySelector('[data-testid="line-link"]')?.textContent?.trim()).toBe("Linked · SVC-0002");
   expect(button("Link appointment")).toBeUndefined();
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 1600 });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: true, price: 160000 });
   expect(printed()).toBe(issued);
 
   await click("Unlink…");
@@ -90,7 +91,7 @@ it("pays an unscheduled service, links it from its receipt line to the guest's a
   await tick();
   expect(document.querySelector('[data-testid="line-link"]')).toBeNull();
   expect(button("Link appointment")).toBeTruthy();
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 1600 });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false, price: 1600 });
   expect(printed()).toBe(issued);
 });
 
@@ -103,7 +104,7 @@ it("refuses a link reviewed before the appointment changed, and shows why", asyn
   await click("Confirm link");
   await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/changed since you opened it/);
-  expect(backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false });
+  expect(await backend.appointmentSnapshot(SOMCHAI_APPOINTMENT)).toMatchObject({ paid: false });
 });
 
 it("retries a link whose answer was lost with the same attempt key, and links once", async () => {

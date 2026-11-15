@@ -1,4 +1,6 @@
 "use client";
+import { satangToBaht } from "convex/shared/money";
+
 
 import { Pencil, X } from "lucide-react";
 import { staffDateTime } from "@/lib/staff-time";
@@ -59,7 +61,7 @@ import {
 } from "./admin-bookings-shared";
 
 const CHECKOUT_LIVE = "Wait for the guest's Stripe checkout to finish or expire.";
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 
 function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -83,7 +85,7 @@ export function BookingSheet({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const booking = useQuery(api.adminBookings.getForAdmin, bookingId ? { bookingId } : "skip");
+  const booking = useQuery(api.bookings.admin.getForAdmin, bookingId ? { bookingId } : "skip");
   const [dirty, setDirty] = useState(false);
   const { confirmDiscard } = useUnsavedGuard(dirty);
   const close = async () => { if (await confirmDiscard()) onClose(); };
@@ -135,10 +137,10 @@ function BookingDetails({
   onDirtyChange: (dirty: boolean) => void;
   beforeLeave: () => Promise<boolean>;
 }) {
-  const updateBooking = useMutation(api.adminBookings.updateBooking);
-  const resendBookingEmails = useMutation(api.adminBookings.resendBookingEmails);
-  const deleteBooking = useMutation(api.adminBookings.deleteBooking);
-  const updateNotes = useMutation(api.adminBookings.updateNotes);
+  const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
+  const resendBookingEmails = useMutation(api.bookings.commands.resendBookingEmails.resendBookingEmails);
+  const deleteBooking = useMutation(api.bookings.commands.deleteBooking.deleteBooking);
+  const updateNotes = useMutation(api.bookings.commands.updateNotes.updateNotes);
   const confirm = useConfirm();
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -296,7 +298,7 @@ function BookingDetails({
           <BookingOrders
             source={{ bookingId: booking._id }}
             currency={booking.currency}
-            closed={cancelled || booking.money.legacyRefund || booking.paymentStatus === "failed"}
+            closed={cancelled || booking.paymentStatus === "failed"}
             history
           />
         }
@@ -402,7 +404,7 @@ export function EditBookingDialog({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const editBooking = useMutation(api.adminBookings.editBooking);
+  const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
   /** The revision this edit was reviewed against; a change made meanwhile is refused, not overwritten. */
   const [original] = useState(booking);
   const [revision] = useState(booking.revision);
@@ -413,7 +415,7 @@ export function EditBookingDialog({
   const [guestPhone, setGuestPhone] = useState(booking.guestPhone);
   const [guestEmail, setGuestEmail] = useState(booking.guestEmail ?? "");
   const [custom, setCustom] = useState(Boolean(booking.priceOverride));
-  const [customTotal, setCustomTotal] = useState(String(booking.priceOverride?.total ?? booking.total));
+  const [customTotal, setCustomTotal] = useState(String(satangToBaht(booking.priceOverride?.total ?? booking.total)));
   const [customReason, setCustomReason] = useState(booking.priceOverride?.reason ?? "");
   const [villaReason, setVillaReason] = useState("");
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
@@ -654,7 +656,7 @@ type EditQuoteArgs = {
 export function useBookingEditQuote(args: EditQuoteArgs | null): BookingEditQuoteState {
   const key = args ? JSON.stringify(args) : "";
   const queries = useMemo(
-    (): RequestForQueries => (key ? { quote: { query: api.adminBookings.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
+    (): RequestForQueries => (key ? { quote: { query: api.bookings.admin.quoteBookingEdit, args: JSON.parse(key) as EditQuoteArgs } } : {}),
     [key],
   );
   const result: unknown = useQueries(queries).quote;

@@ -1,5 +1,5 @@
 import type { Id } from "convex/_generated/dataModel";
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { NextIntlClientProvider } from "next-intl";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -11,7 +11,7 @@ import type { StaffAccessView } from "@/components/admin/admin-access";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "./checkout-transport";
 import en from "../../messages/en.json";
 import "@/app.css";
 
@@ -38,7 +38,7 @@ const access: StaffAccessView = {
   },
 };
 
-const backend = createFixtureBackend({ staff: { role, email: EMAILS[role], rules: DEFAULT_CASHIER_RULES } });
+const backend = await createFixtureBackend({ staff: { role, email: EMAILS[role], rules: DEFAULT_CASHIER_RULES } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 
 async function seed(): Promise<OrderId | null> {
@@ -46,17 +46,17 @@ async function seed(): Promise<OrderId | null> {
   const actions = backend.useActions();
   // A cashier's requests, as on a shared till: a 15% discount on a ฿1,200 massage, then ฿100 off a foot spa.
   const first = await actions.addItem({ item: service(1) });
-  if (pending >= 1) await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 15 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
+  if (pending >= 1) await backend.seedApproval({ orderId: first.orderId, payload: { kind: "discount", lineId: first.lineId, discount: { type: "percent", value: 1500 } }, reason: "Guest waited 40 minutes", requesterEmail: EMAILS.cashier });
   if (pending >= 2) {
     const second = await actions.addItem({ item: service(7) });
-    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 100 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
+    await backend.seedApproval({ orderId: second.orderId, payload: { kind: "discount", lineId: second.lineId, discount: { type: "amount", value: 10000 } }, reason: "Regular guest", requesterEmail: EMAILS.cashier });
   }
   return first.orderId;
 }
 
 const now = Date.UTC(2026, 10, 14, 8);
 const session: AdminSession = {
-  _id: "fixture-chat" as Id<"chatSessions">,
+  _id: "fixture-chat" as Id<"conversations">,
   channel: "whatsapp",
   visitorName: "Maya Lin",
   propertyName: "Tideglass Pool Residence",
@@ -66,7 +66,7 @@ const session: AdminSession = {
   inboxState: "needs_staff",
   aiPaused: true,
   keepWithStaff: true,
-  latestGuestMessageId: "fixture-message" as Id<"chatMessages">,
+  latestGuestMessageId: "fixture-message" as Id<"messages">,
 };
 
 /** The chat detail with a reply being written: the draft must survive approving from the header. */
@@ -87,7 +87,7 @@ function ChatsPage() {
             loadOlderMessages={() => {}}
             loadingTranscript={false}
             loadingOlderMessages={false}
-            messages={[{ _id: "fixture-message" as Id<"chatMessages">, role: "user", content: "Can I book a foot spa tomorrow morning?", timestamp: now - 60_000 }]}
+            messages={[{ _id: "fixture-message" as Id<"messages">, role: "user", content: "Can I book a foot spa tomorrow morning?", timestamp: now - 60_000 }]}
             now={now}
             replyDraft={draft}
             onReplyDraftChange={setDraft}

@@ -1,9 +1,11 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps, type ReactNode, type ReactElement } from 'react';
+import { gateResponse } from '../support/checkout-act';
+import { createElement, useState, type ComponentProps, type ReactNode, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView, type RestoreReview } from '@/components/checkout/backend';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
 import { OrdersBrowser } from '@/components/checkout/OrderStrip';
 import { DiscardOrderDialog, OrderLifecycle } from '@/components/checkout/OrderLifecycle';
@@ -16,7 +18,7 @@ vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children:
 
 let root: Root, current: OrderView, review: RestoreReview | undefined;
 const saved = 'fxbill000002' as OrderId;
-const appt = 'fxappt000002' as Id<'serviceAppointments'>;
+const appt = 'fxappt000002' as Id<'appointments'>;
 const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('button')];
 const button = (text: string) => buttons().find(b => (b.textContent?.trim() === text || (text === 'Cash' && b.textContent?.trim().startsWith('Cash ฿'))))!;
 const click = (text: string) => act(async () => { expect(button(text), text).toBeTruthy(); button(text).click(); });
@@ -48,7 +50,7 @@ beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); vi.useFakeTi
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it('discards the open order from its ⋯ after a confirm naming it, and reopens retained rows read only', async () => {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   await show(backend, createElement(Harness, { id: saved }));
   const more = document.querySelector<HTMLButtonElement>('aside [aria-label="More order actions"]')!;
   await act(async () => { more.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true })); more.click(); });
@@ -64,10 +66,10 @@ it('discards the open order from its ⋯ after a confirm naming it, and reopens 
   await expandHistory("History");
   expect(document.querySelector('[aria-label="Order history"]')!.textContent).toContain('Order discarded');
   await probe(backend); expect(current.order.customerId).toBe('fxcust000002'); expect(current.lines).toHaveLength(2);
-  const denied = expect(backend.useActions().addItem({ orderId: saved, item: { kind: 'extra', name: 'Refused', price: 1 } })).rejects.toThrow('discarded'); await tick(); await denied;
+  const denied = expect(backend.useActions().addItem({ orderId: saved, item: { kind: 'extra', name: 'Refused', price: 100 } })).rejects.toThrow('discarded'); await tick(); await denied;
 });
 it('retries a lost discard response with the identical key and revision', async () => {
-  const backend = createFixtureBackend(); const actions = backend.useActions(), original = actions.discardOrder;
+  const backend = await createFixtureBackend(); const actions = backend.useActions(), original = actions.discardOrder;
   const discard = vi.spyOn(actions, 'discardOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Response lost'); });
   await probe(backend); const view = current; const onClose = vi.fn();
   await show(backend, createElement(Dialog, { open: true }, createElement(DiscardOrderDialog, { view, onClose })));
@@ -79,9 +81,9 @@ it('retries a lost discard response with the identical key and revision', async 
   await probe(backend); expect(current.order.revision).toBe(3);
 });
 it('reviews source conflicts and explicitly restores without competing rows, preserving removal history and links', async () => {
-  const backend = createFixtureBackend(), actions = backend.useActions();
+  const backend = await createFixtureBackend(), actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt }));
-  await run(actions.addItem({ orderId, item: { kind: 'extra', name: 'Keep me', price: 10 } }));
+  await run(actions.addItem({ orderId, item: { kind: 'extra', name: 'Keep me', price: 1000 } }));
   await probe(backend, orderId);
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt })); expect(other.orderId).not.toBe(orderId);
@@ -96,57 +98,59 @@ it('reviews source conflicts and explicitly restores without competing rows, pre
   await show(backend, createElement(HistoryProbe)); expect(history!.results.some(r => r.kind === 'line_removed' && r.before)).toBe(true);
 });
 it('refuses an all-conflict restore and restores a source paid elsewhere as a retained warning that blocks payment', async () => {
-  const backend = createFixtureBackend(), actions = backend.useActions();
+  const backend = await createFixtureBackend(), actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt })); await probe(backend, orderId);
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-paid-source' }));
   const other = await run(actions.openOrderFor({ appointmentId: appt }));
   await show(backend, createElement(OrderLifecycle, { orderId, onDone: vi.fn(), onPending: vi.fn(), onOpen: vi.fn() }));
   expect(document.body.textContent).toContain('Every row conflicts'); expect(button('Restore without 1 conflicting row').disabled).toBe(true);
   await probe(backend, other.orderId);
-  await run(actions.settleOrder({ orderId: other.orderId, expectedRevision: current.order.revision, expectedDue: 1600, idempotencyKey: 'paid-other-source', tenders: [{ method: 'card', amount: 1600 }] }));
+  await run(actions.settleOrder({ orderId: other.orderId, expectedRevision: current.order.revision, expectedDue: 160000, idempotencyKey: 'paid-other-source', tenders: [{ method: 'card', amount: 160000 }] }));
   await probe(backend, orderId); expect(review!.blocking).toBe(0); expect(review!.conflicts.some(c => c.kind === 'settled')).toBe(true);
   await run(actions.restoreOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'restore-paid-source' }));
   await probe(backend, orderId); expect(current.lines).toHaveLength(1); expect(current.lines[0].sourceIssue?.kind).toBe('settled');
   await show(backend, createElement(Harness, { id: orderId })); expect(button('Cash').disabled).toBe(true);
 });
 it('shows archived and merged customer warnings during restore without deleting the identity link', async () => {
-  const backend = createFixtureBackend(), actions = backend.useActions();
+  const backend = await createFixtureBackend(), actions = backend.useActions();
   await run(actions.discardOrder({ orderId: saved, expectedRevision: 2, idempotencyKey: 'customer-discard' }));
   await run(actions.setCustomerArchived({ customerId: 'fxcust000002' as Id<'customers'>, expectedRevision: 0, archived: true }));
   await probe(backend); expect(review!.conflicts.some(c => c.kind === 'customer' && c.message.includes('archived'))).toBe(true);
   await run(actions.restoreOrder({ orderId: saved, expectedRevision: current.order.revision, idempotencyKey: 'customer-restore' }));
   await probe(backend); expect(current.order.customerId).toBe('fxcust000002');
 });
-const appointment = { _id: appt, status: 'no_show' as const, paymentStatus: 'unpaid' as const, price: 1600, currency: 'THB', revision: 0, start: Date.now(), confirmationCode: 'SVC-0002' };
+const appointment = { _id: appt, status: 'no_show' as const, paymentStatus: 'unpaid' as const, price: 160000, currency: 'THB', revision: 0, start: Date.now(), confirmationCode: 'SVC-0002' };
 it('adds an explicit labelled fee from the appointment, prevents repeated collection, and never attaches a no-show as service', async () => {
-  const backend = createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }); const actions = backend.useActions();
-  const denied = expect(actions.openOrderFor({ appointmentId: appt })).rejects.toThrow('not chargeable'); await tick(); await denied;
+  const backend = await createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }); const actions = backend.useActions();
+  const denied = expect(actions.openOrderFor({ appointmentId: appt })).rejects.toThrow('nothing left to pay'); await tick(); await denied;
   const pending = vi.fn();
   await show(backend, createElement(AppointmentFeeControls, { appointment, onPendingChange: pending }));
   await input('input[id^="fee-amount"]', '500'); await input('textarea', 'Guest did not attend');
-  await click('Add fee to checkout'); expect(button('Adding fee…').disabled).toBe(true); await tick();
+  const fee = gateResponse(actions.addAppointmentFee);
+  vi.spyOn(actions, 'addAppointmentFee').mockImplementationOnce(fee.write);
+  await click('Add fee to checkout'); expect(button('Adding fee…').disabled).toBe(true); fee.release(); await tick();
   expect(pending.mock.calls).toEqual([[true], [false]]); expect(document.body.textContent).toContain('another fee cannot be collected');
   const href = document.querySelector<HTMLAnchorElement>('a')!.getAttribute('href')!; const orderId = href.split('order=')[1] as OrderId;
-  await probe(backend, orderId); expect(current.lines[0]).toMatchObject({ kind: 'extra', feeAppointmentId: appt, unitPrice: 500, qty: 1 });
-  const rejected = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500 })).rejects.toThrow('already on'); await tick(); await rejected;
-  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 500, idempotencyKey: 'pay-fee', tenders: [{ method: 'card', amount: 500 }] }));
-  const charged = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500 })).rejects.toThrow('charged'); await tick(); await charged;
+  await probe(backend, orderId); expect(current.lines[0]).toMatchObject({ kind: 'extra', feeAppointmentId: appt, unitPrice: 50000, qty: 1 });
+  const rejected = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000 })).rejects.toThrow('already on'); await tick(); await rejected;
+  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 50000, idempotencyKey: 'pay-fee-01', tenders: [{ method: 'card', amount: 50000 }] }));
+  const charged = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000 })).rejects.toThrow('charged'); await tick(); await charged;
   // Fee did not mark the appointment paid: this rejection still comes from its no-show status.
-  const unchanged = expect(actions.openOrderFor({ appointmentId: appt })).rejects.toThrow('not chargeable'); await tick(); await unchanged;
+  const unchanged = expect(actions.openOrderFor({ appointmentId: appt })).rejects.toThrow('nothing left to pay'); await tick(); await unchanged;
 });
 it('requires whole-satang amount, reason and renewed review when appointment revision changes', async () => {
-  const backend = createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] });
+  const backend = await createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] });
   await show(backend, createElement(AppointmentFeeControls, { appointment }));
   await input('input', '1601'); await input('textarea', 'No show'); expect(button('Add fee to checkout').disabled).toBe(true);
   await input('input', '0.001'); expect(button('Add fee to checkout').disabled).toBe(true);
   await input('input', '500'); expect(button('Add fee to checkout').disabled).toBe(false);
-  await show(backend, createElement(AppointmentFeeControls, { appointment: { ...appointment, revision: 1, price: 400 } }));
+  await show(backend, createElement(AppointmentFeeControls, { appointment: { ...appointment, revision: 1, price: 40000 } }));
   expect(button('Add fee to checkout').disabled).toBe(true); await click('Review current appointment'); expect(button('Add fee to checkout').disabled).toBe(true);
 });
 it('pages financial ledgers beyond 20/50 and retries a failed continuation independently', async () => {
   const now = Date.now();
-  const corrections: Doc<'billCorrections'>[] = Array.from({ length: 61 }, (_, i) => ({ _id: `correction-${i}` as Id<'billCorrections'>, _creationTime: i, billId: saved, sequence: i + 1, kind: 'amended', reason: `Reason ${i + 1}`, actor: 'cashier@example.com', recordedAt: now - i, idempotencyKey: `history-${i}` }));
-  const base = createFixtureBackend({ financialHistory: { corrections } });
+  const corrections: Doc<'orderCorrections'>[] = Array.from({ length: 61 }, (_, i) => ({ _id: `correction-${i}` as Id<'orderCorrections'>, _creationTime: i, orderId: saved, sequence: i + 1, kind: 'amended', reason: `Reason ${i + 1}`, actor: 'cashier@example.com', recordedAt: now + i, idempotencyKey: `history-${i}` }));
+  const base = await createFixtureBackend({ financialHistory: { corrections } });
   let down = false;
   const backend: CheckoutBackend = { ...base, useCorrectionHistory: id => { const page = base.useCorrectionHistory(id); if (down) throw new Error('Network'); return { ...page, loadMore: n => { down = true; page.loadMore(n); } }; } };
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -169,7 +173,7 @@ it('pages financial ledgers beyond 20/50 and retries a failed continuation indep
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('No entries recorded');
 });
 it('retries a lost restore response with the identical revision and explicit row choice', async () => {
-  const backend = createFixtureBackend(), actions = backend.useActions();
+  const backend = await createFixtureBackend(), actions = backend.useActions();
   await run(actions.discardOrder({ orderId: saved, expectedRevision: 2, idempotencyKey: 'restore-retry-discard' }));
   const original = actions.restoreOrder;
   const restore = vi.spyOn(actions, 'restoreOrder').mockImplementationOnce(async args => { await original(args); throw new Error('Restore response lost'); });
@@ -180,9 +184,9 @@ it('retries a lost restore response with the identical revision and explicit row
 });
 it('shows appointment refunds with source, provenance and net snapshot while paging audit past 50', async () => {
   const now = Date.now();
-  const audits: Doc<'billAudit'>[] = Array.from({ length: 61 }, (_, i) => ({ _id: `audit-${i}` as Id<'billAudit'>, _creationTime: i, billId: saved, at: now - i, kind: 'price_override', actor: 'cashier@example.com', note: `Activity ${i + 1}`, fromPrice: 100, toPrice: 90 }));
-  const refunds: Doc<'appointmentRefunds'>[] = [{ _id: 'appointment-refund' as Id<'appointmentRefunds'>, _creationTime: now, billId: saved, appointmentId: appt, amount: 50, currency: 'THB', method: 'transfer', reason: 'Partial service return', recordedBy: 'cashier@example.com', recordedAt: now, effectiveAt: now - 1000, idempotencyKey: 'fixture-appointment-refund', netBefore: 100, netAfter: 50 }];
-  const backend = createFixtureBackend({ financialHistory: { audit: audits }, appointmentRefunds: refunds });
+  const audits: Doc<'orderAudit'>[] = Array.from({ length: 61 }, (_, i) => ({ _id: `audit-${i}` as Id<'orderAudit'>, _creationTime: i, orderId: saved, at: now + i, kind: 'price_override', actor: 'cashier@example.com', note: `Activity ${i + 1}`, fromPrice: 10000, toPrice: 9000 }));
+  const refunds: Doc<'appointmentRefunds'>[] = [{ _id: 'appointment-refund' as Id<'appointmentRefunds'>, _creationTime: now, orderId: saved, appointmentId: appt, amount: 5000, currency: 'THB', method: 'transfer', reason: 'Partial service return', recordedBy: 'cashier@example.com', recordedAt: now, effectiveAt: now - 1000, idempotencyKey: 'fixture-appointment-refund', netBefore: 10000, netAfter: 5000 }];
+  const backend = await createFixtureBackend({ financialHistory: { audit: audits }, appointmentRefunds: refunds });
   await show(backend, createElement(FinancialHistory, { orderId: saved }));
   await expandHistory("History · all ledgers");
   const ledger = document.querySelector('[aria-label="All appointment refunds"]')!;
@@ -198,75 +202,75 @@ it('shows appointment refunds with source, provenance and net snapshot while pag
   expect(document.querySelectorAll('[aria-label="All receipt activity"] li')).toHaveLength(61);
 });
 it('keeps empty filtered pages pageable instead of incorrectly announcing exhausted Orders', async () => {
-  const base = createFixtureBackend(), loadMore = vi.fn();
+  const base = await createFixtureBackend(), loadMore = vi.fn();
   const backend: CheckoutBackend = { ...base, useOrders: () => ({ results: [], status: 'CanLoadMore', loadMore }) };
   await show(backend, createElement(OrdersBrowser, { currentId: saved, onOpen: vi.fn() }));
   expect(document.body.textContent).not.toContain('No unpaid orders'); await click('Load more'); expect(loadMore).toHaveBeenCalledExactlyOnceWith(20);
 });
 it('keeps fees charged after an ordinary void and releases only a proven mistaken entry', async () => {
-  const backend = createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }), actions = backend.useActions();
-  const { orderId } = await run(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500, reason: 'No attendance' }));
+  const backend = await createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }), actions = backend.useActions();
+  const { orderId } = await run(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000, reason: 'No attendance' }));
   await probe(backend, orderId);
-  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 500, idempotencyKey: 'fee-paid-before-void', tenders: [{ method: 'card', amount: 500 }] }));
+  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 50000, idempotencyKey: 'fee-paid-before-void', tenders: [{ method: 'card', amount: 50000 }] }));
   await run(actions.voidOrder({ orderId, reason: 'Void receipt only; money remains' }));
-  const denied = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500 })).rejects.toThrow('charged'); await tick(); await denied;
+  const denied = expect(actions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000 })).rejects.toThrow('charged'); await tick(); await denied;
   await show(backend, createElement(AppointmentFeeControls, { appointment }));
   expect(document.body.textContent).toContain('already charged'); expect(button('Add fee to checkout')).toBeUndefined();
-  const other = createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }), otherActions = other.useActions();
-  const fee = await run(otherActions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500 }));
+  const other = await createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] }), otherActions = other.useActions();
+  const fee = await run(otherActions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000 }));
   await probe(other, fee.orderId);
-  await run(otherActions.settleOrder({ orderId: fee.orderId, expectedRevision: current.order.revision, expectedDue: 500, idempotencyKey: 'mistaken-fee-payment', tenders: [{ method: 'card', amount: 500 }] }));
+  await run(otherActions.settleOrder({ orderId: fee.orderId, expectedRevision: current.order.revision, expectedDue: 50000, idempotencyKey: 'mistaken-fee-payment', tenders: [{ method: 'card', amount: 50000 }] }));
   await run(otherActions.voidUnreceivedOrder({ orderId: fee.orderId, expectedCorrectionRevision: 0, idempotencyKey: 'fee-proved-unreceived', reason: 'No money received' }));
   await show(other, createElement(AppointmentFeeControls, { appointment }));
   expect(button('Add fee to checkout')).toBeTruthy();
-  const replacement = await run(otherActions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 500 })); expect(replacement.orderId).not.toBe(fee.orderId);
+  const replacement = await run(otherActions.addAppointmentFee({ appointmentId: appt, kind: 'no_show', amount: 50000 })); expect(replacement.orderId).not.toBe(fee.orderId);
 });
 it('restores externally edited appointment rows stale, updates from the real source snapshot, and retains original removal evidence', async () => {
-  const backend = createFixtureBackend(), actions = backend.useActions();
+  const backend = await createFixtureBackend(), actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt })); await probe(backend, orderId);
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'discard-before-edit' }));
-  await act(async () => backend.setAppointmentSnapshot(appt, { price: 1400, start: Date.now() - 3600000, revision: 1 }));
+  await act(async () => await backend.setAppointmentSnapshot(appt, { price: 140000, start: Date.now() - 3600000, revision: 1 }));
   await probe(backend, orderId); expect(review!.conflicts.some(c => c.kind === 'changed' && !c.blocking)).toBe(true);
   await run(actions.restoreOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'restore-after-edit' }));
-  await probe(backend, orderId); expect(current.lines[0].unitPrice).toBe(1600); expect(current.lines[0].sourceIssue?.kind).toBe('changed');
+  await probe(backend, orderId); expect(current.lines[0].unitPrice).toBe(160000); expect(current.lines[0].sourceIssue?.kind).toBe('changed');
   await run(actions.updateSourceLine({ lineId: current.lines[0]._id }));
-  await probe(backend, orderId); expect(current.lines[0].unitPrice).toBe(1400); expect(current.lines[0].sourceIssue).toBeNull(); expect(backend.appointmentSnapshot(appt)?.price).toBe(1400);
+  await probe(backend, orderId); expect(current.lines[0].unitPrice).toBe(140000); expect(current.lines[0].sourceIssue).toBeNull(); expect((await backend.appointmentSnapshot(appt))?.price).toBe(140000);
 });
 it('charges only unwaived stay terms and preserves the actual net deposit through discard and source updates', async () => {
   const bookingId = 'fxbkg000001' as Id<'bookings'>;
-  const backend = createFixtureBackend({ bookings: [{ id: bookingId, price: 250, providerRefundWaived: 150, deposit: 50, paid: false }] }), actions = backend.useActions();
+  const backend = await createFixtureBackend({ bookings: [{ id: bookingId, price: 25000, providerRefundWaived: 15000, deposit: 5000, paid: false }] }), actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ bookingId })); await probe(backend, orderId);
-  expect(current.lines[0]).toMatchObject({ unitPrice: 100, deposit: 50 }); expect(current.totals.due).toBe(50); expect(current.lines[0].detail).toContain('150 THB refunded charge waived');
+  expect(current.lines[0]).toMatchObject({ unitPrice: 10000, deposit: 5000 }); expect(current.totals.due).toBe(5000); expect(current.lines[0].detail).toContain('150 THB refunded charge waived');
   await run(actions.discardOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'waived-discard' }));
-  await act(async () => backend.setBookingSnapshot(bookingId, { price: 300 }));
+  await act(async () => await backend.setBookingSnapshot(bookingId, { price: 30000 }));
   await probe(backend, orderId);
   await run(actions.restoreOrder({ orderId, expectedRevision: current.order.revision, idempotencyKey: 'waived-restore' }));
   await probe(backend, orderId); expect(current.lines[0].sourceIssue?.kind).toBe('changed');
   await run(actions.updateSourceLine({ lineId: current.lines[0]._id }));
-  await probe(backend, orderId); expect(current.lines[0]).toMatchObject({ unitPrice: 150, deposit: 50 }); expect(current.totals.due).toBe(100);
+  await probe(backend, orderId); expect(current.lines[0]).toMatchObject({ unitPrice: 15000, deposit: 5000 }); expect(current.totals.due).toBe(10000);
 });
 it('recovers a lost fee response through its actual order link and never offers a duplicate collection', async () => {
-  const backend = createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] });
+  const backend = await createFixtureBackend({ appointments: [{ appointmentId: appt, status: 'no_show' }] });
   const actions = backend.useActions(), original = actions.addAppointmentFee;
   vi.spyOn(actions, 'addAppointmentFee').mockImplementationOnce(async args => { await original(args); throw new Error('Lost fee response'); });
   await show(backend, createElement(AppointmentFeeControls, { appointment }));
   await input('input', '500'); await input('textarea', 'No attendance'); await click('Add fee to checkout'); await tick();
   expect(document.body.textContent).toContain('response may have been lost'); expect(document.querySelector('a[href*="checkout?order="]')).toBeTruthy(); expect(button('Retry fee')).toBeUndefined();
-  expect(backend.appointmentSnapshot(appt)).toMatchObject({ status: 'no_show', price: 1600, paid: false });
+  expect(await backend.appointmentSnapshot(appt)).toMatchObject({ status: 'no_show', price: 160000, paid: false });
 });
 it('shows an actual receipt-attributed appointment return with net balance and keeps issued money unchanged', async () => {
   const refunds: Doc<'appointmentRefunds'>[] = [];
-  const backend = createFixtureBackend({ appointmentRefunds: refunds }), actions = backend.useActions();
+  const backend = await createFixtureBackend({ appointmentRefunds: refunds }), actions = backend.useActions();
   const { orderId } = await run(actions.openOrderFor({ appointmentId: appt })); await probe(backend, orderId);
-  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 1600, idempotencyKey: 'appointment-receipt-paid', tenders: [{ method: 'card', amount: 1600 }] }));
-  refunds.push({ _id: 'actual-appt-return' as Id<'appointmentRefunds'>, _creationTime: Date.now(), appointmentId: appt, billId: orderId, amount: 200, currency: 'THB', method: 'transfer', reason: 'Partial recorded return', effectiveAt: Date.now(), recordedAt: Date.now(), recordedBy: 'cashier@example.com', idempotencyKey: 'external-return', netBefore: 1600, netAfter: 1400 });
-  await act(async () => backend.setAppointmentSnapshot(appt, { amountRefunded: 200 }));
+  await run(actions.settleOrder({ orderId, expectedRevision: current.order.revision, expectedDue: 160000, idempotencyKey: 'appointment-receipt-paid', tenders: [{ method: 'card', amount: 160000 }] }));
+  refunds.push({ _id: 'actual-appt-return' as Id<'appointmentRefunds'>, _creationTime: Date.now(), appointmentId: appt, orderId: orderId, amount: 20000, currency: 'THB', method: 'transfer', reason: 'Partial recorded return', effectiveAt: Date.now(), recordedAt: Date.now(), recordedBy: 'cashier@example.com', idempotencyKey: 'external-return', netBefore: 160000, netAfter: 140000 });
+  await act(async () => await backend.setAppointmentSnapshot(appt, { amountRefunded: 20000 }));
   await probe(backend, orderId);
-  expect(current.refunds[0]).toMatchObject({ sourceType: 'appointment', appointmentId: appt, amount: 200 });
-  expect(current.payments[0].amount).toBe(1600); expect(current.totals.total).toBe(1600);
+  expect(current.refunds[0]).toMatchObject({ sourceType: 'appointment', appointmentId: appt, amount: 20000 });
+  expect(current.payments[0].amount).toBe(160000); expect(current.totals.total).toBe(160000);
   await show(backend, createElement(FinancialHistory, { orderId, view: current }));
   await expandHistory("History · all ledgers");
   expect(document.querySelector('[aria-label="All appointment refunds"]')!.textContent).toContain('Received on this receipt ฿1,600 · Net retained ฿1,400');
   const denied = expect(actions.voidUnreceivedOrder({ orderId, expectedCorrectionRevision: 0, idempotencyKey: 'refunded-reversal-denied', reason: 'Cannot reverse returned money' })).rejects.toThrow('refunded'); await tick(); await denied;
-  await probe(backend, orderId); expect(current.order.state).toBe('paid'); expect(current.payments[0].amount).toBe(1600);
+  await probe(backend, orderId); expect(current.order.state).toBe('paid'); expect(current.payments[0].amount).toBe(160000);
 });

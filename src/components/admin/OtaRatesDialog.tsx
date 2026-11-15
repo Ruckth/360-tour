@@ -1,4 +1,7 @@
-'use client';
+"use client";
+import { satangToBaht } from "convex/shared/money";
+import { parseMoneyInput } from "@/lib/money-input";
+
 
 import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from 'convex/react';
@@ -57,15 +60,15 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   const [error, setError] = useState('');
   const confirm = useConfirm();
   const [now] = useState(() => Date.now());
-  const rates = useQuery(api.properties.listOtaRates, { propertyId });
-  const upsertRate = useMutation(api.properties.upsertOtaRate);
-  const removeRate = useMutation(api.properties.removeOtaRate);
+  const rates = useQuery(api.catalog.properties.listOtaRates, { propertyId });
+  const upsertRate = useMutation(api.catalog.properties.upsertOtaRate);
+  const removeRate = useMutation(api.catalog.properties.removeOtaRate);
   const hasRate = rates?.some(rate => rate.platform === platform) ?? false;
 
   async function save(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setError('');
-    try { await upsertRate({ propertyId, platform, nightlyRate: Number(nightlyRate), url: url.trim() || undefined }); setNightlyRate(''); setUrl(''); }
+    try { await upsertRate({ propertyId, platform, nightlyRate: parseMoneyInput(nightlyRate), url: url.trim() || undefined }); setNightlyRate(''); setUrl(''); }
     catch (err) { setError(errorText(err, 'Could not save rate.')); }
     finally { setBusy(false); }
   }
@@ -80,7 +83,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         </SelectContent>
       </Select>
       <Label htmlFor="ota-rate">Nightly price (same currency as the villa, incl. the platform&apos;s fees)</Label>
-      <Input id="ota-rate" type="number" min={1} step={1} required inputMode="numeric" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
+      <Input id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
       <Label htmlFor="ota-url">Listing URL (optional)</Label>
       <Input id="ota-url" type="url" placeholder="https://www.booking.com/hotel/..." value={url} onChange={event => setUrl(event.target.value)} />
       <Button type="submit" className="mt-1 justify-self-start" disabled={busy}>{busy ? <Spinner className="text-current" /> : null}{hasRate ? 'Update rate' : 'Save rate'}</Button>
@@ -91,7 +94,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{sourceLabel(rate.platform)} · {formatMoney(rate.nightlyRate, resort.currency)}</strong>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(rate.nightlyRate)); setUrl(rate.url ?? ''); }}>Edit</Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(satangToBaht(rate.nightlyRate))); setUrl(rate.url ?? ''); }}>Edit</Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
               if (!(await confirm({ title: `Remove the ${sourceLabel(rate.platform)} rate?`, confirmLabel: 'Remove', destructive: true }))) return;
               setBusy(true); setError('');

@@ -1,9 +1,10 @@
 "use client";
+import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 
 import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { isChatSessionActive } from "convex/lib/chatPresence";
+import { isChatSessionActive } from "convex/shared/chatPresence";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
@@ -235,23 +236,23 @@ export function ChatsView() {
   const lastWrittenSearchQuery = useRef(urlSearchQuery);
   const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
-  const selectedSessionId = searchParams.get("session") as Id<"chatSessions"> | null;
+  const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
   );
-  function selectSession(sessionId: Id<"chatSessions"> | null) {
+  function selectSession(sessionId: Id<"conversations"> | null) {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
   }
   // Saved answers are retired: a guest question can seed a draft business fact instead.
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
-  const factProperties = useQuery(api.properties.adminList, factTarget ? {} : "skip") as
+  const factProperties = useQuery(api.catalog.properties.adminList, factTarget ? {} : "skip") as
     | AdminFactProperty[]
     | undefined;
-  const settleGuestMessageMutation = useMutation(api.adminChat.settleGuestMessage);
+  const settleGuestMessageMutation = useMutation(api.messaging.adminChat.settleGuestMessage);
   // The ref guards repeat clicks and `e` before React commits; the state drives the buttons.
-  const settlingRef = useRef(new Set<Id<"chatMessages">>());
-  const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"chatMessages">>>(() => new Set());
+  const settlingRef = useRef(new Set<Id<"messages">>());
+  const [settlingMessageIds, setSettlingMessageIds] = useState<ReadonlySet<Id<"messages">>>(() => new Set());
   const [settleError, setSettleError] = useState<string | null>(null);
   // Who was just marked No reply needed, confirmed briefly in the list once the next chat opens.
   const [cleared, setCleared] = useState<string | null>(null);
@@ -279,7 +280,7 @@ export function ChatsView() {
   ].join(":");
   const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
   const liveSessionsResult = useQuery(
-    api.adminChat.listSessions,
+    api.messaging.adminChat.listSessions,
     invalidMessageDateRange
       ? "skip"
       : {
@@ -302,11 +303,11 @@ export function ChatsView() {
     [invalidMessageDateRange, sessionsResult, now],
   );
   const liveSessionDetail = useQuery(
-    api.adminChat.getSessionDetail,
+    api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
   ) as SessionDetailResult | null | undefined;
   const transcriptPagination = usePaginatedQuery(
-    api.adminChat.listTranscriptMessages,
+    api.messaging.adminChat.listTranscriptMessages,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
     { initialNumItems: 10 },
   ) as TranscriptPaginationResult;
@@ -374,7 +375,7 @@ export function ChatsView() {
     return reply.send();
   }
 
-  async function settleGuestMessage(sessionId: Id<"chatSessions">, messageId: Id<"chatMessages">) {
+  async function settleGuestMessage(sessionId: Id<"conversations">, messageId: Id<"messages">) {
     if (settlingRef.current.has(messageId)) return;
     settlingRef.current.add(messageId);
     setSettlingMessageIds(new Set(settlingRef.current));
@@ -993,24 +994,5 @@ export function ChatsView() {
         </DialogContent>
       </Dialog>
     </>
-  );
-}
-
-const CHAT_SHORTCUT_KEYS = ["j", "k", "r", "e", "/", "?"] as const;
-const CHAT_SHORTCUTS: Array<[string[], string]> = [
-  [["j"], "Next chat"],
-  [["k"], "Previous chat"],
-  [["r"], "Reply to this chat"],
-  [["e"], "No reply needed: settle the guest's message and open the next chat"],
-  [["/"], "Search chats"],
-  [["?"], "Show these shortcuts"],
-  [["Esc"], "Leave a text box or close a dialog"],
-];
-
-function Kbd({ children }: { children: ReactNode }) {
-  return (
-    <kbd className="rounded border border-border bg-muted px-1.5 font-mono text-xs leading-5 text-foreground">
-      {children}
-    </kbd>
   );
 }

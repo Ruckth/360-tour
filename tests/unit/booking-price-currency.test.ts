@@ -12,8 +12,8 @@ vi.mock("next-intl", () => ({
 vi.mock("@/components/pricing/OtaRateComparison", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/components/pricing/OtaRateComparison")>()),
   useOtaComparison: () => ({
-    currency: comparison.currency, pricePerNight: 100, directDiscountPercent: 10,
-    rates: [{ platform: "airbnb", nightlyRate: 130, updatedAt: 1_800_000_000_000 }],
+    currency: comparison.currency, pricePerNight: 10000, directDiscountPercent: 1000,
+    rates: [{ platform: "airbnb", nightlyRate: 13000, updatedAt: 1_800_000_000_000 }],
   }),
 }));
 vi.mock("@/components/property/PropertyImage", () => ({ PropertyImage: () => null }));
@@ -23,9 +23,9 @@ const { VillaSelector } = await import("@/components/booking/VillaSelector");
 
 function render(currency: string, comparisonCurrency = currency) {
   comparison.currency = comparisonCurrency;
-  const property = { slug: "villa", name: "Villa", tagline: "", images: [], pricePerNight: 100, currency, directDiscountPercent: 10 };
+  const property = { slug: "villa", name: "Villa", tagline: "", images: [], pricePerNight: 10000, currency, directDiscountPercent: 1000 };
   return renderToStaticMarkup(createElement(BookingPriceSummary, {
-    property: property as unknown as BookingProperty, nights: 2, subtotal: 200, lines: [{ kind: "direct", amount: 20 }], total: 180,
+    property: property as unknown as BookingProperty, nights: 2, subtotal: 20000, lines: [{ kind: "direct", amount: 2000 }], total: 18000,
   })).replace(/<!-- -->/g, "");
 }
 
@@ -50,7 +50,7 @@ describe("booking price summary currency", () => {
 
 describe("villa selector currency", () => {
   it("prices each villa card in its own currency", () => {
-    const villa = (slug: string, currency: string) => ({ _id: slug, slug, name: slug, images: [], pricePerNight: 100, currency, maxGuests: 2 });
+    const villa = (slug: string, currency: string) => ({ _id: slug, slug, name: slug, images: [], pricePerNight: 10000, currency, maxGuests: 2 });
     const html = renderToStaticMarkup(createElement(VillaSelector, {
       properties: [villa("usd-villa", "USD"), villa("thb-villa", "THB")] as unknown as BookingProperty[],
       selectedId: "usd-villa", availablePropertyIds: new Set(["usd-villa", "thb-villa"]), onSelect: () => {},

@@ -2,7 +2,7 @@
 import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import type { ReportData, ReportSale } from "convex/lib/marketingReport";
+import type { ReportData, ReportSale } from "convex/shared/marketingReport";
 import { MarketingAccessProvider, type MarketingAccess } from "@/components/admin/marketing/MarketingAccess";
 import { DashboardBreakdown } from "@/components/admin/marketing/dashboard/DashboardBreakdown";
 import { SalesSheet } from "@/components/admin/marketing/dashboard/DashboardSheets";
@@ -25,7 +25,7 @@ afterEach(() => {
 
 const covered: ReportSale = {
   kind: "order", id: "covered", label: "Free service", channel: "pos", bucket: "staff", createdDay: "2026-11-09",
-  settlementDay: "2026-11-09", paid: true, collected: 0, refunded: 0, discount: 500,
+  settlementDay: "2026-11-09", paid: true, collected: 0, refunded: 0, discount: 50000,
 };
 async function render(sales: ReportSale[], events: ReportData["events"] = [], access?: MarketingAccess) {
   const report: ReportData = {
@@ -74,8 +74,8 @@ it("describes a partially paid stay as payment received and counts its first pay
 
 it("gives role-only readers sale details without spend or operational booking and receipt actions", async () => {
   const access: MarketingAccess = { email: "viewer@example.com", role: "viewer", pendingInvitation: null, capabilities: { view: true, draft: false, publish: false, spend: false, partners: false, reviewCredits: false, manageAccess: false } };
-  const stay: ReportSale = { ...covered, kind: "stay", id: "stay", label: "Guest", collected: 300, discount: 0, settlementDay: undefined, paidDay: "2026-11-09" };
-  await render([covered, stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 300 }], access);
+  const stay: ReportSale = { ...covered, kind: "stay", id: "stay", label: "Guest", collected: 30000, discount: 0, settlementDay: undefined, paidDay: "2026-11-09" };
+  await render([covered, stay], [{ saleId: stay.id, kind: "payment", day: "2026-11-09", amount: 30000 }], access);
   const detail = document.querySelector('[role="dialog"]')!;
   expect(detail.textContent).toContain("Read-only sale details");
   expect(detail.textContent).toContain("Free service");

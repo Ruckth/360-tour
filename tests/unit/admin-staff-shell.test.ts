@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// The real shell with staff access from staffAccess.myAccess; auth, transport and router are mocked.
+// The real shell with staff access from auth/staffAccess.myAccess; auth, transport and router are mocked.
 import type { Window as HappyDOMWindow } from 'happy-dom';
 import { act, createElement, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
@@ -22,18 +22,15 @@ vi.mock('@clerk/nextjs', () => ({
   SignInButton: () => null,
   SignOutButton: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock('@/lib/react/convex', () => ({ useOptionalConvex: () => ({}), useOptionalConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }) }));
 vi.mock('convex/react', () => ({
+  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
   useQuery: (ref: FunctionReference<'query'>, args: unknown) => {
     if (args === 'skip') return undefined;
     const name = getFunctionName(ref);
-    if (name === 'staffAccess:myAccess') return state.access;
-    if (name === 'staffApprovals:pending') return { count: state.pending, list: [] };
+    if (name === 'auth/staffAccess:myAccess') return state.access;
+    if (name === 'pos/staffApprovals:pending') return { count: state.pending, list: [] };
     return { businessName: 'Audit resort' };
-  },
-  useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'staffAccess:claimInvite' ? state.claim : async () => null),
-  usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: () => undefined }),
-}));
+  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : async () => null), usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: () => undefined }) }));
 vi.mock('next/navigation', () => ({
   usePathname: () => state.pathname,
   useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : ''),

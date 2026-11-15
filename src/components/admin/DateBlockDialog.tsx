@@ -20,7 +20,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { addDaysIso, isDateInIsoList, rangeIntersectsDates, todayIsoLocal } from "@/lib/booking/dates";
+import { addDaysIso, isDateInIsoList, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
 import { displayDate, isoNights, type AdminProperty, type DateBlock } from "./admin-bookings-shared";
 import { sourceLabel } from "./labels";
@@ -87,9 +88,9 @@ function HostBlockForm({
   properties: AdminProperty[];
   onClose: () => void;
 }) {
-  const addDateBlocks = useMutation(api.adminBookings.addDateBlocks);
-  const updateDateBlock = useMutation(api.adminBookings.updateDateBlock);
-  const removeDateBlock = useMutation(api.adminBookings.removeDateBlock);
+  const addDateBlocks = useMutation(api.bookings.calendar.addDateBlocks.addDateBlocks);
+  const updateDateBlock = useMutation(api.bookings.calendar.updateDateBlock.updateDateBlock);
+  const removeDateBlock = useMutation(api.bookings.calendar.removeDateBlock.removeDateBlock);
   const confirm = useConfirm();
   // A new block can cover several villas at once (one block per villa); an existing one stays on its villa.
   const [propertyIds, setPropertyIds] = useState<string[]>(() => [
@@ -108,11 +109,11 @@ function HostBlockForm({
   const propertyId = propertyIds.length === 1 ? propertyIds[0] : "";
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
-  const today = todayIsoLocal();
+  const today = resortTodayIso();
   // Date hints only make sense for a single villa; with several, conflicts are reported per villa on save.
   const blockedDates =
     useQuery(
-      api.availability.getBlockedDates,
+      api.bookings.calendar.availability.getBlockedDates,
       propertyId ? { propertyId: propertyId as Id<"properties">, startDate: today, endDate: addDaysIso(today, 365) } : "skip",
     ) ?? [];
   const ownNights = new Set(block && block.propertyId === propertyId ? isoNights(block.start, block.end) : []);

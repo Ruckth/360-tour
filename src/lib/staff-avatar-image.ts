@@ -1,4 +1,4 @@
-import { AVATAR_UPLOAD_TYPES, IMAGE_TYPES, MAX_AVATAR_BYTES } from "convex/lib/imageUploads";
+import { AVATAR_UPLOAD_TYPES, IMAGE_TYPES, MAX_AVATAR_BYTES } from "convex/shared/imageUploads";
 
 export const AVATAR_MAX_EDGE = 768;
 /** Phone photos are well under this; anything bigger is refused before decoding. */

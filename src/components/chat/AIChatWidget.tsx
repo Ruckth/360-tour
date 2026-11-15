@@ -1,5 +1,8 @@
 "use client";
 
+import { Component, type ReactNode } from 'react';
+import { invalidGuest } from './session/useGuestSession';
+import { clearStoredSessionId } from './session/credentials';
 import { CheckCircle2, Copy, ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
@@ -110,7 +113,7 @@ function ChatBrowserGate({
   );
 }
 
-function ChatExperience(props: ChatExperienceProps) {
+function ChatExperienceBody(props: ChatExperienceProps) {
   const t = useTranslations("Chat");
   const {
     mode,
@@ -271,6 +274,26 @@ function ChatExperience(props: ChatExperienceProps) {
       />
     </ChatShell>
   );
+}
+
+/** A rotated handoff token invalidates the former browser's subscriptions. Keep the unsent draft. */
+class ChatCredentialBoundary extends Component<{ children: ReactNode }, { error: Error | null; revision: number }> {
+  state = { error: null as Error | null, revision: 0 };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) {
+    if (invalidGuest(error)) {
+      clearStoredSessionId();
+      this.setState(state => ({ error: null, revision: state.revision + 1 }));
+    }
+  }
+  render() {
+    if (this.state.error) { if (invalidGuest(this.state.error)) return null; throw this.state.error; }
+    return <div key={this.state.revision} className="contents">{this.props.children}</div>;
+  }
+}
+
+function ChatExperience(props: ChatExperienceProps) {
+  return <ChatCredentialBoundary><ChatExperienceBody {...props} /></ChatCredentialBoundary>;
 }
 
 export function AIChatWidget(props: {

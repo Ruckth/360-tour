@@ -5,7 +5,7 @@ import {
   shiftMonth,
   stayMonths,
   villaBatches,
-} from "@/lib/booking/blocked-months";
+} from "convex/shared/calendar";
 
 describe("blocked-night months", () => {
   it("bounds months, including leap Februaries and year ends", () => {

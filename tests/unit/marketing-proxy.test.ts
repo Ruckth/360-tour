@@ -4,7 +4,8 @@ import { marketingSlugForPath, isInternalMarketingPath } from '../../src/lib/mar
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn(), i18n: vi.fn() }));
 vi.mock('convex/browser', () => ({ ConvexHttpClient: class { query = mocks.query; mutation = mocks.mutation; } }));
-vi.mock('../../src/lib/clerk-config', () => ({ isClerkConfigured: () => false }));
+vi.mock('../../src/lib/clerk-config', () => ({ requireClerkConfiguration: () => {} }));
+vi.mock('@clerk/nextjs/server', () => ({ clerkMiddleware: (handler: (auth: unknown, request: NextRequest, event: NextFetchEvent) => unknown) => (request: NextRequest, event: NextFetchEvent) => handler({}, request, event) }));
 vi.mock('next-intl/middleware', () => ({ default: () => mocks.i18n }));
 import proxy from '../../src/proxy';
 import { routing } from '../../src/i18n/routing';

@@ -11,12 +11,12 @@ const list = makeFunctionReference<
 	'query',
 	{ entityType: string; entityId?: string; paginationOpts: PaginationOptions },
 	PaginationResult<Doc<'recordChanges'>>
->('recordHistory:list');
+>('settings/recordHistory:list');
 const records = makeFunctionReference<
 	'query',
 	{ propertyId?: Id<'properties'>; paginationOpts: PaginationOptions },
 	PaginationResult<Doc<'configurationHistoryIndex'>>
->('configurationHistory:records');
+>('settings/configurationHistory:records');
 const page = { numItems: 100, cursor: null };
 function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
@@ -39,13 +39,13 @@ afterEach(() => {
 describe('configuration history and safe restoration', () => {
 	it('discovers removed time off without its deleted id and pages all retained changes with admin authorization', async () => {
 		const { admin, stranger } = setup();
-		const staffId = await admin.mutation(api.adminServices.createStaff, {
+		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Mali', role: 'Therapist', color: '#abc',
 			workingHours: [{ weekday: 1, start: '09:00', end: '18:00' }], breaks: []
 		});
 		const start = Date.parse('2026-10-30T02:00:00Z');
-		const [created] = await admin.mutation(api.adminServices.addTimeOff, { staffId, start, end: start + 3600000, label: 'Sick leave' });
-		await admin.mutation(api.adminServices.removeTimeOff, { timeOffId: created.timeOffId! });
+		const [created] = await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start, end: start + 3600000, label: 'Sick leave' });
+		await admin.mutation(api.services.commands.removeTimeOff.removeTimeOff, { timeOffId: created.timeOffId! });
 		const args = { entityType: 'timeOff', paginationOpts: { numItems: 1, cursor: null } };
 		const first = await admin.query(list, args);
 		expect(first.page).toMatchObject([{ kind: 'removed', before: { staffId, label: 'Sick leave' } }]);
@@ -59,7 +59,7 @@ describe('configuration history and safe restoration', () => {
 		const { admin } = setup();
 		vi.stubEnv('AI_API_KEY', 'provider-ai-secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', 'stripe-secret');
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'New name' },
 			ai: { extraInstructions: 'private prompt or embedded credential', tone: 'Calm', maxWords: 80 },
 			email: { fromName: 'Reception' }
@@ -79,17 +79,17 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('restores a safe snapshot as a new validated revision and retains excluded instructions', async () => {
 		const { admin } = setup();
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Earlier' },
 			ai: { tone: 'Earlier tone', extraInstructions: 'First private instruction' }
 		});
 		const [earlier] = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page;
-		await admin.mutation(api.settings.update, {
+		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Current' },
 			ai: { tone: 'Current tone', extraInstructions: 'Retain this private instruction' }
 		});
-		const restored = await admin.mutation(api.settings.restore, {
+		const restored = await admin.mutation(api.settings.settings.restore, {
 			historyId: earlier._id,
 			expectedRevision: 2,
 			side: 'after'
@@ -108,12 +108,12 @@ describe('configuration history and safe restoration', () => {
 			after: { businessName: 'Earlier' }
 		});
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: earlier._id, expectedRevision: 2, side: 'before' })
+			admin.mutation(api.settings.settings.restore, { historyId: earlier._id, expectedRevision: 2, side: 'before' })
 		).rejects.toThrow('Settings changed');
 		await expect(
-			admin.mutation(api.settings.update, { expectedRevision: 2, business: { businessName: 'Stale draft' } })
+			admin.mutation(api.settings.settings.update, { expectedRevision: 2, business: { businessName: 'Stale draft' } })
 		).rejects.toThrow('Settings changed');
-		expect((await admin.query(api.settings.get, {})).revision).toBe(3);
+		expect((await admin.query(api.settings.settings.get, {})).revision).toBe(3);
 	});
 	it('supports a legacy settings row without revision and rejects malformed or unrelated restore entries atomically', async () => {
 		const { t, admin } = setup();
@@ -125,7 +125,7 @@ describe('configuration history and safe restoration', () => {
 				updatedByEmail: 'old@example.com'
 			})
 		);
-		await admin.mutation(api.settings.update, { expectedRevision: 0, business: { businessName: 'Current' } });
+		await admin.mutation(api.settings.settings.update, { expectedRevision: 0, business: { businessName: 'Current' } });
 		const original = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page[0];
 		const bad = await t.run((ctx) =>
@@ -140,7 +140,7 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: bad, expectedRevision: 1, side: 'after' })
+			admin.mutation(api.settings.settings.restore, { historyId: bad, expectedRevision: 1, side: 'after' })
 		).rejects.toThrow('3-letter');
 		const unrelated = await t.run((ctx) =>
 			ctx.db.insert('recordChanges', {
@@ -154,7 +154,7 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: unrelated, expectedRevision: 1, side: 'after' })
+			admin.mutation(api.settings.settings.restore, { historyId: unrelated, expectedRevision: 1, side: 'after' })
 		).rejects.toThrow('history not found');
 		const incomplete = await t.run((ctx) =>
 			ctx.db.insert('recordChanges', {
@@ -168,9 +168,9 @@ describe('configuration history and safe restoration', () => {
 			})
 		);
 		await expect(
-			admin.mutation(api.settings.restore, { historyId: incomplete, expectedRevision: 1, side: 'before' })
+			admin.mutation(api.settings.settings.restore, { historyId: incomplete, expectedRevision: 1, side: 'before' })
 		).rejects.toThrow('Incomplete');
-		expect(await admin.query(api.settings.get, {})).toMatchObject({ businessName: 'Current', revision: 1 });
+		expect(await admin.query(api.settings.settings.get, {})).toMatchObject({ businessName: 'Current', revision: 1 });
 		expect(
 			(await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page })).page.filter(
 				(event) => event.kind === 'restored'
@@ -179,7 +179,7 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('protects history, discovery and restoration with server-side authorization', async () => {
 		const { t, admin, stranger } = setup();
-		await admin.mutation(api.settings.update, { business: { businessName: 'Saved' } });
+		await admin.mutation(api.settings.settings.update, { business: { businessName: 'Saved' } });
 		const event = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page[0];
 		await expect(t.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page })).rejects.toThrow(
@@ -189,7 +189,7 @@ describe('configuration history and safe restoration', () => {
 			'Not authorized'
 		);
 		await expect(
-			stranger.mutation(api.settings.restore, { historyId: event._id, expectedRevision: 1, side: 'before' })
+			stranger.mutation(api.settings.settings.restore, { historyId: event._id, expectedRevision: 1, side: 'before' })
 		).rejects.toThrow('Not authorized');
 		await expect(
 			admin.query(list, {
@@ -201,28 +201,28 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('keeps archive/restore, photos, slug, room images, hotspots and reorder history with no export token', async () => {
 		const { t, admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		await t.run((ctx) => ctx.db.patch(id, { icalExportToken: 'private-export-token' }));
-		await admin.mutation(api.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 5000 });
-		await admin.mutation(api.adminProperties.setSlug, { propertyId: id, slug: 'new-villa' });
+		await admin.mutation(api.catalog.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 500000 });
+		await admin.mutation(api.catalog.adminProperties.setSlug, { propertyId: id, slug: 'new-villa' });
 		for (const status of ['active', 'archived', 'active'] as const)
-			await admin.mutation(api.adminProperties.setStatus, { propertyId: id, status });
-		const room = await admin.mutation(api.adminProperties.createRoom, {
+			await admin.mutation(api.catalog.adminProperties.setStatus, { propertyId: id, status });
+		const room = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Living',
 			imagePath: '/living.jpg'
 		});
-		const room2 = await admin.mutation(api.adminProperties.createRoom, {
+		const room2 = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Pool',
 			imagePath: '/pool.jpg'
 		});
-		await admin.mutation(api.properties.updateRoom, { roomId: room, name: 'Lounge', imagePath: '/lounge.jpg' });
-		await admin.mutation(api.adminProperties.setHotspots, {
+		await admin.mutation(api.catalog.properties.updateRoom, { roomId: room, name: 'Lounge', imagePath: '/lounge.jpg' });
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
 			roomId: room,
 			hotspots: [{ label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]
 		});
-		await admin.mutation(api.adminProperties.reorderRooms, { propertyId: id, roomSlugs: ['pool', 'living'] });
+		await admin.mutation(api.catalog.adminProperties.reorderRooms, { propertyId: id, roomSlugs: ['pool', 'living'] });
 		const history = (await admin.query(list, { entityType: 'property', entityId: id, paginationOpts: page })).page;
 		expect(history.some((event) => event.after?.status === 'archived' && event.before?.status === 'active')).toBe(true);
 		expect(history.some((event) => event.before?.status === 'archived' && event.after?.status === 'active')).toBe(true);
@@ -235,7 +235,7 @@ describe('configuration history and safe restoration', () => {
 		expect(
 			roomHistory.some((event) => event.before?.imagePath === '/living.jpg' && event.after?.imagePath === '/lounge.jpg')
 		).toBe(true);
-		await admin.mutation(api.adminProperties.deleteRoom, { roomId: room2 });
+		await admin.mutation(api.catalog.adminProperties.deleteRoom, { roomId: room2 });
 		expect(
 			(await admin.query(list, { entityType: 'room', entityId: room, paginationOpts: page })).page[0].after.hotspots
 		).toEqual([]);
@@ -246,14 +246,14 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('retains deleted villa and room snapshots and discovers them without the primary records', async () => {
 		const { t, admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Deleted draft' });
-		const room = await admin.mutation(api.adminProperties.createRoom, {
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Deleted draft' });
+		const room = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
 			name: 'Living',
 			imagePath: '/living.jpg'
 		});
-		await admin.mutation(api.adminProperties.deleteDraft, { propertyId: id });
-		expect(await admin.query(api.adminProperties.get, { propertyId: id })).toBeNull();
+		await admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: id });
+		expect(await admin.query(api.catalog.adminProperties.get, { propertyId: id })).toBeNull();
 		expect(await t.run((ctx) => ctx.db.get(room))).toBeNull();
 		const index = await admin.query(records, { paginationOpts: { numItems: 10, cursor: null } });
 		expect(index.page).toMatchObject([{ entityId: id, deleted: true, name: 'Deleted draft' }]);
@@ -270,9 +270,9 @@ describe('configuration history and safe restoration', () => {
 	});
 	it('paginates beyond the first history page and logs OTA edits and removals', async () => {
 		const { admin } = setup();
-		const id = await admin.mutation(api.adminProperties.create, { name: 'Villa' });
+		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		for (let index = 0; index < 12; index++)
-			await admin.mutation(api.properties.update, { propertyId: id, tagline: `Tagline ${index}` });
+			await admin.mutation(api.catalog.properties.update, { propertyId: id, tagline: `Tagline ${index}` });
 		const first = await admin.query(list, {
 			entityType: 'property',
 			entityId: id,
@@ -286,14 +286,14 @@ describe('configuration history and safe restoration', () => {
 		expect(first.isDone).toBe(false);
 		expect(second.isDone).toBe(true);
 		expect(new Set([...first.page, ...second.page].map((event) => event._id)).size).toBe(13);
-		const rateId = await admin.mutation(api.properties.upsertOtaRate, {
+		const rateId = await admin.mutation(api.catalog.properties.upsertOtaRate, {
 			propertyId: id,
 			platform: 'agoda',
-			nightlyRate: 1200
+			nightlyRate: 120000
 		});
-		await admin.mutation(api.properties.removeOtaRate, { rateId });
+		await admin.mutation(api.catalog.properties.removeOtaRate, { rateId });
 		expect(
 			(await admin.query(list, { entityType: 'property', entityId: id, paginationOpts: page })).page[0]
-		).toMatchObject({ kind: 'ota_rate_removed', before: { platform: 'agoda', nightlyRate: 1200 }, after: null });
+		).toMatchObject({ kind: 'ota_rate_removed', before: { platform: 'agoda', nightlyRate: 120000 }, after: null });
 	});
 });

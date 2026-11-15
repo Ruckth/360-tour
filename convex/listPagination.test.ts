@@ -1,15 +1,10 @@
+import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
-
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
 
 const modules = import.meta.glob("./**/*.ts");
 
@@ -27,7 +22,7 @@ async function createProperty(t: ReturnType<typeof convexTest>) {
       name: "Pool Villa",
       tagline: "Private stay",
       description: "A private villa for testing.",
-      pricePerNight: 8500,
+      pricePerNight: 850000,
       currency: "THB",
       maxGuests: 4,
       bedrooms: 2,
@@ -36,7 +31,7 @@ async function createProperty(t: ReturnType<typeof convexTest>) {
       images: [],
       amenities: ["Private Pool", "WiFi"],
       tourRoomIds: [],
-      directDiscountPercent: 15,
+      directDiscountPercent: 1500,
       status: "active",
     });
   });
@@ -50,7 +45,7 @@ describe("bounded list queries", () => {
 
     await t.run(async (ctx) => {
       for (let index = 0; index < 3; index++) {
-        await ctx.db.insert("bookings", {
+        await insertFixture(ctx, "bookings", {
           propertyId,
           guestName: `Guest ${index}`,
           guestEmail: `guest-${index}@example.com`,
@@ -59,9 +54,9 @@ describe("bounded list queries", () => {
           checkOut: `2030-01-0${index + 2}`,
           guests: 2,
           nights: 1,
-          subtotal: 8500,
+          subtotal: 850000,
           discountAmount: 0,
-          total: 8500,
+          total: 850000,
           currency: "THB",
           paymentStatus: "pending",
           status: "pending",
@@ -70,11 +65,11 @@ describe("bounded list queries", () => {
       }
     });
 
-    const firstPage = await admin.query(api.bookings.listByProperty, {
+    const firstPage = await admin.query(api.bookings.bookings.listByProperty, {
       propertyId,
       paginationOpts: { numItems: 2, cursor: null },
     });
-    const secondPage = await admin.query(api.bookings.listByProperty, {
+    const secondPage = await admin.query(api.bookings.bookings.listByProperty, {
       propertyId,
       paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
     });
@@ -89,23 +84,23 @@ describe("bounded list queries", () => {
     const t = convexTest(schema, modules);
     const admin = authenticatedTest(t);
 
-    await t.mutation(api.leads.save, {
+    await t.mutation(api.messaging.leads.save, {
       email: "first@example.com",
       source: "chat",
     });
-    await t.mutation(api.leads.save, {
+    await t.mutation(api.messaging.leads.save, {
       email: "second@example.com",
       source: "tour_completion",
     });
-    await t.mutation(api.leads.save, {
+    await t.mutation(api.messaging.leads.save, {
       email: "third@example.com",
       source: "booking_abandonment",
     });
 
-    const firstPage = await admin.query(api.leads.list, {
+    const firstPage = await admin.query(api.messaging.leads.list, {
       paginationOpts: { numItems: 2, cursor: null },
     });
-    const secondPage = await admin.query(api.leads.list, {
+    const secondPage = await admin.query(api.messaging.leads.list, {
       paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
     });
 

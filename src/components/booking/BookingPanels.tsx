@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { formatDisplayDate } from "@/lib/booking/dates";
 import { isValidEmail, isValidPhone } from "@/lib/booking/booking";
-import type { BookingMode, BookingProperty } from "@/lib/booking/booking";
+import type { BookingProperty } from "@/lib/booking/booking";
 
 function clampGuestCount(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -355,7 +355,6 @@ export function ReviewPanel({
   nights,
   checkIn,
   checkOut,
-  bookingMode,
   price,
   coupon,
 }: {
@@ -364,7 +363,6 @@ export function ReviewPanel({
   nights: number;
   checkIn: string;
   checkOut: string;
-  bookingMode: BookingMode;
   /** The price lines, shown here on phones where the summary card sits below the step. */
   price?: ReactNode;
   /** "Have a code?" and the attached code. */
@@ -415,7 +413,7 @@ export function ReviewPanel({
       {coupon}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Shield className="h-4 w-4 text-gold" />
-        {bookingMode === "live" ? t("livePaymentNote") : t("demoPaymentNote")}
+        {t("livePaymentNote")}
       </div>
     </div>
   );

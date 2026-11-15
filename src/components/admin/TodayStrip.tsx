@@ -2,7 +2,7 @@
 
 import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/adminBookings";
+type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
@@ -37,7 +37,7 @@ export function todayGroups(bookings: readonly AdminBooking[], today: string): R
 export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => string; onOpen: (booking: AdminBooking, element: Element) => void }) {
   const today = serverTodayIso();
   // Stays touching today: from yesterday so a check-out today is included.
-  const data = useQuery(api.adminBookings.listForAdmin, { from: addDaysIso(today, -1), to: addDaysIso(today, 1) });
+  const data = useQuery(api.bookings.admin.listForAdmin, { from: addDaysIso(today, -1), to: addDaysIso(today, 1) });
   const [open, setOpen] = useState<TodayGroup | null>(null);
   const groups = data ? todayGroups(data.bookings, today) : null;
   const list = open && groups ? groups[open] : [];

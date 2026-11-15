@@ -221,7 +221,7 @@ test("the discount reads like checkout's: 20% is a percent with its nightly savi
   await visible(page, "Save as draft").click();
   await expect(page.getByRole("status").filter({ hasText: "Saved STAY20 as a draft" })).toBeVisible();
   const saved = JSON.parse((await page.locator("body").getAttribute("data-calls"))!).find((call: { name: string }) => call.name === "saveCoupon").args;
-  expect(saved.benefit).toEqual({ kind: "fixed", amount: 500 });
+  expect(saved.benefit).toEqual({ kind: "fixed", amount: 50000 });
   await expect(discount).toHaveValue("500");
 });
 

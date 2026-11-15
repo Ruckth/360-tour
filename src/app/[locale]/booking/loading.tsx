@@ -1,1 +1,5 @@
-export { default } from "@/app/booking/loading";
+import { BookingLoading } from "@/components/loading/RouteLoading";
+
+export default function Loading() {
+  return <BookingLoading />;
+}

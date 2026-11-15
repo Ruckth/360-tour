@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "convex/_generated/api";
-import { BOOKING_RULE_DEFAULTS } from "convex/lib/siteSettings";
-import { useOptionalConvex } from "@/lib/react/convex";
+import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
+import { useConvex } from 'convex/react';
 import { CalendarDays, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import type { DateRange, DayPickerProps } from "react-day-picker";
@@ -12,7 +12,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { defaultLocale, isLocale } from "@/i18n/routing";
-import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso, todayIsoResort } from "@/lib/booking/dates";
+import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 import { cn } from "@/lib/utils";
 
@@ -56,12 +57,12 @@ export function BookingDatePicker({
   helperText?: string;
   onMonthChange?: (month: Date) => void;
 }) {
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const [rules, setRules] = useState(BOOKING_RULE_DEFAULTS);
   useEffect(() => {
     let active = true;
     if (convex) {
-      void convex.query(api.settings.publicProfile, {}).then(profile => {
+      void convex.query(api.settings.settings.publicProfile, {}).then(profile => {
         if (active) setRules(profile.bookingRules);
       }).catch(() => { /* Calendar hints use defaults; the server always enforces current rules. */ });
     }

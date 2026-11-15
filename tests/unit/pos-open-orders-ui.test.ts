@@ -1,14 +1,15 @@
+import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StaffAccessView } from "@/components/admin/admin-access";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderRow, type OrdersPage } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "../support/checkout-backend";
 import { OpenOrders } from "@/components/checkout/OrderStrip";
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 
 /*
  * P2b: a cashier's Orders is the open orders list (pos.listOpenOrders), one tap per order, plus a
@@ -33,7 +34,7 @@ const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(200); }
 
 function row(n: number, extra: Partial<OrderRow> = {}): OrderRow {
   return {
-    _id: `bill${n}` as OrderId, orderNumber: n, title: `Order #${n}`, state: "unpaid", itemCount: 2, total: 500, due: 500, currency: "THB",
+    _id: `bill${n}` as OrderId, orderNumber: n, title: `Order #${n}`, state: "unpaid", itemCount: 2, total: 50000, due: 50000, currency: "THB",
     updatedAt: Date.now() - n, receiptNumber: undefined, customerName: undefined, discarded: undefined, bookingReference: undefined, otherBookings: 0,
     refundedAmountSatang: 0, ...extra,
   } as OrderRow;
@@ -42,7 +43,7 @@ function row(n: number, extra: Partial<OrderRow> = {}): OrderRow {
 /** The list on a backend whose open orders page is whatever the test sets. */
 async function showList(page: OrdersPage, currentId?: OrderId) {
   const onOpen = vi.fn();
-  const backend: CheckoutBackend = { ...createFixtureBackend(), useOpenOrders: () => page };
+  const backend: CheckoutBackend = { ...await createFixtureBackend(), useOpenOrders: () => page };
   await act(async () => root.render(provide(backend, createElement(OpenOrders, { currentId, onOpen }))));
   return onOpen;
 }
@@ -76,8 +77,8 @@ describe("open orders list", () => {
 
   it("lists each order with its customer or booking, item count and due, in the order given, and opens one in a tap", async () => {
     const rows = [
-      row(1045, { customerName: "Somchai Prasert", bookingReference: "CONF-A", itemCount: 3, due: 780 }),
-      row(1044, { bookingReference: "CONF-B", otherBookings: 1, itemCount: 1, due: 26000 }),
+      row(1045, { customerName: "Somchai Prasert", bookingReference: "CONF-A", itemCount: 3, due: 78000 }),
+      row(1044, { bookingReference: "CONF-B", otherBookings: 1, itemCount: 1, due: 2600000 }),
       row(1043),
     ];
     const onOpen = await showList({ results: rows, status: "Exhausted", loadMore: vi.fn() }, rows[1]._id);
@@ -119,7 +120,7 @@ describe("a cashier's checkout", () => {
 
   it("reopens an earlier open order from Orders in one tap, with no Save & close", async () => {
     vi.useFakeTimers();
-    const backend = createFixtureBackend({ staff: { role: "cashier", email: CASHIER.email!, rules: DEFAULT_CASHIER_RULES } });
+    const backend = await createFixtureBackend({ staff: { role: "cashier", email: CASHIER.email!, rules: DEFAULT_CASHIER_RULES } });
     await act(async () => root.render(provide(backend, createElement(Page))));
     await act(async () => buttons().find((el) => el.textContent?.trim().startsWith("Foot spa 45"))!.click());
     await settle();

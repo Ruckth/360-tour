@@ -11,7 +11,7 @@ import "@/app.css";
 const now = Date.UTC(2026, 10, 11, 8);
 const closed = new URLSearchParams(location.search).has("closed");
 const initialSession: AdminSession = {
-  _id: "fixture-inbox" as Id<"chatSessions">,
+  _id: "fixture-inbox" as Id<"conversations">,
   channel: "whatsapp",
   visitorName: "Returning guest with a longer name",
   propertyName: "Tideglass Pool Residence",
@@ -24,7 +24,7 @@ const initialSession: AdminSession = {
   aiPaused: true,
   keepWithStaff: true,
   staffTask: "Check the accessible room with housekeeping and update the guest before arrival.",
-  latestGuestMessageId: "fixture-message" as Id<"chatMessages">,
+  latestGuestMessageId: "fixture-message" as Id<"messages">,
 };
 
 function Fixture() {
@@ -57,7 +57,7 @@ function Fixture() {
           loadOlderMessages={() => {}}
           loadingTranscript={false}
           loadingOlderMessages={false}
-          messages={[{ _id: "fixture-message" as Id<"chatMessages">, role: "user", content: "Can you confirm an accessible room?", timestamp: now - 60_000 }]}
+          messages={[{ _id: "fixture-message" as Id<"messages">, role: "user", content: "Can you confirm an accessible room?", timestamp: now - 60_000 }]}
           now={now}
           replyDraft={draft}
           onReplyDraftChange={setDraft}

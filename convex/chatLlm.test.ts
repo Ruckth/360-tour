@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { callAI, classifyComplexity, type ChatMessage } from './lib/chatLlm';
-import { runConciergeTurn } from './lib/conciergeTurn';
+import { callAI, classifyComplexity, type ChatMessage } from './concierge/llm';
+import { runConciergeTurn } from './concierge/turn';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -75,18 +75,18 @@ test('Sol tools round-trip through Responses while retaining encrypted reasoning
 	vi.stubGlobal('fetch', fetchMock);
 	const trace = vi.fn();
 	const messages: ChatMessage[] = [{ role: 'system', content: 'Answer from tools.' }, { role: 'user', content: 'Compare spa packages.' }];
-	const execute = vi.fn(async () => JSON.stringify({ services: [{ name: 'Massage', price: 2400 }] }));
+	const execute = vi.fn(async () => JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }));
 	const result = await runConciergeTurn({ message: 'Compare spa packages.', messages, tools, deadlineAt: Date.now() + 20000,
 		request: (history, offered, timeoutMs) => callAI('https://openrouter.ai/api/v1', 'test-key', 'openai/gpt-6.1-sol', history, offered, trace, { timeoutMs }), execute });
 	expect(result).toEqual({ content: 'Massage costs THB 2,400.', failed: false });
-	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {});
+	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {}, '[1,"call-1"]');
 	expect(fetchMock.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/responses');
 	const body = JSON.parse(fetchMock.mock.calls[0][1].body);
 	expect(body).toMatchObject({ model: 'openai/gpt-6.1-sol', reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });
 	expect(body).not.toHaveProperty('temperature');
 	expect(body).not.toHaveProperty('messages');
 	expect(JSON.parse(fetchMock.mock.calls[1][1].body).input).toEqual([
-		...body.input, ...solOutput, { type: 'function_call_output', call_id: 'call-1', output: JSON.stringify({ services: [{ name: 'Massage', price: 2400 }] }) }
+		...body.input, ...solOutput, { type: 'function_call_output', call_id: 'call-1', output: JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }) }
 	]);
 	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ model: 'openai/gpt-6.1-sol', finishReason: 'tool_calls', usage: expect.objectContaining({ prompt_tokens: 100, completion_tokens: 200, completion_tokens_details: { reasoning_tokens: 180 } }) }));
 });

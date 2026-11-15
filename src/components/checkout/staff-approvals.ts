@@ -1,10 +1,10 @@
+import { basisPointsToPercent } from 'convex/shared/money';
 import { formatMoney } from "@/components/admin/labels";
-import { lineCouponBase, round2, type LineDiscount, type PricedLine } from "convex/lib/billMath";
-import type { ApprovalPayload, CashierRules } from "convex/lib/staffTypes";
+import type { ApprovalPayload } from "convex/shared/staffTypes";
 
 /**
  * Cashier limits and manager approvals as checkout shows them. The server decides
- * (convex/lib/staffAccess.ts, convex/staffApprovals.ts); these mirror its arithmetic so the hint a
+ * (convex/auth/private/staffAccess.ts, convex/pos/staffApprovals.ts); these mirror its arithmetic so the hint a
  * cashier sees while typing agrees with what the server will refuse.
  */
 
@@ -29,39 +29,11 @@ export type ApprovalView = {
   totalAfter: number;
 };
 
-type BaselineLine = PricedLine & { catalogUnitPrice?: number };
-
-/**
- * A line's manual reduction against its baseline, in whole satang, exactly as manualReduction in
- * convex/lib/staffAccess.ts: the baseline is max(catalog price, line price) × quantity, and the
- * coupon is left out.
- */
-export function manualReductionSatang(line: BaselineLine) {
-  const subtotalSatang = Math.round(round2(Math.max(line.catalogUnitPrice ?? line.unitPrice, line.unitPrice) * line.qty) * 100);
-  const reductionSatang = Math.max(0, subtotalSatang - Math.round(lineCouponBase(line) * 100));
-  return { subtotalSatang, reductionSatang };
-}
-
-/** The most a cashier may take off the baseline: the limit in hundredths of a percent, halves up, as assertCashierDiscount. */
-export function discountLimitSatang(subtotalSatang: number, limitPercent: number) {
-  return Math.floor((2 * subtotalSatang * Math.round(limitPercent * 100) + 10000) / 20000);
-}
-
-/**
- * What a cashier's typed discount would do to this line: null when it is within their limit (or not
- * a valid discount yet), else the reduction in baht and the limit, for "฿X is over your N% limit".
- * The new discount replaces the line's current one; a price change on the line still counts.
- */
-export function discountOverLimit(line: BaselineLine, discount: LineDiscount, rules: Pick<CashierRules, "discountLimitPercent">) {
-  if (!Number.isFinite(discount.value) || discount.value < 0) return null;
-  const { subtotalSatang, reductionSatang } = manualReductionSatang({ ...line, discount });
-  if (reductionSatang <= discountLimitSatang(subtotalSatang, rules.discountLimitPercent)) return null;
-  return { amount: reductionSatang / 100, limitPercent: rules.discountLimitPercent };
-}
+export { discountOverLimit } from 'convex/shared/staffDiscount';
 
 /** "10", "12.5": a percent with at most two decimals. */
 export function formatPercent(value: number) {
-  return String(round2(value));
+  return String(basisPointsToPercent(value));
 }
 
 export type NeedsApproval = { code: "NEEDS_APPROVAL"; kind: ApprovalKind; message?: string; amount?: number; discountLimitPercent?: number };
@@ -79,7 +51,7 @@ export function approvalWhat(request: Pick<ApprovalView, "payload" | "amount">, 
   const { payload } = request;
   switch (payload.kind) {
     case "refund":
-      return [`refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
+      return [`refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `${formatMoney(request.amount)} discount`;
     case "customPrice":
@@ -96,7 +68,7 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
   const { payload } = request;
   switch (payload.kind) {
     case "refund":
-      return [`asks to refund ${formatMoney(payload.amountSatang / 100, payload.currency)}`, lineName].filter(Boolean).join(" · ");
+      return [`asks to refund ${formatMoney(payload.amountSatang, payload.currency)}`, lineName].filter(Boolean).join(" · ");
     case "discount":
       return `asks for a ${formatMoney(request.amount)} discount${request.percent !== undefined ? ` (${Math.round(request.percent * 10) / 10}%)` : ""}${lineName ? ` on ${lineName}` : ""}`;
     case "customPrice":

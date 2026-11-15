@@ -1,6 +1,6 @@
 "use client";
 
-import type { CouponRefusalProblem, CouponRefusalSummary, CouponRefusalSurface } from "convex/lib/marketingReport";
+import type { CouponRefusalProblem, CouponRefusalSummary, CouponRefusalSurface } from "convex/shared/marketingReport";
 import { useId } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SideCard } from "./MarketingBits";

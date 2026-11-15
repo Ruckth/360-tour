@@ -1,5 +1,5 @@
 import { staffDateTime } from "@/lib/staff-time";
-import type { MarketingAttribution } from "convex/lib/marketingAttribution";
+import type { MarketingAttribution } from "convex/shared/marketingAttribution";
 
 const EVIDENCE: Record<MarketingAttribution["evidence"], string> = {
   tracked: "Tracked visit",

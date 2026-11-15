@@ -6,7 +6,7 @@ async function read<T>(
 ): Promise<T | null> {
   const url =
     process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
-  if (!url || url.includes("placeholder")) return null;
+  if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is required");
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
@@ -30,12 +30,12 @@ export function getServiceCatalog(args: {
 }) {
   return Promise.all([
     read((client) =>
-      client.query(api.publicServices.categories, {
+      client.query(api.services.publicServices.categories, {
         ...(args.categoryAfter ? { after: args.categoryAfter } : {}),
       }),
     ),
     read((client) =>
-      client.query(api.publicServices.list, {
+      client.query(api.services.publicServices.list, {
         ...(args.category ? { category: args.category } : {}),
         ...(args.query ? { query: args.query } : {}),
         paginationOpts: { numItems: 20, cursor: args.cursor ?? null },
@@ -45,5 +45,5 @@ export function getServiceCatalog(args: {
 }
 
 export function getPublicService(slug: string) {
-  return read((client) => client.query(api.publicServices.getBySlug, { slug }));
+  return read((client) => client.query(api.services.publicServices.getBySlug, { slug }));
 }

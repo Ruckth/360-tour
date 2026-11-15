@@ -1,4 +1,5 @@
 "use client";
+import { api } from 'convex/_generated/api';
 
 import { useCouponPreview } from "@/components/booking/useCouponPreview";
 import { useCouponCopy } from "@/components/booking/coupon-copy";
@@ -14,25 +15,20 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import type { BookingProperty } from "@/lib/booking/booking";
-import { calendarMonths, monthOf, stayMonths } from "@/lib/booking/blocked-months";
-import {
-  dateToIso,
-  isDateInIsoList,
-  rangeIntersectsDates,
-  todayIsoResort,
-} from "@/lib/booking/dates";
+import { calendarMonths, monthOf, stayMonths } from "convex/shared/calendar";
+import { dateToIso, isDateInIsoList, rangeIntersectsDates } from '@/lib/booking/dates';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
-import { calculateBookingQuote } from "@/lib/booking/quote";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
   getChatVillaBackground,
-  getDemoChatProperties,
   getLiveChatProperties,
 } from "@/components/chat/chat-villa-data";
 import { resort } from "@/lib/data/resort-config";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
-import { useOptionalConvex } from "@/lib/react/convex";
-import { listLiveProperties } from "@/lib/react/convex-api";
+import { useConvex } from 'convex/react';
+
 import { cn } from "@/lib/utils";
 
 export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
@@ -45,10 +41,9 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const messages = usePublicMessages();
-  const fallbackProperties = useMemo(() => getDemoChatProperties(messages, locale), [messages, locale]);
-  const convex = useOptionalConvex();
+  const convex = useConvex();
   const today = todayIsoResort();
-  const [properties, setProperties] = useState<BookingProperty[]>(() => fallbackProperties);
+  const [properties, setProperties] = useState<BookingProperty[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(false);
   const [selectedPropertySlug, setSelectedPropertySlug] = useState(context.propertySlug ?? "");
   const [checkIn, setCheckIn] = useState(context.checkIn);
@@ -57,12 +52,6 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!convex) {
-      setProperties(fallbackProperties);
-      setPropertiesLoading(false);
-      return;
-    }
-
     const client = convex;
     let active = true;
 
@@ -70,24 +59,25 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     async function loadProperties() {
       setPropertiesLoading(true);
       try {
-        const rows = await listLiveProperties(client);
+        const rows = await client.query(api.catalog.properties.list, {});
         if (!active) return;
 
         const liveProperties = getLiveChatProperties(rows, messages, locale);
-        setProperties(liveProperties.length > 0 ? liveProperties : fallbackProperties);
+        setProperties(liveProperties);
       } catch {
         if (!active) return;
-        setProperties(fallbackProperties);
+        setProperties([]);
       } finally {
         if (active) setPropertiesLoading(false);
       }
     }
 
-    loadProperties();
+    // The effect owns cancellation; failures are handled inside the operation.
+    void loadProperties();
     return () => {
       active = false;
     };
-  }, [convex, fallbackProperties, locale, messages]);
+  }, [convex, locale, messages]);
 
   useEffect(() => {
     setSelectedPropertySlug(context.propertySlug ?? "");
@@ -233,12 +223,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         >
           {properties.map((item) => {
             const isSelected = item.slug === selectedPropertySlug || item.id === selectedPropertySlug;
-            const oneNightQuote = calculateBookingQuote({
-              pricePerNight: item.pricePerNight,
-              nights: 1,
-              discountPercent: 15,
-              currency: resort.currency,
-            });
+            const oneNightQuote = calculateDirectQuote({ pricePerNight: item.pricePerNight, directDiscountPercent: 1500, currency: resort.currency }, 1);
 
             return (
               <button
@@ -309,7 +294,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                         data-testid={`chat-villa-price-${item.id}`}
                         className="whitespace-nowrap text-[11px] font-bold text-gold"
                       >
-                        {moneyFormatter.format(oneNightQuote.directTotal)}
+                        {moneyFormatter.format(oneNightQuote.directTotal / 100)}
                         <span className="font-medium text-white/70"> {villaT("perNightWords")}</span>
                       </span>
                     </div>
@@ -359,7 +344,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           <p className="font-semibold">{context.couponCode}</p>
           <p>{couponMessage}</p>
           {coupon.kind === "applied" ? <p>{couponT("appliedBody")}</p> : null}
-          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total)}</p> : null}
+          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total / 100)}</p> : null}
         </div>
       ) : null}
 

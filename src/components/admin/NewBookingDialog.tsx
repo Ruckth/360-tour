@@ -1,12 +1,12 @@
 "use client";
 
-import { useCouponRefusalReporter } from "@/lib/react/convex-api";
+import { useCouponRefusalReporter } from '@/lib/booking/coupon-refusals';
 import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useConvex } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { normalizeCouponCode, type OfferResult } from "convex/lib/offers";
-import { calculateDirectQuote } from "convex/lib/pricing";
+import { normalizeCouponCode, type OfferResult } from "convex/shared/offers";
+import { calculateDirectQuote } from "convex/shared/pricing";
 import { nightsBetweenIso } from "@/lib/booking/dates";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { DeskPhoneCountrySelect } from "./DeskPhoneCountrySelect";
@@ -29,7 +29,7 @@ import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { PhoneInput } from "@/components/reui/phone-input";
 import { isPossiblePhoneNumber } from "libphonenumber-js/min";
-import { normalizeGuestPhone } from "@/lib/booking/phone";
+import { normalizeGuestPhone } from "convex/shared/phone";
 import { useAdminBookingDates } from "./useAdminBookingDates";
 import { couponCoversWholeStay, couponUnavailableError } from "@/lib/booking/coupon";
 import { marketingErrorText } from "./marketing/marketing-format";
@@ -63,8 +63,8 @@ export function NewBookingDialog({
   onCreated: (id: Id<"bookings">) => void;
   onBlockInstead: (target: { propertyId: string; start: string; end: string }) => void;
 }) {
-  const reportRefusal = useCouponRefusalReporter(useConvex(), "admin_booking");
-  const createBooking = useMutation(api.adminBookings.createBooking);
+  const reportRefusal = useCouponRefusalReporter("admin_booking");
+  const createBooking = useMutation(api.bookings.commands.createBooking.createBooking);
   const [creationKey] = useState(() => newAttemptKey("booking"));
   const pending = useRef(false);
   // A prefilled archived villa is kept only for a past stay (the calendar filtered to that villa).
@@ -150,7 +150,7 @@ export function NewBookingDialog({
   const email = useDebounced(guest.email.trim());
   const searchable = phone.replace(/\D/g, "").length >= 4 || email.length >= 3;
   const suggestions =
-    useQuery(api.adminBookings.findGuests, searchable ? { phone, email } : "skip")?.filter(
+    useQuery(api.bookings.admin.findGuests, searchable ? { phone, email } : "skip")?.filter(
       (s) => `${s.guestPhone}|${s.guestEmail ?? ""}` !== pickedGuest,
     ) ?? [];
 
@@ -502,7 +502,7 @@ function useCouponQuote(args: { code: string; propertySlug: string; checkIn: str
     if (!args) return;
     let active = true;
     convex
-      .query(api.marketing.previewCoupon, args)
+      .query(api.marketing.public.previewCoupon, args)
       .then((result) => {
         if (active) setAnswer({ key, quote: { status: "ready", result } });
       })

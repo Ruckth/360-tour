@@ -1,6 +1,6 @@
-import type { AdminBooking } from "convex/adminBookings";
+type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { DEFAULT_CASHIER_RULES } from "convex/lib/staffTypes";
+import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { NextIntlClientProvider } from "next-intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -11,9 +11,9 @@ import type { StaffAccessView } from "@/components/admin/admin-access";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
+import { createFixtureBackend } from "./checkout-transport";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
-import { addDaysIso, nightsBetweenIso, todayIsoResort } from "@/lib/booking/dates";
+import { addDaysIso, nightsBetweenIso } from "@/lib/booking/dates";
 import { DAY_MS, resortDateTime, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
 import en from "../../messages/en.json";
 import { registerFixtureFunctions } from "./convex-mock";
@@ -39,7 +39,7 @@ document.documentElement.classList.toggle("dark", params.get("theme") === "dark"
 const view = params.get("view") ?? "hotel";
 const EMAIL = "ploy@auraliscove.co";
 const now = Date.now();
-const today = todayIsoResort();
+const today = resortIsoDate(Date.now());
 const day = (n: number) => addDaysIso(today, n);
 const at = (date: string, time: string) => resortDateTime(date, time);
 const fid = <T extends string>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T & never>;
@@ -74,13 +74,13 @@ const deposit = (id: string, amount: number, method: string, daysAgo: number): P
 const desk = {
   stays: [
     // Same ids as the checkout fixture backend: Anna's stay and its Hot stone appointment.
-    stay(1, { propertyId: properties[0]._id, guestName: "Anna Schmidt", guestPhone: "+49 151 2345 6789", guestEmail: "anna@example.com", checkIn: day(-3), checkOut: today, guests: 2, total: 36000, status: "confirmed", confirmationCode: "CONF-2026-A1B2C3", paid: [deposit("pay-anna", 10000, "stripe", 20)] }),
-    stay(3, { propertyId: properties[1]._id, guestName: "Maya Lin", guestPhone: "+66 81 234 5678", guestEmail: "maya@example.com", checkIn: today, checkOut: day(3), guests: 2, total: 25500, status: "confirmed", confirmationCode: "CONF-2026-MAYA", paid: [deposit("pay-maya", 17000, "card", 10)] }),
-    stay(4, { propertyId: properties[2]._id, guestName: "Ken Tanaka", guestPhone: "+81 90 1111 2222", checkIn: today, checkOut: day(2), guests: 1, total: 9800, status: "confirmed", confirmationCode: "CONF-2026-KEN" }),
-    stay(5, { propertyId: properties[3]._id, guestName: "Lena Fischer", guestPhone: "+49 170 555 0101", guestEmail: "lena@example.com", checkIn: day(-1), checkOut: day(2), guests: 3, total: 25500, status: "confirmed", confirmationCode: "CONF-2026-LENA", paid: [deposit("pay-lena", 25500, "transfer", 5)] }),
-    stay(6, { propertyId: properties[2]._id, guestName: "Somchai Prasert", guestPhone: "+66 81 555 0101", checkIn: day(4), checkOut: day(6), guests: 2, total: 9800, status: "pending", confirmationCode: "CONF-2026-SOM" }),
+    stay(1, { propertyId: properties[0]._id, guestName: "Anna Schmidt", guestPhone: "+49 151 2345 6789", guestEmail: "anna@example.com", checkIn: day(-3), checkOut: today, guests: 2, total: 3600000, status: "confirmed", confirmationCode: "CONF-2026-A1B2C3", paid: [deposit("pay-anna", 10000, "stripe", 20)] }),
+    stay(3, { propertyId: properties[1]._id, guestName: "Maya Lin", guestPhone: "+66 81 234 5678", guestEmail: "maya@example.com", checkIn: today, checkOut: day(3), guests: 2, total: 2550000, status: "confirmed", confirmationCode: "CONF-2026-MAYA", paid: [deposit("pay-maya", 17000, "card", 10)] }),
+    stay(4, { propertyId: properties[2]._id, guestName: "Ken Tanaka", guestPhone: "+81 90 1111 2222", checkIn: today, checkOut: day(2), guests: 1, total: 980000, status: "confirmed", confirmationCode: "CONF-2026-KEN" }),
+    stay(5, { propertyId: properties[3]._id, guestName: "Lena Fischer", guestPhone: "+49 170 555 0101", guestEmail: "lena@example.com", checkIn: day(-1), checkOut: day(2), guests: 3, total: 2550000, status: "confirmed", confirmationCode: "CONF-2026-LENA", paid: [deposit("pay-lena", 25500, "transfer", 5)] }),
+    stay(6, { propertyId: properties[2]._id, guestName: "Somchai Prasert", guestPhone: "+66 81 555 0101", checkIn: day(4), checkOut: day(6), guests: 2, total: 980000, status: "pending", confirmationCode: "CONF-2026-SOM" }),
   ],
-  appointments: [] as Doc<"serviceAppointments">[],
+  appointments: [] as Doc<"appointments">[],
   calls: [] as { name: string; args: unknown }[],
 };
 
@@ -133,23 +133,23 @@ const service = (n: number, name: string, category: string, durationMin: number,
 const services = [service(1, "Thai massage 60", "Massage", 60, 1200, [1, 2, 3]), service(3, "Aroma oil massage 90", "Massage", 90, 1800, [2, 3]), service(5, "Hot stone 60", "Body", 60, 1500, [3, 4]), service(7, "Foot spa 45", "Feet & hands", 45, 600, [1, 2, 3, 4])];
 
 let codes = 10;
-function addAppointment(fields: { _id?: Id<"serviceAppointments">; serviceId: Id<"services">; staffId: Id<"staff">; start: number; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings">; code?: string }) {
+function addAppointment(fields: { _id?: Id<"appointments">; serviceId: Id<"services">; staffId: Id<"staff">; start: number; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings">; code?: string }) {
   const svc = services.find((s) => s._id === fields.serviceId)!;
   const end = fields.start + svc.durationMin * 60_000;
   const appointment = {
-    _id: fields._id ?? (fid("appt", ++codes) as Id<"serviceAppointments">), _creationTime: now, serviceId: svc._id, staffId: fields.staffId,
+    _id: fields._id ?? (fid("appt", ++codes) as Id<"appointments">), _creationTime: now, serviceId: svc._id, staffId: fields.staffId,
     serviceNameSnapshot: svc.name, staffNameSnapshot: staff.find((p) => p._id === fields.staffId)?.name, start: fields.start, end,
     blockedUntil: end + svc.bufferMin * 60_000, guestName: fields.guestName, guestPhone: fields.guestPhone, guestEmail: fields.guestEmail,
     bookingId: fields.bookingId, source: "admin", status: "booked", paymentStatus: "unpaid", price: svc.price, currency: "THB",
     confirmationCode: fields.code ?? `SVC-${String(++codes).padStart(4, "0")}`, revision: 1, createdAt: now, updatedAt: now,
-  } as unknown as Doc<"serviceAppointments">;
+  } as unknown as Doc<"appointments">;
   desk.appointments.push(appointment);
   return appointment;
 }
-addAppointment({ _id: fid("appt", 1) as Id<"serviceAppointments">, serviceId: services[2]._id, staffId: staff[2]._id, start: at(today, "16:00"), guestName: "Anna Schmidt", guestPhone: "+49 151 2345 6789", guestEmail: "anna@example.com", bookingId: desk.stays[0]._id, code: "SVC-0001" });
+addAppointment({ _id: fid("appt", 1) as Id<"appointments">, serviceId: services[2]._id, staffId: staff[2]._id, start: at(today, "16:00"), guestName: "Anna Schmidt", guestPhone: "+49 151 2345 6789", guestEmail: "anna@example.com", bookingId: desk.stays[0]._id, code: "SVC-0001" });
 addAppointment({ serviceId: services[0]._id, staffId: staff[0]._id, start: now - 10 * 60_000, guestName: "Ken Tanaka", guestPhone: "+81 90 1111 2222", bookingId: desk.stays[2]._id, code: "SVC-0007" });
 
-const appointmentMoney = (a: Doc<"serviceAppointments">) => {
+const appointmentMoney = (a: Doc<"appointments">) => {
   const net = a.paymentStatus === "paid" ? a.price : 0;
   return { gross: net, net, refunded: 0, owed: a.status === "cancelled" || a.status === "no_show" ? 0 : a.price - net };
 };
@@ -173,37 +173,37 @@ function fresh(s: Stay, expectedRevision: number) {
 
 registerFixtureFunctions({
   queries: {
-    "settings:publicProfile": () => ({ businessName: "Auralis Cove", checkInTime: "14:00", checkOutTime: "11:00" }),
-    "adminBookings:listForAdmin": ({ from, to }: { from: string; to: string }) => ({
+    "settings/settings:publicProfile": () => ({ businessName: "Auralis Cove", checkInTime: "14:00", checkOutTime: "11:00" }),
+    "bookings/admin:listForAdmin": ({ from, to }: { from: string; to: string }) => ({
       properties, blocks: [], dateBlocks: [], complete: true,
       bookings: desk.stays.filter((s) => s.checkIn < to && s.checkOut > from).map(toAdmin),
     }),
-    "adminBookings:stayAppointments": ({ bookingId }: { bookingId: string }) => ({
+    "bookings/admin:stayAppointments": ({ bookingId }: { bookingId: string }) => ({
       appointments: desk.appointments.filter((a) => a.bookingId === bookingId).sort((a, b) => a.start - b.start).map((a) => ({
         _id: a._id, serviceName: a.serviceNameSnapshot ?? "Spa", start: a.start, price: a.price,
         currency: a.currency, status: a.status, paymentStatus: a.paymentStatus, onOrder: null,
       })),
       complete: true,
     }),
-    "adminBookings:getForAdmin": ({ bookingId }: { bookingId: string }) => {
+    "bookings/admin:getForAdmin": ({ bookingId }: { bookingId: string }) => {
       const s = find(bookingId);
       return s ? detail(s) : null;
     },
-    "adminBookings:bookingFinancials": ({ bookingId }: { bookingId: string }) => {
+    "bookings/admin:bookingFinancials": ({ bookingId }: { bookingId: string }) => {
       const s = find(bookingId);
       return s ? financials(s) : null;
     },
-    "adminBookings:searchBookings": () => [],
-    "pos:ordersForBooking": (source: { bookingId?: string; appointmentId?: string }) => {
+    "bookings/admin:searchBookings": () => [],
+    "pos/orders:ordersForBooking": (source: { bookingId?: string; appointmentId?: string }) => {
       const s = source.bookingId ? find(source.bookingId) : undefined;
       const a = source.appointmentId ? desk.appointments.find((row) => row._id === source.appointmentId) : undefined;
       const m = s ? money(s) : a ? appointmentMoney(a) : null;
       if (!m) return null;
       return { balance: { total: s ? s.total : a!.price, paid: m.net, owed: m.owed, refunded: 0, credit: s ? money(s).credit : 0 }, activeOrder: null, orders: [], discardedOrders: [], refunds: [] };
     },
-    "adminServices:listServices": () => services,
-    "adminServices:listStaff": () => staff,
-    "adminServices:listSchedule": ({ from, to }: { from: number; to: number }) => {
+    "services/admin:listServices": () => services,
+    "services/admin:listStaff": () => staff,
+    "services/admin:listSchedule": ({ from, to }: { from: number; to: number }) => {
       const shifts = [];
       for (let start = resortMidnight(resortIsoDate(from)); start < to; start += DAY_MS) {
         const date = resortIsoDate(start + 12 * 3_600_000);
@@ -214,22 +214,22 @@ registerFixtureFunctions({
         appointments: desk.appointments.filter((a) => a.start < to && a.blockedUntil > from).sort((a, b) => a.start - b.start),
       };
     },
-    "adminServices:findOpenSlots": openSlots,
-    "adminServices:previewAppointmentTime": () => ({ warnings: [], needsReason: false, problem: null }),
-    "adminServices:getAppointmentReference": () => null,
-    "adminServices:getAppointmentFinancials": ({ appointmentId }: { appointmentId: string }) => {
+    "services/admin:findOpenSlots": openSlots,
+    "services/admin:previewAppointmentTime": () => ({ warnings: [], needsReason: false, problem: null }),
+    "services/admin:getAppointmentReference": () => null,
+    "services/admin:getAppointmentFinancials": ({ appointmentId }: { appointmentId: string }) => {
       const a = desk.appointments.find((row) => row._id === appointmentId)!;
       return { orders: [], payments: [], refunds: [], money: appointmentMoney(a), revision: a.revision ?? 0, legacyManualPayment: null, unitemised: 0 };
     },
-    "pos:appointmentFees": () => [],
+    "pos/orders:appointmentFees": () => [],
   },
   mutations: {
-    "pos:openStayCheckout": async ({ bookingId }: { bookingId: Id<"bookings"> }) => {
+    "pos/commands/openStayCheckout:openStayCheckout": async ({ bookingId }: { bookingId: Id<"bookings"> }) => {
       write("openStayCheckout", { bookingId });
       const actions = checkout.useActions();
       const { orderId } = await actions.openOrderFor({ bookingId });
-      const added: Id<"serviceAppointments">[] = [];
-      const skipped: { appointmentId: Id<"serviceAppointments">; reason: string }[] = [];
+      const added: Id<"appointments">[] = [];
+      const skipped: { appointmentId: Id<"appointments">; reason: string }[] = [];
       for (const a of desk.appointments.filter((a) => a.bookingId === bookingId)) {
         try {
           await actions.attach({ orderId, appointmentId: a._id });
@@ -240,7 +240,7 @@ registerFixtureFunctions({
       }
       return { orderId, added, skipped };
     },
-    "adminBookings:recordPayment": (args: { bookingId: string; expectedRevision: number; expectedAmount: number; method: string; effectiveAt: number; idempotencyKey: string }) => {
+    "bookings/admin:recordPayment": (args: { bookingId: string; expectedRevision: number; expectedAmount: number; method: string; effectiveAt: number; idempotencyKey: string }) => {
       write("recordPayment", args);
       const s = find(args.bookingId)!;
       if (money(s).owed !== args.expectedAmount) throw new Error("The balance changed. Review it again.");
@@ -248,27 +248,27 @@ registerFixtureFunctions({
       s.payments.push({ _id: `pay-${args.idempotencyKey}`, amount: args.expectedAmount, method: args.method, origin: "manual", effectiveAt: args.effectiveAt });
       return null;
     },
-    "adminBookings:cancelStay": (args: { bookingId: string; expectedRevision: number }) => {
+    "bookings/admin:cancelStay": (args: { bookingId: string; expectedRevision: number }) => {
       write("cancelStay", args);
       const s = find(args.bookingId)!;
       fresh(s, args.expectedRevision);
       s.status = "cancelled";
       return null;
     },
-    "adminBookings:updateBooking": (args: { bookingId: string; action: "confirm" | "cancel"; expectedRevision: number }) => {
+    "bookings/admin:updateBooking": (args: { bookingId: string; action: "confirm" | "cancel"; expectedRevision: number }) => {
       write("updateBooking", args);
       const s = find(args.bookingId)!;
       fresh(s, args.expectedRevision);
       s.status = args.action === "confirm" ? "confirmed" : "cancelled";
       return null;
     },
-    "adminServices:createAppointment": (args: { serviceId: Id<"services">; start: number; staffId?: Id<"staff">; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings"> }) => {
+    "services/admin:createAppointment": (args: { serviceId: Id<"services">; start: number; staffId?: Id<"staff">; guestName: string; guestPhone: string; guestEmail?: string; bookingId?: Id<"bookings"> }) => {
       write("createAppointment", args);
       const svc = services.find((s) => s._id === args.serviceId)!;
       const created = addAppointment({ ...args, staffId: args.staffId ?? svc.staffIds[0] });
       return { appointmentId: created._id, staffId: created.staffId, confirmationCode: created.confirmationCode, accessToken: "" };
     },
-    "adminServices:updateAppointmentStatus": (args: { appointmentId: string; status: Doc<"serviceAppointments">["status"] }) => {
+    "services/admin:updateAppointmentStatus": (args: { appointmentId: string; status: Doc<"appointments">["status"] }) => {
       write("updateAppointmentStatus", args);
       const a = desk.appointments.find((row) => row._id === args.appointmentId)! as { status: string; revision?: number };
       a.status = args.status;
@@ -280,7 +280,7 @@ registerFixtureFunctions({
 
 // ---------- Checkout behind the desk ----------
 
-const checkout = createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
+const checkout = await createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
 window.print = () => {
   document.body.dataset.printed = String(Number(document.body.dataset.printed ?? 0) + 1);
 };
@@ -296,7 +296,7 @@ function routeFor(href: string): Route | Promise<Route> {
   // As the checkout page: ?booking= / ?appointment= open (or reuse) the source's order.
   if (booking || appointment) {
     return checkout.useActions()
-      .openOrderFor(booking ? { bookingId: booking as Id<"bookings"> } : { appointmentId: appointment as Id<"serviceAppointments"> })
+      .openOrderFor(booking ? { bookingId: booking as Id<"bookings"> } : { appointmentId: appointment as Id<"appointments"> })
       .then(({ orderId }) => ({ kind: "order" as const, orderId }));
   }
   return { kind: "order", orderId: (order as OrderId | null) ?? null };
@@ -347,7 +347,7 @@ function Desk() {
 
 declare global {
   interface Window {
-    desk: { calls: () => { name: string; args: unknown }[]; appointments: () => Doc<"serviceAppointments">[] };
+    desk: { calls: () => { name: string; args: unknown }[]; appointments: () => Doc<"appointments">[] };
   }
 }
 window.desk = { calls: () => desk.calls, appointments: () => desk.appointments };

@@ -35,8 +35,8 @@ export function canEditMarketing(access: MarketingAccess, record?: { status: str
 }
 
 // Explicit typed references until the parent runs local codegen for the new module.
-const current = makeFunctionReference<"query", Record<string, never>, MarketingAccess>("marketingAccess:current");
-const claimInvite = makeFunctionReference<"mutation", Record<string, never>, null>("marketingAccess:claimInvite");
+const current = makeFunctionReference<"query", Record<string, never>, MarketingAccess>("marketing/access:current");
+const claimInvite = makeFunctionReference<"mutation", Record<string, never>, null>("marketing/access:claimInvite");
 
 function AccessState({ title, children }: { title: string; children: ReactNode }) {
   return <section className="mx-auto my-8 grid w-[calc(100%-2rem)] max-w-xl gap-3 border border-border bg-card p-6">

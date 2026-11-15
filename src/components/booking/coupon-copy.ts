@@ -1,6 +1,8 @@
 "use client";
 
-import type { CouponProblem } from "convex/lib/offers";
+import { satangToBaht } from 'convex/shared/money';
+
+import type { CouponProblem } from "convex/shared/offers";
 import { useLocale, useTranslations } from "next-intl";
 import { useMemo } from "react";
 import { couponProblemMessage, type CouponFormatters, type CouponMessage } from "@/lib/booking/coupon";
@@ -15,7 +17,7 @@ export function useCouponCopy(currency: string) {
   return useMemo(() => {
     const day = new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
     const format: CouponFormatters = {
-      money: (amount) => `${currencyPrefix(currency)}${amount.toLocaleString()}`,
+      money: (amount) => `${currencyPrefix(currency)}${satangToBaht(amount).toLocaleString()}`,
       date: (iso) => day.format(toDate(iso)),
       range: (from, to) =>
         typeof day.formatRange === "function" ? day.formatRange(toDate(from), toDate(to)) : `${day.format(toDate(from))} – ${day.format(toDate(to))}`,

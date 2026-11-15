@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { IMAGE_TYPES, uploadProblem, type UploadKind } from "convex/lib/imageUploads";
+import { IMAGE_TYPES, uploadProblem, type UploadKind } from "convex/shared/imageUploads";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -107,8 +107,8 @@ export const IMAGE_ACCEPT = IMAGE_TYPES.join(",");
 
 /** Uploads a photo or panorama to Convex storage and returns its public URL. Throws a readable error. */
 export function useImageUpload() {
-  const generateUploadUrl = useMutation(api.adminProperties.generateUploadUrl);
-  const saveUploadedImage = useMutation(api.adminProperties.saveUploadedImage);
+  const generateUploadUrl = useMutation(api.catalog.adminProperties.generateUploadUrl);
+  const saveUploadedImage = useMutation(api.catalog.adminProperties.saveUploadedImage);
   return async function upload(file: File, kind: UploadKind): Promise<string> {
     const problem = uploadProblem(kind, file.type, file.size);
     if (problem) throw new Error(`${file.name}: ${problem}`);

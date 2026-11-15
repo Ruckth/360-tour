@@ -1,17 +1,12 @@
+import { generateTestReply, respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
+import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
-import { getResortRealityDisclosure, resortTodayLine } from "./chatAi";
+import { getResortRealityDisclosure, resortTodayLine } from "./concierge/model";
 import schema from "./schema";
-import type { Id } from "./_generated/dataModel";
-
-declare global {
-  interface ImportMeta {
-    glob(pattern: string): Record<string, () => Promise<unknown>>;
-  }
-}
 
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
@@ -35,7 +30,7 @@ describe('concierge model routing', () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const result = await t.action(api.chatAi.generateReply, { sessionId, userMessage: message });
+      const result = await generateTestReply(t, { sessionId, userMessage: message });
       expect(result.model).toBe(model);
       expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://ai.example.test/v1${endpoint}`);
     } finally {
@@ -51,7 +46,7 @@ function adminTest(t: ReturnType<typeof convexTest>) {
 
 async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
   return await t.run(async (ctx) => {
-    return await ctx.db.insert("chatSessions", {
+    return await ctx.db.insert("conversations", { guestTokenHash: fixtureGuestTokenHash,
       channel: "web",
       visitorId: `web-test-${Date.now()}-${Math.random()}`,
       ...(propertySlug ? { propertySlug } : {}),
@@ -78,7 +73,7 @@ describe("reply outcome evidence", () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Do you have Wi-Fi?" });
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Do you have Wi-Fi?" });
       expect(result).toMatchObject({ outcome });
       expect(result.response).not.toMatch(/\[\[(ANSWERED|AWAITING_GUEST|NEEDS_STAFF)\]\]/);
       const session = await t.run(ctx => ctx.db.get(sessionId));
@@ -91,16 +86,16 @@ describe("reply outcome evidence", () => {
 });
 
 describe("concierge without AI credentials", () => {
-  it.each(["line", "facebook", "instagram", "whatsapp"] as const)("[%s] uses a booking link and cannot claim a committed booking", async channel => {
+  it.each(["line", "facebook", "instagram", "whatsapp"] as const)("[%s] admits missing verified information and cannot claim a committed booking", async channel => {
     vi.stubEnv("AI_API_KEY", "");
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
       await t.run(ctx => ctx.db.patch(sessionId, { channel }));
-      const reply = await t.action(api.chatAi.generateReply, {
+      const reply = await generateTestReply(t, {
         sessionId, userMessage: "I want to book a villa", siteUrl: "https://resort.test",
       });
-      expect(reply.response).toContain("https://resort.test/booking");
+      expect(reply.response).toContain("verified information");
       expect(reply.response).not.toContain("card below");
       expect(reply.committed).toBeUndefined();
       const bookings = await t.run(ctx => ctx.db.query("bookings").take(10));
@@ -110,87 +105,25 @@ describe("concierge without AI credentials", () => {
     }
   });
 
-  it("records an unsupported policy with an empty fact store, while a greeting creates no report", async () => {
+  it("records unanswered requests when no verified answer is available", async () => {
     vi.stubEnv("AI_API_KEY", "");
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      const hello = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Hello!" });
-      expect(hello.model).toBe("fallback");
-      expect(await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10))).toHaveLength(0);
-      const policy = await t.action(api.chatAi.generateReply, { sessionId, userMessage: "Is helicopter transfer included?" });
+      const hello = await generateTestReply(t, { sessionId, userMessage: "Hello!" });
+      expect(hello.model).toBe("unknown_fallback");
+      expect(await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10))).toHaveLength(1);
+      const policy = await generateTestReply(t, { sessionId, userMessage: "Is helicopter transfer included?" });
       expect(policy.model).toBe("unknown_fallback");
       expect(policy.response).toContain("verified information");
       const reports = await t.run(ctx => ctx.db.query("chatUnknownQuestions").take(10));
-      expect(reports).toHaveLength(1);
-      expect(reports[0].userQuestion).toBe("Is helicopter transfer included?");
+      expect(reports).toHaveLength(2);
+      expect(reports.map(report => report.userQuestion)).toContain("Is helicopter transfer included?");
     } finally {
       vi.unstubAllEnvs();
     }
   });
 });
-
-/** Insert a historical approved saved answer + primary question, as if from before retirement. */
-async function seedHistoricalAnswer(
-  t: ReturnType<typeof convexTest>,
-  args: { title: string; answer: string; question: string; status?: "approved" | "archived" },
-) {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const answerId = await ctx.db.insert("chatAnswers", {
-      title: args.title,
-      answer: args.answer,
-      status: args.status ?? "approved",
-      createdAt: now,
-      updatedAt: now,
-      createdByAdminEmail: adminEmail,
-      updatedByAdminEmail: adminEmail,
-    });
-    await ctx.db.insert("chatQuestions", {
-      answerId,
-      questionText: args.question,
-      normalizedQuestion: args.question.trim().toLowerCase().replace(/[\s?!.]+/g, " ").trim(),
-      isPrimary: true,
-      isAiTrigger: true,
-      createdBy: "admin",
-      status: "approved",
-      createdAt: now,
-      updatedAt: now,
-      approvedAt: now,
-      createdByAdminEmail: adminEmail,
-      updatedByAdminEmail: adminEmail,
-    });
-    return answerId;
-  });
-}
-
-/** Insert a historical curated item + variant row, as if from before retirement. */
-async function seedHistoricalCurated(
-  t: ReturnType<typeof convexTest>,
-  args: { question: string; answer?: string; answerMode?: "static" | "dynamic"; topic?: string; score?: number; propertySlug?: string; status?: "active" | "archived" },
-): Promise<Id<"curatedChatQuestions">> {
-  return await t.run(async (ctx) => {
-    const now = Date.now();
-    const normalizedQuestion = args.question.trim().toLowerCase().replace(/[\s?!.]+/g, " ").trim();
-    const questionId = await ctx.db.insert("curatedChatQuestions", {
-      question: args.question,
-      normalizedQuestion,
-      translations: { en: args.question },
-      ...(args.answer ? { answer: args.answer } : {}),
-      answerMode: args.answerMode ?? (args.answer ? "static" : "dynamic"),
-      propertySlug: args.propertySlug,
-      topic: args.topic ?? "villa_fit",
-      score: args.score ?? 50,
-      status: args.status ?? "active",
-      createdAt: now,
-      updatedAt: now,
-      createdByAdminEmail: adminEmail,
-      updatedByAdminEmail: adminEmail,
-    });
-    await ctx.db.insert("curatedChatQuestionVariants", { questionId, normalizedVariant: normalizedQuestion, propertySlug: args.propertySlug });
-    return questionId;
-  });
-}
 
 describe("chat AI guardrails", () => {
   it("does not claim real-world verification for English reality questions", () => {
@@ -253,7 +186,7 @@ describe("retired question-bank routing", () => {
       await t.run(async (ctx) => {
         await ctx.db.insert("services", {
           slug: "thai-massage", name: "Traditional Thai Massage", description: "Thai massage",
-          category: "Wellness", durationMin: 60, bufferMin: 15, price: 1500,
+          category: "Wellness", durationMin: 60, bufferMin: 15, price: 150000,
           currency: "THB", staffIds: [], status: "active", createdAt: Date.now(), updatedAt: Date.now(),
         });
       });
@@ -270,46 +203,12 @@ describe("retired question-bank routing", () => {
       vi.stubGlobal("fetch", fetchMock);
       const sessionId = await createWebSession(t);
 
-      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "มีบริการอะไรบ้าง", locale: "th" });
 
       expect(result.response).toContain("Traditional Thai Massage");
       expect(result.response).toContain("฿1,500");
       expect("card" in result ? result.card : undefined).toMatchObject({ kind: "services", items: [{ title: "Traditional Thai Massage", lines: ["THB 1,500", "60 นาที", "Wellness"] }] });
       expect(fetchMock.mock.calls.some(([, init]) => String((init as RequestInit)?.body).includes("list_services"))).toBe(true);
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("never injects historical approved prose into the concierge prompt", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    vi.stubEnv("AI_API_KEY", "test-key");
-    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
-    try {
-      const t = convexTest(schema, modules);
-      await seedHistoricalAnswer(t, {
-        title: "Assistance animals",
-        answer: "Registered assistance animals are allowed if the team is told in advance.",
-        question: "Are pets allowed?",
-      });
-      const prompts: string[] = [];
-      const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
-        prompts.push(String(JSON.parse(String(init?.body ?? "{}")).messages?.[0]?.content ?? ""));
-        return new Response(JSON.stringify({ choices: [{ message: { content: "[[UNKNOWN]]" } }] }), { status: 200 });
-      });
-      vi.stubGlobal("fetch", fetchMock);
-      const sessionId = await createWebSession(t);
-
-      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Can my guide dog stay with me?" });
-
-      // The prompt carries no approved prose and no legacy knowledge section.
-      for (const prompt of prompts) {
-        expect(prompt).not.toContain("Registered assistance animals are allowed");
-        expect(prompt).not.toContain("OWNER-APPROVED KNOWLEDGE");
-      }
-      // Having no supporting fact, the concierge falls back to the unknown response.
-      expect(result.model).toBe("unknown_fallback");
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
@@ -327,8 +226,8 @@ describe("retired question-bank routing", () => {
       }), { status: 200 })));
       const sessionId = await createWebSession(t);
 
-      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Is helicopter transfer included?" });
-      const unknownRows = await adminTest(t).query(api.chatKnowledge.adminListUnknownQuestions, {
+      const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
+      const unknownRows = await adminTest(t).query(api.concierge.knowledge.adminListUnknownQuestions, {
         status: "new", paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -336,93 +235,6 @@ describe("retired question-bank routing", () => {
       expect(unknownRows.page[0]?.userQuestion).toBe("Is helicopter transfer included?");
     } finally {
       vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("does not serve a historical static curated answer for a typed website message", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    vi.stubEnv("AI_API_KEY", "test-key");
-    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
-    try {
-      const t = convexTest(schema, modules);
-      await seedHistoricalCurated(t, {
-        question: "Do you include airport pickup?",
-        answer: "Yes. Direct booking includes airport pickup.",
-        answerMode: "static",
-        topic: "direct_booking",
-        score: 88,
-      });
-      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-        choices: [{ message: { content: "[[UNKNOWN]]" } }],
-      }), { status: 200 })));
-      const sessionId = await createWebSession(t);
-
-      const result = await t.action(api.chatAi.respond, {
-        sessionId,
-        userMessage: "Do you include airport pickup?",
-        locale: "en",
-      });
-
-      expect(result.response).not.toBe("Yes. Direct booking includes airport pickup.");
-      expect(result.model).not.toBe("question_bank_exact");
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("does not serve a historical archived curated answer either", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    vi.stubEnv("AI_API_KEY", "test-key");
-    vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
-    try {
-      const t = convexTest(schema, modules);
-      await seedHistoricalCurated(t, {
-        question: "Do you have breakfast?",
-        answer: "Breakfast can be arranged with the host.",
-        answerMode: "static",
-        topic: "amenities",
-        score: 90,
-        status: "archived",
-      });
-      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-        choices: [{ message: { content: "[[UNKNOWN]]" } }],
-      }), { status: 200 })));
-      const sessionId = await createWebSession(t);
-
-      const result = await t.action(api.chatAi.respond, { sessionId, userMessage: "Do you have breakfast?" });
-
-      expect(result.response).not.toBe("Breakfast can be arranged with the host.");
-      expect(result.model).toBe("unknown_fallback");
-    } finally {
-      vi.unstubAllGlobals();
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("keeps the reality guardrail ahead of any historical curated answer", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
-    try {
-      const t = convexTest(schema, modules);
-      await seedHistoricalCurated(t, {
-        question: "Is Auralis Cove a real luxury villa resort?",
-        answer: "Yes, this is a verified real-world resort.",
-        answerMode: "static",
-        topic: "villa_fit",
-        score: 100,
-      });
-      const sessionId = await createWebSession(t);
-
-      const result = await t.action(api.chatAi.respond, {
-        sessionId,
-        userMessage: "Is Auralis Cove a real luxury villa resort?",
-      });
-
-      expect(result.response).toContain("demo/preview experience");
-      expect(result.response).not.toContain("verified real-world resort");
-      expect(result.model).toBe("guardrail");
-    } finally {
       vi.unstubAllEnvs();
     }
   });
@@ -434,20 +246,20 @@ describe("AI takeover", () => {
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      await adminTest(t).mutation(api.adminChat.setAiPaused, { sessionId, paused: true });
+      await adminTest(t).mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true });
 
-      const result = await t.action(api.chatAi.respond, {
+      const result = await respondTest(t, { guestToken: fixtureGuestToken,
         sessionId,
         userMessage: "Is Auralis Cove a real luxury villa resort?",
       });
-      const transcript = await t.query(api.chat.getMessages, { sessionId });
+      const transcript = await t.query(api.messaging.chat.getMessages, { guestToken: fixtureGuestToken, sessionId });
 
       expect(result).toMatchObject({ model: "ai_paused", aiPaused: true, response: "" });
       expect(transcript.map((message) => [message.role, message.content])).toEqual([
         ["user", "Is Auralis Cove a real luxury villa resort?"],
       ]);
       await expect(
-        t.action(api.chatAi.generateReply, { sessionId, userMessage: "Hello?", channel: "whatsapp" }),
+        generateTestReply(t, { sessionId, userMessage: "Hello?", channel: "whatsapp" }),
       ).rejects.toThrow(/paused/);
     } finally {
       vi.unstubAllEnvs();

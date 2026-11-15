@@ -1,14 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  dateToIso,
-  dateValueProblem,
-  isTimeValue,
-  isoToDate,
-  parseLocalDateTime,
-  timeMinuteOptions,
-  timeValueProblem,
-  todayIsoResort,
-} from "@/lib/dates/values";
+import { dateToIso, dateValueProblem, isTimeValue, isoToDate, parseLocalDateTime, timeMinuteOptions, timeValueProblem } from '@/lib/dates/values';
+import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
 
 describe("calendar values", () => {

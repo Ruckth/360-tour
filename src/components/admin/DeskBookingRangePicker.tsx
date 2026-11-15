@@ -1,6 +1,6 @@
 "use client";
 
-import { BOOKING_RULE_DEFAULTS } from "convex/lib/siteSettings";
+import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useState } from "react";
 import { CalendarDays } from "lucide-react";
 import { Button } from "@/components/ui/button";

@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, type ComponentProps } from 'react';
+import { act } from '../support/checkout-act';
+import { createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { CheckoutBackendProvider, type CheckoutBackend, type CustomerId, type OrderId } from '@/components/checkout/backend';
 import { CheckoutView } from '@/components/checkout/CheckoutView';
-import { createFixtureBackend } from '@/components/checkout/fixture-backend';
+import { createFixtureBackend } from '../support/checkout-backend';
 
 let root: Root;
 const customerId = 'fxcust000002' as CustomerId;
@@ -23,9 +24,9 @@ async function show(backend: CheckoutBackend, orderId: OrderId) {
   await act(async () => root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(CheckoutView, { orderId, onOrderChange: () => {}, onPaid: () => {} }))));
 }
 async function setup() {
-  const backend = createFixtureBackend();
+  const backend = await createFixtureBackend();
   const actions = backend.useActions();
-  const sale = actions.addItem({ item: { kind: 'extra', name: 'Water', price: 100 } });
+  const sale = actions.addItem({ item: { kind: 'extra', name: 'Water', price: 10000 } });
   await settle(); const { orderId } = await sale;
   const linking = actions.linkCustomer({ orderId, customerId }); await settle(); await linking;
   return { backend, actions, orderId };
@@ -177,7 +178,7 @@ it('offers independent full order and history pagination in customer details', a
 it('shows bounded large-merge progress and an active resume action that safely races scheduled continuation', async () => {
   const { backend, actions, orderId } = await setup();
   for (let i = 0; i < 204; i++) {
-    const adding = actions.addItem({ item: { kind: 'extra', name: `History ${i}`, price: 1 } });
+    const adding = actions.addItem({ item: { kind: 'extra', name: `History ${i}`, price: 100 } });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     const added = await adding;
     const linking = actions.linkCustomer({ orderId: added.orderId, customerId });

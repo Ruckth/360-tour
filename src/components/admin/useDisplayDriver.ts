@@ -16,6 +16,6 @@ export function useDisplayDriver() {
       mounted = false;
     };
   }, []);
-  const status = useQuery(api.displays.listDisplays, clientId ? { clientId } : "skip");
+  const status = useQuery(api.pos.displays.listDisplays, clientId ? { clientId } : "skip");
   return { clientId, displays: status?.displays, driver: status?.driver };
 }

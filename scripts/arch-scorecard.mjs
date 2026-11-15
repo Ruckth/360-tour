@@ -6,15 +6,27 @@
 //   node scripts/arch-scorecard.mjs --phase 2    # exit 1 unless every metric due by phase 2 meets its target
 //   node scripts/arch-scorecard.mjs --json       # machine-readable output
 //
+// --phase N measures/reports only metrics due through N; omit it for the complete report.
 // Test-name gates match the exact titles below, so name the tests exactly this way.
 import { execSync } from 'node:child_process';
+import ts from 'typescript';
+import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
+import { inspectConvexAccess } from './lib/convex-access.mjs';
+import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const args = process.argv.slice(2);
-const phaseArg = args.includes('--phase') ? Number(args[args.indexOf('--phase') + 1]) : null;
+// Accept the task's --phase2 spelling as well as the documented --phase 2 form.
+const compactPhase = args.find(arg => /^--phase[0-4]$/.test(arg));
+const phaseArg = args.includes('--phase') ? Number(args[args.indexOf('--phase') + 1]) : compactPhase ? Number(compactPhase.slice(7)) : null;
+if (phaseArg !== null && (!Number.isInteger(phaseArg) || phaseArg < 0 || phaseArg > 4)) {
+  console.error('Expected --phase 0..4 or --phase0..4');
+  process.exit(2);
+}
 const asJson = args.includes('--json');
+const measuresPhase3 = phaseArg === null || phaseArg >= 3;
 
 // ---------- file helpers ----------
 const SKIP = new Set(['node_modules', '_generated', '.next', '.git', 'reui']);
@@ -24,33 +36,39 @@ function walk(dir, out = []) {
 		if (SKIP.has(name)) continue;
 		const path = join(dir, name);
 		if (statSync(path).isDirectory()) walk(path, out);
-		else if (/\.(ts|tsx|mjs)$/.test(name)) out.push(path);
+		else if (SOURCE_EXTENSION.test(name)) out.push(path);
 	}
 	return out;
 }
 const rel = (p) => relative(ROOT, p).split(sep).join('/');
-const read = (p) => readFileSync(p, 'utf8');
+// One invocation measures a single source snapshot. Metrics share file contents
+// instead of repeatedly reading every file for each independent rule.
+const contents = new Map();
+const read = (p) => {
+	if (!contents.has(p)) contents.set(p, readFileSync(p, 'utf8'));
+	return contents.get(p);
+};
 const isTest = (p) => /\.test\.tsx?$|\/tests\//.test(rel(p));
 const convexFiles = walk(join(ROOT, 'convex'));
-const convexProd = convexFiles.filter((p) => !isTest(p));
+const convexProd = convexFiles.filter((p) => isConvexEntryFile(rel(p)));
 const srcFiles = walk(join(ROOT, 'src'));
 const testFiles = [...convexFiles.filter(isTest), ...walk(join(ROOT, 'tests'))];
 const count = (files, re) => files.reduce((n, p) => n + (read(p).match(re) ?? []).length, 0);
 const filesMatching = (files, re) => files.filter((p) => re.test(read(p))).map(rel);
 
 // ---------- measurements ----------
-const tableNames = convexProd.flatMap((p) => [...read(p).matchAll(/^\s*([A-Za-z]+):\s*defineTable\(/gm)].map((m) => m[1]));
+const schema = inspectSchema(schemaSourceReader(ROOT));
+const tableNames = schema.tables.map(table => table.name);
 
 const RETIRED_TABLES = ['tenants', 'chatAnswers', 'chatQuestions', 'chatSuggestedQuestions', 'curatedChatQuestions', 'curatedChatQuestionVariants', 'chatQuestionInteractions', 'chatKnowledgeScopes', 'chatAnswerPropertyScopes', 'chatTopics', 'chatAnswerTopics', 'pricing', 'propertyKnowledge', 'recentBookingDisplay'];
-const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
+const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'billAudit', 'billCounters', 'billLineLinks', 'billRefunds', 'serviceAppointments', 'rooms', 'chatSessions', 'chatMessages', 'socialProof', 'lineWebhookEvents', 'facebookWebhookEvents', 'instagramWebhookEvents', 'whatsappWebhookEvents'];
 
 // Public functions registered with a raw builder outside convex/auth/.
-const RAW_PUBLIC = /export\s+const\s+\w+\s*=\s*(query|mutation|action)\s*\(/g;
-const rawPublic = convexProd.filter((p) => !rel(p).startsWith('convex/auth/'));
+const rawPublicViolations = [];
 
 // No-login builders must declare `returns:` before `handler`.
 function missingReturns() {
-	const re = /export\s+const\s+(\w+)\s*=\s*(publicQuery|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(\s*\{/g;
+	const re = /export\s+const\s+(\w+)\s*=\s*(publicQuery|publicMutation|publicAction|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(\s*\{/g;
 	const missing = [];
 	for (const p of convexProd) {
 		const text = read(p);
@@ -62,22 +80,17 @@ function missingReturns() {
 	return missing;
 }
 
-// Cross-domain imports that bypass <domain>/model.ts.
-const DOMAINS = ['auth', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings'];
-function crossDomainViolations() {
-	const out = [];
-	for (const p of convexProd) {
-		const r = rel(p);
-		const own = DOMAINS.find((d) => r.startsWith(`convex/${d}/`));
-		if (!own) continue;
-		for (const m of read(p).matchAll(/from\s+['"](\.\.?\/[^'"]+)['"]/g)) {
-			const target = rel(join(p, '..', m[1]));
-			const dom = DOMAINS.find((d) => target.startsWith(`convex/${d}/`));
-			if (dom && dom !== own && !/\/model(\.ts)?$/.test(target)) out.push(`${r} → ${target}`);
-		}
-	}
-	return out;
-}
+// The same AST rules used by lint; all supported deployed source extensions count.
+const deployed = new Set(convexProd);
+const ownership = measuresPhase3 ? [...convexFiles, ...srcFiles].flatMap(p => {
+	const path = rel(p), source = read(p);
+	// Both guards inspect the same immutable source; parse deployed files once.
+	const parsed = deployed.has(p) ? ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true) : undefined;
+	if (parsed) rawPublicViolations.push(...inspectConvexAccess(path, source, parsed).violations);
+	return inspectArchitecture(path, source, parsed).map(issue => ({ ...issue, path }));
+}) : [];
+const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).map(issue => `${issue.path}:${issue.line} ${issue.message}`);
+const DOMAINS = SCHEMA_DOMAINS;
 
 const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
 	.filter((p) => !rel(p).endsWith('convex/schema.ts'))
@@ -101,8 +114,6 @@ const gitignore = existsSync(join(ROOT, '.gitignore')) ? read(join(ROOT, '.gitig
 // ---------- metrics: [id, phase due, description, measured value, target, how measured] ----------
 const m = [];
 const add = (id, phase, label, value, target, detail = []) => m.push({ id, phase, label, value, target, ok: typeof target === 'function' ? target(value) : value === target, detail });
-const eq = (t) => (v) => v === t;
-const atMost = (t) => (v) => v <= t;
 
 add('clean-tree', -1, 'Modified tracked files on the working tree', dirtyTracked(), 0);
 
@@ -119,7 +130,7 @@ add('static-dir', 0, 'Duplicate static/ directory exists (1 = yes)', existsSync(
 add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify-out)', ['output', 'tmp', 'graphify-out'].filter((d) => !new RegExp(`^/?${d}/?$`, 'm').test(gitignore)).length, 0);
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
 
-add('tables', 1, 'Convex tables (info: retired and merged tables are gated below)', tableNames.length, () => true);
+add('tables', 1, 'Convex tables (91 integrated − 14 retired − 3 merged)', tableNames.length, 74, schema.tables.map(table => `${table.name} → ${table.source}`));
 add('channel-events-table', 1, 'Unified channelEvents table exists (1 = yes)', tableNames.includes('channelEvents') ? 1 : 0, 1);
 add('retired-tables', 1, 'Retired tables still in the schema', RETIRED_TABLES.filter((t) => tableNames.includes(t)).length, 0, RETIRED_TABLES.filter((t) => tableNames.includes(t)));
 add('old-table-names', 1, 'Tables still using pre-rename names', OLD_NAMES.filter((t) => tableNames.includes(t)).length, 0, OLD_NAMES.filter((t) => tableNames.includes(t)));
@@ -136,12 +147,13 @@ const PHASE2_TESTS = ['ignores a duplicate webhook delivery', 'takes over a stal
 add('phase2-tests', 2, 'Required messaging reliability tests present', PHASE2_TESTS.filter(hasTest).length, PHASE2_TESTS.length, PHASE2_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 
-add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth', count(rawPublic, RAW_PUBLIC), 0);
+add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth/model.ts', rawPublicViolations.length, 0, rawPublicViolations);
 add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...srcFiles, ...convexProd].filter((p) => !isTest(p)), /as never/g), 0);
-add('src-imports-convex-lib', 3, 'src imports of convex/lib', count(srcFiles, /from\s+['"][^'"]*convex\/lib\//g), 0, filesMatching(srcFiles, /from\s+['"][^'"]*convex\/lib\//));
-add('convex-imports-src', 3, 'convex imports of src', count(convexProd, /from\s+['"][^'"]*\/src\//g), 0, filesMatching(convexProd, /from\s+['"][^'"]*\/src\//));
-add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', crossDomainViolations().length, 0, crossDomainViolations().slice(0, 20));
-add('domain-folders', 3, 'Domain folders present in convex/', DOMAINS.filter((d) => existsSync(join(ROOT, `convex/${d}`))).length, DOMAINS.length);
+add('src-imports-convex-lib', 3, 'Browser imports of backend implementations', ownershipDetails('browser').length, 0, ownershipDetails('browser'));
+add('convex-imports-src', 3, 'Backend imports of browser implementations', ownershipDetails('backend').length, 0, ownershipDetails('backend'));
+add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', ownershipDetails('cross-domain').length, 0, ownershipDetails('cross-domain'));
+add('source-ownership', 3, 'Owner, shared purity and inspectable import forms', ownership.filter(issue => !['browser', 'backend', 'cross-domain'].includes(issue.rule)).length, 0, ownership.filter(issue => !['browser', 'backend', 'cross-domain'].includes(issue.rule)).map(issue => `${issue.path}:${issue.line} ${issue.message}`));
+add('domain-folders', 3, 'Domain folders owning assembled schema tables', DOMAINS.filter(d => schema.tables.some(table => table.source.startsWith(`convex/${d}/`))).length, DOMAINS.length, DOMAINS.map(d => `${d}: ${schema.tables.filter(table => table.source.startsWith(`convex/${d}/`)).length} tables`));
 add('demo-mode', 3, 'Files using demo mode (useOptionalConvex, dev:demo, bookingId=demo)', filesMatching([...srcFiles, ...testFiles], /useOptionalConvex|bookingId=demo/).length + (/"dev:demo"/.test(read(join(ROOT, 'package.json'))) ? 1 : 0), 0);
 add('ci-placeholder-backend', 3, 'CI steps using a placeholder Convex URL', (ciText.match(/example\.convex\.cloud|placeholder/g) ?? []).length, 0);
 add('architecture-doc', 3, 'ARCHITECTURE.md with a feature recipe (1 = yes)', existsSync(join(ROOT, 'ARCHITECTURE.md')) && /recipe/i.test(read(join(ROOT, 'ARCHITECTURE.md'))) ? 1 : 0, 1);
@@ -155,18 +167,19 @@ add('phase4-tests', 4, 'Required read-budget test present', hasTest('lists the i
 const byId = Object.fromEntries(m.map((x) => [x.id, x]));
 const vacuous = (id, why) => { if (byId[id].ok && why) { byId[id].ok = false; byId[id].detail = [why]; } };
 vacuous('cross-domain', byId['domain-folders'].value < DOMAINS.length && 'domain folders do not exist yet');
-vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(/g) === 0 && 'no no-login builders in use yet');
+vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|publicMutation|publicAction|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(/g) === 0 && 'no no-login builders in use yet');
 
 // ---------- report ----------
 const due = phaseArg === null ? m : m.filter((x) => x.phase <= phaseArg);
 const failing = due.filter((x) => !x.ok);
 if (asJson) {
-	console.log(JSON.stringify({ phase: phaseArg, pass: failing.length === 0, metrics: m }, null, 2));
+	// Unmeasured later phases must not appear as misleading zero-valued results.
+	console.log(JSON.stringify({ phase: phaseArg, pass: failing.length === 0, metrics: due }, null, 2));
 } else {
 	const pad = (s, n) => String(s).padEnd(n);
 	console.log(`Architecture scorecard${phaseArg === null ? '' : ` · gate for phase ${phaseArg}`}\n`);
 	console.log(`${pad('', 3)}${pad('phase', 6)}${pad('value', 7)}${pad('target', 8)}metric`);
-	for (const x of m) {
+	for (const x of due) {
 		const inGate = phaseArg === null || x.phase <= phaseArg;
 		const mark = x.ok ? '✓' : inGate ? '✗' : '·';
 		const target = typeof x.target === 'number' ? x.target : 'info';

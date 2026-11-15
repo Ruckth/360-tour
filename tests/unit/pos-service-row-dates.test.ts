@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { act, createElement, useState, type ComponentProps } from "react";
+import { act } from '../support/checkout-act';
+import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
@@ -7,8 +8,8 @@ import { CheckoutBackendProvider, type CheckoutActions, type CheckoutBackend, ty
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { serviceScheduleValue, serviceStartLabel } from "@/components/checkout/OrderPanel";
 import { receiptSchedule, scheduleLabel } from "@/components/checkout/checkout-ui";
-import { createFixtureBackend } from "@/components/checkout/fixture-backend";
-import { changeSchedule, scheduleFromStartAt } from "convex/lib/serviceSchedule";
+import { createFixtureBackend } from "../support/checkout-backend";
+import { changeSchedule } from "convex/shared/serviceSchedule";
 
 /** A resort (Bangkok, UTC+7) wall-clock time, whatever zone the test machine runs in. */
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);
@@ -22,8 +23,6 @@ describe("optional service date and time", () => {
     expect(changeSchedule({ time: "14:30" }, { time: "" })).toEqual({ schedule: {} });
     expect(changeSchedule({}, { date: "2026-02-31" })).toHaveProperty("problem");
     expect(changeSchedule({}, { time: "24:00" })).toHaveProperty("problem");
-    // A legacy start splits into its resort date and time, so editing one keeps the other.
-    expect(scheduleFromStartAt(at("2026-10-29", "00:30"))).toEqual({ date: "2026-10-29", time: "00:30" });
   });
 
   it("labels unset parts as unset, never as now", () => {
@@ -40,10 +39,10 @@ describe("optional service date and time", () => {
     expect(receiptSchedule({ time: "14:30" })).toBe("14:30 · date to be confirmed");
   });
 
-  it("shows a legacy row's start in the editor, and blank parts for unscheduled and legacy 'now' rows", () => {
-    expect(serviceScheduleValue({ startAt: at("2026-10-26", "14:30"), schedule: undefined })).toEqual({ date: "2026-10-26", time: "14:30" });
-    expect(serviceScheduleValue({ startAt: undefined, schedule: undefined })).toEqual({ date: "", time: "" });
-    expect(serviceScheduleValue({ startAt: undefined, schedule: { time: "09:15" } })).toEqual({ date: "", time: "09:15" });
+  it("keeps unset schedule parts blank after the cutover", () => {
+    expect(serviceScheduleValue({ schedule: { date: "2026-10-26", time: "14:30" } })).toEqual({ date: "2026-10-26", time: "14:30" });
+    expect(serviceScheduleValue({})).toEqual({ date: "", time: "" });
+    expect(serviceScheduleValue({})).toEqual({ date: "", time: "09:15" });
   });
 
   it("labels legacy rows with their date unless they are today", () => {
@@ -82,8 +81,8 @@ async function pickDate(iso: string) {
 }
 
 /** The fixture backend, with every `updateLine` call recorded. */
-function recordingBackend() {
-  const base = createFixtureBackend();
+async function recordingBackend() {
+  const base = await createFixtureBackend();
   const real = base.useActions();
   const updateLine = vi.fn<CheckoutActions["updateLine"]>((args) => real.updateLine(args));
   const actions: CheckoutActions = { ...real, updateLine };
@@ -111,7 +110,7 @@ afterEach(async () => {
 
 describe("a service row's optional date and time at checkout", () => {
   it("restores the saved time when saving or clearing fails", async () => {
-    const { backend, actions, updateLine } = recordingBackend();
+    const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
     // Therapist, date and time sit behind the editor's Schedule row.
@@ -132,7 +131,7 @@ describe("a service row's optional date and time at checkout", () => {
   });
 
   it("starts blank with two plain optional fields, and sets and clears each part on its own", async () => {
-    const { backend, actions, updateLine } = recordingBackend();
+    const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
     // Therapist, date and time sit behind the editor's Schedule row.
@@ -171,7 +170,7 @@ describe("a service row's optional date and time at checkout", () => {
   });
 
   it("never fills a part in from the clock", async () => {
-    const { backend, actions, updateLine } = recordingBackend();
+    const { backend, actions, updateLine } = await recordingBackend();
     await show(backend, await orderWithMassage(actions));
     await click(row("Thai massage 60").querySelector("button"));
     // Therapist, date and time sit behind the editor's Schedule row.

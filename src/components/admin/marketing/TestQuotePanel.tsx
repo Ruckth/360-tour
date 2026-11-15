@@ -1,5 +1,7 @@
 "use client";
 
+import { addDays } from 'convex/shared/dates';
+
 import { Check, Plus, Trash2 } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,12 +21,6 @@ import type { MarketingActions, MarketingProperty, OfferResult } from "./types";
 type ServiceLine = { key: number; label: string; amount: string };
 /** A run, with the inputs and the saved coupon (code and version) it was run against. */
 type Tested = { key: number; label: string; checkIn: string; code: string; version?: number; result: OfferResult };
-
-const addDays = (iso: string, days: number) => {
-  const date = new Date(`${iso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
 
 /**
  * Runs a quote through the shared offer engine with the coupon's saved rules (testQuote).
@@ -85,7 +81,7 @@ export function TestQuotePanel({
     setError("");
     const lines = services
       .filter((line) => line.label.trim())
-      .map((line) => ({ label: line.label.trim(), amount: parseWhole(line.amount) ?? 0 }));
+      .map((line) => ({ label: line.label.trim(), amount: (parseWhole(line.amount) ?? 0) * 100 }));
     try {
       const quote = await testQuote({ code, propertySlug: villa, checkIn, checkOut, services: lines.length ? lines : undefined });
       const label = `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}${lines.length ? ` + ${lines.length} service${lines.length === 1 ? "" : "s"}` : ""}`;

@@ -3,7 +3,7 @@ import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { NextIntlClientProvider } from "next-intl";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { SESSION_IDLE_MS } from "convex/lib/marketingAttribution";
+import { SESSION_IDLE_MS } from 'convex/shared/marketingAttribution';
 import messages from "../../messages/en.json";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
@@ -13,7 +13,7 @@ vi.mock("next/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
-vi.mock("@/lib/react/convex", () => ({ useOptionalConvex: () => convex.client }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => convex.client }));
 
 type Capture = typeof import("@/lib/marketing/capture");
 let capture: Capture;

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import { marketingCapabilities } from "convex/lib/marketingAccess";
+import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { MarketingAccessGate, MarketingAccessProvider, useMarketingAccess, type MarketingAccess, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
@@ -23,7 +23,7 @@ vi.mock("convex/react", () => ({
   useMutation: () => mocked.mutate,
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(ref); mocked.query(name, args);
-    return args === "skip" ? undefined : name === "marketingAccess:current" ? mocked.access : name === "marketingAccess:listGrants" ? mocked.grants : undefined;
+    return args === "skip" ? undefined : name === "marketing/access:current" ? mocked.access : name === "marketing/access:listGrants" ? mocked.grants : undefined;
   },
 }));
 vi.mock("@clerk/nextjs", () => ({ SignInButton: ({ children }: { children: ReactNode }) => children }));
@@ -49,7 +49,7 @@ const gated = () => createElement(MarketingAccessGate, null, createElement(Prote
 it("keeps children unmounted while checking, signed out, denied and awaiting invitation activation", async () => {
   await render(gated()); expect(document.body.textContent).toContain("Checking Marketing access");
   mocked.auth.isAuthenticated = false;
-  await render(gated()); expect(button("Sign in")).toBeDefined(); expect(mocked.query).toHaveBeenLastCalledWith("marketingAccess:current", "skip");
+  await render(gated()); expect(button("Sign in")).toBeDefined(); expect(mocked.query).toHaveBeenLastCalledWith("marketing/access:current", "skip");
   mocked.auth.isAuthenticated = true; mocked.access = access(null);
   await render(gated()); expect(document.body.textContent).toContain("Marketing access required");
   mocked.access = { ...access(null), pendingInvitation: { role: "viewer" } };
@@ -92,7 +92,7 @@ it.each(["viewer", "marketer", "finance", "manager"] as const)("shows spend edit
 
 it.each(["manager", "admin"] as const)("links no Access page for %s: Marketing roles are set on Settings › Team", async role => {
   await render(createElement(MarketingSectionNav, null, null), role);
-  expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketingAccess:listGrants")).toBe(false);
+  expect(document.querySelector('a[href="/admin/marketing/access"]')).toBeNull(); expect(document.querySelector('a[href="/admin/marketing/affiliates"]')).not.toBeNull(); expect(mocked.query.mock.calls.some(call => call[0] === "marketing/access:listGrants")).toBe(false);
 });
 
 
@@ -104,7 +104,7 @@ it.each([
 ] as const)("gives $role the appropriate $status coupon controls and a read-only usage ledger", async ({ role, status, editable }) => {
   const couponId = "coupon" as Id<"coupons">;
   const rules: CouponDetail["rules"] = { _id: "version" as Id<"couponVersions">, _creationTime: 0, couponId, version: 1, benefit: { kind: "fixed", amount: 500 }, scope: "services", createdAt: 0, createdByEmail: "admin@example.com" };
-  const detail: CouponDetail = { _id: couponId, _creationTime: 0, code: "SERVICE500", status, currentVersion: 1, used: 1, discountGranted: 500, createdAt: 0, updatedAt: 0, updatedByEmail: "admin@example.com", rules, versions: [rules], links: [], redemptions: [{ _id: "redemption" as Id<"couponRedemptions">, _creationTime: 0, couponId, couponVersion: 1, code: "SERVICE500", state: "consumed", discount: 500, createdAt: 0, updatedAt: 0, order: { orderId: "order" as Id<"bills">, title: "Order #1", receiptNumber: "R-000001", customerName: "Guest" } }] };
+  const detail: CouponDetail = { _id: couponId, _creationTime: 0, code: "SERVICE500", status, currentVersion: 1, used: 1, discountGranted: 500, createdAt: 0, updatedAt: 0, updatedByEmail: "admin@example.com", rules, versions: [rules], links: [], redemptions: [{ _id: "redemption" as Id<"couponRedemptions">, _creationTime: 0, couponId, couponVersion: 1, code: "SERVICE500", state: "consumed", discount: 500, createdAt: 0, updatedAt: 0, order: { orderId: "order" as Id<"orders">, title: "Order #1", receiptNumber: "R-000001", customerName: "Guest" } }] };
   await render(createElement(CouponEditor, { detail, isNew: false, coupons: [detail], campaigns: [], properties: [], today: "2026-11-09", listHref: "/c", origin: "https://example.com", brand: "Resort", onCreated() {}, actions: { saveCoupon: vi.fn(), setCouponStatus: vi.fn(), testQuote: vi.fn(), saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn(), saveCampaign: vi.fn() } }), role);
   expect(!!button("Save")).toBe(editable);
   expect(button("Publish")).toBeUndefined(); expect(button("Pause")).toBeUndefined();

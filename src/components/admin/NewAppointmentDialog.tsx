@@ -49,7 +49,7 @@ export type AppointmentDraft = {
   date: string;
   staffId?: Id<"staff">;
   start?: number;
-  rebook?: Doc<"serviceAppointments">;
+  rebook?: Doc<"appointments">;
   stay?: { bookingId: Id<"bookings">; guestName: string; guestPhone: string; guestEmail?: string; villaName: string };
 };
 
@@ -88,12 +88,12 @@ export function NewAppointmentDialog({
   services: Service[];
   staff: Staff[];
   onClose: () => void;
-  onCreated: (id: Id<"serviceAppointments">, start: number) => void;
+  onCreated: (id: Id<"appointments">, start: number) => void;
 }) {
-  const createAppointment = useMutation(api.adminServices.createAppointment);
+  const createAppointment = useMutation(api.services.commands.createAppointment.createAppointment);
   const { rebook, stay } = draft;
-  const allServices = useQuery(api.adminServices.listServices, { includeArchived: true });
-  const allStaff = useQuery(api.adminServices.listStaff, { includeArchived: true });
+  const allServices = useQuery(api.services.admin.listServices, { includeArchived: true });
+  const allStaff = useQuery(api.services.admin.listStaff, { includeArchived: true });
   const services = allServices ?? initialServices;
   const staff = allStaff ?? initialStaff;
   const [wanted] = useState(() => rebook?.serviceId ?? readLastService());
@@ -120,7 +120,7 @@ export function NewAppointmentDialog({
   const pickable = services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s);
 
   const slots = useQuery(
-    api.adminServices.findOpenSlots,
+    api.services.admin.findOpenSlots,
     serviceId ? { serviceId, date, staffId } : "skip",
   );
   // A time that has already started is past work, never a new booking's default.
@@ -128,7 +128,7 @@ export function NewAppointmentDialog({
   // Fall back to the next open time (or the first), so the form is always one click from booking.
   const selectedSlot = appointmentEntrySlot(openSlots, start, staffId, now);
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
-  const review = useQuery(api.adminServices.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
+  const review = useQuery(api.services.admin.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
   const assigned = staff.find((person) => person._id === assignedId);
   const entryStart = selectedSlot?.start ?? start;
   const completed = entryStart !== null && service !== undefined && appointmentEntryStatus(entryStart, service.durationMin, now) === "completed";

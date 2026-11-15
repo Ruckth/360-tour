@@ -34,7 +34,7 @@ import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 
 const PRESETS = ["Leave", "Sick", "Training"] as const;
-type TimeOffResults = FunctionReturnType<typeof api.adminServices.addTimeOff>;
+type TimeOffResults = FunctionReturnType<typeof api.services.commands.addTimeOff.addTimeOff>;
 
 function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
   return (
@@ -130,7 +130,7 @@ export function conflictText(conflicts: TimeOffResults[number]["conflicts"]) {
 
 /** Same time off for several people at once; anyone with bookings in the way is skipped and listed. */
 export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; onClose: () => void }) {
-  const addTimeOff = useMutation(api.adminServices.addTimeOff);
+  const addTimeOff = useMutation(api.services.commands.addTimeOff.addTimeOff);
   const [selected, setSelected] = useState<Set<Id<"staff">>>(() => new Set());
   const [results, setResults] = useState<TimeOffResults | null>(null);
   const [saving, setSaving] = useState(false);

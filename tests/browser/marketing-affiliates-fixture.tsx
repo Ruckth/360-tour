@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Id } from "convex/_generated/dataModel";
-import type { AffiliateRow, CreditRow } from "convex/marketingAffiliates";
+import type { AffiliateRow, CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import {
   AffiliatesView,
@@ -62,7 +62,7 @@ const credit: CreditRow = {
   state: "pending",
   affiliateId: partner._id,
   eligible: true,
-  eligibleNet: 700,
+  eligibleNet: 70000,
   approvedNet: 0,
   revision: 4,
   createdAt: 0,

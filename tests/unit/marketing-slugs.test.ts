@@ -3,8 +3,8 @@ import { registerHooks } from 'node:module';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { locales } from '../../src/i18n/routing';
-import { marketingLocales } from '../../convex/lib/marketingSlugs';
-import { reservedMarketingSlugs, validateMarketingSlug } from '../../convex/lib/marketingSlugs';
+import { marketingLocales } from '../../convex/shared/marketingSlugs';
+import { reservedMarketingSlugs, validateMarketingSlug } from '../../convex/shared/marketingSlugs';
 
 describe('marketing slug rules', () => {
   it.each(['f', 'f1', 'a-2', 'r/anna', 'r/lamai-dive', 'x'.repeat(32)])('accepts %s', slug => {
@@ -36,7 +36,7 @@ describe('marketing slug rules', () => {
 
 describe('localizeMarketingPath', () => {
   it('prefixes every explicitly selected locale, including English', async () => {
-    const { localizeMarketingPath } = await import('../../convex/lib/marketingSlugs');
+    const { localizeMarketingPath } = await import('../../convex/shared/marketingSlugs');
     for (const locale of locales) for (const path of ['/', '/booking', '/rooms/mossbell']) {
       expect(localizeMarketingPath(path, locale)).toBe(`/${locale}${path === '/' ? '' : path}`);
     }
@@ -51,7 +51,7 @@ describe('localizeMarketingPath', () => {
     const { default: createMiddleware } = await import('next-intl/middleware').finally(() => hooks.deregister());
     const { NextRequest } = await import('next/server');
     const { routing } = await import('../../src/i18n/routing');
-    const { localizeMarketingPath } = await import('../../convex/lib/marketingSlugs');
+    const { localizeMarketingPath } = await import('../../convex/shared/marketingSlugs');
     const middleware = createMiddleware(routing);
     const headers = { cookie: 'NEXT_LOCALE=th', 'accept-language': 'th' };
     const path = localizeMarketingPath('/booking', 'en') + '?mk=english';

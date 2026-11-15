@@ -6,7 +6,7 @@ import type { Property } from "@/lib/data/properties";
 
 const rooms = vi.hoisted(() => ({ loading: false }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-vi.mock("@/lib/react/convex", () => ({ useConvexQuery: () => ({ data: [], loading: rooms.loading }) }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useQuery: () => rooms.loading ? undefined : [] }));
 vi.mock("@/lib/i18n/use-public-messages", () => ({ usePublicMessages: () => ({}) }));
 vi.mock("@/components/tour/TourCanvas", () => ({ TourCanvas: () => null }));
 

@@ -19,7 +19,7 @@ const listHistory = makeFunctionReference<
     paginationOpts: PaginationOptions;
   },
   PaginationResult<HistoryEntry>
->("recordHistory:list");
+>("settings/recordHistory:list");
 const listRecords = makeFunctionReference<
   "query",
   {
@@ -27,7 +27,7 @@ const listRecords = makeFunctionReference<
     paginationOpts: PaginationOptions;
   },
   PaginationResult<Doc<"configurationHistoryIndex">>
->("configurationHistory:records");
+>("settings/configurationHistory:records");
 
 const LABELS: Record<string, string> = {
   businessName: "Business name",
@@ -156,13 +156,13 @@ function object(value: unknown): Record<string, unknown> {
 }
 const BAHT_FIELDS = new Set(["budget", "minEligibleSubtotal", "maxSaving", "discountBudget"]);
 const DESTINATIONS: Record<string, string> = { home: "Home", booking: "Booking", villa: "Villa page", experiences: "Experiences", chat: "Chat" };
-const baht = (amount: unknown) => `฿${Number(amount).toLocaleString("en-US")}`;
+const baht = (amount: unknown) => `฿${(Number(amount) / 100).toLocaleString("en-US")}`;
 function display(value: unknown, field: string): string {
   if (value === null || value === undefined) return field === "override" ? "Weekly default" : "Not set";
   if (BAHT_FIELDS.has(field) && typeof value === "number") return baht(value);
   if (field === "benefit") {
     const benefit = object(value);
-    return benefit.kind === "percent" ? `${benefit.percent}% off` : `${baht(benefit.amount)} off`;
+    return benefit.kind === "percent" ? `${Number(benefit.percent) / 100}% off` : `${baht(benefit.amount)} off`;
   }
   if (field === "destination") {
     const destination = object(value);

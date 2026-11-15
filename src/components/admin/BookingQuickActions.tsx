@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { AdminBooking } from "convex/adminBookings";
+type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -26,7 +26,7 @@ import {
 } from "./admin-bookings-shared";
 
 export type QuickTarget = { booking: AdminBooking; rect: { left: number; top: number; width: number; height: number } };
-type BookingDetail = NonNullable<FunctionReturnType<typeof api.adminBookings.getForAdmin>>;
+type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 
 /** Each popover button finishes its job: its own dialog, checkout, or the new appointment. */
 export type QuickAction =
@@ -58,8 +58,8 @@ export function BookingQuickActions({
   onNotice: (notice: { text: string; error?: boolean }) => void;
 }) {
   const { booking, rect } = target;
-  const detail = useQuery(api.adminBookings.getForAdmin, { bookingId: booking._id });
-  const updateBooking = useMutation(api.adminBookings.updateBooking);
+  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: booking._id });
+  const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
   const confirm = useConfirm();
   const editable = canEditBooking(booking);
   const spa = useStaySpa(editable ? booking : null);
@@ -68,7 +68,7 @@ export function BookingQuickActions({
   const [problems, setProblems] = useState<string[]>([]);
   const status = hotelStatus(statusKey(booking));
   const checkoutLive = Boolean(detail?.checkoutLive);
-  const owed = detail && editable && !detail.money.legacyRefund && detail.paymentStatus !== "failed" ? detail.money.owed : 0;
+  const owed = detail && editable && detail.paymentStatus !== "failed" ? detail.money.owed : 0;
   const canPay = owed > 0;
   const due = owed + (spa?.total ?? 0);
   const canBookSpa = editable && booking.checkOut >= serverTodayIso();

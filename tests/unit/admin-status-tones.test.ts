@@ -60,11 +60,11 @@ describe("admin labels", () => {
     expect(paymentLabel("pending")).toBe("Unpaid");
     expect(paymentLabel("paid", "stripe")).toBe("Paid by card (Stripe)");
     expect(paymentLabel("failed")).toBe("Payment failed");
-    expect(formatMoney(12000, "THB")).toBe("฿12,000");
-    expect(formatMoney(-500, "THB")).toBe("-฿500");
-    expect(formatMoney(99.5, "USD")).toBe("$99.50");
-    expect(formatMoney(2594.5)).toBe("฿2,594.50");
-    expect(formatMoney(-0.001)).toBe("฿0");
-    expect(formatMoney(1500, "SGD")).toBe("SGD 1,500");
+    expect(formatMoney(1200000, "THB")).toBe("฿12,000");
+    expect(formatMoney(-50000, "THB")).toBe("-฿500");
+    expect(formatMoney(9950, "USD")).toBe("$99.50");
+    expect(formatMoney(259450)).toBe("฿2,594.50");
+    expect(formatMoney(0)).toBe("฿0");
+    expect(formatMoney(150000, "SGD")).toBe("SGD 1,500");
   });
 });

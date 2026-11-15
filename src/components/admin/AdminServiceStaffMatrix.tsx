@@ -26,7 +26,7 @@ export function ServiceStaffMatrix({
   staff: Staff[];
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const save = useMutation(api.adminServices.setServiceStaffMatrix);
+  const save = useMutation(api.services.commands.setServiceStaffMatrix.setServiceStaffMatrix);
   const [edits, setEdits] = useState<Map<Id<"services">, Set<string>>>(() => new Map());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

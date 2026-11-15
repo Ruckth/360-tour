@@ -1,7 +1,7 @@
 /**
  * Records AI booking conversations over the messaging-channel pipeline (the same
  * generateConciergeReply + booking tools used by the LINE/WhatsApp/Messenger webhooks).
- * Each guest turn runs `npx convex run [--prod] chatEval:messagingTurn` and the reply, plus
+ * Each guest turn runs `npx convex run [--prod] maintenance/chatEval:messagingTurn` and the reply, plus
  * the tools the AI called, is rendered in a local chat page that Playwright records.
  *
  *   node scripts/ai-demo/record-messaging.ts <scenario> [--prod]
@@ -32,7 +32,7 @@ function convexRun<T>(fn: string, args: unknown): T {
   return JSON.parse(out) as T;
 }
 
-const sessionId = convexRun<string>("chatEval:createSession", {
+const sessionId = convexRun<string>("maintenance/chatEval:createSession", {
   channel: scenario.channel,
   ...(scenario.visitorName ? { visitorName: scenario.visitorName } : {}),
   ...(scenario.visitorPhone ? { visitorPhone: scenario.visitorPhone } : {}),
@@ -99,7 +99,7 @@ for (const turn of scenario.turns) {
   const started = Date.now();
   let result: { response: string; model: string; toolTrace: Trace[] };
   try {
-    result = convexRun("chatEval:messagingTurn", { sessionId, userMessage: turn, siteUrl });
+    result = convexRun("maintenance/chatEval:messagingTurn", { sessionId, userMessage: turn, siteUrl });
   } catch (error) {
     result = { response: `[harness error] ${(error as Error).message.slice(0, 300)}`, model: "error", toolTrace: [] };
   }

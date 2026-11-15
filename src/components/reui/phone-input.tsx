@@ -1,6 +1,6 @@
-// Adapted from the ReUI phone-input registry component (https://reui.io/r/default/phone-input.json).
 "use client";
 
+// Adapted from the ReUI phone-input registry component (https://reui.io/r/default/phone-input.json).
 import { createContext, useContext, useMemo, useState } from "react";
 import * as BasePhoneInput from "react-phone-number-input";
 import flags from "react-phone-number-input/flags";

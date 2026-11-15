@@ -41,11 +41,11 @@ export function BusinessFactsPanel({ properties }: { properties: readonly AdminF
   const [pendingAction, setPendingAction] = useState("");
   const [actionError, setActionError] = useState("");
   const facts = usePaginatedQuery(
-    api.businessFacts.adminList,
+    api.concierge.businessFacts.adminList,
     { status: statusFilter === "all" ? undefined : statusFilter },
     { initialNumItems: PAGE_SIZE },
   );
-  const setStatus = useMutation(api.businessFacts.adminSetStatus);
+  const setStatus = useMutation(api.concierge.businessFacts.adminSetStatus);
   const rows = facts.results as AdminBusinessFact[];
 
   async function runSetStatus(fact: AdminBusinessFact, status: BusinessFactStatus, confirmArchive: boolean) {

@@ -27,7 +27,7 @@ export function csvMeta(p: Prepared, propertyName: string): string[][] {
   ];
 }
 
-const amount = (value: number) => Math.round(value * 100) / 100;
+const amount = (value: number) => value / 100;
 const roasCells = (roas: Roas | undefined): [string, string | number] =>
   roas?.kind === "value" ? [roas.value.toFixed(2), amount(roas.spend)] : roas?.kind === "all_properties_only" ? ["all properties only", ""] : ["", ""];
 

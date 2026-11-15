@@ -1,4 +1,4 @@
-import type { CouponProblem } from "convex/lib/offers";
+import type { CouponProblem } from "convex/shared/offers";
 import { staffDateTime } from "@/lib/staff-time";
 import { ConvexError } from "convex/values";
 import { localeLabels, type Locale } from "@/i18n/routing";
@@ -58,19 +58,8 @@ export function formatRange(from?: string, to?: string) {
   return "Ongoing";
 }
 
-const bangkokDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" });
-
-/** Today in Asia/Bangkok as YYYY-MM-DD, the date the offer engine compares against. */
-export function bangkokToday(ms: number) {
-  return bangkokDay.format(ms);
-}
-
-/** Nights between two YYYY-MM-DD dates (0 when the order is wrong or a date is missing). */
-export function nightsBetween(checkIn: string, checkOut: string) {
-  if (!checkIn || !checkOut) return 0;
-  const days = (Date.parse(`${checkOut}T00:00:00Z`) - Date.parse(`${checkIn}T00:00:00Z`)) / 86_400_000;
-  return Number.isFinite(days) && days > 0 ? Math.round(days) : 0;
-}
+export { resortTodayIso as bangkokToday } from 'convex/shared/time';
+export { nightsBetweenIso as nightsBetween } from 'convex/shared/dates';
 
 const exportStampFormat = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Asia/Bangkok",
@@ -136,7 +125,7 @@ const capitalize = (text: string) => (text ? text[0].toUpperCase() + text.slice(
 
 /** "20% off" or "฿500 off" */
 export function benefitLabel(benefit: CouponBenefit) {
-  return benefit.kind === "percent" ? `${benefit.percent}% off` : `${thb(benefit.amount)} off`;
+  return benefit.kind === "percent" ? `${benefit.percent / 100}% off` : `${thb(benefit.amount)} off`;
 }
 
 /** Consistent guest-facing scope names for selectors, summaries and lists. */
@@ -213,7 +202,7 @@ export function generatedTerms(rules: Rules & Pick<CouponVersion, "scope" | "usa
 
 /** Short lines for the QR offer card. */
 export function offerHeadline(benefit: CouponBenefit, scope: CouponScope) {
-  const head = benefit.kind === "percent" ? `Save ${benefit.percent}%` : `${thb(benefit.amount)} off`;
+  const head = benefit.kind === "percent" ? `Save ${benefit.percent / 100}%` : `${thb(benefit.amount)} off`;
   const sub =
     scope === "accommodation"
       ? "on villa stays booked direct"
@@ -310,8 +299,8 @@ export function qrDirectPercent(
 ) {
   const active = properties.filter((property) => property.status === "active");
   const slug = destination.kind === "villa" || destination.kind === "booking" ? destination.propertySlug : undefined;
-  if (slug) return Math.max(0, active.find((property) => property.slug === slug)?.directDiscountPercent ?? 0);
-  return active.length ? Math.max(0, Math.min(...active.map((property) => property.directDiscountPercent))) : 0;
+  if (slug) return Math.max(0, active.find((property) => property.slug === slug)?.directDiscountPercent ?? 0) / 100;
+  return active.length ? Math.max(0, Math.min(...active.map((property) => property.directDiscountPercent))) / 100 : 0;
 }
 
 /**

@@ -14,7 +14,7 @@ import { IMAGE_ACCEPT, SaveStatus, Section, Thumb, useImageUpload, useSaver } fr
 
 /** Villa photo gallery: upload or link photos, reorder them, remove them. The first photo is the cover. */
 export function PropertyPhotosEditor({ property }: { property: Doc<"properties"> }) {
-  const update = useMutation(api.properties.update);
+  const update = useMutation(api.catalog.properties.update);
   const upload = useImageUpload();
   const confirm = useConfirm();
   const save = useSaver();

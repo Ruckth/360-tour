@@ -1,4 +1,6 @@
 "use client";
+import { parseMoneyInput } from "@/lib/money-input";
+
 
 import { ChevronDown, Plus, Search } from "lucide-react";
 import { useId, useMemo, useState, type FormEvent } from "react";
@@ -9,7 +11,7 @@ import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Dia
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { MAX_PRICE } from "convex/lib/billMath";
+import { MAX_PRICE } from "convex/shared/orderMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
 import { amountInput } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
@@ -250,12 +252,12 @@ function CustomItemDialog({ onAdd, needsManager, initialName = "", label = "Cust
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(initialName);
   const [price, setPrice] = useState("");
-  const valid = name.trim() && price !== "" && Number(price) >= 0;
+  const valid = name.trim() && price !== "" && parseMoneyInput(price) >= 0;
 
   function submit(event: FormEvent) {
     event.preventDefault();
     if (!valid) return;
-    onAdd({ kind: "extra", name: name.trim(), price: Number(price) });
+    onAdd({ kind: "extra", name: name.trim(), price: parseMoneyInput(price) });
     setName(initialName);
     setPrice("");
     setOpen(false);

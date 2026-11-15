@@ -10,7 +10,7 @@ import {
   serializeConciergeTurnLog,
   startTurnMetrics,
   timeStage,
-} from "convex/lib/turnMetrics";
+} from "convex/concierge/metrics";
 
 describe("turnMetrics", () => {
   it("creates a non-empty correlation id", () => {

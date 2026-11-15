@@ -53,11 +53,11 @@ export function AppointmentHistory({
   staffName,
   serviceName,
 }: {
-  appointmentId: Id<"serviceAppointments">;
+  appointmentId: Id<"appointments">;
   staffName: (id: string) => string;
   serviceName: (id: string) => string;
 }) {
-  const { results: history, status, loadMore } = usePaginatedQuery(api.adminServices.listAppointmentHistoryPage, { appointmentId }, { initialNumItems: 25 });
+  const { results: history, status, loadMore } = usePaginatedQuery(api.services.admin.listAppointmentHistoryPage, { appointmentId }, { initialNumItems: 25 });
 
   function show(field: string, value: Value, currency: string): string {
     if (value === null || value === "") return "—";

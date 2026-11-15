@@ -7,7 +7,7 @@ import { defineConfig, devices } from "@playwright/test";
  * syncs or deploys Convex. Results are written to BENCH_OUT (JSON).
  */
 const baseURL = process.env.BENCH_BASE_URL;
-if (!baseURL) throw new Error("BENCH_BASE_URL is required (an already running demo server)");
+
 
 export default defineConfig({
   testDir: "./tests/bench",

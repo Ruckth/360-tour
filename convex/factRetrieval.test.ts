@@ -1,3 +1,4 @@
+import { generateTestReply, respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +24,7 @@ async function setup() {
         name: slug,
         tagline: "",
         description: "",
-        pricePerNight: 1000,
+        pricePerNight: 100000,
         currency: "THB",
         maxGuests: 4,
         bedrooms: 2,
@@ -32,23 +33,23 @@ async function setup() {
         images: [],
         amenities: ["WiFi"],
         tourRoomIds: [],
-        directDiscountPercent: 10,
+        directDiscountPercent: 1000,
         status: "active",
       }),
     );
   const pool = await property("pool-villa");
   const garden = await property("garden-villa");
-  const sessionId = await t.mutation(api.chat.createSession, {
+  const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, {
     channel: "web",
     propertySlug: "pool-villa",
   });
   const fact = (
     body: string,
     overrides: Partial<
-      Parameters<typeof admin.mutation<typeof api.businessFacts.adminSave>>[1]
+      Parameters<typeof admin.mutation<typeof api.concierge.businessFacts.adminSave>>[1]
     > = {},
   ) =>
-    admin.mutation(api.businessFacts.adminSave, {
+    admin.mutation(api.concierge.businessFacts.adminSave, {
       title: "Breakfast",
       body,
       searchText: "breakfast included meal morning",
@@ -56,24 +57,10 @@ async function setup() {
       status: "approved",
       ...overrides,
     });
-  return { t, admin, pool, garden, sessionId, fact };
+  return { t, admin, pool, garden, sessionId, sessionIdGuestToken, fact };
 }
 
 describe("business fact evidence", () => {
-  it("disables retrieval without reviving old context when the cohort is zero", async () => {
-    const { t, sessionId, fact } = await setup();
-    await fact("Included.");
-    vi.stubEnv("AI_FACT_RETRIEVAL_PERCENT", "0");
-    expect(
-      await t.query(internal.businessFacts.search, {
-        sessionId,
-        query: "breakfast",
-      }),
-    ).toEqual({ facts: [], noMatch: true });
-    expect(
-      await t.query(internal.chatKnowledge.getApprovedContext, { sessionId }),
-    ).toEqual([]);
-  });
   it("requires an administrator and a source, and prevents lost edits", async () => {
     const { t, admin, fact } = await setup();
     const input = {
@@ -84,19 +71,19 @@ describe("business fact evidence", () => {
       status: "approved" as const,
     };
     await expect(
-      t.mutation(api.businessFacts.adminSave, input),
+      t.mutation(api.concierge.businessFacts.adminSave, input),
     ).rejects.toThrow("Not authenticated");
     await expect(
-      admin.mutation(api.businessFacts.adminSave, { ...input, source: "" }),
+      admin.mutation(api.concierge.businessFacts.adminSave, { ...input, source: "" }),
     ).rejects.toThrow("Source");
     const id = await fact("Included.");
-    await admin.mutation(api.businessFacts.adminSave, {
+    await admin.mutation(api.concierge.businessFacts.adminSave, {
       ...input,
       factId: id,
       expectedRevision: 1,
     });
     await expect(
-      admin.mutation(api.businessFacts.adminSave, {
+      admin.mutation(api.concierge.businessFacts.adminSave, {
         ...input,
         factId: id,
         expectedRevision: 1,
@@ -110,7 +97,7 @@ describe("business fact evidence", () => {
     await fact("Garden breakfast.", { propertyId: garden });
     await fact("Draft breakfast.", { status: "draft" });
     await fact("Archived breakfast.", { status: "archived" });
-    const result = await t.query(internal.businessFacts.search, {
+    const result = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -120,7 +107,7 @@ describe("business fact evidence", () => {
       revision: 1,
       source: "Owner-confirmed policy",
     });
-    const named = await t.query(internal.businessFacts.search, {
+    const named = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
       propertySlug: "garden-villa",
@@ -148,7 +135,7 @@ describe("business fact evidence", () => {
     });
     expect(
       (
-        await t.query(internal.businessFacts.search, {
+        await t.query(internal.concierge.businessFacts.search, {
           sessionId,
           query: "breakfast",
         })
@@ -158,7 +145,7 @@ describe("business fact evidence", () => {
   it("returns current revisions, rejects invalid scope/paused sessions, and bounds evidence", async () => {
     const { t, admin, pool, sessionId, fact } = await setup();
     const id = await fact("Old policy.");
-    await admin.mutation(api.businessFacts.adminSave, {
+    await admin.mutation(api.concierge.businessFacts.adminSave, {
       factId: id,
       expectedRevision: 1,
       title: "Breakfast",
@@ -167,7 +154,7 @@ describe("business fact evidence", () => {
       source: "Updated owner policy",
       status: "approved",
     });
-    const result = await t.query(internal.businessFacts.search, {
+    const result = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -177,7 +164,7 @@ describe("business fact evidence", () => {
         title: `Breakfast ${i}`,
         propertyId: pool,
       });
-    const bounded = await t.query(internal.businessFacts.search, {
+    const bounded = await t.query(internal.concierge.businessFacts.search, {
       sessionId,
       query: "breakfast",
     });
@@ -189,7 +176,7 @@ describe("business fact evidence", () => {
       ),
     ).toBeLessThanOrEqual(8000);
     await expect(
-      t.query(internal.businessFacts.search, {
+      t.query(internal.concierge.businessFacts.search, {
         sessionId,
         query: "breakfast",
         propertySlug: "unknown-villa",
@@ -197,7 +184,7 @@ describe("business fact evidence", () => {
     ).rejects.toThrow("Unknown active property");
     await t.run((ctx) => ctx.db.patch(sessionId, { aiPaused: true }));
     await expect(
-      t.query(internal.businessFacts.search, { sessionId, query: "breakfast" }),
+      t.query(internal.concierge.businessFacts.search, { sessionId, query: "breakfast" }),
     ).rejects.toThrow("active AI session");
   });
   it.each([
@@ -207,7 +194,7 @@ describe("business fact evidence", () => {
   ])(
     "fetches English search evidence before answering in the guest language: %s",
     async (message, expected) => {
-      const { t, sessionId, fact } = await setup();
+      const { t, sessionId, sessionIdGuestToken, fact } = await setup();
       await fact("Breakfast is included.");
       vi.stubEnv("AI_API_KEY", "test-key");
       vi.stubEnv("AI_API_BASE_URL", "https://ai.test/v1");
@@ -253,7 +240,7 @@ describe("business fact evidence", () => {
       );
       expect(
         (
-          await t.action(api.chatAi.respond, {
+          await respondTest(t, { guestToken: sessionIdGuestToken,
             sessionId,
             userMessage: message,
           })
@@ -267,7 +254,7 @@ describe("business fact evidence", () => {
     },
   );
   it("records missing context after an empty fact lookup without publishing model output", async () => {
-    const { t, sessionId } = await setup();
+    const { t, sessionId, sessionIdGuestToken } = await setup();
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubGlobal(
       "fetch",
@@ -304,7 +291,7 @@ describe("business fact evidence", () => {
         );
       }),
     );
-    const reply = await t.action(api.chatAi.respond, {
+    const reply = await respondTest(t, { guestToken: sessionIdGuestToken,
       sessionId,
       userMessage: "Is airport pickup included?",
     });
@@ -319,7 +306,7 @@ describe("business fact evidence", () => {
 });
 
 it("attributes a missing policy to the explicitly looked-up villa rather than the viewed page", async () => {
-  const { t, sessionId, garden } = await setup();
+  const { t, sessionId, sessionIdGuestToken, garden } = await setup();
   vi.stubEnv("AI_API_KEY", "test-key");
   vi.stubGlobal(
     "fetch",
@@ -352,7 +339,7 @@ it("attributes a missing policy to the explicitly looked-up villa rather than th
       );
     }),
   );
-  const result = await t.action(api.chatAi.respond, {
+  const result = await respondTest(t, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "가든 빌라에 조식이 포함되나요?",
     locale: "ko",
@@ -365,7 +352,7 @@ it("attributes a missing policy to the explicitly looked-up villa rather than th
 });
 
 it("labels partial unsaved settings as demo defaults and respects localized policy menus", async () => {
-  const { t, sessionId } = await setup();
+  const { t, sessionId, sessionIdGuestToken } = await setup();
   await t.run((ctx) =>
     ctx.db.insert("siteSettings", {
       key: "default",
@@ -374,12 +361,12 @@ it("labels partial unsaved settings as demo defaults and respects localized poli
       updatedByEmail: "admin@example.com",
     }),
   );
-  const demo = await t.action(api.chatAi.respond, {
+  const demo = await respondTest(t, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "What is your cancellation policy?",
   });
   expect(demo.response).toContain("Demo default, not a host-confirmed policy");
-  const check = await t.action(api.chatAi.respond, {
+  const check = await respondTest(t, { guestToken: sessionIdGuestToken,
     sessionId,
     userMessage: "Check-in time?",
     locale: "ko",
@@ -405,7 +392,7 @@ it("labels partial unsaved settings as demo defaults and respects localized poli
     );
   });
   vi.stubGlobal("fetch", fetchMock);
-  const translated = await t.action(api.chatAi.generateReply, {
+  const translated = await generateTestReply(t, {
     sessionId,
     userMessage: "What is the cancellation policy?",
     locale: "th",

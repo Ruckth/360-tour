@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAnswerMatcher, groupUnknownQuestions } from "../../convex/lib/knowledgeGrouping";
+import { createAnswerMatcher, groupUnknownQuestions } from "../../convex/concierge/knowledgeGrouping";
 
 describe("groupUnknownQuestions", () => {
   it("groups by normalized question, counts statuses and sorts most-asked first", () => {

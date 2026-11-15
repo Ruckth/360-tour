@@ -1,6 +1,6 @@
 "use client";
 
-import { IMAGE_TYPES } from "convex/lib/imageUploads";
+import { IMAGE_TYPES } from "convex/shared/imageUploads";
 import { Camera, ImageUp, Trash2 } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";

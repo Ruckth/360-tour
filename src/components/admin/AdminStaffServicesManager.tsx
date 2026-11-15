@@ -1,5 +1,7 @@
 "use client";
 
+import { bahtToSatang, satangToBaht } from 'convex/shared/money';
+
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
@@ -73,17 +75,17 @@ function hoursSummary(staff: Staff) {
 }
 
 export function AdminStaffServicesManager({ section }: { section: "staff" | "services" }) {
-  const staff = useQuery(api.adminServices.listStaff, { includeArchived: true });
-  const services = useQuery(api.adminServices.listServices, { includeArchived: true });
+  const staff = useQuery(api.services.admin.listStaff, { includeArchived: true });
+  const services = useQuery(api.services.admin.listServices, { includeArchived: true });
   const [editing, setEditing] = useState<{ kind: "staff"; staff?: Staff } | { kind: "service"; service?: Service } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [view, setView] = useState<"list" | "matrix">("list");
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [bulkTimeOff, setBulkTimeOff] = useState(false);
-  const archiveStaff = useMutation(api.adminServices.archiveStaff);
-  const archiveService = useMutation(api.adminServices.archiveService);
-  const updateStaff = useMutation(api.adminServices.updateStaff);
-  const updateService = useMutation(api.adminServices.updateService);
+  const archiveStaff = useMutation(api.services.commands.archiveStaff.archiveStaff);
+  const archiveService = useMutation(api.services.commands.archiveService.archiveService);
+  const updateStaff = useMutation(api.services.commands.updateStaff.updateStaff);
+  const updateService = useMutation(api.services.commands.updateService.updateService);
   const convex = useConvex();
   const router = useRouter();
   const [error, setError] = useState("");
@@ -140,7 +142,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   }
 
   async function archivePerson(person: Staff) {
-    const upcoming = await convex.query(api.adminServices.countUpcomingAppointments, { staffId: person._id });
+    const upcoming = await convex.query(api.services.admin.countUpcomingAppointments, { staffId: person._id });
     if (upcoming) {
       if (
         await confirm({
@@ -169,7 +171,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   }
 
   async function archiveOffering(service: Service) {
-    const upcoming = await convex.query(api.adminServices.countUpcomingAppointments, { serviceId: service._id });
+    const upcoming = await convex.query(api.services.admin.countUpcomingAppointments, { serviceId: service._id });
     const confirmed = await confirm({
       title: `Archive ${service.name}?`,
       description: `It will no longer be bookable.${upcoming ? ` ${plural(upcoming, "upcoming appointment")} stay booked.` : ""}`,
@@ -382,9 +384,9 @@ function isSimpleSchedule(staff?: Staff) {
 }
 
 function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void }) {
-  const createStaff = useMutation(api.adminServices.createStaff);
-  const updateStaff = useMutation(api.adminServices.updateStaff);
-  const addTimeOff = useMutation(api.adminServices.addTimeOff);
+  const createStaff = useMutation(api.services.commands.createStaff.createStaff);
+  const updateStaff = useMutation(api.services.commands.updateStaff.updateStaff);
+  const addTimeOff = useMutation(api.services.commands.addTimeOff.addTimeOff);
   // The form edits one shift and one daily break applied to the chosen days.
   const firstShift = staff?.workingHours[0];
   const firstBreak = staff?.breaks[0];
@@ -590,9 +592,9 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
 }
 
 function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: Staff[]; onClose: () => void }) {
-  const createService = useMutation(api.adminServices.createService);
-  const updateService = useMutation(api.adminServices.updateService);
-  const upcoming = useQuery(api.adminServices.countUpcomingAppointments, service ? { serviceId: service._id } : "skip");
+  const createService = useMutation(api.services.commands.createService.createService);
+  const updateService = useMutation(api.services.commands.updateService.updateService);
+  const upcoming = useQuery(api.services.admin.countUpcomingAppointments, service ? { serviceId: service._id } : "skip");
   const confirm = useConfirm();
   // Only active staff can be assigned; archived ones already left the service.
   const [staffIds, setStaffIds] = useState<Set<Id<"staff">>>(
@@ -617,7 +619,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
       category: text("category"),
       durationMin: Number(text("durationMin")),
       bufferMin: Number(text("bufferMin")),
-      price: Number(text("price")),
+      price: bahtToSatang(Number(text("price"))),
       currency: service?.currency ?? "THB",
       staffIds: [...staffIds],
     };
@@ -708,7 +710,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
               <Input id="sv-buffer" name="bufferMin" type="number" min={0} step={5} defaultValue={service?.bufferMin ?? 15} required />
             </Field>
             <Field label={`Price (${service?.currency ?? "THB"})`} htmlFor="sv-price">
-              <Input id="sv-price" name="price" type="number" min={0} defaultValue={service?.price} required />
+              <Input id="sv-price" name="price" type="number" step="0.01" min={0} defaultValue={service ? satangToBaht(service.price) : undefined} required />
             </Field>
           </div>
           <fieldset>
@@ -759,9 +761,9 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
 export function TimeOffList({ staff }: { staff: Staff }) {
   const [range, setRange] = useState<"upcoming" | "past">("upcoming");
   const { results: rows, status, loadMore } = usePaginatedQuery(
-    api.adminServices.listTimeOffPage, { staffId: staff._id, range }, { initialNumItems: 20 },
+    api.services.admin.listTimeOffPage, { staffId: staff._id, range }, { initialNumItems: 20 },
   );
-  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
+  const removeTimeOff = useMutation(api.services.commands.removeTimeOff.removeTimeOff);
   const [editing, setEditing] = useState<TimeOff | null>(null);
   const [error, setError] = useState("");
   const confirm = useConfirm();
@@ -822,8 +824,8 @@ export function TimeOffList({ staff }: { staff: Staff }) {
 
 export function TimeOffDialog({ timeOff: initialTimeOff, staffName, onClose }: { timeOff: TimeOff; staffName?: string; onClose: () => void }) {
   const [timeOff] = useState(initialTimeOff);
-  const updateTimeOff = useMutation(api.adminServices.updateTimeOff);
-  const removeTimeOff = useMutation(api.adminServices.removeTimeOff);
+  const updateTimeOff = useMutation(api.services.commands.updateTimeOff.updateTimeOff);
+  const removeTimeOff = useMutation(api.services.commands.removeTimeOff.removeTimeOff);
   const [pending, setPending] = useState<"save" | "remove" | null>(null);
   // Set synchronously, so a double tap can't send two writes before `pending` re-renders.
   const busy = useRef(false);

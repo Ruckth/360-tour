@@ -24,7 +24,7 @@ type Row = AdminSession & { messages: AdminMessage[] };
 let messageSeq = 0;
 function messages(...lines: Array<[AdminMessage["role"], string, number]>): AdminMessage[] {
   return lines.map(([role, content, minutesAgo]) => ({
-    _id: `msg-${++messageSeq}` as Id<"chatMessages">,
+    _id: `msg-${++messageSeq}` as Id<"messages">,
     role,
     content,
     timestamp: now - minutesAgo * MIN,
@@ -47,7 +47,7 @@ function row(session: Omit<AdminSession, "isActive" | "createdAt"> & { messages:
 
 const sessions: Row[] = [
   row({
-    _id: "chat-anna" as Id<"chatSessions">,
+    _id: "chat-anna" as Id<"conversations">,
     channel: "web",
     visitorName: "Anna Müller",
     visitorEmail: "anna.mueller@example.com",
@@ -74,7 +74,7 @@ const sessions: Row[] = [
     ),
   }),
   row({
-    _id: "chat-somchai" as Id<"chatSessions">,
+    _id: "chat-somchai" as Id<"conversations">,
     channel: "line",
     visitorName: "Somchai P.",
     visitorContactApp: "line",
@@ -86,7 +86,7 @@ const sessions: Row[] = [
     messages: messages(["user", "Is breakfast included for four people?", 9]),
   }),
   row({
-    _id: "chat-kenji" as Id<"chatSessions">,
+    _id: "chat-kenji" as Id<"conversations">,
     channel: "whatsapp",
     visitorName: "Kenji Watanabe",
     visitorPhone: "+81 90 1234 5678",
@@ -97,7 +97,7 @@ const sessions: Row[] = [
     messages: messages(["user", "Can we check in at 11 am on Friday?", 14]),
   }),
   row({
-    _id: "chat-marta" as Id<"chatSessions">,
+    _id: "chat-marta" as Id<"conversations">,
     channel: "instagram",
     visitorName: "Marta Silva",
     visitorContactApp: "instagram",
@@ -160,7 +160,7 @@ function stable<A>(name: string, compute: (args: A) => unknown) {
 
 registerFixtureFunctions({
   queries: {
-    "adminChat:listSessions": stable("list", ({ status, adminStatus, searchQuery }: { status: string; adminStatus: string; searchQuery?: string }) => ({
+    "messaging/adminChat:listSessions": stable("list", ({ status, adminStatus, searchQuery }: { status: string; adminStatus: string; searchQuery?: string }) => ({
       sessions: sessions
         .filter((session) => matches(session, status, adminStatus))
         .filter((session) => !searchQuery || (session.visitorName ?? "").toLowerCase().includes(searchQuery.toLowerCase()))
@@ -169,7 +169,7 @@ registerFixtureFunctions({
       continueCursor: null,
       isDone: true,
     })),
-    "adminChat:getSessionDetail": stable("detail", ({ sessionId }: { sessionId: string }) => {
+    "messaging/adminChat:getSessionDetail": stable("detail", ({ sessionId }: { sessionId: string }) => {
       const session = byId(sessionId);
       return {
         session: view(session),
@@ -183,10 +183,10 @@ registerFixtureFunctions({
         instagramEvents: [],
       };
     }),
-    "adminChat:listTranscriptMessages": stable("transcript", ({ sessionId }: { sessionId: string }) => [...byId(sessionId).messages].reverse()),
+    "messaging/adminChat:listTranscriptMessages": stable("transcript", ({ sessionId }: { sessionId: string }) => [...byId(sessionId).messages].reverse()),
   },
   mutations: {
-    "adminChat:setSessionStatus": (args: { sessionId: string; status: AdminSessionStatus }) => {
+    "messaging/adminChat:setSessionStatus": (args: { sessionId: string; status: AdminSessionStatus }) => {
       record("setSessionStatus", args);
       const session = byId(args.sessionId);
       if (args.status === "resolved") finishWithoutReply(session);
@@ -194,27 +194,27 @@ registerFixtureFunctions({
       else Object.assign(session, { adminStatus: "open", inboxState: "processing", staffTask: session.staffTask ?? "Review conversation", resolutionSource: undefined });
       return null;
     },
-    "adminChat:settleGuestMessage": (args: { sessionId: string; messageId: string }) => {
+    "messaging/adminChat:settleGuestMessage": (args: { sessionId: string; messageId: string }) => {
       record("settleGuestMessage", args);
       finishWithoutReply(byId(args.sessionId));
       return null;
     },
-    "adminChat:setAiPaused": (args: { sessionId: string; paused: boolean }) => {
+    "messaging/adminChat:setAiPaused": (args: { sessionId: string; paused: boolean }) => {
       record("setAiPaused", args);
       byId(args.sessionId).aiPaused = args.paused;
       return null;
     },
-    "adminChat:setKeepWithStaff": (args: { sessionId: string; keep: boolean }) => {
+    "messaging/adminChat:setKeepWithStaff": (args: { sessionId: string; keep: boolean }) => {
       record("setKeepWithStaff", args);
       byId(args.sessionId).keepWithStaff = args.keep;
       return null;
     },
-    "adminChat:setStaffTask": (args: { sessionId: string; task: string | null }) => {
+    "messaging/adminChat:setStaffTask": (args: { sessionId: string; task: string | null }) => {
       record("setStaffTask", args);
       byId(args.sessionId).staffTask = args.task ?? undefined;
       return null;
     },
-    "adminChat:deleteArchivedSession": (args: { sessionId: string }) => {
+    "messaging/adminChat:deleteArchivedSession": (args: { sessionId: string }) => {
       record("deleteArchivedSession", args);
       sessions.splice(sessions.indexOf(byId(args.sessionId)), 1);
       return null;

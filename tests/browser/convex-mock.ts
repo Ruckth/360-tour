@@ -3,11 +3,11 @@ import { getFunctionName } from "convex/server";
 import { useSyncExternalStore } from "react";
 
 /*
- * A fixture can answer named functions itself (staffAccess:listPeople, ...) from its own in-memory
+ * A fixture can answer named functions itself (auth/staffAccess:listPeople, ...) from its own in-memory
  * store; its mutations then re-render every query. Functions it doesn't register keep the
  * defaults below.
  */
-type Handler = (args: never) => unknown;
+type Handler = { invoke(args: unknown): unknown }["invoke"];
 const queryHandlers = new Map<string, Handler>();
 const mutationHandlers = new Map<string, Handler>();
 let storeVersion = 0;
@@ -73,38 +73,38 @@ export function usePaginatedQuery(query?: Parameters<typeof getFunctionName>[0],
   return { results, status: "Exhausted", isLoading: false, loadMore: () => undefined };
 }
 
-const money = { total: 28900, currency: "THB", gross: 28900, refunded: 0, net: 28900, owed: 0, credit: 0, refundable: 0, refundContext: "credit", legacyRefund: false };
+const money = { total: 2890000, currency: "THB", gross: 2890000, refunded: 0, net: 2890000, owed: 0, credit: 0, refundable: 0, refundContext: "credit",  };
 
 function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   if (args === "skip") return undefined;
   const name = getFunctionName(query);
   // Picker fixtures supply their catalog through the real component's initial props.
-  if (name === "adminServices:listServices" || name === "adminServices:listStaff") return undefined;
-  if (name === "adminBookings:stayAppointments") return { appointments: [], complete: true };
-  if (name === "adminServices:listSchedule") return { staff: [], services: [], appointments: [], blocks: [], shifts: [], patternHistory: [] };
-  if (name === "pos:ordersForBooking") return {
+  if (name === "services/admin:listServices" || name === "services/admin:listStaff") return undefined;
+  if (name === "bookings/admin:stayAppointments") return { appointments: [], complete: true };
+  if (name === "services/admin:listSchedule") return { staff: [], services: [], appointments: [], blocks: [], shifts: [], patternHistory: [] };
+  if (name === "pos/orders:ordersForBooking") return {
     balance: { total: 28900, paid: 28900, owed: 0, refunded: 0, credit: 0 },
     activeOrder: null,
     orders: [],
     discardedOrders: [],
     refunds: [],
   };
-  if (name === "adminBookings:bookingFinancials") return {
-    revision: 0, money, payments: [], refunds: [], legacyOrders: [], unitemised: 28900,
-    legacyManual: { cancellable: false, reason: "Receipt provenance is unknown in this legacy fixture." }, hasStripePayment: false, complete: true,
+  if (name === "bookings/admin:bookingFinancials") return {
+    revision: 0, money, payments: [], refunds: [],
+    hasStripePayment: false, complete: true,
   };
-  if (name === "adminBookings:findGuests" && params.has("returning")) return [{
+  if (name === "bookings/admin:findGuests" && params.has("returning")) return [{
     guestName: "Returning Guest", guestPhone: params.get("phone") ?? "0812345678",
     guestEmail: "returning@example.com", stays: 2, lastCheckIn: "2025-01-30",
   }];
-  if (name === "adminBookings:quoteBookingEdit") {
+  if (name === "bookings/admin:quoteBookingEdit") {
     // The stay's stored price, or 7,000 a night once its dates change.
     const { checkIn, checkOut } = args as { checkIn: string; checkOut: string };
-    if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 34000, discountAmount: 5100, total: 28900, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
-    const total = 7000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
+    if (checkIn === "2025-01-30" && checkOut === "2025-02-03") return { subtotal: 3400000, discountAmount: 510000, total: 2890000, currency: "THB", promotion: null, couponRemoved: false, repriced: false };
+    const total = 700000 * Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86_400_000);
     return { subtotal: total, discountAmount: 0, total, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
   }
-  if (name === "adminBookings:getForAdmin") return {
+  if (name === "bookings/admin:getForAdmin") return {
     _id: "booking-id", createdAt: 1738231200000, propertyId: "pool-id", guestName: "Historical Guest", guestPhone: "0812345678",
     checkIn: "2025-01-30", checkOut: "2025-02-03", guests: 2, nights: 4,
     subtotal: 34000, discountAmount: 5100, total: 28900, owed: 0, currency: "THB",
@@ -125,7 +125,7 @@ export function useConvexAuth() { return { isLoading: false, isAuthenticated: tr
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
   const handler = args === "skip" ? undefined : queryHandlers.get(getFunctionName(query));
-  return handler ? handler(args as never) : fixtureQuery(query, args);
+  return handler ? handler(args) : fixtureQuery(query, args);
 }
 export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
   return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));
@@ -135,7 +135,7 @@ export function useMutation(mutation?: Parameters<typeof getFunctionName>[0]) {
   if (handler) return async (args: unknown) => {
     document.body.dataset.submission = JSON.stringify(args);
     try {
-      return await handler(args as never);
+      return await handler(args);
     } finally {
       notifyFixtureStore();
     }

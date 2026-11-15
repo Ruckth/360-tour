@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { marketingCapabilities } from "convex/lib/marketingAccess";
+import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
 import { DashboardScreen } from "@/components/admin/marketing/dashboard/DashboardScreen";
 import type { DashboardViewProps } from "@/components/admin/marketing/dashboard/DashboardView";
@@ -32,9 +32,9 @@ it.each(["manager", "marketer", "finance", "viewer"] as const)("keeps operationa
   await render(role);
   await act(async () => mocked.view!.onOpenStay("booking"));
   expect(mocked.bookingSheet).not.toHaveBeenCalled();
-  expect(mocked.query.mock.calls.filter(call => call[0] === "properties:adminList").every(call => call[1] === "skip")).toBe(true);
+  expect(mocked.query.mock.calls.filter(call => call[0] === "catalog/properties:adminList").every(call => call[1] === "skip")).toBe(true);
   if (role === "marketer" || role === "viewer") {
-    await expect(mocked.view!.onSaveSpend({ campaignId: "campaign" as Parameters<DashboardViewProps["onSaveSpend"]>[0]["campaignId"], amount: 100, from: "2026-11-09", to: "2026-11-09" })).rejects.toThrow("cannot manage spend");
+    await expect(mocked.view!.onSaveSpend({ campaignId: "campaign" as Parameters<DashboardViewProps["onSaveSpend"]>[0]["campaignId"], amount: 10000, from: "2026-11-09", to: "2026-11-09" })).rejects.toThrow("cannot manage spend");
     expect(mocked.mutate).not.toHaveBeenCalled();
   }
 });
@@ -42,7 +42,7 @@ it("retains operational booking details for system administrators", async () => 
   await render("admin");
   await act(async () => mocked.view!.onOpenStay("booking"));
   expect(mocked.bookingSheet).toHaveBeenCalledWith(expect.objectContaining({ bookingId: "booking" }));
-  expect(mocked.query).toHaveBeenCalledWith("properties:adminList", {});
+  expect(mocked.query).toHaveBeenCalledWith("catalog/properties:adminList", {});
 });
 
 it.each(["range", "basis"] as const)("clears previous figures while a different %s loads", async (change) => {

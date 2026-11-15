@@ -1,4 +1,6 @@
 "use client";
+import { satangToBaht } from "convex/shared/money";
+
 
 import { staffDateTime } from "@/lib/staff-time";
 import { Disclosure } from "@/components/ui/disclosure";
@@ -7,7 +9,7 @@ import { flushSync } from "react-dom";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import type { AffiliateRow, CreditRow } from "convex/marketingAffiliates";
+import type { AffiliateRow, CreditRow } from 'convex/shared/marketingAffiliateTypes';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,18 +34,18 @@ import type {
   MarketingProperty,
 } from "./types";
 
-type SavePartner = FunctionArgs<typeof api.marketingAffiliates.saveAffiliate>;
-type Decision = FunctionArgs<typeof api.marketingAffiliates.reviewCredit>;
+type SavePartner = FunctionArgs<typeof api.marketing.commands.saveAffiliate.saveAffiliate>;
+type Decision = FunctionArgs<typeof api.marketing.commands.reviewCredit.reviewCredit>;
 export type CreditDetail = FunctionReturnType<
-  typeof api.marketingAffiliates.getCredit
+  typeof api.marketing.affiliates.getCredit
 >;
 export type AffiliateActions = {
   save: (args: SavePartner) => Promise<unknown>;
   status: (
-    args: FunctionArgs<typeof api.marketingAffiliates.setAffiliateStatus>,
+    args: FunctionArgs<typeof api.marketing.commands.setAffiliateStatus.setAffiliateStatus>,
   ) => Promise<unknown>;
   coupon: (
-    args: FunctionArgs<typeof api.marketingAffiliates.assignCoupon>,
+    args: FunctionArgs<typeof api.marketing.commands.assignCoupon.assignCoupon>,
   ) => Promise<unknown>;
   /** Makes the campaign picked with "+ New campaign"; left out when the role can't. */
   saveCampaign?: MarketingActions["saveCampaign"];
@@ -62,7 +64,7 @@ export function partnerSlug(name: string) {
 }
 const money = (amount: number) =>
   new Intl.NumberFormat("en-GB", { style: "currency", currency: "THB" }).format(
-    amount,
+    satangToBaht(amount),
   );
 const fieldClass =
   "min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm";

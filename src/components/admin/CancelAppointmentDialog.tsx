@@ -3,7 +3,7 @@
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { appointmentRevision } from "convex/lib/appointmentWindow";
+import { appointmentRevision } from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { formatMoney } from "@/components/admin/labels";
@@ -15,7 +15,7 @@ import { staffDate } from "@/lib/staff-time";
 
 const REASON_MAX = 500;
 
-function paymentConsequence(appointment: Doc<"serviceAppointments">) {
+function paymentConsequence(appointment: Doc<"appointments">) {
   const amount = formatMoney(appointment.price, appointment.currency);
   if (appointment.paymentStatus === "paid") {
     return `${amount} was paid. Cancelling doesn't refund it: if you return the money at the desk, record the refund afterwards.`;
@@ -31,12 +31,12 @@ export function CancelAppointmentDialog({
   staffName,
   onClose,
 }: {
-  appointment: Doc<"serviceAppointments">;
+  appointment: Doc<"appointments">;
   serviceName: string;
   staffName: string;
   onClose: () => void;
 }) {
-  const cancel = useMutation(api.adminServices.cancelAppointment);
+  const cancel = useMutation(api.services.commands.cancelAppointment.cancelAppointment);
   const [original] = useState(appointment);
   const [reason, setReason] = useState("");
   const same = (label: string, value: string) => ({ label, before: value, after: value });

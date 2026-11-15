@@ -9,7 +9,7 @@ export type UnknownQuestionStatus = "new" | "resolved" | "ignored";
  */
 export type AdminUnknownQuestion = {
   _id: Id<"chatUnknownQuestions">;
-  sessionId?: Id<"chatSessions">;
+  sessionId?: Id<"conversations">;
   propertyId?: Id<"properties">;
   propertyName?: string;
   propertySlug?: string;
@@ -20,7 +20,7 @@ export type AdminUnknownQuestion = {
   pageUrl?: string;
   status: UnknownQuestionStatus;
   adminNotified: boolean;
-  /** How a handled report was resolved (set by businessFacts.adminResolveUnknownGroups / adminSave). */
+  /** How a handled report was resolved (set by concierge.businessFacts.adminResolveUnknownGroups / adminSave). */
   resolvedFactTitle?: string;
   resolvedSource?: string;
   createdAt: number;

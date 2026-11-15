@@ -6,10 +6,10 @@ import { useRef, useState } from "react";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { sourceLabel } from "@/components/admin/labels";
 
-type SessionId = Id<"chatSessions">;
+type SessionId = Id<"conversations">;
 type ReplyEntry = {
   draft: string;
-  replyToMessageId?: Id<"chatMessages">;
+  replyToMessageId?: Id<"messages">;
   pending?: boolean;
   error?: string;
   status?: string;
@@ -30,7 +30,7 @@ export type AdminReplyComposer = {
 };
 
 /** Staff reply composer, kept per conversation so a slow reply in one chat never blocks or clears another. */
-export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessageId?: Id<'chatMessages'>): AdminReplyComposer {
+export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessageId?: Id<'messages'>): AdminReplyComposer {
   const { getToken } = useAuth();
   const [entries, setEntries] = useState<Partial<Record<SessionId, ReplyEntry>>>({});
   const entriesRef = useRef(entries);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTIVE_CHAT_WINDOW_MS, isChatSessionActive } from "convex/lib/chatPresence";
+import { ACTIVE_CHAT_WINDOW_MS, isChatSessionActive } from "convex/shared/chatPresence";
 
 describe("isChatSessionActive", () => {
   const now = 1_000_000;

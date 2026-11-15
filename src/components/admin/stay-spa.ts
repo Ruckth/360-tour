@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { orderPath } from "@/components/checkout/checkout-source";
 
-type Appointment = FunctionReturnType<typeof api.adminBookings.stayAppointments>["appointments"][number];
+type Appointment = FunctionReturnType<typeof api.bookings.admin.stayAppointments>["appointments"][number];
 type StayRef = { _id: Id<"bookings">; currency: string };
 
 export type StaySpa = {
@@ -26,7 +26,7 @@ export function spaChargeable(appointment: Pick<Appointment, "status" | "payment
 
 /** undefined while loading, or with no stay. */
 export function useStaySpa(stay: StayRef | null | undefined): StaySpa | undefined {
-  const result = useQuery(api.adminBookings.stayAppointments, stay ? { bookingId: stay._id } : "skip");
+  const result = useQuery(api.bookings.admin.stayAppointments, stay ? { bookingId: stay._id } : "skip");
   if (!stay || !result) return undefined;
   const appointments = result.appointments.filter((a) => spaChargeable(a) && a.currency === stay.currency);
   const total = Math.round(appointments.reduce((sum, a) => sum + a.price, 0) * 100) / 100;
@@ -35,7 +35,7 @@ export function useStaySpa(stay: StayRef | null | undefined): StaySpa | undefine
 
 /** One transaction opens the stay's order and attaches its appointments before navigation. */
 export function useStayCheckout() {
-  const openStayCheckout = useMutation(api.pos.openStayCheckout);
+  const openStayCheckout = useMutation(api.pos.commands.openStayCheckout.openStayCheckout);
   const router = useRouter();
   return useCallback(
     async (bookingId: Id<"bookings">): Promise<string[]> => {

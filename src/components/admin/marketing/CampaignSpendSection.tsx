@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import type { ReportSpend } from "convex/lib/marketingReport";
+import type { ReportSpend } from "convex/shared/marketingReport";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";

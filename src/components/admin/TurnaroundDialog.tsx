@@ -9,7 +9,7 @@ import {
   turnaroundMinutes,
   turnaroundProblem,
   withTurnaround,
-} from "convex/lib/appointmentWindow";
+} from "convex/shared/appointmentWindow";
 import { useState } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
@@ -24,13 +24,13 @@ export function TurnaroundDialog({
   initialMin,
   onClose,
 }: {
-  appointment: Doc<"serviceAppointments">;
+  appointment: Doc<"appointments">;
   serviceDefaultMin?: number;
   /** From resizing the turnaround on the calendar. */
   initialMin?: number;
   onClose: () => void;
 }) {
-  const update = useMutation(api.adminServices.updateAppointmentTurnaround);
+  const update = useMutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround);
   const [original] = useState(appointment);
   const current = turnaroundMinutes(original);
   const [value, setValue] = useState(String(initialMin ?? current));

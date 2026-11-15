@@ -31,7 +31,7 @@ describe("admin chat dashboard source", () => {
       .map((file) => readFileSync(new URL(`../../src/components/admin/${file}`, import.meta.url), "utf8"))
       .join("\n");
     const suggestionsSource = readFileSync(
-      new URL("../../convex/chatSuggestions.ts", import.meta.url),
+      new URL("../../convex/messaging/chatSuggestions.ts", import.meta.url),
       "utf8",
     );
 

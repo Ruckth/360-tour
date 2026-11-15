@@ -1,4 +1,4 @@
-import { normalizeCouponCode, type CouponProblem, type OfferResult } from "convex/lib/offers";
+import { normalizeCouponCode, type CouponProblem, type OfferResult } from "convex/shared/offers";
 
 // Pure coupon logic for the guest booking funnel: reading ?coupon=, sorting a preview into
 // what the guest sees, the message keys (Coupon.* in messages/*.json) and the price lines.

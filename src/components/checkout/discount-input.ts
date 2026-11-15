@@ -1,5 +1,7 @@
+import { parseMoneyInput } from "@/lib/money-input";
+import { basisPointsToPercent, satangToBaht, roundRatio } from "convex/shared/money";
 import { formatMoney } from "@/components/admin/labels";
-import { lineGross, lineStaffDiscount, round2, type LineDiscount, type PricedLine } from "convex/lib/billMath";
+import { lineGross, lineStaffDiscount, type LineDiscount, type PricedLine } from "convex/shared/orderMath";
 import { formatPercent } from "./staff-approvals";
 
 /**
@@ -20,18 +22,18 @@ export function parseDiscount(text: string, line: PricedLine): ParsedDiscount | 
   const percentMatch = /^(.*?)\s*%$/.exec(trimmed);
   const raw = (percentMatch ? percentMatch[1] : trimmed.replace(/^฿\s*/, "")).trim();
   if (!NUMBER.test(raw)) return { ok: false, error: "Type 10% or ฿120" };
-  const value = Number(raw.replace(/,/g, ""));
+  const value = parseMoneyInput(raw.replace(/,/g, ""));
   if (!(value > 0)) return { ok: false, error: "Type more than 0" };
   const gross = lineGross(line);
   if (percentMatch) {
-    if (value > 100) return { ok: false, error: "At most 100%" };
+    if (value > 10000) return { ok: false, error: "At most 100%" };
   } else if (value > gross) {
     return { ok: false, error: `At most ${formatMoney(gross)}` };
   }
   const discount: LineDiscount = { type: percentMatch ? "percent" : "amount", value };
   // Worked out as the bill will: whole satang, at most the line's price.
   const amount = lineStaffDiscount({ ...line, discount });
-  const percent = discount.type === "percent" ? value : gross > 0 ? round2((amount / gross) * 100) : 0;
+  const percent = discount.type === "percent" ? value : gross > 0 ? roundRatio(BigInt(amount) * 10000n, gross) : 0;
   const pct = `${formatPercent(percent)}%`;
   const baht = formatMoney(amount);
   return discount.type === "percent"
@@ -42,5 +44,5 @@ export function parseDiscount(text: string, line: PricedLine): ParsedDiscount | 
 /** What the field shows for a discount already on the line: "15%" or "150". */
 export function discountText(discount: LineDiscount | undefined) {
   if (!discount) return "";
-  return discount.type === "percent" ? `${discount.value}%` : String(discount.value);
+  return discount.type === "percent" ? `${basisPointsToPercent(discount.value)}%` : String(satangToBaht(discount.value));
 }
