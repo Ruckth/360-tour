@@ -23,13 +23,6 @@ const config = [
     ],
   },
   {
-    files: ["**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
-    languageOptions: {
-      parserOptions: { project: "./tsconfig.eslint.json", tsconfigRootDir: import.meta.dirname },
-    },
-    rules: { "@typescript-eslint/no-floating-promises": "error" },
-  },
-  {
     files: ["{src,convex}/**/*.{ts,tsx,js,mjs,cjs,mts,cts,jsx}"],
     plugins: { architecture },
     rules: { "architecture/ownership": "error" },

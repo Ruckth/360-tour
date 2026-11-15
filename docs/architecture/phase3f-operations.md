@@ -33,17 +33,18 @@ The command configures only its anonymous loopback backend's Clerk issuer and ow
 ## Focused tests and full coverage
 
 ```sh
-VITEST_MAX_WORKERS=4 pnpm test:pure             # pure rules, Node and tooling tests
-VITEST_MAX_WORKERS=4 pnpm test:dom pos-order-recovery
-VITEST_MAX_WORKERS=4 pnpm test:convex adminChat
-VITEST_MAX_WORKERS=4 pnpm test:unit             # ALL three projects, former default preserved
-VITEST_MAX_WORKERS=4 pnpm exec vitest --project dom  # focused watch mode
+VITEST_MAX_WORKERS=2 pnpm test:pure             # pure rules and Node tests
+VITEST_MAX_WORKERS=2 pnpm test:dom pos-order-recovery
+VITEST_MAX_WORKERS=2 pnpm test:convex adminChat
+VITEST_MAX_WORKERS=2 pnpm test:unit             # ALL four projects, queued; former default preserved
+VITEST_MAX_WORKERS=2 pnpm exec vitest --project dom  # focused watch mode
+pnpm test:guards                              # serial CLI and repository guards
 pnpm test:booking-ui                          # component/browser checks, same harness
 pnpm verify:integration                       # complete isolated backend/build/real Clerk E2E
 pnpm test:dev                                 # persistent dev lifecycle acceptance
 ```
 
-The projects partition the former `tests/unit/**/*.test.ts` and `convex/**/*.test.ts` defaults exactly once. Existing `happy-dom`/`edge-runtime` declarations choose DOM/Convex projects; other tests run in Node, including pure backend leaves. DOM and Convex retain the real rate-limiter component setup and existing backend harness. Unknown environment declarations fail configuration. No tests, assertions, coverage paths, explicit 30-second archive budgets or typed ESLint tests are dropped. `test:unit` retains its historical full-suite meaning so `verify`, CI and integration keep full default coverage.
+The projects partition the former `tests/unit/**/*.test.ts` and `convex/**/*.test.ts` defaults exactly once. Existing `happy-dom`/`edge-runtime` declarations choose DOM/Convex projects; CLI/process-spawning and repository-wide guards run in a serial Node `guards` project with a 60-second default timeout; other tests run in Node `unit`, including pure backend leaves. DOM and Convex retain the real rate-limiter component setup and existing backend harness. Unknown environment declarations fail configuration. No tests, assertions, coverage paths or explicit archive budgets are dropped; floating-promise coverage uses type-aware oxlint and ESLint retains untyped architecture checks. `test:unit` retains its historical full-suite meaning so `verify`, CI and integration keep full default coverage.
 
 `test:dev` refuses an existing `.env.dev.local` instead of overwriting it. Supply only the three test fields through CI or ignored mode-600 `.env.e2e.local`. It creates unique run-owned owner/cashier/nonstaff Clerk test users, configures its local owner explicitly, signs in actual browser sessions, persists a local order, restarts, checks exact order equality, verifies seed refusal, and exercises SIGINT, terminal-close SIGHUP and occupied-port failure cleanup. It deletes its users, closes its browser/processes and removes its temporary dev config on finish/failure. Its local database remains private and retained. A repeat can prove preservation; first empty seeding is evidenced only on initially empty state. It sends no business email, social, model, payment or refund requests. Tests may call Clerk test-tenant administration and sign-in services.
 
@@ -103,4 +104,4 @@ pnpm preview:retention --evidence <private-evidence.json> --project-id <id> --te
 
 Supported endpoints and backup recommendation: [list deployments](https://docs.convex.dev/management-api/list-deployments), [delete deployment](https://docs.convex.dev/management-api/delete-deployment). No top-level thread, scheduled task, cloud retention worker, paid upgrade or live cleanup is introduced.
 
-Root review corrections: the real installed CLI is exercised against a loopback-only authorization fixture; signal acceptance now includes SIGHUP. The worker ceiling explicitly consumes `VITEST_MAX_WORKERS` (default 4), capped by available CPUs; Vitest does not consume that project convention automatically. Test deadlines and assertions are unchanged. Root removed only Preview defaults for AI_API_KEY, RESEND_API_KEY and CONVEX_SERVER_SECRET, checked dev/prod defaults unchanged, and configured the three nonsecret Vercel Preview scope settings while preserving existing deploy keys. Live first-build/auth/rebuild acceptance passed; the original Preview owner allowlist was restored and all run-owned test users removed.
+Root review corrections: the real installed CLI is exercised against a loopback-only authorization fixture; signal acceptance now includes SIGHUP. The worker ceiling explicitly consumes `VITEST_MAX_WORKERS` (default two locally, four in CI), capped by available CPUs; Vitest applies that environment override after config, so the final configuration hook preserves the CPU ceiling and serial guards. The guards project adds a 60-second default deadline; explicit archive budgets and assertions remain. Root removed only Preview defaults for AI_API_KEY, RESEND_API_KEY and CONVEX_SERVER_SECRET, checked dev/prod defaults unchanged, and configured the three nonsecret Vercel Preview scope settings while preserving existing deploy keys. Live first-build/auth/rebuild acceptance passed; the original Preview owner allowlist was restored and all run-owned test users removed.

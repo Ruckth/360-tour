@@ -17,12 +17,13 @@ Production: https://tour.helpgueststay.com
 ```sh
 pnpm install --frozen-lockfile
 pnpm dev                 # persistent isolated local Convex + Next; configure .env.dev.local
-pnpm lint                # zero warnings
+pnpm check:fast          # TS 7 types + typed oxlint + cached untyped ESLint
+pnpm lint                # untyped ESLint, zero warnings + typed oxlint
 pnpm knip
 pnpm verify:integration  # isolated local backend + real Clerk test tenant
 ```
 
-Read [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership, the feature recipe and current validation. Node 22 is required; use `VITEST_MAX_WORKERS=4` and serialize Next builds. Seed commands are for a deliberately selected empty disposable backend, never an existing shared database.
+Read [ARCHITECTURE.md](./ARCHITECTURE.md) for ownership, the feature recipe and current validation. Node 22 is required; use `VITEST_MAX_WORKERS=2` locally. Full verification, unit suites, builds and E2E commands share a three-slot machine queue; nested commands reuse the slot. Seed commands are for a deliberately selected empty disposable backend, never an existing shared database.
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for environment variables, release flow, and production verification details.
 
@@ -32,4 +33,4 @@ Follow the [admin UX conventions](./docs/guides/admin-ux.md) when changing staff
 
 `pnpm test:e2e` starts and seeds a fresh isolated local Convex backend, builds the app, signs in dedicated Clerk test users, and stops its processes and new sessions afterward. Supply the three Clerk test fields from `.env.example` through the environment or an ignored `.env.e2e.local` file (mode `600`). Production Clerk keys are refused. `pnpm verify:integration` also runs the full verification and component browser suite. See the [Phase 3d implementation record](./docs/architecture/phase3d-dataflow-implementation.md) for auth evidence and CI secret names.
 
-`pnpm test:pure`, `pnpm test:dom <file>` and `pnpm test:convex <file>` focus the three Vitest projects. `pnpm test:unit` preserves full default coverage.
+`pnpm test:pure`, `pnpm test:dom <file>`, `pnpm test:convex <file>` and `pnpm test:guards` focus the four Vitest projects. Guards run serially with a 60-second default timeout. `pnpm test:unit` preserves full default coverage.

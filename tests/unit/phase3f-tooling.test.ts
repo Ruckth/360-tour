@@ -125,7 +125,8 @@ it('Vitest projects partition all former defaults once, preserving DOM harness a
   expect(projects.dom).toContain('tests/unit/pos-order-recovery.test.ts');
   expect(projects.convex).toContain('convex/adminChat.test.ts');
   expect(projects.unit).toContain('convex/shared/offers.test.ts');
-  expect(projects.unit).toContain('tests/unit/eslint-guardrails.test.ts');
-  expect(projects.unit).toContain('tests/unit/convex-schema-tools.test.ts');
+  expect(projects.guards).toContain('tests/unit/eslint-guardrails.test.ts');
+  expect(projects.guards).toContain('tests/unit/convex-schema-tools.test.ts');
+  expect(projects.unit).toContain('tests/unit/heavy.test.ts');
   expect(projects.dom.every(file => file.startsWith('tests/unit/'))).toBe(true);
 });
