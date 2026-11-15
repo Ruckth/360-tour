@@ -1,0 +1,70 @@
+{
+  "branch": "ux/main-sync",
+  "upstream": "d6303797bdb9fb8c74621c8aa7d295a10e990ecc",
+  "tested_code_sha": "beec6fb538ed1d5c6f56279d886383414cd382a6",
+  "merge_sha": "d2549791a4fffc596facbf4e2e3d7e26efeec7d8",
+  "node": "22.22.3",
+  "pnpm": "10.30.3",
+  "conflicted_files_resolved": 73,
+  "gates": [
+    {
+      "command": "pnpm install --frozen-lockfile",
+      "exit_code": 0,
+      "lockfile_regenerated": false
+    },
+    {
+      "command": "pnpm typecheck",
+      "exit_code": 0,
+      "scopes": [
+        "app",
+        "tests",
+        "convex"
+      ]
+    },
+    {
+      "command": "pnpm exec eslint . --max-warnings 0",
+      "exit_code": 0,
+      "errors": 0,
+      "warnings": 0
+    },
+    {
+      "command": "pnpm knip",
+      "exit_code": 0,
+      "reported_findings": 0
+    },
+    {
+      "command": "pnpm arch:score --phase \"$(cat .arch-phase)\"",
+      "exit_code": 0,
+      "phase": 4,
+      "passed": 32,
+      "total": 32
+    },
+    {
+      "command": "pnpm exec vitest run --maxWorkers=3 --testTimeout=30000",
+      "exit_code": 0,
+      "files_passed": 277,
+      "tests_passed": 3263
+    },
+    {
+      "command": "BOOKING_UI_PORT=4374 pnpm exec playwright test -c playwright.booking.config.ts --workers=2",
+      "exit_code": 0,
+      "passed": 592,
+      "skipped": 271,
+      "collected": 863
+    },
+    {
+      "command": "pnpm build",
+      "exit_code": 1,
+      "compiled": true,
+      "next_typecheck_passed": true,
+      "blocked_by": "NEXT_PUBLIC_CONVEX_URL is required",
+      "page": "/[locale]/rooms/[id]"
+    }
+  ],
+  "schema_changes": [],
+  "architecture_exemptions_added": [],
+  "test_files_deleted_relative_to_upstream": [],
+  "deployment_commands_run": false,
+  "pushed": false,
+  "pr_created": false
+}
