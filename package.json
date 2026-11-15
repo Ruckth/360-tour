@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "node scripts/local-dev.mjs",
     "dev:next": "next dev",
-    "dev:convex": "npx convex dev",
+    "dev:convex": "node scripts/cloud-dev.mjs dev",
+    "worktree:setup": "node scripts/worktree-setup.mjs",
     "dev:full": "pnpm dev",
     "build": "node scripts/heavy.mjs next build",
     "preview": "next start",
@@ -35,7 +36,7 @@
     "verify": "node scripts/heavy.mjs node scripts/run-checks.mjs check lint test:unit build",
     "vercel-build": "pnpm typecheck && node scripts/vercel-build.mjs",
     "preview:retention": "node scripts/preview-retention.mjs",
-    "seed": "npx convex run maintenance/seed:seedAll",
+    "seed": "node scripts/cloud-dev.mjs seed",
     "eval:ai-booking": "node scripts/ai-booking-eval.ts",
     "ui-loop:capture": "node scripts/ui-loop/capture.ts",
     "ui-loop:audit": "node scripts/ui-loop/audit.ts",

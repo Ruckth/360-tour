@@ -19,3 +19,7 @@ Read [ARCHITECTURE.md](./ARCHITECTURE.md) before changing application code. It d
 - Never run a full unit suite, build or E2E outside `scripts/heavy.mjs`, or use more than two Vitest workers locally (`export VITEST_MAX_WORKERS=2`).
 - Never leave a dev server, Vite or Chromium running.
 - Never hand-resolve `convex/_generated` or `pnpm-lock.yaml` conflicts: take either side, then run `npx convex codegen` / `pnpm install --lockfile-only`. Only one agent at a time changes dependencies.
+
+## New worktrees
+
+- Run `pnpm worktree:setup` (T3 runs it as the worktree setup script). It clones dependencies, copies `.env.dev.local` / `.env.e2e.local` from `~/.config/360-tour/` (mode 600) and assigns this checkout its own dev and booking-UI ports.

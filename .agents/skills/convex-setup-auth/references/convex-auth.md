@@ -15,7 +15,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 3. Ask whether the user wants local-only setup or production-ready setup now
 4. Read the Convex Auth setup guide before writing code
 5. Make sure the project has a configured Convex deployment:
-   - run `npx convex dev` first if `CONVEX_DEPLOYMENT` is not set
+   - run `pnpm dev` first if `CONVEX_DEPLOYMENT` is not set
    - if CLI configuration requires interactive human input, stop and ask the user to complete that step before continuing
 6. Install the auth packages:
    - `npm install @convex-dev/auth @auth/core@0.37.0`
@@ -28,7 +28,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 9. Add the required `authTables` to `convex/schema.ts`
 10. Replace plain `ConvexProvider` wiring with `ConvexAuthProvider`
 11. Configure at least one auth method in `convex/auth.ts`
-12. Run `npx convex dev --once` or the normal dev flow to push the updated schema and generated code
+12. Run `pnpm dev` or the normal dev flow to push the updated schema and generated code
 13. Verify the client can sign in successfully
 14. Verify Convex receives authenticated identity in backend functions
 15. If the user wants production-ready setup, make sure the same auth setup is configured for the production deployment as well
@@ -50,8 +50,8 @@ Use this when the user wants auth handled directly in Convex rather than through
 ## Concrete Steps
 
 1. Install `@convex-dev/auth` and `@auth/core@0.37.0`
-2. Run `npx convex dev` if the project does not already have a configured deployment
-3. If `npx convex dev` blocks on interactive setup, ask the user explicitly to finish configuring the Convex deployment
+2. Run `pnpm dev` if the project does not already have a configured deployment
+3. If `pnpm dev` blocks on interactive setup, ask the user explicitly to finish configuring the Convex deployment
 4. Run `npx @convex-dev/auth`
 5. Confirm the generated auth setup is present before continuing:
    - `convex/auth.config.ts`
@@ -60,7 +60,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 6. Add `authTables` to `convex/schema.ts`
 7. Replace `ConvexProvider` with `ConvexAuthProvider` in the app entry
 8. Configure the selected auth methods in `convex/auth.ts`
-9. Run `npx convex dev --once` or the normal dev flow so the updated schema and auth files are pushed
+9. Run `pnpm dev` or the normal dev flow so the updated schema and auth files are pushed
 10. Verify login locally
 11. If the user wants production-ready setup, repeat the required auth configuration against the production deployment
 
@@ -69,7 +69,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 - `convex/schema.ts`
 - frontend app entry such as `src/main.tsx` or the framework-equivalent provider file
 - generated Convex Auth setup produced by `npx @convex-dev/auth`
-- an existing configured Convex deployment, or the ability to create one with `npx convex dev`
+- an existing configured Convex deployment, or the ability to create one with `pnpm dev`
 - `convex/auth.ts` starts with `providers: []` until the app configures actual sign-in methods
 
 - Decide whether the user is creating a new app or adding auth to an existing app
@@ -86,7 +86,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 - Do not assume a specific sign-in method. Ask which methods the app needs before wiring UI and backend behavior.
 - `npx @convex-dev/auth` is important because it initializes the auth setup, including the key material. Do not skip it when adding Convex Auth to an existing project.
 - `npx @convex-dev/auth` will fail if the project does not already have a configured `CONVEX_DEPLOYMENT`.
-- `npx convex dev` may require interactive setup for deployment creation or project selection. If that happens, ask the user explicitly for that human step instead of guessing.
+- `pnpm dev` may require interactive setup for deployment creation or project selection. If that happens, ask the user explicitly for that human step instead of guessing.
 - `npx @convex-dev/auth` does not finish the whole integration by itself. You still need to add `authTables`, swap in `ConvexAuthProvider`, and configure at least one auth method.
 - A project can still build even if `convex/auth.ts` still has `providers: []`, so do not treat a successful build as proof that sign-in is fully configured.
 - Convex Auth does not mean every app needs a `users` table. If the app only needs authentication gates, `ctx.auth.getUserIdentity()` may be enough.
@@ -103,7 +103,7 @@ Use this when the user wants auth handled directly in Convex rather than through
 
 ## Human Handoff
 
-If `npx convex dev` or deployment setup requires human input:
+If `pnpm dev` or deployment setup requires human input:
 
 - stop and explain exactly what the user needs to do
 - say why that step is required
@@ -119,7 +119,7 @@ If `npx convex dev` or deployment setup requires human input:
 - Verify protected UI only renders after Convex-authenticated state is ready
 - Verify environment variables and redirect settings match the current app environment
 - Verify `convex/auth.ts` no longer has an empty `providers: []` configuration once the app is meant to support real sign-in
-- Run `npx convex dev --once` or the normal dev flow after setup changes and confirm Convex codegen and push succeed
+- Run `pnpm dev` or the normal dev flow after setup changes and confirm Convex codegen and push succeed
 - If production-ready setup was requested, verify the production deployment is also configured correctly
 
 ## Checklist
@@ -128,14 +128,14 @@ If `npx convex dev` or deployment setup requires human input:
 - [ ] Ask whether the user wants local-only setup or production-ready setup
 - [ ] Ensure a Convex deployment is configured before running auth initialization
 - [ ] Install `@convex-dev/auth` and `@auth/core@0.37.0`
-- [ ] Run `npx convex dev` first if needed
+- [ ] Run `pnpm dev` first if needed
 - [ ] Run `npx @convex-dev/auth`
 - [ ] Confirm `convex/auth.config.ts`, `convex/auth.ts`, and `convex/http.ts` were created
 - [ ] Follow the setup guide for package install and wiring
 - [ ] Add `authTables` to `convex/schema.ts`
 - [ ] Replace `ConvexProvider` with `ConvexAuthProvider`
 - [ ] Configure at least one auth method in `convex/auth.ts`
-- [ ] Run `npx convex dev --once` or the normal dev flow after setup changes
+- [ ] Run `pnpm dev` or the normal dev flow after setup changes
 - [ ] Confirm which sign-in methods the app needs
 - [ ] Verify the client can sign in and the backend receives authenticated identity
 - [ ] Offer end-to-end validation of sign up, sign out, and sign back in

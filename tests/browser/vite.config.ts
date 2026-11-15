@@ -1,5 +1,6 @@
 import path from "node:path";
 import { defineConfig } from "vite";
+import { bookingUIPort } from '../../scripts/worktree-ports.mjs';
 
 export default defineConfig({
   plugins: [{
@@ -59,5 +60,5 @@ export default defineConfig({
       },
     ],
   },
-  server: { host: "127.0.0.1", port: Number(process.env.BOOKING_UI_PORT ?? 4319), strictPort: true },
+  server: { host: "127.0.0.1", port: bookingUIPort(process.cwd()), strictPort: true },
 });

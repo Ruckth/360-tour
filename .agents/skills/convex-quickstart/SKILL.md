@@ -1,6 +1,6 @@
 ---
 name: convex-quickstart
-description: Initializes a new Convex project from scratch or adds Convex to an existing app. Use this skill when starting a new project with Convex, scaffolding with npm create convex@latest, adding Convex to an existing React, Next.js, Vue, Svelte, or other frontend, wiring up ConvexProvider, configuring environment variables for the deployment URL, or running npx convex dev for the first time, even if the user just says "set up Convex" or "add a backend."
+description: Initializes a new Convex project from scratch or adds Convex to an existing app. Use this skill when starting a new project with Convex, scaffolding with npm create convex@latest, adding Convex to an existing React, Next.js, Vue, Svelte, or other frontend, wiring up ConvexProvider, configuring environment variables for the deployment URL, or running pnpm dev for the first time, even if the user just says "set up Convex" or "add a backend."
 ---
 
 # Convex Quickstart
@@ -23,7 +23,7 @@ Set up a working Convex project as fast as possible.
 1. Determine the starting point: new project or existing app
 2. If new project, pick a template and scaffold with `npm create convex@latest`
 3. If existing app, install `convex` and wire up the provider
-4. Run `npx convex dev` to connect a deployment and start the dev loop
+4. Run `pnpm dev` to connect a deployment and start the dev loop
 5. Verify the setup works
 
 ## Path 1: New Project (Recommended)
@@ -72,19 +72,9 @@ npm install
 
 ### Start the dev loop
 
-`npx convex dev` is a long-running watcher process that syncs backend code to a Convex deployment on every save. It also requires authentication on first run (browser-based OAuth). Both of these make it unsuitable for an agent to run directly.
+In this repo, run `pnpm worktree:setup` first, then `pnpm dev`. This starts an isolated anonymous local Convex backend and Next together. Keep private Clerk test settings in `.env.dev.local` (mode 600); setup copies the template from `~/.config/360-tour/` when available. Stop the process when verification finishes.
 
-**Ask the user to run this themselves:**
-
-Tell the user to run `npx convex dev` in their terminal. On first run it will prompt them to log in or develop anonymously. Once running, it will:
-- Create a Convex project and dev deployment
-- Write the deployment URL to `.env.local`
-- Create the `convex/` directory with generated types
-- Watch for changes and sync continuously
-
-The user should keep `npx convex dev` running in the background while you work on code. The watcher will automatically pick up any files you create or edit in `convex/`.
-
-**Exception - cloud or headless agents:** Environments that cannot open a browser for interactive login should use Agent Mode (see below) to run anonymously without user interaction.
+The wrapper keeps deployment state under `.local-dev/` and supplies the local URL to Next without writing cloud credentials to `.env.local`. Shared cloud access requires a separately intentional `ALLOW_CLOUD_DEV=1 pnpm dev:convex`.
 
 ### Start the frontend
 
@@ -130,7 +120,7 @@ npm install convex
 
 ### Initialize and start dev loop
 
-Ask the user to run `npx convex dev` in their terminal. This handles login, creates the `convex/` directory, writes the deployment URL to `.env.local`, and starts the file watcher. See the notes in Path 1 about why the agent should not run this directly.
+In this repo, run `pnpm worktree:setup` followed by `pnpm dev` to start the isolated local backend and frontend. This requires private Clerk test configuration, not cloud deployment login.
 
 ### Wire up the provider
 
@@ -225,16 +215,16 @@ The env var name depends on the framework:
 | Remix | `CONVEX_URL` |
 | React Native | `EXPO_PUBLIC_CONVEX_URL` |
 
-`npx convex dev` writes the correct variable to `.env.local` automatically.
+In this repo, `pnpm dev` supplies the local URL directly to the frontend process; it does not write `.env.local`.
 
 ## Agent Mode (Cloud and Headless Agents)
 
 When running in a cloud or headless agent environment where interactive browser login is not possible, set `CONVEX_AGENT_MODE=anonymous` to use a local anonymous deployment.
 
-Add `CONVEX_AGENT_MODE=anonymous` to `.env.local`, or set it inline:
+Use the repo wrapper, which sets anonymous mode and isolates deployment state automatically:
 
 ```bash
-CONVEX_AGENT_MODE=anonymous npx convex dev
+pnpm dev
 ```
 
 This runs a local Convex backend on the VM without requiring authentication, and avoids conflicting with the user's personal dev deployment.
@@ -243,9 +233,9 @@ This runs a local Convex backend on the VM without requiring authentication, and
 
 After setup, confirm everything is working:
 
-1. The user confirms `npx convex dev` is running without errors
-2. The `convex/_generated/` directory exists and has `api.ts` and `server.ts`
-3. `.env.local` contains the deployment URL
+1. `pnpm dev` reports local development ready without errors
+2. The `convex/_generated/` directory contains generated API/server types
+3. Next uses the wrapper's local backend URL
 
 ## Writing Your First Function
 
@@ -307,7 +297,7 @@ function Tasks() {
 
 ## Development vs Production
 
-Always use `npx convex dev` during development. It runs against your personal dev deployment and syncs code on save.
+Always use `pnpm dev` during development. It runs against a checkout-local anonymous backend and syncs code on save.
 
 When ready to ship, deploy to production:
 
@@ -331,7 +321,7 @@ This pushes to the production deployment, which is separate from dev. Do not use
 - [ ] Determined starting point: new project or existing app
 - [ ] If new project: scaffolded with `npm create convex@latest` using appropriate template
 - [ ] If existing app: installed `convex` and wired up the provider
-- [ ] User has `npx convex dev` running and connected to a deployment
+- [ ] User has `pnpm dev` running and connected to a deployment
 - [ ] `convex/_generated/` directory exists with types
-- [ ] `.env.local` has the deployment URL
+- [ ] Next receives the isolated local deployment URL from the wrapper
 - [ ] Verified a basic query/mutation round-trip works
