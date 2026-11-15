@@ -49,6 +49,14 @@ describe('worktree setup', () => {
     expect((await fs.lstat(path.join(worktree, '.env.dev.local'))).isSymbolicLink()).toBe(true);
   });
 
+  it('refuses symlinked source secrets', async () => {
+    const source = await temp(), worktree = await temp();
+    await fs.writeFile(path.join(source, 'secret'), 'private');
+    await fs.symlink(path.join(source, 'secret'), path.join(source, '.env.local'));
+    await expect(copyEnvFiles(source, worktree)).rejects.toThrow();
+    await expect(fs.lstat(path.join(worktree, '.env.local'))).rejects.toThrow();
+  });
+
   it('derives stable ports in separate ranges and steps past occupied ports', async () => {
     const root = '/worktrees/example';
     const preferred = derivePort(root);

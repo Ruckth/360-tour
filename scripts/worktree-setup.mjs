@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -29,7 +30,13 @@ export async function copyEnvFiles(sourceDir, root, log = console.log) {
     const destination = path.join(root, name), source = path.join(sourceDir, name);
     if (await exists(destination)) continue;
     let contents;
-    try { contents = await fs.readFile(source); }
+    try {
+      const input = await fs.open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        if (!(await input.stat()).isFile()) throw new Error(`Expected regular env file: ${source}`);
+        contents = await input.readFile();
+      } finally { await input.close(); }
+    }
     catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
       log(`Missing ${name}; put it at ${source} and rerun pnpm worktree:setup.`);
@@ -84,7 +91,7 @@ export async function setupWorktree() {
       console.log('Offline dependency repair failed; retrying online.');
       await run('pnpm', ['install', '--frozen-lockfile'], root);
     }
-  } else console.log('node_modules exists; skipping dependency installation.');
+  } else await run('pnpm', ['install', '--frozen-lockfile', '--prefer-offline'], root);
 
   await copyEnvFiles(process.env.WORKTREE_ENV_DIR ?? path.join(homedir(), '.config', '360-tour'), root);
   const previous = readWorktreePorts(root);
