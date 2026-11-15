@@ -67,18 +67,23 @@ export async function setupWorktree() {
 
   const modules = path.join(root, 'node_modules');
   if (!(await exists(modules))) {
+    // pnpm reconciles an existing node_modules against the lockfile, so a clone from a
+    // different lockfile is still a valid (and much faster) starting point than an empty one.
     let cloned = false;
-    if (process.platform === 'darwin' && await lockfilesMatch(main, root) && await exists(path.join(main, 'node_modules'))) {
+    if (process.platform === 'darwin' && await exists(path.join(main, 'node_modules'))) {
       try { await run('cp', ['-Rc', path.join(main, 'node_modules'), modules], root); cloned = true; }
       catch {
         console.log('APFS dependency clone failed; using a normal install.');
         await fs.rm(modules, { recursive: true, force: true });
       }
     }
-    if (cloned) {
-      try { await run('pnpm', ['install', '--frozen-lockfile', '--offline'], root); }
-      catch { console.log('Offline dependency repair failed; retrying online.'); await run('pnpm', ['install', '--frozen-lockfile'], root); }
-    } else await run('pnpm', ['install', '--frozen-lockfile'], root);
+    const network = cloned && await lockfilesMatch(main, root) ? '--offline' : '--prefer-offline';
+    try { await run('pnpm', ['install', '--frozen-lockfile', network], root); }
+    catch {
+      if (network !== '--offline') throw new Error('pnpm install failed');
+      console.log('Offline dependency repair failed; retrying online.');
+      await run('pnpm', ['install', '--frozen-lockfile'], root);
+    }
   } else console.log('node_modules exists; skipping dependency installation.');
 
   await copyEnvFiles(process.env.WORKTREE_ENV_DIR ?? path.join(homedir(), '.config', '360-tour'), root);

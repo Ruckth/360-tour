@@ -62,7 +62,7 @@ For a managed WorkOS team, `convex dev` can provision the AuthKit environment an
 1. Choose Convex-managed or existing WorkOS team
 2. Create or update `convex.json` with the `authKit` section for the framework in use
 3. Make sure the dev `redirectUris`, `appHomepageUrl`, `corsOrigins`, and local redirect env vars match the app's actual local port
-4. In this repo, use `pnpm dev` to validate against the local backend; managed WorkOS provisioning requires a separately authorized cloud setup
+4. For a managed WorkOS team, run `npx convex dev` and follow the interactive onboarding flow
 5. For an existing WorkOS team, get `WORKOS_CLIENT_ID` and `WORKOS_API_KEY` from the WorkOS dashboard and set them with `npx convex env set`
 6. Create or update `convex/auth.config.ts` for WorkOS JWT validation
 7. Run the normal Convex dev or deploy flow so backend config is synced
@@ -81,7 +81,7 @@ For a managed WorkOS team, `convex dev` can provision the AuthKit environment an
 - If the repo already contains WorkOS setup, preserve the current tenant model unless the user wants to change it
 - For managed WorkOS setup, `convex dev` is interactive the first time. In non-interactive terminals, stop and ask the user to complete the onboarding prompts.
 - `convex.json` is not optional for the managed AuthKit flow. It drives redirect URI, homepage URL, CORS configuration, and local env var generation.
-- If the frontend starts on a different port than the one in `convex.json`, the hosted WorkOS sign-in flow will point to the wrong callback URL. Update `convex.json`, update the local redirect env var, and run `pnpm dev` again.
+- If the frontend starts on a different port than the one in `convex.json`, the hosted WorkOS sign-in flow will point to the wrong callback URL. Update `convex.json`, update the local redirect env var, and run `npx convex dev` again.
 - Vite can fall off `5173` if other apps are already running. Do not assume the default port still matches the generated AuthKit config.
 - A successful WorkOS sign-in should redirect back to the local callback route and then reach a Convex-authenticated state. Do not stop at "the hosted WorkOS page loaded."
 

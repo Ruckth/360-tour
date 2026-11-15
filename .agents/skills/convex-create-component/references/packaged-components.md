@@ -22,7 +22,7 @@ Recommended order:
 
 1. `npx convex codegen --component-dir ./path/to/component`
 2. Run the package build command
-3. Run `pnpm typecheck:convex` in the example app
+3. Run `npx convex dev --typecheck-components` in the example app
 
 Do not assume normal app codegen is enough for packaged component workflows.
 
