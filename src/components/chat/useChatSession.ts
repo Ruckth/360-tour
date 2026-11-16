@@ -69,6 +69,7 @@ export function useChatSession(props: ChatExperienceProps) {
   useEffect(() => { activeSession.current = sessionKey; }, [sessionKey]);
   useEffect(() => () => { activeSubmission.current?.abort(); }, []);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration gate: the stored draft and client-only behaviour start after the server-matching first render
     setHydrated(true);
     const draft = readDraft(); pending.current = draft;
     if (!initialDraft && draft) setInput(draft.text);
@@ -100,9 +101,18 @@ export function useChatSession(props: ChatExperienceProps) {
     pending.current = null; persistDraft(null); setInput(''); setSending(false); setContactStatus('idle'); setOpen(true);
     await restartSession().catch(() => setContactStatus('error'));
   }, [restartSession]);
-  useEffect(() => { if (initialOpen && hydrated) openChat(); }, [initialOpen, hydrated, openChat]);
+  // Opens once hydrated when the page asks for it (and again only if that request comes back).
+  const autoOpen = initialOpen && hydrated;
+  const [autoOpened, setAutoOpened] = useState(autoOpen);
+  if (autoOpened !== autoOpen) {
+    setAutoOpened(autoOpen);
+    if (autoOpen) openChat();
+  }
+  // Mounted while open and through the close animation. Gated on hydration so the server render
+  // (and hydration) of the page-mode chat stays unmounted, as before.
+  if (open && hydrated && !mounted) setMounted(true);
   useEffect(() => {
-    if (open) { setMounted(true); return; }
+    if (open) return;
     const timer = window.setTimeout(() => setMounted(false), 220); return () => clearTimeout(timer);
   }, [open]);
   useEffect(() => {

@@ -37,6 +37,7 @@ export function useChatHandoff(mode: 'page' | 'overlay', hydrated: boolean, ensu
   useEffect(() => {
     if (mode !== "page" || !hydrated) return;
     if (browserGateBypassed || browserHandoffToken) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- client-only user-agent gate that also re-arms the one-shot browser handoff ref
       setBrowserGateVisible(false);
       setBrowserGateTargetBrowser("browser");
       return;

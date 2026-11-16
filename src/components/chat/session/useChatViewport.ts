@@ -220,6 +220,7 @@ export function useChatViewport(mode: ChatExperienceMode, open: boolean, mounted
     if (!open) {
       keyboardInsetRef.current = 0;
       keyboardViewportBaselineRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- closing tears down the visualViewport keyboard sync, resetting its refs and layout state together
       setMobileKeyboardInset(0);
       setKeyboardLayoutMode("none");
       setFooterFocusScope(null);

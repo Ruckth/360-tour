@@ -73,18 +73,15 @@ export function TourViewer({
     return () => window.removeEventListener("keydown", onKeydown);
   }, [onClose, phase]);
 
-  useEffect(() => {
-    // Readiness-driven: enter the tour the moment the current room's texture is ready, with no
-    // fixed minimum intro and no artificial transition delay. The intro-overlay opacity transition
-    // (CSS, reduced-motion aware) is the only visual easing.
-    if (texturesLoaded && phase === "intro") setPhase("tour");
-  }, [phase, texturesLoaded]);
+  // Readiness-driven: enter the tour the moment the current room's texture is ready, with no
+  // fixed minimum intro and no artificial transition delay. The intro-overlay opacity transition
+  // (CSS, reduced-motion aware) is the only visual easing.
+  if (texturesLoaded && phase === "intro") setPhase("tour");
 
-  useEffect(() => {
-    // A room counts as explored once its panorama is actually on screen, not merely requested.
-    if (sceneStatus !== "ready" || !shownRoomId || shownRoomId !== currentRoomId) return;
-    setVisited((items) => (items.has(shownRoomId) ? items : new Set(items).add(shownRoomId)));
-  }, [currentRoomId, sceneStatus, shownRoomId]);
+  // A room counts as explored once its panorama is actually on screen, not merely requested.
+  if (sceneStatus === "ready" && shownRoomId && shownRoomId === currentRoomId && !visited.has(shownRoomId)) {
+    setVisited(new Set(visited).add(shownRoomId));
+  }
 
   const handleLoaded = useCallback(() => {
     setTexturesLoaded(true);
