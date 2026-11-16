@@ -1,5 +1,4 @@
 "use client";
-import { bookingBalance } from "convex/shared/orderMath";
 import { satangToBaht } from "convex/shared/money";
 
 
@@ -49,6 +48,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { formatMoney, sourceLabel } from "./labels";
 import {
   balanceText,
+  paidForPreview,
   canEditBooking,
   displayDate,
   hotelStatus,
@@ -464,7 +464,7 @@ export function EditBookingDialog({
   /** Save waits for the quote: staff confirm the price editBooking will actually write, and it refuses any other. */
   const expectedPrice = reviewedPrice(price);
   const priceBlocked = !expectedPrice;
-  const paid = booking.paymentStatus === "paid" ? bookingBalance(booking).paid : undefined;
+  const paid = paidForPreview(booking);
   const balance = paid !== undefined && sameCurrency ? balanceText(newTotal, booking, booking.currency) : null;
   const archivedVilla = stayChanged && property?.status === "archived";
   const priceChanged = custom

@@ -414,6 +414,14 @@ describe("editing the stay price", () => {
     expect(document.body.textContent).not.toContain("Balance due");
   });
 
+  it("previews the credit for a deposit-only stay when the price drops below it", async () => {
+    const deposit = { ...booking, total: 1700000, paymentStatus: "pending", amountPaid: 400000, amountRefunded: 0 } as BookingDetail;
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 300000, discountAmount: 0, total: 300000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
+    await render(createElement(EditBookingDialog, { booking: deposit, properties: [villa], onClose: vi.fn() }));
+    expect(document.body.textContent).toContain("Guest paid ฿4,000.");
+    expect(document.body.textContent).toContain("Credit ฿1,000");
+  });
+
   it("returns a custom price to the villa rate explicitly", async () => {
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     const custom = { ...booking, priceOverride: { total: 1500000, quotedTotal: 1700000, reason: "Deal", by: "a", at: 0 }, total: 1500000 } as BookingDetail;

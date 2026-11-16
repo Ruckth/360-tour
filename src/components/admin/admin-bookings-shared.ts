@@ -55,6 +55,12 @@ export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentSt
   return booking.status !== "cancelled";
 }
 
+/** Net money the guest has paid, or undefined when nothing was ever received (no balance preview then). Deposits count. */
+export function paidForPreview(booking: Parameters<typeof bookingBalance>[0]) {
+  const money = bookingBalance(booking);
+  return money.gross > 0 || (booking.providerRefundWaived ?? 0) > 0 ? money.paid : undefined;
+}
+
 /** Amount still owed (positive) or owed back to the guest (negative) after an edit. */
 export function balanceText(total: number, booking: Parameters<typeof bookingBalance>[0], currency: string) {
   const balance = bookingBalance({ ...booking, total }).owed;
