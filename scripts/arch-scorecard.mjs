@@ -7,7 +7,9 @@
 //   node scripts/arch-scorecard.mjs --json       # machine-readable output
 //
 // --phase N measures/reports only metrics due through N; omit it for the complete report.
-// Test-name gates match the exact titles below, so name the tests exactly this way.
+// The clean-tree metric is advisory: it is reported but never fails a --phase gate.
+// Test-name gates match the exact titles below, so name the tests exactly this way; a title
+// inside a skipped or todo test does not count.
 import { execSync } from 'node:child_process';
 import ts from 'typescript';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
@@ -98,7 +100,35 @@ const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
 	.filter(([, n]) => n > 1000)
 	.map(([p, n]) => `${p} (${n})`);
 
-const allTestText = testFiles.map(read).join('\n');
+// A skipped or todo test must not satisfy a required-test gate, so blank out every
+// it/test/describe call chained with .skip or .todo (including .skip.each) and xit/xtest/xdescribe.
+const SKIPPED_ROOTS = new Set(['xit', 'xtest', 'xdescribe']);
+const TEST_ROOTS = new Set(['it', 'test', 'describe', 'suite']);
+function calleeChain(node) {
+	if (ts.isIdentifier(node)) return [node.text];
+	if (ts.isPropertyAccessExpression(node)) return [...calleeChain(node.expression), node.name.text];
+	if (ts.isCallExpression(node)) return calleeChain(node.expression);
+	return [];
+}
+function withoutSkippedTests(path) {
+	const source = read(path);
+	const ranges = [];
+	const visit = (node) => {
+		if (ts.isCallExpression(node)) {
+			const [root, ...rest] = calleeChain(node.expression);
+			if (SKIPPED_ROOTS.has(root) || (TEST_ROOTS.has(root) && rest.some(name => name === 'skip' || name === 'todo'))) {
+				ranges.push([node.getStart(), node.end]);
+				return;
+			}
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true));
+	let text = source;
+	for (const [start, end] of ranges.reverse()) text = text.slice(0, start) + ' '.repeat(end - start) + text.slice(end);
+	return text;
+}
+const allTestText = testFiles.map(withoutSkippedTests).join('\n');
 const hasTest = (title) => allTestText.includes(`'${title}'`) || allTestText.includes(`"${title}"`) || allTestText.includes(`\`${title}\``);
 
 function dirtyTracked() {
@@ -115,7 +145,9 @@ const gitignore = existsSync(join(ROOT, '.gitignore')) ? read(join(ROOT, '.gitig
 const m = [];
 const add = (id, phase, label, value, target, detail = []) => m.push({ id, phase, label, value, target, ok: typeof target === 'function' ? target(value) : value === target, detail });
 
-add('clean-tree', -1, 'Modified tracked files on the working tree', dirtyTracked(), 0);
+// Reported but advisory: a dirty local checkout is not an architecture regression, and CI checkouts are always clean.
+add('clean-tree', -1, 'Modified tracked files on the working tree (advisory)', dirtyTracked(), 0);
+const ADVISORY = new Set(['clean-tree']);
 
 add('secret-fails-open', 0, 'Code paths that skip the webhook secret when it is unset', count(convexProd, /temporarily unauthenticated/g), 0);
 const PHASE0_TESTS = [
@@ -170,8 +202,9 @@ vacuous('cross-domain', byId['domain-folders'].value < DOMAINS.length && 'domain
 vacuous('no-login-without-returns', count(convexProd, /=\s*(publicQuery|publicMutation|publicAction|guestQuery|guestMutation|deviceQuery|deviceMutation)\s*\(/g) === 0 && 'no no-login builders in use yet');
 
 // ---------- report ----------
-const due = phaseArg === null ? m : m.filter((x) => x.phase <= phaseArg);
-const failing = due.filter((x) => !x.ok);
+const due = (phaseArg === null ? m : m.filter((x) => x.phase <= phaseArg)).map((x) => ADVISORY.has(x.id) ? { ...x, advisory: true } : x);
+const gate = due.filter((x) => !x.advisory);
+const failing = gate.filter((x) => !x.ok);
 if (asJson) {
 	// Unmeasured later phases must not appear as misleading zero-valued results.
 	console.log(JSON.stringify({ phase: phaseArg, pass: failing.length === 0, metrics: due }, null, 2));
@@ -181,11 +214,13 @@ if (asJson) {
 	console.log(`${pad('', 3)}${pad('phase', 6)}${pad('value', 7)}${pad('target', 8)}metric`);
 	for (const x of due) {
 		const inGate = phaseArg === null || x.phase <= phaseArg;
-		const mark = x.ok ? '✓' : inGate ? '✗' : '·';
+		const mark = x.ok ? '✓' : x.advisory ? '!' : inGate ? '✗' : '·';
 		const target = typeof x.target === 'number' ? x.target : 'info';
 		console.log(`${pad(mark, 3)}${pad(x.phase, 6)}${pad(x.value, 7)}${pad(target, 8)}${x.label}`);
 		if (!x.ok && inGate) for (const d of x.detail.slice(0, 8)) console.log(`${' '.repeat(24)}- ${d}`);
 	}
-	console.log(`\n${due.length - failing.length}/${due.length} ${phaseArg === null ? 'metrics at target' : 'gate metrics pass'}`);
+	console.log(`\n${gate.length - failing.length}/${gate.length} ${phaseArg === null ? 'metrics at target' : 'gate metrics pass'}`);
+	const warnings = due.filter((x) => x.advisory && !x.ok);
+	if (warnings.length) console.log(`Advisory, not gated: ${warnings.map((x) => `${x.id} (${x.value})`).join(', ')}`);
 }
 if (phaseArg !== null && failing.length) process.exit(1);
