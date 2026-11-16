@@ -1,7 +1,7 @@
 import { bookingBalance } from 'convex/shared/orderMath';
 import { resolveNotify } from 'convex/shared/bookingMoney';
 
-import { bahtToSatang } from 'convex/shared/money';
+import { parseMoneyInput } from '@/lib/money-input';
 import type { FunctionReturnType } from "convex/server";
 import { staffDate } from "@/lib/staff-time";
 import { resortMidnight, resortIsoDate } from "@/lib/staff-bookings";
@@ -124,10 +124,8 @@ export function notifyDefault(stay: { checkIn: string; guestEmailsOff?: boolean 
 
 /** A typed amount in whole satang, or null. */
 export function parseAmount(text: string): number | null {
-  const trimmed = text.trim().replace(/,/g, "");
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
-  const value = Number(trimmed);
-  return Number.isFinite(value) ? bahtToSatang(value) : null;
+  const value = parseMoneyInput(text);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**

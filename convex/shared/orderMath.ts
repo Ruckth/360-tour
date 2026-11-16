@@ -1,4 +1,4 @@
-import { percentageOf, roundRatio, roundMoney } from './money';
+import { assertMoney, MAX_MONEY, percentageOf, roundRatio, roundMoney } from './money';
 export { roundMoney } from './money';
 import { ConvexError } from 'convex/values';
 /**
@@ -18,7 +18,7 @@ export const NOTE_MAX = 500;
 export const MAX_PRICE = 100_000_000;
 export const MAX_QTY = 99;
 /** Largest bill subtotal, and so the largest discount, payment or cash received. */
-export const MAX_ORDER = 1_000_000_000;
+export const MAX_ORDER = MAX_MONEY;
 const atMost = (max: number) => `Amounts are at most ${(max / 100).toLocaleString('en-US')}`;
 export const TENDER_METHODS = ['cash', 'promptpay', 'card', 'transfer'] as const;
 export type TenderMethod = (typeof TENDER_METHODS)[number];
@@ -129,14 +129,10 @@ export function assertTenders(tenders: readonly Tender[], due: number) {
 	if (tenders.length > MAX_TENDERS) throw new ConvexError(`Split across at most ${MAX_TENDERS} payments`);
 	for (const tender of tenders) {
 		if (!TENDER_METHODS.includes(tender.method)) throw new ConvexError('Unknown payment method');
-		if (!Number.isFinite(tender.amount) || tender.amount <= 0) throw new ConvexError('Each payment must be more than zero');
-		if (tender.amount > MAX_ORDER) throw new ConvexError(atMost(MAX_ORDER));
-		if (roundMoney(tender.amount) !== tender.amount) throw new ConvexError('Payments are in whole satang (at most 2 decimals)');
+		assertMoney(tender.amount, 'Each payment');
 		if (tender.received !== undefined) {
 			if (tender.method !== 'cash') throw new ConvexError('Only cash can have an amount received');
-			if (!Number.isFinite(tender.received)) throw new ConvexError('Cash received must be an amount');
-			if (tender.received > MAX_ORDER) throw new ConvexError(atMost(MAX_ORDER));
-			if (roundMoney(tender.received) !== tender.received) throw new ConvexError('Cash received is in whole satang (at most 2 decimals)');
+			assertMoney(tender.received, 'Cash received');
 			if (!(tender.received >= tender.amount)) throw new ConvexError('Cash received is less than the amount');
 		}
 	}

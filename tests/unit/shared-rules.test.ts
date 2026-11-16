@@ -67,10 +67,15 @@ it('preserves strict date inputs, empty/reversed ranges, signed backend nights a
 });
 
 it('uses one integer-satang quote for browser, offer and receipt calculations', () => {
-  for (const [price, nights, bps] of [[10050, 1, 1000], [333300, 3, 1250], [1, 1, 5000], [100_000_000, 9, 9999]]) {
+  for (const [price, nights, bps, expected] of [
+    [10050, 1, 1000, 9045], [333300, 3, 1250, 874912], [1, 1, 5000, 0], [100_000_000, 9, 9999, 90000],
+    [1005, 1, 1000, 904], // Half-satang discount tie rounds away from zero.
+    [1005, 1, 0, 1005], [1005, 1, 10000, 0],
+  ]) {
     const quote = calculateDirectQuote({ pricePerNight: price, directDiscountPercent: bps, currency: 'THB' }, nights);
     const offer = evaluateOffer({ lines: [{ id: 'stay', kind: 'accommodation', propertySlug: 'villa', checkIn: '2026-11-14', checkOut: '2026-11-15', nights, amount: price * nights }], directDiscountPercent: bps, today: '2026-11-13' });
     const receipt = orderTotals([{ unitPrice: price * nights, qty: 1, discount: { type: 'percent', value: bps } }]);
+    expect(quote.directTotal).toBe(expected);
     expect(quote.discountAmount).toBe(offer.discount);
     expect(quote.directTotal).toBe(offer.total);
     expect(receipt.total).toBe(quote.directTotal);

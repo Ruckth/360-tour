@@ -895,7 +895,7 @@ describe('order rows', () => {
 		await expect(admin.mutation(api.pos.commands.settleOrder.settleOrder, {
 			orderId, idempotencyKey: 'attempt-0001', expectedDue: 9000, expectedRevision: revision,
 			tenders: [{ method: 'cash', amount: 4500.4 }, { method: 'card', amount: 4499.6 }]
-		})).rejects.toThrow('satang');
+		})).rejects.toThrow('baht amount with at most 2 decimal places');
 		for (const received of [Infinity, NaN, 1e12]) {
 			await expect(settle({ orderId, idempotencyKey: `attempt-${received}`, expectedDue: 9000, tenders: [{ method: 'cash', amount: 9000, received }] })).rejects.toThrow();
 		}

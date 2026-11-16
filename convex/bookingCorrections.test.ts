@@ -187,7 +187,7 @@ describe('refund records', () => {
 		expect(await get(bookingId)).toMatchObject({ status: 'cancelled', paymentStatus: 'paid', amountPaid: 2550000, cancelReason: 'Guest cancelled', cancelledBy: adminEmail });
 		expect((await financials(bookingId)).money).toMatchObject({ net: 2550000, refundable: 2550000, refundContext: 'cancellation' });
 
-		for (const [amount, message] of [[Number.NaN, 'more than zero'], [0, 'more than zero'], [-5, 'more than zero'], [Number.POSITIVE_INFINITY, 'more than zero'], [10.005, 'whole satang'], [2550001, 'At most 25500']] as const) {
+		for (const [amount, message] of [[Number.NaN, 'more than zero'], [0, 'more than zero'], [-5, 'more than zero'], [Number.POSITIVE_INFINITY, 'more than zero'], [10.005, 'baht amount with at most 2 decimal places'], [2550001, 'At most 25500']] as const) {
 			await expect(refund(bookingId, amount)).rejects.toThrow(message);
 		}
 		await expect(refund(bookingId, 10000, { currency: 'USD' })).rejects.toThrow('refund it in THB');
@@ -401,7 +401,7 @@ describe('custom stay price', () => {
 		expect(stale.totals.due).toBe(2550000);
 
 		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: ' ' } })).rejects.toThrow('Reason for the custom price is required');
-		await expect(edit(bookingId, { priceOverride: { total: 2000000.1, reason: 'Negotiated' } })).rejects.toThrow('whole satang');
+		await expect(edit(bookingId, { priceOverride: { total: 2000000.1, reason: 'Negotiated' } })).rejects.toThrow('baht amount with at most 2 decimal places');
 		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated' }, expectedRevision: undefined })).rejects.toThrow('missing revision');
 		await expect(edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated' }, expectedRevision: 99 })).rejects.toThrow('changed since you opened it');
 		await edit(bookingId, { priceOverride: { total: 2000000, reason: 'Negotiated rate' } });

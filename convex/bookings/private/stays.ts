@@ -12,7 +12,7 @@ import { calculateDirectQuote } from '../../shared/pricing';
 import { stayMoney } from '../../shared/stayMoney';
 import { quoteCouponBooking } from '../../marketing/model';
 import { appendRecordHistory } from '../../settings/model';
-import { satangToBaht } from '../../shared/money';
+import { assertMoney, satangToBaht } from '../../shared/money';
 import { blockBookingDates, releaseBookingDates } from './availabilityWrites';
 import { assertBookableProperty, assertStayDates, assertStayFree, PROPERTY_UNAVAILABLE } from './bookingWrites';
 import { appendBookingHistory, bookingSnapshot, writeBooking } from './money';
@@ -78,7 +78,7 @@ export async function recordStayPayment(ctx: MutationCtx, bookingId: Id<'booking
 	if (money.owed <= 0) return { booking, paymentId: null };
 	const amount = input.amount ?? money.owed;
 	if (input.amount !== undefined) {
-		if (!Number.isFinite(amount) || amount <= 0 || roundMoney(amount) !== amount) throw new Error('The amount must be more than zero, in whole satang.');
+		assertMoney(amount);
 		if (amount > money.owed) throw new Error(`This stay owes ${satangToBaht(money.owed)}, less than ${satangToBaht(amount)}.`);
 		// `refunded` counts all money as returned and `failed` needs a reopen, so a part payment needs a live status.
 		if (amount < money.owed && booking.paymentStatus !== 'pending' && booking.paymentStatus !== 'paid') {

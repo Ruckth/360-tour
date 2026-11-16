@@ -1,6 +1,6 @@
 "use client";
 
-import { bahtToSatang, satangToBaht, percentToBasisPoints, basisPointsToPercent } from 'convex/shared/money';
+import { satangToBaht, percentToBasisPoints, basisPointsToPercent } from 'convex/shared/money';
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
+import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { IcalSourcesPanel } from "./IcalSourcesDialog";
@@ -258,13 +259,15 @@ function DetailsForm({ property }: { property: Property }) {
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
     const lines = (name: string) => text(name).split("\n").map((line) => line.trim()).filter(Boolean);
-    void save.run(() =>
-      update({
+    void save.run(() => {
+      const pricePerNight = parseMoneyInput(text("pricePerNight"));
+      if (!Number.isFinite(pricePerNight)) throw new Error("Enter a price with at most 2 decimals.");
+      return update({
         propertyId: property._id,
         name: text("name"),
         tagline: text("tagline"),
         description: text("description"),
-        pricePerNight: bahtToSatang(Number(text("pricePerNight"))),
+        pricePerNight,
         currency: text("currency"),
         directDiscountPercent: percentToBasisPoints(Number(text("directDiscountPercent"))),
         maxGuests: Number(text("maxGuests")),
@@ -272,8 +275,8 @@ function DetailsForm({ property }: { property: Property }) {
         bathrooms: Number(text("bathrooms")),
         area: Number(text("area")),
         amenities: lines("amenities"),
-      }),
-    );
+      });
+    });
   }
 
   return (

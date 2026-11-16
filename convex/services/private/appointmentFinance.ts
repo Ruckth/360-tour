@@ -4,7 +4,7 @@ import { attemptKey, cleanReason, effectiveTime } from '../../shared/bookingMone
 import { MANUAL_PAYMENT_METHODS } from '../../shared/financeValidators';
 import { sourceLineLinks, assertNotOnOpenOrder } from '../../pos/model';
 import { lineNet, roundMoney } from '../../shared/orderMath';
-import { assertMoney } from '../../shared/stayMoney';
+import { assertMoney } from '../../shared/money';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
 
