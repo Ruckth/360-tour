@@ -81,9 +81,11 @@ const SidebarProvider = React.forwardRef<
     const [openMobile, setOpenMobile] = React.useState(false)
 
     // Returning to a compact viewport must not resurrect an old open drawer.
-    React.useEffect(() => {
+    const [previousIsMobile, setPreviousIsMobile] = React.useState(isMobile)
+    if (previousIsMobile !== isMobile) {
+      setPreviousIsMobile(isMobile)
       setOpenMobile(false)
-    }, [isMobile])
+    }
 
     // This is the internal state of the sidebar.
     // We use openProp and setOpenProp for control from outside the component.
