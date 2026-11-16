@@ -1,11 +1,22 @@
 import { settingsPublicProfileResult } from './validators';
 import { v } from 'convex/values';
+import type { Doc } from '../_generated/dataModel';
 import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
-import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
+import { CHAT_REPLY_LIMIT_RANGES, chatReplyLimitsValidator, resolveChatReplyLimits, type ChatReplyLimits, BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
 import { settingsSnapshot } from './configurationWriter';
 import { getEffectiveSettings, getSiteSettingsRow } from './model';
 import { appendRecordHistory } from './recordWriter';
+
+/** A changed limit starts a fresh hourly allowance, including when restored to an earlier value. */
+function replyLimitVersions(row: Doc<'siteSettings'> | null, changes: Partial<ChatReplyLimits> | undefined) {
+	const before = resolveChatReplyLimits(row);
+	const versions = { ...row?.chatReplyLimitVersions };
+	for (const key of Object.keys(CHAT_REPLY_LIMIT_RANGES) as (keyof ChatReplyLimits)[]) {
+		if (changes?.[key] !== undefined && changes[key] !== before[key]) versions[key] = (row?.revision ?? 0) + 1;
+	}
+	return versions;
+}
 
 const text = v.optional(v.string());
 
@@ -53,6 +64,7 @@ export const update = staffMutation({
 	args: {
 		expectedRevision: v.optional(v.number()),
 		bookingRules: v.optional(bookingRulesValidator),
+		chatReplyLimits: v.optional(chatReplyLimitsValidator),
 		business: v.optional(
 			v.object({
 				businessName: text,
@@ -75,7 +87,7 @@ export const update = staffMutation({
 	},
 	handler: async (ctx, args) => {
 		const admin = ctx.staff;
-		const { business, ai, email, bookingRules, errors } = validateSettingsInput(args);
+		const { business, ai, email, bookingRules, chatReplyLimits, errors } = validateSettingsInput(args);
 		const firstError = Object.values(errors)[0];
 		if (firstError) throw new Error(firstError);
 
@@ -85,6 +97,7 @@ export const update = staffMutation({
 		const fields = {
 			revision: (row?.revision ?? 0) + 1,
 			...business,
+			...(chatReplyLimits ? { chatReplyLimits: { ...row?.chatReplyLimits, ...chatReplyLimits }, chatReplyLimitVersions: replyLimitVersions(row, chatReplyLimits) } : {}),
 			...(bookingRules ? { bookingRules: { ...row?.bookingRules, ...bookingRules } } : {}),
 			...(ai ? { ai: { ...row?.ai, ...ai } } : {}),
 			...(email ? { email: { ...row?.email, ...email } } : {}),
@@ -144,7 +157,17 @@ export const restore = staffMutation({
 			if (typeof savedRules.sameDayCutoff !== 'string') throw new Error('Incomplete booking rules snapshot');
 			rules.sameDayCutoff = savedRules.sameDayCutoff;
 		}
+		const limits = resolveChatReplyLimits(null);
+		if (source.chatReplyLimits !== undefined) {
+			if (!source.chatReplyLimits || typeof source.chatReplyLimits !== 'object') throw new Error('Incomplete reply limits snapshot');
+			const savedLimits = source.chatReplyLimits as Record<string, unknown>;
+			for (const key of Object.keys(CHAT_REPLY_LIMIT_RANGES) as (keyof ChatReplyLimits)[]) {
+				if (typeof savedLimits[key] !== 'number') throw new Error('Incomplete reply limits snapshot');
+				limits[key] = savedLimits[key];
+			}
+		}
 		const input: SettingsInput = {
+			chatReplyLimits: limits,
 			// History predating booking rules restores their built-in defaults.
 			bookingRules: source.bookingRules ? rules : resolveBookingRules(null),
 			business,
@@ -162,6 +185,8 @@ export const restore = staffMutation({
 		const fields = {
 			...clean.business,
 			bookingRules: clean.bookingRules,
+			chatReplyLimits: clean.chatReplyLimits,
+			chatReplyLimitVersions: replyLimitVersions(row, clean.chatReplyLimits),
 			ai: { ...row?.ai, ...clean.ai },
 			email: { ...row?.email, ...clean.email },
 			revision: (row?.revision ?? 0) + 1,

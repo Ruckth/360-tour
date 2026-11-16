@@ -9,6 +9,7 @@ export function settingsSnapshot(settings: EffectiveSettings) {
 	return {
 		...business,
 		bookingRules: settings.bookingRules,
+		chatReplyLimits: settings.chatReplyLimits,
 		ai: { tone: settings.ai.tone, maxWords: settings.ai.maxWords },
 		email: {
 			fromName: settings.email.fromName,

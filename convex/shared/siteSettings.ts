@@ -1,6 +1,37 @@
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 
+export const CHAT_CHANNEL_LABELS = {
+	web: 'Website visitors',
+	line: 'LINE',
+	whatsapp: 'WhatsApp',
+	facebook: 'Facebook Messenger',
+	instagram: 'Instagram'
+} as const;
+
+export const chatReplyLimitsValidator = v.object({
+	web: v.optional(v.number()),
+	line: v.optional(v.number()),
+	whatsapp: v.optional(v.number()),
+	facebook: v.optional(v.number()),
+	instagram: v.optional(v.number()),
+	perChat: v.optional(v.number())
+});
+
+export const CHAT_REPLY_LIMIT_DEFAULTS = { web: 500, line: 500, whatsapp: 500, facebook: 500, instagram: 500, perChat: 20 };
+export type ChatReplyLimits = typeof CHAT_REPLY_LIMIT_DEFAULTS;
+export const CHAT_REPLY_LIMIT_RANGES = {
+	web: [1, 10000], line: [1, 10000], whatsapp: [1, 10000], facebook: [1, 10000], instagram: [1, 10000], perChat: [1, 1000]
+} as const;
+
+export function resolveChatReplyLimits(row: Pick<Doc<'siteSettings'>, 'chatReplyLimits'> | null): ChatReplyLimits {
+	const limits = { ...CHAT_REPLY_LIMIT_DEFAULTS };
+	for (const key of Object.keys(limits) as (keyof ChatReplyLimits)[]) {
+		limits[key] = row?.chatReplyLimits?.[key] ?? limits[key];
+	}
+	return limits;
+}
+
 export const bookingRulesValidator = v.object({
 	unpaidHoldMinutes: v.optional(v.number()),
 	chatQuoteValidityMinutes: v.optional(v.number()),
@@ -89,6 +120,7 @@ export type EmailSettings = { fromName: string; ownerNotificationEmail: string; 
 
 export type EffectiveSettings = BusinessSettings & {
 	bookingRules: BookingRules;
+	chatReplyLimits: ChatReplyLimits;
 	ai: AiSettings;
 	email: EmailSettings;
 	demoDefaultFields?: BusinessField[];
@@ -103,6 +135,7 @@ export function mergeSiteSettings(row: Doc<'siteSettings'> | null): EffectiveSet
 	return {
 		...business,
 		bookingRules: resolveBookingRules(row),
+		chatReplyLimits: resolveChatReplyLimits(row),
 		demoDefaultFields: BUSINESS_FIELDS.filter(field => row?.[field] === undefined),
 		ai: {
 			tone: row?.ai?.tone || SITE_DEFAULTS.ai.tone,
@@ -214,11 +247,12 @@ function cleanText<K extends string>(
 export type SettingsInput = {
 	business?: Partial<BusinessSettings>;
 	bookingRules?: Partial<BookingRules>;
+	chatReplyLimits?: Partial<ChatReplyLimits>;
 	ai?: Partial<AiSettings>;
 	email?: Partial<EmailSettings>;
 };
 
-/** Trims and checks every provided field. Error keys are `field`, `ai.field` or `email.field`. */
+/** Trims and checks every provided field. Nested settings use dotted error keys. */
 export function validateSettingsInput(input: SettingsInput) {
 	const errors: SettingsErrors = {};
 	const business = input.business ? cleanText(input.business, BUSINESS_RULES, '', errors) : undefined;
@@ -249,7 +283,18 @@ export function validateSettingsInput(input: SettingsInput) {
 				errors['bookingRules.sameDayCutoff'] = 'Use 24-hour HH:mm, e.g. 14:00.';
 		}
 	}
-	return { business, ai, email: emailValues, bookingRules, errors };
+	const chatReplyLimits = input.chatReplyLimits ? { ...input.chatReplyLimits } : undefined;
+	if (chatReplyLimits) {
+		for (const key of Object.keys(CHAT_REPLY_LIMIT_RANGES) as (keyof ChatReplyLimits)[]) {
+			const value = chatReplyLimits[key];
+			const [min, max] = CHAT_REPLY_LIMIT_RANGES[key];
+			if (value !== undefined && (!Number.isInteger(value) || value < min || value > max)) {
+				const label = key === 'perChat' ? 'AI replies per chat per hour' : `${CHAT_CHANNEL_LABELS[key]} AI replies per hour`;
+				errors[`chatReplyLimits.${key}`] = `${label} must be a whole number from ${min} to ${max}.`;
+			}
+		}
+	}
+	return { business, ai, email: emailValues, bookingRules, chatReplyLimits, errors };
 }
 
 /** A reserved Stripe request also protects dates if its HTTP response was lost. */

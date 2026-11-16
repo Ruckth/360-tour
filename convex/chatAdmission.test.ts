@@ -37,7 +37,7 @@ it.each([['global', 500], ['session', 20]] as const)('retains the %s hourly budg
   expect(await t.query(api.messaging.chat.getMessages, guest)).toEqual([]);
   expect(await t.run(ctx => ctx.db.query('channelEvents').take(10))).toEqual([]);
 });
-it.each(['web', 'messaging'] as const)('isolates an exhausted %s global budget from the other channel kind', async kind => {
+it.each(['web', 'line'] as const)('isolates an exhausted %s global budget from the other channel', async kind => {
   const t = createHarness(convexTest), guest = await guestSession(t);
   await t.mutation(internal.messaging.ingress.accept, { channel: 'line', events: [{ eventKey: 'isolated', recipient: 'guest', eventType: 'message', messageText: 'Hello', eventTimestamp: Date.now() }] });
   const event = (await t.run(ctx => ctx.db.query('channelEvents').take(1)))[0];

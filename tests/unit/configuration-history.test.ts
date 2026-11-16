@@ -232,3 +232,38 @@ it("saves booking rules using the settings revision and rejects invalid fields i
   expect(state.update).toHaveBeenCalledTimes(1);
   expect(document.body.textContent).toContain("whole number from 10 to 1440");
 });
+
+it("edits reply limits in the AI form, validates, saves all channels and discards drafts", async () => {
+  state.tab = "ai";
+  await render(createElement(AdminSettingsView));
+  const field = (key: string) => document.querySelector<HTMLInputElement>(`[name="chatReplyLimits.${key}"]`)!;
+  const edit = (key: string, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field(key), value);
+    field(key).dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  for (const key of ["web", "line", "whatsapp", "facebook", "instagram"]) expect(field(key).value).toBe("500");
+  expect(field("perChat").value).toBe("20");
+  expect(document.body.textContent).toContain("no AI reply or automatic retry");
+  await edit("web", "0");
+  expect(document.querySelector('[data-testid="settings-save-bar"]')).not.toBeNull();
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(state.update).not.toHaveBeenCalled();
+  expect(field("web").getAttribute("aria-invalid")).toBe("true");
+  expect(document.body.textContent).toContain("whole number from 1 to 10000");
+  await edit("web", "7"); await edit("line", "3");
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(state.update).toHaveBeenCalledWith({ expectedRevision: 4, ai: mergeSiteSettings(null).ai,
+    chatReplyLimits: { web: 7, line: 3, whatsapp: 500, facebook: 500, instagram: 500, perChat: 20 } });
+  expect(document.querySelector('[data-testid="settings-save-bar"]')).toBeNull();
+  await edit("perChat", "2"); await click("Discard");
+  expect(field("perChat").value).toBe("20");
+  expect(field("web").value).toBe("7");
+});
+it("shows readable per-channel reply limit changes in history", async () => {
+  state.history = [{ ...event, before: { chatReplyLimits: { web: 500, line: 500, perChat: 20 } }, after: { chatReplyLimits: { web: 7, line: 3, perChat: 2 } } }];
+  await render(createElement(RecordHistoryPanel, { entityType: "settings", entityId: "default" }));
+  expect(document.body.textContent).toContain("Reply limits");
+  expect(document.body.textContent).toContain("Website visitors: 7");
+  expect(document.body.textContent).toContain("LINE: 3");
+  expect(document.body.textContent).toContain("Per chat: 2");
+});
