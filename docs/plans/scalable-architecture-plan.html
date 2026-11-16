@@ -150,7 +150,7 @@ footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--border);color
 <h2>Target architecture: five rules</h2>
 <p class="sub">These rules go into <code>ARCHITECTURE.md</code>. Rules 2–5 are enforced by lint in Phase 3.</p>
 <ol class="rules">
-  <li><div><b>One deployment serves one resort.</b><p>We sell a custom build to each client (<code>BUSINESS_PLAN.md</code>), so delete <code>tenants</code> and <code>tenantId</code>. Anything an admin can edit lives in Convex. Build-time brand and theme live in <code>src/config</code>.</p></div></li>
+  <li><div><b>One deployment serves one resort.</b><p>We sell a custom build to each client (<code>docs/BUSINESS_PLAN.md</code>), so delete <code>tenants</code> and <code>tenantId</code>. Anything an admin can edit lives in Convex. Build-time brand and theme live in <code>src/config</code>.</p></div></li>
   <li><div><b>Each domain owns its tables and functions, and exposes one file.</b><p>Backend code lives in <code>convex/&lt;domain&gt;/</code>. Other domains may import only <code>convex/&lt;domain&gt;/model.ts</code>, which holds plain helpers that take the caller's <code>ctx</code>, so cross-domain work stays inside one transaction. Every other file in the domain is private to it.</p></div></li>
   <li><div><b>Each business rule is written once, in <code>convex/shared/</code>.</b><p>Money, dates, resort time, pricing, overlap and time-off rules are pure code. <code>shared</code> never imports <code>_generated/server</code> or takes a <code>ctx</code>. <code>src</code> imports only <code>convex/shared</code> and <code>convex/_generated</code>, and <code>convex</code> never imports <code>src</code>.</p></div></li>
   <li><div><b>Every public function states who may call it.</b><p>Only <code>convex/auth/</code> may import the raw <code>query</code>, <code>mutation</code> and <code>action</code> builders. Everything else uses <code>publicQuery</code>, <code>guestQuery</code>/<code>guestMutation</code> (needs the chat session token), <code>deviceQuery</code>/<code>deviceMutation</code> (needs the display token), <code>adminQuery</code>/<code>adminMutation</code>/<code>adminAction</code>, or <code>internal*</code>. Once <code>feat/staff-roles</code> lands, add <code>staffQuery</code>/<code>staffMutation</code> on top of its role model.</p></div></li>
@@ -425,7 +425,7 @@ src/config/    <span class="c"># build-time brand and theme per client</span></p
 </ul>
 
 <footer>
-  v1 (9 Nov) drew on five read-only audits: Codex covered the data model, backend and tooling, and Opus covered messaging and the frontend. v2 (12 Nov) adds the Codex correctness review and the Kiro simplicity review. Related: <code>docs/plans/ai-context-retirement.md</code>, <code>BUSINESS_PLAN.md</code>.
+  v1 (9 Nov) drew on five read-only audits: Codex covered the data model, backend and tooling, and Opus covered messaging and the frontend. v2 (12 Nov) adds the Codex correctness review and the Kiro simplicity review. Related: <code>docs/plans/ai-context-retirement.md</code>, <code>docs/BUSINESS_PLAN.md</code>.
 </footer>
 
 </main>
