@@ -147,6 +147,7 @@ function LiveBookingFunnel({
     if (couponFromParam(initialCoupon)) return;
     const carried = couponFromParam(arrivalCoupon());
     if (!carried) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- tab storage is client-only, so the carried coupon seeds editable state after hydration
     setCouponCode(carried);
     setCouponSource("link");
     setCouponDraft(carried);
@@ -216,11 +217,10 @@ function LiveBookingFunnel({
           ? t("nightsSelected", { count: nights })
           : t("checkoutAfterCheckin");
 
-  useEffect(() => {
-    if (selectedStepIndex > highestAllowedStepIndex) {
-      setStep(bookingSteps[highestAllowedStepIndex].key);
-    }
-  }, [highestAllowedStepIndex, selectedStepIndex]);
+  // A step whose earlier answers became invalid falls back to the furthest step still allowed.
+  if (selectedStepIndex > highestAllowedStepIndex) {
+    setStep(bookingSteps[highestAllowedStepIndex].key);
+  }
 
   const availablePropertyIds = useMemo(() => {
     const ids = new Set<string>();

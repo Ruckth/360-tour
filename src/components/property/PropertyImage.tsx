@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ImageOff } from "lucide-react";
 import { resort } from "@/lib/data/resort-config";
 import { cn } from "@/lib/utils";
@@ -30,12 +30,10 @@ export function PropertyImage({
     [fallbackImages, images, src],
   );
   const candidateKey = candidates.join("\u0000");
-  const [index, setIndex] = useState(0);
+  // Failed images are skipped; a new candidate list starts again from its first image.
+  const [failed, setFailed] = useState({ candidateKey, index: 0 });
+  const index = failed.candidateKey === candidateKey ? failed.index : 0;
   const currentSrc = candidates[index];
-
-  useEffect(() => {
-    setIndex(0);
-  }, [candidateKey]);
 
   return (
     <div className={cn("relative h-full w-full overflow-hidden bg-muted", className)}>
@@ -51,7 +49,12 @@ export function PropertyImage({
             "object-cover",
             imgClassName,
           )}
-          onError={() => setIndex((current) => Math.min(current + 1, candidates.length))}
+          onError={() =>
+            setFailed((current) => ({
+              candidateKey,
+              index: Math.min((current.candidateKey === candidateKey ? current.index : 0) + 1, candidates.length),
+            }))
+          }
         />
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-muted text-muted-foreground">

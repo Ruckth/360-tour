@@ -34,13 +34,19 @@ export function ProposalPayClient({ token }: { token: string }) {
   const [expired, setExpired] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let active = true;
+  // A different proposal link starts over from its own summary.
+  const [loadedToken, setLoadedToken] = useState(token);
+  if (loadedToken !== token) {
+    setLoadedToken(token);
     setActiveToken(token);
     setChecking(true);
     setSummary(null);
     setExpired(false);
     setError("");
+  }
+
+  useEffect(() => {
+    let active = true;
     async function load() {
       try {
         // Read only: unfurlers, reloads and opening the page never create a booking.
