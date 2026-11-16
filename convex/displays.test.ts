@@ -384,7 +384,7 @@ describe('display order projection', () => {
 				paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'CONF-ANNA', createdAt: Date.now()
 			});
 		});
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const massage = await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Massage', price: 125050 } });
 		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId: massage.lineId, discount: { type: 'percent', value: 1500 } });
 		const juice = await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 12000 } });

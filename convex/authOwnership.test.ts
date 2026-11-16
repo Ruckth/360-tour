@@ -2,7 +2,7 @@
 import { convexTest } from 'convex-test';
 import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, internal } from './_generated/api';
+import { internal } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -24,29 +24,6 @@ it('removes every root auth registration independently of authentication or argu
         .rejects.toThrow('Could not find module for:');
     }
   }
-});
-
-it('keeps nonstaff user profiles keyed by tokenIdentifier and retains legacy clerkId on updates', async () => {
-  const t = convexTest(schema, modules);
-  const first = t.withIdentity({ subject: 'legacy-subject', tokenIdentifier: 'issuer-a|person', email: 'Person@Example.com', name: 'First', pictureUrl: 'https://example.com/first.png' });
-  await expect(t.mutation(api.auth.users.store, {})).rejects.toThrow('Not authenticated');
-  expect(await t.query(api.auth.users.current, {})).toBeNull();
-  const id = await first.mutation(api.auth.users.store, {});
-  expect(await first.query(api.auth.users.current, {})).toMatchObject({ _id: id, clerkId: 'legacy-subject', tokenIdentifier: 'issuer-a|person', email: 'Person@Example.com', name: 'First' });
-  expect(await first.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: null, capabilities: { checkout: false, operations: false, manageTeam: false } });
-  const unchanged = await first.query(api.auth.users.current, {});
-  expect(await first.mutation(api.auth.users.store, {})).toBe(id);
-  expect(await first.query(api.auth.users.current, {})).toEqual(unchanged);
-  const updated = t.withIdentity({ subject: 'new-subject', tokenIdentifier: 'issuer-a|person', email: 'Changed@Example.com' });
-  expect(await updated.mutation(api.auth.users.store, {})).toBe(id);
-  const row = await updated.query(api.auth.users.current, {});
-  expect(row).toMatchObject({ clerkId: 'legacy-subject', tokenIdentifier: 'issuer-a|person', email: 'Changed@Example.com' });
-  expect(row).not.toHaveProperty('name');
-  expect(row).not.toHaveProperty('imageUrl');
-  const otherIssuer = t.withIdentity({ subject: 'legacy-subject', tokenIdentifier: 'issuer-b|person', email: 'Changed@Example.com' });
-  expect(await otherIssuer.query(api.auth.users.current, {})).toBeNull();
-  expect(await otherIssuer.mutation(api.auth.users.store, {})).not.toBe(id);
-  expect(await t.run(ctx => ctx.db.query('users').collect())).toHaveLength(2);
 });
 
 it('exposes the relocated internal identity query without granting anonymous staff authority', async () => {

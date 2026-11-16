@@ -1,3 +1,4 @@
+import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
@@ -18,7 +19,7 @@ async function setup() {
   const { sessionId } = await t.mutation(api.messaging.chat.createSession, {
     channel: "web",
   });
-  const guestId = await t.mutation(internal.messaging.chat.acceptGuestMessage, {
+  const guestId = await recordTestGuest(t, {
     sessionId,
     content: "Does the suite have Wi-Fi?",
   });
@@ -44,7 +45,7 @@ describe("automatic responder lifecycle", () => {
   });
   it("rejects No reply needed when a new guest turn arrived after the action was chosen", async () => {
     const s = await setup();
-    const newer = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    const newer = await recordTestGuest(s.t, {
       sessionId: s.sessionId,  content: "Can I bring a pet?",
     });
     await expect(s.admin.mutation(api.messaging.adminChat.setSessionStatus, {
@@ -64,7 +65,7 @@ describe("automatic responder lifecycle", () => {
         inboxState: "processing",
         needsReply: false,
       });
-      await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+      await commitTestAssistant(s.t, {
         sessionId: s.sessionId,
         replyToMessageId: s.guestId,
         content: "Yes, Wi-Fi is included.",
@@ -77,7 +78,7 @@ describe("automatic responder lifecycle", () => {
         resolutionSource: "ai",
         needsReply: false,
       });
-      await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+      await recordTestGuest(s.t, {
         sessionId: s.sessionId,
         content: "What time is check-in?",
       });
@@ -90,7 +91,7 @@ describe("automatic responder lifecycle", () => {
   );
   it("keeps an AI handoff visible even when its acknowledgement is the last message", async () => {
     const s = await setup();
-    await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+    await commitTestAssistant(s.t, {
       sessionId: s.sessionId,
       replyToMessageId: s.guestId,
       content: "I will ask staff to confirm.",
@@ -116,7 +117,7 @@ describe("automatic responder lifecycle", () => {
       content: "Wi-Fi is included.",
       replyToMessageId: s.guestId,
     });
-    const newer = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    const newer = await recordTestGuest(s.t, {
       sessionId: s.sessionId,
       content: "Can you arrange a transfer?",
     });
@@ -155,7 +156,7 @@ describe("automatic responder lifecycle", () => {
   });
   it("refuses a reply drafted against a guest turn that is no longer current", async () => {
     const s = await setup();
-    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    await recordTestGuest(s.t, {
       sessionId: s.sessionId,
       content: "Another question",
     });
@@ -257,7 +258,7 @@ describe("automatic responder lifecycle", () => {
       aiPaused: true,
       keepWithStaff: true,
     });
-    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    await recordTestGuest(s.t, {
       sessionId: s.sessionId,
       content: "One more question.",
     });
@@ -268,11 +269,11 @@ describe("automatic responder lifecycle", () => {
   });
   it("does not let a late AI answer or a failed old send overwrite a newer turn", async () => {
     const s = await setup();
-    await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    await recordTestGuest(s.t, {
       sessionId: s.sessionId,
       content: "New question",
     });
-    await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+    await commitTestAssistant(s.t, {
       sessionId: s.sessionId,
       replyToMessageId: s.guestId,
       content: "Old answer",
@@ -348,7 +349,7 @@ describe("automatic responder lifecycle", () => {
   });
   it("ignores a delayed handoff from an older guest turn", async () => {
     const s = await setup();
-    const current = await s.t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    const current = await recordTestGuest(s.t, {
       sessionId: s.sessionId,
       content: "A different question",
     });
@@ -454,7 +455,7 @@ describe("automatic responder lifecycle", () => {
           requestId: "staff-first",
         });
       }
-      await s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+      await commitTestAssistant(s.t, {
         sessionId: s.sessionId,
         replyToMessageId: s.guestId,
         content: "I will ask staff.",

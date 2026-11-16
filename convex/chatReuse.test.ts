@@ -1,8 +1,9 @@
+import { commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -16,12 +17,12 @@ describe("chat session reuse", () => {
       visitorId: "visitor-action-metadata",
     });
 
-    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+    await commitTestAssistant(t, {
       sessionId,
       content: "Use the booking card below to choose dates.",
       action: "booking",
     });
-    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+    await commitTestAssistant(t, {
       sessionId,
       content: "This answer should not show an action card.",
       action: "none",

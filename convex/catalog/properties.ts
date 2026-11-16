@@ -1,4 +1,4 @@
-import { propertiesListResult, propertiesGetBySlugResult, propertiesGetByIdResult, propertiesGetRoomsResult, propertiesGetTourRoomsResult, propertiesGetOtaComparisonResult, propertiesGetSocialProofResult, propertiesGetReviewsResult, propertiesGetTourSnippetsResult } from './validators';
+import { propertiesListResult, propertiesGetTourRoomsResult, propertiesGetOtaComparisonResult } from './validators';
 import { publicQuery, adminQuery, adminMutation } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
@@ -20,41 +20,6 @@ export const list = publicQuery({
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
 		return properties.flatMap((property) => toPublicProperty(property) ?? []);
-	}
-});
-
-export const getBySlug = publicQuery({
-  returns: propertiesGetBySlugResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { slug: v.string() },
-	handler: async (ctx, args) => {
-		return toPublicProperty(
-			await ctx.db
-				.query('properties')
-				.withIndex('by_slug', (q) => q.eq('slug', args.slug))
-				.first()
-		);
-	}
-});
-
-export const getById = publicQuery({
-  returns: propertiesGetByIdResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { id: v.id('properties') },
-	handler: async (ctx, args) => toPublicProperty(await ctx.db.get(args.id))
-});
-
-export const getRooms = publicQuery({
-  returns: propertiesGetRoomsResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		const rows = await ctx.db
-			.query('tourScenes')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.take(50);
-        return rows.map(({ _id, _creationTime, propertyId, slug, name, imagePath, hotspots }) => ({ _id, _creationTime, propertyId, slug, name, imagePath, hotspots }));
 	}
 });
 
@@ -167,49 +132,6 @@ function publicHttpsUrl(value: string): string {
 	return url.toString();
 }
 
-export const getSocialProof = publicQuery({
-  returns: propertiesGetSocialProofResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return null;
-		const proof = await ctx.db
-			.query('reviewStats')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.first();
-        if (!proof) return null;
-        return { _id: proof._id, _creationTime: proof._creationTime, propertyId: proof.propertyId, overallRating: proof.overallRating, totalReviews: proof.totalReviews };
-	}
-});
-
-export const getReviews = publicQuery({
-  returns: propertiesGetReviewsResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		const rows = await ctx.db
-			.query('reviews')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.take(100);
-        return rows.map(({ _id, _creationTime, propertyId, authorName, authorCity, authorCountry, authorAvatarUrl, rating, title, body, date, verified, photos }) => ({ _id, _creationTime, propertyId, authorName, authorCity, authorCountry, authorAvatarUrl, rating, title, body, date, verified, photos }));
-	}
-});
-
-export const getTourSnippets = publicQuery({
-  returns: propertiesGetTourSnippetsResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		if ((await ctx.db.get(args.propertyId))?.status !== 'active') return [];
-		const rows = await ctx.db
-			.query('tourSnippets')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.take(100);
-        return rows.map(({ _id, _creationTime, propertyId, roomSlug, position, quote, authorName, authorCity, rating }) => ({ _id, _creationTime, propertyId, roomSlug, position, quote, authorName, authorCity, rating }));
-	}
-});
-
 // Admin editing. Properties and rooms are never deleted because bookings reference
 // them. Draft and archived villas are excluded from live booking and chat queries.
 
@@ -232,16 +154,6 @@ export const adminList = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		return await ctx.db.query('properties').take(100);
-	}
-});
-
-export const adminGet = adminQuery({
-	args: { propertyId: v.id('properties') },
-	handler: async (ctx, args) => {
-		const property = await ctx.db.get(args.propertyId);
-		if (!property) return null;
-		const rooms = await ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', args.propertyId)).take(50);
-		return { property, rooms };
 	}
 });
 

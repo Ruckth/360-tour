@@ -1,3 +1,4 @@
+import { markBookingPaid } from './bookings/model';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -67,7 +68,7 @@ describe('report money', () => {
 		await s.t.run(ctx => ctx.db.patch(bookingId, { total: 200000, subtotal: 200000 }));
 		const replaySecond = await online('cs_second', 'pi_second', 100000);
 		await s.t.run(ctx => ctx.db.patch(bookingId, { total: 300000, subtotal: 300000 }));
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await s.admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
 		await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, slug: 'spa' });
 		const replaySettle = await s.payOrder(orderId);
@@ -102,8 +103,8 @@ describe('report money', () => {
 		await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 		const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
 		expect((await s.report()).sales).toEqual([]);
-		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
-		await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
+		await s.t.run(ctx => markBookingPaid(ctx, bookingId, 'test'));
+		await s.t.run(ctx => markBookingPaid(ctx, bookingId, 'test'));
 		await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'archived' });
 		const report = await s.report();
 		expect(report.sales).toMatchObject([{ id: bookingId, collected: 90000, discount: 10000, coupon: { couponId, code: 'VILLA100', campaignId: s.campaignId } }]);
@@ -114,7 +115,7 @@ describe('report money', () => {
 	it('moves the POS stay payment and own order cash to the corrected day, retaining stay cohort membership', async () => {
 		const s = await setup();
 		const bookingId = await s.booking({ source: 'admin' });
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await s.admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Water', price: 5000 } });
 		await s.payOrder(orderId);
 		await s.admin.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'correct-date-001', reason: 'Yesterday', effectiveAt: now - day, tenders: [{ method: 'transfer', amount: 105000 }] });
@@ -141,7 +142,7 @@ describe('report money', () => {
 	it('skips pure stay checkouts, cancelled payment entries and unpaid stays', async () => {
 		const s = await setup();
 		const bookingId = await s.booking();
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await s.payOrder(orderId);
 		await s.booking();
 		const cancelled = await s.booking();
@@ -166,7 +167,7 @@ describe('report money', () => {
 		const paid = await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'desk-payment-001' });
 		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 10000, currency: 'THB', method: 'cash', reason: 'Courtesy', paymentId: paid.paymentId, idempotencyKey: 'desk-refund-001' });
 		const second = await s.admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId: s.serviceId, staffId: s.staffId, start: now - 2 * day, guestName: 'POS guest', guestPhone: '' });
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId: second.appointmentId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId: second.appointmentId });
 		await s.payOrder(orderId, now - day);
 		const args = { appointmentId: second.appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash' as const, reason: 'Courtesy', orderId: orderId, idempotencyKey: 'receipt-refund-001' };
 		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, args);
@@ -296,7 +297,7 @@ describe('report attribution and limits', () => {
 	it('finds an order\'s refund dated before its corrected payment day', async () => {
 		const s = await setup();
 		const appointmentId = await s.appointment();
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 		// Each step is entered on its own day, so the refund was typed in before the report's refund batch begins.
 		vi.setSystemTime(now - 5 * day);
 		await s.payOrder(orderId, now - 5 * day);
@@ -312,7 +313,7 @@ describe('report attribution and limits', () => {
 	it('finds a refund back-dated to before the range on an order paid in it', async () => {
 		const s = await setup();
 		const appointmentId = await s.appointment();
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 		await s.payOrder(orderId);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;
 		await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: appointment.revision ?? 0, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'backdated-refund-001', effectiveAt: now - 3 * day });
@@ -457,7 +458,7 @@ describe('coupon-only Finance settlements (exported API)', () => {
 		const s = await setup(50000);
 		const bookingId = mixed ? await s.booking({ total: 200000, subtotal: 200000 }) : undefined;
 		const { orderId } = bookingId
-			? await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })
+			? await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId })
 			: await s.admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
 		if (bookingId) await s.admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
 		await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA100' });
@@ -516,7 +517,7 @@ describe('coupon-only Finance settlements (exported API)', () => {
 it('retains consumed coupon discount after a real service refund', async () => {
 	const s = await setup();
 	const appointmentId = await s.appointment();
-	const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+	const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 	await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA100' });
 	await s.payOrder(orderId);
 	await s.admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 20000, currency: 'THB', method: 'cash', reason: 'Courtesy', orderId: orderId, idempotencyKey: 'coupon-refund-001' });
@@ -530,7 +531,7 @@ it('reports zero coupon discount for a custom-price stay without changing coupon
 	const { couponId } = await s.admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId: s.campaignId, code: 'VILLA100', benefit: { kind: 'fixed', amount: 10000 }, scope: 'accommodation' });
 	await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Custom guest', guestEmail: 'guest@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'VILLA100' });
-	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
+	await s.t.run(ctx => markBookingPaid(ctx, bookingId, 'test'));
 	const before = await s.t.run(async ctx => ({ booking: await ctx.db.get(bookingId), coupon: await ctx.db.get(couponId), redemption: await ctx.db.query('couponRedemptions').withIndex('by_couponId_and_createdAt', q => q.eq('couponId', couponId)).unique() }));
 	await s.admin.mutation(api.bookings.commands.editBooking.editBooking, { bookingId, propertyId: s.propertyId, expectedRevision: before.booking!.revision ?? 0, checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, guestName: 'Custom guest', guestPhone: '+66811112222', guestEmail: 'guest@example.com', priceOverride: { total: 75000, reason: 'Agreed price' }, notifyGuest: false });
 	for (const basis of ['cash', 'cohort'] as const) expect((await s.report(basis)).sales).toMatchObject([{ id: bookingId, customPrice: true, discount: 0, coupon: { couponId, code: 'VILLA100' } }]);
@@ -549,7 +550,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	await s.admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
 	await s.admin.mutation(api.marketing.commands.assignCoupon.assignCoupon, { affiliateId, couponId });
 	const { bookingId } = await s.t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Private Guest', guestEmail: 'private@example.com', guestPhone: '+66811112222', checkIn: '2026-11-15', checkOut: '2026-11-16', guests: 2, couponCode: 'BOTH100' });
-	await s.t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
+	await s.t.run(ctx => markBookingPaid(ctx, bookingId, 'test'));
 	await s.t.run(ctx => ctx.db.patch(bookingId, { confirmationCode: 'PRIVATE-CONF' }));
 	const { orderId } = await s.admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId: s.serviceId } });
 	await s.admin.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'BOTH100' });
@@ -639,7 +640,7 @@ it.each(['cohort', 'cash'] as const)('skips financial reads for checkout payment
 	const changeIds: Id<'recordChanges'>[] = [];
 	for (let i = 0; i < count; i++) {
 		const appointmentId = await s.appointment(now - (i + 1) * day);
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 		await s.payOrder(orderId, now - day);
 		const changes = await s.t.run(ctx => ctx.db.query('recordChanges').withIndex('by_appointmentId_and_at', q => q.eq('appointmentId', appointmentId)).collect());
 		const change = changes.find(c => c.kind === 'payment')!;

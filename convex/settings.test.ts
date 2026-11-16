@@ -89,7 +89,7 @@ describe('settings get/update', () => {
 		await expect(admin.mutation(api.settings.settings.update, input)).rejects.toThrow(message);
 	});
 
-	it('requires an admin for get, update, channelHealth, serverConfig and admins', async () => {
+	it('requires an admin for get, update, channelHealth and serverConfig', async () => {
 		const { t } = setup();
 		const other = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(t.query(api.settings.settings.get, {})).rejects.toThrow('Not authenticated');
@@ -97,14 +97,12 @@ describe('settings get/update', () => {
 		await expect(other.mutation(api.settings.settings.update, { business: { businessName: 'X' } })).rejects.toThrow('Not authorized');
 		await expect(other.query(api.settings.settings.channelHealth, {})).rejects.toThrow('Not authorized');
 		await expect(other.query(api.settings.settings.serverConfig, {})).rejects.toThrow('Not authorized');
-		await expect(other.query(api.settings.settings.admins, {})).rejects.toThrow('Not authorized');
 	});
 
-	it('lists admins and reports env presence as booleans', async () => {
+	it('reports env presence as booleans', async () => {
 		const { admin } = setup();
 		vi.stubEnv('RESEND_API_KEY', 're_secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', '');
-		expect(await admin.query(api.settings.settings.admins, {})).toEqual(['admin@example.com', 'second@example.com']);
 		const config = await admin.query(api.settings.settings.serverConfig, {});
 		expect(config.RESEND_API_KEY).toBe(true);
 		expect(config.STRIPE_SECRET_KEY).toBe(false);

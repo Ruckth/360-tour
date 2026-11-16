@@ -31,7 +31,6 @@ describe('admin property editing', () => {
 		await expect(t.query(api.catalog.properties.adminList, {})).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.catalog.properties.update, { propertyId, name: 'X' })).rejects.toThrow('Not authenticated');
 		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
-		await expect(stranger.query(api.catalog.properties.adminGet, { propertyId })).rejects.toThrow('Not authorized');
 		await expect(stranger.mutation(api.catalog.properties.updateRoom, { roomId, name: 'X' })).rejects.toThrow('Not authorized');
 	});
 

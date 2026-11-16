@@ -1,3 +1,4 @@
+import { commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -20,7 +21,7 @@ it('charges one turn while accepting guest messages during staff takeover', asyn
   expect(await t.query(api.messaging.chat.getMessages, guest)).toMatchObject([{ role: 'user', content: 'Hello' }]);
   expect((await t.run(ctx => ctx.db.get(guest.sessionId)))?.marketingCapture).toBeUndefined();
   expect(await t.run(ctx => ctx.db.get(result.eventId))).toMatchObject({ status: 'ignored' });
-  expect(await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, { sessionId: guest.sessionId, content: 'Stale' })).toEqual({ stored: false, messageId: null });
+  expect(await commitTestAssistant(t, { sessionId: guest.sessionId, content: 'Stale' })).toEqual({ stored: false, messageId: null });
 });
 it.each([['global', 500], ['session', 20]] as const)('retains the %s hourly budget and rolls back rejected admission', async (budget, limit) => {
   const t = createHarness(convexTest), guest = await guestSession(t, { marketing: { slug: 'old' } });

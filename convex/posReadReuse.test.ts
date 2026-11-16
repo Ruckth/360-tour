@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { getOrder } from './pos/orders';
-import { stableCatalog, recentCatalogRanking, catalog } from './pos/catalog';
+import { stableCatalog, recentCatalogRanking } from './pos/catalog';
 import schema from './schema';
 // Convex hides _handler from its public declaration; the test invokes it with a real local DB
 // so reads can be counted without substituting database behavior.
@@ -40,7 +40,7 @@ async function fixture() {
 
 it('reads a linked stay and property once, including nulls, and observes later edits without changing money', async () => {
   const { t, admin, read, propertyId, bookingId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   const initial = await read(orderId);
   expect(initial.gets).toEqual([orderId, bookingId, propertyId]);
   expect(initial.queries).toHaveLength(6);
@@ -65,7 +65,7 @@ it('reads a linked stay and property once, including nulls, and observes later e
 
 it('reuses appointment/service joins and sees edited or deleted appointment, service and staff on subsequent queries', async () => {
   const { t, admin, read, appointmentId, serviceId, staffId } = await fixture();
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
   const initial = await read(orderId);
   expect(initial.gets).toEqual([orderId, appointmentId, serviceId, staffId]);
   expect(initial.result?.lines[0]).toMatchObject({ imageUrl: '/service.jpg', staffName: 'Current therapist', sourceIssue: null });
@@ -141,7 +141,6 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
   expect(ranked.tables).toEqual(['orderLines']);
   expect(ranked.result).toEqual(Array.from({ length: 8 }, (_, i) => `extra:Tie ${9 - i}`));
   expect((await measure(handler(stableCatalog))).result).toEqual(stable.result);
-  expect((await measure(handler(catalog))).result).toEqual({ ...stable.result, frequent: ranked.result });
   await t.run(async ctx => {
     await ctx.db.patch(serviceId, { price: 20000, imageUrl: '/edited.jpg' });
     await ctx.db.patch(propertyId, { currency: 'USD' });
@@ -175,5 +174,4 @@ it('counts rows rather than quantity, excludes appointment fees and source rows,
   expect(items.services).toEqual([]); expect(items.staff).toEqual([]); expect(items.rooms).toHaveLength(1);
   const frequent = await admin.query(api.pos.catalog.recentCatalogRanking, {});
   expect(frequent).toEqual([`room:${propertyId}`, `service:${serviceId}`, 'extra:High quantity']);
-  expect(await admin.query(api.pos.catalog.catalog, {})).toEqual({ ...items, frequent });
 });

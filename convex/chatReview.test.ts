@@ -1,8 +1,9 @@
+import { commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
 import { expect, it } from 'vitest';
-import { api, internal } from './_generated/api';
+import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -36,7 +37,7 @@ it('does not store an automatic assistant reply when staff pauses during generat
 	const t = convexTest(schema, modules);
 	const { sessionId, guestToken: sessionIdGuestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
 	await t.run((ctx) => ctx.db.patch(sessionId, { aiPaused: true }));
-	expect(await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+	expect(await commitTestAssistant(t, {
 		sessionId, content: 'Stale AI reply'
 	})).toEqual({ stored: false, messageId: null });
 	expect(await t.query(api.messaging.chat.getMessages, { guestToken: sessionIdGuestToken, sessionId })).toEqual([]);

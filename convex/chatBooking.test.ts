@@ -1,3 +1,4 @@
+import { markBookingPaid } from './bookings/model';
 import { generateTestReply } from './testing/turn.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -432,14 +433,14 @@ describe("get_my_bookings / cancel_booking", () => {
     expect(await t.run(async ctx => (await ctx.db.query("availability").collect()).filter(row => row.bookingId === bookingId))).toEqual([]);
 
     await expect(
-      t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId }),
+      t.run(ctx => markBookingPaid(ctx, bookingId, 'test')),
     ).rejects.toThrow("cancelled");
   });
 
   it("refuses to cancel paid bookings in chat", async () => {
     const { t, sessionId } = await setup("whatsapp");
     const { confirmationCode, bookingId } = await bookViaChat(t, sessionId);
-    await t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId });
+    await t.run(ctx => markBookingPaid(ctx, bookingId, 'test'));
 
     await expect(
       t.mutation(internal.bookings.bookings.cancelChatBooking, {

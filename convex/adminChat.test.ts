@@ -1,3 +1,4 @@
+import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 import { acceptTestEvent, completeTestEvent } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
@@ -760,19 +761,19 @@ describe("adminChat.listSessions", () => {
 });
 
 describe("admin chat metadata writes", () => {
-  it("chat.acceptGuestMessage increments messageCount and latestMessageAt", async () => {
+  it("guest writer and worker commit increment messageCount and latestMessageAt", async () => {
     const t = convexTest(schema, modules);
     const { sessionId } = await t.mutation(api.messaging.chat.createSession, {
       channel: "web",
       visitorId: "visitor-metadata",
     });
 
-    await t.mutation(internal.messaging.chat.acceptGuestMessage, {
+    await recordTestGuest(t, {
       sessionId,
       content: "Hello",
     });
     const afterFirst = await t.query(internal.messaging.chat.getSessionInternal, { sessionId });
-    await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+    await commitTestAssistant(t, {
       sessionId,
       content: "Hi there",
     });
@@ -902,7 +903,7 @@ describe("admin chat unanswered warning", () => {
     expect(await needsReply()).toBe(false);
 
     await admin.mutation(api.messaging.adminChat.setKeepWithStaff, { sessionId, keep: true });
-    await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: "Another staff question" });
+    await recordTestGuest(t, { sessionId,  content: "Another staff question" });
     expect(await needsReply()).toBe(true);
   });
 
@@ -1044,7 +1045,7 @@ describe("adminChat inbox lifecycle", () => {
     await admin.mutation(api.messaging.adminReply.complete, { requestId: "r-1" });
     expect((await t.run((ctx) => ctx.db.get(sessionId)))?.adminStatus).toBe("resolved");
 
-    await t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId,  content: "Hello again" });
+    await recordTestGuest(t, { sessionId,  content: "Hello again" });
     const session = await t.run((ctx) => ctx.db.get(sessionId));
     expect(session?.adminStatus).toBeUndefined();
     expect(session?.archivedAt).toBeUndefined();
@@ -1309,18 +1310,6 @@ describe("adminChat read optimizations", () => {
           : { applies: true, lastGuestMessageAt: guestAt, closesAt: guestAt + 24 * 60 * 60 * 1000 },
       );
 
-      // The legacy transcript keeps its 10 newest events.
-      const transcript = await admin.query(api.messaging.adminChat.getTranscript, { sessionId });
-      for (const other of eventChannels) {
-        const events = transcript[eventKeys[other]];
-        expect(events).toHaveLength(other === channel ? 10 : 0);
-        if (other === channel) {
-          expect(events[0]?._id).toBe(newest[other]);
-          expect(events.map((event) => event.messageText)).toEqual(
-            Array.from({ length: 10 }, (_, index) => `${channel} event ${11 - index}`),
-          );
-        }
-      }
     },
   );
 

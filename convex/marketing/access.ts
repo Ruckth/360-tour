@@ -1,11 +1,11 @@
 import { accessCurrentResult } from './validators';
 import { ConvexError, v } from 'convex/values';
-import { authenticatedMutation, marketingMutation, marketingQuery, publicQuery } from '../auth/model';
+import { authenticatedMutation, marketingMutation, publicQuery } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
 import { marketingRole } from '../shared/affiliateTypes';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import { appendRecordHistory } from '../settings/model';
-import { marketingAccess, marketingInvitationExpired, marketingInvitationExpiry } from './accessPolicy';
+import { marketingAccess, marketingInvitationExpired } from './accessPolicy';
 
 export const current = publicQuery({
   returns: accessCurrentResult,
@@ -46,20 +46,6 @@ export const claimInvite = authenticatedMutation({
       after: { role: invite.role },
     });
     return null;
-  },
-});
-
-export const listGrants = marketingQuery({
-  permission: "manageAccess",
-  args: {},
-  handler: async (ctx) => {
-    const grants = await ctx.db.query("marketingGrants").take(500);
-    const now = Date.now();
-    return grants.map(grant => ({
-      ...grant,
-      expiresAt: marketingInvitationExpiry(grant),
-      expired: marketingInvitationExpired(grant, now),
-    }));
   },
 });
 

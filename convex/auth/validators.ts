@@ -42,5 +42,3 @@ export const staffAccessMyAccessResult = v.object({
 "expiresAt": v.number(),
 })),
 });
-
-export const usersCurrentResult = v.union(v.null(), v.object({ ...usersFields, _id: v.id('users'), _creationTime: v.number() }));

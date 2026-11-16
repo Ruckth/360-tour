@@ -817,7 +817,7 @@ it("freezes POS settlement and excludes stay money from order credit, then rever
     staffIds: [staffId],
   });
   const { bookingId } = await s.book({ slug: "r/anna" });
-  const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, {
+  const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, {
     bookingId,
   });
   await s.admin.mutation(api.pos.commands.addItem.addItem, {
@@ -1132,7 +1132,6 @@ it("does not pretend invitations can revoke or downgrade configured system admin
     await expect(s.admin.mutation(api.marketing.access.setGrant, { email: "admin@example.com", role })).rejects.toThrow("ADMIN_EMAILS");
   }
   expect((await s.admin.query(api.marketing.access.current, {})).role).toBe("admin");
-  expect(await s.admin.query(api.marketing.access.listGrants, {})).toEqual([]);
 });
 
 

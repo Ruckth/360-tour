@@ -194,39 +194,13 @@ it.each([
 });
 
 // Unit tests and generated declarations must never keep a deployed endpoint alive.
-// Existing contract exceptions are explicit; new test-only endpoints must not join implicitly.
+// Only operator commands with explicit repository runbooks may lack a production caller.
 const functionReferenceAllowlist: Record<string, string> = {
-  "auth/users:current": "Tested token-scoped user lookup; external sign-in clients have not been ruled out.",
-  "auth/users:store": "Tested idempotent Clerk identity sync; external sign-in clients have not been ruled out.",
-  "bookings/bookings:listByProperty": "Retained paged admin booking contract covered by listPagination and adminBookings tests.",
-  "bookings/bookings:markPaidFromTrustedWebhook": "Retained trusted-payment integration contract; external operator usage is unverified.",
-  "bookings/bookings:quoteStay": "Existing tested public quote contract; removal is outside this cleanup.",
-  "bookings/calendar/addDateBlock:addDateBlock": "Existing tested single-block admin contract alongside the batch writer.",
-  "bookings/calendar/availability:getForProperty": "Existing tested public availability projection; removal is outside this cleanup.",
-  "catalog/properties:adminGet": "Tested admin property lookup contract; no production caller confirmed.",
-  "catalog/properties:getById": "Tested public property projection; external client usage is unverified.",
-  "catalog/properties:getBySlug": "Tested public slug lookup; external client usage is unverified.",
-  "catalog/properties:getReviews": "Tested active-property review projection; external client usage is unverified.",
-  "catalog/properties:getRooms": "Tested active-property room projection; external client usage is unverified.",
-  "catalog/properties:getSocialProof": "Tested active-property social proof projection; external client usage is unverified.",
-  "catalog/properties:getTourSnippets": "Tested public tour projection; external client usage is unverified.",
-  "catalog/reviewMaintenance:initialize": "Operator CLI entry point documented in the Phase 4 initialization runbook.",
-  "concierge/businessFacts:adminPropertyOptions": "Tested admin authoring property-options contract; no production caller confirmed.",
-  "concierge/runTurn:runTurn": "Durable-turn RPC retained for queued jobs and the turn test harness; worker now calls its helper.",
-  "maintenance/aiEval:cancelTestBookings": "Operator CLI entry point documented in maintenance/aiEval.ts.",
-  "maintenance/aiEval:cleanup": "Operator CLI entry point documented in maintenance/aiEval.ts.",
-  "maintenance/aiEval:seed": "Operator CLI entry point documented in maintenance/aiEval.ts.",
-  "marketing/access:listGrants": "Existing tested marketing access-management contract; removal is outside this cleanup.",
-  "messaging/adminChat:getTranscript": "Explicit compatibility transcript contract retains ten-event lists.",
-  "messaging/chat:acceptGuestMessage": "Existing tested message-ingress RPC contract; removal is outside this cleanup.",
-  "messaging/chat:addAssistantMessageWithSuggestions": "Existing tested assistant-write RPC contract; removal is outside this cleanup.",
-  "messaging/chat:isAiPaused": "Tested guest-token pause lookup contract; external client usage is unverified.",
-  "messaging/projectionMaintenance:initializeInbox": "Operator CLI entry point documented in the Phase 4 initialization runbook.",
-  "pos/catalog:catalog": "Explicit compatibility endpoint for combined catalog and ranking subscriptions.",
-  "pos/commands/openOrderFor:openOrderFor": "Existing tested source-order contract alongside the linked-source writer.",
-  "pos/customers:checkoutCustomer": "Tested permission-limited customer projection; no production caller confirmed.",
-  "services/serviceBookings:listActiveServices": "Existing tested internal service-list contract; removal is outside this cleanup.",
-  "settings/settings:admins": "Tested privileged admin-email lookup contract; no production caller confirmed.",
+  "catalog/reviewMaintenance:initialize": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
+  "maintenance/aiEval:cancelTestBookings": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "maintenance/aiEval:cleanup": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
 };
 
 it('gives every exported Convex function a non-test caller or a documented exception', () => {

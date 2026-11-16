@@ -1,3 +1,4 @@
+import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -198,7 +199,7 @@ describe('OTA nights that overlap a host block or direct booking', () => {
 
   it('stay blocked after the host block is removed, and free only once the feed is removed', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await addTestDateBlock(admin, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
     // Every later sync keeps reporting the overlap.
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
@@ -214,12 +215,12 @@ describe('OTA nights that overlap a host block or direct booking', () => {
 
   it('lets a host block that held the night be edited, but not extended onto other OTA nights', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await addTestDateBlock(admin, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
     await applyFeed(t, sourceId, ['2030-01-10', '2030-01-12']);
     await admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay, shortened' });
     await expect(admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-13', reason: 'Longer' }))
       .rejects.toThrow('2030-01-12 is already booked or blocked.');
-    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
+    await expect(addTestDateBlock(admin, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
     await admin.mutation(api.bookings.calendar.removeDateBlock.removeDateBlock, { blockId });
     expect(await free(night)).toBe(false);
     expect(await free({ checkIn: '2030-01-09', checkOut: '2030-01-10' })).toBe(true);

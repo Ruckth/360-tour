@@ -44,7 +44,7 @@ it('keeps provider refunds waived and charges only a later stay extension at POS
   await start(); await complete(); await refund(10000);
   expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))!.balance).toMatchObject({ total: 20000, paid: 10000, refunded: 10000, owed: 0 });
   await t.run(ctx => ctx.db.patch(bookingId, { total: 25000 }));
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   expect(view.totals).toMatchObject({ total: 15000, deposit: 10000, due: 5000 });
   await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'extension-after-refund', expectedRevision: view.order.revision!, expectedDue: 5000, tenders: [{ method: 'cash', amount: 5000 }] });

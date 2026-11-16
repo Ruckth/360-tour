@@ -93,7 +93,7 @@ describe('refund records', () => {
 	it('links an omitted sole POS refund source to its payment and receipt', async () => {
 		const { admin, create, rev, financials, refund, order, settle } = await setup();
 		const bookingId = await create(5, 6, { confirmed: true });
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await settle(orderId, [{ method: 'cash', amount: (await order(orderId)).totals.due }]);
 		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, { bookingId, expectedRevision: await rev(bookingId), notifyGuest: false });
 		const before = await financials(bookingId);
@@ -169,7 +169,7 @@ describe('refund records', () => {
 
 		// Re-extended after the refund: checkout charges only the new balance, against the net paid.
 		await edit(bookingId, { checkOut: isoInDays(-7) });
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		expect((await order(orderId)).totals).toMatchObject({ total: 2550000, deposit: 1700000, due: 850000 });
 		// The open order owns the balance: a desk payment on the booking would collect it twice.
 		await expect(pay(bookingId)).rejects.toThrow('still open');
@@ -215,7 +215,7 @@ describe('refund records', () => {
 		expect((await financials(bookingId)).money).toMatchObject({ net: 0, refunded: 2550000, refundable: 0 });
 		await expect(refund(bookingId, 1)).rejects.toThrow('Nothing is left to refund');
 		// Not payable again by any path.
-		await expect(admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })).rejects.toThrow('cancelled');
+		await expect(admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId })).rejects.toThrow('cancelled');
 		await expect(admin.mutation(api.pos.commands.attach.attach, { bookingId })).rejects.toThrow('nothing left to pay');
 		await expect(pay(bookingId)).rejects.toThrow('cancelled');
 		expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))?.balance).toMatchObject({ paid: 0, owed: 0, refunded: 2550000 });
@@ -302,7 +302,7 @@ describe('payment entries and their corrections', () => {
 
 		// Extend by a night and collect the balance at the desk, dated yesterday.
 		await edit(bookingId, { checkOut: isoInDays(24), notifyGuest: false });
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		expect((await order(orderId)).totals).toMatchObject({ total: 3400000, deposit: 2550000, due: 850000 });
 		const yesterday = Date.now() - DAY;
 		await settle(orderId, [{ method: 'card', amount: 850000 }], { effectiveAt: yesterday });
@@ -330,7 +330,7 @@ describe('payment entries and their corrections', () => {
 		expect(voided.payments).toHaveLength(1);
 		expect(voided.corrections).toMatchObject([{ kind: 'void_unreceived', sequence: 1 }]);
 		// The balance can be charged again on a new order.
-		const again = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const again = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		expect(again.orderId).not.toBe(orderId);
 		expect((await order(again.orderId)).totals.due).toBe(850000);
 		expect((await history(bookingId)).map((row) => row.kind)).toContain('payment_cancelled');
@@ -339,7 +339,7 @@ describe('payment entries and their corrections', () => {
 	it('voiding a paid order alone keeps the stay paid and its payment record, and logs it on the booking', async () => {
 		const { admin, get, create, financials, history, order, settle } = await setup();
 		const bookingId = await create(20, 22);
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await settle(orderId, [{ method: 'card', amount: 1700000 }]);
 		await admin.mutation(api.pos.commands.voidOrder.voidOrder, { orderId, reason: 'Wrong card' });
 		expect(await get(bookingId)).toMatchObject({ paymentStatus: 'paid', amountPaid: 1700000 });
@@ -352,7 +352,7 @@ describe('payment entries and their corrections', () => {
 	it('amends a wrong tender, date and payer on a paid receipt while keeping the issued receipt and payments', async () => {
 		const { t, admin, order, settle, financials, create } = await setup();
 		const bookingId = await create(20, 22);
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const ann = await admin.mutation(api.pos.customers.createCustomer, { name: 'Ann' });
 		const bob = await admin.mutation(api.pos.customers.createCustomer, { name: 'Bob', phone: '0812345678' });
 		await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId: ann });
@@ -396,7 +396,7 @@ describe('custom stay price', () => {
 	it('sets a reasoned price with revision checks, flags the open checkout row and settles the new price', async () => {
 		const { admin, get, rev, create, edit, order, settle, history } = await setup();
 		const bookingId = await create(20, 23);
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const stale = await order(orderId);
 		expect(stale.totals.due).toBe(2550000);
 
@@ -558,7 +558,7 @@ describe('history, deletion and concurrency', () => {
 	it('denies every new booking and order correction to non-admins', async () => {
 		const { t, stranger, create, admin, order, settle } = await setup();
 		const bookingId = await create(20, 22);
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await settle(orderId, [{ method: 'cash', amount: 1700000 }]);
 		const paymentId = (await t.run((ctx) => ctx.db.query('bookingPayments').first()))!._id;
 		const anonymous = t;
@@ -607,7 +607,7 @@ describe('checkout records', () => {
 			const serviceId = await ctx.db.insert('services', { slug: 'spa', name: 'Spa', description: '', category: 'spa', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: 0, updatedAt: 0 });
 			return await insertFixture(ctx, 'appointments', { serviceId, staffId, start: Date.now() - 2 * DAY, end: Date.now() - 2 * DAY + 3_600_000, blockedUntil: Date.now() - 2 * DAY + 3_600_000, guestName: 'Eve', guestPhone: '1', source: 'admin', status: 'completed', paymentStatus: 'unpaid', price: 120000, currency: 'THB', confirmationCode: 'SPA2', accessToken: 'x', createdAt: 0 });
 		});
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 		const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Eve' });
 		await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
 		await expect(settle(orderId, [{ method: 'cash', amount: 120000 }], { effectiveAt: Date.now() + DAY, expectedCustomerRevision: 0 })).rejects.toThrow('future');

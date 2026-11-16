@@ -19,7 +19,7 @@ async function setup() {
 }
 it('refuses an unreceived-payment reversal after a partial appointment refund and exposes the actual refund on its receipt', async () => {
   const { t, admin, appointmentId, read } = await setup();
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
   const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'appt-pos-settle', expectedRevision: view.order.revision!, expectedDue: 120000, tenders: [{ method: 'cash', amount: 120000 }] });
   expect(await read()).toMatchObject({ money: { gross: 120000, net: 120000 } });
@@ -83,7 +83,7 @@ it('amends manual tender/date with old values in history and reverses only unrec
 });
 it('preserves POS receipts, references their actual collected money, and blocks manual correction of refunded money', async () => {
   const { t, admin, appointmentId, read } = await setup();
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
   const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 120000, idempotencyKey: 'pos-appointment-001', tenders: [{ method: 'cash', amount: 120000 }] });
   const receipt = await t.run(ctx => ctx.db.get(orderId));

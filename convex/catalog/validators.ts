@@ -107,14 +107,8 @@ const publicPropertyFields = {
 };
 export const publicProperty = v.object({ ...publicPropertyFields, _id: v.id('properties'), _creationTime: v.number(), status: v.literal('active') });
 export const propertiesListResult = v.array(publicProperty);
-export const propertiesGetBySlugResult = v.union(v.null(), publicProperty);
-export const propertiesGetByIdResult = propertiesGetBySlugResult;
-export const propertiesGetRoomsResult = v.array(v.object({ ...tourScenesFields, _id: v.id('tourScenes'), _creationTime: v.number() }));
 export const propertiesGetTourRoomsResult = v.union(v.null(), v.array(v.object({ slug: tourScenesFields.slug, name: tourScenesFields.name, imagePath: tourScenesFields.imagePath, hotspots: tourScenesFields.hotspots })));
 export const propertiesGetOtaComparisonResult = v.union(v.null(), v.object({ currency: v.string(), pricePerNight: v.number(), directDiscountPercent: v.number(), rates: v.array(v.object({ platform: otaRatesFields.platform, nightlyRate: otaRatesFields.nightlyRate, url: otaRatesFields.url, updatedAt: otaRatesFields.updatedAt })) }));
-export const propertiesGetSocialProofResult = v.union(v.null(), v.object({ propertyId: reviewStatsFields.propertyId, overallRating: reviewStatsFields.overallRating, totalReviews: reviewStatsFields.totalReviews, _id: v.id('reviewStats'), _creationTime: v.number() }));
-export const propertiesGetReviewsResult = v.array(v.object({ ...reviewsFields, _id: v.id('reviews'), _creationTime: v.number() }));
-export const propertiesGetTourSnippetsResult = v.array(v.object({ ...tourSnippetsFields, _id: v.id('tourSnippets'), _creationTime: v.number() }));
 const publicVilla = v.object({ ...publicPropertyFields, _id: v.id('properties'), translations: v.array(v.object({ locale: v.string(), tagline: v.optional(v.string()), description: v.optional(v.string()), amenities: v.optional(v.array(v.string())) })), contentEditedAt: v.union(v.number(), v.null()), reviewCount: v.number(), averageRating: v.union(v.number(), v.null()) });
 const reviewCopy = {
   authorName: reviewsFields.authorName,
