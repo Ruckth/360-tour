@@ -2,10 +2,11 @@ import { settingsPublicProfileResult } from './validators';
 import { v } from 'convex/values';
 import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
-import { CHAT_REPLY_LIMIT_RANGES, chatReplyLimitsValidator, resolveChatReplyLimits, type ChatReplyLimits, BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
+import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
 import { settingsSnapshot } from './configurationWriter';
 import { getEffectiveSettings, getSiteSettingsRow } from './model';
 import { appendRecordHistory } from './recordWriter';
+import { CHAT_REPLY_LIMIT_RANGES, chatReplyLimitsValidator, resolveChatReplyLimits, type ChatReplyLimits } from '../shared/siteSettings';
 
 const text = v.optional(v.string());
 
