@@ -59,7 +59,7 @@ it("gives an explicitly unverified email no marketing access and refuses its inv
   }));
   const unverifiedAdmin = t.withIdentity({ email: "admin@example.com", emailVerified: false, tokenIdentifier: "issuer|fake-admin" });
   expect(await unverifiedAdmin.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
-  await expect(unverifiedAdmin.query(api.marketing.access.listGrants, {})).rejects.toThrow();
+  await expect(unverifiedAdmin.mutation(api.marketing.access.setGrant, { email: "other@example.com", role: "viewer" })).rejects.toThrow();
   const unverified = t.withIdentity({ email: "friend@example.com", emailVerified: false, tokenIdentifier: "issuer|friend" });
   expect(await unverified.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
   await expect(unverified.mutation(api.marketing.access.claimInvite, {})).rejects.toThrow("Verify your email");
