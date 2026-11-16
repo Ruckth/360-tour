@@ -307,6 +307,7 @@ it('gives every exported Convex function a non-test caller or a documented excep
   for (const [path, reason] of Object.entries(functionReferenceAllowlist)) {
     expect(functions.has(path), `Stale function allowlist entry: ${path}`).toBe(true);
     expect(reason.trim(), path).not.toBe('');
+    expect(references.has(path), `Allowlisted function now has a caller; remove its exception: ${path}`).toBe(false);
   }
   expect([...functions].filter(path => !references.has(path) && !functionReferenceAllowlist[path]).sort(),
     'Convex exports need a production reference or a one-line allowlist reason').toEqual([]);
