@@ -406,6 +406,14 @@ describe("editing the stay price", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("keeps a waived provider refund fully paid while displaying the net money held", async () => {
+    const refunded = { ...booking, total: 1700000, amountPaid: 1700000, amountRefunded: 500000, providerRefundWaived: 500000 };
+    queries.quoteBookingEdit.mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: false });
+    await render(createElement(EditBookingDialog, { booking: refunded, properties: [villa], onClose: vi.fn() }));
+    expect(document.body.textContent).toContain("Guest paid ฿12,000. Fully paid.");
+    expect(document.body.textContent).not.toContain("Balance due");
+  });
+
   it("returns a custom price to the villa rate explicitly", async () => {
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 2000000, discountAmount: 300000, total: 1700000, currency: "THB", promotion: null, couponRemoved: false, repriced: true });
     const custom = { ...booking, priceOverride: { total: 1500000, quotedTotal: 1700000, reason: "Deal", by: "a", at: 0 }, total: 1500000 } as BookingDetail;

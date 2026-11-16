@@ -1,4 +1,5 @@
 "use client";
+import { bookingBalance } from "convex/shared/orderMath";
 import { satangToBaht } from "convex/shared/money";
 
 
@@ -463,7 +464,8 @@ export function EditBookingDialog({
   /** Save waits for the quote: staff confirm the price editBooking will actually write, and it refuses any other. */
   const expectedPrice = reviewedPrice(price);
   const priceBlocked = !expectedPrice;
-  const balance = booking.amountPaid !== undefined && sameCurrency ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
+  const paid = booking.paymentStatus === "paid" ? bookingBalance(booking).paid : undefined;
+  const balance = paid !== undefined && sameCurrency ? balanceText(newTotal, booking, booking.currency) : null;
   const archivedVilla = stayChanged && property?.status === "archived";
   const priceChanged = custom
     ? customAmount !== booking.priceOverride?.total || customReason.trim() !== (booking.priceOverride?.reason ?? "") || stayChanged
@@ -615,11 +617,11 @@ export function EditBookingDialog({
             ) : (
               <p className="text-muted-foreground">Price unchanged: {formatMoney(booking.total, booking.currency)}</p>
             )}
-            {booking.amountPaid !== undefined && (custom || price.kind === "changed" || price.kind === "unchanged") && sameCurrency ? (
+            {paid !== undefined && (custom || price.kind === "changed" || price.kind === "unchanged") && sameCurrency ? (
               <p className="mt-1 text-muted-foreground">
-                Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
+                Guest paid {formatMoney(paid, booking.currency)}.{" "}
                 {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
-                {balance && newTotal < booking.amountPaid ? " Record the refund once you give it back." : ""}
+                {balance && newTotal < (paid ?? 0) ? " Record the refund once you give it back." : ""}
               </p>
             ) : null}
           </div>

@@ -194,8 +194,10 @@ export function toAdminBooking(booking: Doc<'bookings'>) {
 		status: booking.status,
 		paymentStatus: booking.paymentStatus,
 		paymentMethod: booking.paymentMethod,
-		/** What the guest has paid and kept, after recorded refunds; undefined while unpaid. */
-		amountPaid: booking.paymentStatus === 'paid' ? stayMoney(booking).net : undefined,
+		// Preserve gross payments and refund facts so previews use the same balance as writes.
+		amountPaid: booking.amountPaid,
+		amountRefunded: booking.amountRefunded,
+		...(booking.providerRefundWaived !== undefined ? { providerRefundWaived: booking.providerRefundWaived } : {}),
 		source: booking.source ?? 'web',
 		chatSessionId: booking.chatSessionId,
 		confirmationCode: booking.confirmationCode,

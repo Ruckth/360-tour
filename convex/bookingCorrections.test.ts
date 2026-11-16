@@ -164,7 +164,7 @@ describe('refund records', () => {
 		const orders = await admin.query(api.pos.orders.ordersForBooking, { bookingId });
 		expect(orders).toMatchObject({ balance: { total: 1700000, paid: 1700000, owed: 0, refunded: 850000, credit: 0 }, refunds: [{ amount: 850000, method: 'card' }] });
 		await expect(admin.mutation(api.pos.commands.attach.attach, { bookingId })).rejects.toThrow('nothing left to pay');
-		expect((await admin.query(api.bookings.admin.getForAdmin, { bookingId }))?.amountPaid).toBe(1700000);
+		expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ amountPaid: 2550000, amountRefunded: 850000, money: { net: 1700000 } });
 		expect((await history(bookingId)).map((row) => row.kind)).toEqual(['refund_recorded', 'edited', 'payment_recorded', 'confirmed', 'created']);
 
 		// Re-extended after the refund: checkout charges only the new balance, against the net paid.

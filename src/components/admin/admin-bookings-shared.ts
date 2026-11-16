@@ -1,3 +1,4 @@
+import { bookingBalance } from 'convex/shared/orderMath';
 import { resolveNotify } from 'convex/shared/bookingMoney';
 
 import { bahtToSatang } from 'convex/shared/money';
@@ -55,8 +56,8 @@ export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentSt
 }
 
 /** Amount still owed (positive) or owed back to the guest (negative) after an edit. */
-export function balanceText(total: number, paid: number, currency: string) {
-  const balance = total - paid;
+export function balanceText(total: number, booking: Parameters<typeof bookingBalance>[0], currency: string) {
+  const balance = bookingBalance({ ...booking, total }).owed;
   if (balance > 0) return { text: `Balance due ${formatMoney(balance, currency)}`, tone: TONES.warning.text };
   if (balance < 0) return { text: `Credit ${formatMoney(-balance, currency)}`, tone: TONES.success.text };
   return null;

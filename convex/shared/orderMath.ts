@@ -152,9 +152,7 @@ type BookingMoney = { status: string; paymentStatus: string; total: number; amou
 
 
 export function bookingBalance(booking: BookingMoney) {
-	const gross = roundMoney(
-		booking.paymentStatus === 'paid' || booking.paymentStatus === 'refunded' ? (booking.amountPaid ?? 0) : (booking.amountPaid ?? 0)
-	);
+	const gross = roundMoney(booking.amountPaid ?? 0);
 	const refunded = roundMoney(Math.min(Math.max(booking.amountRefunded ?? 0, 0), gross));
 	const paid = roundMoney(gross - refunded);
 	// A provider refund waives that charge; it is neither money received nor a new deposit.
