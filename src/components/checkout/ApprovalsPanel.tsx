@@ -40,7 +40,7 @@ function ApprovalsButton() {
   const [notice, setNotice] = useState("");
   // The last decision's result, shown as a toast once the panel has closed and the page is
   // readable again (the open sheet hides the rest of the page from screen readers).
-  const [closedWith, setClosedWith] = useState("");
+  const closedWith = useRef("");
   const toast = useToast();
   const count = queue?.count ?? 0;
 
@@ -50,11 +50,13 @@ function ApprovalsButton() {
     queueNow.current = queue;
   }, [queue]);
   // Another manager can clear what's left while the panel shows a result: close then too.
-  if (open && !count && notice) {
-    setClosedWith(notice);
+  useEffect(() => {
+    if (!open || count || !notice) return;
+    closedWith.current = notice;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the closing message lives in a ref (a decision landing after the queue empties overwrites it before onCloseAutoFocus reads it), and render can't write refs
     setNotice("");
     setOpen(false);
-  }
+  }, [open, count, notice]);
 
   function onDecided(requestId: string, result: string) {
     const others = queueNow.current?.list.filter((request) => request._id !== requestId).length ?? 0;
@@ -64,7 +66,7 @@ function ApprovalsButton() {
     }
     // That was the last one: close, and say what happened.
     setNotice("");
-    setClosedWith(result);
+    closedWith.current = result;
     setOpen(false);
   }
 
@@ -94,8 +96,8 @@ function ApprovalsButton() {
           {...{ [APPROVALS_AREA]: "" }}
           // Focus the title, not the first control: that would open an ⓘ tip or arm Decline.
           onCloseAutoFocus={() => {
-            if (closedWith) toast.show(closedWith);
-            setClosedWith("");
+            if (closedWith.current) toast.show(closedWith.current);
+            closedWith.current = "";
           }}
           onOpenAutoFocus={(event) => {
             event.preventDefault();
