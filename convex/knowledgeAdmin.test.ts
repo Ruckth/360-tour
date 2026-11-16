@@ -10,7 +10,6 @@ import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
-const firstPage = (numItems = 50) => ({ numItems, cursor: null });
 
 beforeEach(() => vi.stubEnv("ADMIN_EMAILS", adminEmail));
 afterEach(() => vi.unstubAllEnvs());
@@ -35,31 +34,28 @@ async function createSession(t: ReturnType<typeof convexTest>, channel: "web" | 
 
 describe("unknown-question review stays available", () => {
 
-  it("paginates and searches unknown questions by status", async () => {
+  it("groups and searches unknown questions by status", async () => {
     const { t, admin } = setup();
     const sessionId = await createSession(t);
-    for (const question of ["Is there parking?", "Can I park a bus?", "Do you have a gym?"]) {
-      await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId, userQuestion: question });
+    for (const question of ["Is there parking?", "Can I park a bus?", "Do you have a gym?", "Do you have a gym?"]) {
+      // Distinct sessions preserve separate reports in the same normalized group.
+      await t.mutation(internal.concierge.knowledge.recordUnknownQuestion, { sessionId: question.includes("gym") ? await createSession(t) : sessionId, userQuestion: question });
     }
 
-    const page = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", paginationOpts: firstPage(2) });
-    expect(page.page).toHaveLength(2);
-    expect(page.isDone).toBe(false);
-    const rest = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, {
-      status: "new",
-      paginationOpts: { numItems: 2, cursor: page.continueCursor },
-    });
-    expect(rest.page.map((row) => row.userQuestion)).toEqual(["Is there parking?"]);
+    const result = await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "new" });
+    expect(result.truncated).toBe(false);
+    expect(result.groups).toHaveLength(3);
+    expect(result.groups[0]).toMatchObject({ normalizedQuestion: "do you have a gym", count: 2, counts: { new: 2, ignored: 0, resolved: 0 } });
+    expect(result.groups.flatMap(group => group.channels)).toEqual(["web", "web", "web"]);
 
-    const gym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
-    expect(gym.page.map((row) => row.userQuestion)).toEqual(["Do you have a gym?"]);
-    expect(gym.page[0]?.sessionId).toBe(sessionId);
-
-    await admin.mutation(api.concierge.knowledge.adminIgnoreUnknown, { unknownQuestionId: gym.page[0]!._id });
-    const newGym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "new", search: "gym", paginationOpts: firstPage() });
-    expect(newGym.page).toEqual([]);
-    const ignoredGym = await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: "ignored", search: "gym", paginationOpts: firstPage() });
-    expect(ignoredGym.page).toHaveLength(1);
+    const gym = await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "new", search: "gym" });
+    expect(gym.groups.map(group => group.latest.userQuestion)).toEqual(["Do you have a gym?"]);
+    const args = { normalizedQuestions: [gym.groups[0].normalizedQuestion] };
+    expect(await admin.mutation(api.concierge.knowledge.adminIgnoreUnknownGroups, args)).toMatchObject({ ignored: 2 });
+    expect((await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "new", search: "gym" })).groups).toEqual([]);
+    expect((await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "ignored", search: "gym" })).groups[0]).toMatchObject({ count: 2, counts: { ignored: 2, new: 0, resolved: 0 } });
+    expect(await admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, args)).toMatchObject({ reopened: 2 });
+    expect((await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "new", search: "gym" })).groups[0].count).toBe(2);
   });
 });
 

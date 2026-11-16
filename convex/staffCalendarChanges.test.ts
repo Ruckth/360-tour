@@ -35,7 +35,7 @@ async function setup() {
 		serviceId, staffId, start: at(time, day), guestName: 'Ann', guestPhone: '+66111'
 	})).appointmentId;
 	const get = async (id: Id<'appointments'>) => (await t.run((ctx) => ctx.db.get(id)))!;
-	const history = (appointmentId: Id<'appointments'>) => admin.query(api.services.admin.listAppointmentHistory, { appointmentId });
+	const history = async (appointmentId: Id<'appointments'>) => (await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId, paginationOpts: { numItems: 100, cursor: null } })).page;
 	return { t, admin, maliId, nokId, pimId, serviceId, book, get, history };
 }
 
@@ -214,7 +214,7 @@ describe('appointment changes', () => {
 		const expected = { start: at('09:00'), end: at('10:00'), label: 'Doctor' };
 		await admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('09:00'), end: at('11:00'), label: 'Doctor', expected });
 		await expect(admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('16:00'), end: at('17:00'), label: 'Leave', expected })).rejects.toThrow('changed since you opened');
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId: maliId })).toMatchObject([{ start: at('09:00'), end: at('11:00'), label: 'Doctor' }]);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId: maliId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toMatchObject([{ start: at('09:00'), end: at('11:00'), label: 'Doctor' }]);
 	});
 
 	it('requires an admin for every new appointment change', async () => {
@@ -227,7 +227,7 @@ describe('appointment changes', () => {
 			await expect(caller.mutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround, { appointmentId: id, expectedRevision: 0, turnaroundMin: 30 })).rejects.toThrow(reason);
 			await expect(caller.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: id, expectedRevision: 0 })).rejects.toThrow(reason);
 			await expect(caller.query(api.services.admin.rescheduleOptions, { appointmentId: id, date })).rejects.toThrow(reason);
-			await expect(caller.query(api.services.admin.listAppointmentHistory, { appointmentId: id })).rejects.toThrow(reason);
+			await expect(caller.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow(reason);
 			const change = { staffId: maliId, date, scope: 'day' as const, original: lunch, next: null, expectedPlan: patternPlan };
 			await expect(caller.query(api.services.roster.previewBreakChange, change)).rejects.toThrow(reason);
 			await expect(caller.mutation(api.services.roster.editBreak, change)).rejects.toThrow(reason);

@@ -61,7 +61,7 @@ describe('admin services', () => {
 		await admin.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId, expectedRevision: await revision(appointmentId), guestName: ' ', guestPhone: ' ', guestEmail: '' });
 		expect(await appointment(appointmentId)).toMatchObject({ guestName: '', guestPhone: '', start: at('09:00'), staffId: booking.staffId, serviceId: booking.serviceId });
 		expect((await appointment(appointmentId)).guestEmail).toBeUndefined();
-		const history = await admin.query(api.services.admin.listAppointmentHistory, { appointmentId });
+		const history = (await admin.query(api.services.admin.listAppointmentHistoryPage, { appointmentId, paginationOpts: { numItems: 100, cursor: null } })).page;
 		expect(history).toHaveLength(3);
 		expect(history[2]).toMatchObject({ actor: 'admin@example.com', changes: expect.arrayContaining([
 			expect.objectContaining({ field: 'created', from: null }),
@@ -278,13 +278,13 @@ describe('admin services', () => {
 		const timeOffId = (await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start: at('09:00'), end: at('11:00'), label: 'Doctor' }))[0].timeOffId!;
 		await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('14:00') });
 		await admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('10:00'), end: at('12:00'), label: ' Dentist ' });
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId })).toMatchObject([{ _id: timeOffId, start: at('10:00'), end: at('12:00'), label: 'Dentist' }]);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toMatchObject([{ _id: timeOffId, start: at('10:00'), end: at('12:00'), label: 'Dentist' }]);
 		await expect(admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('13:00'), end: at('15:00'), label: 'Dentist' })).rejects.toThrow('during this time off');
 		await expect(admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('10:00'), end: at('10:00') + 61 * 86_400_000, label: 'Leave' })).rejects.toThrow('60 days');
 		await expect(admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('10:00'), end: at('09:00'), label: 'Leave' })).rejects.toThrow('60 days');
 		await expect(admin.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('10:00'), end: at('11:00'), label: ' ' })).rejects.toThrow('Label is required');
 		vi.setSystemTime(at('12:30'));
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId })).toEqual([]); // ended
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toEqual([]); // ended
 	});
 
 	it('edits appointment details, changes service and records refunds', async () => {
@@ -338,7 +338,7 @@ describe('admin services', () => {
 		await expect(t.mutation(api.services.commands.updateTimeOff.updateTimeOff, { timeOffId, start: at('15:00'), end: at('17:00'), label: 'Off' })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.services.commands.updateAppointmentDetails.updateAppointmentDetails, { appointmentId, expectedRevision: 0, guestName: 'X', guestPhone: '1', serviceId: booking.serviceId })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId })).rejects.toThrow('Not authenticated');
-		await expect(t.query(api.services.admin.listTimeOff, { staffId })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');
 	});
 
@@ -357,15 +357,15 @@ describe('admin services', () => {
 			{ staffId: pimId, name: 'Pim', timeOffId: expect.any(String), conflicts: [] }
 		]);
 		expect(results[0].timeOffId).toBeUndefined();
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId })).toEqual([]);
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId: nokId })).toMatchObject([{ label: 'Training', start: range.start, end: range.end }]);
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId: pimId })).toHaveLength(1);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toEqual([]);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId: nokId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toMatchObject([{ label: 'Training', start: range.start, end: range.end }]);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId: pimId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toHaveLength(1);
 
 		// Whole-batch validation still throws and saves nothing.
 		await expect(admin.mutation(api.services.commands.addTimeOff.addTimeOff, { ...range, staffIds: [] })).rejects.toThrow('at least one staff member');
 		await expect(admin.mutation(api.services.commands.addTimeOff.addTimeOff, { ...range, staffIds: [pimId], label: ' ' })).rejects.toThrow('Label is required');
 		await expect(admin.mutation(api.services.commands.addTimeOff.addTimeOff, { ...range, staffIds: [pimId], end: range.start })).rejects.toThrow('60 days');
-		expect(await admin.query(api.services.admin.listTimeOff, { staffId: pimId })).toHaveLength(1);
+		expect((await admin.query(api.services.admin.listTimeOffPage, { staffId: pimId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).page).toHaveLength(1);
 		await expect(t.mutation(api.services.commands.addTimeOff.addTimeOff, { ...range, staffIds: [pimId] })).rejects.toThrow('Not authenticated');
 	});
 
