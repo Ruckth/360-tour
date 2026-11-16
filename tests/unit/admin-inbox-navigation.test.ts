@@ -591,3 +591,61 @@ describe("settling guest messages", () => {
     });
   });
 });
+
+describe("inbox defaults and list rows", () => {
+  const NOW = Date.UTC(2026, 10, 16, 12, 0, 0);
+  const minutesAgo = (minutes: number) => NOW - minutes * 60_000;
+  const rowText = (id: string) => document.querySelector(`[data-session-id="${id}"]`)?.textContent ?? "";
+
+  beforeEach(() => {
+    vi.spyOn(Date, "now").mockReturnValue(NOW);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("opens on open chats that need a reply and hides empty chats", async () => {
+    mocks.search = new URLSearchParams("");
+    await render();
+    expect(mocks.listArgs.at(-1)).toMatchObject({ status: "needs_reply", adminStatus: "open", empty: "non_empty" });
+    expect(document.querySelector('[aria-label="Filters"]')).not.toBeNull();
+    expect(document.querySelector('[aria-label="Clear empty filter"]')).toBeNull();
+  });
+
+  it("offers Not empty / Empty under Message status, plus latest-message date bounds", async () => {
+    await render();
+    await press(document.querySelector('[aria-label="Filters"]')!);
+    const group = document.querySelector('[aria-labelledby="admin-chat-empty-filter"]')!;
+    expect(document.getElementById("admin-chat-empty-filter")?.textContent).toBe("Message status");
+    expect([...group.querySelectorAll("button")].map((button) => button.textContent)).toEqual(["Not empty", "Empty"]);
+    const labels = [...document.querySelectorAll("label")].map((label) => label.textContent?.trim());
+    expect(labels).toEqual(expect.arrayContaining(["Latest message start", "Latest message end"]));
+  });
+
+  it("shows an Empty filter as a removable badge that restores the default", async () => {
+    mocks.search = new URLSearchParams("empty=empty");
+    await render();
+    expect(mocks.listArgs.at(-1)).toMatchObject({ empty: "empty" });
+    expect(document.querySelector('[aria-label="Filters 1 active"]')).not.toBeNull();
+    mocks.replace.mockClear();
+    await act(async () => {
+      document.querySelector<HTMLElement>('[aria-label="Clear empty filter"]')!.click();
+    });
+    expect(mocks.replace.mock.calls.at(-1)?.[0]).toBe("/admin/chats");
+  });
+
+  it("times each row from its latest message, never from when the guest was last seen", async () => {
+    mocks.search = new URLSearchParams("view=all");
+    mocks.page = [
+      { ...session("waiting"), latestMessageAt: minutesAgo(5), lastSeenAt: minutesAgo(1) },
+      { ...session("answered"), needsReply: false, latestMessageAt: minutesAgo(3 * 60), lastSeenAt: minutesAgo(1) },
+      { ...session("silent"), needsReply: false, lastSeenAt: minutesAgo(1) },
+    ];
+    await render();
+    expect(rowText("waiting")).toContain("Waiting 5m");
+    expect(rowText("waiting")).not.toContain("ago");
+    expect(rowText("answered")).toContain("3h ago");
+    expect(rowText("silent")).toContain("Unknown");
+    expect(rowText("silent")).not.toContain("1m ago");
+  });
+});
