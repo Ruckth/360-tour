@@ -131,6 +131,7 @@ To enable `/admin`:
 
 1. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in Vercel.
 2. Configure the Clerk `convex` JWT template.
+   The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
 4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
 

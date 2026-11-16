@@ -12,7 +12,7 @@ import type { FunctionArgs } from 'convex/server';
 export function createHarness(test: typeof convexTest) {
 	return test(schema, import.meta.glob('../**/*.ts'));
 }
-export const adminIdentity = { email: 'admin@example.com', tokenIdentifier: 'https://test.clerk.dev|admin' };
+export const adminIdentity = { email: 'admin@example.com', emailVerified: true, tokenIdentifier: 'https://test.clerk.dev|admin' };
 export function asAdmin(t: ReturnType<typeof createHarness>) {
 	return t.withIdentity(adminIdentity);
 }
