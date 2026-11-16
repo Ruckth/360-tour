@@ -52,7 +52,7 @@ it.each(['session', 'global'] as const)('ends %s admission refusal without stick
     let consumed = 0;
     // Exercise the real component's ten shards, without weakening its global budget.
     for (let i = 0; i < 100 && consumed < 500; i++) {
-      const result = await t.run(ctx => chatLimiter.limit(ctx, 'global', { count: 50 }));
+      const result = await t.run(ctx => chatLimiter.limit(ctx, 'global', { key: 'messaging', count: 50 }));
       if (result.ok) consumed += 50;
     }
     expect(consumed).toBe(500);

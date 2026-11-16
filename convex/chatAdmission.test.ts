@@ -27,7 +27,7 @@ it.each([['global', 500], ['session', 20]] as const)('retains the %s hourly budg
   // Fill every shard rather than depending on the random shard sampled by a request.
   let consumed = 0;
   for (let attempt = 0; consumed < limit && attempt < 100; attempt++) {
-    const result = await t.run(ctx => chatLimiter.limit(ctx, budget, { ...(budget === 'session' ? { key: guest.sessionId } : {}), count: budget === 'global' ? 50 : limit }));
+    const result = await t.run(ctx => chatLimiter.limit(ctx, budget, { key: budget === 'session' ? guest.sessionId : 'web', count: budget === 'global' ? 50 : limit }));
     if (result.ok) consumed += budget === 'global' ? 50 : limit;
   }
   expect(consumed).toBe(limit);
@@ -36,6 +36,34 @@ it.each([['global', 500], ['session', 20]] as const)('retains the %s hourly budg
   expect(await t.run(ctx => ctx.db.get(guest.sessionId))).toEqual(before);
   expect(await t.query(api.messaging.chat.getMessages, guest)).toEqual([]);
   expect(await t.run(ctx => ctx.db.query('channelEvents').take(10))).toEqual([]);
+});
+it.each(['web', 'messaging'] as const)('isolates an exhausted %s global budget from the other channel kind', async kind => {
+  const t = createHarness(convexTest), guest = await guestSession(t);
+  await t.mutation(internal.messaging.ingress.accept, { channel: 'line', events: [{ eventKey: 'isolated', recipient: 'guest', eventType: 'message', messageText: 'Hello', eventTimestamp: Date.now() }] });
+  const event = (await t.run(ctx => ctx.db.query('channelEvents').take(1)))[0];
+  await t.mutation(internal.messaging.worker.claim, { eventId: event._id, token: 'claim' });
+  let consumed = 0;
+  for (let attempt = 0; consumed < 500 && attempt < 100; attempt++) {
+    const result = await t.run(ctx => chatLimiter.limit(ctx, 'global', { key: kind, count: 50 }));
+    if (result.ok) consumed += 50;
+  }
+  expect(consumed).toBe(500);
+  const webArgs = { ...guest, clientMessageId: crypto.randomUUID(), content: 'Hello' };
+  const messagingArgs = { eventId: event._id, claimToken: 'claim' };
+  if (kind === 'web') {
+    await expect(t.mutation(api.messaging.chat.sendMessage, webArgs)).rejects.toThrow();
+    await t.mutation(internal.messaging.ingress.admit, messagingArgs);
+    expect(await t.run(ctx => ctx.db.get(event._id))).toMatchObject({ admittedAt: Date.now() });
+    // An admitted messaging retry must consume neither budget, even when its session is full.
+    await t.run(ctx => chatLimiter.limit(ctx, 'session', { key: event.sessionId!, count: 19, throws: true }));
+    await t.mutation(internal.messaging.ingress.admit, messagingArgs);
+  } else {
+    await expect(t.mutation(internal.messaging.ingress.admit, messagingArgs)).rejects.toThrow();
+    expect(await t.run(ctx => ctx.db.get(event._id))).not.toHaveProperty('admittedAt');
+    const sent = await t.mutation(api.messaging.chat.sendMessage, webArgs);
+    await t.run(ctx => chatLimiter.limit(ctx, 'session', { key: guest.sessionId, count: 19, throws: true }));
+    expect(await t.mutation(api.messaging.chat.sendMessage, webArgs)).toMatchObject({ ...sent, duplicate: true });
+  }
 });
 it('evaluation writers require an eval session and avoid production admission and alerts', async () => {
   const t = createHarness(convexTest), ordinary = await guestSession(t);
