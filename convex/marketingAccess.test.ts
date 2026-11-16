@@ -51,3 +51,19 @@ it("sets a 14-day deadline on new invitations and accepts one just before expiry
   await admin.mutation(api.marketing.access.setGrant, { email: "friend@example.com", role: "manager" });
   expect(await user.query(api.marketing.access.current, {})).toMatchObject({ role: "manager" });
 });
+
+it("gives an explicitly unverified email no marketing access and refuses its invite claim", async () => {
+  const t = convexTest(schema, modules);
+  await t.run(ctx => ctx.db.insert("marketingGrants", {
+    email: "friend@example.com", role: "viewer", createdAt: now, updatedAt: now, updatedByEmail: "admin@example.com",
+  }));
+  const unverifiedAdmin = t.withIdentity({ email: "admin@example.com", emailVerified: false, tokenIdentifier: "issuer|fake-admin" });
+  expect(await unverifiedAdmin.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
+  await expect(unverifiedAdmin.query(api.marketing.access.listGrants, {})).rejects.toThrow();
+  const unverified = t.withIdentity({ email: "friend@example.com", emailVerified: false, tokenIdentifier: "issuer|friend" });
+  expect(await unverified.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
+  await expect(unverified.mutation(api.marketing.access.claimInvite, {})).rejects.toThrow("Verify your email");
+  const verified = t.withIdentity({ email: "friend@example.com", emailVerified: true, tokenIdentifier: "issuer|friend" });
+  await verified.mutation(api.marketing.access.claimInvite, {});
+  expect(await verified.query(api.marketing.access.current, {})).toMatchObject({ role: "viewer" });
+});

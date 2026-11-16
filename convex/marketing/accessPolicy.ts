@@ -17,6 +17,9 @@ export function marketingInvitationExpired(grant: Doc<"marketingGrants">, now = 
 export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   const email = identity?.email?.trim().toLowerCase() ?? null;
+  // Same policy as staff access: an explicitly unverified email grants no marketing authority.
+  if (identity?.emailVerified === false)
+    return { email, role: null, capabilities: marketingCapabilities(null), pendingInvitation: null };
   if (email && adminEmails().has(email))
     return {
       email: identity!.email!,

@@ -20,6 +20,7 @@ export const claimInvite = authenticatedMutation({
     const identity = ctx.identity;
     const email = identity?.email?.trim().toLowerCase();
     if (!identity || !email) throw new Error("Not authenticated");
+    if (identity.emailVerified === false) throw new ConvexError("Verify your email before claiming a marketing invitation");
     const existing = await ctx.db
       .query("marketingGrants")
       .withIndex("by_tokenIdentifier", (q) =>
