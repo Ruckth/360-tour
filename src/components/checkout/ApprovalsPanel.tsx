@@ -40,7 +40,7 @@ function ApprovalsButton() {
   const [notice, setNotice] = useState("");
   // The last decision's result, shown as a toast once the panel has closed and the page is
   // readable again (the open sheet hides the rest of the page from screen readers).
-  const closedWith = useRef("");
+  const [closedWith, setClosedWith] = useState("");
   const toast = useToast();
   const count = queue?.count ?? 0;
 
@@ -50,12 +50,11 @@ function ApprovalsButton() {
     queueNow.current = queue;
   }, [queue]);
   // Another manager can clear what's left while the panel shows a result: close then too.
-  useEffect(() => {
-    if (!open || count || !notice) return;
-    closedWith.current = notice;
+  if (open && !count && notice) {
+    setClosedWith(notice);
     setNotice("");
     setOpen(false);
-  }, [open, count, notice]);
+  }
 
   function onDecided(requestId: string, result: string) {
     const others = queueNow.current?.list.filter((request) => request._id !== requestId).length ?? 0;
@@ -65,7 +64,7 @@ function ApprovalsButton() {
     }
     // That was the last one: close, and say what happened.
     setNotice("");
-    closedWith.current = result;
+    setClosedWith(result);
     setOpen(false);
   }
 
@@ -95,8 +94,8 @@ function ApprovalsButton() {
           {...{ [APPROVALS_AREA]: "" }}
           // Focus the title, not the first control: that would open an ⓘ tip or arm Decline.
           onCloseAutoFocus={() => {
-            if (closedWith.current) toast.show(closedWith.current);
-            closedWith.current = "";
+            if (closedWith) toast.show(closedWith);
+            setClosedWith("");
           }}
           onOpenAutoFocus={(event) => {
             event.preventDefault();

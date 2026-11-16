@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarClock, Check, Link2, Search } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -106,13 +106,12 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
   const candidates = backend.useLinkCandidates({ orderId: view.order._id, lineId: line._id, query });
   const cashier = useStaffAccess().role === "cashier";
   // The only appointment or stay that fits opens straight on its review; Back still shows the list.
-  const autoPicked = useRef(false);
-  useEffect(() => {
-    if (autoPicked.current || query || !candidates) return;
-    autoPicked.current = true;
+  const [autoPicked, setAutoPicked] = useState(false);
+  if (!autoPicked && !query && candidates) {
+    setAutoPicked(true);
     const fits = candidates.filter((candidate) => !candidate.problem);
     if (fits.length === 1) setChosen(fits[0]);
-  }, [candidates, query]);
+  }
   const { saving, error, save } = useOnceWrite();
   const what = target === "appointment" ? "appointment" : "stay";
 

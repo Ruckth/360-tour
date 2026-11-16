@@ -33,7 +33,10 @@ export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: 
   const t = useTranslations("PosCouponScan");
   // State, not a ref: the dialog portal mounts its content after this component's first render.
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
-  const [state, setState] = useState<ScanState>("starting");
+  const [scanState, setState] = useState<ScanState>("starting");
+  // Loaded on demand in the browser, so its capabilities can be read while rendering.
+  const unsupported: ScanState | null = !window.isSecureContext ? "insecure" : !navigator.mediaDevices?.getUserMedia ? "noCamera" : null;
+  const state = unsupported ?? scanState;
   const [attempt, setAttempt] = useState(0);
   const decode = useEffectEvent(onDecode);
   const close = useEffectEvent(onClose);
@@ -44,15 +47,7 @@ export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: 
       close();
       return;
     }
-    if (!window.isSecureContext) {
-      setState("insecure");
-      return;
-    }
-    if (!navigator.mediaDevices?.getUserMedia) {
-      setState("noCamera");
-      return;
-    }
-    setState("starting");
+    if (unsupported) return;
     let stopped = false;
     let stream: MediaStream | null = null;
     let scanner: { destroy(): void } | null = null;
@@ -83,6 +78,7 @@ export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: 
       ]);
       if (stopped) return;
       const QrScanner = library.default;
+      // eslint-disable-next-line react-hooks/immutability -- attaching the camera stream to the <video> DOM node is the external sync this effect owns
       element.srcObject = stream;
       const instance = new QrScanner(
         element,
@@ -108,7 +104,7 @@ export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: 
       document.removeEventListener("visibilitychange", onVisibilityChange);
       stop();
     };
-  }, [element, attempt]);
+  }, [element, attempt, unsupported]);
 
   const problem = state !== "starting" && state !== "scanning" ? state : null;
   const retryable = problem === "denied" || problem === "inUse" || problem === "failed";
@@ -156,7 +152,7 @@ export default function CouponScanDialog({ onDecode, onClose, onRestoreFocus }: 
         )}
         <DialogFooter>
           {retryable ? (
-            <Button type="button" onClick={() => setAttempt((value) => value + 1)}>
+            <Button type="button" onClick={() => { setState("starting"); setAttempt((value) => value + 1); }}>
               {t("tryAgain")}
             </Button>
           ) : null}
