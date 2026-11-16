@@ -243,7 +243,7 @@ it("edits reply limits in the AI form, validates, saves all channels and discard
   });
   for (const key of ["web", "line", "whatsapp", "facebook", "instagram"]) expect(field(key).value).toBe("500");
   expect(field("perChat").value).toBe("20");
-  expect(document.body.textContent).toContain("no AI reply or automatic retry");
+  expect(document.body.textContent).toContain("the AI won’t reply to it");
   await edit("web", "0");
   expect(document.querySelector('[data-testid="settings-save-bar"]')).not.toBeNull();
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));

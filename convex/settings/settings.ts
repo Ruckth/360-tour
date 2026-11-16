@@ -1,22 +1,11 @@
 import { settingsPublicProfileResult } from './validators';
 import { v } from 'convex/values';
-import type { Doc } from '../_generated/dataModel';
 import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
 import { adminEmails } from '../lib/adminEmails';
 import { CHAT_REPLY_LIMIT_RANGES, chatReplyLimitsValidator, resolveChatReplyLimits, type ChatReplyLimits, BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
 import { settingsSnapshot } from './configurationWriter';
 import { getEffectiveSettings, getSiteSettingsRow } from './model';
 import { appendRecordHistory } from './recordWriter';
-
-/** A changed limit starts a fresh hourly allowance, including when restored to an earlier value. */
-function replyLimitVersions(row: Doc<'siteSettings'> | null, changes: Partial<ChatReplyLimits> | undefined) {
-	const before = resolveChatReplyLimits(row);
-	const versions = { ...row?.chatReplyLimitVersions };
-	for (const key of Object.keys(CHAT_REPLY_LIMIT_RANGES) as (keyof ChatReplyLimits)[]) {
-		if (changes?.[key] !== undefined && changes[key] !== before[key]) versions[key] = (row?.revision ?? 0) + 1;
-	}
-	return versions;
-}
 
 const text = v.optional(v.string());
 
@@ -97,7 +86,7 @@ export const update = staffMutation({
 		const fields = {
 			revision: (row?.revision ?? 0) + 1,
 			...business,
-			...(chatReplyLimits ? { chatReplyLimits: { ...row?.chatReplyLimits, ...chatReplyLimits }, chatReplyLimitVersions: replyLimitVersions(row, chatReplyLimits) } : {}),
+			...(chatReplyLimits ? { chatReplyLimits: { ...row?.chatReplyLimits, ...chatReplyLimits } } : {}),
 			...(bookingRules ? { bookingRules: { ...row?.bookingRules, ...bookingRules } } : {}),
 			...(ai ? { ai: { ...row?.ai, ...ai } } : {}),
 			...(email ? { email: { ...row?.email, ...email } } : {}),
@@ -186,7 +175,6 @@ export const restore = staffMutation({
 			...clean.business,
 			bookingRules: clean.bookingRules,
 			chatReplyLimits: clean.chatReplyLimits,
-			chatReplyLimitVersions: replyLimitVersions(row, clean.chatReplyLimits),
 			ai: { ...row?.ai, ...clean.ai },
 			email: { ...row?.email, ...clean.email },
 			revision: (row?.revision ?? 0) + 1,

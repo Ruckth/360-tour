@@ -15,18 +15,20 @@ export const chatLimiter = new RateLimiter(components.rateLimiter, {
   global: channelLimitConfig(CHAT_REPLY_LIMIT_DEFAULTS.web),
 });
 
+/**
+ * The component stores a remaining balance per name, so a non-default allowance gets its own name:
+ * a changed limit (or shard layout) never inherits a balance counted under another limit.
+ */
+function budgetName(base: 'session' | 'global', rate: number, defaultRate: number) {
+  return rate === defaultRate ? base : `${base}:${rate}`;
+}
+
 /** Both admissions and the message commit atomically; duplicate retries consume neither. */
 export async function consumeChatAdmission(ctx: MutationCtx, sessionId: Id<'conversations'>) {
   const session = await ctx.db.get(sessionId);
   if (!session) throw new Error('Session not found');
-  const row = await getSiteSettingsRow(ctx);
-  const limits = resolveChatReplyLimits(row);
-  const versions = row?.chatReplyLimitVersions;
-  // The component stores remaining tokens, not usage. New namespaces avoid stale balances
-  // and shard layouts on edits. Only the changed allowance resets; keys stay channel/session.
-  const sessionName = versions?.perChat ? `session:${versions.perChat}` : 'session';
-  const channelVersion = versions?.[session.channel];
-  const channelName = channelVersion ? `global:${channelVersion}` : 'global';
-  await chatLimiter.limit(ctx, sessionName, { key: sessionId, config: { kind: 'fixed window', rate: limits.perChat, period: HOUR }, throws: true });
-  await chatLimiter.limit(ctx, channelName, { key: session.channel, config: channelLimitConfig(limits[session.channel]), throws: true });
+  const limits = resolveChatReplyLimits(await getSiteSettingsRow(ctx));
+  const perChat = limits.perChat, channel = limits[session.channel];
+  await chatLimiter.limit(ctx, budgetName('session', perChat, CHAT_REPLY_LIMIT_DEFAULTS.perChat), { key: sessionId, config: { kind: 'fixed window', rate: perChat, period: HOUR }, throws: true });
+  await chatLimiter.limit(ctx, budgetName('global', channel, CHAT_REPLY_LIMIT_DEFAULTS[session.channel]), { key: session.channel, config: channelLimitConfig(channel), throws: true });
 }

@@ -37,8 +37,6 @@ export const settingsTables = {
 		key: v.literal('default'),
 		bookingRules: v.optional(bookingRulesValidator),
 		chatReplyLimits: v.optional(chatReplyLimitsValidator),
-		// Each changed limit gets its own counter namespace; unrelated saves keep usage.
-		chatReplyLimitVersions: v.optional(chatReplyLimitsValidator),
 		revision: v.optional(v.number()),
 		businessName: v.optional(settingsPublicProfileResult.fields.businessName),
 		tagline: v.optional(settingsPublicProfileResult.fields.tagline),

@@ -43,7 +43,7 @@ it('applies saved per-chat limits independently across conversations', async () 
   await t.run(ctx => consumeChatAdmission(ctx, two.sessionId));
 });
 
-it('starts fresh only for changed limits, including shard transitions and restoring a previous value', async () => {
+it('gives each limit its own hourly count, including shard transitions and returning to an earlier value', async () => {
   const t = createHarness(convexTest), admin = asAdmin(t), guest = await guestSession(t);
   const admit = () => t.run(ctx => consumeChatAdmission(ctx, guest.sessionId));
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 1, perChat: 100 } });
@@ -53,7 +53,7 @@ it('starts fresh only for changed limits, including shard transitions and restor
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 500 } });
   await admit(); // No stale unsharded balance when sharding begins.
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 1 } });
-  await admit(); await expect(admit()).rejects.toThrow(); // Doesn't revive the old empty bucket.
+  await expect(admit()).rejects.toThrow(); // Returning to 1 within the hour resumes that limit's count.
   vi.setSystemTime(Date.now() + HOUR + 1);
   await admit();
   expect(channelLimitConfig(1).shards).toBeUndefined();

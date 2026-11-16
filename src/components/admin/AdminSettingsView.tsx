@@ -420,11 +420,11 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   };
   const replyFields: FieldDef[] = Object.entries(CHAT_REPLY_LIMIT_RANGES).map(([key, [min, max]]) => ({
     name: `chatReplyLimits.${key}`,
-    label: key === "perChat" ? "AI replies per chat per hour" : `${CHAT_CHANNEL_LABELS[key as keyof typeof CHAT_CHANNEL_LABELS]} — AI replies per hour`,
+    label: key === "perChat" ? "Each chat" : CHAT_CHANNEL_LABELS[key as keyof typeof CHAT_CHANNEL_LABELS],
     type: "number",
-    unit: "replies / hour",
+    unit: "per hour",
     min, max,
-    hint: `Whole numbers from ${min} to ${max}.`,
+    hint: key === "perChat" ? "Stops one guest from using up a channel’s allowance." : undefined,
   }));
   const businessGroups = [
     { title: "Identity", description: "The name and welcome guests see", names: ["businessName", "tagline"] },
@@ -451,8 +451,8 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid gap-5 p-5 lg:p-6">
             <header>
               <h3 className="text-[15px] font-semibold">Reply limits</h3>
-              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Each accepted guest message uses one reply, including while staff handle the chat. Changes apply to the next message and reset only the allowance you change.</p>
-              <p className="mt-2 text-[13px] leading-5 text-muted-foreground">At either limit, website messages stay in the guest’s text box to send again later. On LINE, WhatsApp, Messenger and Instagram, staff receive the message, with no AI reply or automatic retry. AI can answer later messages when capacity returns.</p>
+              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">How many guest messages the AI answers each hour, so spam can’t run up costs. Every guest message counts, even while staff are replying. Changes apply from the next message.</p>
+              <p className="mt-2 text-[13px] leading-5 text-muted-foreground">When a limit is reached, website guests can’t send for now and their text stays in the box. On LINE, WhatsApp, Messenger and Instagram, the message still reaches your inbox, but the AI won’t reply to it.</p>
             </header>
             <div className="grid gap-5 sm:grid-cols-2">{replyFields.map(renderField)}</div>
           </Card> : null}
