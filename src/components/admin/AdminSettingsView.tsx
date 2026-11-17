@@ -452,7 +452,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             <header>
               <div className="flex items-center gap-2">
                 <h3 className="text-[15px] font-semibold">Reply limits</h3>
-                <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Every guest message counts, including during staff replies, and changes apply from the next message. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
+                <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Website messages count during staff replies; other channels pause counting while staff take over. Changes apply from the next message, and each limit value has its own hourly count. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
               </div>
               <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Default total: 2,500 guest messages/hour across five channels</p>
             </header>

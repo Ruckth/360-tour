@@ -101,18 +101,34 @@ const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
 	.map(([p, n]) => `${p} (${n})`);
 
 const requiredSuites = [
-  [0, 'convex/phase0Security.test.ts'],
-  [1, 'convex/moneyCutover.test.ts'],
-  [1, 'convex/phase1Architecture.test.ts'],
-  [2, 'convex/messaging/reliability.test.ts'],
-  [2, 'convex/concierge/prompt.test.ts'],
-  [4, 'convex/queryScale.test.ts'],
+  [0, 'convex/phase0Security.test.ts', [
+    'rejects webhook mutations when the server secret is missing',
+    'rejects assistant messages from the browser',
+    'rejects chat calls without a valid guest token',
+    'rejects respond for a session the caller does not own',
+    'hides rooms and reviews of draft properties',
+  ]],
+  [1, 'convex/moneyCutover.test.ts', ['rounds a percentage discount identically for stays and orders']],
+  [1, 'convex/phase1Architecture.test.ts', [
+    'charges Stripe the stored satang amount',
+    'acknowledges Stripe events for deleted bookings',
+    'seeds the demo-resort scenario from empty',
+  ]],
+  [2, 'convex/messaging/reliability.test.ts', [
+    'ignores a duplicate webhook delivery',
+    'takes over a stale event lease',
+    'does not resend after a crash following send',
+    'pushes after an expired LINE reply token',
+    'does not push after an ambiguous LINE timeout',
+  ]],
+  [2, 'convex/concierge/prompt.test.ts', ['builds the concierge prompt']],
+  [4, 'convex/queryScale.test.ts', ['lists the inbox within the read budget']],
 ].filter(([phase]) => phaseArg === null || phase <= phaseArg);
-const suiteResults = runRequiredSuites(ROOT, requiredSuites.map(([, file]) => file));
+const suiteResults = runRequiredSuites(ROOT, requiredSuites.map(([, file]) => file), Object.fromEntries(requiredSuites.map(([, file, titles]) => [file, titles])));
 const suiteMetric = (phase, id, label) => {
   const files = requiredSuites.filter(([due]) => due === phase).map(([, file]) => file);
   add(id, phase, label, files.filter(file => suiteResults.get(file) === true).length, files.length,
-    files.filter(file => suiteResults.get(file) !== true).map(file => `required suite failed: ${file}`));
+    files.filter(file => suiteResults.get(file) !== true).map(file => `required suite failed or required named test missing: ${file}`));
 };
 
 function dirtyTracked() {

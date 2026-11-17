@@ -35,7 +35,6 @@ All names below are under `api`. IDs are Convex IDs for their named tables. Muta
 | `staffAccess.getCashierRules` (query) | `{}` | `Rules` | Owner |
 | `staffAccess.updateCashierRules` | `{expectedRevision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund?}` | Updated `Rules` | Owner; revision must match |
 | `pos.createOrder` | `{}` | `{orderId}` | Checkout; creates an empty order when its first custom item needs approval |
-| `customers.checkoutCustomer` (query) | `{customerId}` | `{_id,name,phone?,email?,revision,archivedAt?,mergedInto?}|null` | Checkout; contact card only |
 
 `Rules = { revision:number, discountLimitPercent:number, voidPaidSale:'manager'|'cashier', customPrice:'manager'|'cashier', paymentFix:'manager'|'cashier', refund:'manager'|'cashier' }`. Defaults: revision 0, limit 10, all actions `manager`. Limit range 0–100, up to two decimals. Missing record reads defaults without writing. The additive `refund` field reads as `manager` when absent; older callers omitting it on update preserve its current value. Package 2.1 implements the rule and matching approval kind. Updates increment revision; conflicts throw `ConvexError({code:'STALE_RULES',message})`.
 

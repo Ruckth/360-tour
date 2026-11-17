@@ -80,6 +80,7 @@ type SlugAnswer = Extract<SlugState, { status: "done" | "error" }>;
 
 /** Live slug check: debounced, and an answer for an older value never overwrites a newer one. */
 function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"]): SlugState {
+  // Keep checkSlug stable between renders; callers memoize the backend methods.
   const [answer, setAnswer] = useState<SlugAnswer | null>(null);
 
   // Any input change starts a fresh check, so drop the previous answer.

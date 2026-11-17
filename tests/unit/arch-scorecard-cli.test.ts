@@ -29,6 +29,7 @@ it('rejects real comments-only and skipped suite execution reports', async () =>
       'const alias = test.skip; alias("alias", () => {});',
       'describe.skip("parent", () => { test("nested", () => {}); });',
       'test.todo("later");',
+      'test("unrelated replacement", () => {});',
     ];
     const files = fixtures.map((source, i) => {
       const file = join(dir, `case-${i}.test.js`);
@@ -43,7 +44,11 @@ it('rejects real comments-only and skipped suite execution reports', async () =>
     expect(report.testResults.map((suite: { name: string }) => suite.name).sort()).toEqual([...files].sort());
     for (const suite of report.testResults.filter((suite: { name: string }) => suite.name !== files[0])) expect(suite.assertionResults.length).toBeGreaterThan(0);
     // Test each file independently of the aggregate failure from the empty file.
-    for (const file of files) expect(parseSuiteResults(dir, [file], { ...report, success: true }, 0).get(file), file).toBe(false);
+    for (const file of files.slice(0, -1)) expect(parseSuiteResults(dir, [file], { ...report, success: true }, 0).get(file), file).toBe(false);
+    const passingFile = files.at(-1)!;
+    expect(parseSuiteResults(dir, [passingFile], { ...report, success: true }, 0).get(passingFile)).toBe(true);
+    expect(parseSuiteResults(dir, [passingFile], { ...report, success: true }, 0, { [passingFile]: ['required security regression'] }).get(passingFile)).toBe(false);
+    expect(parseSuiteResults(dir, [passingFile], { ...report, success: true }, 0, { [passingFile]: ['unrelated replacement'] }).get(passingFile)).toBe(true);
     expect(result.status).not.toBeNull();
   } finally {
     rmSync(dir, { recursive: true, force: true });

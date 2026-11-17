@@ -641,7 +641,6 @@ export const getSessionDetail = adminQuery({
 		if (!session) return null;
 
 		// The detail view only shows each channel's newest delivery event (`events[0]`), so read one.
-		// `getTranscript` keeps its 10-event lists.
 		const [lineEvents, facebookEvents, whatsappEvents, instagramEvents, property, replyWindow, latestMessage] = await Promise.all([
 			session.channel === 'line'
 				? ctx.db

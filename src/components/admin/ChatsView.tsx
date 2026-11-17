@@ -138,6 +138,7 @@ function useMediaQuery(query: string) {
 
 /** The last defined value for this `resetKey`; a new key starts again from the current value. */
 function useLatestDefined<T>(value: T | undefined, resetKey: string) {
+  // Defined values must retain identity between updates, as Convex query results do.
   const [latest, setLatest] = useState<{ resetKey: string; value: T | undefined }>({ resetKey, value });
   const next = value !== undefined ? value : latest.resetKey === resetKey ? latest.value : undefined;
   if (latest.resetKey !== resetKey || latest.value !== next) setLatest({ resetKey, value: next });

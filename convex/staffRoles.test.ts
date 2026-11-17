@@ -244,6 +244,20 @@ describe('cashier money boundaries', () => {
 });
 
 describe('atomic manager approvals', () => {
+  it('approves a request after the cashier changes their verified email on the same account', async () => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    const cashier = s.t.withIdentity({ emailVerified: true, email: 'cashier.new@example.com', tokenIdentifier: 'issuer|cashier' });
+    expect(await cashier.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'cashier', capabilities: { checkout: true } });
+    const { requestId } = await cashier.mutation(api.pos.staffApprovals.create, {
+      orderId, reason: 'Guest recovery', payload: { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } },
+    });
+    expect(await s.manager.query(api.pos.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier.new@example.com' }] });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toEqual({ status: 'applied', replayed: false });
+    expect((await cashier.query(api.pos.orders.getOrder, { orderId }))!.totals.total).toBe(89999);
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toEqual({ status: 'applied', replayed: true });
+  });
+
   it('records exact proposal without moving money, blocks payment, then executes once with actor audit', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();

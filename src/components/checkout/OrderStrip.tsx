@@ -253,7 +253,7 @@ function CustomerPicker({
   const typed = query.trim();
   const current = view?.customer ?? null;
   const source = view?.source ?? null;
-  // Cashiers get contact cards only: no profiles, history or archive (customers.checkoutCustomer).
+  // The order view gives cashiers contact cards only: no profiles, history or archive.
   const cashier = useStaffAccess().role === "cashier";
 
   async function pick(customerId: CustomerId) {
