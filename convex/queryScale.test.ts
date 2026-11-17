@@ -39,7 +39,7 @@ async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', adminEmail);
 	const t = convexTest(schema, modules);
 	const propertyId = await t.run((ctx) => ctx.db.insert('properties', { ...villa, slug: 'villa', name: 'Villa' }));
-	const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
 	return { t, admin, propertyId };
 }
 

@@ -13,7 +13,7 @@ const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 
 function adminTest(t: ReturnType<typeof convexTest>) {
-  return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+  return t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
 async function insertAdminSession(

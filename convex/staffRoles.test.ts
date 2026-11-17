@@ -18,9 +18,9 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
-  const manager = t.withIdentity({ email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
-  const cashier = t.withIdentity({ email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
+  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
+  const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
+  const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {
@@ -75,7 +75,7 @@ const needsApproval = (kind: string) => ({ data: expect.objectContaining({ code:
 describe('staff permissions and invitations', () => {
   it('keeps allowlisted owners unchanged without grants, even with a corrupt cashier grant', async () => {
     const t = convexTest(schema, modules);
-    const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
+    const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
     expect(await owner.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'owner', cashierRules: DEFAULT_CASHIER_RULES,
       capabilities: { checkout: true, approve: true, settings: true, manageTeam: true, bookings: true, marketing: true } });
     await owner.mutation(api.settings.settings.update, { business: { businessName: 'Still owner' } });
@@ -118,8 +118,8 @@ describe('staff permissions and invitations', () => {
 
   it('uses identity-bound claims, expiry, explicit resend, role change and revoke', async () => {
     const s = await setup();
-    const client = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'issuer|invite' });
-    const impostor = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'different-issuer|invite' });
+    const client = s.t.withIdentity({ emailVerified: true, email: 'invite@example.com', tokenIdentifier: 'issuer|invite' });
+    const impostor = s.t.withIdentity({ emailVerified: true, email: 'invite@example.com', tokenIdentifier: 'different-issuer|invite' });
     const grantId = await s.owner.mutation(api.auth.staffAccess.setGrant, { email: ' INVITE@example.com ', role: 'cashier' });
     expect((await client.query(api.auth.staffAccess.myAccess, {})).pendingInvitation).toMatchObject({ role: 'cashier', expiresAt: now + STAFF_INVITATION_TTL_MS });
     expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();

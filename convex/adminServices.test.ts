@@ -15,7 +15,7 @@ const weekdays = [0, 1, 2, 3, 4, 5, 6];
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 		name: 'Mali', role: 'Therapist', color: '#abc',
 		workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })),
@@ -115,7 +115,7 @@ describe('admin services', () => {
 		await expect(t.query(api.services.admin.listStaff, {})).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.findOpenSlots, { serviceId, date })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.services.commands.createStaff.createStaff, { name: 'X', role: 'Y', color: '#fff', workingHours: [], breaks: [] })).rejects.toThrow('Not authenticated');
-		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' });
 		await expect(stranger.query(api.services.admin.listServices, {})).rejects.toThrow('Not authorized');
 	});
 

@@ -32,7 +32,7 @@ afterEach(() => {
 
 async function setup(rules?: Partial<BookingRules>) {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { propertyId, sessionId } = await t.run(async (ctx) => ({
 		propertyId: await ctx.db.insert('properties', {
 			slug: 'villa',

@@ -17,7 +17,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 it.each(['release', 'new-sale'] as const)('a delayed renewal cannot resurrect an order after %s', async (exit) => {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { secret } = await admin.mutation(api.pos.displays.createPairLink, { clientId });
 	const claim = await t.mutation(api.pos.displays.claimLink, { secret });
 	if (!claim.ok) throw new Error('Pairing failed');

@@ -194,3 +194,5 @@ After an authorized deployment, root owns live acceptance. Coordinate any extern
 - `/admin` requires Clerk sign-in and only allowlisted admin emails can load chat sessions.
 - Chat opens and returns either AI or fallback content.
 - Mobile layout has no visible overlap in hero, booking, chat, or 360 tour views.
+
+Email-based privileged access requires `emailVerified === true`; false or missing claims deny owner, staff and marketing access, including existing grants. Before rollout verify that **each Clerk environment’s convex JWT template** emits boolean `email_verified` for verified users, and rejects missing/unverified claims. Development was previously verified; production template verification remains required and unverified.

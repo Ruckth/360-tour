@@ -20,7 +20,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 type Limits = { usageLimit?: number; discountBudget?: number; maxSaving?: number; minNights?: number; percent?: number };
 async function setup(limits: Limits = {}) {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell Garden Suite', tagline: '', description: '', pricePerNight: 450000, currency: 'THB', maxGuests: 2,
     bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'

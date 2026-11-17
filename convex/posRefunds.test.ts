@@ -20,9 +20,9 @@ const error = (code: string) => ({ data: expect.objectContaining({ code }) });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
-  const manager = t.withIdentity({ email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
-  const cashier = t.withIdentity({ email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
+  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
+  const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
+  const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {

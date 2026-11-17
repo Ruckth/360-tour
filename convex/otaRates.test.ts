@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllEnvs());
 async function setup(status: 'active' | 'draft' = 'active') {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const propertyId = await t.run(async (ctx) => await ctx.db.insert('properties', {
 		slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 2,
 		bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status
@@ -22,7 +22,7 @@ describe('OTA reference rates', () => {
 	it('requires an admin to read or write rates', async () => {
 		const { t, propertyId } = await setup();
 		await expect(t.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'agoda', nightlyRate: 900000 })).rejects.toThrow('Not authenticated');
-		const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(stranger.query(api.catalog.properties.listOtaRates, { propertyId })).rejects.toThrow('Not authorized');
 		const rateId = await t.run(async (ctx) => await ctx.db.insert('otaRates', { propertyId, platform: 'agoda', nightlyRate: 900000, updatedAt: 0 }));
 		await expect(t.mutation(api.catalog.properties.removeOtaRate, { rateId })).rejects.toThrow('Not authenticated');

@@ -18,7 +18,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'audit@example.com', tokenIdentifier: 'audit' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'audit@example.com', tokenIdentifier: 'audit' });
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Audit Villa', slug: 'audit-villa' });
 	await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 100000, status: 'active' });
 	const view = (orderId: Id<'orders'>) => admin.query(api.pos.orders.getOrder, { orderId }).then((order) => order!);

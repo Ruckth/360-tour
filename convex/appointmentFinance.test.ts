@@ -9,7 +9,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0,1,2,3,4,5,6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
   const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'massage', name: 'Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId] });
   const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, staffId, start: now - 86_400_000, guestName: 'Guest', guestPhone: '' });
@@ -105,7 +105,7 @@ it('refuses a refund from another appointment payment and non-admin staff access
   const { appointmentId: foreignAppointment } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId: original.serviceId, staffId: original.staffId, start: original.start - 86_400_000, guestName: 'Other', guestPhone: '' });
   const foreignPaymentId = (await admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId: foreignAppointment, expectedRevision: 0, method: 'cash', idempotencyKey: 'foreign-payment-001' })).paymentId;
   await expect(admin.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId, expectedRevision: 1, amount: 1000, currency: 'THB', method: 'cash', reason: 'Wrong source', idempotencyKey: 'wrong-source-001', paymentId: foreignPaymentId })).rejects.toThrow('remaining');
-  const other = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+  const other = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
   await expect(other.query(api.services.admin.getAppointmentFinancials, { appointmentId })).rejects.toThrow();
   await expect(other.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId })).rejects.toThrow();
 });

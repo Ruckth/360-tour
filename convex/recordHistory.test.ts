@@ -11,8 +11,8 @@ afterEach(() => vi.unstubAllEnvs());
 it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protects all marketing history snapshots and pagination for %s', async role => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-  const reader = role === 'admin' ? admin : t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const reader = role === 'admin' ? admin : t.withIdentity({ emailVerified: true, email: 'reader@example.com', tokenIdentifier: 'reader' });
   const full = ['admin', 'finance', 'manager'].includes(role);
   if (role !== 'admin') await t.run(ctx => ctx.db.insert('marketingGrants', {
     email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: 1, updatedAt: 1, updatedByEmail: 'admin@example.com'

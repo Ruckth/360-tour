@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllEnvs());
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 	return { t, admin, propertyId };
 }
@@ -32,7 +32,7 @@ describe('admin reviews', () => {
 	it('requires an admin', async () => {
 		const { t, propertyId } = await setup();
 		await expect(t.query(api.catalog.adminReviews.list, { propertyId })).rejects.toThrow('Not authenticated');
-		const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(stranger.mutation(api.catalog.adminReviews.create, review(propertyId, 5))).rejects.toThrow('Not authorized');
 	});
 

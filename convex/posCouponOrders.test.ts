@@ -17,7 +17,7 @@ const reviewedCustomer = (view: { customer: object | null }) =>
 async function setup(limits: { usageLimit?: number; discountBudget?: number; amount?: number; min?: number } = {}) {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
@@ -361,7 +361,7 @@ describe('POS order coupons', () => {
 	it('requires admin for applying and removing coupons', async () => {
 		const s = await setup();
 		const orderId = await s.sale();
-		for (const client of [s.t, s.t.withIdentity({ email: 'guest@example.com' })]) {
+		for (const client of [s.t, s.t.withIdentity({ emailVerified: true, email: 'guest@example.com' })]) {
 			await expect(client.mutation(api.pos.commands.applyOrderCoupon.applyOrderCoupon, { orderId, code: 'SPA-500' })).rejects.toThrow();
 			await expect(client.mutation(api.pos.commands.removeOrderCoupon.removeOrderCoupon, { orderId })).rejects.toThrow();
 		}

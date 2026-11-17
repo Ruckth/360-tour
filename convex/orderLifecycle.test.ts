@@ -16,8 +16,8 @@ const reviewedCustomer = (view: { customer: object | null }) =>
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com,desk@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const desk = t.withIdentity({ email: 'desk@example.com', tokenIdentifier: 'desk' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const desk = t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
@@ -472,7 +472,7 @@ describe('access', () => {
 		const { t, extra, appointment } = await setup();
 		const { orderId } = await extra();
 		const appointmentId = await appointment({ status: 'no_show' });
-		const outsider = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const outsider = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		for (const caller of [t, outsider]) {
 			await expect(caller.mutation(api.pos.commands.discardOrder.discardOrder, { orderId, expectedRevision: 1, idempotencyKey: 'discard-anon' })).rejects.toThrow();
 			await expect(caller.mutation(api.pos.commands.restoreOrder.restoreOrder, { orderId, expectedRevision: 1, idempotencyKey: 'restore-anon' })).rejects.toThrow();

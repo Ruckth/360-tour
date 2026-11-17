@@ -12,8 +12,8 @@ const modules = import.meta.glob('./**/*.ts');
 const firstPage = { numItems: 20, cursor: null };
 function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-  const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
   const create = (name = 'Ann Lee') => admin.mutation(api.pos.customers.createCustomer, { name });
   const profile = (customerId: Id<'customers'>) => admin.query(api.pos.customers.getCustomer, { customerId });
   const history = (customerId: Id<'customers'>) => admin.query(api.pos.customers.customerHistory, { customerId, paginationOpts: firstPage });

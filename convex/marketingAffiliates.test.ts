@@ -19,7 +19,7 @@ afterEach(() => {
 });
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({
+  const admin = t.withIdentity({ emailVerified: true,
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
@@ -447,7 +447,7 @@ it("reopens an approved order credit for review when an unlink returns money aft
 
 it("claims email invitations explicitly, binds canonical identity and prevents escalation or forged identity args", async () => {
   const s = await setup();
-  const user = s.t.withIdentity({
+  const user = s.t.withIdentity({ emailVerified: true,
     email: "manager@example.com",
     tokenIdentifier: "issuer|manager",
   });
@@ -479,7 +479,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
   ).rejects.toThrow();
   await expect(
     s.t
-      .withIdentity({
+      .withIdentity({ emailVerified: true,
         email: "manager@example.com",
         tokenIdentifier: "other-issuer|manager",
       })
@@ -488,7 +488,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
   expect(
     (
       await s.t
-        .withIdentity({
+        .withIdentity({ emailVerified: true,
           email: "new@example.com",
           tokenIdentifier: "issuer|manager",
         })
@@ -512,7 +512,7 @@ it("restricts marketer to draft edits, protects budgets/status/active data and o
     email: "writer@example.com",
     role: "marketer",
   });
-  const writer = s.t.withIdentity({
+  const writer = s.t.withIdentity({ emailVerified: true,
     email: "writer@example.com",
     tokenIdentifier: "writer",
   });
@@ -748,7 +748,7 @@ it("enforces read/finance roles on public APIs and validates stale revisions and
   for (const role of ["viewer", "finance"] as const) {
     const email = `${role}@example.com`;
     await s.admin.mutation(api.marketing.access.setGrant, { email, role });
-    const user = s.t.withIdentity({ email, tokenIdentifier: role });
+    const user = s.t.withIdentity({ emailVerified: true, email, tokenIdentifier: role });
     await user.mutation(api.marketing.access.claimInvite, {});
     expect(
       (await user.query(api.marketing.affiliates.listCredits, {})).rows,
@@ -880,7 +880,7 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     email: "writer@example.com",
     role: "marketer",
   });
-  const writer = s.t.withIdentity({
+  const writer = s.t.withIdentity({ emailVerified: true,
     email: "writer@example.com",
     tokenIdentifier: "writer",
   });

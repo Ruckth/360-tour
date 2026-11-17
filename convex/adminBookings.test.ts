@@ -48,7 +48,7 @@ async function setup() {
       status: "active",
     });
   });
-  const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+  const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
   return { t, admin };
 }
 
@@ -102,7 +102,7 @@ describe("admin bookings", () => {
   it("rejects signed-in non-admin access to guest data", async () => {
     const { t } = await setup();
     const { bookingId } = await t.mutation(api.bookings.bookings.create, { ...stay, guestEmail: "guest@example.com" });
-    const visitor = t.withIdentity({ email: "visitor@example.com", tokenIdentifier: "visitor-token" });
+    const visitor = t.withIdentity({ emailVerified: true, email: "visitor@example.com", tokenIdentifier: "visitor-token" });
     await expect(visitor.query(api.bookings.bookings.getById, { id: bookingId })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.messaging.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
   });
@@ -650,7 +650,7 @@ describe("historical admin bookings", () => {
   it("requires admin authentication and keeps public create rejecting past dates even for an admin caller", async () => {
     const { t, admin } = await setup();
     const past = { ...stay, checkIn: isoInDays(-3), checkOut: isoInDays(-1) };
-    const visitor = t.withIdentity({ email: "guest@example.com", tokenIdentifier: "guest-token" });
+    const visitor = t.withIdentity({ emailVerified: true, email: "guest@example.com", tokenIdentifier: "guest-token" });
     await expect(t.mutation(api.bookings.commands.createBooking.createBooking, past)).rejects.toThrow();
     await expect(visitor.mutation(api.bookings.commands.createBooking.createBooking, past)).rejects.toThrow("Not authorized");
     for (const client of [t, visitor, admin]) {

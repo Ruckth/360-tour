@@ -53,6 +53,7 @@ export async function createFixtureBackend(options: Options = {}) {
     email: "preview@example.com",
   };
   const identity = () => ({
+    emailVerified: true,
     email: staff.email,
     tokenIdentifier: `https://test.clerk.dev|${staff.email}`,
   });

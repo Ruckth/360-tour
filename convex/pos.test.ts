@@ -17,7 +17,7 @@ const reviewedCustomer = (view: { customer: object | null }) =>
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const ploy = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Ploy', role: 'Therapist', color: '#def', ...hours });
@@ -921,7 +921,7 @@ describe('access', () => {
 		const { orderId, lineId } = await extra();
 		const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Bob' });
 		const page = { numItems: 5, cursor: null };
-		const guest = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const guest = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		for (const caller of [t, guest]) {
 			const calls: Array<() => Promise<unknown>> = [
 				() => caller.query(api.pos.catalog.stableCatalog, {}),

@@ -10,7 +10,7 @@ const modules = import.meta.glob('./**/*.ts');
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { propertyId, roomId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
 			slug: 'pool-villa', name: 'Pool Villa', tagline: 'Sea views', description: 'Villa', pricePerNight: 850000,
@@ -30,7 +30,7 @@ describe('admin property editing', () => {
 		const { t, propertyId, roomId } = await setup();
 		await expect(t.query(api.catalog.properties.adminList, {})).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.catalog.properties.update, { propertyId, name: 'X' })).rejects.toThrow('Not authenticated');
-		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' });
 		await expect(stranger.mutation(api.catalog.properties.updateRoom, { roomId, name: 'X' })).rejects.toThrow('Not authorized');
 	});
 

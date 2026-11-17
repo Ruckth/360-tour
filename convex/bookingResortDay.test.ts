@@ -25,7 +25,7 @@ async function setup(now: string) {
   const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.bookings.create, {
     propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com", guestPhone: "+66911111111", checkIn, checkOut, guests: 2,
   });
-  return { t, book, admin: t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" }) };
+  return { t, book, admin: t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" }) };
 }
 
 describe("public booking uses the resort day (Asia/Bangkok)", () => {
