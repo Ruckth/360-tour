@@ -8,10 +8,10 @@
 //
 // --phase N measures/reports only metrics due through N; omit it for the complete report.
 // The clean-tree metric is advisory: it is reported but never fails a --phase gate.
-// Test-name gates match the exact titles below, so name the tests exactly this way; a title
-// inside a skipped or todo test does not count.
+// Required suite gates execute explicit files once and require every case to pass.
 import { execSync } from 'node:child_process';
 import ts from 'typescript';
+import { runRequiredSuites } from './lib/scorecard-tests.mjs';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
 import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
@@ -100,36 +100,20 @@ const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
 	.filter(([, n]) => n > 1000)
 	.map(([p, n]) => `${p} (${n})`);
 
-// A skipped or todo test must not satisfy a required-test gate, so blank out every
-// it/test/describe call chained with .skip or .todo (including .skip.each) and xit/xtest/xdescribe.
-const SKIPPED_ROOTS = new Set(['xit', 'xtest', 'xdescribe']);
-const TEST_ROOTS = new Set(['it', 'test', 'describe', 'suite']);
-function calleeChain(node) {
-	if (ts.isIdentifier(node)) return [node.text];
-	if (ts.isPropertyAccessExpression(node)) return [...calleeChain(node.expression), node.name.text];
-	if (ts.isCallExpression(node)) return calleeChain(node.expression);
-	return [];
-}
-function withoutSkippedTests(path) {
-	const source = read(path);
-	const ranges = [];
-	const visit = (node) => {
-		if (ts.isCallExpression(node)) {
-			const [root, ...rest] = calleeChain(node.expression);
-			if (SKIPPED_ROOTS.has(root) || (TEST_ROOTS.has(root) && rest.some(name => name === 'skip' || name === 'todo'))) {
-				ranges.push([node.getStart(), node.end]);
-				return;
-			}
-		}
-		ts.forEachChild(node, visit);
-	};
-	visit(ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true));
-	let text = source;
-	for (const [start, end] of ranges.reverse()) text = text.slice(0, start) + ' '.repeat(end - start) + text.slice(end);
-	return text;
-}
-const allTestText = testFiles.map(withoutSkippedTests).join('\n');
-const hasTest = (title) => allTestText.includes(`'${title}'`) || allTestText.includes(`"${title}"`) || allTestText.includes(`\`${title}\``);
+const requiredSuites = [
+  [0, 'convex/phase0Security.test.ts'],
+  [1, 'convex/moneyCutover.test.ts'],
+  [1, 'convex/phase1Architecture.test.ts'],
+  [2, 'convex/messaging/reliability.test.ts'],
+  [2, 'convex/concierge/prompt.test.ts'],
+  [4, 'convex/queryScale.test.ts'],
+].filter(([phase]) => phaseArg === null || phase <= phaseArg);
+const suiteResults = runRequiredSuites(ROOT, requiredSuites.map(([, file]) => file));
+const suiteMetric = (phase, id, label) => {
+  const files = requiredSuites.filter(([due]) => due === phase).map(([, file]) => file);
+  add(id, phase, label, files.filter(file => suiteResults.get(file) === true).length, files.length,
+    files.filter(file => suiteResults.get(file) !== true).map(file => `required suite failed: ${file}`));
+};
 
 function dirtyTracked() {
 	try {
@@ -150,14 +134,7 @@ add('clean-tree', -1, 'Modified tracked files on the working tree (advisory)', d
 const ADVISORY = new Set(['clean-tree']);
 
 add('secret-fails-open', 0, 'Code paths that skip the webhook secret when it is unset', count(convexProd, /temporarily unauthenticated/g), 0);
-const PHASE0_TESTS = [
-	'rejects webhook mutations when the server secret is missing',
-	'rejects assistant messages from the browser',
-	'rejects chat calls without a valid guest token',
-	'rejects respond for a session the caller does not own',
-	'hides rooms and reviews of draft properties'
-];
-add('phase0-tests', 0, 'Required security tests present', PHASE0_TESTS.filter(hasTest).length, PHASE0_TESTS.length, PHASE0_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
+suiteMetric(0, 'phase0-tests', 'Required phase 0 test files executed and passing');
 add('static-dir', 0, 'Duplicate static/ directory exists (1 = yes)', existsSync(join(ROOT, 'static')) ? 1 : 0, 0);
 add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify-out)', ['output', 'tmp', 'graphify-out'].filter((d) => !new RegExp(`^/?${d}/?$`, 'm').test(gitignore)).length, 0);
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
@@ -168,15 +145,13 @@ add('retired-tables', 1, 'Retired tables still in the schema', RETIRED_TABLES.fi
 add('old-table-names', 1, 'Tables still using pre-rename names', OLD_NAMES.filter((t) => tableNames.includes(t)).length, 0, OLD_NAMES.filter((t) => tableNames.includes(t)));
 add('legacy-files', 1, 'Convex files mentioning "legacy" or "backfill"', filesMatching(convexProd, /legacy|backfill/i).length, 0, filesMatching(convexProd, /legacy|backfill/i));
 add('migrations', 1, 'migrations.define calls', count(convexProd, /migrations\.define\(/g), 0);
-const PHASE1_TESTS = ['rounds a percentage discount identically for stays and orders', 'charges Stripe the stored satang amount', 'acknowledges Stripe events for deleted bookings', 'seeds the demo-resort scenario from empty'];
-add('phase1-tests', 1, 'Required money and reset tests present', PHASE1_TESTS.filter(hasTest).length, PHASE1_TESTS.length, PHASE1_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
+suiteMetric(1, 'phase1-tests', 'Required phase 1 test files executed and passing');
 add('reexport-pages', 1, 'Files under [locale] that only re-export another page', srcFiles.filter((p) => rel(p).startsWith('src/app/[locale]/') && /^\s*export\s*\{[^}]*\}\s*from\s*["']@\/app\//m.test(read(p))).length, 0);
 
 add('channel-routes', 2, 'Next.js webhook route folders left (line/facebook/instagram/whatsapp)', ['line', 'facebook', 'instagram', 'whatsapp'].filter((c) => existsSync(join(ROOT, `src/app/api/${c}`))).length, 0);
 add('server-secret-uses', 2, 'Calls to requireServerSecret', count(convexProd, /requireServerSecret\(/g), 0);
 add('as-never-webhooks', 2, '`as never` casts in src/app/api', count(srcFiles.filter((p) => rel(p).startsWith('src/app/api/')), /as never/g), 0);
-const PHASE2_TESTS = ['ignores a duplicate webhook delivery', 'takes over a stale event lease', 'does not resend after a crash following send', 'pushes after an expired LINE reply token', 'does not push after an ambiguous LINE timeout', 'builds the concierge prompt'];
-add('phase2-tests', 2, 'Required messaging reliability tests present', PHASE2_TESTS.filter(hasTest).length, PHASE2_TESTS.length, PHASE2_TESTS.filter((t) => !hasTest(t)).map((t) => `missing test: ${t}`));
+suiteMetric(2, 'phase2-tests', 'Required phase 2 test files executed and passing');
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 
 add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth/model.ts', rawPublicViolations.length, 0, rawPublicViolations);
@@ -193,7 +168,7 @@ add('files-over-1000', 3, 'Non-vendor source files over 1,000 lines (schema excl
 
 const missing = missingReturns();
 add('no-login-without-returns', 4, 'No-login public functions without a return validator', missing.length, 0, missing.slice(0, 20));
-add('phase4-tests', 4, 'Required read-budget test present', hasTest('lists the inbox within the read budget') ? 1 : 0, 1);
+suiteMetric(4, 'phase4-tests', 'Required read-budget test files executed and passing');
 
 // A zero is only meaningful once the thing it measures exists.
 const byId = Object.fromEntries(m.map((x) => [x.id, x]));
