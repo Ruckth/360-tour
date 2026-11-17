@@ -4,6 +4,7 @@ import * as SelectPrimitive from "@radix-ui/react-select";
 import { Send } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
+  useId,
   type CSSProperties,
   type Dispatch,
   type FormEvent,
@@ -53,6 +54,8 @@ export function ChatComposer({
   input,
   setInput,
   sendMessage,
+  sendError,
+  contactEmail,
   chatInputDisabled,
   focusFooterInput,
   clearFooterFocusAfterBlur,
@@ -75,12 +78,15 @@ export function ChatComposer({
   input: string;
   setInput: Dispatch<SetStateAction<string>>;
   sendMessage: (message: string) => void;
+  sendError: string | null;
+  contactEmail: string;
   chatInputDisabled: boolean;
   focusFooterInput: (scope: "composer" | "contact") => void;
   clearFooterFocusAfterBlur: () => void;
   onComposerPointerDown: () => void;
 }) {
   const t = useTranslations("Chat");
+  const sendErrorId = useId();
   return (
     <div
       data-testid="chat-footer"
@@ -234,6 +240,7 @@ export function ChatComposer({
           placeholder={t("askPlaceholder")}
           enterKeyHint="send"
           aria-label={t("askPlaceholder")}
+          aria-describedby={sendError ? sendErrorId : undefined}
           disabled={chatInputDisabled}
         />
         <Button
@@ -246,6 +253,10 @@ export function ChatComposer({
           <Send className="h-4 w-4" />
         </Button>
       </form>
+      {sendError ? <div id={sendErrorId} role="alert" className="text-sm text-destructive">
+        <p>{sendError}</p>
+        <a href={`mailto:${contactEmail.trim()}?body=${encodeURIComponent(input)}`} className="underline underline-offset-2">{t("email")}</a>
+      </div> : null}
     </div>
   );
 }

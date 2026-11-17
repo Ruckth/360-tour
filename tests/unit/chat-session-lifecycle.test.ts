@@ -3,6 +3,8 @@ import { act, createElement, useEffect, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
+import { ConvexError } from 'convex/values';
+import { ChatComposer } from '@/components/chat/ChatComposer';
 import { useChatSession } from '@/components/chat/useChatSession';
 import { getStoredGuestToken, getStoredSessionId } from '@/components/chat/session/credentials';
 const mocks = vi.hoisted(() => ({
@@ -21,7 +23,7 @@ vi.mock('@/components/chat/ChatContext', () => ({ useChatPageContext: () => null
 let root: Root | null, chat: ReturnType<typeof useChatSession>;
 function Harness({ initialDraft }: { initialDraft?: string }) {
   const value = useChatSession({ mode: 'page', initialDraft, contactEmail: 'test@example.com', whatsappNumber: '123' });
-  useEffect(() => { chat = value; }, [value]); return null;
+  useEffect(() => { chat = value; }, [value]); return createElement(ChatComposer, value);
 }
 async function mount(initialDraft?: string) {
   const node = document.createElement('div'); document.body.append(node); root = createRoot(node);
@@ -52,11 +54,14 @@ it('retries an ambiguous admission with the same client message identifier and p
   mocks.mutation.mockRejectedValueOnce(new Error('connection dropped'));
   await act(async () => chat.sendMessage('Keep this draft'));
   expect(chat.input).toBe('Keep this draft'); expect(chat.messages).toEqual([]);
+  expect(document.querySelector('[role=alert]')?.textContent).toContain('sendFailed');
+  expect(document.querySelector('textarea')?.getAttribute('aria-describedby')).toBe(document.querySelector('[role=alert]')?.id);
   const first = mocks.mutation.mock.calls.find(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage')![1];
   await act(async () => chat.sendMessage('Keep this draft'));
   const calls = mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage');
   expect(calls.at(-1)![1].clientMessageId).toBe(first.clientMessageId);
   expect(chat.input).toBe('');
+  expect(document.querySelector('[role=alert]')).toBeNull();
 });
 it('does not persist a session created after unmount', async () => {
   const late = deferred<{ sessionId: string; guestToken: string }>(); mocks.mutation.mockReturnValueOnce(late.promise);
@@ -90,4 +95,30 @@ it('shares one slow session creation between restart and the open-session effect
   expect(mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:createSession')).toHaveLength(2); // initial + restart
   await act(async () => late.resolve({ sessionId: 'session-two', guestToken: 'token-two' })); await restarting!;
   expect(getStoredSessionId()).toBe('session-two'); expect(getStoredGuestToken('session-one')).toBeUndefined();
+});
+
+it('announces rate-limit refusal, preserves the draft and offers direct contact until retry succeeds', async () => {
+  await mount();
+  mocks.mutation.mockRejectedValueOnce(new ConvexError({ kind: 'RateLimited', name: 'global', retryAfter: 60000 }));
+  await act(async () => chat.sendMessage('Please help'));
+  expect(chat.messages).toEqual([]);
+  expect(chat.input).toBe('Please help');
+  expect(document.querySelector('[role=alert]')?.textContent).toContain('sendRateLimited');
+  expect(document.querySelector('[role=alert] a')?.getAttribute('href')).toBe('mailto:test@example.com?body=Please%20help');
+  const first = mocks.mutation.mock.calls.find(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage')![1];
+  await act(async () => chat.sendMessage('Please help'));
+  const last = mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:sendMessage').at(-1)![1];
+  expect(last.clientMessageId).toBe(first.clientMessageId);
+  expect(chat.input).toBe('');
+  expect(document.querySelector('[role=alert]')).toBeNull();
+});
+
+it('clears a send error when starting a fresh conversation', async () => {
+  await mount();
+  mocks.mutation.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => chat.sendMessage('Unsent'));
+  expect(chat.sendError).toBe('sendFailed');
+  mocks.mutation.mockResolvedValueOnce({ sessionId: 'session-two', guestToken: 'token-two' });
+  await act(async () => chat.restartChat());
+  expect(chat.sendError).toBeNull();
 });
