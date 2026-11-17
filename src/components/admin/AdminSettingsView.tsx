@@ -450,10 +450,11 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
           )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
           {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid gap-5 p-5 lg:p-6">
             <header>
-              <h3 className="text-[15px] font-semibold">Reply limits</h3>
-              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">The five channel limits add together. Defaults total 2,500 guest messages per hour across all channels; each chat also has its own limit.</p>
-              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">How many guest messages the AI answers each hour, so spam can’t run up costs. Every guest message counts, even while staff are replying. Changes apply from the next message.</p>
-              <p className="mt-2 text-[13px] leading-5 text-muted-foreground">When a limit is reached, website guests can’t send for now and their text stays in the box. On LINE, WhatsApp, Messenger and Instagram, the message still reaches your inbox, but the AI won’t reply to it.</p>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[15px] font-semibold">Reply limits</h3>
+                <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Every guest message counts, including during staff replies, and changes apply from the next message. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
+              </div>
+              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Default total: 2,500 guest messages/hour across five channels</p>
             </header>
             <div className="grid gap-5 sm:grid-cols-2">{replyFields.map(renderField)}</div>
           </Card> : null}
