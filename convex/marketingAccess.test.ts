@@ -67,4 +67,7 @@ it.each([false, undefined])("denies marketing authority without verification (%s
   const verified = t.withIdentity({ email: "friend@example.com", emailVerified: true, tokenIdentifier: "issuer|friend" });
   await verified.mutation(api.marketing.access.claimInvite, {});
   expect(await verified.query(api.marketing.access.current, {})).toMatchObject({ role: "viewer" });
+  // Binding a grant must not let a later token without verification retain access.
+  expect(await unverified.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
+  await expect(unverified.mutation(api.marketing.access.claimInvite, {})).rejects.toThrow("Verify your email");
 });
