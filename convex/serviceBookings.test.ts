@@ -214,7 +214,7 @@ describe('AI service booking', () => {
 		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
 		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-		const admin = s.t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = s.t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const [appointment] = await appointments(s.t);
 		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
 		vi.advanceTimersByTime(1000);

@@ -28,8 +28,8 @@ const pendingOf = <T extends { status: string }>(result: T) => {
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const displays = () => t.run((ctx) => ctx.db.query('displays').collect());
 	const list = (clientId = HERE) => admin.query(api.pos.displays.listDisplays, { clientId });
 	const link = (clientId = HERE) => admin.mutation(api.pos.displays.createPairLink, { clientId });

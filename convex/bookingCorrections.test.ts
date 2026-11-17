@@ -28,8 +28,8 @@ async function setup() {
 		slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
 		bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
 	}));
-	const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'stranger@example.com', tokenIdentifier: 'stranger' });
+	const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'stranger@example.com', tokenIdentifier: 'stranger' });
 	const get = (bookingId: Id<'bookings'>) => t.run((ctx) => ctx.db.get(bookingId)).then((b) => b!);
 	const rev = async (bookingId: Id<'bookings'>) => (await get(bookingId)).revision ?? 0;
 	const create = (from: number, to: number, extra: Record<string, unknown> = {}) => admin.mutation(api.bookings.commands.createBooking.createBooking, {
@@ -127,7 +127,7 @@ describe('refund records', () => {
 			await expect(admin.mutation(api.bookings.commands.recordRefund.recordRefund, { ...args, ...changes })).rejects.toThrow('different refund');
 		}
 		vi.stubEnv('ADMIN_EMAILS', `${adminEmail},desk@example.com`);
-		await expect(t.withIdentity({ email: 'desk@example.com', tokenIdentifier: 'desk' }).mutation(api.bookings.commands.recordRefund.recordRefund, args)).rejects.toThrow('different refund');
+		await expect(t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' }).mutation(api.bookings.commands.recordRefund.recordRefund, args)).rejects.toThrow('different refund');
 		expect((await financials(bookingId)).refunds).toHaveLength(1);
 	});
 

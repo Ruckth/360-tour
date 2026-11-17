@@ -18,7 +18,7 @@ const patternPlan = { shifts: [{ start: '09:00', end: '18:00' }], breaks: [lunch
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const person = (name: string) => admin.mutation(api.services.commands.createStaff.createStaff, {
 		name, role: 'Therapist', color: '#abc',
 		workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })),
@@ -220,7 +220,7 @@ describe('appointment changes', () => {
 	it('requires an admin for every new appointment change', async () => {
 		const { t, maliId, book } = await setup();
 		const id = await book('10:00');
-		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' });
 		for (const caller of [t, stranger]) {
 			const reason = caller === t ? 'Not authenticated' : 'Not authorized';
 			await expect(caller.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: id, expectedRevision: 0, start: at('14:00'), staffId: maliId })).rejects.toThrow(reason);

@@ -13,3 +13,10 @@ it.each(Object.keys(CHAT_REPLY_LIMIT_RANGES) as (keyof ChatReplyLimits)[])('vali
     expect(validateSettingsInput({ chatReplyLimits: { [key]: value } }).errors[`chatReplyLimits.${key}`]).toContain(`from ${min} to ${max}`);
   }
 });
+
+it('defaults to five independent channel allowances totaling 2,500 messages per hour', () => {
+  const limits = resolveChatReplyLimits(null);
+  expect([limits.web, limits.line, limits.whatsapp, limits.facebook, limits.instagram]).toEqual([500, 500, 500, 500, 500]);
+  expect(limits.web + limits.line + limits.whatsapp + limits.facebook + limits.instagram).toBe(2500);
+  expect(limits.perChat).toBe(20);
+});

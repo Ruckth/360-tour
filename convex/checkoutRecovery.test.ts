@@ -8,7 +8,7 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   return { t, admin };
 }
 beforeEach(() => vi.stubEnv("ADMIN_EMAILS", "admin@example.com"));

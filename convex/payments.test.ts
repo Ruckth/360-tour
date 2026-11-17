@@ -39,7 +39,7 @@ it('requires the booking token before creating a Stripe session', async () => {
 it('lets host-confirmed unpaid bookings pay online with an attempt idempotency key', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
@@ -65,7 +65,7 @@ it.each([false, true])('renews an expired checkout for a %s admin booking withou
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
   vi.stubEnv('SITE_URL', 'https://example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });

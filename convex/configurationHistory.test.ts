@@ -23,8 +23,8 @@ function setup() {
 	const t = convexTest(schema, modules);
 	return {
 		t,
-		admin: t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }),
-		stranger: t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' })
+		admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
+		stranger: t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' })
 	};
 }
 beforeEach(() => {

@@ -20,7 +20,7 @@ afterEach(() => {
 function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com, second@example.com');
 	const t = convexTest(schema, modules);
-	return { t, admin: t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }) };
+	return { t, admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }) };
 }
 
 describe('settings get/update', () => {
@@ -91,7 +91,7 @@ describe('settings get/update', () => {
 
 	it('requires an admin for get, update, channelHealth and serverConfig', async () => {
 		const { t } = setup();
-		const other = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const other = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(t.query(api.settings.settings.get, {})).rejects.toThrow('Not authenticated');
 		await expect(other.query(api.settings.settings.get, {})).rejects.toThrow('Not authorized');
 		await expect(other.mutation(api.settings.settings.update, { business: { businessName: 'X' } })).rejects.toThrow('Not authorized');

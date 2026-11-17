@@ -16,7 +16,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 function setup() {
   const t = convexTest(schema, modules);
-  return { t, admin: t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" }) };
+  return { t, admin: t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" }) };
 }
 
 async function createSession(t: ReturnType<typeof convexTest>, channel: "web" | "line" = "web") {

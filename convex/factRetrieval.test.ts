@@ -13,7 +13,7 @@ afterEach(() => {
 async function setup() {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({
+  const admin = t.withIdentity({ emailVerified: true,
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });

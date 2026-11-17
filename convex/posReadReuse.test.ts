@@ -19,7 +19,7 @@ beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'reads@example.com'));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 async function fixture() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'reads@example.com', tokenIdentifier: 'reads' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'reads@example.com', tokenIdentifier: 'reads' });
   const ids = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: 'Pool', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
     const bookingId = await insertFixture(ctx, 'bookings', { propertyId, guestName: 'Guest', guestPhone: '0800000000', checkIn: '2026-11-01', checkOut: '2026-11-02', guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB', amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'READS', createdAt: 1 });
@@ -153,8 +153,8 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
   expect((await admin.query(api.pos.catalog.stableCatalog, {})).services).toEqual([]);
   await expect(t.query(api.pos.catalog.stableCatalog, {})).rejects.toThrow('Not authenticated');
   await expect(t.query(api.pos.catalog.recentCatalogRanking, {})).rejects.toThrow('Not authenticated');
-  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.catalog.stableCatalog, {})).rejects.toThrow('Not authorized');
-  await expect(t.withIdentity({ email: 'outsider@example.com' }).query(api.pos.catalog.recentCatalogRanking, {})).rejects.toThrow('Not authorized');
+  await expect(t.withIdentity({ emailVerified: true, email: 'outsider@example.com' }).query(api.pos.catalog.stableCatalog, {})).rejects.toThrow('Not authorized');
+  await expect(t.withIdentity({ emailVerified: true, email: 'outsider@example.com' }).query(api.pos.catalog.recentCatalogRanking, {})).rejects.toThrow('Not authorized');
 });
 
 it('counts rows rather than quantity, excludes appointment fees and source rows, and filters non-THB catalog entries', async () => {

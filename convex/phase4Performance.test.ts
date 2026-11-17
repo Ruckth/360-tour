@@ -17,7 +17,7 @@ const property = { slug: 'villa', name: 'Villa', tagline: '', description: '', p
 const review = { authorName: 'Guest', authorCity: '', authorCountry: '', rating: 4, title: '', body: 'Great stay', date: '2030-01-01', verified: true };
 
 it('updates exact review totals with bounded reads, edits, concurrent creates, final deletion and rollback', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', property));
   const ids = await Promise.all([1, 2, 5].map(rating => admin.mutation(api.catalog.adminReviews.create, { propertyId, ...review, rating })));
   const stats = () => t.run(ctx => ctx.db.query('reviewStats').withIndex('by_property', q => q.eq('propertyId', propertyId)).unique());
@@ -77,7 +77,7 @@ it('releases only booking-owned availability rows, with bounded reads and atomic
 });
 
 it('keeps inbox snapshots exact through durable retries, failure, profile changes, staff reply and newer ingress', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const accepted = await acceptTestEvent(t, 'line', { eventKey: 'one', recipient: 'phase4-guest', eventType: 'message', messageText: 'Hello' });
   const sessionId = accepted.sessionId!;
   const check = () => t.run(async ctx => {
@@ -112,7 +112,7 @@ it('keeps inbox snapshots exact through durable retries, failure, profile change
 });
 
 it('refuses oversized uninitialized aggregates atomically and verifies small-table dry runs', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => {
     const id = await ctx.db.insert('properties', property);
     for (let i = 0; i < 1001; i++) await ctx.db.insert('reviews', { propertyId: id, authorAvatarUrl: '', ...review });

@@ -18,7 +18,7 @@ const future = at('2026-11-02');
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Mali', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []

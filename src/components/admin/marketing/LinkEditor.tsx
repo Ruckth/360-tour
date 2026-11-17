@@ -3,7 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { BedDouble, CalendarDays, CircleCheck, Home, Link2, Lock, MessageCircle, QrCode, Sparkles } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { locales } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,6 @@ type SlugAnswer = Extract<SlugState, { status: "done" | "error" }>;
 /** Live slug check: debounced, and an answer for an older value never overwrites a newer one. */
 function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"]): SlugState {
   const [answer, setAnswer] = useState<SlugAnswer | null>(null);
-  const latest = useRef(slug);
 
   // Any input change starts a fresh check, so drop the previous answer.
   const [checked, setChecked] = useState({ slug, linkId, skip, checkSlug });
@@ -91,19 +90,19 @@ function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, sk
   }
 
   useEffect(() => {
-    latest.current = slug;
     if (skip || !slug) return;
+    let active = true;
     const timer = window.setTimeout(() => {
       checkSlug({ slug, linkId }).then(
         (check) => {
-          if (latest.current === slug) setAnswer({ status: "done", check });
+          if (active) setAnswer({ status: "done", check });
         },
         (error: unknown) => {
-          if (latest.current === slug) setAnswer({ status: "error", message: marketingErrorText(error, "Couldn’t check this link. Try again.") });
+          if (active) setAnswer({ status: "error", message: marketingErrorText(error, "Couldn’t check this link. Try again.") });
         },
       );
     }, 350);
-    return () => window.clearTimeout(timer);
+    return () => { active = false; window.clearTimeout(timer); };
   }, [slug, linkId, skip, checkSlug]);
 
   if (skip) return { status: "idle" };

@@ -188,7 +188,7 @@ describe("admin readers do not rerun on a presence-only heartbeat", () => {
   it("listTranscriptMessages reads no session document, so a heartbeat cannot change its result", async () => {
     vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin-token" });
+    const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
     const sessionId = await newWebSession(t);
     const base = (await t.run((ctx) => ctx.db.get(sessionId)))?.lastSeenAt ?? 0;
     await giveMessage(t, sessionId, base);

@@ -21,7 +21,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'desk@example.com', tokenIdentifier: 'desk' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const service = (slug: string, name: string, price: number) => admin.mutation(api.services.commands.createService.createService, {

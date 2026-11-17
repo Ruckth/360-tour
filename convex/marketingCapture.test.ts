@@ -27,7 +27,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
     maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'

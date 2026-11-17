@@ -291,6 +291,8 @@
     }
   },
   "Chat": {
+    "sendRateLimited": "Se ha alcanzado el límite de mensajes por hora del chat. Tu mensaje no se ha enviado. Inténtalo más tarde o escríbenos por correo electrónico.",
+    "sendFailed": "No pudimos confirmar el envío de tu mensaje. Inténtalo de nuevo; tu borrador está guardado.",
     "defaultTitle": "Conserjería Auralis",
     "propertyTitle": "Conserjería de {propertyName}",
     "open": "Abrir chat de conserjería",

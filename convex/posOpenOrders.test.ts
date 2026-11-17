@@ -14,9 +14,9 @@ afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
-	const manager = t.withIdentity({ email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
-	const cashier = t.withIdentity({ email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
+	const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
+	const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
+	const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
 	for (const [email, role, tokenIdentifier] of [
 		['manager@example.com', 'manager', 'issuer|manager'],
 		['cashier@example.com', 'cashier', 'issuer|cashier']
@@ -78,7 +78,7 @@ describe('checkout open orders', () => {
 	it('rejects unauthenticated users and authenticated users without checkout access', async () => {
 		const { t } = await setup();
 		await expect(t.query(api.pos.orders.listOpenOrders, { paginationOpts })).rejects.toThrow('Not authenticated');
-		const outsider = t.withIdentity({ email: 'outsider@example.com', tokenIdentifier: 'issuer|outsider' });
+		const outsider = t.withIdentity({ emailVerified: true, email: 'outsider@example.com', tokenIdentifier: 'issuer|outsider' });
 		await expect(outsider.query(api.pos.orders.listOpenOrders, { paginationOpts })).rejects.toThrow('Not authorized');
 	});
 

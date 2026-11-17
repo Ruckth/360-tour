@@ -14,7 +14,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   // Two nights at 100: total 200.
   const { bookingId, accessToken } = await t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });

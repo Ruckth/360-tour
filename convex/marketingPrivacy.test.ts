@@ -10,8 +10,8 @@ afterEach(() => vi.unstubAllEnvs());
 it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protects live partner notes and credit history for %s', async role => {
   vi.stubEnv('ADMIN_EMAILS', 'private-actor@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'private-actor@example.com', tokenIdentifier: 'admin' });
-  const reader = role === 'admin' ? admin : t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'private-actor@example.com', tokenIdentifier: 'admin' });
+  const reader = role === 'admin' ? admin : t.withIdentity({ emailVerified: true, email: 'reader@example.com', tokenIdentifier: 'reader' });
   const full = ['admin', 'finance', 'manager'].includes(role);
   if (role !== 'admin') await t.run(ctx => ctx.db.insert('marketingGrants', {
     email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: 1, updatedAt: 1, updatedByEmail: 'private-actor@example.com'

@@ -22,8 +22,8 @@ function setup() {
 	const t = convexTest(schema, modules);
 	return {
 		t,
-		admin: t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' }),
-		second: t.withIdentity({ email: 'second@example.com', tokenIdentifier: 'second' })
+		admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
+		second: t.withIdentity({ emailVerified: true, email: 'second@example.com', tokenIdentifier: 'second' })
 	};
 }
 async function person(admin: ReturnType<typeof setup>['admin']) {
@@ -361,7 +361,7 @@ describe('durable effective roster patterns', () => {
 	it('protects roster mutation authorization without creating versions or history', async () => {
 		const { t, admin } = setup();
 		const staffId = await person(admin);
-		const outsider = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+		const outsider = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(outsider.mutation(api.services.commands.updateStaff.updateStaff, { staffId, workingHours: [] })).rejects.toThrow(
 			'Not authorized'
 		);

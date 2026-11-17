@@ -41,7 +41,7 @@ describe('concierge model routing', () => {
 });
 
 function adminTest(t: ReturnType<typeof convexTest>) {
-  return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+  return t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
 async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {

@@ -291,6 +291,8 @@
     }
   },
   "Chat": {
+    "sendRateLimited": "È stato raggiunto il limite orario di messaggi della chat. Il messaggio non è stato inviato. Riprova più tardi o contattaci via e-mail.",
+    "sendFailed": "Non abbiamo potuto confermare l’invio del messaggio. Riprova; la bozza è stata salvata.",
     "defaultTitle": "Concierge Auralis",
     "propertyTitle": "Concierge {propertyName}",
     "open": "Apri chat concierge",

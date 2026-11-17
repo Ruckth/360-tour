@@ -43,9 +43,9 @@ export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: P
   const email = identity?.email?.trim().toLowerCase() ?? null;
   let role: StaffRole = null;
   let pendingInvitation: StaffAccess['pendingInvitation'] = null;
-  // Older Clerk templates may omit the claim; explicitly unverified emails have no staff authority.
-  if (identity?.emailVerified === false) {
-    return { email, tokenIdentifier: identity.tokenIdentifier, role, capabilities: staffCapabilities(role), pendingInvitation };
+  // Email authority requires explicit verification, including existing grants.
+  if (identity?.emailVerified !== true) {
+    return { email, tokenIdentifier: identity?.tokenIdentifier ?? null, role, capabilities: staffCapabilities(role), pendingInvitation };
   }
   if (email && adminEmails().has(email)) role = 'owner';
   else if (identity && email) {

@@ -19,7 +19,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 async function setup(couponAmount = 10000) {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email, tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
 	const propertyId = await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
 	const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'November', source: 'print', medium: 'qr' });
 	const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: couponAmount }, scope: 'services' });
@@ -394,7 +394,7 @@ describe('spend and diagnostic rollups', () => {
 		await s.t.mutation(api.marketing.report.noteCouponRefusal, note);
 		await s.t.mutation(api.marketing.report.noteCouponRefusal, note);
 		await s.t.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'pos' });
-		await s.t.withIdentity({ email: 'guest@example.com' }).mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'admin_booking' });
+		await s.t.withIdentity({ emailVerified: true, email: 'guest@example.com' }).mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'admin_booking' });
 		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'admin_booking', problem: 'expired' });
 		await s.admin.mutation(api.marketing.report.noteCouponRefusal, { ...note, surface: 'pos' });
 		await s.t.mutation(api.marketing.report.noteCouponRefusal, { ...note, code: 'private unknown text' });
@@ -558,7 +558,7 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	await s.t.run(ctx => ctx.db.patch(orderId, { customerSnapshot: { name: 'Private Customer' } }));
 	const appointmentId = await s.appointment();
 	await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
-	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ email: 'reader@example.com', tokenIdentifier: 'reader' });
+	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ emailVerified: true, email: 'reader@example.com', tokenIdentifier: 'reader' });
 	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
 	const data = await reader.query(api.marketing.report.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
 	expect(data.sales.find(row => row.id === bookingId)).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });

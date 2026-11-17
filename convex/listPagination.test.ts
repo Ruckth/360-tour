@@ -9,7 +9,7 @@ const modules = import.meta.glob("./**/*.ts");
 
 function authenticatedTest(t: ReturnType<typeof convexTest>) {
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
-  return t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin-token" });
+  return t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
 }
 
 afterEach(() => vi.unstubAllEnvs());
