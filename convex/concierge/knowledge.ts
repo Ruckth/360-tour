@@ -1,4 +1,3 @@
-import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminMutation, adminQuery, internalMutation, type MutationCtx, type QueryCtx } from '../auth/model';
@@ -118,84 +117,6 @@ export const recordUnknownQuestion = internalMutation({
       createdAt: now,
       updatedAt: now
     });
-  }
-});
-
-export const adminListUnknownQuestions = adminQuery({
-  args: {
-    paginationOpts: paginationOptsValidator,
-    status: v.optional(unknownQuestionStatusValidator),
-    search: v.optional(v.string())
-  },
-  handler: async (ctx, args) => {
-
-    const status = args.status ?? 'new';
-    const search = args.search?.trim();
-    const result = search
-      ? await ctx.db
-        .query('chatUnknownQuestions')
-        .withSearchIndex('search_userQuestion', (q) =>
-          status === 'all'
-            ? q.search('userQuestion', search)
-            : q.search('userQuestion', search).eq('status', status)
-        )
-        .paginate(args.paginationOpts)
-      : status === 'all'
-        ? await ctx.db
-          .query('chatUnknownQuestions')
-          .withIndex('by_createdAt')
-          .order('desc')
-          .paginate(args.paginationOpts)
-        : await ctx.db
-          .query('chatUnknownQuestions')
-          .withIndex('by_status_and_createdAt', (q) => q.eq('status', status))
-          .order('desc')
-          .paginate(args.paginationOpts);
-
-    return {
-      ...result,
-      page: await Promise.all(
-        result.page.map(async (row) => {
-          const [property, fact] = await Promise.all([
-            row.propertyId ? ctx.db.get(row.propertyId) : Promise.resolve(null),
-            row.resolvedFactId ? ctx.db.get(row.resolvedFactId) : Promise.resolve(null)
-          ]);
-          return {
-            ...row,
-            propertyName: property?.name,
-            propertySlug: row.propertySlug ?? property?.slug,
-            resolvedFactTitle: fact?.title,
-            resolvedSource: row.resolvedSource
-          };
-        })
-      )
-    };
-  }
-});
-
-export const adminIgnoreUnknown = adminMutation({
-  args: { unknownQuestionId: v.id('chatUnknownQuestions') },
-  handler: async (ctx, args) => {
-    const unknown = await ctx.db.get(args.unknownQuestionId);
-    if (!unknown) throw new Error('Unknown question not found');
-    const now = Date.now();
-    await ctx.db.patch(args.unknownQuestionId, {
-      status: 'ignored',
-      ignoredAt: now,
-      updatedAt: now
-    });
-    return { ignored: true };
-  }
-});
-
-export const adminReopenUnknown = adminMutation({
-  args: { unknownQuestionId: v.id('chatUnknownQuestions') },
-  handler: async (ctx, args) => {
-    const unknown = await ctx.db.get(args.unknownQuestionId);
-    if (!unknown) throw new Error('Unknown question not found');
-    if (unknown.status === 'new') return { reopened: false };
-    await reopenUnknownQuestion(ctx, args.unknownQuestionId);
-    return { reopened: true };
   }
 });
 

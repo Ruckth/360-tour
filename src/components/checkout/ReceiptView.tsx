@@ -168,7 +168,11 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
     };
   }, [beforePrint, afterPrint]);
   // Another order: nothing from the last one stays open.
-  useEffect(() => { setTask(null); setTaskDirty(false); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); }, [orderId]);
+  const [shownOrderId, setShownOrderId] = useState(orderId);
+  if (shownOrderId !== orderId) {
+    setShownOrderId(orderId);
+    setTask(null); setTaskDirty(false); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice("");
+  }
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
   // Cashiers open today's receipts only; older ones come back as missing.

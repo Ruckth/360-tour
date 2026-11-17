@@ -75,11 +75,6 @@ const contracts = [
   ],
   [
     "messaging/chat",
-    "isAiPaused",
-    "query"
-  ],
-  [
-    "messaging/chat",
     "getMessages",
     "query"
   ],
@@ -124,18 +119,8 @@ const contracts = [
     "mutation"
   ],
   [
-    "auth/users",
-    "current",
-    "query"
-  ],
-  [
     "auth/staffAccess",
     "myAccess",
-    "query"
-  ],
-  [
-    "bookings/bookings",
-    "quoteStay",
     "query"
   ],
   [
@@ -185,11 +170,6 @@ const contracts = [
   ],
   [
     "bookings/calendar/availability",
-    "getForProperty",
-    "query"
-  ],
-  [
-    "bookings/calendar/availability",
     "getBlockedDates",
     "query"
   ],
@@ -220,42 +200,12 @@ const contracts = [
   ],
   [
     "catalog/properties",
-    "getBySlug",
-    "query"
-  ],
-  [
-    "catalog/properties",
-    "getById",
-    "query"
-  ],
-  [
-    "catalog/properties",
-    "getRooms",
-    "query"
-  ],
-  [
-    "catalog/properties",
     "getTourRooms",
     "query"
   ],
   [
     "catalog/properties",
     "getOtaComparison",
-    "query"
-  ],
-  [
-    "catalog/properties",
-    "getSocialProof",
-    "query"
-  ],
-  [
-    "catalog/properties",
-    "getReviews",
-    "query"
-  ],
-  [
-    "catalog/properties",
-    "getTourSnippets",
     "query"
   ],
   [
@@ -316,40 +266,33 @@ it.each(contracts)('enforces the runtime return contract for %s:%s (%s)', async 
   } finally { Reflect.set(fn, '_handler', original); }
 });
 
-it('preserves active-villa projections, optional copy, private-token omission and refused draft lookups', async () => {
+it('preserves active-villa list projections, optional copy and private-token omission', async () => {
   const t = convexTest(schema, modules);
   const propertyId = await t.run(ctx => ctx.db.insert('properties', { slug: 'contract-villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10050, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 20, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1000, status: 'active', icalExportToken: 'private-test-only' }));
-  const byId = makeFunctionReference<'query'>('catalog/properties:getById'), bySlug = makeFunctionReference<'query'>('catalog/properties:getBySlug');
-  const found = await t.query(byId, { id: propertyId });
+  const [found] = await t.query(api.catalog.properties.list, {});
   expect(found).toMatchObject({ _id: propertyId, pricePerNight: 10050, directDiscountPercent: 1000 });
   expect(found).not.toHaveProperty('icalExportToken');
   expect(found).not.toHaveProperty('translations');
-  expect(await t.query(bySlug, { slug: 'contract-villa' })).toEqual(found);
-  expect(await t.query(makeFunctionReference<'query'>('catalog/properties:getTourSnippets'), { propertyId })).toEqual([]);
-  const snippet = await t.run(ctx => ctx.db.insert('tourSnippets', { propertyId, roomSlug: 'pool', position: [1, 2, 3], quote: 'Quiet pool', authorName: 'Guest', authorCity: '', rating: 5 }));
-  expect(await t.query(api.catalog.properties.getTourSnippets, { propertyId })).toMatchObject([{ _id: snippet, quote: 'Quiet pool', position: [1, 2, 3] }]);
   const loaded = await modules['./catalog/properties.ts']();
-  const fn = Reflect.get(Object(loaded), 'getById'), original = Reflect.get(fn, '_handler');
+  const fn = Reflect.get(Object(loaded), 'list'), original = Reflect.get(fn, '_handler');
   Reflect.set(fn, '_handler', async (...args: unknown[]) => {
     const response: unknown = await Reflect.apply(original, fn, args);
-    if (!response || typeof response !== 'object') throw new Error('Expected an active villa');
-    return { ...response, icalExportToken: 'private-test-only' };
+    if (!Array.isArray(response) || !response[0]) throw new Error('Expected an active villa');
+    return [{ ...response[0], icalExportToken: 'private-test-only' }];
   });
-  try { await expect(t.query(byId, { id: propertyId })).rejects.toThrow(/Return value validation failed/); }
+  try { await expect(t.query(api.catalog.properties.list, {})).rejects.toThrow(/Return value validation failed/); }
   finally { Reflect.set(fn, '_handler', original); }
   await t.run(ctx => ctx.db.patch(propertyId, { status: 'draft' }));
-  expect(await t.query(byId, { id: propertyId })).toBeNull();
-  expect(await t.query(bySlug, { slug: 'contract-villa' })).toBeNull();
+  expect(await t.query(api.catalog.properties.list, {})).toEqual([]);
 });
 
-
-it('validates guest lifecycle null and boolean responses while retaining token refusal', async () => {
+it('validates guest lifecycle null and session responses while retaining token refusal', async () => {
   const t = convexTest(schema, modules);
   const guest = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
-  expect(await t.query(api.messaging.chat.isAiPaused, guest)).toBe(false);
+  expect(await t.query(api.messaging.chat.getSession, guest)).toMatchObject({ aiPaused: false });
   expect(await t.mutation(api.messaging.chat.closeSession, guest)).toBeNull();
   await t.run(ctx => ctx.db.patch(guest.sessionId, { aiPaused: true }));
-  expect(await t.query(api.messaging.chat.isAiPaused, guest)).toBe(true);
-  await expect(t.query(api.messaging.chat.isAiPaused, { ...guest, guestToken: 'wrong' })).rejects.toThrow('INVALID_GUEST_TOKEN');
+  expect(await t.query(api.messaging.chat.getSession, guest)).toMatchObject({ aiPaused: true });
+  await expect(t.query(api.messaging.chat.getSession, { ...guest, guestToken: 'wrong' })).rejects.toThrow('INVALID_GUEST_TOKEN');
   await expect(t.mutation(api.messaging.chat.closeSession, { ...guest, guestToken: 'wrong' })).rejects.toThrow('INVALID_GUEST_TOKEN');
 });

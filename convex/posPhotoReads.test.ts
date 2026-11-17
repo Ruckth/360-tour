@@ -34,7 +34,7 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
     });
     return { propertyId, bookingId };
   });
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'room', propertyId } });
   for (let i = 0; i < 3; i++) await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
   const read = () => admin.query(api.pos.orders.getOrder, { orderId });
@@ -60,6 +60,6 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   await t.run(ctx => ctx.db.delete(bookingId));
   expect((await read())?.lines).toHaveLength(5);
   expect(await stored()).toEqual(before);
-  await expect(t.query(api.pos.catalog.catalog, {})).rejects.toThrow();
+  await expect(t.query(api.pos.catalog.stableCatalog, {})).rejects.toThrow();
   await expect(t.query(api.pos.orders.getOrder, { orderId })).rejects.toThrow();
 });

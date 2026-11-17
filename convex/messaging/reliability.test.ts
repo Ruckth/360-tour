@@ -1,3 +1,4 @@
+import { runTurnHandler } from '../concierge/runTurn';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
@@ -157,7 +158,7 @@ it('recovers a real committed booking without replaying the model or booking mut
   vi.setSystemTime(Date.now() + LEASE_MS + 1);
   await t.mutation(internal.messaging.worker.claim, { eventId: confirmation._id, token: 'recovery-claim' });
   const transport = vi.fn(); vi.stubGlobal('fetch', transport);
-  const recovered = await t.action(internal.concierge.runTurn.runTurn, { eventId: confirmation._id, claimToken: 'recovery-claim' });
+  const recovered = await t.action(ctx => runTurnHandler(ctx, { eventId: confirmation._id, claimToken: 'recovery-claim' }));
   expect(recovered).toMatchObject({ model: 'tool_recovery', outcome: 'answered' });
   expect(recovered.response).toContain('payment is pending');
   if (committed.needsReview) throw new Error('Expected a committed booking');

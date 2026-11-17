@@ -71,7 +71,7 @@ describe('admin appointment corrections', () => {
     expect((await get(upcoming)).status).toBe('booked');
     const publicEntry = await t.run(ctx => createAppointmentRecord(ctx, { serviceId, staffId, start: future + 2 * 3600000, guestName: 'Public', guestPhone: '+66123', source: 'web' }));
     expect((await get(publicEntry.appointmentId)).status).toBe('booked');
-    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId: ended });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId: ended });
     const order = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
     expect(order.order.due).toBe(120000);
     await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: order.order.revision, expectedDue: 120000, idempotencyKey: 'completed-unpaid-collect', tenders: [{ method: 'cash', amount: 120000 }] });
@@ -117,7 +117,7 @@ describe('admin appointment corrections', () => {
   it('preserves issued receipt, tender and line snapshots when a paid appointment time is corrected', async () => {
     const { t, admin, staffId, book, get } = await setup();
     const id = await book();
-    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId: id });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId: id });
     const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
     await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: view.order.revision, expectedDue: 120000, idempotencyKey: 'historical-receipt-001', tenders: [{ method: 'cash', amount: 120000 }] });
     const readFinancialFacts = () => t.run(async ctx => ({

@@ -74,7 +74,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 describe('discarding unpaid orders', () => {
 	it('moves an order from Unpaid to Discarded, keeping its rows, links, customer and a full history entry', async () => {
 		const { admin, bookingId, order, extra, discard, list, history } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId, 30000);
 		const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Bob' });
 		await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
@@ -144,7 +144,7 @@ describe('discarding unpaid orders', () => {
 
 	it('refuses every change and payment while discarded, including legacy clear and source rows', async () => {
 		const { admin, bookingId, appointment, order, extra, discard } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId);
 		const view = await order(orderId);
 		await discard(orderId);
@@ -176,17 +176,17 @@ describe('discarding unpaid orders', () => {
 
 	it('releases its stay while discarded, keeps the booking from being deleted, and the stay is charged once', async () => {
 		const { admin, bookingId, order, settle, discard } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await discard(orderId);
 		// A pending test booking whose order was discarded still can't be hard-deleted: the order keeps its row.
 		const testBooking = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
 			propertySlug: 'villa', guestName: 'Test', guestPhone: '+66 81 234 5678', checkIn: '2026-11-10', checkOut: '2026-11-12', guests: 2, notifyGuest: false
 		});
-		const { orderId: testOrder } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId: testBooking });
+		const { orderId: testOrder } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId: testBooking });
 		await discard(testOrder);
 		await expect(admin.mutation(api.bookings.commands.deleteBooking.deleteBooking, { bookingId: testBooking })).rejects.toThrow('has an order');
 		// Staff can charge the stay on a new order meanwhile.
-		const reopened = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const reopened = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		expect(reopened.orderId).not.toBe(orderId);
 		expect((await order(reopened.orderId)).lines.filter((line) => line.bookingId === bookingId)).toHaveLength(1);
 		await expect(admin.mutation(api.bookings.commands.recordPayment.recordPayment, {
@@ -200,7 +200,7 @@ describe('discarding unpaid orders', () => {
 describe('restoring discarded orders', () => {
 	it('restores rows, links and customer as they were and records who restored it', async () => {
 		const { admin, bookingId, order, extra, discard, restore, list, history } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId, 30000);
 		const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: 'Bob' });
 		await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
@@ -237,10 +237,10 @@ describe('restoring discarded orders', () => {
 
 	it('never restores a second chargeable copy of a stay now on another order, unless that row is taken off', async () => {
 		const { admin, bookingId, order, extra, discard, restore, history } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId, 30000);
 		await discard(orderId);
-		const { orderId: other } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId: other } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 
 		const check = await admin.query(api.pos.orders.restoreCheck, { orderId });
 		expect(check).toMatchObject({
@@ -265,15 +265,15 @@ describe('restoring discarded orders', () => {
 
 	it('refuses to restore when every row is now on another order', async () => {
 		const { admin, bookingId, discard, restore } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await discard(orderId);
-		await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await expect(restore(orderId, { removeConflictingRows: true })).rejects.toThrow('every item on this order is now on another order');
 	});
 
 	it('brings back a row whose stay changed or was paid meanwhile unchanged and flagged, so it is never charged stale or twice', async () => {
 		const { admin, bookingId, order, settle, extra, discard, restore } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId);
 		const staleRow = (await order(orderId)).lines[0];
 		await discard(orderId);
@@ -295,10 +295,10 @@ describe('restoring discarded orders', () => {
 
 		// Paid elsewhere while discarded: the restored row is flagged and refused, then removed.
 		const second = await setup();
-		const { orderId: first } = await second.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId: second.bookingId });
+		const { orderId: first } = await second.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId: second.bookingId });
 		await second.extra(first);
 		await second.discard(first);
-		const { orderId: other } = await second.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId: second.bookingId });
+		const { orderId: other } = await second.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId: second.bookingId });
 		await second.settle({ orderId: other });
 		const restored = await second.restore(first);
 		expect(restored.warnings).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'settled' })]));
@@ -381,7 +381,7 @@ describe('no-show and late cancellation fees', () => {
 		await expect(admin.mutation(api.pos.commands.addAppointmentFee.addAppointmentFee, { appointmentId, kind: 'no_show', amount: 20000 })).rejects.toThrow(`already charged on Order #1 (receipt ${receiptNumber})`);
 		expect(await admin.query(api.pos.orders.appointmentFees, { appointmentId })).toEqual([expect.objectContaining({ kind: 'no_show', amount: 50000, order: expect.objectContaining({ state: 'paid', receiptNumber }) })]);
 		// Opening the no-show appointment itself still has nothing to charge.
-		await expect(admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId })).rejects.toThrow('nothing left to pay');
+		await expect(admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId })).rejects.toThrow('nothing left to pay');
 	});
 
 	it('refuses invalid amounts and appointments that are not no-show or cancelled and unpaid', async () => {
@@ -435,7 +435,7 @@ describe('payment reversal on a cancelled stay', () => {
 	it('dates a stay left with only refunded money as refunded, and keeps the stay cancelled rather than reopening it', async () => {
 		const { admin, t, bookingId, settle } = await setup();
 		const depositId = await t.run(ctx => ctx.db.insert('bookingPayments', { bookingId, origin: 'manual', amount: 1000000, currency: 'THB', method: 'cash', effectiveAt: Date.now(), recordedAt: Date.now(), recordedBy: 'admin@example.com', status: 'recorded', refunded: 0 }));
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await settle({ orderId });
 		vi.advanceTimersByTime(3_600_000);
 		const booking = (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!;
@@ -451,7 +451,7 @@ describe('payment reversal on a cancelled stay', () => {
 
 	it('keeps a confirmed stay confirmed when its mistaken payment is reversed', async () => {
 		const { admin, bookingId, settle } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await settle({ orderId });
 		await admin.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'void-unreceived-2', reason: 'Entered twice' });
 		// The online deposit stays; the stay keeps its status (and nights) and owes the balance again.
@@ -462,7 +462,7 @@ describe('payment reversal on a cancelled stay', () => {
 describe('stay money views with a discarded order', () => {
 	it('does not offer a discarded order as one that took money for the stay', async () => {
 		const { admin, bookingId, discard } = await setup();
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await discard(orderId);
 	});
 });

@@ -142,6 +142,7 @@ export function OrderPanel({
       return;
     }
     setExpanded(pendingDiscount.lineId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- consumes a Review discount request handed over through checkout context once this (possibly just mounted) panel can act on it
     setPaying(null);
     setDiscountNotice(null);
   }, [pendingDiscount, orderId, setExpanded, setDiscountNotice, paymentSubmitting, busy, lines, view?.order.state]);

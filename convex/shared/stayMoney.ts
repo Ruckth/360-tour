@@ -1,15 +1,7 @@
-import { ConvexError } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
-import { MAX_ORDER, bookingBalance, roundMoney } from './orderMath';
+import { bookingBalance, roundMoney } from './orderMath';
 
 export type Booking = Doc<'bookings'>;
-
-/** A money amount: finite, more than zero, whole satang and within the till limit. */
-export function assertMoney(amount: number, label = 'Amount') {
-	if (!Number.isFinite(amount) || amount <= 0) throw new ConvexError(`${label} must be more than zero`);
-	if (roundMoney(amount) !== amount) throw new ConvexError(`${label} is in whole satang (at most 2 decimals)`);
-	if (amount > MAX_ORDER) throw new ConvexError(`${label} is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}`);
-}
 
 /** Money on the stay, net of refunds (see orderMath.bookingBalance). */
 export function stayMoney(booking: Booking) {

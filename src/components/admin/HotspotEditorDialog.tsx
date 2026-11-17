@@ -189,6 +189,16 @@ export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; room
   );
 }
 
+/** Panorama photos are sRGB: each texture is tagged as it loads, before anything draws it. */
+class PanoramaTextureLoader extends TextureLoader {
+  override load(...[url, onLoad, onProgress, onError]: Parameters<TextureLoader["load"]>) {
+    return super.load(url, (texture) => {
+      texture.colorSpace = SRGBColorSpace;
+      onLoad?.(texture);
+    }, onProgress, onError);
+  }
+}
+
 function PanoramaScene({
   imagePath,
   markers,
@@ -210,11 +220,7 @@ function PanoramaScene({
   onNavigate: (roomSlug: string) => void;
   children?: ReactNode;
 }) {
-  const loaded = useLoader(TextureLoader, imagePath);
-  const texture = useMemo(() => {
-    loaded.colorSpace = SRGBColorSpace;
-    return loaded;
-  }, [loaded]);
+  const texture = useLoader(PanoramaTextureLoader, imagePath);
   const { camera, gl } = useThree();
   const sphere = useRef<Mesh>(null);
   const raycaster = useMemo(() => new Raycaster(), []);

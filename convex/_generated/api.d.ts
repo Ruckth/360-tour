@@ -13,11 +13,9 @@ import type * as auth_private_adminAuth from "../auth/private/adminAuth.js";
 import type * as auth_private_staffAccess from "../auth/private/staffAccess.js";
 import type * as auth_staffAccess from "../auth/staffAccess.js";
 import type * as auth_tables from "../auth/tables.js";
-import type * as auth_users from "../auth/users.js";
 import type * as auth_validators from "../auth/validators.js";
 import type * as bookings_admin from "../bookings/admin.js";
 import type * as bookings_bookings from "../bookings/bookings.js";
-import type * as bookings_calendar_addDateBlock from "../bookings/calendar/addDateBlock.js";
 import type * as bookings_calendar_addDateBlocks from "../bookings/calendar/addDateBlocks.js";
 import type * as bookings_calendar_availability from "../bookings/calendar/availability.js";
 import type * as bookings_calendar_ical from "../bookings/calendar/ical.js";
@@ -128,7 +126,6 @@ import type * as marketing_validators from "../marketing/validators.js";
 import type * as messaging_adminChat from "../messaging/adminChat.js";
 import type * as messaging_adminChatMetadata from "../messaging/adminChatMetadata.js";
 import type * as messaging_adminReply from "../messaging/adminReply.js";
-import type * as messaging_admission from "../messaging/admission.js";
 import type * as messaging_alerts from "../messaging/alerts.js";
 import type * as messaging_channelReplyWindow from "../messaging/channelReplyWindow.js";
 import type * as messaging_channels_adapter from "../messaging/channels/adapter.js";
@@ -172,8 +169,8 @@ import type * as pos_commands_createOrder from "../pos/commands/createOrder.js";
 import type * as pos_commands_discardOrder from "../pos/commands/discardOrder.js";
 import type * as pos_commands_linkCustomer from "../pos/commands/linkCustomer.js";
 import type * as pos_commands_linkPaidLine from "../pos/commands/linkPaidLine.js";
-import type * as pos_commands_openOrderFor from "../pos/commands/openOrderFor.js";
 import type * as pos_commands_openOrderForLink from "../pos/commands/openOrderForLink.js";
+import type * as pos_commands_openStayCheckout from "../pos/commands/openStayCheckout.js";
 import type * as pos_commands_overrideLinePrice from "../pos/commands/overrideLinePrice.js";
 import type * as pos_commands_recheckOrderCoupon from "../pos/commands/recheckOrderCoupon.js";
 import type * as pos_commands_refundLine from "../pos/commands/refundLine.js";
@@ -247,6 +244,7 @@ import type * as services_private_photos from "../services/private/photos.js";
 import type * as services_private_rosterHistory from "../services/private/rosterHistory.js";
 import type * as services_private_serviceCatalog from "../services/private/serviceCatalog.js";
 import type * as services_private_serviceSlots from "../services/private/serviceSlots.js";
+import type * as services_private_stayAppointments from "../services/private/stayAppointments.js";
 import type * as services_publicServices from "../services/publicServices.js";
 import type * as services_roster from "../services/roster.js";
 import type * as services_serviceBookings from "../services/serviceBookings.js";
@@ -323,23 +321,15 @@ import type {
   FunctionReference,
 } from "convex/server";
 
-import type * as pos_commands_openStayCheckout from "../pos/commands/openStayCheckout.js";
-
-import type * as services_private_stayAppointments from "../services/private/stayAppointments.js";
-
 declare const fullApi: ApiFromModules<{
-  "services/private/stayAppointments": typeof services_private_stayAppointments;
-  "pos/commands/openStayCheckout": typeof pos_commands_openStayCheckout;
   "auth/model": typeof auth_model;
   "auth/private/adminAuth": typeof auth_private_adminAuth;
   "auth/private/staffAccess": typeof auth_private_staffAccess;
   "auth/staffAccess": typeof auth_staffAccess;
   "auth/tables": typeof auth_tables;
-  "auth/users": typeof auth_users;
   "auth/validators": typeof auth_validators;
   "bookings/admin": typeof bookings_admin;
   "bookings/bookings": typeof bookings_bookings;
-  "bookings/calendar/addDateBlock": typeof bookings_calendar_addDateBlock;
   "bookings/calendar/addDateBlocks": typeof bookings_calendar_addDateBlocks;
   "bookings/calendar/availability": typeof bookings_calendar_availability;
   "bookings/calendar/ical": typeof bookings_calendar_ical;
@@ -450,7 +440,6 @@ declare const fullApi: ApiFromModules<{
   "messaging/adminChat": typeof messaging_adminChat;
   "messaging/adminChatMetadata": typeof messaging_adminChatMetadata;
   "messaging/adminReply": typeof messaging_adminReply;
-  "messaging/admission": typeof messaging_admission;
   "messaging/alerts": typeof messaging_alerts;
   "messaging/channelReplyWindow": typeof messaging_channelReplyWindow;
   "messaging/channels/adapter": typeof messaging_channels_adapter;
@@ -494,8 +483,8 @@ declare const fullApi: ApiFromModules<{
   "pos/commands/discardOrder": typeof pos_commands_discardOrder;
   "pos/commands/linkCustomer": typeof pos_commands_linkCustomer;
   "pos/commands/linkPaidLine": typeof pos_commands_linkPaidLine;
-  "pos/commands/openOrderFor": typeof pos_commands_openOrderFor;
   "pos/commands/openOrderForLink": typeof pos_commands_openOrderForLink;
+  "pos/commands/openStayCheckout": typeof pos_commands_openStayCheckout;
   "pos/commands/overrideLinePrice": typeof pos_commands_overrideLinePrice;
   "pos/commands/recheckOrderCoupon": typeof pos_commands_recheckOrderCoupon;
   "pos/commands/refundLine": typeof pos_commands_refundLine;
@@ -569,6 +558,7 @@ declare const fullApi: ApiFromModules<{
   "services/private/rosterHistory": typeof services_private_rosterHistory;
   "services/private/serviceCatalog": typeof services_private_serviceCatalog;
   "services/private/serviceSlots": typeof services_private_serviceSlots;
+  "services/private/stayAppointments": typeof services_private_stayAppointments;
   "services/publicServices": typeof services_publicServices;
   "services/roster": typeof services_roster;
   "services/serviceBookings": typeof services_serviceBookings;

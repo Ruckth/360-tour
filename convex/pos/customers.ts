@@ -181,10 +181,3 @@ export const resumeCustomerMerge = adminMutation({
 });
 
 export const mergeCustomers = adminMutation({ args: mergeInput, handler: mergeCustomerRecords });
-
-/** Minimal identity card for the checkout picker; no notes, histories or unrelated orders. */
-export const checkoutCustomer = staffQuery({
-  capability: 'checkout', args: { customerId: v.id('customers') }, handler: async (ctx, args) => {
- const customer = await ctx.db.get(args.customerId);
- return customer ? customerCard(customer) : null;
-} });

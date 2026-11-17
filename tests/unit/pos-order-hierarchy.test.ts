@@ -1,7 +1,7 @@
 import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import type { Id } from "convex/_generated/dataModel";
-import { createElement, useState, type ComponentProps } from "react";
+import { createElement, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
@@ -32,7 +32,8 @@ const provide = (backend: CheckoutBackend, ...children: ReturnType<typeof create
 
 function Checkout({ backend, start }: { backend: CheckoutBackend; start: OrderId | null }) {
   const [orderId, setOrderId] = useState<OrderId | null>(start);
-  read.view = backend.useOrder(orderId);
+  const view = backend.useOrder(orderId);
+  useEffect(() => { read.view = view; });
   return createElement(CheckoutView, { orderId, onOrderChange: setOrderId, onPaid: () => {} });
 }
 const showCheckout = (backend: CheckoutBackend, start: OrderId | null) => act(async () => root.render(provide(backend, createElement(Checkout, { backend, start }))));

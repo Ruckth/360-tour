@@ -2,26 +2,31 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { resolveStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
+// The `dark` class on <html> is the source of truth (set before paint by themeInitScript).
+function subscribeToThemeClass(onChange: () => void) {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
+}
+const isDarkClass = () => document.documentElement.classList.contains("dark");
+
 export function ThemeToggle({ solid = true }: { solid?: boolean }) {
   const a11y = useTranslations("A11y");
-  const [dark, setDark] = useState(false);
+  const dark = useSyncExternalStore(subscribeToThemeClass, isDarkClass, () => false);
 
   useEffect(() => {
     const saved = localStorage.getItem(THEME_STORAGE_KEY);
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const nextDark = resolveStoredTheme(saved, prefersDark);
-    setDark(nextDark);
-    document.documentElement.classList.toggle("dark", nextDark);
+    document.documentElement.classList.toggle("dark", resolveStoredTheme(saved, prefersDark));
   }, []);
 
   function toggle() {
     const next = !dark;
-    setDark(next);
     document.documentElement.classList.toggle("dark", next);
     localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
   }

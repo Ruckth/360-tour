@@ -17,17 +17,6 @@ export const chatCouponValidator = v.object({
   ))
 });
 
-// Published no-login response contracts. Fields are selected by each owning endpoint.
-export const bookingsQuoteStayResult = v.object({
-"pricePerNight": v.number(),
-"nights": v.number(),
-"subtotal": v.number(),
-"discountPercent": v.number(),
-"discountAmount": v.number(),
-"directTotal": v.number(),
-"currency": v.string(),
-});
-
 export const bookingsCreateResult = v.object({
 "bookingId": v.id("bookings"),
 "accessToken": v.string(),
@@ -109,12 +98,6 @@ export const bookingsConfirmProposalResult = v.union(v.object({
 }));
 
 export const availabilityStatus = v.union(v.literal('available'), v.literal('booked'), v.literal('blocked'));
-
-export const availabilityGetForPropertyResult = v.array(v.object({
-"date": v.string(),
-"status": availabilityStatus,
-"source": v.string(),
-}));
 
 export const availabilityGetBlockedDatesResult = v.array(v.string());
 

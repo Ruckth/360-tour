@@ -19,16 +19,16 @@ If guests see the Thai message that says the account cannot reply to messages, L
 
 Open the Messaging API channel used by the official account.
 
-- Webhook URL: `https://tour.helpgueststay.com/api/line/webhook`
+- Webhook URL: `https://wary-toad-189.convex.site/line/webhook` (the production Convex HTTP actions host; see the webhook table in [DEPLOYMENT.md](DEPLOYMENT.md)). The webhook runs inside Convex (`convex/http.ts` → `convex/messaging/ingress.ts`), not on the Next.js site.
 - Webhook verification must return HTTP 200
 - `LINE_CHANNEL_SECRET`: Basic settings -> Channel secret
 - `LINE_CHANNEL_ACCESS_TOKEN`: Messaging API -> Channel access token
 
-If Vercel logs show `LINE reply failed (401)` or `Authentication failed`, reissue the channel access token, update Vercel, and redeploy production.
+If guest replies fail with a 401 from LINE, reissue the channel access token and update it in the Convex production environment (and in Vercel, which still uses it for staff replies from the admin inbox).
 
-### Vercel Production Environment
+### Convex Production Environment
 
-Check the production environment variables.
+Check the production deployment's environment variables in the Convex dashboard.
 
 ```env
 LINE_CHANNEL_SECRET=...
@@ -36,11 +36,11 @@ LINE_CHANNEL_ACCESS_TOKEN=...
 SITE_URL=https://tour.helpgueststay.com
 ```
 
-`SITE_URL` must be the public site origin only. Do not set it to the webhook URL or any URL with a path. After changing any environment variable, redeploy production.
+`SITE_URL` must be the public site origin only. Do not set it to the webhook URL or any URL with a path. Vercel keeps `LINE_CHANNEL_ACCESS_TOKEN` for staff replies and `LINE_CHANNEL_SECRET` only as a configuration-status mirror; see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Production Smoke Test
 
-After each LINE/Vercel change, run this test from the LINE app.
+After each LINE or environment change, run this test from the LINE app.
 
 1. Send `See prices`.
 2. Confirm LINE replies once, without the LINE OA automatic Thai message.
@@ -48,28 +48,26 @@ After each LINE/Vercel change, run this test from the LINE app.
 4. Send `Which villa is best for 4 adults and 2 kids?`.
 5. Confirm the AI fallback replies within one message.
 6. Open Admin chat and confirm the LINE session shows inbound and assistant messages.
-7. Check Vercel logs for no `Invalid LINE signature`, no `LINE reply failed (401)`, and no Convex mutation error.
+7. Check the Convex production logs for no `/line/webhook` 401 (`Invalid signature`) or 503 (`Could not persist delivery`) responses and no function errors, and the conversation's delivery status in Admin chat.
 
 ## Symptom Guide
 
 | Symptom | Most likely cause | What to check |
 | --- | --- | --- |
 | Thai automatic message appears before the bot reply | LINE OA auto-response is still enabled | Response settings -> response method and auto-response rules |
-| Webhook receives events but no guest reply | Invalid or expired `LINE_CHANNEL_ACCESS_TOKEN` | Vercel logs for `401`, then reissue token and redeploy |
-| LINE Developers Verify returns 401 | Wrong `LINE_CHANNEL_SECRET` | Basic settings channel secret and Vercel env |
-| Admin shows a LINE session but no assistant reply | Reply failed after inbound was recorded | Admin LINE delivery panel and Vercel logs |
-| Customer link contains `/api/line/webhook/...` | `SITE_URL` includes a path or old deployment is still live | Vercel env and latest deployment commit |
-| Same guest message appears twice | LINE redelivery or retry issue | Convex `lineWebhookEvents` duplicate handling and event status |
+| Webhook receives events but no guest reply | Invalid or expired `LINE_CHANNEL_ACCESS_TOKEN` | Delivery status in Admin chat and Convex logs, then reissue the token in Convex |
+| LINE Developers Verify returns 401 | Wrong `LINE_CHANNEL_SECRET` | Basic settings channel secret and the Convex production env |
+| Admin shows a LINE session but no assistant reply | Reply failed after inbound was recorded | Delivery status in the Admin chat detail and Convex logs |
+| Customer link contains a webhook path | Convex `SITE_URL` includes a path | Convex production `SITE_URL` |
+| Same guest message appears twice | LINE redelivery or retry issue | Convex `channelEvents` (deduplicated by channel and event key) and event status |
 
 ## Local Verification
 
 Run before shipping LINE changes.
 
 ```sh
-pnpm check
-pnpm lint
-pnpm test:unit
-pnpm build
+pnpm check:fast
+pnpm verify
 ```
 
 The unit tests cover LINE signature verification, exact FAQ matching, postback quick replies, duplicate event idempotency, inbound transcript visibility when replies fail, and customer URL normalization.

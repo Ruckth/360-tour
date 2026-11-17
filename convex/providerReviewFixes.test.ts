@@ -37,7 +37,7 @@ async function setup() {
     await setTotal(total);
   };
   const settleAtPos = async (due: number, idempotencyKey: string) => {
-    const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
     expect(view.totals.due).toBe(due);
     await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey, expectedRevision: view.order.revision!, expectedDue: due, tenders: [{ method: 'cash', amount: due }] });

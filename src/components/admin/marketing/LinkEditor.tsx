@@ -76,36 +76,39 @@ function destinationOf(form: Form): LinkDestination {
 
 type SlugState = { status: "idle" } | { status: "checking"; slug: string } | { status: "done"; check: SlugCheck } | { status: "error"; message: string };
 
+type SlugAnswer = Extract<SlugState, { status: "done" | "error" }>;
+
 /** Live slug check: debounced, and an answer for an older value never overwrites a newer one. */
-function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"]) {
-  const [state, setState] = useState<SlugState>({ status: "idle" });
+function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"]): SlugState {
+  const [answer, setAnswer] = useState<SlugAnswer | null>(null);
   const latest = useRef(slug);
+
+  // Any input change starts a fresh check, so drop the previous answer.
+  const [checked, setChecked] = useState({ slug, linkId, skip, checkSlug });
+  if (checked.slug !== slug || checked.linkId !== linkId || checked.skip !== skip || checked.checkSlug !== checkSlug) {
+    setChecked({ slug, linkId, skip, checkSlug });
+    setAnswer(null);
+  }
 
   useEffect(() => {
     latest.current = slug;
-    if (skip) {
-      setState({ status: "idle" });
-      return;
-    }
-    if (!slug) {
-      setState({ status: "done", check: { ok: false, slug, reason: "empty" } });
-      return;
-    }
-    setState({ status: "checking", slug });
+    if (skip || !slug) return;
     const timer = window.setTimeout(() => {
       checkSlug({ slug, linkId }).then(
         (check) => {
-          if (latest.current === slug) setState({ status: "done", check });
+          if (latest.current === slug) setAnswer({ status: "done", check });
         },
         (error: unknown) => {
-          if (latest.current === slug) setState({ status: "error", message: marketingErrorText(error, "Couldn’t check this link. Try again.") });
+          if (latest.current === slug) setAnswer({ status: "error", message: marketingErrorText(error, "Couldn’t check this link. Try again.") });
         },
       );
     }, 350);
     return () => window.clearTimeout(timer);
   }, [slug, linkId, skip, checkSlug]);
 
-  return state;
+  if (skip) return { status: "idle" };
+  if (!slug) return { status: "done", check: { ok: false, slug, reason: "empty" } };
+  return answer ?? { status: "checking", slug };
 }
 
 export function LinkEditor({

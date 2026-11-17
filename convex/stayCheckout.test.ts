@@ -81,7 +81,7 @@ describe('stay checkout', () => {
 		const foreign = await appointment({ currency: 'USD' });
 		const elsewhere = await appointment();
 		const unrelated = await appointment({ bookingId: undefined });
-		await owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		await owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const { orderId: other } = await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
 		await owner.mutation(api.pos.commands.attach.attach, { orderId: other, appointmentId: elsewhere });
 		const before = await read();
@@ -106,7 +106,7 @@ describe('stay checkout', () => {
 	it('reuses the stay order and does not write again on a second call', async () => {
 		const { t, owner, bookingId, appointment, open, order } = await setup();
 		const appointmentId = await appointment();
-		const existing = await owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const existing = await owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const first = await open();
 		expect(first).toEqual({ ...existing, added: [appointmentId], skipped: [] });
 		const before = await order(first.orderId);

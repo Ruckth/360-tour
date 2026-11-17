@@ -729,66 +729,6 @@ export const listTranscriptMessages = adminQuery({
 	}
 });
 
-export const getTranscript = adminQuery({
-	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-
-		const now = args.now ?? Date.now();
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
-
-		const [messages, lineEvents, facebookEvents, whatsappEvents, instagramEvents, property] = await Promise.all([
-			ctx.db
-				.query('messages')
-				.withIndex('by_session', (q) => q.eq('sessionId', args.sessionId))
-				.order('asc')
-				.take(500),
-			session.channel === 'line'
-				? ctx.db
-						.query('channelEvents')
-						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'line').eq('sessionId', args.sessionId))
-						.order('desc')
-						.take(10)
-				: [],
-			session.channel === 'facebook'
-				? ctx.db
-						.query('channelEvents')
-						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'facebook').eq('sessionId', args.sessionId))
-						.order('desc')
-						.take(10)
-				: [],
-			session.channel === 'whatsapp'
-				? ctx.db
-						.query('channelEvents')
-						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'whatsapp').eq('sessionId', args.sessionId))
-						.order('desc')
-						.take(10)
-				: [],
-			session.channel === 'instagram'
-				? ctx.db
-						.query('channelEvents')
-						.withIndex('by_channel_and_sessionId', (q) => q.eq('channel', 'instagram').eq('sessionId', args.sessionId))
-						.order('desc')
-						.take(10)
-				: [],
-			session.propertyId ? ctx.db.get(session.propertyId) : null
-		]);
-
-		return {
-			session: {
-				...adminSessionMetadata(session),
-				propertyName: property?.name,
-				isActive: isChatSessionActive(session, now)
-			},
-			messages,
-			lineEvents,
-			facebookEvents,
-			whatsappEvents,
-			instagramEvents
-		};
-	}
-});
-
 export const setSessionStatus = adminMutation({
 	args: { sessionId: v.id('conversations'), status: adminStatusValidator,
 		expectedGuestMessageId: v.optional(v.union(v.id('messages'), v.null())) },

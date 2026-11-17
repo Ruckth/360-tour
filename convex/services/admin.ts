@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
-import { appointmentHistory, appointmentHistoryPage } from './private/appointmentChanges';
+import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
 import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, findOpenSlots as openSlots, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
@@ -37,22 +37,6 @@ export const listServices = adminQuery({
 			? await ctx.db.query('services').take(201)
 			: await ctx.db.query('services').withIndex('by_status', q => q.eq('status', 'active')).take(201);
 		if (rows.length > 200) throw new Error('Too many services to show safely. Narrow the list or contact support.');
-		return rows;
-	}
-});
-
-/** Time off that hasn't ended yet, soonest first. */
-export const listTimeOff = adminQuery({
-	args: { staffId: v.id('staff') },
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const rows: Doc<'staffTimeOff'>[] = [];
-		for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
-			q.eq('staffId', args.staffId).gte('start', now - TIME_OFF_LOOKBACK)
-		))) {
-			if (row.end > now) rows.push(row);
-			if (rows.length > 100) throw new Error('More time off is available. Use the paginated time-off reader.');
-		}
 		return rows;
 	}
 });
@@ -225,12 +209,4 @@ export const getAppointmentFinancials = adminQuery({
  handler: async (ctx, args) => {
   return await appointmentFinancials(ctx, await loadAppointment(ctx, args.appointmentId));
  }
-});
-
-/** Newest first, at most HISTORY_LIMIT entries. */
-export const listAppointmentHistory = adminQuery({
-	args: { appointmentId: v.id('appointments') },
-	handler: async (ctx, args) => {
-		return await appointmentHistory(ctx, args.appointmentId);
-	}
 });

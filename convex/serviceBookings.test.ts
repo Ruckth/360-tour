@@ -78,11 +78,8 @@ describe('AI service booking', () => {
 		await s.t.run((ctx) => ctx.db.patch(s.sessionId, { visitorPhone: ' ' }));
 		expect(await s.t.query(internal.services.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
 	});
-	it('lists active services and open local times, then prepares without creating an appointment', async () => {
+	it('lists open local times, then prepares without creating an appointment', async () => {
 		const s = await setup();
-		expect(await s.t.query(internal.services.serviceBookings.listActiveServices, {})).toMatchObject([
-			{ slug: 'thai-massage', durationMin: 60, price: 200000, staff: ['Mali'] }
-		]);
 		const open = await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
 		expect(open).toMatchObject({ available: true });
 		const summary = await prepare(s);

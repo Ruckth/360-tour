@@ -141,6 +141,7 @@ export function useTourTextures({
 
     // A room switch (or retry) is a new generation: stale requests resolve to nothing.
     const generation = cache.bumpGeneration();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a new texture generation clears the last failure in the same step as the cache bump
     setFailedRoomId(null);
 
     let cancelled = false;

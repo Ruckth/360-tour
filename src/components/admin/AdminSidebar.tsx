@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import { ChevronRight, Search, Shield } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";
@@ -43,6 +43,9 @@ const USER_BUTTON_APPEARANCE = {
   },
 };
 
+const noSubscription = () => () => {};
+const platformShortcut = () => (/mac|iphone|ipad/i.test(navigator.platform) ? "⌘K" : "Ctrl K");
+
 export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
@@ -57,7 +60,8 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   // Sections opened or closed by hand; otherwise only the current section shows its sub-pages.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const search = useRef<HTMLInputElement>(null);
-  const [shortcut, setShortcut] = useState("⌘K");
+  // "⌘K" on the server and during hydration, so both renders agree.
+  const shortcut = useSyncExternalStore(noSubscription, platformShortcut, () => "⌘K");
   // Sub-pages are hidden in icon mode, so the section icon carries the highlight there.
   const iconMode = state === "collapsed" && !isMobile;
   const searching = query.trim() !== "";
@@ -77,10 +81,6 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
     requestAnimationFrame(() => requestAnimationFrame(() => search.current?.focus()));
   }, [isMobile, setOpen, setOpenMobile]);
 
-  useEffect(() => {
-    // After mount, so the server render and hydration agree.
-    if (!/mac|iphone|ipad/i.test(navigator.platform)) setShortcut("Ctrl K");
-  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

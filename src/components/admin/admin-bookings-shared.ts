@@ -1,6 +1,7 @@
+import { bookingBalance } from 'convex/shared/orderMath';
 import { resolveNotify } from 'convex/shared/bookingMoney';
 
-import { bahtToSatang } from 'convex/shared/money';
+import { parseMoneyInput } from '@/lib/money-input';
 import type { FunctionReturnType } from "convex/server";
 import { staffDate } from "@/lib/staff-time";
 import { resortMidnight, resortIsoDate } from "@/lib/staff-bookings";
@@ -54,9 +55,15 @@ export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentSt
   return booking.status !== "cancelled";
 }
 
+/** Net money the guest has paid, or undefined when nothing was ever received (no balance preview then). Deposits count. */
+export function paidForPreview(booking: Parameters<typeof bookingBalance>[0]) {
+  const money = bookingBalance(booking);
+  return money.gross > 0 || (booking.providerRefundWaived ?? 0) > 0 ? money.paid : undefined;
+}
+
 /** Amount still owed (positive) or owed back to the guest (negative) after an edit. */
-export function balanceText(total: number, paid: number, currency: string) {
-  const balance = total - paid;
+export function balanceText(total: number, booking: Parameters<typeof bookingBalance>[0], currency: string) {
+  const balance = bookingBalance({ ...booking, total }).owed;
   if (balance > 0) return { text: `Balance due ${formatMoney(balance, currency)}`, tone: TONES.warning.text };
   if (balance < 0) return { text: `Credit ${formatMoney(-balance, currency)}`, tone: TONES.success.text };
   return null;
@@ -123,10 +130,8 @@ export function notifyDefault(stay: { checkIn: string; guestEmailsOff?: boolean 
 
 /** A typed amount in whole satang, or null. */
 export function parseAmount(text: string): number | null {
-  const trimmed = text.trim().replace(/,/g, "");
-  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
-  const value = Number(trimmed);
-  return Number.isFinite(value) ? bahtToSatang(value) : null;
+  const value = parseMoneyInput(text);
+  return Number.isFinite(value) ? value : null;
 }
 
 /**

@@ -1,5 +1,19 @@
+import { ConvexError } from 'convex/values';
+
 /** All persisted amounts are integer satang; all percentages are integer basis points. */
 export const BASIS_POINTS = 10_000;
+/** Largest bill, discount, payment or cash received, in satang. */
+export const MAX_MONEY = 1_000_000_000;
+
+/** Validate stored integer satang; error copy describes the baht amount staff enter. */
+export function assertMoney(amount: number, label = 'Amount', { allowZero = false } = {}) {
+  if (!Number.isFinite(amount) || (allowZero ? amount < 0 : amount <= 0)) {
+    throw new ConvexError(`${label} must be ${allowZero ? 'zero or more' : 'more than zero'}`);
+  }
+  if (!Number.isInteger(amount)) throw new ConvexError(`${label} must be a baht amount with at most 2 decimal places`);
+  if (amount > MAX_MONEY) throw new ConvexError(`${label} is at most ${(MAX_MONEY / 100).toLocaleString('en-US')}`);
+}
+
 export function assertSatang(amount: number): number {
   if (!Number.isSafeInteger(amount)) throw new Error('Money must be safe integer satang');
   return amount;

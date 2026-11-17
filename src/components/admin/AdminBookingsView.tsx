@@ -54,6 +54,7 @@ import { formatMoney, sourceLabel } from "./labels";
 import {
   HOTEL_STATUSES,
   balanceText,
+  paidForPreview,
   displayDate,
   hotelStatus,
   hotelStatusColor,
@@ -547,7 +548,8 @@ export function MoveBookingDialog({
   const newTotal = expectedPrice?.total ?? booking.total;
   const currency = expectedPrice?.currency ?? booking.currency;
   const difference = currency === booking.currency ? newTotal - booking.total : null;
-  const balance = booking.amountPaid !== undefined && currency === booking.currency ? balanceText(newTotal, booking.amountPaid, booking.currency) : null;
+  const paid = paidForPreview(booking);
+  const balance = paid !== undefined && currency === booking.currency ? balanceText(newTotal, booking, booking.currency) : null;
   const notify = notifyChoice ?? notifyDefault({ checkIn, guestEmailsOff: detail?.guestEmailsOff });
   const customRefused = CUSTOM_PRICE_REFUSAL.test(error);
   const ready = detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
@@ -620,9 +622,9 @@ export function MoveBookingDialog({
                 </span>
               </p>
               {price.kind === "changed" && price.note ? <p className="text-muted-foreground">{price.note}</p> : null}
-              {booking.amountPaid !== undefined && currency === booking.currency ? (
+              {paid !== undefined && currency === booking.currency ? (
                 <p className="text-muted-foreground">
-                  Guest paid {formatMoney(booking.amountPaid, booking.currency)}.{" "}
+                  Guest paid {formatMoney(paid, booking.currency)}.{" "}
                   {balance ? <span className={`font-medium ${balance.tone}`}>{balance.text}</span> : "Fully paid."}
                 </p>
               ) : null}

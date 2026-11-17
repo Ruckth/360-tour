@@ -3,7 +3,7 @@ import { act } from '../support/checkout-act';
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Id } from "convex/_generated/dataModel";
-import { createElement, useState, type ComponentProps } from "react";
+import { createElement, useEffect, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
@@ -15,7 +15,7 @@ let root: Root;
 const shown: { orderId: OrderId | null } = { orderId: null };
 function Page({ start = null }: { start?: OrderId | null }) {
   const [orderId, setOrderId] = useState<OrderId | null>(start);
-  shown.orderId = orderId;
+  useEffect(() => { shown.orderId = orderId; });
   return createElement(CheckoutView, { orderId, onOrderChange: setOrderId, onPaid: () => {} });
 }
 const show = (backend: CheckoutBackend, start: OrderId | null = null) =>

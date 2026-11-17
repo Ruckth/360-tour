@@ -1,3 +1,4 @@
+import { commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -211,24 +212,26 @@ describe('web chat capture', () => {
     const s = await setup();
     await s.session(now - day);
     const capture = async (sessionId: Id<'conversations'>) => (await s.t.run(ctx => ctx.db.get(sessionId)))?.marketingCapture;
-    const say = (sessionId: Id<'conversations'>, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
+    const say = (guest: { sessionId: Id<'conversations'>; guestToken: string }, role: 'user' | 'assistant', marketing?: { visitorKey?: string; slug?: string }) =>
       role === 'user'
-        ? s.t.mutation(internal.messaging.chat.acceptGuestMessage, { sessionId, content: 'Hi', ...(marketing ? { marketing } : {}) })
-        : s.t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, { sessionId, content: 'Hi' });
+        ? s.t.mutation(api.messaging.chat.sendMessage, { ...guest, clientMessageId: crypto.randomUUID(), content: 'Hi', ...(marketing ? { marketing } : {}) })
+        : commitTestAssistant(s.t, { sessionId: guest.sessionId, content: 'Hi' });
     // Started before consent in a tab that arrived through /f1, then continued in a new tab with nothing.
-    const { sessionId: stale } = await s.t.mutation(api.messaging.chat.createSession, { channel: 'web', marketing: { slug: 'f1' } });
-    await say(stale, 'user');
+    const staleGuest = await s.t.mutation(api.messaging.chat.createSession, { channel: 'web', marketing: { slug: 'f1' } });
+    const stale = staleGuest.sessionId;
+    await say(staleGuest, 'user');
     expect(await capture(stale)).toEqual({ slug: 'f1' });
-    await say(stale, 'user', {});
+    await say(staleGuest, 'user', {});
     expect(await capture(stale)).toBeUndefined();
     await s.t.mutation(internal.bookings.bookings.prepareChatBooking, { ...stay, sessionId: stale });
     const unattributed = await s.t.mutation(internal.bookings.bookings.confirmChatBooking, { sessionId: stale });
     if (unattributed.needsReview) throw new Error("Expected a confirmed booking");
     expect(await s.t.run(ctx => ctx.db.get(unattributed.bookingId))).not.toHaveProperty('marketingAttribution');
     // Consent given after the chat started; assistant messages never change it.
-    const { sessionId: later } = await s.t.mutation(api.messaging.chat.createSession, { channel: 'web' });
-    await say(later, 'user', { visitorKey, slug: 'bad/slug' });
-    await say(later, 'assistant', {});
+    const laterGuest = await s.t.mutation(api.messaging.chat.createSession, { channel: 'web' });
+    const later = laterGuest.sessionId;
+    await say(laterGuest, 'user', { visitorKey, slug: 'bad/slug' });
+    await say(laterGuest, 'assistant', {});
     expect(await capture(later)).toEqual({ visitorKey });
   });
 

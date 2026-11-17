@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   getFunctionName,
   type FunctionArgs,
@@ -176,7 +176,11 @@ export async function createFixtureBackend(
   ) as unknown as CheckoutActions;
   const backend: CheckoutBackend = {
     useActions: () => actions,
-    useCatalog: () => useRead(api.pos.catalog.catalog, {}),
+    useCatalog: () => {
+      const items = useRead(api.pos.catalog.stableCatalog, {});
+      const frequent = useRead(api.pos.catalog.recentCatalogRanking, {});
+      return useMemo(() => items === undefined || frequent === undefined ? undefined : { ...items, frequent }, [items, frequent]);
+    },
     useOrder: (id) =>
       useRead(api.pos.orders.getOrder, id ? { orderId: id } : "skip"),
     useRestoreCheck: (id) =>

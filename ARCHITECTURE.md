@@ -135,11 +135,11 @@ pnpm test:guards             # serial CLI/repository guards, 60-second default t
 pnpm test:dom <file-filter>   # DOM views, same real Convex harness
 pnpm test:convex <filter>     # edge-runtime backend suites
 pnpm verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
-pnpm arch:score --phase 4    # run on a clean committed tree
-pnpm arch:score --phase4     # equivalent spelling, 32 completed-phase checks
+pnpm arch:score --phase 4    # clean-tree is reported, not gated
+pnpm arch:score --phase4     # equivalent spelling, 31 completed-phase gates
 ```
 
-A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 4), so all 32 completed-phase gates remain enforced.
+A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 4), so all 31 completed-phase gates remain enforced. The `clean-tree` count of modified tracked files is advisory and never fails a phase run, and a required test title only counts outside skipped or todo tests.
 
 `pnpm verify` holds one machine-wide heavy slot while running typechecks, zero-warning lint, all four test projects and a production build with real configured app variables. `pnpm vercel-build` also type-checks before its deploy/build wrapper; Next skips its duplicate TypeScript pass. With no configuration it must fail clearly. `pnpm verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `pnpm test:booking-ui` covers component/browser behavior; `pnpm test:e2e` owns a complete local backend/auth/build lifecycle. Heavy commands use `scripts/heavy.mjs` (three shared slots; nested calls reuse their slot). Keep this checkout’s heavy commands sequential and set `VITEST_MAX_WORKERS=2` locally; CI defaults to four workers and bypasses the machine queue.
 

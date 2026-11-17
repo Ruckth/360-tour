@@ -1,7 +1,7 @@
 // Pure booking correction rules/types; ctx/history implementations belong to bookings/model.
 import { ConvexError } from 'convex/values';
 import { resortTodayIso } from './time';
-import { MAX_ORDER, roundMoney } from './orderMath';
+import { assertMoney } from './money';
 import type { Booking } from './stayMoney';
 
 export const STALE_BOOKING = 'This booking changed since you opened it. Review the latest details and try again.';
@@ -40,9 +40,7 @@ export function cleanReason(value: string | undefined, label = 'Reason', require
 
 /** A stay price: zero or more, whole satang, within the till limit. */
 export function assertStayPrice(total: number) {
-	if (!Number.isFinite(total) || total < 0) throw new ConvexError('Price must be zero or more');
-	if (roundMoney(total) !== total) throw new ConvexError('Price is in whole satang (at most 2 decimals)');
-	if (total > MAX_ORDER) throw new ConvexError(`Price is at most ${(MAX_ORDER / 100).toLocaleString('en-US')}`);
+	assertMoney(total, 'Price', { allowZero: true });
 }
 
 /** The business time something happened. Defaults to now; any past date is allowed, the future is not. */

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import ts from 'typescript';
-import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from '../../scripts/lib/architecture.mjs';
+import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile, isTestSource, modulePath, importTarget } from '../../scripts/lib/architecture.mjs';
 import { inspectRuntimeGraph } from '../../scripts/lib/architecture-graph.mjs';
 import { inspectConvexAccess } from '../../scripts/lib/convex-access.mjs';
 
@@ -191,4 +191,98 @@ it.each([
     'convex/pos/model.ts': model,
     'convex/pos/orders.ts': "import { internalQuery } from '../auth/model'; export const read = internalQuery({args:{},handler:()=>null});",
   })).toEqual(expect.arrayContaining([expect.stringContaining('reexports endpoint registrations')]));
+});
+
+// Unit tests and generated declarations must never keep a deployed endpoint alive.
+// Only operator commands with explicit repository runbooks may lack a production caller.
+const functionReferenceAllowlist: Record<string, string> = {
+  "catalog/reviewMaintenance:initialize": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
+  "maintenance/aiEval:cancelTestBookings": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "maintenance/aiEval:cleanup": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
+  "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
+};
+
+it('gives every exported Convex function a non-test caller or a documented exception', () => {
+  const sources = new Map<string, ts.SourceFile>();
+  function walk(dir: string) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '_generated') walk(path);
+      } else if (SOURCE_EXTENSION.test(path) && !isTestSource(path) && !path.endsWith('.d.ts')) {
+        sources.set(path, ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true));
+      }
+    }
+  }
+  for (const dir of ['convex', 'src', 'scripts']) walk(dir);
+  const functions = new Set<string>();
+  const references = new Set<string>();
+  for (const [path, file] of sources) {
+    if (isConvexEntryFile(path)) {
+      const inspected = inspectConvexAccess(path, file.text, file);
+      expect(inspected.violations, path).toEqual([]);
+      for (const name of inspected.endpoints) functions.add(`${modulePath(path).slice(7)}:${name}`);
+    }
+    const apiBindings = new Set<string>();
+    const httpBuilders = new Set<string>();
+    const directBindings = new Map<string, string>();
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const target = importTarget(path, statement.moduleSpecifier.text);
+      const clause = statement.importClause;
+      if (clause?.isTypeOnly || !clause?.namedBindings || !ts.isNamedImports(clause.namedBindings)) continue;
+      for (const binding of clause.namedBindings.elements) {
+        if (binding.isTypeOnly) continue;
+        const original = (binding.propertyName ?? binding.name).text;
+        if (target === 'convex/_generated/api' && ['api', 'internal'].includes(original)) apiBindings.add(binding.name.text);
+        if (['convex/auth/model', 'convex/_generated/server'].includes(target) && original === 'httpAction') httpBuilders.add(binding.name.text);
+        if (target.startsWith('convex/') && target !== 'convex/_generated/api') directBindings.set(binding.name.text, `${target.slice(7)}:${original}`);
+      }
+    }
+    // Resolve dot and literal bracket paths, including renamed api/internal imports.
+    function apiPath(node: ts.Node): string[] | undefined {
+      if (ts.isIdentifier(node) && apiBindings.has(node.text)) return [];
+      if (ts.isPropertyAccessExpression(node)) {
+        const parent = apiPath(node.expression);
+        return parent && [...parent, node.name.text];
+      }
+      if (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)) {
+        const parent = apiPath(node.expression);
+        return parent && [...parent, node.argumentExpression.text];
+      }
+    }
+    function visit(node: ts.Node) {
+      const parts = apiPath(node);
+      if (parts && parts.length >= 2) references.add(`${parts.slice(0, -1).join('/')}:${parts.at(-1)}`);
+      // Includes makeFunctionReference, CLI function paths, cron and scheduler calls.
+      if (ts.isStringLiteralLike(node) && /^[\w/-]+:\w+$/.test(node.text)) references.add(node.text);
+      if (ts.isIdentifier(node) && directBindings.has(node.text) && !ts.isImportSpecifier(node.parent) && !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)) references.add(directBindings.get(node.text)!);
+      // The access inspector handles query/mutation/action builders; HTTP handlers use function arguments.
+      if (isConvexEntryFile(path) && ts.isVariableStatement(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
+        for (const declaration of node.declarationList.declarations) {
+          const call = declaration.initializer;
+          if (ts.isIdentifier(declaration.name) && call && ts.isCallExpression(call) && ts.isIdentifier(call.expression) && httpBuilders.has(call.expression.text)) {
+            functions.add(`${modulePath(path).slice(7)}:${declaration.name.text}`);
+            directBindings.set(declaration.name.text, `${modulePath(path).slice(7)}:${declaration.name.text}`);
+          }
+        }
+      }
+      if (isConvexEntryFile(path) && ts.isExportAssignment(node) && ts.isCallExpression(node.expression) && ts.isIdentifier(node.expression.expression) && httpBuilders.has(node.expression.expression.text)) {
+        functions.add(`${modulePath(path).slice(7)}:default`);
+      }
+      // Don't count a local HTTP handler's declaration as a caller.
+      if (ts.isIdentifier(node) && ts.isVariableDeclaration(node.parent) && node.parent.name === node) return;
+      ts.forEachChild(node, visit);
+    }
+    visit(file);
+  }
+  expect(functions.size).toBeGreaterThan(0);
+  for (const [path, reason] of Object.entries(functionReferenceAllowlist)) {
+    expect(functions.has(path), `Stale function allowlist entry: ${path}`).toBe(true);
+    expect(reason.trim(), path).not.toBe('');
+    expect(references.has(path), `Allowlisted function now has a caller; remove its exception: ${path}`).toBe(false);
+  }
+  expect([...functions].filter(path => !references.has(path) && !functionReferenceAllowlist[path]).sort(),
+    'Convex exports need a production reference or a one-line allowlist reason').toEqual([]);
 });

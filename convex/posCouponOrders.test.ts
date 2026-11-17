@@ -343,7 +343,7 @@ describe('POS order coupons', () => {
 	it('caps appointment refunds at the coupon-adjusted amount on the receipt', async () => {
 		const s = await setup({ min: 1 });
 		const appointmentId = await s.appointment();
-		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+		const { orderId } = await s.admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
 		await s.apply(orderId);
 		await s.pay(orderId);
 		const appointment = (await s.t.run(ctx => ctx.db.get(appointmentId)))!;

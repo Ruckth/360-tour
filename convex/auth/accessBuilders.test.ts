@@ -39,7 +39,7 @@ const probes = {
   marketingMutation: marketingMutation({ permission: 'publish', args: {}, handler: ctx => ctx.marketing.role }),
 };
 function setup() {
-  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../auth/users.ts': () => import('./users'), '../auth/staffAccess.ts': () => import('./staffAccess'), '../accessProbes.ts': async () => probes });
+  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../auth/staffAccess.ts': () => import('./staffAccess'), '../accessProbes.ts': async () => probes });
   const signed = (role: string) => t.withIdentity({ email: `${role}@example.com`, tokenIdentifier: `issuer|${role}` });
   return { t, signed };
 }
@@ -68,9 +68,6 @@ it('admits signed-in nonstaff to authenticated builders and derives action ident
     await expect(invoke(t, kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).rejects.toThrow('Not authenticated');
     expect(await invoke(signed('visitor'), kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).toBe('issuer|visitor');
   }
-  await signed('visitor').mutation(api.auth.users.store, {});
-  expect(await signed('visitor').query(api.auth.users.current, {})).toMatchObject({ tokenIdentifier: 'issuer|visitor' });
-  expect(await t.query(api.auth.users.current, {})).toBeNull();
 });
 
 it('uses authoritative staff and operations policies for all three function kinds, including action grant revocation', async () => {

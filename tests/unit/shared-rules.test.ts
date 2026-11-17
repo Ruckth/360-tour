@@ -5,7 +5,7 @@ import { expect, it } from 'vitest';
 import { addDaysIso, isCalendarDate, isIsoDate, nightsBetween, nightsBetweenIso } from 'convex/shared/dates';
 import { calculateDirectQuote } from 'convex/shared/pricing';
 import { evaluateOffer } from 'convex/shared/offers';
-import { orderTotals } from 'convex/shared/orderMath';
+import { bookingBalance, orderTotals } from 'convex/shared/orderMath';
 import { assertTimeOffRange, timeOffInput, timeOffRange, timeOffRangeProblem } from 'convex/shared/timeOff';
 import { DAY_MS, resortMidnight, resortLocalParts, resortTodayIso } from 'convex/shared/time';
 import { reportRangeBounds } from 'convex/shared/marketingReport';
@@ -67,10 +67,15 @@ it('preserves strict date inputs, empty/reversed ranges, signed backend nights a
 });
 
 it('uses one integer-satang quote for browser, offer and receipt calculations', () => {
-  for (const [price, nights, bps] of [[10050, 1, 1000], [333300, 3, 1250], [1, 1, 5000], [100_000_000, 9, 9999]]) {
+  for (const [price, nights, bps, expected] of [
+    [10050, 1, 1000, 9045], [333300, 3, 1250, 874912], [1, 1, 5000, 0], [100_000_000, 9, 9999, 90000],
+    [1005, 1, 1000, 904], // Half-satang discount tie rounds away from zero.
+    [1005, 1, 0, 1005], [1005, 1, 10000, 0],
+  ]) {
     const quote = calculateDirectQuote({ pricePerNight: price, directDiscountPercent: bps, currency: 'THB' }, nights);
     const offer = evaluateOffer({ lines: [{ id: 'stay', kind: 'accommodation', propertySlug: 'villa', checkIn: '2026-11-14', checkOut: '2026-11-15', nights, amount: price * nights }], directDiscountPercent: bps, today: '2026-11-13' });
     const receipt = orderTotals([{ unitPrice: price * nights, qty: 1, discount: { type: 'percent', value: bps } }]);
+    expect(quote.directTotal).toBe(expected);
     expect(quote.discountAmount).toBe(offer.discount);
     expect(quote.directTotal).toBe(offer.total);
     expect(receipt.total).toBe(quote.directTotal);
@@ -102,4 +107,34 @@ it('shares half-open stay conflicts while keeping pending/cancelled rows and exc
   for (const status of ['pending', 'cancelled']) expect(stayConflicts({ ...data, bookings: [{ ...stay, status }] }, 'villa', '2026-11-15', '2026-11-17')).toBe(false);
   expect(stayConflicts({ bookings: [], dateBlocks: [{ propertyId: 'villa', start: '2026-11-14', end: '2026-11-16' }], blocks: [] }, 'villa', '2026-11-15', '2026-11-17')).toBe(true);
   expect(stayConflicts({ bookings: [], dateBlocks: [], blocks: [{ propertyId: 'villa', date: '2026-11-15' }] }, 'villa', '2026-11-14', '2026-11-15')).toBe(false);
+});
+
+
+it.each([
+  { name: 'paid', total: 20000, newTotal: 20000, amountPaid: 20000, amountRefunded: 0, providerRefundWaived: 0, owed: 0 },
+  { name: 'unpaid', total: 20000, newTotal: 20000, amountPaid: 0, amountRefunded: 0, providerRefundWaived: 0, owed: 20000 },
+  { name: 'credit after edit', total: 20000, newTotal: 15000, amountPaid: 20000, amountRefunded: 0, providerRefundWaived: 0, owed: -5000 },
+  { name: 'waived partial refund', total: 20000, newTotal: 20000, amountPaid: 20000, amountRefunded: 5000, providerRefundWaived: 5000, owed: 0 },
+  { name: 'extension after waived refund', total: 20000, newTotal: 25000, amountPaid: 20000, amountRefunded: 5000, providerRefundWaived: 5000, owed: 5000 },
+  { name: 'credit after refunded stay edit', total: 20000, newTotal: 10000, amountPaid: 20000, amountRefunded: 5000, providerRefundWaived: 5000, owed: -5000 },
+])('agrees on preview, checkout and shared balance for $name', async ({ newTotal, owed, ...row }) => {
+  const { balanceText } = await import('@/components/admin/admin-bookings-shared');
+  const { toAdminBooking } = await import('convex/bookings/private/stays');
+  const { checkoutBalance } = await import('convex/bookings/payments/stripe');
+  const { formatMoney } = await import('@/components/admin/labels');
+  const { TONES } = await import('@/components/admin/status-tones');
+  const booking: import('convex/_generated/dataModel').Doc<'bookings'> = {
+    ...row, _id: 'stay' as import('convex/_generated/dataModel').Id<'bookings'>, _creationTime: 0,
+    propertyId: 'villa' as import('convex/_generated/dataModel').Id<'properties'>,
+    status: 'confirmed', paymentStatus: row.amountPaid ? 'paid' : 'pending', currency: 'THB',
+    guestName: 'Guest', guestPhone: '', guestPhoneDigits: '', checkIn: '2026-11-14', checkOut: '2026-11-15',
+    guests: 2, nights: 1, subtotal: row.total, discountAmount: 0, createdAt: 0,
+  };
+  const projected = toAdminBooking(booking);
+  expect(bookingBalance({ ...booking, total: newTotal }).owed).toBe(owed);
+  expect(checkoutBalance({ ...booking, total: newTotal })).toBe(Math.max(0, owed));
+  expect(balanceText(newTotal, projected, booking.currency)).toEqual(owed === 0 ? null : {
+    text: `${owed > 0 ? 'Balance due' : 'Credit'} ${formatMoney(Math.abs(owed), booking.currency)}`,
+    tone: owed > 0 ? TONES.warning.text : TONES.success.text,
+  });
 });

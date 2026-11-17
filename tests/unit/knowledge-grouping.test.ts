@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAnswerMatcher, groupUnknownQuestions } from "../../convex/concierge/knowledgeGrouping";
+import { groupUnknownQuestions } from "../../convex/concierge/knowledgeGrouping";
 
 describe("groupUnknownQuestions", () => {
   it("groups by normalized question, counts statuses and sorts most-asked first", () => {
@@ -26,26 +26,5 @@ describe("groupUnknownQuestions", () => {
       { normalizedQuestion: "recent", status: "new" as const, createdAt: 2 },
     ]);
     expect(groups.map((group) => group.normalizedQuestion)).toEqual(["recent", "old"]);
-  });
-});
-
-describe("createAnswerMatcher", () => {
-  const match = createAnswerMatcher([
-    { answerId: "pets", text: "Are dogs allowed?" },
-    { answerId: "pool", text: "Is the pool heated?" },
-    { answerId: "wifi", text: "ไวไฟฟรีไหม" },
-  ]);
-
-  it("matches exact questions with full confidence", () => {
-    expect(match("Is the POOL heated")).toMatchObject({ candidate: { answerId: "pool" }, score: 1 });
-  });
-
-  it("matches on shared content words and ignores stopwords", () => {
-    expect(match("Can I bring my dog?")?.candidate.answerId).toBe("pets");
-    expect(match("What is there to do?")).toBeNull();
-  });
-
-  it("matches unspaced scripts by character pairs", () => {
-    expect(match("มีไวไฟฟรีไหมคะ")?.candidate.answerId).toBe("wifi");
   });
 });

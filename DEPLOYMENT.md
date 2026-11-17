@@ -175,7 +175,7 @@ Run before shipping:
 ```sh
 pnpm verify:integration
 pnpm knip
-pnpm arch:score --phase 2  # clean committed tree
+pnpm arch:score --phase "$(cat .arch-phase)"
 ```
 
 This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f local orchestration, test projects and guarded Preview/retention tooling are implemented; root-owned live Preview acceptance remains pending. See the [operations runbook](docs/architecture/phase3f-operations.md).

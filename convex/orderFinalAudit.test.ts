@@ -66,7 +66,7 @@ describe('Independent final recheck: attaching to an existing standalone order',
     expect(after?.customer?.name).toBe('Separate payer');
     expect(after?.order.orderNumber).toBe(before?.order.orderNumber);
     expect((await t.run(ctx => ctx.db.get(placeholder._id)))?.appointmentId).toBe(appointmentId);
-    expect(await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId })).toEqual({ orderId });
+    expect(await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId })).toEqual({ orderId });
     expect((await admin.query(api.pos.orders.getOrder, { orderId }))?.lines).toHaveLength(2);
     const orders = await admin.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } });
     expect(orders.page.find(row => row._id === orderId)?.bookingReference).toBe('SVC-ORDER-FINAL');

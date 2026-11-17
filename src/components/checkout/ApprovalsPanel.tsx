@@ -53,6 +53,7 @@ function ApprovalsButton() {
   useEffect(() => {
     if (!open || count || !notice) return;
     closedWith.current = notice;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the closing message lives in a ref (a decision landing after the queue empties overwrites it before onCloseAutoFocus reads it), and render can't write refs
     setNotice("");
     setOpen(false);
   }, [open, count, notice]);

@@ -21,9 +21,8 @@ it('keeps internal inbox snapshots and web tool capabilities out of list, search
   const list = await admin.query(api.messaging.adminChat.listSessions, { status: 'all', empty: 'all' });
   const search = await admin.query(api.messaging.adminChat.listSessions, { status: 'all', empty: 'all', searchQuery: 'audit-searchable' });
   const detail = await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId });
-  const transcript = await admin.query(api.messaging.adminChat.getTranscript, { sessionId });
   expect(list.sessions).toHaveLength(1); expect(search.sessions).toHaveLength(1); expect(detail).not.toBeNull();
-  for (const row of [list.sessions[0], search.sessions[0], detail!.session, transcript.session]) {
+  for (const row of [list.sessions[0], search.sessions[0], detail!.session]) {
     for (const field of ['lastDeliveryStatus', 'lastMessagePreview', 'inboxProjectionVersion', 'lastActivityAt']) expect(row).not.toHaveProperty(field);
     for (const secret of Object.values(secrets)) expect(JSON.stringify(row)).not.toContain(secret);
   }

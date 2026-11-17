@@ -49,9 +49,11 @@ const config = [
     },
   },
   {
+    // Same files eslint-config-next registers the react-hooks plugin for.
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/immutability": "off",
+      "react-hooks/set-state-in-effect": "error",
+      "react-hooks/immutability": "error",
     },
   },
 ];

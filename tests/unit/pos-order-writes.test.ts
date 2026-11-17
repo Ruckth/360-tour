@@ -30,7 +30,7 @@ const showOrder = (backend: CheckoutBackend, orderId: OrderId) =>
 const shown: { orderId: OrderId | null } = { orderId: null };
 function Page() {
   const [orderId, setOrderId] = useState<OrderId | null>(null);
-  shown.orderId = orderId;
+  useEffect(() => { shown.orderId = orderId; });
   return createElement(CheckoutView, { orderId, onOrderChange: setOrderId, onPaid: () => {} });
 }
 const showPage = (backend: CheckoutBackend) => act(async () => root.render(provide(backend, createElement(Page))));

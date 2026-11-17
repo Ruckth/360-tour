@@ -54,6 +54,8 @@ output/ui-loop/
 /graphify-out/
 /.local-dev/
 /.worktree-ports.json
+# Stray root-level screenshots; commit images under public/ or docs/ instead.
+/*.png
 
 # Generated UX captures and agent review output stay local.
 /docs/screenshots/

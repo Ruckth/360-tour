@@ -181,7 +181,7 @@ describe('POS line refunds', () => {
     const bookingId = await s.booking();
     await s.t.run(ctx => ctx.db.patch(bookingId, { amountPaid: 90000, paymentStatus: 'paid' }));
     const appointmentId = await s.appointment();
-    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     await s.owner.mutation(api.pos.commands.attach.attach, { orderId, appointmentId });
     const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     const { couponId } = await s.owner.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: 'MIXED', scope: 'services', benefit: { kind: 'fixed', amount } });
@@ -299,7 +299,7 @@ describe('POS line refunds', () => {
   it.each(['booking', 'appointment'] as const)('refuses attached %s lines', async kind => {
     const s = await setup();
     const source = kind === 'booking' ? { bookingId: await s.booking() } : { appointmentId: await s.appointment() };
-    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, source);
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, source);
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.pay(orderId);
     await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId))).rejects.toMatchObject(error('LINE_NOT_REFUNDABLE'));
@@ -333,7 +333,7 @@ describe('POS line refunds', () => {
   it('keeps stay money on the stay while refunding only a walk-in line on a mixed receipt', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await s.owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     const { lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     await s.pay(orderId);
     await s.owner.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 20000));

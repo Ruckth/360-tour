@@ -79,13 +79,16 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     };
   }, [convex, locale, messages]);
 
-  useEffect(() => {
+  // A new suggestion from the conversation replaces the guest's picks.
+  const [shownContext, setShownContext] = useState({ propertySlug: context.propertySlug, checkIn: context.checkIn, checkOut: context.checkOut });
+  if (shownContext.propertySlug !== context.propertySlug || shownContext.checkIn !== context.checkIn || shownContext.checkOut !== context.checkOut) {
+    setShownContext({ propertySlug: context.propertySlug, checkIn: context.checkIn, checkOut: context.checkOut });
     setSelectedPropertySlug(context.propertySlug ?? "");
     setCheckIn(context.checkIn);
     setCheckOut(context.checkOut);
     if (context.checkIn || context.checkOut) setVisibleMonth(monthOf(context.checkOut || context.checkIn));
     setError("");
-  }, [context.checkIn, context.checkOut, context.propertySlug]);
+  }
 
   const moneyFormatter = useMemo(
     () =>
