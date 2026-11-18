@@ -59,7 +59,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     async function loadProperties() {
       setPropertiesLoading(true);
       try {
-        const rows = await client.query(api.catalog.properties.list, {});
+        const rows = await client.query(api.catalog.properties.list, context.propertySlug ? { includeSlug: context.propertySlug } : {});
         if (!active) return;
 
         const liveProperties = getLiveChatProperties(rows, messages, locale);
@@ -77,7 +77,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     return () => {
       active = false;
     };
-  }, [convex, locale, messages]);
+  }, [convex, locale, messages, context.propertySlug]);
 
   // A new suggestion from the conversation replaces the guest's picks.
   const [shownContext, setShownContext] = useState({ propertySlug: context.propertySlug, checkIn: context.checkIn, checkOut: context.checkOut });

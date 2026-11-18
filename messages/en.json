@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "Show full detail",
+      "loading": "Loading full detail…",
+      "ready": "Full detail shown",
+      "failed": "Retry full detail"
+    },
     "roomsExplored": "{visited}/{total} rooms explored",
     "loading": "Loading...",
     "loadFailed": "This room could not be loaded.",

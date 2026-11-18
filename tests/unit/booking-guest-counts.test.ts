@@ -3,6 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialGuestCounts } from "@/lib/booking/booking";
+import { BookingFunnel } from "@/components/booking/BookingFunnel";
 
 const fixture = vi.hoisted(() => ({
   guestProps: null as null | { adults: number; childCount: number },
@@ -68,11 +69,10 @@ describe("booking link party size", () => {
     [{ initialGuests: "4", initialChildren: "1" }, { adults: 3, childCount: 1 }],
   ])("carries %o into the guest step", async (params, expected) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const { BookingFunnel } = await import("@/components/booking/BookingFunnel");
     root = createRoot(document.body.appendChild(document.createElement("div")));
-    // The demo pool-villa sleeps four, so the requested party fits.
+    // The fixture's garden suite sleeps eight, so the requested party fits.
     await act(async () => root!.render(createElement(BookingFunnel, {
-      ...params, initialProperty: "pool-villa", initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-11",
+      ...params, initialProperty: "garden-suite", initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-11",
     })));
     const next = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "continue");
     expect(next?.disabled).toBe(false);

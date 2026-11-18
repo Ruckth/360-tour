@@ -529,6 +529,12 @@ for (const paperWidth of [58, 80]) test(`a closed phone receipt preview prints e
   const issued = await paper.textContent();
   await preview.locator("summary").click();
   await expect(preview).not.toHaveAttribute("open");
+  // Exercise the event-only lifecycle before Chromium queues real print-media transitions.
+  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+  await expect(preview).toHaveAttribute("open");
+  await expect(paper).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+  await expect(preview).not.toHaveAttribute("open");
   await page.emulateMedia({ media: "print" });
   await expect(paper).toBeVisible();
   await expect(paper).toContainText("Thai massage 60");
@@ -541,11 +547,6 @@ for (const paperWidth of [58, 80]) test(`a closed phone receipt preview prints e
   expect(pdf.getPageCount()).toBe(1);
   expect(pdf.getPage(0).getHeight() * 96 / 72).toBeGreaterThanOrEqual(printed!.height);
   await page.emulateMedia({ media: "screen" });
-  await expect(preview).not.toHaveAttribute("open");
-  await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
-  await expect(preview).toHaveAttribute("open");
-  await expect(paper).toBeVisible();
-  await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
   await expect(preview).not.toHaveAttribute("open");
   await page.setViewportSize({ width: 1180, height: 820 });
   await expect(preview).toHaveAttribute("open");

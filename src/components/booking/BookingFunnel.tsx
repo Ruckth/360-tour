@@ -81,11 +81,12 @@ type FunnelProps = {
   initialProperty?: string; initialCoupon?: string;
 };
 export function BookingFunnel(props: FunnelProps) {
-  const rows = useQuery(api.catalog.properties.list, {});
+  const initialProperty = props.initialProperty;
+  const rows = useQuery(api.catalog.properties.list, initialProperty ? { includeSlug: initialProperty } : {});
   const t = useTranslations("Booking");
   if (rows === undefined) return <div role="status" className="p-24">{t("loadingInventory")}</div>;
   if (rows.length === 0) return <div role="alert" className="p-24">{t("liveBookingUnavailable")}</div>;
-  return <LiveBookingFunnel {...props} rows={rows} />;
+  return <LiveBookingFunnel key={initialProperty} {...props} rows={rows} />;
 }
 function LiveBookingFunnel({
   initialCheckIn = "",

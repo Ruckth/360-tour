@@ -11,7 +11,7 @@ import { CampaignPicker } from "./CampaignPicker";
 import { FieldError } from "./MarketingBits";
 import { QrCardBody } from "./QrCardDialog";
 import { marketingErrorText, normalizeSlugInput, shortUrl, slugCheckMessage } from "./marketing-format";
-import type { CampaignRow, CouponDetail, LinkDestination, LinkRow, MarketingActions, MarketingProperty } from "./types";
+import type { CampaignOption, CouponDetail, LinkDestination, LinkRow, MarketingActions, MarketingProperty } from "./types";
 
 export type CouponQrActions = Pick<MarketingActions, "saveLink" | "setLinkStatus" | "checkSlug" | "saveCampaign">;
 
@@ -46,7 +46,7 @@ export function CouponQrDialog({
   open: boolean;
   onClose: () => void;
   coupon: CouponDetail;
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   properties: MarketingProperty[];
   origin: string;
   brand: string;
@@ -85,7 +85,7 @@ function CouponQrBody({
   canCreateCampaign,
 }: {
   coupon: CouponDetail;
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   properties: MarketingProperty[];
   origin: string;
   brand: string;
@@ -154,7 +154,7 @@ function CardSetup({
 }: {
   id: string;
   coupon: CouponDetail;
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   origin: string;
   actions: CouponQrActions;
   canCreateCampaign: boolean;

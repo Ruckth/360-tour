@@ -4,7 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
 import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, findOpenSlots as openSlots, scheduleDays, staffBusyRanges } from './private/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, openStarts, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
 import { resortLocalParts } from '../shared/time';
 import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './private/administration';
@@ -110,24 +110,36 @@ export const listSchedule = adminQuery({
 export const findOpenSlots = adminQuery({
 	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
-		const service = await ctx.db.get(args.serviceId);
-		let slots;
-		if (service && args.staffId && args.date <= resortLocalParts(Date.now()).date) {
-			const person = await ctx.db.get(args.staffId);
-			slots = person ? await adminStarts(ctx, [person], args.date, (service.durationMin + service.bufferMin) * MINUTE) : [];
-			slots = slots.filter(slot => slot.start + (service.durationMin + service.bufferMin) * MINUTE <= Date.now() || (person?.status === 'active' && service.status === 'active' && service.staffIds.includes(person._id)));
-		} else slots = await openSlots(ctx, args);
 		const [dayStart, dayEnd] = localDayRange(args.date);
+		const service = await ctx.db.get(args.serviceId);
+		if (!service) return [];
+		const occupyMs = (service.durationMin + service.bufferMin) * MINUTE;
+		const staffId = args.staffId;
+		if (staffId && args.date <= resortLocalParts(Date.now()).date) {
+			const person = await ctx.db.get(staffId);
+			if (!person) return [];
+			const canBookFuture = person.status === 'active' && service.status === 'active' && service.staffIds.includes(staffId);
+			const slots = await adminStarts(ctx, [person], args.date, occupyMs);
+			return slots
+				.filter(slot => canBookFuture || slot.start + occupyMs <= Date.now())
+				.map(slot => ({ ...slot, autoStaffId: staffId }));
+		}
+		if (service.status !== 'active') return [];
+		const staff = await activeServiceStaff(ctx, service, staffId);
+		const slots = await openStarts(ctx, staff, args.date, occupyMs);
+		if (staffId) return slots.map(slot => ({ ...slot, autoStaffId: staffId }));
 		const ranked = new Map<Id<'staff'>, { name: string; count: number }>();
-		for (const id of new Set(slots.flatMap((slot) => slot.staffIds))) {
-			const person = await ctx.db.get(id);
+		const eligible = new Set(slots.flatMap((slot) => slot.staffIds));
+		for (const person of staff) {
+			const id = person._id;
+			if (!eligible.has(id)) continue;
 			let count = 0;
 			for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
 			))) {
 				if (blocksTime(appointment)) count++;
 			}
-			ranked.set(id, { name: person?.name ?? '', count });
+			ranked.set(id, { name: person.name, count });
 		}
 		const order = (a: Id<'staff'>, b: Id<'staff'>) => {
 			const x = ranked.get(a)!;

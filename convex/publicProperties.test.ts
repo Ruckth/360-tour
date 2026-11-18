@@ -53,7 +53,7 @@ describe('public villa queries', () => {
 		expect(result.villas[0]).not.toHaveProperty('status');
 	});
 
-	it('reports an empty database so the site can fall back to bundled content', async () => {
+	it('reports an empty database', async () => {
 		const t = convexTest(schema, modules);
 		expect(await t.query(api.catalog.publicProperties.list, {})).toEqual({ hasProperties: false, villas: [] });
 	});
@@ -66,6 +66,36 @@ describe('public villa queries', () => {
 		const detail = await t.query(api.catalog.publicProperties.getBySlug, { slug: 'active-villa' });
 		expect(detail?.villa.slug).toBe('active-villa');
 		expect(detail?.reviews.map((item) => item.date)).toEqual(['2026-03-01', '2026-01-01']);
+	});
+
+	it('resolves active slugs beyond the featured catalog and enumerates them in disjoint pages', async () => {
+		const { t } = await setup();
+		await t.run(async ctx => {
+			for (let i = 0; i < 100; i++) await ctx.db.insert('properties', villa(`extra-${i}`, 'active'));
+		});
+
+		const list = await t.query(api.catalog.publicProperties.list, {});
+		expect(list.villas).toHaveLength(100);
+		expect(list.villas.some(item => item.slug === 'extra-99')).toBe(false);
+		expect(await t.query(api.catalog.publicProperties.getBySlug, { slug: 'extra-99' }))
+			.toMatchObject({ villa: { slug: 'extra-99' }, reviews: [] });
+		const first = await t.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: 100, cursor: null } });
+		expect(first).toMatchObject({ isDone: false, page: list.villas.map(item => item.slug) });
+		const second = await t.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: 100, cursor: first.continueCursor } });
+		expect(second).toMatchObject({ isDone: true, page: ['extra-99'] });
+		await expect(t.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: 101, cursor: null } }))
+			.rejects.toThrow('Villa page size');
+		expect(await t.query(api.catalog.publicProperties.listSlugs, {
+			paginationOpts: { numItems: 1, cursor: null, endCursor: first.continueCursor }
+		})).toMatchObject({ page: ['active-villa'], isDone: false });
+
+		const getPicker = (includeSlug: string) => t.query(api.catalog.properties.list, { includeSlug });
+		const direct = await getPicker('extra-99');
+		expect(direct).toHaveLength(101);
+		expect(direct[100]).toMatchObject({ slug: 'extra-99' });
+		for (const slug of ['active-villa', 'archived-villa', 'draft-villa', 'missing']) {
+			expect(await getPicker(slug)).toHaveLength(100);
+		}
 	});
 
 	it('features top reviews from active villas only', async () => {

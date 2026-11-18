@@ -15,9 +15,12 @@ const observed = vi.hoisted(() => ({ calendar: null as CalendarProps | null, dra
 const villa = { _id: "p1", name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 400000, currency: "THB", maxGuests: 4 };
 vi.mock("convex/react", () => ({
   useMutation: () => vi.fn(),
-  useQuery: (ref: Parameters<typeof getFunctionName>[0]) => getFunctionName(ref).endsWith(":listForAdmin")
-    ? { properties: [villa], bookings: [], dateBlocks: [], blocks: [], complete: true }
-    : undefined,
+  useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
+    const name = getFunctionName(ref);
+    if (name.endsWith(":listCalendarProperties")) expect(args).toBe("skip");
+    if (name.endsWith(":listForAdmin")) return { properties: [villa], bookings: [], dateBlocks: [], blocks: [], complete: true };
+    return undefined;
+  },
 }));
 vi.mock("@/components/reui/event-calendar/event-calendar", () => ({
   EventCalendar: (props: CalendarProps) => { observed.calendar = props; return null; },

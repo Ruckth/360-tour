@@ -28,7 +28,7 @@ import { useConfirm } from "../ConfirmDialog";
 import { CampaignPicker } from "./CampaignPicker";
 import { marketingErrorText } from "./marketing-format";
 import type {
-  CampaignRow,
+  CampaignOption,
   CouponRow,
   MarketingActions,
   MarketingProperty,
@@ -107,7 +107,7 @@ export function AffiliatesView({
 }: {
   partners: AffiliateRow[] | undefined;
   partial: boolean;
-  campaigns: CampaignRow[] | undefined;
+  campaigns: CampaignOption[] | undefined;
   coupons: CouponRow[] | undefined;
   properties: MarketingProperty[] | undefined;
   canManage: boolean;
@@ -339,7 +339,7 @@ function PartnerEditor({
   onDone,
 }: {
   partner?: AffiliateRow;
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   coupons: CouponRow[];
   properties: MarketingProperty[];
   actions: AffiliateActions;

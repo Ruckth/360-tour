@@ -1,32 +1,30 @@
 import { expect, test, type Page, type Request } from "./fixtures";
 
 /**
- * Progressive tour loading (agent E). In demo mode Convex is unavailable, so the viewer falls back
- * to the bundled rooms after its rooms timeout and renders the panoramas from the public root.
+ * Progressive tour loading, using the seeded rooms from the checkout-local Convex backend.
  *
  * These assertions prove the loading is proportional to the current room:
  *  - the FIRST room becomes usable (the tour phase shows its navigation) without the viewer having
  *    requested every site panorama first — the old code handed all room images to one loader call;
  *  - switching rooms works and the newly-entered room's panorama is requested.
  *
- * No fixed sleeps: every wait is on an observable condition (a request, or a visible control).
  */
 
 // Equirectangular panoramas used by the bundled Tideglass Pool Residence tour and the wider site.
-const POOL_LIVING = "pool-villa-living.webp";
-const POOL_POOL = "pool-villa-pool.webp";
+const POOL_LIVING = "pool-villa-living";
+const POOL_POOL = "pool-villa-pool";
 // Panoramas that belong to OTHER villas — they must not all be fetched to show the first room.
 const OTHER_PANORAMAS = [
-  "garden-suite-interior.webp",
-  "garden-dining360.webp",
-  "garden-villa-360.webp",
-  "penthouse-bedroom.webp",
+  "garden-suite-interior",
+  "garden-dining360",
+  "garden-villa-360",
+  "penthouse-bedroom",
 ];
 
 function isPanorama(url: string, name: string): boolean {
-  return url.includes(name);
+  const file = new URL(url).pathname.split("/").at(-1);
+  return file === `${name}.webp` || file === `${name}-2048.webp` || file === `${name}-4096.webp`;
 }
-
 
 test("@smoke first tour room loads without fetching every panorama, and switching rooms works", async ({
   page,
@@ -107,7 +105,7 @@ async function controlPanorama(page: Page, name: string) {
   let release!: () => void;
   const released = new Promise<void>((resolve) => (release = resolve));
   const state = { hold: true, failing: false, requests: 0 };
-  await page.route(`**/${name}*`, async (route) => {
+  await page.route((url) => isPanorama(url.href, name), async (route) => {
     state.requests += 1;
     if (state.failing) return route.fulfill({ status: 503, body: "unavailable" });
     if (state.hold) await released;
@@ -134,6 +132,43 @@ async function openPoolTour(page: Page) {
   await expect.poll(() => canvasBrightness(page), { timeout: 10_000 }).toBeGreaterThan(20);
   return viewer;
 }
+
+test("mobile opens with a small rendition and loads full detail on request", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const paths: string[] = [];
+  page.on("request", (request) => paths.push(new URL(request.url()).pathname));
+  let failOriginal = true;
+  await page.route(`**/${POOL_LIVING}.webp`, (route) =>
+    failOriginal ? route.fulfill({ status: 503, body: "unavailable" }) : route.continue(),
+  );
+  await page.goto("/");
+  const viewer = await openPoolTour(page);
+  expect(paths).toContain(`/tour/panoramas/v1/${POOL_LIVING}-2048.webp`);
+  expect(paths).not.toContain(`/${POOL_LIVING}.webp`);
+  const before = await viewer.getByTestId("tour-hotspot").evaluate((node) => node.getBoundingClientRect().toJSON());
+
+  const detailButton = viewer.getByRole("button", { name: "Show full detail" });
+  await detailButton.click();
+  const retry = viewer.getByRole("button", { name: "Retry full detail" });
+  await expect(retry).toBeVisible();
+  await expect(retry).toBeFocused();
+  await expect(viewer).toHaveAttribute("data-scene-status", "ready");
+
+  failOriginal = false;
+  await retry.click();
+  await expect(viewer.getByRole("button", { name: "Full detail shown" })).toBeVisible({ timeout: 20_000 });
+  expect(paths).toContain(`/${POOL_LIVING}.webp`);
+  expect(await viewer.getByTestId("tour-hotspot").evaluate((node) => node.getBoundingClientRect().toJSON())).toEqual(before);
+});
+
+test("an unavailable rendition falls back to the original", async ({ page }) => {
+  await page.route(`**/${POOL_LIVING}-4096.webp`, (route) => route.fulfill({ status: 404, body: "missing" }));
+  await page.goto("/");
+  const original = page.waitForResponse((response) => new URL(response.url()).pathname === `/${POOL_LIVING}.webp`);
+  const viewer = await openPoolTour(page);
+  expect((await original).ok()).toBe(true);
+  await expect(viewer.getByRole("button", { name: "Show full detail" })).toHaveCount(0);
+});
 
 test("navigation keeps the outgoing room on screen and locked until the incoming panorama is ready", async ({
   page,
@@ -192,6 +227,8 @@ test("navigation keeps the outgoing room on screen and locked until the incoming
 test("a failed navigation keeps the previous room, retries, and the tour reopens cleanly", async ({
   page,
 }) => {
+  // This journey exercises two failures, a successful retry and a second cold WebGL mount.
+  test.setTimeout(60_000);
   const pool = await controlPanorama(page, POOL_POOL);
   pool.state.failing = true;
   pool.release();

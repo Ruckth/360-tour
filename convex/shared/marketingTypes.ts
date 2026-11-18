@@ -1,5 +1,9 @@
 import type { Doc, Id } from '../_generated/dataModel';
 
+export const CAMPAIGN_PAGE_SIZE = 10;
+
+export type CampaignOption = Pick<Doc<'marketingCampaigns'>, '_id' | 'name' | 'status'>;
+
 export type CampaignRow = Doc<'marketingCampaigns'> & {
 	linkCount: number; couponCount: number; opens: number;
 	/** A child read reached 500, so the counts and opens are lower bounds. */

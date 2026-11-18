@@ -18,7 +18,7 @@ import { LinkEditor, type LinkPreset } from "./LinkEditor";
 import { Callout, CopyButton, CouponChip, EditorSheet, NoticeBar, RowMenu, SlugChip, countTabs, useConfirmedChange, useEditorSheet, useNotice, type RowAction } from "./MarketingBits";
 import { QrCardDialog } from "./QrCardDialog";
 import { COUPON_STATE, LINK_STATUS, benefitLabel, couponState, destinationLabel, shortUrl } from "./marketing-format";
-import type { CampaignRow, CouponRow, LinkRow, LinkStatus, MarketingActions, MarketingProperty } from "./types";
+import type { CampaignOption, CouponRow, LinkRow, LinkStatus, MarketingActions, MarketingProperty } from "./types";
 
 type Tab = "all" | LinkStatus;
 const TABS: { value: Tab; label: string }[] = [
@@ -41,7 +41,7 @@ const ALL_CAMPAIGNS = "all";
 type LinksViewProps = {
   /** `undefined` while loading. */
   links?: LinkRow[];
-  campaigns?: CampaignRow[];
+  campaigns?: (CampaignOption & { source?: string; medium?: string })[];
   coupons?: CouponRow[];
   properties?: MarketingProperty[];
   /** Site origin the short links live on, e.g. https://book.auralis.example. */
@@ -344,7 +344,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-foreground">{link.campaignName}</p>
-                          {campaign ? (
+                          {campaign?.source !== undefined && campaign.medium !== undefined ? (
                             <p className="mt-0.5 whitespace-nowrap font-mono text-xs text-muted-foreground">
                               {campaign.source} · {campaign.medium}
                             </p>
@@ -404,7 +404,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                     <dl className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-x-3 gap-y-1.5 text-xs">
                       <dt className="text-muted-foreground">Campaign</dt>
                       <dd className="min-w-0 text-foreground">{link.campaignName}</dd>
-                      {campaign ? (
+                      {campaign?.source !== undefined && campaign.medium !== undefined ? (
                         <>
                           <dt className="text-muted-foreground">Source</dt>
                           <dd className="min-w-0 font-mono text-foreground">

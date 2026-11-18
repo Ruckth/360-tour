@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { AIChatPage } from "@/components/chat/AIChatWidget";
 import { getPublicMessages } from "@/lib/i18n/server-content";
-import { getVillaCatalog } from "@/lib/server/villas";
+import { getVilla } from "@/lib/server/villas";
 import { resort } from "@/lib/data/resort-config";
 
 type ChatSearchParams = Record<string, string | string[] | undefined>;
@@ -34,7 +34,7 @@ export default async function ChatPage({
   const service = serviceSlug ? await getPublicService(serviceSlug) : null;
   const draft = service ? getPublicMessages(locale).ServiceCatalog.draft.replace("{name}", service.name) : undefined;
   const property = propertyId
-    ? (await getVillaCatalog(locale)).villas.find((villa) => villa.id === propertyId)
+    ? (await getVilla(propertyId, locale).catch(() => null))?.villa
     : undefined;
 
   return (

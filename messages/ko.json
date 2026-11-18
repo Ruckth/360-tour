@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "고해상도 이미지 보기",
+      "loading": "고해상도 이미지 로딩 중…",
+      "ready": "고해상도 이미지 표시 중",
+      "failed": "고해상도 이미지 다시 불러오기"
+    },
     "roomsExplored": "{visited}/{total}개 객실 탐색",
     "loading": "로딩 중...",
     "loadFailed": "이 공간을 불러오지 못했습니다.",

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SRGBColorSpace, Texture, TextureLoader } from "three";
 import type { Room } from "@/lib/data/rooms";
+import { panoramaRendition, type PanoramaWidth } from "@/lib/tour/panoramas";
 import { nextRoomPrefetchOrder, TourTextureCache } from "@/lib/tour/texture-cache";
 
 /** Load one equirectangular panorama as a THREE.Texture, abortable, colour space set for display. */
@@ -58,7 +59,11 @@ export interface TourTexturesState {
   /** True only when `shown` belongs to the requested room and its load did not fail. */
   currentReady: boolean;
   currentFailed: boolean;
+  detailStatus: PanoramaDetailStatus;
 }
+
+export type PanoramaDetailStatus = "available" | "loading" | "ready" | "failed" | null;
+export type PanoramaDetailRequest = { roomId: string; originalPath: string };
 
 /**
  * Owns a {@link TourTextureCache} for one open tour. Loads the requested room first; until it is
@@ -72,6 +77,9 @@ export function useTourTextures({
   rooms,
   currentRoomId,
   previousRoomId,
+  panoramaWidth,
+  maxTextureSize,
+  detailRequest,
   loader = loadPanorama,
   maxTextures = 5,
   prefetchConcurrency = 2,
@@ -82,6 +90,9 @@ export function useTourTextures({
   currentRoomId: string;
   /** Non-null while the viewer's room transition is active. */
   previousRoomId: string | null;
+  panoramaWidth: PanoramaWidth;
+  maxTextureSize: number;
+  detailRequest?: PanoramaDetailRequest | null;
   loader?: (path: string, signal: AbortSignal) => Promise<Texture>;
   maxTextures?: number;
   prefetchConcurrency?: number;
@@ -103,12 +114,23 @@ export function useTourTextures({
   const [shown, setShown] = useState<TaggedTexture | null>(null);
   const [outgoing, setOutgoing] = useState<TaggedTexture | null>(null);
   const [failedRoomId, setFailedRoomId] = useState<string | null>(null);
+  const [failedDetailRequest, setFailedDetailRequest] = useState<PanoramaDetailRequest | null>(null);
   // Mirrors used by async completions; only read/written inside effects and callbacks.
   const shownRef = useRef<TaggedTexture | null>(null);
   const outgoingRef = useRef<TaggedTexture | null>(null);
   const transitionActiveRef = useRef(false);
 
   const invalidate = useCallback(() => onInvalidate?.(), [onInvalidate]);
+  const originalPath = roomById.get(currentRoomId)?.imagePath;
+  const rendition = originalPath ? panoramaRendition(originalPath, panoramaWidth) : null;
+  const entryPath = rendition?.path;
+  const canLoadDetail = Boolean(
+    rendition?.originalWidth && Math.min(rendition.originalWidth, maxTextureSize) > panoramaWidth,
+  );
+  const activeDetailRequest =
+    canLoadDetail && detailRequest?.roomId === currentRoomId && detailRequest.originalPath === originalPath
+      ? detailRequest
+      : null;
 
   // Dispose everything this tour owns on unmount, and reopen so a future mount loads fresh.
   useEffect(() => {
@@ -135,9 +157,8 @@ export function useTourTextures({
 
   // Load the requested room first; prefetch likely-next rooms only AFTER it is ready.
   useEffect(() => {
-    if (!currentRoomId) return;
-    const path = roomById.get(currentRoomId)?.imagePath;
-    if (!path) return;
+    if (!originalPath || !entryPath) return;
+    let path = activeDetailRequest ? originalPath : entryPath;
 
     // A room switch (or retry) is a new generation: stale requests resolve to nothing.
     const generation = cache.bumpGeneration();
@@ -145,10 +166,24 @@ export function useTourTextures({
     setFailedRoomId(null);
 
     let cancelled = false;
-    void cache.acquire(path, REQUESTED_OWNER).then((result) => {
-      if (cancelled || cache.currentGeneration !== generation) return;
+    const isCurrent = () => !cancelled && cache.currentGeneration === generation;
+
+    async function loadRoom() {
+      let result = await cache.acquire(path, REQUESTED_OWNER);
+      if (!isCurrent()) return;
+      // An unavailable rendition should feel like an ordinary first load. The original is only
+      // tried when entering the room, so a failed speculative request never prefetches the master.
+      if (result.failed && originalPath && path !== originalPath) {
+        path = originalPath;
+        result = await cache.acquire(path, REQUESTED_OWNER);
+        if (!isCurrent()) return;
+      }
       if (result.failed) {
-        setFailedRoomId(currentRoomId);
+        if (activeDetailRequest && shownRef.current?.roomId === currentRoomId) {
+          setFailedDetailRequest(activeDetailRequest);
+        } else {
+          setFailedRoomId(currentRoomId);
+        }
         return;
       }
       if (!result.texture) return;
@@ -178,19 +213,29 @@ export function useTourTextures({
       const order = nextRoomPrefetchOrder({ currentRoomId, hotspotTargetIds, orderedRoomIds });
       const prefetchPaths = order
         .map((id) => roomById.get(id)?.imagePath)
-        .filter((p): p is string => Boolean(p));
+        .filter((p): p is string => Boolean(p))
+        .map((p) => panoramaRendition(p, panoramaWidth).path);
       cache.prefetch(prefetchPaths, generation);
-    });
+    }
+    void loadRoom();
 
     return () => {
       cancelled = true;
       // The room on screen keeps its SHOWN owner, so releasing the request never blanks it.
       cache.release(path, REQUESTED_OWNER);
     };
-  }, [cache, currentRoomId, invalidate, orderedRoomIds, roomById, retrySignal]);
+  }, [activeDetailRequest, cache, currentRoomId, entryPath, invalidate, orderedRoomIds, originalPath, panoramaWidth, roomById, retrySignal]);
 
   const currentFailed = failedRoomId !== null && failedRoomId === currentRoomId;
   const currentReady = shown !== null && shown.roomId === currentRoomId && !currentFailed;
+  let detailStatus: PanoramaDetailStatus = null;
+  if (currentReady && canLoadDetail) {
+    if (activeDetailRequest) {
+      detailStatus = shown.path === originalPath ? "ready" : failedDetailRequest === activeDetailRequest ? "failed" : "loading";
+    } else if (shown.path !== originalPath) {
+      detailStatus = "available";
+    }
+  }
 
-  return { shown, outgoing, currentReady, currentFailed };
+  return { shown, outgoing, currentReady, currentFailed, detailStatus };
 }

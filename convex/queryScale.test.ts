@@ -8,7 +8,10 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
+import type { QueryCtx } from './_generated/server';
+import type { FunctionReturnType } from 'convex/server';
 import { markBookingPaid } from './bookings/model';
+import { listForAdmin } from './bookings/admin';
 import { READ_BUDGET_ERROR, readBudget, ReadBudget, ReadBudgetExceeded, reserveWrites } from './lib/readBudget';
 import schema from './schema';
 
@@ -157,6 +160,55 @@ describe('booking overlap reads every relevant booking', () => {
 });
 
 describe('admin calendar', () => {
+	it('scopes a selected villa to five date ranges while preserving its calendar events', async () => {
+		const { t, admin, propertyId } = await setup();
+		const args = { from: '2030-03-01', to: '2030-03-08' };
+		await t.run(async ctx => {
+			await ctx.db.patch(propertyId, { status: 'archived' });
+			for (let i = 0; i < 19; i++) {
+				const other = await ctx.db.insert('properties', { ...villa, slug: `villa-${i}`, name: `Villa ${i}` });
+				await insertFixture(ctx, 'bookings', booking(other, '2030-03-02', '2030-03-03'));
+			}
+			await insertFixture(ctx, 'bookings', booking(propertyId, '2030-02-15', '2030-03-04'));
+			await insertFixture(ctx, 'bookings', booking(propertyId, '2030-03-04', '2030-03-05', 'cancelled'));
+			await ctx.db.insert('dateBlocks', { propertyId, start: '2030-02-28', end: '2030-03-02', reason: 'Repairs', createdAt: 1 });
+			await ctx.db.insert('availability', { propertyId, date: '2030-03-06', status: 'blocked', source: 'airbnb' });
+		});
+
+		const measure = (params: typeof args & { propertyId?: Id<'properties'> }) => admin.run(async ctx => {
+			const queries = vi.spyOn(ctx.db, 'query');
+			const gets = vi.spyOn(ctx.db, 'get');
+			const invoke: (ctx: QueryCtx, args: typeof params) => Promise<FunctionReturnType<typeof api.bookings.admin.listForAdmin>> = Reflect.get(listForAdmin, '_handler');
+			const data = await invoke(ctx, params);
+			const tables = queries.mock.calls.map(([table]) => table);
+			const ids = gets.mock.calls.map(call => call[call.length - 1]);
+			queries.mockRestore();
+			gets.mockRestore();
+			return { data, tables, ids };
+		});
+
+		const all = await measure(args);
+		const selected = await measure({ ...args, propertyId });
+		expect(all.tables).toHaveLength(101);
+		expect(selected.tables).toEqual(['bookings', 'bookings', 'dateBlocks', 'dateBlocks', 'availability']);
+		expect(selected.ids.filter(id => id === propertyId)).toHaveLength(1);
+		expect(selected.data).toEqual({
+			properties: all.data.properties.filter(row => row._id === propertyId),
+			bookings: all.data.bookings.filter(row => row.propertyId === propertyId),
+			dateBlocks: all.data.dateBlocks.filter(row => row.propertyId === propertyId),
+			blocks: all.data.blocks.filter(row => row.propertyId === propertyId),
+			complete: true
+		});
+		expect(selected.data.properties[0]?.status).toBe('archived');
+		expect(selected.data.bookings.map(row => row.status).sort()).toEqual(['cancelled', 'confirmed']);
+		expect(await admin.query(api.bookings.admin.listCalendarProperties, {})).toEqual(all.data.properties);
+		await expect(t.query(api.bookings.admin.listCalendarProperties, {})).rejects.toThrow('Not authenticated');
+		await t.run(ctx => ctx.db.delete(propertyId));
+		expect(await admin.query(api.bookings.admin.listForAdmin, { ...args, propertyId })).toEqual({
+			properties: [], bookings: [], dateBlocks: [], blocks: [], complete: true
+		});
+	});
+
 	it('shows a long stay that started before 500 cancelled check-ins', async () => {
 		const { t, admin, propertyId } = await setup();
 		const longStay = await t.run((ctx) => insertFixture(ctx, 'bookings', booking(propertyId, '2030-01-01', '2030-04-01')));

@@ -16,6 +16,31 @@ import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks 
 import { assertValidIsoDate } from '../shared/validation';
 import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
 
+function calendarProperty(property: Doc<'properties'>) {
+	return {
+		_id: property._id,
+		slug: property.slug,
+		name: property.name,
+		...(property.images[0] ? { imageUrl: property.images[0] } : {}),
+		maxGuests: property.maxGuests,
+		status: property.status,
+		pricePerNight: property.pricePerNight,
+		directDiscountPercent: property.directDiscountPercent,
+		currency: property.currency
+	};
+}
+
+/** Stable villa options for the calendar and its booking dialogs, independent of the visible dates. */
+export const listCalendarProperties = adminQuery({
+	args: {},
+	returns: v.array(v.object({
+		_id: v.id('properties'), slug: v.string(), name: v.string(), imageUrl: v.optional(v.string()),
+		maxGuests: v.number(), status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')),
+		pricePerNight: v.number(), directDiscountPercent: v.number(), currency: v.string()
+	})),
+	handler: async (ctx) => (await ctx.db.query('properties').take(MAX_CALENDAR_VILLAS)).map(calendarProperty)
+});
+
 /**
  * Villas, bookings, OTA blocks and host date blocks overlapping [from, to) for the admin calendar.
  * Every read counts against one shared read budget. `complete` is false when there are more villas
@@ -23,7 +48,7 @@ import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS,
  * then says so instead of passing a partial view off as the whole picture.
  */
 export const listForAdmin = adminQuery({
-	args: { from: v.string(), to: v.string() },
+	args: { from: v.string(), to: v.string(), propertyId: v.optional(v.id('properties')) },
 	handler: async (ctx, args) => {
 		assertValidIsoDate(args.from, 'From date');
 		assertValidIsoDate(args.to, 'To date');
@@ -33,7 +58,13 @@ export const listForAdmin = adminQuery({
 
 		const budget = readBudget(ctx);
 		budget.range();
-		const villas = await ctx.db.query('properties').take(MAX_CALENDAR_VILLAS + 1);
+		let villas: Doc<'properties'>[];
+		if (args.propertyId) {
+			const property = await ctx.db.get(args.propertyId);
+			villas = property ? [property] : [];
+		} else {
+			villas = await ctx.db.query('properties').take(MAX_CALENDAR_VILLAS + 1);
+		}
 		for (const villa of villas) budget.document(villa);
 		const properties = villas.slice(0, MAX_CALENDAR_VILLAS);
 		let complete = villas.length <= MAX_CALENDAR_VILLAS;
@@ -73,17 +104,7 @@ export const listForAdmin = adminQuery({
 		}
 
 		return {
-			properties: properties.map((p) => ({
-				_id: p._id,
-				slug: p.slug,
-				name: p.name,
-				...(p.images[0] ? { imageUrl: p.images[0] } : {}),
-				maxGuests: p.maxGuests,
-				status: p.status,
-				pricePerNight: p.pricePerNight,
-				directDiscountPercent: p.directDiscountPercent,
-				currency: p.currency
-			})),
+			properties: properties.map(calendarProperty),
 			bookings: bookings.map(toAdminBooking),
 			blocks,
 			dateBlocks: dateBlocks.map(({ _id, propertyId, start, end, reason }) => ({ _id, propertyId, start, end, reason })),

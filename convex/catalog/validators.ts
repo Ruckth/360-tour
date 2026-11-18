@@ -125,3 +125,5 @@ const publicReview = v.object({ ...reviewCopy, id: v.id('reviews'), propertySlug
 export const publicPropertiesListResult = v.object({ hasProperties: v.boolean(), villas: v.array(publicVilla) });
 export const publicPropertiesGetBySlugResult = v.union(v.null(), v.object({ villa: publicVilla, reviews: v.array(publicReview) }));
 export const publicPropertiesFeaturedReviewsResult = v.array(publicReview);
+
+export const publicVillaSlugsPage = v.object({ page: v.array(propertiesFields.slug), continueCursor: v.string(), isDone: v.boolean() });

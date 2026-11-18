@@ -1,5 +1,5 @@
 import { writeFileSync } from "node:fs";
-import { test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 
 /**
  * 360 tour opening benchmark on a fixed mobile profile (390x844, DPR 2, touch), with Chrome
@@ -19,7 +19,11 @@ import { test, type Browser, type BrowserContext, type Page } from "@playwright/
 
 const RUNS = Number(process.env.BENCH_RUNS ?? 5);
 const VILLA_PATH = process.env.BENCH_VILLA_PATH ?? "/rooms/pool-villa";
-const PANORAMA = /(pool-villa-living|pool-villa-pool|garden-suite-interior|garden-dining360|garden-villa-360|penthouse-bedroom)\.(webp|jpe?g)/;
+const PANORAMA = /\/(pool-villa-living|pool-villa-pool|garden-suite-interior|garden-dining360|garden-villa-360|penthouse-bedroom)(?:-(2048|4096))?\.(webp|jpe?g)(?:$|\?)/;
+const MOBILE_FIRST_ROOM: Record<string, string> = {
+  "/rooms/pool-villa": "pool-villa-living",
+  "/rooms/garden-suite": "garden-suite-interior",
+};
 
 type Sample = {
   kind: "cold" | "warm";
@@ -111,6 +115,15 @@ async function openTour(page: Page, kind: Sample["kind"]): Promise<Sample> {
       panoramaNamesBeforeUsable: panoramas.map((entry) => new URL(entry.name).pathname),
     };
   }, PANORAMA.source);
+  if (kind === "cold") {
+    expect(result.panoramaRequestsBeforeUsable, "Measured cold panorama requests").toBeGreaterThan(0);
+    expect(result.panoramaBytesBeforeUsable, "Measured cold panorama bytes").toBeGreaterThan(0);
+    const firstRoom = MOBILE_FIRST_ROOM[VILLA_PATH];
+    if (firstRoom) {
+      expect(result.panoramaNamesBeforeUsable).toContain(`/tour/panoramas/v1/${firstRoom}-2048.webp`);
+      expect(result.panoramaNamesBeforeUsable).not.toContain(`/${firstRoom}.webp`);
+    }
+  }
 
   await page.waitForTimeout(1_000); // let entry animations and damping settle
   const before = await page.evaluate(() => (window as unknown as { __draws: number }).__draws);

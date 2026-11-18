@@ -28,9 +28,9 @@ async function fixture() {
     const appointmentId = await insertFixture(ctx, 'appointments', { serviceId, staffId, start: 1, end: 2, blockedUntil: 2, guestName: 'Guest', guestPhone: '0800000000', source: 'admin', status: 'booked', paymentStatus: 'unpaid', price: 10000, currency: 'THB', confirmationCode: 'APPT', accessToken: 'test-only', createdAt: 1 });
     return { propertyId, bookingId, staffId, serviceId, appointmentId };
   });
-  const read = (orderId: Id<'orders'>) => admin.run(async ctx => {
+  const read = (orderId: Id<'orders'>, view?: 'checkout') => admin.run(async ctx => {
     const gets = vi.spyOn(ctx.db, 'get'), queries = vi.spyOn(ctx.db, 'query');
-    const result = await handler(getOrder)(ctx, { orderId });
+    const result = await handler(getOrder)(ctx, { orderId, ...(view ? { view } : {}) });
     const calls = { gets: gets.mock.calls.map(args => args[args.length - 1]), queries: queries.mock.calls.map(args => args[0]) };
     gets.mockRestore(); queries.mockRestore();
     return { result, ...calls };
@@ -61,6 +61,37 @@ it('reads a linked stay and property once, including nulls, and observes later e
   expect(missingBooking.result?.source?.reference).toBe('Deleted booking');
   expect(missingBooking.result?.lines[0].sourceIssue?.kind).toBe('gone');
   expect(missingBooking.result?.totals).toEqual(initial.result?.totals);
+});
+
+it('skips four history ranges at the till and keeps full receipts after settlement', async () => {
+  const { t, admin, read, propertyId, bookingId } = await fixture();
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
+  await t.run(async ctx => {
+    for (let i = 0; i < 50; i++) {
+      await ctx.db.insert('orderAudit', {
+        orderId, at: i, actor: 'reads@example.com', kind: 'price_override', fromPrice: 10000, toPrice: 11000,
+        note: `Historical price override ${i}`
+      });
+    }
+    await ctx.db.patch(propertyId, { name: 'Renamed villa' });
+  });
+
+  const receipt = await read(orderId);
+  const till = await read(orderId, 'checkout');
+  expect(receipt.queries).toHaveLength(6);
+  expect(till.queries).toEqual(['orderLines', 'orderPayments']);
+  expect(till.gets).toEqual(receipt.gets);
+  expect(receipt.result?.audit).toHaveLength(50);
+  expect(till.result).toEqual({ ...receipt.result, audit: [], corrections: [], refunds: [] });
+  expect(till.result?.lines[0]?.sourceIssue?.kind).toBe('changed');
+  const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
+  expect(bytes(receipt.result) - bytes(till.result)).toBeGreaterThan(7000);
+
+  await expect(t.query(api.pos.orders.getOrder, { orderId, view: 'checkout' })).rejects.toThrow('Not authenticated');
+  await t.run(ctx => ctx.db.patch(orderId, { status: 'paid', paidAt: Date.now() }));
+  const settled = await read(orderId, 'checkout');
+  expect(settled.result).toEqual((await read(orderId)).result);
+  expect(settled.queries).toEqual(expect.arrayContaining(['orderAudit', 'orderCorrections', 'bookingRefunds', 'appointmentRefunds', 'orderRefunds']));
 });
 
 it('reuses appointment/service joins and sees edited or deleted appointment, service and staff on subsequent queries', async () => {

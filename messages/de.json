@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "Volle Details anzeigen",
+      "loading": "Volle Details werden geladen…",
+      "ready": "Volle Details sichtbar",
+      "failed": "Details erneut laden"
+    },
     "roomsExplored": "{visited}/{total} Räume erkundet",
     "loading": "Laden...",
     "loadFailed": "Dieser Raum konnte nicht geladen werden.",

@@ -4,18 +4,18 @@ import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { useNow } from "@/lib/staff-bookings";
 import { adminMarketingPath } from "../admin-routes";
 import { HistoryDisclosure, RecordHistoryPanel } from "../RecordHistoryPanel";
 import { CampaignSpendSection } from "./CampaignSpendSection";
-import { CampaignsView } from "./CampaignsView";
+import { CampaignEditor, CampaignsView } from "./CampaignsView";
 import { CouponEditor } from "./CouponEditor";
 import { CouponRefusalsCard } from "./CouponRefusalsCard";
 import { CouponsView } from "./CouponsView";
 import { LinksView } from "./LinksView";
-import { bangkokToday } from "./marketing-format";
-import type { CampaignRow, MarketingActions } from "./types";
+import { bangkokToday, campaignPage } from "./marketing-format";
+import type { CampaignRow, CampaignTab, MarketingActions } from "./types";
 
 // The admin pages: Convex queries and mutations wired into the prop-driven views.
 
@@ -101,7 +101,7 @@ function useOrigin() {
 
 export function MarketingLinksScreen() {
   const links = useQuery(api.marketing.queries.listLinks, {});
-  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaignOptions, { projection: "attribution" });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
   const properties = useQuery(api.marketing.queries.catalog, {});
   const profile = useQuery(api.settings.settings.publicProfile, {});
@@ -121,15 +121,36 @@ export function MarketingLinksScreen() {
   );
 }
 
+function LiveCampaignEditor({ refreshCampaign, ...props }: ComponentProps<typeof CampaignEditor> & { refreshCampaign: boolean }) {
+  const campaignId = props.campaign?._id;
+  const rows = useQuery(api.marketing.queries.listCampaigns, campaignId && refreshCampaign ? { campaignIds: [campaignId] } : "skip");
+  // These previews are only used by a saved campaign's editor.
+  const links = useQuery(api.marketing.queries.listLinks, campaignId ? { campaignId } : "skip");
+  const coupons = useQuery(api.marketing.queries.listCampaignCoupons, campaignId ? { campaignId } : "skip");
+  return <CampaignEditor {...props} campaign={rows?.[0] ?? props.campaign} links={links} coupons={coupons} />;
+}
+
 export function MarketingCampaignsScreen() {
-  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
-  const links = useQuery(api.marketing.queries.listLinks, {});
-  const coupons = useQuery(api.marketing.queries.listCoupons, {});
+  const [tab, setTab] = useState<CampaignTab>("all");
+  const [query, setQuery] = useState("");
+  const [requestedPage, setPage] = useState(0);
+  const options = useQuery(api.marketing.queries.listCampaignOptions, { projection: "search" });
+  const { page, pageCount, campaignIds } = campaignPage(options ?? [], tab, query, requestedPage);
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, campaignIds.length ? { campaignIds } : "skip");
   return (
     <CampaignsView
-      campaigns={campaigns}
-      links={links}
-      coupons={coupons}
+      campaigns={campaignIds.length ? campaigns : []}
+      listing={{
+        options,
+        tab,
+        query,
+        setTab: (next) => { setTab(next); setPage(0); },
+        setQuery: (next) => { setQuery(next); setPage(0); },
+        page,
+        pageCount,
+        setPage,
+      }}
+      editor={LiveCampaignEditor}
       today={useToday()}
       linksHref={adminMarketingPath("links")}
       couponHref={couponPath}
@@ -142,7 +163,7 @@ export function MarketingCampaignsScreen() {
 
 export function MarketingCouponsScreen() {
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
-  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaignOptions, {});
   const properties = useQuery(api.marketing.queries.catalog, {});
   return (
     <CouponsView
@@ -163,7 +184,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
   const detail = useQuery(api.marketing.queries.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
-  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaignOptions, {});
   const properties = useQuery(api.marketing.queries.catalog, {});
   const profile = useQuery(api.settings.settings.publicProfile, {});
   return (

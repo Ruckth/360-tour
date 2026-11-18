@@ -1,6 +1,6 @@
 /** Services-owned named plain helpers; no RPC registrations. */
 export { publicService, catalogFilter, catalogCategory, serviceQuery, serviceCategories } from './private/serviceCatalog';
-export { TIME_OFF_LOOKBACK, APPOINTMENT_LOOKBACK, SLOT_CONFLICT, type Slot, boundedIntegrityRows, assertAppointmentStart, type AdminHistoricalPolicy, historicalWarnings, staffDayOverrides, scheduleDays, staffBusyRanges, assertStaffFree, openStarts, findOpenSlots, serviceRostered, type AppointmentInput, guestDetails, appointmentLookupFields, createAppointmentRecord } from './private/serviceSlots';
+export { TIME_OFF_LOOKBACK, APPOINTMENT_LOOKBACK, SLOT_CONFLICT, type Slot, boundedIntegrityRows, assertAppointmentStart, type AdminHistoricalPolicy, historicalWarnings, staffDayOverrides, scheduleDays, staffBusyRanges, assertStaffFree, openStarts, serviceRostered, type AppointmentInput, guestDetails, appointmentLookupFields, createAppointmentRecord } from './private/serviceSlots';
 export { type Range, assertValidTime, localDateTimeUtc, localDayRange, mergeRanges, patternDay, effectivePlan, planWorking, planBusy, planUncovers, blocksTime } from '../shared/schedule';
 export { addDays as nextLocalDate, weekdayOf, addDays } from '../shared/dates';
 export { type Shift, type RosterBreak, type DayPlan } from '../shared/serviceScheduleTypes';

@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { slugify } from "convex/shared/slug";
-import { ArrowDown, ArrowUp, MapPin, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Upload } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
-import { DisabledReason } from "./DisabledReason";
-import { HotspotEditorDialog } from "./HotspotEditorDialog";
+import { HotspotEditorButton } from "./HotspotEditorButton";
 import { ConfigurationHistoryRecords, HistoryDisclosure, RecordHistoryPanel } from "./RecordHistoryPanel";
 import { RoomHotspotList } from "./RoomHotspotList";
 import { TONES } from "./status-tones";
@@ -87,7 +86,6 @@ function RoomCard({
   const fileInput = useRef<HTMLInputElement>(null);
   const [imagePath, setImagePath] = useState(room.imagePath);
   const [warning, setWarning] = useState<string | null>(null);
-  const [editingHotspots, setEditingHotspots] = useState(false);
   const linkedFrom = rooms.filter((other) => other.hotspots.some((hotspot) => hotspot.targetRoomSlug === room.slug));
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -150,12 +148,7 @@ function RoomCard({
           <Upload aria-hidden className="size-4" />
           Replace panorama
         </Button>
-        <DisabledReason reason={rooms.length < 2 && "Add another room first: hotspots move guests between rooms."}>
-          <Button size="sm" variant="outline" disabled={rooms.length < 2} onClick={() => setEditingHotspots(true)}>
-            <MapPin aria-hidden className="size-4" />
-            Edit hotspots ({room.hotspots.length})
-          </Button>
-        </DisabledReason>
+        <HotspotEditorButton room={room} rooms={rooms} />
         <span className="flex-1" />
         <Button size="icon" variant="ghost" className="size-9" disabled={!onMoveUp || reordering} onClick={onMoveUp} aria-label={`Move ${room.name} earlier in the tour`}>
           <ArrowUp aria-hidden className="size-4" />
@@ -175,7 +168,6 @@ function RoomCard({
         </Disclosure>
       ) : null}
       <HistoryDisclosure><RecordHistoryPanel entityType="room" entityId={room._id} /></HistoryDisclosure>
-      {editingHotspots ? <HotspotEditorDialog room={room} rooms={rooms} onClose={() => setEditingHotspots(false)} /> : null}
     </li>
   );
 }

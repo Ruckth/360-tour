@@ -55,7 +55,7 @@ function CheckoutContent({
   const { discountNotice, setDiscountNotice } = useCheckoutDiscountNotice();
   const backend = useCheckoutBackend();
   const catalog = backend.useCatalog();
-  const view = backend.useOrder(orderId);
+  const view = backend.useOrder(orderId, "checkout");
   const actions = backend.useActions();
   const { paymentSubmitting } = useCheckoutPaymentSubmitting();
   const [error, setError] = useState("");
@@ -318,7 +318,7 @@ function Backdrop({ src }: { src?: string }) {
 
 /** A late refusal can belong to another order; validate it without moving the cashier there. */
 function DiscountNoticeTarget({ orderId }: { orderId: OrderId }) {
-  const view = useCheckoutBackend().useOrder(orderId);
+  const view = useCheckoutBackend().useOrder(orderId, "checkout");
   const approvals = useCheckoutBackend().useOrderApprovals(orderId);
   useCheckoutDraftOrder(orderId, view, approvals);
   return null;

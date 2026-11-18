@@ -318,8 +318,9 @@ describe('durable effective roster patterns', () => {
 		});
 		now('2026-10-01');
 		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, workingHours: [], breaks: [] });
-		expect(await t.run((ctx) => serviceRostered(ctx, serviceId, '2026-09-28'))).toBe(true);
-		expect(await t.run((ctx) => serviceRostered(ctx, serviceId, '2026-10-01'))).toBe(false);
+		const staff = (await t.run(ctx => ctx.db.get(staffId)))!;
+		expect(await t.run((ctx) => serviceRostered(ctx, [staff], '2026-09-28'))).toBe(true);
+		expect(await t.run((ctx) => serviceRostered(ctx, [staff], '2026-10-01'))).toBe(false);
 		expect(await admin.query(api.services.admin.findOpenSlots, { serviceId, staffId, date: '2026-10-02' })).toEqual([]);
 	});
 	it('copies the historical source plan across a newer default instead of silently substituting current hours', async () => {

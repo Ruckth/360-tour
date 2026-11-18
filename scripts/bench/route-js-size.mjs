@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Reports the initial client JavaScript each App Router page loads, from a completed `next build`.
-// Usage: node scripts/bench/route-js-size.mjs [projectDir] [--json out.json] [--routes /a,/b]
+// Usage: node scripts/bench/route-js-size.mjs [projectDir] [--json out.json] [--routes /a,/b] [--check-budgets]
 // Reads only build output: .next/build-manifest.json and each page_client-reference-manifest.js.
 // Initial JS = rootMainFiles + the page's entryJSFiles (layouts + page). Lazy chunks
 // (next/dynamic, import()) are excluded, which is the point: they load on demand.
@@ -12,8 +12,19 @@ import zlib from "node:zlib";
 const args = process.argv.slice(2);
 const jsonIndex = args.indexOf("--json");
 const jsonOut = jsonIndex >= 0 ? args[jsonIndex + 1] : undefined;
+// Budgets use the CI integration build (isolated backend and test Clerk tenant), including the shared app shell.
+// Limits allow normal variation in this build
+// while catching a renderer-sized regression in the property editor entry.
+const routeBudgetsKiB = new Map([
+  ["/[locale]/(home)", 285],
+  ["/[locale]/rooms/[id]", 285],
+  ["/admin/properties/[id]", 430],
+]);
+const checkBudgets = args.includes("--check-budgets");
 const routesIndex = args.indexOf("--routes");
-const routeFilter = routesIndex >= 0 ? new Set(args[routesIndex + 1].split(",")) : undefined;
+const routeFilter = routesIndex >= 0
+  ? new Set(args[routesIndex + 1].split(","))
+  : checkBudgets ? new Set(routeBudgetsKiB.keys()) : undefined;
 const projectDir = path.resolve(args.find((arg, index) => !arg.startsWith("--") && args[index - 1] !== "--json" && args[index - 1] !== "--routes") ?? ".");
 const nextDir = path.join(projectDir, ".next");
 
@@ -77,6 +88,10 @@ for (const manifestFile of walk(path.join(nextDir, "server", "app"))) {
   for (const [route, manifest] of Object.entries(manifests)) {
     const routeName = route.replace(/\/page$/, "") || "/";
     if (routeFilter && !routeFilter.has(routeName)) continue;
+    if (checkBudgets && routeBudgetsKiB.has(routeName)) {
+      const pageEntry = Object.entries(manifest.entryJSFiles ?? {}).find(([key]) => key.endsWith(`/app${route}`));
+      if (!rootMainFiles.length || !pageEntry?.[1]?.length) throw new Error(`Incomplete initial JS manifest for ${routeName}`);
+    }
     const files = new Set(rootMainFiles);
     for (const entryFiles of Object.values(manifest.entryJSFiles ?? {})) for (const file of entryFiles) files.add(file);
     let raw = 0, gzip = 0, brotli = 0;
@@ -97,3 +112,13 @@ for (const row of results) {
   console.log(`${row.route}\t${row.chunks}\t${kib(row.raw)}\t${kib(row.gzip)}\t${kib(row.brotli)}\t${row.localeScripts.join(",") || "-"}`);
 }
 if (jsonOut) fs.writeFileSync(jsonOut, `${JSON.stringify({ projectDir, generatedAt: new Date().toISOString(), results }, null, 2)}\n`);
+
+if (checkBudgets) {
+  for (const [route, limitKiB] of routeBudgetsKiB) {
+    const measured = results.find(row => row.route === route);
+    if (!measured || measured.brotli <= 0 || measured.brotli > limitKiB * 1024) {
+      console.error(`${route}: expected 1 byte to ${limitKiB} KiB Brotli, measured ${measured ? kib(measured.brotli) + " KiB" : "no route"}`);
+      process.exitCode = 1;
+    }
+  }
+}

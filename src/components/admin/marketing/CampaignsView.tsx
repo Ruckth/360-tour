@@ -3,7 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CircleStop, Megaphone, Pause, Pencil, Play, Plus, Send, Undo2 } from "lucide-react";
 import Link from "next/link";
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
@@ -34,9 +34,7 @@ import {
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { parseWhole, wholeText } from "./coupon-form";
 import { CAMPAIGN_STATUS, COUPON_STATE, LINK_STATUS, benefitLabel, countLabel, couponState, formatRange, thb } from "./marketing-format";
-import type { CampaignRow, CampaignStatus, CouponRow, LinkRow, MarketingActions } from "./types";
-
-type Tab = "all" | CampaignStatus;
+import type { CampaignOption, CampaignRow, CampaignStatus, CampaignTab, CouponRow, LinkRow, MarketingActions } from "./types";
 
 const PRESETS = [
   { name: "Facebook · Always on", source: "facebook", medium: "social" },
@@ -50,6 +48,17 @@ const MEDIUM_SUGGESTIONS = ["social", "paid_social", "cpc", "organic", "messagin
 
 type CampaignsViewProps = {
   campaigns?: CampaignRow[];
+  listing?: {
+    options: CampaignOption[] | undefined;
+    tab: CampaignTab;
+    setTab: (tab: CampaignTab) => void;
+    query: string;
+    setQuery: (query: string) => void;
+    page: number;
+    pageCount: number;
+    setPage: (page: number) => void;
+  };
+  editor?: ComponentType<CampaignEditorProps & { refreshCampaign: boolean }>;
   links?: LinkRow[];
   coupons?: CouponRow[];
   today: string;
@@ -96,24 +105,28 @@ const STATUS_COPY: Record<CampaignStatus, (name: string) => { title: string; des
   draft: (name) => ({ title: name, description: "", done: name }),
 };
 
-export function CampaignsView({ campaigns, links, coupons, today, linksHref, couponHref, actions, history, spend }: CampaignsViewProps) {
+export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEditor, links, coupons, today, linksHref, couponHref, actions, history, spend }: CampaignsViewProps) {
   const access = useMarketingAccess();
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingCampaigns">>(show);
   const sheet = useEditorSheet<{ campaign?: CampaignRow; preset?: (typeof PRESETS)[number] }>();
   const editing = sheet.editing;
-  const [tab, setTab] = useState<Tab>("all");
-  const [query, setQuery] = useState("");
-
-  const all = campaigns ?? [];
+  const [localTab, setLocalTab] = useState<CampaignTab>("all");
+  const [localQuery, setLocalQuery] = useState("");
+  const { tab, setTab, query, setQuery } = listing ?? { tab: localTab, setTab: setLocalTab, query: localQuery, setQuery: setLocalQuery };
+  const options = listing ? listing.options : campaigns;
+  const all = options ?? [];
+  const liveCampaign = campaigns?.find((row) => row._id === editing?.campaign?._id);
+  const selectedCampaign = liveCampaign ?? editing?.campaign;
+  const selectedOption = all.find((row) => row._id === selectedCampaign?._id);
   const visible = all.filter((campaign) => campaign.status !== "archived");
   const archivedCount = all.length - visible.length;
   const q = query.trim().toLowerCase();
-  const shown = all
+  const shown = listing ? campaigns ?? [] : (campaigns ?? [])
     .filter((campaign) => (tab === "all" ? campaign.status !== "archived" : campaign.status === tab))
     .filter((campaign) => !q || [campaign.name, campaign.source, campaign.medium, campaign.notes ?? ""].join(" ").toLowerCase().includes(q));
   const count = (status: CampaignStatus) => all.filter((campaign) => campaign.status === status).length;
-  const tabs: { value: Tab; label: string; n: number }[] = [
+  const tabs: { value: CampaignTab; label: string; n: number }[] = [
     { value: "all", label: "All", n: visible.length },
     { value: "active", label: "Active", n: count("active") },
     { value: "draft", label: "Draft", n: count("draft") },
@@ -170,7 +183,7 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
         </div>
         <NoticeBar notice={notice} onClose={clear} />
 
-        {campaigns === undefined ? (
+        {options === undefined ? (
           <SkeletonRows label="Loading campaigns" />
         ) : all.length === 0 ? (
           <FirstRunEmpty
@@ -205,7 +218,9 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
               />
             </div>
             <div id="marketing-campaigns-list">
-              {shown.length === 0 ? (
+              {campaigns === undefined ? (
+                <SkeletonRows label="Loading campaigns" />
+              ) : shown.length === 0 ? (
                 <EmptyState
                   action={
                     <Button
@@ -324,6 +339,13 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
                 </>
               )}
             </div>
+            {listing && listing.pageCount > 1 ? (
+              <nav aria-label="Campaign pages" className="flex flex-wrap items-center justify-end gap-3 border-t border-border px-4 py-3">
+                <span className="text-sm text-muted-foreground" aria-live="polite">Page {listing.page + 1} of {listing.pageCount}</span>
+                <Button type="button" size="sm" variant="outline" disabled={listing.page === 0} onClick={() => listing.setPage(listing.page - 1)}>Previous</Button>
+                <Button type="button" size="sm" variant="outline" disabled={listing.page + 1 === listing.pageCount} onClick={() => listing.setPage(listing.page + 1)}>Next</Button>
+              </nav>
+            ) : null}
             <p className="border-t border-border px-4 py-3 text-xs leading-relaxed text-muted-foreground">
               Opens count visits to the campaign’s short links, bots excluded. Paid bookings, spend and ROAS are on the Dashboard.
             </p>
@@ -337,17 +359,18 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
         header={
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <SheetTitle>{editing?.campaign ? editing.campaign.name : "New campaign"}</SheetTitle>
-              {editing?.campaign ? <StatusBadge {...CAMPAIGN_STATUS[editing.campaign.status]} /> : null}
+              <SheetTitle>{selectedOption?.name ?? selectedCampaign?.name ?? "New campaign"}</SheetTitle>
+              {selectedCampaign ? <StatusBadge {...CAMPAIGN_STATUS[selectedOption?.status ?? selectedCampaign.status]} /> : null}
             </div>
             <SheetDescription>{editing?.campaign ? "Edit the details, or change its status." : "It starts as a draft."}</SheetDescription>
           </>
         }
       >
         {editing ? (
-          <CampaignEditor
+          <Editor
             key={editing.key}
-            campaign={editing.campaign ? (all.find((item) => item._id === editing.campaign!._id) ?? editing.campaign) : undefined}
+            campaign={selectedCampaign}
+            refreshCampaign={selectedCampaign !== undefined && liveCampaign === undefined}
             preset={editing.preset}
             campaigns={all}
             links={links}
@@ -375,7 +398,27 @@ export function CampaignsView({ campaigns, links, coupons, today, linksHref, cou
 
 type Form = { name: string; source: string; medium: string; startsOn: string; endsOn: string; budget: string; notes: string };
 
-function CampaignEditor({
+type CampaignEditorProps = {
+  campaign?: CampaignRow;
+  preset?: (typeof PRESETS)[number];
+  campaigns: CampaignOption[];
+  links?: LinkRow[];
+  coupons?: CouponRow[];
+  today: string;
+  linksHref: string;
+  couponHref: (couponId: Id<"coupons">) => string;
+  pending: boolean;
+  actions: CampaignsViewProps["actions"];
+  history?: CampaignsViewProps["history"];
+  spend?: CampaignsViewProps["spend"];
+  onStatus: (campaign: CampaignRow, status: CampaignStatus, destructive?: boolean) => Promise<void>;
+  onDone: (message: string) => void;
+  onCancel: () => void;
+  /** Reports unsaved edits, so the sheet can ask before closing. */
+  onDirtyChange?: (dirty: boolean) => void;
+};
+
+export function CampaignEditor({
   campaign,
   preset,
   campaigns,
@@ -392,25 +435,7 @@ function CampaignEditor({
   onDone,
   onCancel,
   onDirtyChange,
-}: {
-  campaign?: CampaignRow;
-  preset?: (typeof PRESETS)[number];
-  campaigns: CampaignRow[];
-  links?: LinkRow[];
-  coupons?: CouponRow[];
-  today: string;
-  linksHref: string;
-  couponHref: (couponId: Id<"coupons">) => string;
-  pending: boolean;
-  actions: CampaignsViewProps["actions"];
-  history?: CampaignsViewProps["history"];
-  spend?: CampaignsViewProps["spend"];
-  onStatus: (campaign: CampaignRow, status: CampaignStatus, destructive?: boolean) => Promise<void>;
-  onDone: (message: string) => void;
-  onCancel: () => void;
-  /** Reports unsaved edits, so the sheet can ask before closing. */
-  onDirtyChange?: (dirty: boolean) => void;
-}) {
+}: CampaignEditorProps) {
   const access = useMarketingAccess();
   const canEdit = canEditMarketing(access, campaign);
   const id = useId();
@@ -579,7 +604,9 @@ function CampaignEditor({
                 Links & QR
               </Link>
             </div>
-            {campaignLinks.length ? (
+            {links === undefined ? (
+              <p role="status" className="text-sm text-muted-foreground">Loading links…</p>
+            ) : campaignLinks.length ? (
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {campaignLinks.map((link) => (
                   <li key={link._id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
@@ -598,7 +625,9 @@ function CampaignEditor({
             <h3 id={`${id}-coupons`} className="text-base font-semibold text-foreground">
               Coupons <span className="text-sm font-normal tabular-nums text-muted-foreground">{countLabel(campaign.couponCount, campaign.countsCapped)}</span>
             </h3>
-            {campaignCoupons.length ? (
+            {coupons === undefined ? (
+              <p role="status" className="text-sm text-muted-foreground">Loading coupons…</p>
+            ) : campaignCoupons.length ? (
               <ul className="divide-y divide-border rounded-lg border border-border">
                 {campaignCoupons.map((coupon) => {
                   const state = couponState(coupon, today);

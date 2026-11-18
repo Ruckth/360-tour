@@ -7,7 +7,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { requireAdmin } from '../../auth/model';
 import { demoCode } from '../../shared/codes';
 import { ensureLinkedOrder } from '../../pos/model';
-import { assertValidEmail, assertValidIsoDate } from '../../shared/validation';
+import { assertValidEmail } from '../../shared/validation';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/time';
 import { patternForDate, patternsForRange } from './rosterHistory';
@@ -152,26 +152,20 @@ export async function openStarts(
 	return slots;
 }
 
-export async function findOpenSlots(
+export async function activeServiceStaff(
 		ctx: ReadCtx,
-		input: { serviceId: Id<'services'>; date: string; staffId?: Id<'staff'> }
-): Promise<Slot[]> {
-	assertValidIsoDate(input.date, 'Date');
-	const service = await ctx.db.get(input.serviceId);
-	if (!service || service.status !== 'active') return [];
-	const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
-		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active' && (!input.staffId || person._id === input.staffId));
-	return await openStarts(ctx, staff, input.date, (service.durationMin + service.bufferMin) * MINUTE);
+		service: Doc<'services'>,
+		staffId?: Id<'staff'>
+): Promise<Doc<'staff'>[]> {
+	const ids = staffId ? (service.staffIds.includes(staffId) ? [staffId] : []) : service.staffIds;
+	return (await Promise.all(ids.map((id) => ctx.db.get(id))))
+		.filter((person): person is Doc<'staff'> => person?.status === 'active');
 }
 
-/** Whether anyone active who offers the service has shifts on this date. No open slots then means "fully booked", not "not scheduled yet". */
-export async function serviceRostered(ctx: ReadCtx, serviceId: Id<'services'>, date: string): Promise<boolean> {
-	const service = await ctx.db.get(serviceId);
-	if (!service) return false;
-	for (const id of service.staffIds) {
-		const person = await ctx.db.get(id);
-		if (!person || person.status !== 'active') continue;
-		const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', id).eq('date', date)).unique();
+/** No open slots means fully booked only if an eligible person has a shift on this date. */
+export async function serviceRostered(ctx: ReadCtx, staff: Doc<'staff'>[], date: string): Promise<boolean> {
+	for (const person of staff) {
+		const override = await ctx.db.query('staffDays').withIndex('by_staff_date', (q) => q.eq('staffId', person._id).eq('date', date)).unique();
 		if (effectivePlan((await patternForDate(ctx, person, date)).pattern, date, override).shifts.length) return true;
 	}
 	return false;
@@ -228,8 +222,8 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	if (!historical && service.status !== 'active') throw new Error('Service unavailable');
 	if (historical && !input.staffId) throw new Error('Choose the staff member who actually performed the historical service');
 	const [dayStart, dayEnd] = localDayRange(resortLocalParts(input.start).date);
-	const candidates = (await Promise.all((historical && input.staffId ? [input.staffId] : service.staffIds).map((id) => ctx.db.get(id))))
-		.filter((person): person is Doc<'staff'> => !!person && (historical || person.status === 'active') && (!input.staffId || person._id === input.staffId));
+	const historicalStaff = historical && input.staffId ? await ctx.db.get(input.staffId) : null;
+	const candidates = historical ? (historicalStaff ? [historicalStaff] : []) : await activeServiceStaff(ctx, service, input.staffId);
 	if (input.staffId && !candidates.length) throw new Error('Staff member is not available for this service');
 	const free: Array<{ staff: Doc<'staff'>; count: number }> = [];
 	for (const person of candidates) {

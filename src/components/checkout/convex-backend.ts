@@ -25,7 +25,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const frequent = useQuery(api.pos.catalog.recentCatalogRanking, {});
     return useMemo(() => items === undefined || frequent === undefined ? undefined : { ...items, frequent }, [items, frequent]);
   },
-  useOrder: (orderId) => useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP),
+  useOrder: (orderId, view) => useQuery(api.pos.orders.getOrder, orderId ? { orderId, ...(view ? { view } : {}) } : SKIP),
   useOrderHistory: (orderId) => usePaginatedQuery(api.pos.orders.orderHistory, { orderId }, { initialNumItems: 20 }),
   useOpenOrders: () => usePaginatedQuery(api.pos.orders.listOpenOrders, {}, { initialNumItems: 20 }),
   useOrders: (filter) => usePaginatedQuery(api.pos.orders.listOrders, { filter }, { initialNumItems: 20 }),

@@ -215,6 +215,11 @@ const contracts = [
   ],
   [
     "catalog/publicProperties",
+    "listSlugs",
+    "query"
+  ],
+  [
+    "catalog/publicProperties",
     "getBySlug",
     "query"
   ],
