@@ -1,14 +1,15 @@
 import type { FunctionArgs } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from 'convex/shared/marketingTypes';
+import type { CampaignOption, CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from 'convex/shared/marketingTypes';
 import type { OfferResult } from "convex/shared/offers";
 
 // The views take data and callbacks as props; MarketingScreens wires them to Convex.
 
-export type { CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck, OfferResult };
+export type { CampaignOption, CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck, OfferResult };
 
 export type CampaignStatus = Doc<"marketingCampaigns">["status"];
+export type CampaignTab = "all" | CampaignStatus;
 export type LinkStatus = Doc<"marketingLinks">["status"];
 export type CouponStatus = Doc<"coupons">["status"];
 export type LinkDestination = Doc<"marketingLinks">["destination"];

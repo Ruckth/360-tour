@@ -54,7 +54,7 @@ import {
   thb,
   usageWithHeld,
 } from "./marketing-format";
-import type { CampaignRow, CouponDetail, CouponRow, CouponStatus, MarketingActions, MarketingProperty } from "./types";
+import type { CampaignOption, CouponDetail, CouponRow, CouponStatus, MarketingActions, MarketingProperty } from "./types";
 
 const NO_CAMPAIGN = "none";
 
@@ -63,7 +63,7 @@ type CouponEditorProps = {
   detail?: CouponDetail | null;
   isNew: boolean;
   coupons?: CouponRow[];
-  campaigns?: CampaignRow[];
+  campaigns?: CampaignOption[];
   properties?: MarketingProperty[];
   today: string;
   listHref: string;
@@ -195,7 +195,7 @@ function CouponBuilder({
 }: {
   detail?: CouponDetail;
   coupons: CouponRow[];
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   properties: MarketingProperty[];
   today: string;
   listHref: string;

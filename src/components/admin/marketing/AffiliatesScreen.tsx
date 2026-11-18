@@ -21,7 +21,7 @@ export function AffiliatesScreen() {
   const [state, setState] = useState("all");
   const [opened, setOpened] = useState<CreditRow | null>(null);
   const partners = useQuery(api.marketing.affiliates.listAffiliates, {});
-  const campaigns = useQuery(api.marketing.queries.listCampaigns, {});
+  const campaigns = useQuery(api.marketing.queries.listCampaignOptions, {});
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
   const properties = useQuery(api.marketing.queries.catalog, {});
   const credits = useQuery(api.marketing.affiliates.listCredits, {

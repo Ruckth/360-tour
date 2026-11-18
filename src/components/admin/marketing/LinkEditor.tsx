@@ -29,7 +29,7 @@ import {
   shortUrl,
   slugCheckMessage,
 } from "./marketing-format";
-import type { CampaignRow, CouponRow, LinkDestination, LinkEntry, LinkRow, MarketingActions, MarketingProperty, SlugCheck } from "./types";
+import type { CampaignOption, CouponRow, LinkDestination, LinkEntry, LinkRow, MarketingActions, MarketingProperty, SlugCheck } from "./types";
 
 /** Starting values for a new link: a quick-start preset or a duplicate. */
 export type LinkPreset = { name?: string; slug?: string; placement?: string; from?: LinkRow };
@@ -131,7 +131,7 @@ export function LinkEditor({
   link?: LinkRow;
   preset?: LinkPreset;
   links: LinkRow[];
-  campaigns: CampaignRow[];
+  campaigns: CampaignOption[];
   coupons: CouponRow[];
   properties: MarketingProperty[];
   origin: string;

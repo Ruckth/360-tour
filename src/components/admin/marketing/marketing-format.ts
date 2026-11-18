@@ -1,3 +1,4 @@
+import { CAMPAIGN_PAGE_SIZE } from "convex/shared/marketingTypes";
 import type { CouponProblem } from "convex/shared/offers";
 import { staffDateTime } from "@/lib/staff-time";
 import { ConvexError } from "convex/values";
@@ -6,7 +7,9 @@ import { errorText } from "@/lib/staff-bookings";
 import { formatMoney } from "../labels";
 import type { StatusMeta } from "../status-tones";
 import type {
+  CampaignOption,
   CampaignStatus,
+  CampaignTab,
   CouponBenefit,
   CouponRow,
   CouponScope,
@@ -24,6 +27,18 @@ import type {
 // Pure labels and summaries for the marketing screens. No React, so they're unit-tested.
 
 // Dates are YYYY-MM-DD strings in Asia/Bangkok, money is integer satang, as in the offer engine.
+
+export function campaignPage(options: readonly (CampaignOption & { searchText?: string })[], tab: CampaignTab, query: string, requestedPage: number) {
+  const search = query.trim().toLowerCase();
+  const matching = options.filter((option) =>
+    (tab === "all" ? option.status !== "archived" : option.status === tab) &&
+    (!search || (option.searchText ?? option.name.toLowerCase()).includes(search)),
+  );
+  const pageCount = Math.ceil(matching.length / CAMPAIGN_PAGE_SIZE);
+  const page = Math.max(0, Math.min(requestedPage, pageCount - 1));
+  const offset = page * CAMPAIGN_PAGE_SIZE;
+  return { page, pageCount, campaignIds: matching.slice(offset, offset + CAMPAIGN_PAGE_SIZE).map((option) => option._id) };
+}
 
 export const thb = (amount: number) => formatMoney(amount, "THB");
 

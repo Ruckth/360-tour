@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { marketingErrorText } from "./marketing-format";
-import type { CampaignRow, MarketingActions } from "./types";
+import type { CampaignOption, MarketingActions } from "./types";
 
 const NEW_CAMPAIGN = "__new";
 
@@ -29,7 +29,7 @@ export function CampaignPicker({
   id: string;
   value: string;
   onChange: (campaignId: string) => void;
-  campaigns: readonly Pick<CampaignRow, "_id" | "name" | "status">[];
+  campaigns: readonly CampaignOption[];
   /** Left out when the role can't create campaigns: the option isn't offered. */
   onCreate?: MarketingActions["saveCampaign"];
   /** What a campaign made here reports as, and its suggested name. */
@@ -44,7 +44,7 @@ export function CampaignPicker({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // A campaign made here is listed at once, before the campaign list catches up with it.
-  const [made, setMade] = useState<Pick<CampaignRow, "_id" | "name" | "status">[]>([]);
+  const [made, setMade] = useState<CampaignOption[]>([]);
   const all = [...campaigns, ...made.filter((campaign) => !campaigns.some((other) => other._id === campaign._id))];
   const live = all.filter((campaign) => campaign.status !== "archived" || campaign._id === value);
 

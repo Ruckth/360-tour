@@ -12,7 +12,7 @@ import { EmptyState, SearchBox, SkeletonRows } from "../admin-bulk";
 import { useMarketingAccess } from "./MarketingAccess";
 import { FirstRunEmpty, UsageBar, countTabs } from "./MarketingBits";
 import { COUPON_STATE, benefitLabel, couponState, formatRange, scopeLabel, thb, usageLabel, type CouponState } from "./marketing-format";
-import type { CampaignRow, CouponRow, MarketingProperty } from "./types";
+import type { CampaignOption, CouponRow, MarketingProperty } from "./types";
 
 type Tab = "all" | CouponState;
 const TAB_ORDER: CouponState[] = ["active", "scheduled", "sold_out", "budget_used", "expired", "paused", "draft", "archived"];
@@ -21,7 +21,7 @@ const NONE = "none";
 
 type CouponsViewProps = {
   coupons?: CouponRow[];
-  campaigns?: CampaignRow[];
+  campaigns?: CampaignOption[];
   properties?: MarketingProperty[];
   today: string;
   couponHref: (couponId: Id<"coupons">) => string;
