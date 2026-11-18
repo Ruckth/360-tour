@@ -62,8 +62,8 @@ export function HotspotEditorButton({ room, rooms }: { room: Room; rooms: Room[]
             <DialogTitle>Hotspots · {room.name}</DialogTitle>
             {editor === "failed" ? (
               <>
-                <DialogDescription role="alert">The visual hotspot editor could not be loaded.</DialogDescription>
-                <Button className="justify-self-start" size="sm" onClick={() => void loadEditor()}>Try again</Button>
+                <DialogDescription role="alert">The visual hotspot editor could not be loaded. Reloading the page may discard unsaved room edits.</DialogDescription>
+                <Button className="justify-self-start" size="sm" onClick={() => window.location.reload()}>Reload page</Button>
               </>
             ) : (
               <DialogDescription className="flex items-center gap-2" role="status">

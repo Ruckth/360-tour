@@ -4,7 +4,7 @@ import { signedInBackend } from "./backend";
 import { expect, test } from "./fixtures";
 
 test("the visual editor opens from the keyboard, places and moves a hotspot, and reloads the saved marker", async ({ page }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(90_000);
   const owner = await signedInBackend(page);
   const propertyId = await owner.mutation(api.catalog.adminProperties.create, { name: "Visual hotspot test" });
   try {
@@ -25,6 +25,20 @@ test("the visual editor opens from the keyboard, places and moves a hotspot, and
     await page.getByRole("tab", { name: "360 rooms" }).click();
     const trigger = page.getByRole("listitem").filter({ has: page.getByLabel(/Room name · living/) })
       .getByRole("button", { name: "Edit hotspots" });
+    // The production chunk loader remembers a failed import for the life of this document.
+    // Exercise that failure after the room UI is ready, then recover with a fresh document.
+    const chunks = "**/_next/static/chunks/*.js";
+    await trigger.waitFor();
+    await page.route(chunks, (route) => route.abort("failed"));
+    await trigger.click();
+    const failure = page.getByRole("dialog").filter({ has: page.getByRole("alert") });
+    await expect(failure).toContainText("unsaved room edits");
+    await page.unroute(chunks);
+    await Promise.all([
+      page.waitForEvent("load"),
+      failure.getByRole("button", { name: "Reload page" }).click(),
+    ]);
+    await page.getByRole("tab", { name: "360 rooms" }).click();
     await trigger.focus();
     await page.keyboard.press("Enter");
 
