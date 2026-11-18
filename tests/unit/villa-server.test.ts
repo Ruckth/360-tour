@@ -7,6 +7,7 @@ const { query } = vi.hoisted(() => ({ query: vi.fn() }));
 vi.mock("convex/browser", () => ({ ConvexHttpClient: class { query = query; } }));
 // The loader's process-level outage fallback is exercised without Next's data cache.
 vi.mock("next/cache", () => ({ unstable_cache: (callback: unknown) => callback }));
+vi.mock("next-intl/server", () => ({ getLocale: async () => "en", getTranslations: async () => (key: string) => key }));
 vi.mock("@/components/rooms/RoomDetailClient", () => ({ RoomDetailClient: () => null }));
 
 const detail = {
@@ -43,6 +44,15 @@ describe("server villa reads", () => {
     expect(query.mock.calls.map(([fn]) => getFunctionName(fn))).toEqual([
       "catalog/publicProperties:getBySlug", "catalog/publicProperties:getBySlug",
     ]);
+  });
+
+  it("uses the same direct detail in room metadata and content", async () => {
+    const { default: RoomPage, generateMetadata } = await import("@/app/[locale]/rooms/[id]/page");
+    query.mockResolvedValue(detail);
+    const props = { params: Promise.resolve({ id: "extra-99" }) };
+    expect(await generateMetadata(props)).toMatchObject({ title: expect.stringContaining("Villa 101"), description: "Description" });
+    expect((await RoomPage(props)).props.children.props).toMatchObject({ property: { id: "extra-99", name: "Villa 101" } });
+    expect(query.mock.calls.every(([fn]) => getFunctionName(fn) === "catalog/publicProperties:getBySlug")).toBe(true);
   });
 
   it("serves a warm villa through an outage after many misses and raises an error for cold slugs", async () => {

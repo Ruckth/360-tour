@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { act, createElement, useEffect } from "react";
+import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { BookingFunnel } from "@/components/booking/BookingFunnel";
+import BookingPage from "@/app/[locale]/booking/page";
 
 // The booking funnel in live mode with its panels stubbed: what reaches CouponField and bookings.create.
 const fixture = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ const fixture = vi.hoisted(() => ({
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => fixture.t }));
+vi.mock("next-intl/server", () => ({ getLocale: async () => "en" }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 vi.mock("next/link", () => ({ default: "a" }));
 
@@ -68,10 +69,15 @@ vi.mock("@/components/booking/BookingPanels", () => ({
 let root: Root;
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement;
 
+async function openBookingLink(initialProperty: string, coupon = "") {
+  const booking = await BookingPage({
+    searchParams: Promise.resolve({ unit: initialProperty, checkin: "2030-01-10", checkout: "2030-01-12", guests: "2", coupon }),
+  });
+  await act(async () => root.render(booking));
+}
+
 async function book(initialCoupon = "", initialProperty = "pool-villa") {
-  await act(async () => root.render(createElement(BookingFunnel, {
-    initialProperty, initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-12", initialGuests: "2", initialCoupon,
-  })));
+  await openBookingLink(initialProperty, initialCoupon);
   for (let step = 0; step < 3; step++) await act(async () => button("continue").click());
   await act(async () => button("continueToPay").click());
 }
@@ -128,9 +134,7 @@ describe("direct villa booking links", () => {
   });
 
   it("offers a fresh choice when the linked villa is unavailable", async () => {
-      await act(async () => root.render(createElement(BookingFunnel, {
-      initialProperty: "archived-villa", initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-12",
-    })));
+    await openBookingLink("archived-villa");
     expect(document.querySelector('[role="alert"]')?.textContent).toBe("liveBookingUnavailable");
     expect(document.querySelector("a")?.getAttribute("href")).toBe("/booking");
     expect(button("continue")).toBeUndefined();
