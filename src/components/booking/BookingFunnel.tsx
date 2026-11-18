@@ -19,7 +19,7 @@ import {
 import { BookingStepNav } from "@/components/booking/BookingStepNav";
 import { VillaSelector } from "@/components/booking/VillaSelector";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button, ButtonLink } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
   bookingSteps,
@@ -84,16 +84,8 @@ export function BookingFunnel(props: FunnelProps) {
   const initialProperty = props.initialProperty;
   const rows = useQuery(api.catalog.properties.list, initialProperty ? { includeSlug: initialProperty } : {});
   const t = useTranslations("Booking");
-  const nav = useTranslations("Nav");
-  const locale = useLocale();
   if (rows === undefined) return <div role="status" className="p-24">{t("loadingInventory")}</div>;
   if (rows.length === 0) return <div role="alert" className="p-24">{t("liveBookingUnavailable")}</div>;
-  if (initialProperty && !rows.some(row => row.slug === initialProperty)) {
-    return <div className="mx-auto grid max-w-md justify-items-start gap-4 px-5 py-24">
-      <p role="alert">{t("liveBookingUnavailable")}</p>
-      <ButtonLink href={localizeHref("/booking", locale)}>{nav("book")}</ButtonLink>
-    </div>;
-  }
   return <LiveBookingFunnel key={initialProperty} {...props} rows={rows} />;
 }
 function LiveBookingFunnel({

@@ -137,13 +137,14 @@ function HotelBookings() {
   // Below `sm` the villa filter moves into ⋯ and search folds to an icon.
   const phone = useIsMobile(640);
 
-  const properties = useQuery(api.bookings.admin.listCalendarProperties, {});
-  const selectedVilla = properties?.find((property) => property._id === storedVilla);
+  const picker = useQuery(api.bookings.admin.listCalendarProperties, storedVilla === "all" ? "skip" : {});
+  const selectedVilla = picker?.find((property) => property._id === storedVilla);
   const villa = selectedVilla?._id ?? "all";
   // Wait for the picker to validate a remembered selection before reading its calendar.
   const rangeArgs = selectedVilla ? { ...range, propertyId: selectedVilla._id } : range;
   const data = useQuery(api.bookings.admin.listForAdmin,
-    storedVilla !== "all" && properties === undefined ? "skip" : rangeArgs);
+    storedVilla !== "all" && picker === undefined ? "skip" : rangeArgs);
+  const properties = storedVilla === "all" ? data?.properties : picker;
   const profile = useQuery(api.settings.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;

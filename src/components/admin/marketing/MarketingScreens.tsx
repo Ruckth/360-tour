@@ -123,7 +123,7 @@ export function MarketingLinksScreen() {
 
 function LiveCampaignEditor({ refreshCampaign, ...props }: ComponentProps<typeof CampaignEditor> & { refreshCampaign: boolean }) {
   const campaignId = props.campaign?._id;
-  const rows = useQuery(api.marketing.queries.listCampaignRows, campaignId && refreshCampaign ? { campaignIds: [campaignId] } : "skip");
+  const rows = useQuery(api.marketing.queries.listCampaigns, campaignId && refreshCampaign ? { campaignIds: [campaignId] } : "skip");
   // These previews are only used by a saved campaign's editor.
   const links = useQuery(api.marketing.queries.listLinks, campaignId ? { campaignId } : "skip");
   const coupons = useQuery(api.marketing.queries.listCampaignCoupons, campaignId ? { campaignId } : "skip");
@@ -136,7 +136,7 @@ export function MarketingCampaignsScreen() {
   const [requestedPage, setPage] = useState(0);
   const options = useQuery(api.marketing.queries.listCampaignOptions, { projection: "search" });
   const { page, pageCount, campaignIds } = campaignPage(options ?? [], tab, query, requestedPage);
-  const campaigns = useQuery(api.marketing.queries.listCampaignRows, campaignIds.length ? { campaignIds } : "skip");
+  const campaigns = useQuery(api.marketing.queries.listCampaigns, campaignIds.length ? { campaignIds } : "skip");
   return (
     <CampaignsView
       campaigns={campaignIds.length ? campaigns : []}

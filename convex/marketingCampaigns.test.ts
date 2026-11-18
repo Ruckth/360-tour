@@ -5,7 +5,7 @@ import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
 import { ReadBudget } from './lib/readBudget';
-import { listCampaignOptions, listCampaignRows } from './marketing/queries';
+import { listCampaignOptions, listCampaigns } from './marketing/queries';
 import schema from './schema';
 import { CAMPAIGN_PAGE_SIZE } from './shared/marketingTypes';
 
@@ -88,8 +88,8 @@ it('enriches only each requested page, preserving exact legacy counts, opens and
 	});
 	const firstPage = campaignIds.slice(0, CAMPAIGN_PAGE_SIZE).reverse();
 	const secondPage = campaignIds.slice(CAMPAIGN_PAGE_SIZE);
-	const endpoint = api.marketing.queries.listCampaignRows;
-	const read: (ctx: QueryCtx, args: FunctionArgs<typeof endpoint>) => Promise<FunctionReturnType<typeof endpoint>> = Reflect.get(listCampaignRows, '_handler');
+	const endpoint = api.marketing.queries.listCampaigns;
+	const read: (ctx: QueryCtx, args: FunctionArgs<typeof endpoint>) => Promise<FunctionReturnType<typeof endpoint>> = Reflect.get(listCampaigns, '_handler');
 	const rows = await viewer.run(async ctx => {
 		const queries = vi.spyOn(ctx.db, 'query');
 		const documents = vi.spyOn(ReadBudget.prototype, 'document');

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useEffect } from "react";
+import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import BookingPage from "@/app/[locale]/booking/page";
@@ -49,7 +49,10 @@ vi.mock("@/components/booking/CouponField", () => ({
     return null;
   },
 }));
-vi.mock("@/components/booking/VillaSelector", () => ({ VillaSelector: () => null }));
+vi.mock("@/components/booking/VillaSelector", () => ({
+  VillaSelector: ({ properties, onSelect }: ComponentProps<typeof import("@/components/booking/VillaSelector").VillaSelector>) =>
+    properties.map(property => createElement("button", { key: property.slug, onClick: () => onSelect(property) }, property.slug)),
+}));
 vi.mock("@/components/booking/BookingPriceSummary", () => ({ BookingPriceSummary: () => null, PriceLines: () => null }));
 vi.mock("@/components/booking/BookingStepNav", () => ({ BookingStepNav: () => null }));
 vi.mock("@/components/booking/BookingPanels", () => ({
@@ -133,11 +136,24 @@ describe("direct villa booking links", () => {
     expect(fixture.createBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ propertySlug: "villa-101" }));
   });
 
-  it("offers a fresh choice when the linked villa is unavailable", async () => {
+  it("keeps the guest details and selected villa when the initially linked villa is retired mid-booking", async () => {
+    await openBookingLink("villa-101");
+    await act(async () => button("pool-villa").click());
+    for (let step = 0; step < 3; step++) await act(async () => button("continue").click());
+    const remaining = fixture.queryInventory({});
+    await fixture.queryInventory.withImplementation(() => remaining, async () => {
+      await openBookingLink("villa-101");
+      await act(async () => button("continueToPay").click());
+    });
+    expect(fixture.createBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      propertySlug: "pool-villa", guestName: "Anna Lee", guestEmail: "anna@example.com",
+    }));
+  });
+
+  it("keeps active inventory selectable for retired villa links", async () => {
     await openBookingLink("archived-villa");
-    expect(document.querySelector('[role="alert"]')?.textContent).toBe("liveBookingUnavailable");
-    expect(document.querySelector("a")?.getAttribute("href")).toBe("/booking");
-    expect(button("continue")).toBeUndefined();
+    expect(fixture.queryInventory).toHaveBeenCalledWith({ includeSlug: "archived-villa" });
+    expect(button("continue")).toBeDefined();
     expect(fixture.createBooking).not.toHaveBeenCalled();
   });
 });

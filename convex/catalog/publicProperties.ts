@@ -1,4 +1,4 @@
-import { publicPropertiesListResult, publicPropertiesGetBySlugResult, publicPropertiesFeaturedReviewsResult } from './validators';
+import { publicVillaSlugsPage, publicPropertiesListResult, publicPropertiesGetBySlugResult, publicPropertiesFeaturedReviewsResult } from './validators';
 import { type QueryCtx, publicQuery } from '../auth/model';
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
@@ -81,7 +81,7 @@ export const list = publicQuery({
 
 /** All active villa paths can be enumerated without reading review summaries. */
 export const listSlugs = publicQuery({
-	returns: v.object({ page: v.array(v.string()), continueCursor: v.string(), isDone: v.boolean() }),
+	returns: publicVillaSlugsPage,
 	reason: "Anonymous sitemap inventory; only active villa slugs are returned.",
 	args: { paginationOpts: paginationOptsValidator },
 	handler: async (ctx, { paginationOpts }) => {

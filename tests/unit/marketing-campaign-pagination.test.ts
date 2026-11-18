@@ -46,7 +46,7 @@ it("pages campaign metrics while searching and counting every campaign in the di
     const name = getFunctionName(ref);
     switch (name) {
       case "marketing/queries:listCampaignOptions": return options;
-      case "marketing/queries:listCampaignRows": return rowRequests(args.campaignIds ?? []);
+      case "marketing/queries:listCampaigns": return rowRequests(args.campaignIds ?? []);
       case "marketing/queries:listLinks":
       case "marketing/queries:listCampaignCoupons": return previewRequests(name, args.campaignId);
       case "marketing/report:listSpend": return [];

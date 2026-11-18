@@ -85,6 +85,35 @@ describe("server villa reads", () => {
     expect(await getVilla("extra-99", "en")).toBeNull();
   });
 
+  it("remembers a direct miss before a stale catalog is first read", async () => {
+    query.mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ hasProperties: true, villas: [detail.villa] })
+      .mockRejectedValue(new Error("offline"));
+    expect(await villas.getVilla("extra-99", "en")).toBeNull();
+    await villas.getVillaCatalog("en");
+    expect(await villas.getVilla("extra-99", "en")).toBeNull();
+  });
+
+  it("gives each sitemap page its own deadline and retains only a complete sitemap", async () => {
+    vi.useFakeTimers();
+    try {
+      query.mockImplementation(async (_ref, { paginationOpts }) => {
+        const index = Number(paginationOpts.cursor ?? 0);
+        await new Promise(resolve => setTimeout(resolve, 900));
+        return { page: [String(index)], continueCursor: String(index + 1), isDone: index === 3 };
+      });
+      const slugs = villas.getVillaSlugs();
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(await slugs).toEqual(["0", "1", "2", "3"]);
+      query.mockRejectedValueOnce(new Error("offline"));
+      expect(await villas.getVillaSlugs()).toEqual(["0", "1", "2", "3"]);
+      query.mockResolvedValueOnce(detail);
+      expect(await villas.getVilla("extra-99", "en")).toMatchObject({ villa: { id: "extra-99" } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("evicts a warm detail when its slug is no longer active", async () => {
     const { getVilla } = villas;
     query.mockResolvedValueOnce(detail).mockResolvedValueOnce(null).mockRejectedValue(new Error("offline"));

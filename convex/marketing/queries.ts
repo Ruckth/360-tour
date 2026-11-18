@@ -1,3 +1,4 @@
+import { marketingTables } from './tables';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { marketingQuery } from '../auth/model';
@@ -35,21 +36,44 @@ async function readCampaignRange<T>(ctx: object, range: AsyncIterable<T>, limit:
 	return rows;
 }
 
-/** Legacy table response for clients that have not moved to the directory and page queries. */
 export const listCampaigns = marketingQuery({
-	permission: 'view',
-	args: { status: v.optional(campaignStatus) },
-	handler: async (ctx, args): Promise<CampaignRow[]> => {
-		const campaigns = await ctx.db.query('marketingCampaigns').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(CAMPAIGN_WINDOW);
-		return Promise.all(campaigns.map(async campaign => {
-			const links = await ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaign._id)).take(CHILD_CAP);
-			const coupons = await ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaign._id)).take(CHILD_CAP);
-			return campaignWithCounts(campaign, links, coupons);
-		}));
-	}
+  permission: 'view',
+  args: { status: v.optional(campaignStatus), campaignIds: v.optional(v.array(v.id('marketingCampaigns'))) },
+  returns: v.array(v.object({
+    ...marketingTables.marketingCampaigns.validator.fields,
+    _id: v.id('marketingCampaigns'), _creationTime: v.number(),
+    linkCount: v.number(), couponCount: v.number(), opens: v.number(), countsCapped: v.boolean()
+  })),
+  handler: async (ctx, { campaignIds, status }): Promise<CampaignRow[]> => {
+    // A displayed page preserves the requested order and bounds work across all children.
+    if (campaignIds) {
+      if (campaignIds.length > CAMPAIGN_PAGE_SIZE) {
+        throw new ConvexError({ code: 'campaign_page_size', message: `Choose up to ${CAMPAIGN_PAGE_SIZE} campaigns per page.` });
+      }
+      const budget = readBudget(ctx);
+      const rows: CampaignRow[] = [];
+      for (const campaignId of new Set(campaignIds)) {
+        if (!budget.range()) throw new ReadBudgetExceeded();
+        const campaign = await ctx.db.get(campaignId);
+        if (!campaign || (status && campaign.status !== status)) continue;
+        if (!budget.document(campaign)) throw new ReadBudgetExceeded();
+        const links = await readCampaignRange(ctx, ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaignId)), CHILD_CAP);
+        const coupons = await readCampaignRange(ctx, ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaignId)), CHILD_CAP);
+        rows.push(campaignWithCounts(campaign, links, coupons));
+      }
+      return rows;
+    }
+    // Existing callers without a page receive the status-ordered campaign window.
+    const campaigns = await ctx.db.query('marketingCampaigns').withIndex('by_status', q => status ? q.eq('status', status) : q).take(CAMPAIGN_WINDOW);
+    return Promise.all(campaigns.map(async campaign => {
+      const links = await ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaign._id)).take(CHILD_CAP);
+      const coupons = await ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaign._id)).take(CHILD_CAP);
+      return campaignWithCounts(campaign, links, coupons);
+    }));
+  }
 });
 
-/** Keeps the legacy campaign window and order for selectors and campaign table filters. */
+/** Keeps the campaign window and order for selectors and campaign table filters. */
 export const listCampaignOptions = marketingQuery({
 	permission: 'view',
 	args: { projection: v.optional(v.union(v.literal('search'), v.literal('attribution'))) },
@@ -68,29 +92,6 @@ export const listCampaignOptions = marketingQuery({
 			...(projection === 'search' ? { searchText: [name, source, medium, notes ?? ''].join(' ').toLowerCase() } : {}),
 			...(projection === 'attribution' ? { source, medium } : {})
 		}));
-	}
-});
-
-/** Enriches only the campaign IDs on one page, in their display order. */
-export const listCampaignRows = marketingQuery({
-	permission: 'view',
-	args: { campaignIds: v.array(v.id('marketingCampaigns')) },
-	handler: async (ctx, { campaignIds }): Promise<CampaignRow[]> => {
-		if (campaignIds.length > CAMPAIGN_PAGE_SIZE) {
-			throw new ConvexError({ code: 'campaign_page_size', message: `Choose up to ${CAMPAIGN_PAGE_SIZE} campaigns per page.` });
-		}
-		const budget = readBudget(ctx);
-		const rows: CampaignRow[] = [];
-		for (const campaignId of new Set(campaignIds)) {
-			if (!budget.range()) throw new ReadBudgetExceeded();
-			const campaign = await ctx.db.get(campaignId);
-			if (!campaign) continue;
-			if (!budget.document(campaign)) throw new ReadBudgetExceeded();
-			const links = await readCampaignRange(ctx, ctx.db.query('marketingLinks').withIndex('by_campaign', q => q.eq('campaignId', campaignId)), CHILD_CAP);
-			const coupons = await readCampaignRange(ctx, ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaignId)), CHILD_CAP);
-			rows.push(campaignWithCounts(campaign, links, coupons));
-		}
-		return rows;
 	}
 });
 
@@ -120,6 +121,11 @@ export const listCoupons = marketingQuery({
 export const listCampaignCoupons = marketingQuery({
 	permission: 'view',
 	args: { campaignId: v.id('marketingCampaigns') },
+  returns: v.array(v.object({
+    ...marketingTables.coupons.validator.fields, _id: v.id('coupons'), _creationTime: v.number(),
+    rules: v.object({ ...marketingTables.couponVersions.validator.fields, _id: v.id('couponVersions'), _creationTime: v.number() }),
+    campaignName: v.optional(v.string())
+  })),
 	handler: async (ctx, { campaignId }): Promise<CouponRow[]> => {
 		const coupons = await ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaignId)).take(CHILD_CAP);
 		return Promise.all(coupons.map(async coupon => ({ ...coupon, rules: await currentRules(ctx, coupon) })));
