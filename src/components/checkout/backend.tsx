@@ -82,7 +82,7 @@ export type CheckoutBackend = {
   useOrderRefundHistory(orderId: OrderId): CustomerPage<FinancialRows["orderRefunds"]>;
   useCatalog(): Catalog | undefined;
   /** undefined while loading, null when the order doesn't exist. */
-  useOrder(orderId: OrderId | null): OrderView | null | undefined;
+  useOrder(orderId: OrderId | null, view?: FunctionArgs<Pos["getOrder"]>["view"]): OrderView | null | undefined;
   useOrderHistory(orderId: OrderId): CustomerPage<OrderHistoryRow>;
   useOrders(filter: OrderFilter): OrdersPage;
   /** Open orders with items that this checkout actor can recall (pos.listOpenOrders). */

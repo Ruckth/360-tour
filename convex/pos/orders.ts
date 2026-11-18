@@ -24,7 +24,7 @@ export const getOrder = staffQuery({
   capability: 'checkout',
 	// Deep links are untrusted strings. Normalize after auth so a bad link is recoverable,
 	// rather than failing argument validation before checkout can render its recovery controls.
-	args: { orderId: v.string() },
+	args: { orderId: v.string(), view: v.optional(v.literal('checkout')) },
 	handler: async (ctx, args) => {
 		const actor = ctx.staff;
 		const orderId = ctx.db.normalizeId('orders', args.orderId);
@@ -32,16 +32,19 @@ export const getOrder = staffQuery({
 		const order = await ctx.db.get(orderId);
 		if (!order || !canReadCheckoutOrder(actor, order)) return null;
 		const open = isOpenOrder(order);
+		// The till needs operational data while the order is draft. Preserve the full receipt for
+		// existing callers and when a subscribed order becomes paid, void or discarded.
+		const receiptHistory = args.view !== 'checkout' || !open;
 		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links, posRefunds] = await Promise.all([
 			orderLines(ctx, order._id),
 			ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10),
-			ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).order('desc').take(50),
+			receiptHistory ? ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).order('desc').take(50) : [],
 			order.customerId ? ctx.db.get(order.customerId) : null,
 			order.parentOrderId ? ctx.db.get(order.parentOrderId) : null,
-			ctx.db.query('bookingRefunds').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(MAX_STAY_ROWS),
-			ctx.db.query('orderCorrections').withIndex('by_orderId_and_sequence', (q) => q.eq('orderId', order._id)).order('desc').take(20),
-			ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).order('desc').take(MAX_STAY_ROWS),
-			isOpenOrder(order) ? [] : orderLineLinks(ctx, order._id),
+			receiptHistory ? ctx.db.query('bookingRefunds').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(MAX_STAY_ROWS) : [],
+			receiptHistory ? ctx.db.query('orderCorrections').withIndex('by_orderId_and_sequence', (q) => q.eq('orderId', order._id)).order('desc').take(20) : [],
+			receiptHistory ? ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).order('desc').take(MAX_STAY_ROWS) : [],
+			open ? [] : orderLineLinks(ctx, order._id),
 			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id, true) : []
 		]);
 		const refundHistoryTruncated = posRefunds.length > MAX_ORDER_REFUNDS;
