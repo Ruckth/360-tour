@@ -1,6 +1,6 @@
 import { satangToBaht } from "convex/shared/money";
 import { basisPointsToPercent } from "convex/shared/money";
-import { bahtToSatang } from "convex/shared/money";
+import { parseMoneyInput } from "@/lib/money-input";
 import { normalizeCouponCode } from "convex/shared/offers";
 import { formatMoney } from "@/components/admin/labels";
 import { parseDiscount } from "@/components/checkout/discount-input";
@@ -134,10 +134,10 @@ const num = (value: string) => {
   return parsed === undefined || Number.isNaN(parsed) ? undefined : parsed;
 };
 
-const moneyNum = (text: string) => { const n = num(text); return n === undefined ? undefined : bahtToSatang(n); };
+const moneyNum = (text: string) => { const n = num(text); return n === undefined ? undefined : parseMoneyInput(String(n)); };
 
 export function couponRulesFrom(form: CouponForm): CouponRules {
-  const value = bahtToSatang(num(form.value) ?? 0);
+  const value = parseMoneyInput(String(num(form.value) ?? 0));
   const hasVillas = form.scope !== "services";
   return {
     benefit: form.kind === "percent" ? { kind: "percent", percent: value } : { kind: "fixed", amount: value },
@@ -210,7 +210,7 @@ export function couponFormErrors(form: CouponForm, { takenCodes, used = 0 }: { t
 
   const value = parseWhole(form.value);
   if (value === undefined || value === 0) errors.value = "Set the discount";
-  else if (Number.isNaN(value)) errors.value = "Use a whole number";
+  else if (Number.isNaN(value) || Number.isNaN(moneyNum(form.value))) errors.value = "Use a whole number";
   else if (form.kind === "percent" && value > 100) errors.value = "A percentage can’t be over 100";
 
   // Optional limits are positive whole numbers; empty means none (the backend rejects 0).
@@ -223,7 +223,8 @@ export function couponFormErrors(form: CouponForm, { takenCodes, used = 0 }: { t
   ];
   for (const [key, raw, zero] of whole) {
     const parsed = parseWhole(raw);
-    if (Number.isNaN(parsed)) errors[key] = "Use a whole number";
+    const invalidMoney = (key === "maxSaving" || key === "minSubtotal" || key === "budget") && Number.isNaN(moneyNum(raw));
+    if (Number.isNaN(parsed) || invalidMoney) errors[key] = "Use a whole number";
     else if (parsed === 0) errors[key] = zero;
   }
   const limit = parseWhole(form.usageLimit);

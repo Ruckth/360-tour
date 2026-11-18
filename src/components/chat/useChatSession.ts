@@ -1,4 +1,5 @@
 "use client";
+import { ConvexError } from 'convex/values';
 import type { Id } from 'convex/_generated/dataModel';
 import { getStoredGuestToken } from '@/components/chat/session/credentials';
 import { useLocale, useTranslations } from 'next-intl';
@@ -48,6 +49,7 @@ export function useChatSession(props: ChatExperienceProps) {
   const [open, setOpen] = useState(mode === 'page');
   const [mounted, setMounted] = useState(false), [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState(initialDraft), [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [villas, setVillas] = useState<ChatVillaRef[]>();
   const [contactForm, setContactForm] = useState<ContactForm>({ email: '', preferredApp: 'whatsapp', contactHandle: '' });
   const [contactStatus, setContactStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -69,6 +71,7 @@ export function useChatSession(props: ChatExperienceProps) {
   useEffect(() => { activeSession.current = sessionKey; }, [sessionKey]);
   useEffect(() => () => { activeSubmission.current?.abort(); }, []);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydration gate: the stored draft and client-only behaviour start after the server-matching first render
     setHydrated(true);
     const draft = readDraft(); pending.current = draft;
     if (!initialDraft && draft) setInput(draft.text);
@@ -97,12 +100,21 @@ export function useChatSession(props: ChatExperienceProps) {
   const restartSession = guest.restartSession;
   const restartChat = useCallback(async () => {
     activeSubmission.current?.abort(); activeSubmission.current = null;
-    pending.current = null; persistDraft(null); setInput(''); setSending(false); setContactStatus('idle'); setOpen(true);
+    pending.current = null; persistDraft(null); setInput(''); setSending(false); setSendError(null); setContactStatus('idle'); setOpen(true);
     await restartSession().catch(() => setContactStatus('error'));
   }, [restartSession]);
-  useEffect(() => { if (initialOpen && hydrated) openChat(); }, [initialOpen, hydrated, openChat]);
+  // Opens once hydrated when the page asks for it (and again only if that request comes back).
+  const autoOpen = initialOpen && hydrated;
+  const [autoOpened, setAutoOpened] = useState(autoOpen);
+  if (autoOpened !== autoOpen) {
+    setAutoOpened(autoOpen);
+    if (autoOpen) openChat();
+  }
+  // Mounted while open and through the close animation. Gated on hydration so the server render
+  // (and hydration) of the page-mode chat stays unmounted, as before.
+  if (open && hydrated && !mounted) setMounted(true);
   useEffect(() => {
-    if (open) { setMounted(true); return; }
+    if (open) return;
     const timer = window.setTimeout(() => setMounted(false), 220); return () => clearTimeout(timer);
   }, [open]);
   useEffect(() => {
@@ -135,7 +147,7 @@ export function useChatSession(props: ChatExperienceProps) {
     if (!clean || chatInputDisabled || !!activeSubmission.current) return;
     const preset = transcript.aiPaused ? undefined : suggestions.find(item => item.text === clean);
     const actionHint = resolveChatActionHint({ latestUserMessage: clean, activePropertySlug, villas, clickedSuggestionId: preset?.id }) ?? "none";
-    const submission = new AbortController(); activeSubmission.current = submission; setSending(true);
+    const submission = new AbortController(); activeSubmission.current = submission; setSending(true); setSendError(null);
     let sentSession: Id<"conversations"> | undefined;
     try {
       const credentials = await guest.ensureSession();
@@ -150,7 +162,12 @@ export function useChatSession(props: ChatExperienceProps) {
       pending.current = null; persistDraft(null); setInput('');
       if (preset) void convex.mutation(api.messaging.chatSuggestions.markClicked, { sessionId: sentSession, suggestion: { source: 'static', suggestionId: preset.id }, guestToken: getStoredGuestToken(sentSession)! }).catch(() => undefined);
     } catch (error) {
-      if (!submission.signal.aborted && (!sentSession || activeSession.current === sentSession)) { setInput(clean); await guest.recoverInvalidSession(error).catch(() => undefined); }
+      if (!submission.signal.aborted && (!sentSession || activeSession.current === sentSession)) {
+        setInput(clean);
+        const rateLimited = error instanceof ConvexError && error.data && typeof error.data === 'object' && error.data.kind === 'RateLimited';
+        setSendError(t(rateLimited ? 'sendRateLimited' : 'sendFailed'));
+        await guest.recoverInvalidSession(error).catch(() => undefined);
+      }
     } finally { if (activeSubmission.current === submission) { activeSubmission.current = null; setSending(false); } }
   }
   return { ...props, ...viewport, ...handoff, mode, open, hydrated, mounted, title: activePropertyName ? t('propertyTitle', { propertyName: activePropertyName }) : t('defaultTitle'),
@@ -158,6 +175,6 @@ export function useChatSession(props: ChatExperienceProps) {
     hideFloatingTriggerOnMobileRoom: stripLocalePrefix(pathname).startsWith('/rooms/'), openChat, closeChat, restartChat,
     messages, messageActionCards, latestAssistantIndex, canShowMessageSuggestions: !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1,
     visibleSuggestions, sendMessage, chatInputDisabled, isTyping, hasLatestActionCard: !!latestActionCard && latestActionCard.type !== 'none',
-    contactForm, setContactForm, contactStatus, saveContact, input, setInput,
+    contactForm, setContactForm, contactStatus, saveContact, input, setInput, sendError,
   };
 }

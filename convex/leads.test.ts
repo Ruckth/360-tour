@@ -13,7 +13,7 @@ describe('admin leads list', () => {
 	it('filters by source, newest first', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		await t.mutation(api.messaging.leads.save, { email: 'a@example.com', source: 'chat' });
 		await t.mutation(api.messaging.leads.save, { email: 'b@example.com', source: 'tour_completion' });
 		await t.mutation(api.messaging.leads.save, { email: 'c@example.com', source: 'chat' });
@@ -25,7 +25,7 @@ describe('admin leads list', () => {
 		await expect(t.query(api.messaging.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow('Not authenticated');
 		await expect(
 			t
-				.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' })
+				.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' })
 				.query(api.messaging.leads.list, { paginationOpts: { numItems: 10, cursor: null } })
 		).rejects.toThrow('Not authorized');
 	});
@@ -33,7 +33,7 @@ describe('admin leads list', () => {
 	it('records a repeat sign-up from a new source or villa, but not an identical repeat', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const propertyId = await t.run((ctx) =>
 			ctx.db.insert('properties', {
 				slug: 'villa-a',
@@ -72,7 +72,7 @@ describe('admin leads list', () => {
 	it('lets admins delete a lead', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const leadId = await t.mutation(api.messaging.leads.save, { email: 'a@example.com', source: 'chat' });
 
 		await expect(t.mutation(api.messaging.leads.remove, { leadId })).rejects.toThrow('Not authenticated');

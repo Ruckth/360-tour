@@ -87,7 +87,7 @@ beforeEach(async () => {
   vi.setSystemTime(new Date("2026-11-01T03:00:00.000Z"));
   vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   backend.call = (ref, args) => admin.mutation(ref, args as Record<string, unknown>);
   backend.calls = [];
   backend.mutations.clear();

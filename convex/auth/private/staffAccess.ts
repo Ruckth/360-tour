@@ -39,10 +39,14 @@ export function staffInvitationExpiry(grant: Doc<'staffGrants'>) {
   return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + STAFF_INVITATION_TTL_MS;
 }
 
-export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: Pick<UserIdentity, 'email' | 'tokenIdentifier'> | null): Promise<StaffAccess> {
+export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: Pick<UserIdentity, 'email' | 'emailVerified' | 'tokenIdentifier'> | null): Promise<StaffAccess> {
   const email = identity?.email?.trim().toLowerCase() ?? null;
   let role: StaffRole = null;
   let pendingInvitation: StaffAccess['pendingInvitation'] = null;
+  // Email authority requires explicit verification, including existing grants.
+  if (identity?.emailVerified !== true) {
+    return { email, tokenIdentifier: identity?.tokenIdentifier ?? null, role, capabilities: staffCapabilities(role), pendingInvitation };
+  }
   if (email && adminEmails().has(email)) role = 'owner';
   else if (identity && email) {
     const grant = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', identity.tokenIdentifier)).unique();

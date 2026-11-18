@@ -1,3 +1,4 @@
+import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -19,7 +20,7 @@ async function applyFeed(t: ReturnType<typeof convexTest>, sourceId: Id<'icalSou
 it('keeps OTA sources separate and preserves other blocked dates when one is removed', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const airbnb = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   const booking = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
@@ -50,7 +51,7 @@ it('exports future bookings even when more than 500 past bookings exist', async 
 async function sourceSetup() {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const sourceId = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   return { t, admin, sourceId };
@@ -198,7 +199,7 @@ describe('OTA nights that overlap a host block or direct booking', () => {
 
   it('stay blocked after the host block is removed, and free only once the feed is removed', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await addTestDateBlock(admin, { propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay' });
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
     // Every later sync keeps reporting the overlap.
     expect(await applyFeed(t, sourceId, ['2030-01-10'])).toEqual({ blockedNights: 1, conflicts: 1 });
@@ -214,12 +215,12 @@ describe('OTA nights that overlap a host block or direct booking', () => {
 
   it('lets a host block that held the night be edited, but not extended onto other OTA nights', async () => {
     const { t, admin, sourceId, propertyId, free } = await conflictSetup();
-    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
+    const blockId = await addTestDateBlock(admin, { propertyId, start: '2030-01-09', end: '2030-01-11', reason: 'Owner stay' });
     await applyFeed(t, sourceId, ['2030-01-10', '2030-01-12']);
     await admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-11', reason: 'Owner stay, shortened' });
     await expect(admin.mutation(api.bookings.calendar.updateDateBlock.updateDateBlock, { blockId, propertyId, start: '2030-01-10', end: '2030-01-13', reason: 'Longer' }))
       .rejects.toThrow('2030-01-12 is already booked or blocked.');
-    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
+    await expect(addTestDateBlock(admin, { propertyId, start: '2030-01-12', end: '2030-01-13', reason: 'New' })).rejects.toThrow();
     await admin.mutation(api.bookings.calendar.removeDateBlock.removeDateBlock, { blockId });
     expect(await free(night)).toBe(false);
     expect(await free({ checkIn: '2030-01-09', checkOut: '2030-01-10' })).toBe(true);

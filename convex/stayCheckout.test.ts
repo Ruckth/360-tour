@@ -18,7 +18,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
+	const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
 	const { propertyId, bookingId, serviceId, staffId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
 			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
@@ -52,17 +52,17 @@ async function setup() {
 describe('stay checkout', () => {
 	it('uses operations permission for the read and checkout permission for the write', async () => {
 		const { t, owner, bookingId } = await setup();
-		const outsider = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
+		const outsider = t.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' });
 		for (const client of [t, outsider]) {
 			await expect(client.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow();
 			await expect(client.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).rejects.toThrow();
 		}
-		const cashier = t.withIdentity({ email: 'cashier@example.com', tokenIdentifier: 'cashier' });
+		const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'cashier' });
 		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
 		await cashier.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(cashier.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow('Not authorized');
 		await expect(cashier.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).resolves.toMatchObject({ added: [] });
-		const manager = t.withIdentity({ email: 'manager@example.com', tokenIdentifier: 'manager' });
+		const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'manager' });
 		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: 'manager' });
 		await manager.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(manager.query(api.bookings.admin.stayAppointments, { bookingId })).resolves.toEqual({ appointments: [], complete: true });
@@ -81,7 +81,7 @@ describe('stay checkout', () => {
 		const foreign = await appointment({ currency: 'USD' });
 		const elsewhere = await appointment();
 		const unrelated = await appointment({ bookingId: undefined });
-		await owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		await owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const { orderId: other } = await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
 		await owner.mutation(api.pos.commands.attach.attach, { orderId: other, appointmentId: elsewhere });
 		const before = await read();
@@ -106,7 +106,7 @@ describe('stay checkout', () => {
 	it('reuses the stay order and does not write again on a second call', async () => {
 		const { t, owner, bookingId, appointment, open, order } = await setup();
 		const appointmentId = await appointment();
-		const existing = await owner.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const existing = await owner.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const first = await open();
 		expect(first).toEqual({ ...existing, added: [appointmentId], skipped: [] });
 		const before = await order(first.orderId);

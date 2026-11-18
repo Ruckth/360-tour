@@ -17,8 +17,8 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const person = { role: 'Therapist', color: '#abc', workingHours: [{ weekday: 1, start: '09:00', end: '18:00' }], breaks: [] };
 	const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', ...person });
 	/** A file in storage, as if the browser had just POSTed it to an upload URL. */
@@ -199,7 +199,7 @@ describe('staff photo uploads', () => {
 			},
 		};
 		const t = convexTest(schema, failingModules);
-		const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { bytes: new ArrayBuffer(1000), contentType: 'image/webp' })).rejects.toThrow('Registration failed');
 		expect(await t.run((ctx) => ctx.db.system.query('_storage').collect())).toEqual([]);
 	});

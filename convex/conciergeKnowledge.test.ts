@@ -17,8 +17,8 @@ describe('unknown-question loop is preserved', () => {
     const { sessionId, guestToken } = await t.mutation(api.messaging.chat.createSession, { channel: 'web' });
     const result = await respondTest(t, { sessionId, guestToken, userMessage: 'Can I bring two cats?' });
     expect(result).toMatchObject({ model: 'unknown_fallback', response: 'I do not have verified information about that yet. Please contact the host here for help.' });
-    const reports = await asAdmin(t).query(api.concierge.knowledge.adminListUnknownQuestions, { status: 'new', paginationOpts: { numItems: 50, cursor: null } });
-    expect(reports.page).toMatchObject([{ sessionId, userQuestion: 'Can I bring two cats?', status: 'new' }]);
+    const reports = await asAdmin(t).query(api.concierge.knowledge.adminListUnknownGroups, { status: 'new' });
+    expect(reports.groups.map(group => group.latest)).toMatchObject([{ sessionId, userQuestion: 'Can I bring two cats?', status: 'new' }]);
   });
 
   it('ignores and reopens unknown-question groups', async () => {
@@ -28,8 +28,8 @@ describe('unknown-question loop is preserved', () => {
     const admin = asAdmin(t);
     const args = { normalizedQuestions: ['can i bring my dog'] };
     expect(await admin.mutation(api.concierge.knowledge.adminIgnoreUnknownGroups, args)).toMatchObject({ ignored: 1 });
-    expect((await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: 'new', paginationOpts: { numItems: 50, cursor: null } })).page).toEqual([]);
+    expect((await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: 'new' })).groups.map(group => group.latest)).toEqual([]);
     expect(await admin.mutation(api.concierge.knowledge.adminReopenUnknownGroups, args)).toMatchObject({ reopened: 1 });
-    expect((await admin.query(api.concierge.knowledge.adminListUnknownQuestions, { status: 'new', paginationOpts: { numItems: 50, cursor: null } })).page).toMatchObject([{ userQuestion: 'Can I bring my dog?', status: 'new' }]);
+    expect((await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: 'new' })).groups.map(group => group.latest)).toMatchObject([{ userQuestion: 'Can I bring my dog?', status: 'new' }]);
   });
 });

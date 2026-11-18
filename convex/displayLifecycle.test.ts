@@ -31,8 +31,8 @@ const tokenOf = (result: { ok: true; token: string } | { ok: false }) => {
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const link = (clientId = HERE) => admin.mutation(api.pos.displays.createPairLink, { clientId });
 	const claim = (secret: string, deviceName?: string) => t.mutation(api.pos.displays.claimLink, { secret, deviceName });
 	const pairByLink = async (clientId = HERE) => tokenOf(await claim((await link(clientId)).secret));

@@ -43,6 +43,8 @@ const LABELS: Record<string, string> = {
   checkInTime: "Check-in time",
   checkOutTime: "Check-out time",
   cancellationPolicy: "Cancellation policy",
+  chatReplyLimits: "Reply limits",
+  web: "Website visitors", line: "LINE", facebook: "Facebook Messenger", instagram: "Instagram", perChat: "Per chat",
   bookingRules: "Booking rules",
   unpaidHoldMinutes: "Unpaid hold (minutes)",
   chatQuoteValidityMinutes: "Chat summary validity (minutes)",

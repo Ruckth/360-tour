@@ -291,6 +291,8 @@
     }
   },
   "Chat": {
+    "sendRateLimited": "聊天已达到每小时消息上限。您的消息尚未发送。请稍后重试或通过电子邮件联系我们。",
+    "sendFailed": "无法确认您的消息是否已发送。请重试，您的草稿已保存。",
     "defaultTitle": "Auralis 礼宾",
     "propertyTitle": "{propertyName} 礼宾",
     "open": "打开礼宾聊天",

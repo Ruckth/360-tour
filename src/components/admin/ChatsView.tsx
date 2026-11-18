@@ -136,21 +136,13 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
+/** The last defined value for this `resetKey`; a new key starts again from the current value. */
 function useLatestDefined<T>(value: T | undefined, resetKey: string) {
-  const [latest, setLatest] = useState<{ resetKey: string; value: T } | null>(
-    value === undefined ? null : { resetKey, value },
-  );
-
-  useEffect(() => {
-    setLatest(null);
-  }, [resetKey]);
-
-  useEffect(() => {
-    if (value !== undefined) setLatest({ resetKey, value });
-  }, [resetKey, value]);
-
-  if (value !== undefined) return value;
-  return latest?.resetKey === resetKey ? latest.value : undefined;
+  // Defined values must retain identity between updates, as Convex query results do.
+  const [latest, setLatest] = useState<{ resetKey: string; value: T | undefined }>({ resetKey, value });
+  const next = value !== undefined ? value : latest.resetKey === resetKey ? latest.value : undefined;
+  if (latest.resetKey !== resetKey || latest.value !== next) setLatest({ resetKey, value: next });
+  return next;
 }
 
 function dateTimeInputToMillis(value: string, boundary: "start" | "end" = "start") {
@@ -268,7 +260,6 @@ export function ChatsView() {
     typeof parsedMessageStartAt === "number" &&
     typeof parsedMessageEndAt === "number" &&
     parsedMessageStartAt > parsedMessageEndAt;
-  const currentCursor = pageCursors[pageIndex] ?? null;
   const filterResetKey = [
     status,
     adminStatus,
@@ -278,6 +269,14 @@ export function ChatsView() {
     messageStartAt,
     messageEndAt,
   ].join(":");
+  // A new filter starts again from the first page.
+  const [pagedFilterKey, setPagedFilterKey] = useState(filterResetKey);
+  if (pagedFilterKey !== filterResetKey) {
+    setPagedFilterKey(filterResetKey);
+    setPageIndex(0);
+    setPageCursors([null]);
+  }
+  const currentCursor = pageCursors[pageIndex] ?? null;
   const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
   const liveSessionsResult = useQuery(
     api.messaging.adminChat.listSessions,
@@ -319,17 +318,16 @@ export function ChatsView() {
     incomingSessionId === selectedSessionId &&
     !searchParams.has("view") &&
     !searchParams.has("state");
+  // Once the URL names a queue (or another chat), the incoming deep link is spent.
+  if (!unqualifiedDeepLink && incomingSessionId) setIncomingSessionId(null);
   useEffect(() => {
     // Links from staff alerts and Missing Information have no queue. Open their actual conversation.
-    if (!unqualifiedDeepLink) {
-      if (incomingSessionId) setIncomingSessionId(null);
-      return;
-    }
     if (!unqualifiedDeepLink || !sessionDetail?.session || navigationQueryRef.current !== searchParams.toString())
       return;
     const selectedStatus = sessionDetail.session.adminStatus ?? "open";
     if (selectedStatus === "open" && sessionDetail.session.needsReply) {
       // Consume a Waiting link once. Later live replies must stay in the chosen queue.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- gated on the in-flight navigation ref, which render can't read
       setIncomingSessionId(null);
       return;
     }
@@ -475,12 +473,6 @@ export function ChatsView() {
     if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
     updateParams({ session: sessionsResult.sessions[0]._id });
   }, [isLargeViewport, selectedSessionId, sessionsResult, updateParams]);
-
-  // A new filter starts again from the first page.
-  useEffect(() => {
-    setPageIndex(0);
-    setPageCursors([null]);
-  }, [filterResetKey]);
 
   // When ?q changes from outside (back/forward, a link, clearing filters), adopt it instead of
   // writing the old text back. Our own writes are recognised by the last value we sent.

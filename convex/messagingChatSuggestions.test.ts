@@ -1,9 +1,10 @@
+import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { describe, expect, it, vi } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -102,7 +103,7 @@ describe("static suggestion chips remain live", () => {
     expect(selected).toEqual([]);
   });
 
-  it("does not generate ranked suggestions from public assistant messages", async () => {
+  it("does not generate ranked suggestions from committed assistant messages", async () => {
     vi.useFakeTimers();
     try {
       const t = convexTest(schema, modules);
@@ -110,13 +111,13 @@ describe("static suggestion chips remain live", () => {
         channel: "web",
         visitorId: "visitor-public-assistant",
       });
-      const userMessageId = await t.mutation(internal.messaging.chat.acceptGuestMessage, {
+      const userMessageId = await recordTestGuest(t, {
         sessionId,
         content: "What's included when booking direct?",
       });
       expect(userMessageId).toBeTruthy();
 
-      await t.mutation(internal.messaging.chat.addAssistantMessageWithSuggestions, {
+      await commitTestAssistant(t, {
         sessionId,
         content: "Direct booking includes host support and better pricing.",
       });

@@ -142,6 +142,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
     canShowMessageSuggestions,
     visibleSuggestions,
     sendMessage,
+    sendError,
     chatInputDisabled,
     isTyping,
     messagesStyle,
@@ -267,6 +268,8 @@ function ChatExperienceBody(props: ChatExperienceProps) {
         input={input}
         setInput={setInput}
         sendMessage={sendMessage}
+        sendError={sendError}
+        contactEmail={contactEmail}
         chatInputDisabled={chatInputDisabled}
         focusFooterInput={focusFooterInput}
         clearFooterFocusAfterBlur={clearFooterFocusAfterBlur}

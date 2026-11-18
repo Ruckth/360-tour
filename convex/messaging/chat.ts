@@ -1,20 +1,18 @@
 import { initialInboxProjection, insertChannelEvent } from './inboxProjection';
-import { chatCreateSessionResult, chatTouchSessionResult, chatCloseSessionResult, chatCreateBrowserHandoffResult, chatClaimBrowserHandoffResult, chatIdentifyVisitorResult, chatGetSessionResult, chatIsAiPausedResult, chatGetMessagesResult } from './validators';
+import { chatCreateSessionResult, chatTouchSessionResult, chatCloseSessionResult, chatCreateBrowserHandoffResult, chatClaimBrowserHandoffResult, chatIdentifyVisitorResult, chatGetSessionResult, chatGetMessagesResult } from './validators';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { guestMutation, guestQuery, internalMutation, internalQuery, type MutationCtx, publicMutation } from '../auth/model';
+import { guestMutation, guestQuery, internalQuery, type MutationCtx, publicMutation } from '../auth/model';
 import { PRESENCE_WRITE_THROTTLE_MS } from '../shared/chatPresence';
 import { cleanCapture, marketingCaptureValidator } from '../shared/marketingAttribution';
 import { assertValidEmail, normalizeEmail } from '../shared/validation';
-import { buildAdminChatMetadataPatch, buildAdminSearchText, getAdminChatSortAt, patchSessionAfterMessages } from './adminChatMetadata';
+import { buildAdminChatMetadataPatch, buildAdminSearchText, getAdminChatSortAt } from './adminChatMetadata';
 import { consumeChatAdmission } from './chatAdmission';
-import { createGuestToken, hashGuestToken, requireGuestToken } from './guestToken';
-import { answerAccepted, guestReceived, replyOutcomeValidator } from './inboxState';
+import { createGuestToken, hashGuestToken } from './guestToken';
 import { recordLead } from './leadWriter';
 import { recordGuest } from './pipeline';
 import { enforceRateLimit } from './rateLimit';
-import { asksForStaff, queueStaffAlert } from './staffRequests';
 
 const BROWSER_HANDOFF_TTL_MS = 5 * 60 * 1000;
 
@@ -323,83 +321,6 @@ export const identifyVisitor = guestMutation({
 	}
 });
 
-export const acceptGuestMessage = internalMutation({
-	args: {
-		sessionId: v.id('conversations'),
-		guestToken: v.optional(v.string()),
-		content: v.string(),
-		/** Release 3a: the guest's tab and consent as of this message; `{}` clears it. Web chat only. */
-		marketing: v.optional(marketingCaptureValidator)
-	},
-	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
-		if (args.guestToken !== undefined) await requireGuestToken(session, args.guestToken);
-		if (!['web', 'line', 'facebook', 'whatsapp', 'instagram'].includes(session.channel)) throw new Error('Unsupported chat channel');
-		if (args.content.length > 2000) throw new Error('Message is too long');
-		await consumeChatAdmission(ctx, args.sessionId);
-		// A chat can outlive the tab and the consent it started with, so each guest message refreshes them.
-		if (args.marketing !== undefined && session.channel === 'web') {
-			const marketingCapture = cleanCapture(args.marketing);
-			if (JSON.stringify(marketingCapture) !== JSON.stringify(session.marketingCapture)) await ctx.db.patch(args.sessionId, { marketingCapture });
-		}
-
-		const timestamp = Date.now();
-		const messageId = await ctx.db.insert('messages', {
-			sessionId: args.sessionId,
-			role: 'user',
-			content: args.content,
-			timestamp
-		});
-		await patchSessionAfterMessages(ctx, args.sessionId, {
-			addedMessages: 1,
-			latestMessageAt: timestamp,
-			lastSeenAt: timestamp,
-		});
-		await guestReceived(ctx, args.sessionId, messageId);
-		if (asksForStaff(args.content)) await queueStaffAlert(ctx, args.sessionId, args.content, messageId);
-
-		return messageId;
-	}
-});
-
-export const addAssistantMessageWithSuggestions = internalMutation({
-	args: {
-		sessionId: v.id('conversations'),
-		content: v.string(),
-		action: v.optional(chatActionValidator),
-		locale: v.optional(v.string()),
-		propertySlug: v.optional(v.string()),
-		replyToMessageId: v.optional(v.id('messages')),
-		skipSuggestions: v.optional(v.boolean()),
-		outcome: v.optional(replyOutcomeValidator)
-	},
-	handler: async (ctx, args) => {
-		const session = await ctx.db.get(args.sessionId);
-		if (!session) throw new Error('Session not found');
-		if (session.aiPaused) return { stored: false as const, messageId: null };
-
-		const timestamp = Date.now();
-		const messageId = await ctx.db.insert('messages', {
-			sessionId: args.sessionId,
-			role: 'assistant',
-			content: args.content,
-			replyToMessageId: args.replyToMessageId,
-			...(args.action ? { action: args.action } : {}),
-			timestamp
-		});
-		await patchSessionAfterMessages(ctx, args.sessionId, {
-			addedMessages: 1,
-			latestMessageAt: timestamp,
-			lastSeenAt: timestamp,
-		});
-
-		await answerAccepted(ctx, { sessionId: args.sessionId, replyToMessageId: args.replyToMessageId,
-			messageId, source: 'ai', outcome: args.outcome ?? (args.skipSuggestions ? 'needs_staff' : 'answered') });
-		return { stored: true as const, messageId };
-	}
-});
-
 /** Public view of a chat session: no admin-only or visitor-contact fields. */
 export const getSession = guestQuery({
   returns: chatGetSessionResult,
@@ -413,16 +334,6 @@ export const getSession = guestQuery({
 export const getSessionInternal = internalQuery({
 	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => await ctx.db.get(args.sessionId)
-});
-
-/** Guest view of whether staff took over this chat. */
-export const isAiPaused = guestQuery({
-  returns: chatIsAiPausedResult,
-	args: { sessionId: v.id('conversations'), guestToken: v.optional(v.string()) },
-	handler: async (ctx) => {
-		const session = ctx.guestSession;
-		return Boolean(session?.aiPaused);
-	}
 });
 
 export const getMessages = guestQuery({

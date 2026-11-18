@@ -6,7 +6,7 @@ import { blockBookingDates, releaseBookingDates } from '../private/availabilityW
 import { assertBookingRevision } from '../../shared/bookingMoney';
 import { writeBooking } from '../private/money';
 import { stayMoney } from '../../shared/stayMoney';
-import { roundMoney } from '../../shared/orderMath';
+import { bookingBalance, roundMoney } from '../../shared/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { bookingHoldExpiresAt } from '../../shared/siteSettings';
 import { isDocumentedLiveRefund, recordStayPayment } from '../private/stays';
@@ -16,8 +16,8 @@ const CHECKOUT_LIFETIME_SECONDS = 60 * 60;
 type Booking = import('../../_generated/dataModel').Doc<'bookings'>;
 
 /** Returned provider money is waived, never silently presented for collection again. */
-function checkoutBalance(booking: Booking) {
-  return Math.max(0, roundMoney(booking.total - stayMoney(booking).net - (booking.providerRefundWaived ?? 0)));
+export function checkoutBalance(booking: Booking) {
+  return Math.max(0, bookingBalance(booking).owed);
 }
 
 /** Pending or confirmed stays may pay their remaining, unwaived balance online. */

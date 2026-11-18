@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   defaultLocale,
@@ -14,6 +14,11 @@ import {
   type Locale,
 } from "@/i18n/routing";
 import { cn } from "@/lib/utils";
+
+function subscribeToHash(onChange: () => void) {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+}
 
 const compactLocaleLabels: Record<Locale, string> = {
   en: "EN",
@@ -43,11 +48,8 @@ export function LanguageSwitcher({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const currentLocale = isLocale(locale) ? locale : defaultLocale;
-  const [hash, setHash] = useState("");
-
-  useEffect(() => {
-    setHash(window.location.hash);
-  }, [pathname, searchParams]);
+  // Read on every render (route changes re-render via the hooks above) and on hashchange; "" on the server.
+  const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash, () => "");
 
   useEffect(() => {
     function onLocaleInteraction(event: PointerEvent | MouseEvent) {

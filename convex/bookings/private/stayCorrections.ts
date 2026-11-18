@@ -5,7 +5,8 @@ import { attemptKey, bookingRevision, cleanReason, effectiveTime, resolveNotify 
 import { activeSourceLink, orderLineLinks } from '../../pos/model';
 import { isSettledOrder } from '../../pos/model';
 import { lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
-import { assertMoney, stayMoney } from '../../shared/stayMoney';
+import { stayMoney } from '../../shared/stayMoney';
+import { assertMoney } from '../../shared/money';
 import { releaseBookingDates } from './availabilityWrites';
 import { writeBooking } from './money';
 import { queueCancellationEmail } from './stays';

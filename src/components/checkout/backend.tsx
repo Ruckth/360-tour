@@ -13,7 +13,7 @@ import { createContext, useContext, useMemo, useCallback, type ReactNode } from 
  */
 
 type PosCommands = typeof api.pos.commands;
-type Pos = typeof api.pos.orders & typeof api.pos.catalog.catalog & typeof api.pos.sourceReads & { [K in keyof PosCommands]: PosCommands[K][K & keyof PosCommands[K]] };
+type Pos = { openOrderFor: typeof api.pos.commands.openOrderForLink.openOrderForLink } & typeof api.pos.orders & typeof api.pos.catalog & typeof api.pos.sourceReads & { [K in keyof PosCommands]: PosCommands[K][K & keyof PosCommands[K]] };
 export type RestoreReview = FunctionReturnType<Pos["restoreCheck"]>;
 export type AppointmentFee = FunctionReturnType<Pos["appointmentFees"]>[number];
 export type FinancialStream = "corrections" | "audit" | "bookingRefunds" | "appointmentRefunds" | "orderRefunds";

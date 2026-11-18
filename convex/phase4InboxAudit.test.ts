@@ -9,7 +9,7 @@ beforeEach(() => { vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); vi.useFakeTi
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 it('keeps internal inbox snapshots and web tool capabilities out of list, search and detail responses', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const { sessionId } = await t.mutation(api.messaging.chat.createSession, { channel: 'web', visitorId: 'audit-searchable' });
   const secrets = { accessToken: 'audit-booking-capability', confirmToken: 'audit-confirm-capability', guestPhone: 'audit-private-phone' };
   await t.run(async ctx => {
@@ -21,9 +21,8 @@ it('keeps internal inbox snapshots and web tool capabilities out of list, search
   const list = await admin.query(api.messaging.adminChat.listSessions, { status: 'all', empty: 'all' });
   const search = await admin.query(api.messaging.adminChat.listSessions, { status: 'all', empty: 'all', searchQuery: 'audit-searchable' });
   const detail = await admin.query(api.messaging.adminChat.getSessionDetail, { sessionId });
-  const transcript = await admin.query(api.messaging.adminChat.getTranscript, { sessionId });
   expect(list.sessions).toHaveLength(1); expect(search.sessions).toHaveLength(1); expect(detail).not.toBeNull();
-  for (const row of [list.sessions[0], search.sessions[0], detail!.session, transcript.session]) {
+  for (const row of [list.sessions[0], search.sessions[0], detail!.session]) {
     for (const field of ['lastDeliveryStatus', 'lastMessagePreview', 'inboxProjectionVersion', 'lastActivityAt']) expect(row).not.toHaveProperty(field);
     for (const secret of Object.values(secrets)) expect(JSON.stringify(row)).not.toContain(secret);
   }
@@ -75,7 +74,7 @@ it('keeps projection readiness after eval creation and seeded scenario creation'
 });
 
 it('preserves absent historical inbox state for empty or already-answered chats during initialization', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const ids = await t.run(async ctx => {
     const ids = [];
     for (const kind of ['empty', 'answered']) {

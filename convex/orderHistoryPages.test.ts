@@ -10,19 +10,19 @@ const readers = api.pos.orderHistoryPages;
 afterEach(() => vi.unstubAllEnvs());
 it('authenticates every financial stream and rejects oversized or invalid pages', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
   for (const reader of Object.values(readers)) {
     const args = { orderId, paginationOpts: { numItems: 20, cursor: null } };
     await expect(t.query(reader, args)).rejects.toThrow('Not authenticated');
-    await expect(t.withIdentity({ email: 'outsider@example.com' }).query(reader, args)).rejects.toThrow('Not authorized');
+    await expect(t.withIdentity({ emailVerified: true, email: 'outsider@example.com' }).query(reader, args)).rejects.toThrow('Not authorized');
     for (const n of [0, 51, 1.5]) await expect(admin.query(reader, { ...args, paginationOpts: { numItems: n, cursor: null } })).rejects.toThrow('Page size');
     expect((await admin.query(reader, args)).page).toEqual([]);
   }
 });
 it('pages past the getOrder 20/50 windows in all five independent ledgers without cross-order leakage', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-  const t = convexTest(schema, modules), admin = t.withIdentity({ email: 'admin@example.com' });
+  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
   const { orderId: other } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Other', price: 1000 } });
   await t.run(async ctx => {

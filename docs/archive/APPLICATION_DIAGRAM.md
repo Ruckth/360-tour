@@ -1,3 +1,5 @@
+> **Archived (Nov 2026).** Superseded by [ARCHITECTURE.md](../../ARCHITECTURE.md): Convex and Clerk are now mandatory, demo mode and static resort data are gone, and routes/admin pages have changed. Kept for history only.
+
 # 360 Tour Application Diagram
 
 ## Architecture

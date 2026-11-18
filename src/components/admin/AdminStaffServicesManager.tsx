@@ -1,8 +1,9 @@
 "use client";
 
-import { bahtToSatang, satangToBaht } from 'convex/shared/money';
+import { satangToBaht } from 'convex/shared/money';
 
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { parseMoneyInput } from "@/lib/money-input";
 import { useRouter } from "next/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -612,6 +613,11 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
     const name = text("name");
+    const price = parseMoneyInput(text("price"));
+    if (!Number.isFinite(price)) {
+      setError("Enter a price with at most 2 decimals.");
+      return;
+    }
     const fields = {
       name,
       slug: service?.slug ?? slugify(name),
@@ -619,7 +625,7 @@ function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: 
       category: text("category"),
       durationMin: Number(text("durationMin")),
       bufferMin: Number(text("bufferMin")),
-      price: bahtToSatang(Number(text("price"))),
+      price,
       currency: service?.currency ?? "THB",
       staffIds: [...staffIds],
     };

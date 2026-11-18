@@ -4,6 +4,8 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
+  CHAT_CHANNEL_LABELS,
+  CHAT_REPLY_LIMIT_RANGES,
   BOOKING_RULE_RANGES,
   MAX_WORDS_RANGE,
   validateSettingsInput,
@@ -131,6 +133,8 @@ type FieldDef = {
   unit?: string;
   wide?: boolean;
   required?: boolean;
+  min?: number;
+  max?: number;
 };
 
 type Section = "business" | "ai" | "email" | "bookingRules";
@@ -212,7 +216,9 @@ const SECTIONS: Record<
         wide: true,
       },
     ],
-    values: (s) => ({ tone: s.ai.tone, maxWords: String(s.ai.maxWords), extraInstructions: s.ai.extraInstructions }),
+    values: (s) => ({ tone: s.ai.tone, maxWords: String(s.ai.maxWords), extraInstructions: s.ai.extraInstructions,
+      ...Object.fromEntries(Object.entries(s.chatReplyLimits).map(([key, value]) => [`chatReplyLimits.${key}`, String(value)])),
+    }),
   },
   email: {
     title: "Email",
@@ -246,7 +252,12 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   }
   if (section === "ai") {
     const maxWords = values.maxWords.trim() === "" ? NaN : Number(values.maxWords);
-    return { ai: { tone: values.tone, extraInstructions: values.extraInstructions, maxWords } };
+    return { ai: { tone: values.tone, extraInstructions: values.extraInstructions, maxWords },
+      chatReplyLimits: Object.fromEntries(Object.keys(CHAT_REPLY_LIMIT_RANGES).map(key => {
+        const value = values[`chatReplyLimits.${key}`];
+        return [key, value.trim() === "" ? NaN : Number(value)];
+      })),
+    };
   }
   return { [section]: values };
 }
@@ -266,7 +277,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
 
   const errors = validateSettingsInput(toInput(section, values)).errors;
   const errorFor = (name: string) => {
-    const key = section === "business" ? name : `${section}.${name}`;
+    const key = section === "business" || name.startsWith("chatReplyLimits.") ? name : `${section}.${name}`;
     return submitted || touched.has(name) ? errors[key] : undefined;
   };
 
@@ -334,6 +345,9 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
     const common = {
       id,
       name: field.name,
+      min: field.min,
+      max: field.max,
+      step: field.type === "number" ? 1 : undefined,
       disabled: state.saving,
       value: values[field.name] ?? "",
       placeholder: field.placeholder,
@@ -404,6 +418,14 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
       </div>
     );
   };
+  const replyFields: FieldDef[] = Object.entries(CHAT_REPLY_LIMIT_RANGES).map(([key, [min, max]]) => ({
+    name: `chatReplyLimits.${key}`,
+    label: key === "perChat" ? "Each chat" : CHAT_CHANNEL_LABELS[key as keyof typeof CHAT_CHANNEL_LABELS],
+    type: "number",
+    unit: "per hour",
+    min, max,
+    hint: key === "perChat" ? "Stops one guest from using up a channel’s allowance." : undefined,
+  }));
   const businessGroups = [
     { title: "Identity", description: "The name and welcome guests see", names: ["businessName", "tagline"] },
     { title: "Contact", description: "Where guests can reach your team", names: ["contactEmail", "contactPhone", "whatsapp", "lineId", "lineUrl"] },
@@ -426,6 +448,16 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
               <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
           )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
+          {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid gap-5 p-5 lg:p-6">
+            <header>
+              <div className="flex items-center gap-2">
+                <h3 className="text-[15px] font-semibold">Reply limits</h3>
+                <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Website messages count during staff replies; other channels pause counting while staff take over. Changes apply from the next message, and each limit value has its own hourly count. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
+              </div>
+              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Default total: 2,500 guest messages/hour across five channels</p>
+            </header>
+            <div className="grid gap-5 sm:grid-cols-2">{replyFields.map(renderField)}</div>
+          </Card> : null}
         </fieldset>
 
       <Card className="px-5 py-3 lg:px-6 [&>details]:border-t-0">

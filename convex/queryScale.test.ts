@@ -1,3 +1,4 @@
+import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { listSessions } from './messaging/adminChat';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -38,7 +39,7 @@ async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', adminEmail);
 	const t = convexTest(schema, modules);
 	const propertyId = await t.run((ctx) => ctx.db.insert('properties', { ...villa, slug: 'villa', name: 'Villa' }));
-	const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
 	return { t, admin, propertyId };
 }
 
@@ -115,7 +116,7 @@ describe('booking overlap reads every relevant booking', () => {
 			admin.mutation(api.bookings.commands.updateBooking.updateBooking, { bookingId: pending.bookingId, action: 'confirm' })
 		).rejects.toThrow('no longer available');
 		await expect(
-			t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId: pending.bookingId })
+			t.run(ctx => markBookingPaid(ctx, pending.bookingId, 'test'))
 		).rejects.toThrow('no longer available');
 		const after = await t.run((ctx) => ctx.db.get(pending.bookingId));
 		expect(after).toMatchObject({ status: 'pending', paymentStatus: 'pending' });
@@ -141,7 +142,7 @@ describe('booking overlap reads every relevant booking', () => {
 		expect(await t.query(api.bookings.calendar.availability.getBlockedDates, { propertyId, startDate: '2030-05-01', endDate: '2030-05-01' })).toEqual(['2030-05-01']);
 		// Payment validates through the hold itself: an OTA night is reported as blocked.
 		await expect(
-			t.mutation(internal.bookings.bookings.markPaidFromTrustedWebhook, { bookingId: pending.bookingId })
+			t.run(ctx => markBookingPaid(ctx, pending.bookingId, 'test'))
 		).rejects.toThrow('blocked');
 	});
 
@@ -168,7 +169,7 @@ describe('admin calendar', () => {
 
 	it('lists every OTA row of a night and host blocks that began before the range', async () => {
 		const { t, admin, propertyId } = await setup();
-		await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: '2030-06-01', end: '2030-06-20', reason: 'Repairs' });
+		await addTestDateBlock(admin, { propertyId, start: '2030-06-01', end: '2030-06-20', reason: 'Repairs' });
 		const [a, b] = await t.run(async (ctx) => [
 			await ctx.db.insert('icalSources', { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/a.ics' }),
 			await ctx.db.insert('icalSources', { propertyId, platform: 'agoda', icalUrl: 'https://example.com/b.ics' })
@@ -290,12 +291,6 @@ describe('availability for the booking UI', () => {
 		).rejects.toThrow('at most');
 	});
 
-	it('keeps booking ids and feed ids out of the public calendar rows', async () => {
-		const { t, propertyId } = await setup();
-		await t.run((ctx) => ctx.db.insert('availability', { propertyId, date: '2030-07-02', status: 'booked', source: 'direct' }));
-		const rows = await t.query(api.bookings.calendar.availability.getForProperty, { propertyId, startDate: '2030-07-01', endDate: '2030-07-03' });
-		expect(rows).toEqual([{ date: '2030-07-02', status: 'booked', source: 'direct' }]);
-	});
 });
 
 describe('booking search and guest lookup', () => {

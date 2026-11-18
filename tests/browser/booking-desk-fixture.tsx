@@ -99,7 +99,7 @@ const toAdmin = (s: Stay): AdminBooking => ({
   _id: s._id, propertyId: s.propertyId, guestName: s.guestName, guestPhone: s.guestPhone, guestEmail: s.guestEmail,
   checkIn: s.checkIn, checkOut: s.checkOut, guests: s.guests, nights: nightsBetweenIso(s.checkIn, s.checkOut), total: s.total, owed: money(s).owed,
   promotion: undefined, currency: "THB", status: s.status, paymentStatus: paymentStatus(s), paymentMethod: undefined,
-  amountPaid: paymentStatus(s) === "paid" ? paidOf(s) : undefined, source: s.source, chatSessionId: undefined,
+  amountPaid: paidOf(s), amountRefunded: 0, source: s.source, chatSessionId: undefined,
   confirmationCode: s.confirmationCode, createdAt: now - 30 * DAY_MS, revision: s.revision,
 });
 const find = (id: string) => desk.stays.find((s) => s._id === id);

@@ -10,7 +10,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 it('retires every root booking email action independently of args and authentication', async () => {
   const t = convexTest(schema, modules);
-  for (const client of [t, t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' })]) {
+  for (const client of [t, t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' })]) {
     for (const endpoint of ['sendBookingConfirmation', 'sendOwnerNotification', 'sendCancellation', 'sendPreArrival', 'sendBookingUpdated', 'sendReviewRequest']) {
       // Omit all required args: a bad-args/auth error would conceal a still-live registration.
       await expect(client.action(makeFunctionReference<'action'>(['emails', endpoint].join(':')), {}))
@@ -21,7 +21,7 @@ it('retires every root booking email action independently of args and authentica
 
 it('retires root maintenance exports while retaining the cron composition module', async () => {
   const t = convexTest(schema, modules);
-  for (const client of [t, t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' })]) {
+  for (const client of [t, t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' })]) {
     for (const endpoint of ['expireBookingHold', 'expirePending', 'queueLifecycleEmails']) {
       await expect(client.mutation(makeFunctionReference<'mutation'>(['crons', endpoint].join(':')), {}))
         .rejects.toThrow(`Expected a Convex function exported from module "crons" as \`${endpoint}\`, but there is no such export.`);

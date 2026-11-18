@@ -291,6 +291,8 @@
     }
   },
   "Chat": {
+    "sendRateLimited": "La limite horaire de messages du chat est atteinte. Votre message n’a pas été envoyé. Réessayez plus tard ou contactez-nous par e-mail.",
+    "sendFailed": "Nous n’avons pas pu confirmer l’envoi de votre message. Réessayez ; votre brouillon est enregistré.",
     "defaultTitle": "Conciergerie Auralis",
     "propertyTitle": "Conciergerie {propertyName}",
     "open": "Ouvrir le chat concierge",

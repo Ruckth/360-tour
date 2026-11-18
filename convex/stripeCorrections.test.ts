@@ -10,7 +10,7 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 async function setup(deposit = 0) {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const { bookingId, accessToken } = await t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });
   if (deposit) await t.run(ctx => ctx.db.patch(bookingId, { amountPaid: deposit, paymentStatus: 'paid' }));
@@ -44,7 +44,7 @@ it('keeps provider refunds waived and charges only a later stay extension at POS
   await start(); await complete(); await refund(10000);
   expect((await admin.query(api.pos.orders.ordersForBooking, { bookingId }))!.balance).toMatchObject({ total: 20000, paid: 10000, refunded: 10000, owed: 0 });
   await t.run(ctx => ctx.db.patch(bookingId, { total: 25000 }));
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   const view = (await admin.query(api.pos.orders.getOrder, { orderId }))!;
   expect(view.totals).toMatchObject({ total: 15000, deposit: 10000, due: 5000 });
   await admin.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, idempotencyKey: 'extension-after-refund', expectedRevision: view.order.revision!, expectedDue: 5000, tenders: [{ method: 'cash', amount: 5000 }] });

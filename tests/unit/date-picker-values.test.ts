@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { dateToIso, dateValueProblem, isTimeValue, isoToDate, parseLocalDateTime, timeMinuteOptions, timeValueProblem } from '@/lib/dates/values';
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { formatPickerDate, getCalendarFormatters } from "@/lib/dates/format";
+import { notifyDefault } from "@/components/admin/admin-bookings-shared";
 
 describe("calendar values", () => {
   it.each([
@@ -123,8 +124,7 @@ describe("resort today", () => {
 });
 
 describe("admin email default", () => {
-  it("treats a stay as historical from Bangkok midnight, like the server", async () => {
-    const { notifyDefault } = await import("@/components/admin/admin-bookings-shared");
+  it("treats a stay as historical from Bangkok midnight, like the server", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2030-01-10T16:59:59Z"));

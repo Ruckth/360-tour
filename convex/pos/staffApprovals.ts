@@ -50,7 +50,7 @@ export const create = staffMutation({
   }
   const preview = await previewStaffApproval(ctx, order, args.payload);
   const rules = await cashierRules(ctx);
-  const requester = await requesterFingerprint(ctx, actor.email, actor.tokenIdentifier);
+  const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
     orderId: order._id, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,

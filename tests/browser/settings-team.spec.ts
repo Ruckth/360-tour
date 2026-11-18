@@ -155,6 +155,13 @@ test.describe("Settings panels", () => {
       await open(page, `?view=settings&tab=${tab}`);
       const panel = page.getByRole("region", { name: title });
       await expectAtMostSentences(panel, tab === "business" ? 4 : 1);
+      if (tab === "ai") {
+        await expect(panel.getByText("Default total: 2,500 guest messages/hour across five channels", { exact: true })).toBeVisible();
+        await panel.getByRole("button", { name: "About reply limits" }).click();
+        await expect(page.getByRole("tooltip")).toContainText("The five channel allowances add together");
+        await expect(page.getByRole("tooltip")).toContainText("website guests keep their unsent draft");
+        await page.keyboard.press("Escape");
+      }
       const save = panel.getByRole("button", { name: "Save", exact: true });
       // Deleted villa history lives on Properties, not under every Settings tab.
       await expect(page.getByText("deleted villas")).toHaveCount(0);
@@ -287,5 +294,6 @@ test("invite drafts guard tab changes and their own Cancel", async ({ page }) =>
   await invite.getByRole("button", { name: "Cancel", exact: true }).click();
   await dialog.getByRole("button", { name: "Discard", exact: true }).click();
   await expect(invite).toHaveCount(0);
-  expect(await page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })))).toBe(false);
+  // The parent guard clears through passive effects after the form unmounts.
+  await expect.poll(() => page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }))), { timeout: 1000 }).toBe(false);
 });

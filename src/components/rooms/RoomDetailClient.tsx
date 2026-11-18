@@ -33,16 +33,18 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   const t = useTranslations("Villa");
   const searchParams = useSearchParams();
   const [galleryIndex, setGalleryIndex] = useState(0);
-  const [showTour, setShowTour] = useState(false);
+  // The tour follows ?tour=1 whenever the URL changes; openTour/closeTour also set it right away.
+  const [showTour, setShowTour] = useState(() => searchParams.get("tour") === "1");
+  const [tourParams, setTourParams] = useState(searchParams);
+  if (tourParams !== searchParams) {
+    setTourParams(searchParams);
+    setShowTour(searchParams.get("tour") === "1");
+  }
   const chatContext = useChatPageContext();
   const setChatContext = chatContext?.setContext;
   const clearChatContext = chatContext?.clearContext;
   const resort = getLocalizedResort(usePublicMessages());
   const images = property.images.length ? property.images : [resort.heroImage];
-
-  useEffect(() => {
-    setShowTour(searchParams.get("tour") === "1");
-  }, [searchParams]);
 
   useEffect(() => {
     setChatContext?.({

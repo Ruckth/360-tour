@@ -1,3 +1,4 @@
+import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -47,7 +48,7 @@ async function setup() {
       status: "active",
     });
   });
-  const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+  const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
   return { t, admin };
 }
 
@@ -101,10 +102,8 @@ describe("admin bookings", () => {
   it("rejects signed-in non-admin access to guest data", async () => {
     const { t } = await setup();
     const { bookingId } = await t.mutation(api.bookings.bookings.create, { ...stay, guestEmail: "guest@example.com" });
-    const propertyId = await t.run(async ctx => (await ctx.db.query("properties").first())!._id);
-    const visitor = t.withIdentity({ email: "visitor@example.com", tokenIdentifier: "visitor-token" });
+    const visitor = t.withIdentity({ emailVerified: true, email: "visitor@example.com", tokenIdentifier: "visitor-token" });
     await expect(visitor.query(api.bookings.bookings.getById, { id: bookingId })).rejects.toThrow("Not authorized");
-    await expect(visitor.query(api.bookings.bookings.listByProperty, { propertyId, paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
     await expect(visitor.query(api.messaging.leads.list, { paginationOpts: { numItems: 10, cursor: null } })).rejects.toThrow("Not authorized");
   });
 
@@ -180,13 +179,11 @@ describe("admin bookings", () => {
 
   });
 
-  it("rejects draft and archived properties for quotes and admin bookings", async () => {
+  it("rejects draft and archived properties for admin bookings", async () => {
     const { t, admin } = await setup();
     const propertyId = await t.run(async ctx => (await ctx.db.query("properties").first())!._id);
     for (const status of ["draft", "archived"] as const) {
       await t.run(ctx => ctx.db.patch(propertyId, { status }));
-      await expect(t.query(api.bookings.bookings.quoteStay, { propertySlug: stay.propertySlug, checkIn, checkOut, guests: 2 }))
-        .rejects.toThrow("Property is not available for booking");
       await expect(admin.mutation(api.bookings.commands.createBooking.createBooking, stay))
         .rejects.toThrow("Property is not available for booking");
     }
@@ -299,7 +296,7 @@ describe("editBooking", () => {
     await admin.mutation(api.bookings.commands.editBooking.editBooking, edit(second, propertyId, { checkIn: isoInDays(34), checkOut: isoInDays(37) }));
     await expect(admin.mutation(api.bookings.commands.editBooking.editBooking, edit(second, propertyId, { checkIn: isoInDays(32), checkOut: isoInDays(35) })))
       .rejects.toThrow("no longer available");
-    await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: isoInDays(40), end: isoInDays(42), reason: "Owner stay" });
+    await addTestDateBlock(admin, { propertyId, start: isoInDays(40), end: isoInDays(42), reason: "Owner stay" });
     await expect(admin.mutation(api.bookings.commands.editBooking.editBooking, edit(first, propertyId, { checkIn: isoInDays(39), checkOut: isoInDays(41) })))
       .rejects.toThrow("blocked");
     // Failed edits keep the original nights held.
@@ -415,7 +412,7 @@ describe("date blocks", () => {
   it("adds, edits and removes a block that stops bookings", async () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);
-    const blockId = await admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: checkIn, end: checkOut, reason: "  Maintenance " });
+    const blockId = await addTestDateBlock(admin, { propertyId, start: checkIn, end: checkOut, reason: "  Maintenance " });
     await expect(admin.mutation(api.bookings.commands.createBooking.createBooking, stay)).rejects.toThrow("blocked");
     let listed = await admin.query(api.bookings.admin.listForAdmin, { from: checkIn, to: checkOut });
     expect(listed.dateBlocks).toEqual([{ _id: blockId, propertyId, start: checkIn, end: checkOut, reason: "Maintenance" }]);
@@ -445,13 +442,13 @@ describe("date blocks", () => {
     const { t, admin } = await setup();
     const propertyId = await propertyIdOf(t);
     await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
-    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: isoInDays(32), end: isoInDays(34), reason: "Owner" }))
+    await expect(addTestDateBlock(admin, { propertyId, start: isoInDays(32), end: isoInDays(34), reason: "Owner" }))
       .rejects.toThrow("no longer available");
-    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: isoInDays(40), end: isoInDays(41), reason: " " }))
+    await expect(addTestDateBlock(admin, { propertyId, start: isoInDays(40), end: isoInDays(41), reason: " " }))
       .rejects.toThrow("reason");
-    await expect(admin.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: isoInDays(41), end: isoInDays(40), reason: "x" }))
+    await expect(addTestDateBlock(admin, { propertyId, start: isoInDays(41), end: isoInDays(40), reason: "x" }))
       .rejects.toThrow();
-    await expect(t.mutation(api.bookings.calendar.addDateBlock.addDateBlock, { propertyId, start: isoInDays(40), end: isoInDays(41), reason: "x" }))
+    await expect(addTestDateBlock(t, { propertyId, start: isoInDays(40), end: isoInDays(41), reason: "x" }))
       .rejects.toThrow();
   });
 });
@@ -653,7 +650,7 @@ describe("historical admin bookings", () => {
   it("requires admin authentication and keeps public create rejecting past dates even for an admin caller", async () => {
     const { t, admin } = await setup();
     const past = { ...stay, checkIn: isoInDays(-3), checkOut: isoInDays(-1) };
-    const visitor = t.withIdentity({ email: "guest@example.com", tokenIdentifier: "guest-token" });
+    const visitor = t.withIdentity({ emailVerified: true, email: "guest@example.com", tokenIdentifier: "guest-token" });
     await expect(t.mutation(api.bookings.commands.createBooking.createBooking, past)).rejects.toThrow();
     await expect(visitor.mutation(api.bookings.commands.createBooking.createBooking, past)).rejects.toThrow("Not authorized");
     for (const client of [t, visitor, admin]) {

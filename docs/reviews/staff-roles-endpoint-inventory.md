@@ -1,5 +1,7 @@
 # Optional POS staff roles: backend contract and endpoint inventory
 
+Unused RPCs were retired after this review and are omitted below; see the [current access inventory](../architecture/phase3a-access-inventory.md).
+
 > Historical record of the staff-role implementation before the architecture moves. Paths below describe that revision. See the [current access inventory](../architecture/phase3a-access-inventory.md) and [Auth ownership record](../architecture/phase3b-auth-implementation.md) for current endpoints and permission helpers.
 
 Implemented on `feat/staff-roles-backend`, with audit fixes on `feat/staff-roles-backend-fixes`, based on the local staff-roles branch (base `d67ba9f`). Backend only; no deployment, migration, seed or live data edit is part of this work.
@@ -33,7 +35,6 @@ All names below are under `api`. IDs are Convex IDs for their named tables. Muta
 | `staffAccess.getCashierRules` (query) | `{}` | `Rules` | Owner |
 | `staffAccess.updateCashierRules` | `{expectedRevision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund?}` | Updated `Rules` | Owner; revision must match |
 | `pos.createOrder` | `{}` | `{orderId}` | Checkout; creates an empty order when its first custom item needs approval |
-| `customers.checkoutCustomer` (query) | `{customerId}` | `{_id,name,phone?,email?,revision,archivedAt?,mergedInto?}|null` | Checkout; contact card only |
 
 `Rules = { revision:number, discountLimitPercent:number, voidPaidSale:'manager'|'cashier', customPrice:'manager'|'cashier', paymentFix:'manager'|'cashier', refund:'manager'|'cashier' }`. Defaults: revision 0, limit 10, all actions `manager`. Limit range 0–100, up to two decimals. Missing record reads defaults without writing. The additive `refund` field reads as `manager` when absent; older callers omitting it on update preserve its current value. Package 2.1 implements the rule and matching approval kind. Updates increment revision; conflicts throw `ConvexError({code:'STALE_RULES',message})`.
 
@@ -89,7 +90,7 @@ All amount arithmetic uses the existing satang rounding (`billMath.round2`, `lin
 
 For catalog room/service rows the catalog snapshot is their original `unitPrice`; price overrides never change it. New attached appointments snapshot the agreed `appointment.price`, regardless of the current service catalog price. New attached stays use the booked charge, including an override authorized by Owner/Manager, adjusted for provider-waived charges. That override is already authorized and does not consume the cashier discount allowance; legitimate booking coupons/direct rates remain unaffected. Legacy rows without the optional baseline fall back to `unitPrice` until a source refresh establishes the source baseline. No backfill is required. Custom extras have their explicitly authorized starting price as baseline because no extras catalog exists.
 
-The resulting whole line is checked on discount edits, quantity edits, price overrides and source repricing. Source attachment and both `openOrderFor` / `openOrderForLink` check only lines newly added for that source in this call; reopening or extending a reused order preserves existing manager-approved discounts. A custom-price permission never waives the manual reduction ceiling. Retained discounts combine with a price override for this check. Refreshing or reattaching a source uses its agreed source price, including a manager-authorized booking override. A manager-approved action may exceed the ceiling; its audit trail records the manager. Cashiers can subsequently settle that unchanged order. Valid coupons remain separate, including coupons above 10%, with all existing eligibility/cap/budget checks.
+The resulting whole line is checked on discount edits, quantity edits, price overrides and source repricing. Source attachment and `openOrderForLink` check only lines newly added for that source in this call; reopening or extending a reused order preserves existing manager-approved discounts. A custom-price permission never waives the manual reduction ceiling. Retained discounts combine with a price override for this check. Refreshing or reattaching a source uses its agreed source price, including a manager-authorized booking override. A manager-approved action may exceed the ceiling; its audit trail records the manager. Cashiers can subsequently settle that unchanged order. Valid coupons remain separate, including coupons above 10%, with all existing eligibility/cap/budget checks.
 
 Cashier denials for these actions throw typed `ConvexError` data:
 
@@ -107,15 +108,15 @@ Every endpoint in this table checks `checkout` (Owner, Manager, Cashier), except
 
 | Module | Endpoints | Additional restriction |
 | --- | --- | --- |
-| `pos` | `stableCatalog`, `recentCatalogRanking`, `catalog`, `getOrder`, `findOrderByNumber`, `attachLookupStatus`, `listAttachable`, `orderHistory`, `restoreCheck` | Order/receipt or bounded catalog/source lookup only; cashier receipt/history date restrictions below; general order list remains operations |
-| `pos` | `createOrder`, `openOrderFor`, `openOrderForLink`, `addItem`, `attach`, `updateLine`, `removeLine`, `updateSourceLine`, `linkCustomer`, `unlinkCustomer`, `saveOrder`, `clearOrder`, `discardOrder`, `restoreOrder`, `settleOrder` | Unpaid lifecycle checks remain; custom extra uses `customPrice`; source price changes use `customPrice` and the manual ceiling; settlement blocks pending approvals |
+| `pos` | `stableCatalog`, `recentCatalogRanking`, `getOrder`, `findOrderByNumber`, `attachLookupStatus`, `listAttachable`, `orderHistory`, `restoreCheck` | Order/receipt or bounded catalog/source lookup only; cashier receipt/history date restrictions below; general order list remains operations |
+| `pos` | `createOrder`, `openOrderForLink`, `addItem`, `attach`, `updateLine`, `removeLine`, `updateSourceLine`, `linkCustomer`, `unlinkCustomer`, `saveOrder`, `clearOrder`, `discardOrder`, `restoreOrder`, `settleOrder` | Unpaid lifecycle checks remain; custom extra uses `customPrice`; source price changes use `customPrice` and the manual ceiling; settlement blocks pending approvals |
 | `pos` | `overrideLinePrice` | `customPrice` rule **and** manual ceiling |
 | `pos` | `applyOrderCoupon`, `removeOrderCoupon`, `recheckOrderCoupon` | All existing coupon validity checks; no cashier percentage ceiling |
 | `pos` | `linkCandidates` | Cashiers only with `paymentFix='cashier'`; checks rule before guest-name search; cashier order date restriction applies |
 | `pos` | `voidOrder` | Paid only; `voidPaidSale` rule; keeps received money; refused after POS refunds |
 | `pos` | `refundLine` | Paid walk-in line only; `refund` rule; cashier order visibility; integer satang and idempotency/cap checks |
 | `pos` | `amendOrderPayment`, `linkPaidLine`, `unlinkPaidLine`, `voidUnreceivedOrder` | `paymentFix` rule, correction revisions/idempotency/proof checks retained |
-| `customers` | `browseCustomers`, `searchCustomers`, `checkoutCustomer`, `createCustomer` | Cashiers: active search only, at least two characters; no archive browsing; contact cards only; create rejects nonempty notes. No profile edits/history/merge privileges |
+| `customers` | `browseCustomers`, `searchCustomers`, `createCustomer` | Cashiers: active search only, at least two characters; no archive browsing; contact cards only; create rejects nonempty notes. No profile edits/history/merge privileges |
 | `displays` | `createPairLink`, `approveCode`, `takeDisplay`, `showOrder`, `renewDriverLease`, `listDisplays`, `revoke` | Existing pairing secrets, driver/lease and display checks remain |
 | `orderHistoryPages` | `corrections`, `audit`, `bookingRefunds`, `appointmentRefunds`, `orderRefunds` | Order-specific receipt histories, page size 1–50; cashier order date restriction applies; no refund writes |
 | `staffApprovals` | `create`, `forOrder` | Create is Cashier only; immutable exact payload; cashier order date restriction applies to both; link/unlink requests require paymentFix=cashier |
@@ -125,7 +126,7 @@ Every endpoint in this table checks `checkout` (Owner, Manager, Cashier), except
 
 For Cashiers, `pos.getOrder` and `pos.findOrderByNumber` return `null` for orders outside active unpaid checkout (`draft`/legacy `held`) or settlements (`paid`/`void`) on the current resort business date. Settlement date uses `resortTodayIso(paymentEffectiveAt ?? paidAt)` and is compared to `resortTodayIso()` (Asia/Bangkok); a void does not reset it. Missing settlement timestamps and discarded orders are hidden. `orderHistoryPages.*`, `pos.orderHistory`, `staffApprovals.forOrder` / `create`, and permitted `linkCandidates` enforce the same boundary with `Order not found`, identically for absent and inaccessible orders. Authorization runs before order joins/history reads. Owners/Managers retain their prior read access. Paid receipt writes (`voidOrder`, `amendOrderPayment`, `voidUnreceivedOrder`, `linkPaidLine`, `unlinkPaidLine`, and `refundLine`) enforce the same current-business-date visibility before applying changes. A cashier cannot make a hidden historical receipt visible by changing its payment date; Managers and Owners retain historical correction access.
 
-Cashiers receive minimal customer cards rather than private notes or unrelated guest histories. `getCustomer`, all customer editing/archive/merge/history endpoints, general order lists, booking/appointment admin and penalty-fee creation stay operations-only. The UI must use `customers.checkoutCustomer` and skip the old full CustomerDetails workflow for cashiers; display pairing stays fully usable from checkout.
+Cashiers receive minimal customer cards rather than private notes or unrelated guest histories. `getCustomer`, all customer editing/archive/merge/history endpoints, general order lists, booking/appointment admin and penalty-fee creation stay operations-only. The UI uses customer browse/search contact cards and skips the full CustomerDetails workflow for cashiers; display pairing stays fully usable from checkout.
 
 Pre-existing public/guest APIs retain their own authentication, token and validity policies. In touched modules these include `settings.publicProfile`, `displays.claimLink`, `startPairing`, `releaseDisplay`, `current`, `heartbeat`, and the public booking telemetry surface. They gain no staff permission or broader guest-data access from this feature.
 
@@ -140,23 +141,23 @@ Pre-existing public/guest APIs retain their own authentication, token and validi
 | `staffAccess.currentInternal` | Internal only; authenticated resolver for action contexts |
 | `staffApprovals.expire` | Internal only; scheduled terminal-status maintenance |
 
-Marketing access management (`marketingAccess.listGrants`, `setGrant`) is unchanged and still requires `manageAccess` from the existing marketing layer. A staff Manager has no implicit marketing grant.
+Marketing access management (`marketing/access.setGrant`) still requires `manageAccess` from the existing marketing layer. A staff Manager has no implicit marketing grant.
 
 ## Endpoint inventory: existing requireAdmin operations surface
 
-The following 182 registered endpoints (including the conditional non-marketing branch of `recordHistory.list`) resolve through the unchanged `requireAdmin` interface, now backed by `operations` (Owner/Manager). They remain denied to Cashiers. This list includes calls made through local helpers, such as customer merges. Source files outside the explicit changes below require no mechanical edits.
+The following registered endpoints (including the conditional non-marketing branch of `recordHistory.list`) resolve through the unchanged `requireAdmin` interface, now backed by `operations` (Owner/Manager). They remain denied to Cashiers. This list includes calls made through local helpers, such as customer merges. Source files outside the explicit changes below require no mechanical edits.
 
 | Module | Endpoints requiring operations |
 | --- | --- |
-| `adminBookings` | `listForAdmin`, `getForAdmin`, `searchBookings`, `findGuests`, `updateBooking`, `recordPayment`, `amendPayment`, `cancelPayment`, `recordRefund`, `cancelStay`, `reopenBooking`, `resendBookingEmails`, `createBooking`, `quoteBookingEdit`, `editBooking`, `deleteBooking`, `listCleanupCandidates`, `deleteBookings`, `updateNotes`, `bookingFinancials`, `bookingHistory`, `addDateBlocks`, `addDateBlock`, `updateDateBlock`, `removeDateBlock` |
-| `adminChat` | `listSessions`, `getSessionDetail`, `settleGuestMessage`, `listTranscriptMessages`, `getTranscript`, `setSessionStatus`, `setAiPaused`, `setStaffTask`, `setKeepWithStaff`, `deleteArchivedSession` |
+| `adminBookings` | `listForAdmin`, `getForAdmin`, `searchBookings`, `findGuests`, `updateBooking`, `recordPayment`, `amendPayment`, `cancelPayment`, `recordRefund`, `cancelStay`, `reopenBooking`, `resendBookingEmails`, `createBooking`, `quoteBookingEdit`, `editBooking`, `deleteBooking`, `listCleanupCandidates`, `deleteBookings`, `updateNotes`, `bookingFinancials`, `bookingHistory`, `addDateBlocks`, `updateDateBlock`, `removeDateBlock` |
+| `adminChat` | `listSessions`, `getSessionDetail`, `settleGuestMessage`, `listTranscriptMessages`, `setSessionStatus`, `setAiPaused`, `setStaffTask`, `setKeepWithStaff`, `deleteArchivedSession` |
 | `adminProperties` | `get`, `create`, `duplicate`, `setSlug`, `setStatus`, `deleteDraft`, `generateUploadUrl`, `saveUploadedImage`, `createRoom`, `deleteRoom`, `reorderRooms`, `setHotspots` |
 | `adminReply` | `claim`, `complete`, `fail` |
 | `adminReviews` | `list`, `create`, `update`, `remove` |
 | `adminServices` | `listStaff`, `uploadStaffAvatar`, `discardStaffAvatarUpload`, `createStaff`, `updateStaff`, `archiveStaff`, `countUpcomingAppointments`, `listServices`, `createService`, `updateService`, `archiveService`, `setServiceStaffMatrix`, `listTimeOff`, `addTimeOff`, `updateTimeOff`, `removeTimeOff`, `listSchedule`, `findOpenSlots`, `getAppointmentReference`, `createAppointment`, `previewAppointmentTime`, `correctAppointmentStatus`, `listAppointmentHistoryPage`, `listTimeOffPage`, `rescheduleOptions`, `rescheduleAppointment`, `updateAppointmentTurnaround`, `updateAppointmentStatus`, `markAppointmentPaid`, `getAppointmentFinancials`, `correctAppointmentPaymentEntry`, `updateAppointmentDetails`, `refundAppointment`, `cancelAppointment`, `listAppointmentHistory` |
 | `availability` | `getAdminBlockedDates` |
-| `bookings` | `getById`, `listByProperty` |
-| `businessFacts` | `adminList`, `adminSave`, `adminSetStatus`, `adminResolveUnknownGroups`, `adminPropertyOptions` |
+| `bookings` | `getById` |
+| `businessFacts` | `adminList`, `adminSave`, `adminSetStatus`, `adminResolveUnknownGroups` |
 | `chatKnowledge` | `adminListPropertyScopes`, `adminCreatePropertyScope`, `adminDeletePropertyScope`, `adminListAnswers`, `adminGetAnswerDetail`, `adminListAnswerOptions`, `adminListTopics`, `adminCreateAnswer`, `adminUpdateAnswer`, `adminListUnknownQuestions`, `adminGenerateSimilarQuestions`, `adminCreateAnswerFromUnknown`, `adminResolveUnknownWithAnswer`, `adminIgnoreUnknown`, `adminReopenUnknown`, `adminDeleteAnswer`, `adminDeleteQuestion`, `adminApproveQuestion`, `adminRejectQuestion`, `adminListUnknownGroups`, `adminSuggestAnswersForUnknownGroups`, `adminIgnoreUnknownGroups`, `adminReopenUnknownGroups`, `adminLinkUnknownGroups`, `adminUndoLinkUnknownGroups`, `adminListPendingVariants`, `adminApproveQuestions`, `adminRejectQuestions`, `adminUnreviewQuestions`, `adminSetAnswersStatus` |
 | `chatSuggestions` | `adminListCurated`, `adminCreateCurated`, `adminUpdateCurated`, `adminTranslateCuratedDraft`, `adminTranslateMissingCurated`, `adminSetCuratedStatus`, `adminArchiveCurated`, `adminRestoreCurated`, `adminDeleteArchivedCurated` |
 | `configurationHistory` | `records` |
@@ -166,13 +167,13 @@ The following 182 registered endpoints (including the conditional non-marketing 
 | `leads` | `list`, `exportRows`, `remove` |
 | `payments` | `linkRecordedStripeRefund` |
 | `pos` | `listOrders`, `ordersForBooking`, `addAppointmentFee`, `appointmentFees` |
-| `properties` | `listOtaRates`, `upsertOtaRate`, `removeOtaRate`, `adminList`, `adminGet`, `update`, `updateRoom` |
+| `properties` | `listOtaRates`, `upsertOtaRate`, `removeOtaRate`, `adminList`, `update`, `updateRoom` |
 | `recordHistory` | `list` |
 | `roster` | `getWeek`, `applyCells`, `resetCells`, `copyWeek`, `makeDefault`, `undo`, `previewBreakChange`, `editBreak` |
 | `seed` | `seedCuratedQuestionBank` |
-| `settings` | `get`, `channelHealth`, `serverConfig`, `setupChecklist`, `admins` |
+| `settings` | `get`, `channelHealth`, `serverConfig`, `setupChecklist` |
 
-`lib/serviceSlots.createAppointmentRecord` also retains its conditional `requireAdmin` check for historical/admin appointment creation; its callers retain their existing public/admin admission policies. Settings reads, including `settings.admins` and `recordHistory.list(entityType="settings")`, require `requireAdmin` (Owner/Manager); settings writes and Team/grant/cashier-rule management remain owner-only. All `requireOwner` callers were checked: only these settings reads needed restoration. The conditional owner history scopes are listed separately above.
+`lib/serviceSlots.createAppointmentRecord` also retains its conditional `requireAdmin` check for historical/admin appointment creation; its callers retain their existing public/admin admission policies. Settings reads, including `settings.get` and `recordHistory.list(entityType="settings")`, require `requireAdmin` (Owner/Manager); settings writes and Team/grant/cashier-rule management remain owner-only. All `requireOwner` callers were checked: only these settings reads needed restoration. The conditional owner history scopes are listed separately above.
 
 ## Refund and paid-source decisions (updated for package 2.1)
 
@@ -228,7 +229,7 @@ All cases below are in `convex/staffRoles.test.ts`; parameterized cases exercise
 | --- | --- |
 | Appointment baseline and lower-snapshot bypass | `uses the agreed appointment price %s despite catalog drift` (1500 and 500); `never hides manual reduction behind a baseline below the line price` |
 | Cashier receipt privacy and paid linking | `limits cashier receipt and history reads to unpaid or current business-date settlements`; `keeps paid-link discovery and link requests behind the paymentFix rule` |
-| Reused orders with approved discounts | `%s preserves manager-approved discounts when reusing or extending an order` (`openOrderFor`, `openOrderForLink`) |
+| Reused orders with approved discounts | `preserves manager-approved discounts when reusing or extending an order` (`openOrderForLink`) |
 | Manager-authorized booking overrides | `uses the %s booking override as baseline across refresh and reattachment` (Owner, Manager) |
 | Additive refund rule and old caller compatibility | `defaults the additive refund rule to manager and preserves it for older callers`; package 2.1 coverage in `convex/posRefunds.test.ts` |
 | Manager settings reads | `restores manager settings reads while keeping writes and Team history owner-only` |

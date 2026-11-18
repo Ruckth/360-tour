@@ -11,7 +11,7 @@ afterEach(() => vi.unstubAllEnvs());
 it('keeps photo reads safe after deleted service, property and booking sources, without writing financial records', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'audit@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'audit@example.com', tokenIdentifier: 'audit' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'audit@example.com', tokenIdentifier: 'audit' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [],
@@ -34,7 +34,7 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
     });
     return { propertyId, bookingId };
   });
-  const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+  const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'room', propertyId } });
   for (let i = 0; i < 3; i++) await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId } });
   const read = () => admin.query(api.pos.orders.getOrder, { orderId });
@@ -60,6 +60,6 @@ it('keeps photo reads safe after deleted service, property and booking sources, 
   await t.run(ctx => ctx.db.delete(bookingId));
   expect((await read())?.lines).toHaveLength(5);
   expect(await stored()).toEqual(before);
-  await expect(t.query(api.pos.catalog.catalog, {})).rejects.toThrow();
+  await expect(t.query(api.pos.catalog.stableCatalog, {})).rejects.toThrow();
   await expect(t.query(api.pos.orders.getOrder, { orderId })).rejects.toThrow();
 });

@@ -61,8 +61,8 @@ describe("order math", () => {
   });
 
   it("refuses payments finer than a satang", () => {
-    expect(() => assertTenders([{ method: "cash", amount: 60000.4 }, { method: "card", amount: 59999.6 }], 120000)).toThrow("whole satang");
-    expect(() => assertTenders([{ method: "cash", amount: 120000, received: 150000.5 }], 1200)).toThrow("whole satang");
+    expect(() => assertTenders([{ method: "cash", amount: 60000.4 }, { method: "card", amount: 59999.6 }], 120000)).toThrow("baht amount with at most 2 decimal places");
+    expect(() => assertTenders([{ method: "cash", amount: 120000, received: 150000.5 }], 1200)).toThrow("baht amount with at most 2 decimal places");
     expect(() => assertTenders([{ method: "cash", amount: 10 }, { method: "card", amount: 20 }], 30)).not.toThrow();
   });
 

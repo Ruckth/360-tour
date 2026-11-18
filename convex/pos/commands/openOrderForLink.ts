@@ -3,7 +3,7 @@ import { staffMutation } from '../../auth/model';
 import { oneSource } from '../private/orderModel';
 import { openSourceOrder } from '../private/sourceModel';
 
-/** URL source IDs are untrusted; preserve the typed action above for internal UI callers. */
+/** URL source IDs are untrusted; normalize them before opening the source order. */
 export const openOrderForLink = staffMutation({
   capability: 'checkout',
 	args: { bookingId: v.optional(v.string()), appointmentId: v.optional(v.string()) },

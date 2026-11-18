@@ -131,6 +131,7 @@ To enable `/admin`:
 
 1. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in Vercel.
 2. Configure the Clerk `convex` JWT template.
+   The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
 4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
 
@@ -174,7 +175,7 @@ Run before shipping:
 ```sh
 pnpm verify:integration
 pnpm knip
-pnpm arch:score --phase 2  # clean committed tree
+pnpm arch:score --phase "$(cat .arch-phase)"
 ```
 
 This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f local orchestration, test projects and guarded Preview/retention tooling are implemented; root-owned live Preview acceptance remains pending. See the [operations runbook](docs/architecture/phase3f-operations.md).
@@ -193,3 +194,5 @@ After an authorized deployment, root owns live acceptance. Coordinate any extern
 - `/admin` requires Clerk sign-in and only allowlisted admin emails can load chat sessions.
 - Chat opens and returns either AI or fallback content.
 - Mobile layout has no visible overlap in hero, booking, chat, or 360 tour views.
+
+Email-based privileged access requires `emailVerified === true`; false or missing claims deny owner, staff and marketing access, including existing grants. Before rollout verify that **each Clerk environment’s convex JWT template** emits boolean `email_verified` for verified users, and rejects missing/unverified claims. Development was previously verified; production template verification remains required and unverified.

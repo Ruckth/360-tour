@@ -22,6 +22,7 @@ export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx 
   const identity = ctx.identity;
   const email = identity?.email?.trim().toLowerCase();
   if (!identity || !email) throw new Error('Not authenticated');
+  if (identity.emailVerified !== true) throw new ConvexError('Verify your email before claiming a staff invitation');
   if (adminEmails().has(email)) return null;
   const bound = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', identity.tokenIdentifier)).unique();
   if (bound) return null;

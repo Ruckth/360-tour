@@ -291,6 +291,8 @@
     }
   },
   "Chat": {
+    "sendRateLimited": "Das stündliche Nachrichtenlimit des Chats wurde erreicht. Ihre Nachricht wurde nicht gesendet. Versuchen Sie es später erneut oder kontaktieren Sie uns per E-Mail.",
+    "sendFailed": "Wir konnten den Versand Ihrer Nachricht nicht bestätigen. Bitte versuchen Sie es erneut; Ihr Entwurf ist gespeichert.",
     "defaultTitle": "Auralis Concierge",
     "propertyTitle": "{propertyName} Concierge",
     "open": "Concierge-Chat öffnen",

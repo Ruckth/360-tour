@@ -97,8 +97,6 @@ export const chatGetSessionResult = v.object({
 "aiPaused": v.boolean(),
 });
 
-export const chatIsAiPausedResult = v.boolean();
-
 export const messageDocument = v.object({ ...messagesFields, _id: v.id('messages'), _creationTime: v.number() });
 export const channelEventDocument = v.object({ ...channelEventsFields, _id: v.id('channelEvents'), _creationTime: v.number() });
 export const chatGetMessagesResult = v.array(messageDocument);

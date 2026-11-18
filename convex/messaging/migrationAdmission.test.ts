@@ -9,9 +9,9 @@ import { HOUR } from '@convex-dev/rate-limiter';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-13T06:00:00Z')); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
-async function queue(t: ReturnType<typeof createHarness>, eventKey: string) {
-  await t.mutation(internal.messaging.ingress.accept, { channel: 'line', events: [{ eventKey, recipient: 'guest', eventType: 'message', messageText: 'Hello', replyToken: 'test-reply', eventTimestamp: Date.now() }] });
-  return (await t.run(ctx => ctx.db.query('channelEvents').withIndex('by_channel_and_eventKey', q => q.eq('channel', 'line').eq('eventKey', eventKey)).unique()))!;
+async function queue(t: ReturnType<typeof createHarness>, eventKey: string, channel: 'line' | 'whatsapp' = 'line') {
+  await t.mutation(internal.messaging.ingress.accept, { channel, events: [{ eventKey, recipient: 'guest', eventType: 'message', messageText: 'Hello', replyToken: 'test-reply', eventTimestamp: Date.now() }] });
+  return (await t.run(ctx => ctx.db.query('channelEvents').withIndex('by_channel_and_eventKey', q => q.eq('channel', channel).eq('eventKey', eventKey)).unique()))!;
 }
 
 it.each(['processing', 'received'] as const)('retires an unfinished pre-Phase 2 %s event without replaying it or blocking the next turn', async status => {
@@ -44,15 +44,18 @@ it('keeps a recent unlinked staff reply in chronological context when the transc
   expect(history.map(row => row.content)).toEqual(['Staff clarified the arrival time.', 'Hello']);
 });
 
-it.each(['session', 'global'] as const)('ends %s admission refusal without sticky AI pause and resumes after the limit window', async budget => {
-  const t = createHarness(convexTest), event = await queue(t, 'limited');
+it.each([
+  { budget: 'session', channel: 'line' }, { budget: 'global', channel: 'line' },
+  { budget: 'session', channel: 'whatsapp' }, { budget: 'global', channel: 'whatsapp' },
+] as const)('ends $channel $budget admission refusal without sticky AI pause and resumes after the limit window', async ({ budget, channel }) => {
+  const t = createHarness(convexTest), event = await queue(t, 'limited', channel);
   if (budget === 'session') {
     for (let i = 0; i < 20; i++) await t.run(ctx => consumeChatAdmission(ctx, event.sessionId!));
   } else {
     let consumed = 0;
     // Exercise the real component's ten shards, without weakening its global budget.
     for (let i = 0; i < 100 && consumed < 500; i++) {
-      const result = await t.run(ctx => chatLimiter.limit(ctx, 'global', { count: 50 }));
+      const result = await t.run(ctx => chatLimiter.limit(ctx, 'global', { key: channel, count: 50 }));
       if (result.ok) consumed += 50;
     }
     expect(consumed).toBe(500);
@@ -71,7 +74,7 @@ it.each(['session', 'global'] as const)('ends %s admission refusal without stick
     expect((await t.run(ctx => chatLimiter.check(ctx, 'session', { key: event.sessionId!, count: 20 }))).ok).toBe(true);
   }
   vi.setSystemTime(Date.now() + HOUR + 1);
-  const next = await queue(t, 'after-reset');
+  const next = await queue(t, 'after-reset', channel);
   await t.mutation(internal.messaging.worker.claim, { eventId: next._id, token: 'fresh' });
   await t.mutation(internal.messaging.ingress.admit, { eventId: next._id, claimToken: 'fresh' });
   expect((await t.run(ctx => ctx.db.get(next._id)))?.admittedAt).toBe(Date.now());

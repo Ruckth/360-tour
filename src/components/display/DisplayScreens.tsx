@@ -85,8 +85,9 @@ function shownUntil(state: DisplayOrderState) {
 function useBefore(until: number | null) {
   const [before, setBefore] = useState(() => until === null || Date.now() < until);
   useEffect(() => {
-    if (until === null) return setBefore(true);
-    setBefore(Date.now() < until);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- re-reads the clock for a new deadline; render can't call Date.now()
+    setBefore(until === null || Date.now() < until);
+    if (until === null) return;
     const id = window.setTimeout(() => setBefore(false), Math.max(0, until - Date.now()));
     return () => window.clearTimeout(id);
   }, [until]);

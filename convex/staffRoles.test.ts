@@ -18,9 +18,9 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
-  const manager = t.withIdentity({ email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
-  const cashier = t.withIdentity({ email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
+  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
+  const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
+  const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {
@@ -75,7 +75,7 @@ const needsApproval = (kind: string) => ({ data: expect.objectContaining({ code:
 describe('staff permissions and invitations', () => {
   it('keeps allowlisted owners unchanged without grants, even with a corrupt cashier grant', async () => {
     const t = convexTest(schema, modules);
-    const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
+    const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
     expect(await owner.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'owner', cashierRules: DEFAULT_CASHIER_RULES,
       capabilities: { checkout: true, approve: true, settings: true, manageTeam: true, bookings: true, marketing: true } });
     await owner.mutation(api.settings.settings.update, { business: { businessName: 'Still owner' } });
@@ -94,7 +94,6 @@ describe('staff permissions and invitations', () => {
     await expect(s.manager.mutation(api.settings.settings.restore, { expectedRevision: 0, side: 'after', historyId: await s.t.run(ctx => ctx.db.insert('recordChanges', { entityType: 'settings', entityId: 'default', actor: 'owner@example.com', kind: 'updated', recordedAt: now, effectiveAt: now })) })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.auth.staffAccess.listPeople, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.mutation(api.auth.staffAccess.setGrant, { email: 'next@example.com', role: 'manager' })).rejects.toThrow('Not authorized');
-    await expect(s.manager.query(api.marketing.access.listGrants, {})).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.settings.recordHistory.list, { entityType: 'marketingGrant', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     expect(await s.manager.action(ctx => requireAdmin(ctx))).toEqual({ email: 'manager@example.com' });
     await expect(s.cashier.action(ctx => requireAdmin(ctx))).rejects.toThrow('Not authorized');
@@ -110,7 +109,6 @@ describe('staff permissions and invitations', () => {
     await expect(s.cashier.query(api.pos.customers.getCustomer, { customerId })).rejects.toThrow('Not authorized');
     await expect(s.cashier.mutation(api.pos.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Changed' })).rejects.toThrow('Not authorized');
     await expect(s.cashier.mutation(api.pos.customers.createCustomer, { name: 'New guest', notes: 'No' })).rejects.toThrow('Not authorized');
-    expect(await s.cashier.query(api.pos.customers.checkoutCustomer, { customerId })).not.toHaveProperty('notes');
     expect(await s.cashier.query(api.pos.customers.searchCustomers, { query: 'Alice' })).toMatchObject([{ name: 'Alice' }]);
     expect((await s.cashier.query(api.pos.customers.browseCustomers, { query: '', archived: false, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
     const bookingId = await s.booking();
@@ -120,8 +118,8 @@ describe('staff permissions and invitations', () => {
 
   it('uses identity-bound claims, expiry, explicit resend, role change and revoke', async () => {
     const s = await setup();
-    const client = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'issuer|invite' });
-    const impostor = s.t.withIdentity({ email: 'invite@example.com', tokenIdentifier: 'different-issuer|invite' });
+    const client = s.t.withIdentity({ emailVerified: true, email: 'invite@example.com', tokenIdentifier: 'issuer|invite' });
+    const impostor = s.t.withIdentity({ emailVerified: true, email: 'invite@example.com', tokenIdentifier: 'different-issuer|invite' });
     const grantId = await s.owner.mutation(api.auth.staffAccess.setGrant, { email: ' INVITE@example.com ', role: 'cashier' });
     expect((await client.query(api.auth.staffAccess.myAccess, {})).pendingInvitation).toMatchObject({ role: 'cashier', expiresAt: now + STAFF_INVITATION_TTL_MS });
     expect((await client.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();
@@ -230,7 +228,7 @@ describe('cashier money boundaries', () => {
   it.each(['owner', 'manager'] as const)('uses the %s booking override as baseline across refresh and reattachment', async role => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, providerRefundWaived: 10000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: `${role}@example.com`, at: now } }));
     await expect(s.cashier.mutation(api.pos.commands.updateSourceLine.updateSourceLine, { lineId })).rejects.toMatchObject(needsApproval('customPrice'));
@@ -241,11 +239,25 @@ describe('cashier money boundaries', () => {
     await s.cashier.mutation(api.pos.commands.attach.attach, { orderId, bookingId });
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toBeNull();
     expect((await s.view(orderId)).totals.total).toBe(70000);
-    expect(await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId })).toEqual({ orderId });
   });
 });
 
 describe('atomic manager approvals', () => {
+  it('approves a request after the cashier changes their verified email on the same account', async () => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    const cashier = s.t.withIdentity({ emailVerified: true, email: 'cashier.new@example.com', tokenIdentifier: 'issuer|cashier' });
+    expect(await cashier.query(api.auth.staffAccess.myAccess, {})).toMatchObject({ role: 'cashier', capabilities: { checkout: true } });
+    const { requestId } = await cashier.mutation(api.pos.staffApprovals.create, {
+      orderId, reason: 'Guest recovery', payload: { kind: 'discount', lineId, discount: { type: 'amount', value: 10001 } },
+    });
+    expect(await s.manager.query(api.pos.staffApprovals.pending, {})).toMatchObject({ count: 1, list: [{ requesterEmail: 'cashier.new@example.com' }] });
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toEqual({ status: 'applied', replayed: false });
+    expect((await cashier.query(api.pos.orders.getOrder, { orderId }))!.totals.total).toBe(89999);
+    expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId })).toEqual({ status: 'applied', replayed: true });
+  });
+
   it('records exact proposal without moving money, blocks payment, then executes once with actor audit', async () => {
     const s = await setup();
     const { orderId, lineId } = await s.sale();
@@ -333,7 +345,7 @@ describe('atomic manager approvals', () => {
   it('stales a source repricing request when the booked price changes again', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     await s.t.run(ctx => ctx.db.patch(bookingId, { total: 80000, priceOverride: { total: 80000, quotedTotal: 100000, reason: 'Recovery', by: 'owner@example.com', at: now } }));
     const first = await s.request(orderId, { kind: 'customPrice', action: 'updateSourceLine', lineId });
@@ -441,7 +453,7 @@ describe('staff-role audit regressions', () => {
   it.each([150000, 50000])('uses the agreed appointment price %s despite catalog drift', async price => {
     const s = await setup();
     const appointmentId = await s.appointment(price);
-    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId });
+    const { orderId } = await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId });
     const lineId = (await s.view(orderId)).lines[0]._id;
     expect(await s.t.run(ctx => ctx.db.get(lineId))).toMatchObject({ unitPrice: price, catalogUnitPrice: price });
     await s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: price / 10 } });
@@ -458,23 +470,23 @@ describe('staff-role audit regressions', () => {
     expect(preview).toMatchObject({ amount: 60000, percent: 4000 });
   });
 
-  it.each(['openOrderFor', 'openOrderForLink'] as const)('%s preserves manager-approved discounts when reusing or extending an order', async endpoint => {
+  it('preserves manager-approved discounts when reusing or extending an order', async () => {
     const s = await setup();
     const bookingId = await s.booking();
-    const { orderId } = await s.manager.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+    const { orderId } = await s.manager.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
     const { lineId } = await s.manager.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'service', serviceId: s.serviceId } });
     await s.manager.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 30000 } });
     const before = await s.view(orderId);
-    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { bookingId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId })).toEqual({ orderId });
     expect((await s.view(orderId)).order.revision).toBe(before.order.revision);
     const appointmentId = await s.appointment(1000, bookingId);
-    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { appointmentId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId })).toEqual({ orderId });
     const lines = (await s.view(orderId)).lines;
     expect(lines).toHaveLength(3);
     expect(lines.find(line => line._id === lineId)?.discount).toEqual({ type: 'amount', value: 30000 });
     const appointmentLine = lines.find(line => line.appointmentId === appointmentId)!;
     await s.manager.mutation(api.pos.commands.updateLine.updateLine, { lineId: appointmentLine._id, discount: { type: 'amount', value: 20000 } });
-    expect(await s.cashier.mutation(({ openOrderFor: api.pos.commands.openOrderFor.openOrderFor, openOrderForLink: api.pos.commands.openOrderForLink.openOrderForLink })[endpoint], { appointmentId })).toEqual({ orderId });
+    expect(await s.cashier.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId })).toEqual({ orderId });
     await expect(s.cashier.mutation(api.pos.commands.updateLine.updateLine, { lineId, discount: { type: 'amount', value: 30100 } })).rejects.toMatchObject(needsApproval('discount'));
   });
 
@@ -604,10 +616,8 @@ describe('staff-role audit regressions', () => {
   it('restores manager settings reads while keeping writes and Team history owner-only', async () => {
     const s = await setup();
     await s.owner.mutation(api.settings.settings.update, { business: { businessName: 'Manager can read' } });
-    expect(await s.manager.query(api.settings.settings.admins, {})).toEqual(['owner@example.com']);
     expect(await s.manager.query(api.settings.settings.get, {})).toHaveProperty('businessName', 'Manager can read');
     expect((await s.manager.query(api.settings.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).page).toHaveLength(1);
-    await expect(s.cashier.query(api.settings.settings.admins, {})).rejects.toThrow('Not authorized');
     await expect(s.cashier.query(api.settings.recordHistory.list, { entityType: 'settings', paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     for (const entityType of ['staffGrant', 'cashierRules', 'marketingGrant']) await expect(s.manager.query(api.settings.recordHistory.list, { entityType, paginationOpts: { numItems: 20, cursor: null } })).rejects.toThrow('Not authorized');
     await expect(s.manager.query(api.settings.cashierRules.getCashierRules, {})).rejects.toThrow('Not authorized');

@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -110,18 +110,15 @@ function FactForm({
   const [form, setForm] = useState<FactFormValues>(() => initialValues(target));
   // A fact started from a chat applies to that chat's villa until staff choose otherwise. The
   // property list loads after the form opens, so the slug is matched once it arrives.
-  const scopedFromChat = useRef(false);
+  const [scopedFromChat, setScopedFromChat] = useState(false);
   const [scopeChosen, setScopeChosen] = useState(false);
   const chatSlug = target.fromMessage?.propertySlug;
   const chatProperty = properties.find((property) => property.slug === chatSlug);
   const needsScopeChoice = !!chatSlug && chatProperty?.status !== "active" && !scopeChosen;
-  useEffect(() => {
-    if (scopedFromChat.current || !chatSlug) return;
-    const match = properties.find((property) => property.slug === chatSlug);
-    if (!match || match.status !== "active") return;
-    scopedFromChat.current = true;
-    setForm((current) => (current.propertyId ? current : { ...current, propertyId: match._id }));
-  }, [chatSlug, properties]);
+  if (!scopedFromChat && chatSlug && chatProperty?.status === "active") {
+    setScopedFromChat(true);
+    setForm((current) => (current.propertyId ? current : { ...current, propertyId: chatProperty._id }));
+  }
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const save = useMutation(api.concierge.businessFacts.adminSave);
@@ -137,7 +134,7 @@ function FactForm({
 
   function update<K extends keyof FactFormValues>(key: K, value: FactFormValues[K]) {
     if (key === "propertyId") {
-      scopedFromChat.current = true;
+      setScopedFromChat(true);
       setScopeChosen(true);
     }
     setForm((current) => ({ ...current, [key]: value }));

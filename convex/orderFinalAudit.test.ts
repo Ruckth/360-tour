@@ -13,7 +13,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'order-final@example.com', tokenIdentifier: 'order-final' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'order-final@example.com', tokenIdentifier: 'order-final' });
   const ids = await t.run(async ctx => {
     const staffId = await ctx.db.insert('staff', { name: 'Original therapist', role: 'Therapist', color: '#abc', workingHours: [], breaks: [], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
     const serviceId = await ctx.db.insert('services', { slug: 'order-final-service', name: 'Final massage', description: '', category: 'Massage', durationMin: 60, bufferMin: 0, price: 120000, currency: 'THB', staffIds: [staffId], status: 'active', createdAt: Date.now(), updatedAt: Date.now() });
@@ -66,7 +66,7 @@ describe('Independent final recheck: attaching to an existing standalone order',
     expect(after?.customer?.name).toBe('Separate payer');
     expect(after?.order.orderNumber).toBe(before?.order.orderNumber);
     expect((await t.run(ctx => ctx.db.get(placeholder._id)))?.appointmentId).toBe(appointmentId);
-    expect(await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { appointmentId })).toEqual({ orderId });
+    expect(await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId })).toEqual({ orderId });
     expect((await admin.query(api.pos.orders.getOrder, { orderId }))?.lines).toHaveLength(2);
     const orders = await admin.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts: { numItems: 20, cursor: null } });
     expect(orders.page.find(row => row._id === orderId)?.bookingReference).toBe('SVC-ORDER-FINAL');

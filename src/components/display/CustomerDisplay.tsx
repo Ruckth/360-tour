@@ -94,6 +94,8 @@ function PairedDisplay() {
   const claimsWaiting = useRef(0);
   const [resume, setResume] = useState(0);
 
+  // The retry timer calls the latest `pair` (a callback can't name itself while being declared).
+  const pairRef = useRef<() => Promise<void>>(async () => {});
   const pair = useCallback(async () => {
     if (claimsWaiting.current > 0 || codeRequest.current === generation.current) return;
     const mine = ++generation.current;
@@ -109,11 +111,14 @@ function PairedDisplay() {
       storage.set(TOKEN_KEY, result.token);
       storage.set(PAIR_EXPIRES_KEY, String(result.expiresAt));
     } catch {
-      if (mine === generation.current) retry.current = window.setTimeout(() => void pair(), RETRY_MS);
+      if (mine === generation.current) retry.current = window.setTimeout(() => void pairRef.current(), RETRY_MS);
     } finally {
       if (codeRequest.current === mine) codeRequest.current = null;
     }
   }, [startPairing, keepToken]);
+  useEffect(() => {
+    pairRef.current = pair;
+  }, [pair]);
 
   const resumeStored = useCallback(() => {
     const stored = storage.get(TOKEN_KEY);
@@ -167,6 +172,7 @@ function PairedDisplay() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time pairing start: reads the URL fragment and stored token, which exist only in the browser
     if (!claimFragment()) resumeStored();
   }, [claimFragment, resumeStored]);
 
@@ -199,11 +205,14 @@ function PairedDisplay() {
     return () => window.clearTimeout(id);
   }, [kind, expiresAt, pair, resume]);
 
+  // Pairing succeeded: an earlier failed link no longer needs a notice.
+  const [wasPaired, setWasPaired] = useState(paired);
+  if (wasPaired !== paired) {
+    setWasPaired(paired);
+    if (paired) setLinkFailed(false);
+  }
   useEffect(() => {
-    if (paired) {
-      setLinkFailed(false);
-      storage.remove(PAIR_EXPIRES_KEY);
-    }
+    if (paired) storage.remove(PAIR_EXPIRES_KEY);
   }, [paired]);
 
   useEffect(() => {
@@ -255,8 +264,13 @@ function useOffline() {
   }, []);
 
   const offline = socketDown || networkDown;
-  useEffect(() => {
+  // Every change of connection restarts the stale countdown.
+  const [staleFor, setStaleFor] = useState(offline);
+  if (staleFor !== offline) {
+    setStaleFor(offline);
     setStale(false);
+  }
+  useEffect(() => {
     if (!offline) return;
     const id = window.setTimeout(() => setStale(true), STALE_AFTER_MS);
     return () => window.clearTimeout(id);

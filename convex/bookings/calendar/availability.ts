@@ -1,4 +1,4 @@
-import { availabilityGetForPropertyResult, availabilityGetBlockedDatesResult, availabilityGetBlockedDatesByPropertyResult, availabilityIsAvailableResult } from '../validators';
+import { availabilityGetBlockedDatesResult, availabilityGetBlockedDatesByPropertyResult, availabilityIsAvailableResult } from '../validators';
 import { v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { type QueryCtx, adminQuery, publicQuery } from '../../auth/model';
@@ -70,25 +70,6 @@ async function blockedDates(
 	}
 	return dates;
 }
-
-/** Public: date, status and source only. Booking, feed and block ids stay private. */
-export const getForProperty = publicQuery({
-  returns: availabilityGetForPropertyResult,
-  reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: {
-		propertyId: v.id('properties'),
-		startDate: v.string(),
-		endDate: v.string()
-	},
-	handler: async (ctx, args) => {
-		const days = rangeDays(args.startDate, args.endDate);
-		const rows: Array<{ date: string; status: 'available' | 'booked' | 'blocked'; source: string }> = [];
-		for await (const row of availabilityRows(ctx, args.propertyId, args.startDate, args.endDate, days)) {
-			rows.push({ date: row.date, status: row.status, source: row.source });
-		}
-		return rows;
-	}
-});
 
 /** Unavailable dates of one villa in [startDate, endDate]; the booking date picker loads a month at a time. */
 export const getBlockedDates = publicQuery({

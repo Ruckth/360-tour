@@ -9,7 +9,7 @@ const rules = { benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'ac
 const quote = { code: 'dcnt-f1-20 ', propertySlug: 'mossbell', checkIn: '2026-11-10', checkOut: '2026-11-12' };
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'Admin@example.com', tokenIdentifier: 'admin' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'Admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
     maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active',
@@ -46,7 +46,7 @@ describe('marketing admin access', () => {
       () => t.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' }),
     ];
     for (const call of calls) await expect(call()).rejects.toThrow('Not authenticated');
-    await expect(t.withIdentity({ email: 'guest@example.com' }).query(api.marketing.queries.listCampaigns, {})).rejects.toThrow('Not authorized');
+    await expect(t.withIdentity({ emailVerified: true, email: 'guest@example.com' }).query(api.marketing.queries.listCampaigns, {})).rejects.toThrow('Not authorized');
   });
 });
 

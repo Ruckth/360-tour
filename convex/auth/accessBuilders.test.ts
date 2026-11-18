@@ -39,8 +39,8 @@ const probes = {
   marketingMutation: marketingMutation({ permission: 'publish', args: {}, handler: ctx => ctx.marketing.role }),
 };
 function setup() {
-  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../auth/users.ts': () => import('./users'), '../auth/staffAccess.ts': () => import('./staffAccess'), '../accessProbes.ts': async () => probes });
-  const signed = (role: string) => t.withIdentity({ email: `${role}@example.com`, tokenIdentifier: `issuer|${role}` });
+  const t = convexTest(schema, { ...import.meta.glob('../**/*.ts'), '../auth/staffAccess.ts': () => import('./staffAccess'), '../accessProbes.ts': async () => probes });
+  const signed = (role: string) => t.withIdentity({ emailVerified: true, email: `${role}@example.com`, tokenIdentifier: `issuer|${role}` });
   return { t, signed };
 }
 function invoke(client: Pick<ReturnType<typeof setup>['t'], 'query' | 'mutation' | 'action'>, kind: FunctionType, name: string, args: Record<string, unknown>) {
@@ -68,9 +68,6 @@ it('admits signed-in nonstaff to authenticated builders and derives action ident
     await expect(invoke(t, kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).rejects.toThrow('Not authenticated');
     expect(await invoke(signed('visitor'), kind, `authenticated${kind[0].toUpperCase()}${kind.slice(1)}`, {})).toBe('issuer|visitor');
   }
-  await signed('visitor').mutation(api.auth.users.store, {});
-  expect(await signed('visitor').query(api.auth.users.current, {})).toMatchObject({ tokenIdentifier: 'issuer|visitor' });
-  expect(await t.query(api.auth.users.current, {})).toBeNull();
 });
 
 it('uses authoritative staff and operations policies for all three function kinds, including action grant revocation', async () => {
@@ -172,14 +169,21 @@ it('preserves public booking record capabilities without granting nonstaff fallb
 // Exercise the real action -> internal query identity hop after the path cutover.
 it('preserves actor email spelling and tokenIdentifier across relocated action authorization', async () => {
   const { t } = setup();
-  const owner = t.withIdentity({ email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner' });
+  const owner = t.withIdentity({ emailVerified: true, email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner' });
   expect(await owner.action(ref<'action'>('adminAction'), {})).toBe('Owner@Example.com');
   await t.run(ctx => ctx.db.insert('staffGrants', {
     email: 'manager@example.com', tokenIdentifier: 'issuer-a|manager', role: 'manager',
     createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'owner@example.com',
   }));
-  const manager = t.withIdentity({ email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-a|manager' });
-  const otherIssuer = t.withIdentity({ email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-b|manager' });
+  const manager = t.withIdentity({ emailVerified: true, email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-a|manager' });
+  const otherIssuer = t.withIdentity({ emailVerified: true, email: 'Manager@Example.com', subject: 'same-subject', tokenIdentifier: 'issuer-b|manager' });
   expect(await manager.action(ref<'action'>('adminAction'), {})).toBe('Manager@Example.com');
   await expect(otherIssuer.action(ref<'action'>('adminAction'), {})).rejects.toThrow('Not authorized');
+});
+
+
+it.each([false, undefined])('denies owner action authority without explicit verification (%s)', async emailVerified => {
+  const { t } = setup();
+  const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });
+  await expect(owner.action(ref<'action'>('adminAction'), {})).rejects.toThrow('Not authorized');
 });

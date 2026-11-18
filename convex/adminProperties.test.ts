@@ -15,8 +15,8 @@ afterEach(() => vi.unstubAllEnvs());
 function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	return { t, admin, stranger };
 }
 

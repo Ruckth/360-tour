@@ -28,8 +28,8 @@ const pendingOf = <T extends { status: string }>(result: T) => {
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const stranger = t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const displays = () => t.run((ctx) => ctx.db.query('displays').collect());
 	const list = (clientId = HERE) => admin.query(api.pos.displays.listDisplays, { clientId });
 	const link = (clientId = HERE) => admin.mutation(api.pos.displays.createPairLink, { clientId });
@@ -384,7 +384,7 @@ describe('display order projection', () => {
 				paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'CONF-ANNA', createdAt: Date.now()
 			});
 		});
-		const { orderId } = await admin.mutation(api.pos.commands.openOrderFor.openOrderFor, { bookingId });
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		const massage = await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Massage', price: 125050 } });
 		await admin.mutation(api.pos.commands.updateLine.updateLine, { lineId: massage.lineId, discount: { type: 'percent', value: 1500 } });
 		const juice = await admin.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Juice', price: 12000 } });

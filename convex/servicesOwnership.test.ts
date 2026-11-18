@@ -14,7 +14,7 @@ it('keeps model creation, linked order and the canonical audit atomic in the cal
   vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
   vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' });
+  const admin = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
   const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'massage', name: 'Massage', description: '',
@@ -43,7 +43,7 @@ it('keeps model creation, linked order and the canonical audit atomic in the cal
 
 it('has no old ctx-helper modules or compatibility endpoints, independently of arguments and identity', async () => {
   const t = convexTest(schema, modules);
-  for (const client of [t, t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'owner' })]) {
+  for (const client of [t, t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' })]) {
     for (const [module, name] of Object.entries({ serviceCatalog: 'serviceQuery', serviceSlots: 'createAppointmentRecord', rosterHistory: 'writeWeeklyPattern',
       appointmentChanges: 'recordAppointmentChange', appointmentFinance: 'recordAppointmentRefund', adminPhotos: 'attachPhotoUpload' })) {
       await expect(client.mutation(makeFunctionReference<'mutation'>(`lib/${module}:${name}`), {})).rejects.toThrow(`Could not find module for: "lib/${module}"`);

@@ -1,7 +1,6 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { accessForIdentity } from '../../auth/model';
 import { resortTodayIso } from '../../shared/time';
 import { cashierRules } from '../../settings/model';
 import { orderLineLinks } from './lineLinks';
@@ -20,10 +19,13 @@ export const rulesFingerprint = (rules: Awaited<ReturnType<typeof cashierRules>>
 
 type ReadCtx = MutationCtx | QueryCtx;
 
-export async function requesterFingerprint(ctx: ReadCtx, email: string, tokenIdentifier: string) {
-  const access = await accessForIdentity(ctx, { email, tokenIdentifier });
+export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string) {
   const grant = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique();
-  return { role: access.role, fingerprint: canonical({ role: access.role, grant }) };
+  // This is a stored request freshness check, not authentication. The request
+  // was created by a verified cashier; like authentication, bind by account,
+  // since its verified primary email may have changed after accepting the invite.
+  const role = grant?.role ?? null;
+  return { role, fingerprint: canonical({ role, grant }) };
 }
 
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
@@ -58,7 +60,7 @@ export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffAp
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
   const [rules, requester] = await Promise.all([
-    cashierRules(ctx), requesterFingerprint(ctx, request.requesterEmail, request.requesterTokenIdentifier),
+    cashierRules(ctx), requesterFingerprint(ctx, request.requesterTokenIdentifier),
   ]);
   if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint || requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
   if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';

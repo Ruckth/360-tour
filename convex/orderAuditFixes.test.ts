@@ -16,7 +16,7 @@ const weekdays = [0, 1, 2, 3, 4, 5, 6];
 async function setup() {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
@@ -104,6 +104,6 @@ describe('Add booking finds standalone appointments by contact', () => {
 	it('keeps the lookup status admin-only', async () => {
 		const { t } = await setup();
 		await expect(t.query(api.pos.sourceReads.attachLookupStatus, {})).rejects.toThrow();
-		await expect(t.withIdentity({ email: 'guest@example.com', tokenIdentifier: 'guest' }).query(api.pos.sourceReads.attachLookupStatus, {})).rejects.toThrow();
+		await expect(t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' }).query(api.pos.sourceReads.attachLookupStatus, {})).rejects.toThrow();
 	});
 });

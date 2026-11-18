@@ -200,17 +200,3 @@ export const adminResolveUnknownGroups = adminMutation({
     };
   }
 });
-
-/** Active properties (id/slug/name) for the fact editor's property picker. */
-export const adminPropertyOptions = adminQuery({
-  args: {},
-  handler: async (ctx) => {
-    const properties = await ctx.db
-      .query('properties')
-      .withIndex('by_status', q => q.eq('status', 'active'))
-      .take(100);
-    return properties
-      .map(property => ({ _id: property._id, slug: property.slug, name: property.name }))
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }
-});

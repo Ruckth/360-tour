@@ -38,26 +38,6 @@ function nearestTimes(slots: Awaited<ReturnType<typeof findOpenSlots>>, start: n
 		.slice(0, 3).map((slot) => resortLocalParts(slot.start).time);
 }
 
-export const listActiveServices = internalQuery({
-	args: {},
-	handler: async (ctx) => {
-		const services = await ctx.db.query('services').withIndex('by_status', (q) => q.eq('status', 'active')).take(100);
-		return await Promise.all(services.map(async (service) => ({
-			name: service.name,
-			...(service.imageUrl ? { imageUrl: service.imageUrl } : {}),
-			slug: service.slug,
-			description: service.description,
-			category: service.category,
-			durationMin: service.durationMin,
-			price: service.price,
-			currency: service.currency,
-			staff: (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
-				.filter((person): person is Doc<'staff'> => !!person && person.status === 'active')
-				.map((person) => firstName(person.name))
-		})));
-	}
-});
-
 export const checkServiceAvailability = internalQuery({
 	args: { serviceSlug: v.string(), date: v.string(), time: v.optional(v.string()) },
 	handler: async (ctx, args) => {

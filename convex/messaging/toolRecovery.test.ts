@@ -1,3 +1,4 @@
+import { runTurnHandler } from '../concierge/runTurn';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -55,7 +56,7 @@ async function recover(t: Harness, args: { eventId: import('../_generated/dataMo
     return { event, session: await ctx.db.get(event!.sessionId!), bookings: await ctx.db.query('bookings').take(20), appointments: await ctx.db.query('appointments').take(20) };
   });
   const before = await snapshot();
-  const result = await t.action(internal.concierge.runTurn.runTurn, { eventId: args.eventId, claimToken: 'recovery' });
+  const result = await t.action(ctx => runTurnHandler(ctx, { eventId: args.eventId, claimToken: 'recovery' }));
   expect(transport).not.toHaveBeenCalled();
   expect(await snapshot()).toEqual(before);
   return result;
@@ -68,7 +69,7 @@ it('prepares changed villa dates twice in one real model response and confirms o
     { name: 'prepare_booking', args: { ...bookingArgs, checkIn: '2027-02-04', checkOut: '2027-02-07' } },
     { name: 'confirm_booking' },
   ].map(call => ({ ...call, args: call.args ? Object.fromEntries(Object.entries(call.args).filter(([key]) => key !== 'sessionId')) : {} })));
-  const reply = await t.action(internal.concierge.runTurn.runTurn, args);
+  const reply = await t.action(ctx => runTurnHandler(ctx, args));
   expect(reply.outcome).toBe('awaiting_guest');
   expect(reply.response).toContain('2027-02-04 → 2027-02-07');
   expect(reply.response).not.toContain('2027-02-01');
@@ -81,7 +82,7 @@ it('prepares changed villa dates twice in one real model response and confirms o
   await complete(t, { eventId: args.eventId, claimToken: 'recovery' });
   const yes = await claim(t, 'yes', 'yes');
   mockModel([{ name: 'confirm_booking' }]);
-  const confirmed = await t.action(internal.concierge.runTurn.runTurn, yes.args);
+  const confirmed = await t.action(ctx => runTurnHandler(ctx, yes.args));
   expect(confirmed.response).toContain('payment is pending');
   expect(await t.run(ctx => ctx.db.query('bookings').withIndex('by_chatSession', q => q.eq('chatSessionId', event.sessionId!)).take(10))).toMatchObject([{ checkIn: '2027-02-04', checkOut: '2027-02-07' }]);
 });
@@ -93,7 +94,7 @@ it('does not reuse a failed service preparation for a corrected invocation in th
     { name: 'prepare_service_booking', args: { ...serviceArgs, time: '03:00' } },
     { name: 'prepare_service_booking', args: { ...serviceArgs, time: '14:00' } },
   ]);
-  const reply = await t.action(internal.concierge.runTurn.runTurn, args);
+  const reply = await t.action(ctx => runTurnHandler(ctx, args));
   expect(reply).toMatchObject({ outcome: 'awaiting_guest' });
   expect(reply.response).toContain('2026-11-14 14:00');
   expect(reply.response).toContain('THB 2,400');
@@ -161,7 +162,7 @@ it.each(['malformed JSON', 'invalid arguments'] as const)('invalidates an old pr
   const replacement = await claim(t, 'replacement', 'Change my booking details');
   const { sessionId, ...input } = bookingArgs;
   mockModel([{ name: 'prepare_booking', ...(failure === 'malformed JSON' ? { rawArgs: '{' } : { args: { ...input, guests: 0 } }) }]);
-  const reply = await t.action(internal.concierge.runTurn.runTurn, replacement.args);
+  const reply = await t.action(ctx => runTurnHandler(ctx, replacement.args));
   expect(reply.response).not.toContain('Villa booking proposal');
   expect((await t.run(ctx => ctx.db.get(sessionId)))?.pendingBookingQuote).toBeUndefined();
   expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: original.confirmToken })).toBeNull();
@@ -222,12 +223,12 @@ it('never recovers an earlier success after a failed service replacement', async
 it('presents real service confirmations and both cancellation steps identically live and after crashes', async () => {
   const { t, args, event } = await setup();
   mockModel([{ name: 'prepare_service_booking', args: { serviceSlug: 'thai-massage', date: '2026-11-14', time: '14:00', guestName: 'Test Guest' } }]);
-  const proposal = await t.action(internal.concierge.runTurn.runTurn, args);
+  const proposal = await t.action(ctx => runTurnHandler(ctx, args));
   expect(proposal.outcome).toBe('awaiting_guest');
   await complete(t, args);
   const yes = await claim(t, 'service-yes', 'yes');
   mockModel([{ name: 'confirm_service_booking' }]);
-  const confirmed = await t.action(internal.concierge.runTurn.runTurn, yes.args);
+  const confirmed = await t.action(ctx => runTurnHandler(ctx, yes.args));
   expect(confirmed.response).toContain('THB 2,400');
   expect(confirmed.response).toContain('Payment is at the resort');
   expect(await recover(t, yes.args)).toMatchObject({ response: confirmed.response, outcome: 'answered' });
@@ -236,14 +237,14 @@ it('presents real service confirmations and both cancellation steps identically 
   await complete(t, { eventId: yes.args.eventId, claimToken: 'recovery' });
   const cancel = await claim(t, 'cancel', 'Cancel my service booking');
   mockModel([{ name: 'cancel_booking', args: { reference: appointment.confirmationCode } }]);
-  const pending = await t.action(internal.concierge.runTurn.runTurn, cancel.args);
+  const pending = await t.action(ctx => runTurnHandler(ctx, cancel.args));
   expect(pending).toMatchObject({ outcome: 'awaiting_guest' });
   expect(pending.response).toContain('It has not been cancelled yet');
   expect(await recover(t, cancel.args)).toMatchObject({ response: pending.response, outcome: 'awaiting_guest' });
   await complete(t, { eventId: cancel.args.eventId, claimToken: 'recovery' });
   const cancelYes = await claim(t, 'cancel-yes', 'yes');
   mockModel([{ name: 'cancel_booking', args: { reference: appointment.confirmationCode } }]);
-  const cancelled = await t.action(internal.concierge.runTurn.runTurn, cancelYes.args);
+  const cancelled = await t.action(ctx => runTurnHandler(ctx, cancelYes.args));
   expect(cancelled).toMatchObject({ outcome: 'answered' });
   expect(cancelled.response).toContain('Booking cancelled.');
   expect(await recover(t, cancelYes.args)).toMatchObject({ response: cancelled.response, outcome: 'answered' });

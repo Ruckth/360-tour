@@ -1,4 +1,4 @@
-import { internalAction, internalQuery, type ActionCtx } from '../auth/model';
+import { internalQuery, type ActionCtx } from '../auth/model';
 import { maintenancePaused } from '../lib/maintenance';
 import { internal } from '../_generated/api';
 import { v } from 'convex/values';
@@ -42,8 +42,3 @@ export async function runTurnHandler(ctx: ActionCtx, args: { eventId: import('..
       bookingFlow: session.channel !== 'web', turnId: event.eventKey, durableTurn: args,
     }, session));
 }
-
-export const runTurn = internalAction({
-  args: { eventId: v.id('channelEvents'), claimToken: v.string() },
-  handler: runTurnHandler,
-});

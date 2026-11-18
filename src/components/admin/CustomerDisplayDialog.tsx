@@ -7,7 +7,7 @@ import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";
 import { ArrowRightLeft, Check, Copy, ExternalLink, Link2, MonitorSmartphone, RefreshCw, Share2, X } from "lucide-react";
-import { memo, useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { memo, useCallback, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import QRCode from "react-qr-code";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
@@ -352,10 +352,13 @@ function SendLink({ link, error: createError, loading, create, replacing }: Retu
   const expired = link !== null && link.expiresAt <= now;
   const error = copyError ?? createError;
 
-  useEffect(() => {
+  // A new link has not been copied yet.
+  const [shownLink, setShownLink] = useState(link);
+  if (shownLink !== link) {
+    setShownLink(link);
     setCopied(false);
     setCopyError(null);
-  }, [link]);
+  }
 
   async function copy() {
     if (!link) return;

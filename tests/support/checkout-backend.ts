@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   getFunctionName,
   makeFunctionReference,
@@ -53,6 +53,7 @@ export async function createFixtureBackend(options: Options = {}) {
     email: "preview@example.com",
   };
   const identity = () => ({
+    emailVerified: true,
     email: staff.email,
     tokenIdentifier: `https://test.clerk.dev|${staff.email}`,
   });
@@ -125,11 +126,11 @@ export async function createFixtureBackend(options: Options = {}) {
           .query(entry.ref, translate(entry.args) as FunctionArgs<Q>),
         true,
       );
-      if (getFunctionName(entry.ref) === "pos/catalog:catalog")
+      if (getFunctionName(entry.ref) === "pos/catalog:recentCatalogRanking") entry.value = CATALOG.frequent;
+      if (getFunctionName(entry.ref) === "pos/catalog:stableCatalog")
         entry.value = {
           ...(entry.value as object),
           extras: CATALOG.extras,
-          frequent: CATALOG.frequent,
         };
       entry.error = undefined;
     } catch (e) {
@@ -270,7 +271,11 @@ export async function createFixtureBackend(options: Options = {}) {
   ) as unknown as CheckoutActions;
   const backend: CheckoutBackend = {
     useActions: () => actions,
-    useCatalog: () => useRead(api.pos.catalog.catalog, {}),
+    useCatalog: () => {
+      const items = useRead(api.pos.catalog.stableCatalog, {});
+      const frequent = useRead(api.pos.catalog.recentCatalogRanking, {});
+      return useMemo(() => items === undefined || frequent === undefined ? undefined : { ...items, frequent }, [items, frequent]);
+    },
     useOrder: (id) =>
       useRead(api.pos.orders.getOrder, id ? { orderId: id } : "skip"),
     useRestoreCheck: (id) =>
@@ -560,7 +565,7 @@ export async function createFixtureBackend(options: Options = {}) {
           ),
         true,
       );
-      return name === "pos/catalog:catalog" ? { ...(value as object), extras: CATALOG.extras, frequent: CATALOG.frequent } : value;
+      return name === "pos/catalog:recentCatalogRanking" ? CATALOG.frequent : name === "pos/catalog:stableCatalog" ? { ...(value as object), extras: CATALOG.extras } : value;
     },
     async setCouponSnapshot(code: string, patch: Partial<CouponRules>) {
       await t.run(async (ctx) => {

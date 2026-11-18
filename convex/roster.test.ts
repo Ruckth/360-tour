@@ -16,7 +16,7 @@ const evening = { shifts: [{ start: '14:00', end: '22:00' }], breaks: [{ start: 
 async function setup(names = ['Mali', 'Nok']) {
 	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const staffIds: Id<'staff'>[] = [];
 	for (const name of names) {
 		staffIds.push(await admin.mutation(api.services.commands.createStaff.createStaff, {
@@ -48,7 +48,7 @@ describe('staff roster', () => {
 		const { t, staffIds } = await setup();
 		await expect(t.query(api.services.roster.getWeek, { weekStart: MON })).rejects.toThrow('Not authenticated');
 		await expect(t.mutation(api.services.roster.applyCells, { cells: [{ staffId: staffIds[0], date: MON }], ...evening })).rejects.toThrow('Not authenticated');
-		const stranger = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other' });
+		const stranger = t.withIdentity({ emailVerified: true, email: 'other@example.com', tokenIdentifier: 'other' });
 		await expect(stranger.mutation(api.services.roster.copyWeek, { sourceWeekStart: MON, weeks: 4, conflict: 'skip', dryRun: true })).rejects.toThrow('Not authorized');
 		await expect(stranger.mutation(api.services.roster.makeDefault, { weekStart: MON })).rejects.toThrow('Not authorized');
 		await expect(stranger.mutation(api.services.roster.resetCells, { cells: [{ staffId: staffIds[0], date: MON }] })).rejects.toThrow('Not authorized');

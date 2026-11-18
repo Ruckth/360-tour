@@ -1,9 +1,8 @@
-import { bookingsQuoteStayResult, bookingsCreateResult, bookingsGetByIdResult, bookingsGetConfirmProposalResult, bookingsConfirmProposalResult } from './validators';
-import { paginationOptsValidator } from 'convex/server';
+import { bookingsCreateResult, bookingsGetByIdResult, bookingsGetConfirmProposalResult, bookingsConfirmProposalResult } from './validators';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { adminQuery, internalMutation, internalQuery, publicMutation, publicQuery, requireAdmin } from '../auth/model';
+import { internalMutation, internalQuery, publicMutation, publicQuery, requireAdmin } from '../auth/model';
 import { releaseBookingDates } from './private/availabilityWrites';
 import { stayMoney } from '../shared/stayMoney';
 import { writeBooking } from './private/money';
@@ -13,17 +12,15 @@ import { activeGuestCoupon, assertGuestSuppliedCoupon, couponSnapshotIdentity, q
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../shared/chatWriteGuard';
 import { demoCode, signProposal, verifyProposal } from '../shared/codes';
-import { nightsBetween } from '../shared/dates';
 import { randomSecret } from '../shared/displayTokens';
 import { cleanCapture, marketingCaptureValidator, type MarketingCapture } from '../shared/marketingAttribution';
 import { normalizeCouponCode } from '../shared/offers';
-import { calculateDirectQuote } from '../shared/pricing';
 import { enforceRateLimit } from '../messaging/model';
 import { bookingHoldExpiresAt } from '../shared/siteSettings';
 import { getEffectiveSettings } from '../settings/model';
-import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../shared/validation';
+import { assertValidEmail } from '../shared/validation';
 import { currentClaim, durableToolValidator, durableTurnValidator, startDurablePreparation, withDurableTool } from '../messaging/model';
-import { markBookingPaid, queueCancellationEmail } from './private/stays';
+import { queueCancellationEmail } from './private/stays';
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,
@@ -55,37 +52,6 @@ function toPublicBooking(booking: Doc<'bookings'>) {
 		receiptNumber: booking.receiptNumber
 	};
 }
-
-export const quoteStay = publicQuery({
-  returns: bookingsQuoteStayResult,
-  reason: "Anonymous booking quote from the public property catalogue.",
-	args: {
-		propertySlug: v.string(),
-		checkIn: v.string(),
-		checkOut: v.string(),
-		guests: v.optional(v.number())
-	},
-	handler: async (ctx, args) => {
-		assertValidIsoDate(args.checkIn, 'Check-in date');
-		assertValidIsoDate(args.checkOut, 'Check-out date');
-		if (args.guests !== undefined) assertPositiveInt(args.guests, 'Guest count');
-		if (args.checkOut <= args.checkIn) {
-			throw new Error('Check-out must be after check-in');
-		}
-
-		const property = await loadProperty(ctx, args.propertySlug);
-		if (args.guests !== undefined && args.guests > property.maxGuests) {
-			throw new Error(`Guest count exceeds max capacity (${property.maxGuests})`);
-		}
-
-		const nights = nightsBetween(args.checkIn, args.checkOut);
-		if (!Number.isFinite(nights) || nights <= 0) {
-			throw new Error('Check-out must be after check-in');
-		}
-
-		return calculateDirectQuote(property, nights);
-	}
-});
 
 export const create = publicMutation({
   returns: bookingsCreateResult,
@@ -140,15 +106,6 @@ export const getLifecycleEmailDetails = internalQuery({
 	}
 });
 
-export const markPaidFromTrustedWebhook = internalMutation({
-	args: {
-		bookingId: v.id('bookings'),
-		paymentMethod: v.optional(v.string())
-	},
-	handler: async (ctx, args) =>
-		await markBookingPaid(ctx, args.bookingId, args.paymentMethod ?? 'trusted_webhook')
-});
-
 export const getById = publicQuery({
   returns: bookingsGetByIdResult,
   reason: "Booking capability token or operations identity; handler checks the specific booking.",
@@ -162,20 +119,6 @@ export const getById = publicQuery({
 		}
 		await requireAdmin(ctx);
 		return toPublicBooking(booking);
-	}
-});
-
-export const listByProperty = adminQuery({
-	args: {
-		propertyId: v.id('properties'),
-		paginationOpts: paginationOptsValidator
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('bookings')
-			.withIndex('by_property', (q) => q.eq('propertyId', args.propertyId))
-			.order('desc')
-			.paginate(args.paginationOpts);
 	}
 });
 

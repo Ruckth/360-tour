@@ -41,7 +41,7 @@ describe('concierge model routing', () => {
 });
 
 function adminTest(t: ReturnType<typeof convexTest>) {
-  return t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+  return t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
 async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
@@ -227,12 +227,12 @@ describe("retired question-bank routing", () => {
       const sessionId = await createWebSession(t);
 
       const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
-      const unknownRows = await adminTest(t).query(api.concierge.knowledge.adminListUnknownQuestions, {
-        status: "new", paginationOpts: { numItems: 10, cursor: null },
+      const unknownRows = await adminTest(t).query(api.concierge.knowledge.adminListUnknownGroups, {
+        status: "new",
       });
 
       expect(result.model).toBe("unknown_fallback");
-      expect(unknownRows.page[0]?.userQuestion).toBe("Is helicopter transfer included?");
+      expect(unknownRows.groups[0]?.latest.userQuestion).toBe("Is helicopter transfer included?");
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();

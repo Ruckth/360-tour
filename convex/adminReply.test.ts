@@ -37,7 +37,7 @@ describe("admin replies", () => {
   it("records one admin message after delivery and updates the session", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "web");
 
     const claim = await admin.mutation(api.messaging.adminReply.claim, {
@@ -67,7 +67,7 @@ describe("admin replies", () => {
   it("allows a Facebook reply inside the 24-hour window", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await t.run((ctx) =>
       ctx.db.insert("messages", {
@@ -85,7 +85,7 @@ describe("admin replies", () => {
   it("uses the saved LINE recipient and refuses duplicate claims", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "line");
     const args = { sessionId, requestId: "reply-3", content: "LINE reply" };
 
@@ -102,7 +102,7 @@ describe("admin replies", () => {
   it("rejects a Facebook reply outside the visitor response window", async () => {
     vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await expect(
       admin.mutation(api.messaging.adminReply.claim, {

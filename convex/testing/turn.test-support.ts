@@ -1,8 +1,9 @@
+import { runTurnHandler } from '../concierge/runTurn';
 import type { TestConvexForDataModel } from 'convex-test';
 import type { DataModel, Id } from '../_generated/dataModel';
 import { api, internal } from '../_generated/api';
 import { generateConciergeReply, withReplyOutcome, type GenerateConciergeReplyArgs } from '../concierge/model';
-/** Existing pure generation suites exercise the same helper now called by internal runTurn. */
+/** Existing pure generation suites exercise the same helper called by the messaging worker. */
 export async function generateTestReply(t: TestConvexForDataModel<DataModel>, args: GenerateConciergeReplyArgs) {
   const session = await t.query(internal.messaging.chat.getSessionInternal, { sessionId: args.sessionId });
   if (!session || session.aiPaused) throw new Error('AI replies are paused');
@@ -14,7 +15,7 @@ export async function respondTest(t: TestConvexForDataModel<DataModel>, args: Om
   const claimToken = crypto.randomUUID();
   const claim = await t.mutation(internal.messaging.worker.claim, { eventId: queued.eventId, token: claimToken });
   if (!claim) return { response: '', model: 'ai_paused', aiPaused: true };
-  const result = await t.action(internal.concierge.runTurn.runTurn, { eventId: queued.eventId, claimToken });
+  const result = await t.action(ctx => runTurnHandler(ctx, { eventId: queued.eventId, claimToken }));
   await t.mutation(internal.messaging.worker.prepareDispatch, { eventId: queued.eventId, claimToken, text: result.response, model: result.model, outcome: result.outcome });
   await t.mutation(internal.messaging.worker.commitTurn, { eventId: queued.eventId, claimToken });
   return { ...result, aiPaused: false };

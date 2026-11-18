@@ -78,11 +78,8 @@ describe('AI service booking', () => {
 		await s.t.run((ctx) => ctx.db.patch(s.sessionId, { visitorPhone: ' ' }));
 		expect(await s.t.query(internal.services.serviceBookings.listChatGuestServiceBookings, { sessionId: s.sessionId })).toEqual([]);
 	});
-	it('lists active services and open local times, then prepares without creating an appointment', async () => {
+	it('lists open local times, then prepares without creating an appointment', async () => {
 		const s = await setup();
-		expect(await s.t.query(internal.services.serviceBookings.listActiveServices, {})).toMatchObject([
-			{ slug: 'thai-massage', durationMin: 60, price: 200000, staff: ['Mali'] }
-		]);
 		const open = await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug: request.serviceSlug, date, time: '14:00' });
 		expect(open).toMatchObject({ available: true });
 		const summary = await prepare(s);
@@ -217,7 +214,7 @@ describe('AI service booking', () => {
 		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
 		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-		const admin = s.t.withIdentity({ email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = s.t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const [appointment] = await appointments(s.t);
 		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
 		vi.advanceTimersByTime(1000);

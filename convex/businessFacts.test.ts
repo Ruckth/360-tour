@@ -15,7 +15,7 @@ afterEach(() => vi.unstubAllEnvs());
 function setup() {
   vi.stubEnv("ADMIN_EMAILS", adminEmail);
   const t = convexTest(schema, modules);
-  return { t, admin: t.withIdentity({ email: adminEmail, tokenIdentifier: "admin" }) };
+  return { t, admin: t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin" }) };
 }
 
 async function property(t: ReturnType<typeof convexTest>, slug: string, status: "active" | "draft" = "active") {
@@ -340,17 +340,5 @@ describe("businessFacts.adminResolveUnknownGroups", () => {
     expect(result.resolved).toBe(1);
     expect(await t.run((ctx) => ctx.db.get(poolUnknown))).toMatchObject({ status: "resolved", resolvedFactId: poolFact });
     expect(await t.run((ctx) => ctx.db.get(otherUnknown))).toMatchObject({ status: "new" });
-  });
-});
-
-describe("businessFacts.adminPropertyOptions", () => {
-  it("returns active properties' id/slug/name, admin only", async () => {
-    const { t, admin } = setup();
-    await property(t, "pool-villa");
-    await property(t, "draft-villa", "draft");
-    const options = await admin.query(api.concierge.businessFacts.adminPropertyOptions, {});
-    expect(options.map((o) => o.slug)).toEqual(["pool-villa"]);
-    expect(options[0]).toMatchObject({ slug: "pool-villa", name: "pool-villa" });
-    await expect(t.query(api.concierge.businessFacts.adminPropertyOptions, {})).rejects.toThrow("Not authenticated");
   });
 });
