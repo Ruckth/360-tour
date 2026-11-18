@@ -21,6 +21,16 @@ describe("tour panorama renditions", () => {
     expect(panoramaRendition(path, 2048)).toEqual({ path, originalWidth: null });
   });
 
+  // Mobile first-view baselines are 34,012 and 192,510 encoded bytes in the seeded tours.
+  it.each([
+    ["/pool-villa-living.webp", 40],
+    ["/garden-suite-interior.webp", 220],
+  ] as const)("keeps the first mobile scene %s within %i KiB", async (original, maxKiB) => {
+    const file = await stat(`public${panoramaRendition(original, 2048).path}`);
+    expect(file.size).toBeGreaterThan(0);
+    expect(file.size).toBeLessThanOrEqual(maxKiB * 1024);
+  });
+
   it.each(rooms)("ships smaller, unstretched renditions for $imagePath", async ({ imagePath }) => {
     const original = `public${imagePath}`;
     const { width, height } = await sharp(original).metadata();

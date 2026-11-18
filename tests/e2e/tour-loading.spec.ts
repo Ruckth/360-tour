@@ -227,6 +227,8 @@ test("navigation keeps the outgoing room on screen and locked until the incoming
 test("a failed navigation keeps the previous room, retries, and the tour reopens cleanly", async ({
   page,
 }) => {
+  // This journey exercises two failures, a successful retry and a second cold WebGL mount.
+  test.setTimeout(60_000);
   const pool = await controlPanorama(page, POOL_POOL);
   pool.state.failing = true;
   pool.release();
