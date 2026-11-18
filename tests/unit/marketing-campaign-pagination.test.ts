@@ -48,7 +48,7 @@ it("pages campaign metrics while searching and counting every campaign in the di
       case "marketing/queries:listCampaignOptions": return options;
       case "marketing/queries:listCampaignRows": return rowRequests(args.campaignIds ?? []);
       case "marketing/queries:listLinks":
-      case "marketing/queries:listCoupons": return previewRequests(name, args.campaignId);
+      case "marketing/queries:listCampaignCoupons": return previewRequests(name, args.campaignId);
       case "marketing/report:listSpend": return [];
       default: throw new Error(`Unexpected campaign list subscription to ${name}`);
     }
@@ -85,7 +85,7 @@ it("pages campaign metrics while searching and counting every campaign in the di
     expect(previewRequests).not.toHaveBeenCalled();
     await click(button(last.name));
     expect(previewRequests).toHaveBeenCalledWith("marketing/queries:listLinks", last._id);
-    expect(previewRequests).toHaveBeenCalledWith("marketing/queries:listCoupons", last._id);
+    expect(previewRequests).toHaveBeenCalledWith("marketing/queries:listCampaignCoupons", last._id);
     expect(previewRequests.mock.calls.every(([, id]) => id === last._id)).toBe(true);
   } finally {
     await act(async () => root.unmount());

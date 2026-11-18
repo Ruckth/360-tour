@@ -126,7 +126,7 @@ function LiveCampaignEditor({ refreshCampaign, ...props }: ComponentProps<typeof
   const rows = useQuery(api.marketing.queries.listCampaignRows, campaignId && refreshCampaign ? { campaignIds: [campaignId] } : "skip");
   // These previews are only used by a saved campaign's editor.
   const links = useQuery(api.marketing.queries.listLinks, campaignId ? { campaignId } : "skip");
-  const coupons = useQuery(api.marketing.queries.listCoupons, campaignId ? { campaignId } : "skip");
+  const coupons = useQuery(api.marketing.queries.listCampaignCoupons, campaignId ? { campaignId } : "skip");
   return <CampaignEditor {...props} campaign={rows?.[0] ?? props.campaign} links={links} coupons={coupons} />;
 }
 

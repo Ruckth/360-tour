@@ -6,7 +6,7 @@ import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
 import { type OfferResult } from '../shared/offers';
 import { formatReceiptNumber, orderTitle } from '../shared/orderMath';
 import { CAMPAIGN_PAGE_SIZE, type CampaignRow, type CouponDetail, type CouponRow, type LinkRow, type RedemptionRow, type SlugCheck } from '../shared/marketingTypes';
-import { campaignStatus, enrichCoupon, enrichLink, publishStatus, quote, quoteArgs, slugCheck } from './catalogModel';
+import { campaignStatus, currentRules, enrichCoupon, enrichLink, publishStatus, quote, quoteArgs, slugCheck } from './catalogModel';
 
 // ---------- Admin queries ----------
 
@@ -110,12 +110,19 @@ export const listLinks = marketingQuery({
 
 export const listCoupons = marketingQuery({
   permission: 'view',
-	args: v.union(v.object({ status: v.optional(publishStatus) }), v.object({ campaignId: v.id('marketingCampaigns') })),
+	args: { status: v.optional(publishStatus) },
 	handler: async (ctx, args): Promise<CouponRow[]> => {
-		const coupons = 'campaignId' in args
-			? await ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', args.campaignId)).take(CHILD_CAP)
-			: await ctx.db.query('coupons').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(CHILD_CAP);
+		const coupons = await ctx.db.query('coupons').withIndex('by_status', q => args.status ? q.eq('status', args.status) : q).take(500);
 		return Promise.all(coupons.map(coupon => enrichCoupon(ctx, coupon)));
+	}
+});
+
+export const listCampaignCoupons = marketingQuery({
+	permission: 'view',
+	args: { campaignId: v.id('marketingCampaigns') },
+	handler: async (ctx, { campaignId }): Promise<CouponRow[]> => {
+		const coupons = await ctx.db.query('coupons').withIndex('by_campaignId', q => q.eq('campaignId', campaignId)).take(CHILD_CAP);
+		return Promise.all(coupons.map(async coupon => ({ ...coupon, rules: await currentRules(ctx, coupon) })));
 	}
 });
 

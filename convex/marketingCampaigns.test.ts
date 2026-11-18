@@ -110,7 +110,7 @@ it('enriches only each requested page, preserving exact legacy counts, opens and
 	await expect(viewer.query(api.marketing.queries.listLinks, { campaignId: secondPage[0] })).resolves.toMatchObject([
 		{ campaignId: secondPage[0], slug: `visit-${CAMPAIGN_PAGE_SIZE}-0` }
 	]);
-	await expect(viewer.query(api.marketing.queries.listCoupons, { campaignId: secondPage[0] })).resolves.toMatchObject([
+	await expect(viewer.query(api.marketing.queries.listCampaignCoupons, { campaignId: secondPage[0] })).resolves.toMatchObject([
 		{ campaignId: secondPage[0], code: `OFFER-${CAMPAIGN_PAGE_SIZE}-0`, rules: { version: 1 } }
 	]);
 	const legacy = await owner.query(api.marketing.queries.listCampaigns, { status: 'active' });
