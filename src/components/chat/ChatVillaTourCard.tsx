@@ -36,7 +36,7 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
 
     async function loadProperties() {
       try {
-        const rows = await client.query(api.catalog.properties.list, {});
+        const rows = await client.query(api.catalog.properties.list, propertySlug ? { includeSlug: propertySlug } : {});
         if (!active) return;
         const liveProperties = getLiveChatProperties(rows, messages, locale);
         setProperties(liveProperties);
@@ -50,7 +50,7 @@ export function ChatVillaTourCard({ propertySlug }: { propertySlug?: string }) {
     return () => {
       active = false;
     };
-  }, [convex, locale, messages]);
+  }, [convex, locale, messages, propertySlug]);
 
   const orderedProperties = useMemo(() => {
     if (!propertySlug) return properties;

@@ -2,13 +2,11 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { RoomDetailClient } from "@/components/rooms/RoomDetailClient";
-import { defaultLocale } from "@/i18n/routing";
 import { getLocalizedResort } from "@/lib/i18n/server-content";
-import { getVilla, getVillaCatalog } from "@/lib/server/villas";
+import { getVilla, getPrerenderVillaSlugs } from "@/lib/server/villas";
 
 export async function generateStaticParams() {
-  const { villas } = await getVillaCatalog(defaultLocale);
-  return villas.map((villa) => ({ id: villa.id }));
+  return (await getPrerenderVillaSlugs()).map((id) => ({ id }));
 }
 
 export async function generateMetadata({

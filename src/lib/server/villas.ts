@@ -8,6 +8,7 @@ import {
   catalogFrom,
   reviewFromDb,
   villaFromDb,
+  type DbVillaList,
   type PublicVilla,
   type VillaCatalog,
 } from "@/lib/villas";
@@ -19,6 +20,7 @@ import {
 const REVALIDATE_SECONDS = 60;
 const TIMEOUT_MS = 3_000;
 const FAILURE_BACKOFF_MS = 30_000;
+const MAX_LAST_GOOD_DETAILS = 200;
 const cacheOptions = { revalidate: REVALIDATE_SECONDS, tags: ["villas"] };
 
 function convexUrl() {
@@ -37,14 +39,41 @@ const cachedDetail = unstable_cache(
   ["public-villa"],
   cacheOptions,
 );
+function readSlugPage(client: ConvexHttpClient, cursor: string | null) {
+  return client.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: 100, cursor } });
+}
+
+const cachedInitialSlugs = unstable_cache(
+  async (url: string) => (await readSlugPage(new ConvexHttpClient(url), null)).page,
+  ["public-villa-initial-slugs"],
+  cacheOptions,
+);
+const cachedSlugs = unstable_cache(
+  async (url: string) => {
+    const client = new ConvexHttpClient(url);
+    const slugs: string[] = [];
+    let cursor: string | null = null;
+    while (true) {
+      const result = await readSlugPage(client, cursor);
+      slugs.push(...result.page);
+      if (result.isDone) return slugs;
+      cursor = result.continueCursor;
+    }
+  },
+  ["public-villa-slugs"],
+  cacheOptions,
+);
 const cachedFeaturedReviews = unstable_cache(
   (url: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.featuredReviews, { limit: 6 }),
   ["public-featured-reviews"],
   cacheOptions,
 );
 
-/** Last successful result per read, kept for the life of the server instance. */
+/** Shared catalog results stay available during an outage as detail entries rotate. */
 const lastGood = new Map<string, unknown>();
+const lastGoodDetails = new Map<string, unknown>();
+// Remember authoritative misses only for slugs that a warm catalog could otherwise resurrect.
+const inactiveListedSlugs = new Set<string>();
 /** After a failure Convex is not retried until this time, so an outage doesn't add a timeout to every request. */
 let retryAfter = 0;
 
@@ -52,9 +81,13 @@ let retryAfter = 0;
  * Runs a configured Convex read. `undefined` means it is failing and nothing has been read
  * successfully yet. Missing configuration throws before entering the recovery path.
  */
-async function readConvex<T>(key: string, read: (url: string) => Promise<T>): Promise<T | undefined> {
+async function readConvex<T>(
+  key: string,
+  read: (url: string) => Promise<T>,
+  fallback = lastGood,
+): Promise<T | undefined> {
   const url = convexUrl();
-  if (Date.now() < retryAfter) return lastGood.get(key) as T | undefined;
+  if (Date.now() < retryAfter) return fallback.get(key) as T | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const value = await Promise.race([
@@ -63,53 +96,68 @@ async function readConvex<T>(key: string, read: (url: string) => Promise<T>): Pr
         timer = setTimeout(() => reject(new Error("timed out")), TIMEOUT_MS);
       }),
     ]);
-    lastGood.set(key, value);
+    fallback.delete(key);
+    // Missing slugs use the 60-second framework cache. They never displace a known villa here.
+    if (value !== null) {
+      fallback.set(key, value);
+      if (fallback === lastGoodDetails && fallback.size > MAX_LAST_GOOD_DETAILS) {
+        const oldest = fallback.keys().next();
+        if (!oldest.done) fallback.delete(oldest.value);
+      }
+    }
     return value;
   } catch (error) {
     retryAfter = Date.now() + FAILURE_BACKOFF_MS;
     console.warn(`[villas] ${key} failed; serving the last good result for ${FAILURE_BACKOFF_MS / 1000}s`, error);
-    return lastGood.get(key) as T | undefined;
+    return fallback.get(key) as T | undefined;
   } finally {
     clearTimeout(timer);
   }
 }
 
-// Deduped per request: metadata, layout, page and sitemap share one read.
-const loadList = cache(() => readConvex("list", cachedList));
+const loadList = cache(async () => {
+  const list = await readConvex("list", cachedList);
+  if (list && inactiveListedSlugs.size) {
+    const listedSlugs = new Set(list.villas.map((row) => row.slug));
+    for (const slug of inactiveListedSlugs) {
+      if (!listedSlugs.has(slug)) inactiveListedSlugs.delete(slug);
+    }
+  }
+  return list;
+});
 const loadFeaturedReviews = cache(() => readConvex("featured-reviews", cachedFeaturedReviews));
 
-/** Convex is configured but unreachable, with no earlier result to fall back on. */
-async function listUnavailable() {
-  return (await loadList()) === undefined && convexUrl() !== undefined;
-}
-
 export async function getVillaCatalog(locale: string): Promise<VillaCatalog> {
-  // An empty backend has no bookable inventory.
-  if (await listUnavailable()) return { source: "db", villas: [] };
   return catalogFrom(await loadList(), getPublicMessages(locale), normalizePublicLocale(locale));
 }
 
-/** A villa with its reviews, or null when it does not exist or is not active (→ 404). */
-export async function getVilla(
+export const getPrerenderVillaSlugs = cache(async () => (await readConvex("initial-slugs", cachedInitialSlugs)) ?? []);
+
+export const getVillaSlugs = cache(async () => (await readConvex("slugs", cachedSlugs)) ?? []);
+
+/** Deduplicate the active villa lookup for metadata and content within the request. */
+export const getVilla = cache(async (
   slug: string,
   locale: string,
-): Promise<{ villa: PublicVilla; reviews: Review[] } | null> {
-  const catalog = await getVillaCatalog(locale);
-  const villa = catalog.villas.find((item) => item.id === slug);
-  if (!villa) {
-    // An outage is not a 404: show the error page and let the next request retry.
-    if (await listUnavailable()) throw new Error("Villas are temporarily unavailable.");
-    return null;
+): Promise<{ villa: PublicVilla; reviews: Review[] } | null> => {
+  const detail = await readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug), lastGoodDetails);
+  if (!detail) {
+    const catalog = lastGood.get("list") as DbVillaList | undefined;
+    const listed = catalog?.villas.find((row) => row.slug === slug);
+    if (detail === null && listed) inactiveListedSlugs.add(slug);
+    if (detail === null || inactiveListedSlugs.has(slug)) return null;
+    if (!listed) throw new Error("Villas are temporarily unavailable.");
+    return {
+      villa: villaFromDb(listed, getPublicMessages(locale), normalizePublicLocale(locale)),
+      reviews: [],
+    };
   }
-
-  const detail = await readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug));
-  if (detail === null) return null;
-  if (!detail) return { villa, reviews: [] };
+  inactiveListedSlugs.delete(slug);
   return {
     villa: villaFromDb(detail.villa, getPublicMessages(locale), normalizePublicLocale(locale)),
     reviews: detail.reviews.map(reviewFromDb),
   };
-}
+});
 
 export async function getFeaturedReviews(): Promise<Review[]> {
   const rows = await loadFeaturedReviews();

@@ -1,6 +1,7 @@
 import { publicPropertiesListResult, publicPropertiesGetBySlugResult, publicPropertiesFeaturedReviewsResult } from './validators';
 import { type QueryCtx, publicQuery } from '../auth/model';
 import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
 import type { Doc } from '../_generated/dataModel';
 
 // Guest-facing villa content for the public site. Only active villas are returned, and
@@ -58,8 +59,8 @@ function publicReview(review: Doc<'reviews'>, propertySlug: string) {
 }
 
 /**
- * Active villas with a review summary. `hasProperties` is false only for an empty
- * database, which is when the site falls back to its bundled demo content.
+ * Featured catalog of active villas with a review summary. `hasProperties` is false
+ * only for an empty database.
  */
 export const list = publicQuery({
   returns: publicPropertiesListResult,
@@ -75,6 +76,23 @@ export const list = publicQuery({
 			active.map(async (property) => publicVilla(property, await villaSocialProof(ctx, property._id)))
 		);
 		return { hasProperties, villas };
+	}
+});
+
+/** All active villa paths can be enumerated without reading review summaries. */
+export const listSlugs = publicQuery({
+	returns: v.object({ page: v.array(v.string()), continueCursor: v.string(), isDone: v.boolean() }),
+	reason: "Anonymous sitemap inventory; only active villa slugs are returned.",
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, { paginationOpts }) => {
+		const { numItems } = paginationOpts;
+		if (!Number.isInteger(numItems) || numItems < 1 || numItems > MAX_VILLAS) {
+			throw new Error(`Villa page size must be 1–${MAX_VILLAS}`);
+		}
+		const page = await ctx.db.query('properties')
+			.withIndex('by_status', (q) => q.eq('status', 'active'))
+			.paginate({ numItems, cursor: paginationOpts.cursor });
+		return { page: page.page.map((property) => property.slug), continueCursor: page.continueCursor, isDone: page.isDone };
 	}
 });
 

@@ -13,12 +13,18 @@ const MAX_NIGHTLY_RATE = 1_000_000_000;
 export const list = publicQuery({
   returns: propertiesListResult,
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
-	args: {},
-	handler: async (ctx): Promise<PublicProperty[]> => {
+	args: { includeSlug: v.optional(v.string()) },
+	handler: async (ctx, { includeSlug }): Promise<PublicProperty[]> => {
 		const properties = await ctx.db
 			.query('properties')
 			.withIndex('by_status', (q) => q.eq('status', 'active'))
 			.take(100);
+		// A direct booking link can name an active villa outside the default picker.
+		if (includeSlug && !properties.some(property => property.slug === includeSlug)) {
+			const requested = await ctx.db.query('properties')
+				.withIndex('by_slug', q => q.eq('slug', includeSlug)).unique();
+			if (requested?.status === 'active') properties.push(requested);
+		}
 		return properties.flatMap((property) => toPublicProperty(property) ?? []);
 	}
 });

@@ -2,6 +2,7 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { BookingFunnel } from "@/components/booking/BookingFunnel";
 
 // The booking funnel in live mode with its panels stubbed: what reaches CouponField and bookings.create.
 const fixture = vi.hoisted(() => ({
@@ -9,11 +10,19 @@ const fixture = vi.hoisted(() => ({
   client: {},
   t: (key: string) => key,
   coupon: null as null | { code: string | null; source: string },
+  queryInventory: vi.fn(({ includeSlug }: { includeSlug?: string }) => {
+    const villa = {
+      _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 500000, maxGuests: 4,
+      bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: "THB", directDiscountPercent: 1500,
+    };
+    return includeSlug === "villa-101" ? [villa, { ...villa, _id: "p101", slug: "villa-101", name: "Villa 101" }] : [villa];
+  }),
   createBooking: null as unknown as Mock<(client: unknown, args: { marketing?: unknown }) => Promise<{ bookingId: string; accessToken: string }>>,
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
 vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => fixture.t }));
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
+vi.mock("next/link", () => ({ default: "a" }));
 
 vi.mock("@/lib/i18n/use-public-messages", async () => {
   const { getPublicMessages } = await import("@/lib/i18n/messages-loader");
@@ -27,10 +36,7 @@ vi.mock("@/lib/booking/use-blocked-dates", () => {
 });
 vi.mock("convex/react", () => ({
   useConvex: () => ({ query: async () => true, mutation: (ref: unknown, args: { marketing?: unknown }) => fixture.createBooking(ref, args) }),
-  useQuery: () => [{
-    _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 500000, maxGuests: 4,
-    bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: "THB", directDiscountPercent: 1500,
-  }],
+  useQuery: (_ref: unknown, args: { includeSlug?: string }) => fixture.queryInventory(args),
 }));
 vi.mock("@/components/booking/useCouponPreview", () => {
   const state = { preview: { status: "idle" }, retry: () => {} };
@@ -62,10 +68,9 @@ vi.mock("@/components/booking/BookingPanels", () => ({
 let root: Root;
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement;
 
-async function book(initialCoupon = "") {
-  const { BookingFunnel } = await import("@/components/booking/BookingFunnel");
+async function book(initialCoupon = "", initialProperty = "pool-villa") {
   await act(async () => root.render(createElement(BookingFunnel, {
-    initialProperty: "pool-villa", initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-12", initialGuests: "2", initialCoupon,
+    initialProperty, initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-12", initialGuests: "2", initialCoupon,
   })));
   for (let step = 0; step < 3; step++) await act(async () => button("continue").click());
   await act(async () => button("continueToPay").click());
@@ -77,6 +82,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.history.replaceState(null, "", "/booking");
   fixture.coupon = null;
+  fixture.queryInventory.mockClear();
   fixture.createBooking = vi.fn().mockResolvedValue({ bookingId: "b1", accessToken: "t" });
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -111,5 +117,23 @@ describe("booking funnel capture", () => {
     window.localStorage.setItem("marketing-visitor", JSON.stringify({ visitorKey: `mv_${"b".repeat(32)}`, sessionId: "s1", lastActiveAt: 1 }));
     await book();
     expect(fixture.createBooking.mock.calls[1][1].marketing).toEqual({ visitorKey: `mv_${"b".repeat(32)}` });
+  });
+});
+
+describe("direct villa booking links", () => {
+  it("submits the linked villa outside the default picker", async () => {
+    await book("", "villa-101");
+    expect(fixture.queryInventory).toHaveBeenCalledWith({ includeSlug: "villa-101" });
+    expect(fixture.createBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ propertySlug: "villa-101" }));
+  });
+
+  it("offers a fresh choice when the linked villa is unavailable", async () => {
+      await act(async () => root.render(createElement(BookingFunnel, {
+      initialProperty: "archived-villa", initialCheckIn: "2030-01-10", initialCheckOut: "2030-01-12",
+    })));
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe("liveBookingUnavailable");
+    expect(document.querySelector("a")?.getAttribute("href")).toBe("/booking");
+    expect(button("continue")).toBeUndefined();
+    expect(fixture.createBooking).not.toHaveBeenCalled();
   });
 });
