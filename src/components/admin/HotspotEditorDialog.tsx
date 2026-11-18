@@ -36,7 +36,17 @@ const isEmpty = (draft: Draft) => !draft.id && !draft.label.trim() && !draft.tar
  * drag one to move it, click it to edit or delete; Preview walks between rooms like the tour.
  * Mount it only while open so each opening starts from the saved hotspots.
  */
-export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; rooms: Room[]; onClose: () => void }) {
+export function HotspotEditorDialog({
+  room,
+  rooms,
+  onClose,
+  onCloseAutoFocus,
+}: {
+  room: Room;
+  rooms: Room[];
+  onClose: () => void;
+  onCloseAutoFocus: (event: Event) => void;
+}) {
   const setHotspots = useMutation(api.catalog.adminProperties.setHotspots);
   const confirm = useConfirm();
   const save = useSaver();
@@ -130,6 +140,7 @@ export function HotspotEditorDialog({ room, rooms, onClose }: { room: Room; room
     <Dialog open onOpenChange={(open) => !open && void requestClose()}>
       <DialogContent
         className="flex h-[90dvh] max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        onCloseAutoFocus={onCloseAutoFocus}
         onEscapeKeyDown={(event) => {
           if (selectedKey === null) return;
           event.preventDefault(); // Escape closes the hotspot form first

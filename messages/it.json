@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "Mostra tutti i dettagli",
+      "loading": "Caricamento dettagli…",
+      "ready": "Tutti i dettagli visibili",
+      "failed": "Ricarica i dettagli"
+    },
     "roomsExplored": "{visited}/{total} stanze esplorate",
     "loading": "Caricamento...",
     "loadFailed": "Impossibile caricare questa stanza.",

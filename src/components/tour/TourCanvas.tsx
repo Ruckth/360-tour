@@ -2,12 +2,13 @@
 
 import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MeshBasicMaterial } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
 import { RoomSphere } from "@/components/tour/RoomSphere";
-import { useTourTextures } from "@/components/tour/useTourTextures";
+import { useTourTextures, type PanoramaDetailRequest, type PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import type { Room } from "@/lib/data/rooms";
+import { choosePanoramaWidth } from "@/lib/tour/panoramas";
 
 /** The viewer at the sphere's center, looking around by dragging. */
 export function TourCamera({ enabled = true }: { enabled?: boolean }) {
@@ -55,6 +56,22 @@ const CROSSFADE_DURATION_S = 0.4;
  */
 export type TourSceneStatus = "loading" | "pending" | "crossfade" | "ready" | "failed";
 
+type SceneProps = {
+  rooms: Room[];
+  currentRoomId: string;
+  previousRoomId: string | null;
+  transitioning: boolean;
+  onTransitionComplete: () => void;
+  onLoaded: () => void;
+  onLoadError?: (failed: boolean) => void;
+  onStatusChange?: (status: TourSceneStatus, shownRoomId: string | null) => void;
+  onNavigate: (roomId: string) => void;
+  loader?: Parameters<typeof useTourTextures>[0]["loader"];
+  retrySignal?: number;
+  detailRequest?: PanoramaDetailRequest | null;
+  onDetailStatusChange?: (status: PanoramaDetailStatus) => void;
+};
+
 function SphereScene({
   rooms,
   currentRoomId,
@@ -67,24 +84,24 @@ function SphereScene({
   onNavigate,
   loader,
   retrySignal,
-}: {
-  rooms: Room[];
-  currentRoomId: string;
-  previousRoomId: string | null;
-  transitioning: boolean;
-  onTransitionComplete: () => void;
-  onLoaded: () => void;
-  onLoadError: (failed: boolean) => void;
-  onStatusChange?: (status: TourSceneStatus, shownRoomId: string | null) => void;
-  onNavigate: (roomId: string) => void;
-  loader?: Parameters<typeof useTourTextures>[0]["loader"];
-  retrySignal?: number;
-}) {
+  detailRequest,
+  onDetailStatusChange,
+}: SceneProps) {
   const invalidate = useThree((state) => state.invalidate);
-  const { shown, outgoing, currentReady, currentFailed } = useTourTextures({
+  const getState = useThree((state) => state.get);
+  const maxTextureSize = useThree((state) => state.gl.capabilities.maxTextureSize);
+  // Use one entry size per open tour so a rotation or resize can reuse the prefetched textures.
+  const [panoramaWidth] = useState(() => {
+    const { size, viewport } = getState();
+    return choosePanoramaWidth(size.width, viewport.dpr, maxTextureSize);
+  });
+  const { shown, outgoing, currentReady, currentFailed, detailStatus } = useTourTextures({
     rooms,
     currentRoomId,
     previousRoomId,
+    panoramaWidth,
+    maxTextureSize,
+    detailRequest,
     onInvalidate: invalidate,
     retrySignal,
     ...(loader ? { loader } : {}),
@@ -123,11 +140,14 @@ function SphereScene({
     if (currentReady) onLoaded();
   }, [currentReady, onLoaded]);
   useEffect(() => {
-    onLoadError(currentFailed);
+    onLoadError?.(currentFailed);
   }, [currentFailed, onLoadError]);
   useEffect(() => {
     onStatusChange?.(status, shownRoomId);
   }, [onStatusChange, shownRoomId, status]);
+  useEffect(() => {
+    onDetailStatusChange?.(detailStatus);
+  }, [detailStatus, onDetailStatusChange]);
 
   useEffect(() => {
     if (readyWithoutPrevious) onTransitionComplete();
@@ -193,33 +213,7 @@ function SphereScene({
   );
 }
 
-function noop() {}
-
-export function TourCanvas({
-  rooms,
-  currentRoomId,
-  previousRoomId,
-  transitioning,
-  onTransitionComplete,
-  onLoaded,
-  onLoadError,
-  onStatusChange,
-  onNavigate,
-  loader,
-  retrySignal,
-}: {
-  rooms: Room[];
-  currentRoomId: string;
-  previousRoomId: string | null;
-  transitioning: boolean;
-  onTransitionComplete: () => void;
-  onLoaded: () => void;
-  onLoadError?: (failed: boolean) => void;
-  onStatusChange?: (status: TourSceneStatus, shownRoomId: string | null) => void;
-  onNavigate: (roomId: string) => void;
-  loader?: Parameters<typeof useTourTextures>[0]["loader"];
-  retrySignal?: number;
-}) {
+export function TourCanvas(props: SceneProps) {
   return (
     <Canvas
       // Demand rendering: no continuous loop. Frames are drawn only when something invalidates —
@@ -228,19 +222,7 @@ export function TourCanvas({
       dpr={[1, 1.5]}
       gl={{ antialias: false, powerPreference: "high-performance" }}
     >
-      <SphereScene
-        rooms={rooms}
-        currentRoomId={currentRoomId}
-        previousRoomId={previousRoomId}
-        transitioning={transitioning}
-        onTransitionComplete={onTransitionComplete}
-        onLoaded={onLoaded}
-        onLoadError={onLoadError ?? noop}
-        onStatusChange={onStatusChange}
-        onNavigate={onNavigate}
-        loader={loader}
-        retrySignal={retrySignal}
-      />
+      <SphereScene {...props} />
     </Canvas>
   );
 }

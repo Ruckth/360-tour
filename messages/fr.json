@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "Afficher tous les détails",
+      "loading": "Chargement des détails…",
+      "ready": "Tous les détails sont affichés",
+      "failed": "Réessayer de charger les détails"
+    },
     "roomsExplored": "{visited}/{total} pièces explorées",
     "loading": "Chargement...",
     "loadFailed": "Impossible de charger cette pièce.",

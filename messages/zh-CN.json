@@ -508,6 +508,12 @@
     }
   },
   "Tour": {
+    "detail": {
+      "available": "显示高清画面",
+      "loading": "正在加载高清画面…",
+      "ready": "已显示高清画面",
+      "failed": "重试加载高清画面"
+    },
     "roomsExplored": "已探索 {visited}/{total} 个房间",
     "loading": "正在加载...",
     "loadFailed": "无法加载此房间。",

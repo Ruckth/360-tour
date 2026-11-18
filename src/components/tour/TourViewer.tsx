@@ -9,6 +9,7 @@ import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas, type TourSceneStatus } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
 import { TourOverlay } from "@/components/tour/TourOverlay";
+import type { PanoramaDetailRequest, PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
@@ -42,14 +43,16 @@ export function TourViewer({
   const [phase, setPhase] = useState<Phase>("intro");
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   // The first room in tour order until the guest moves (or the selected room disappears).
-  const currentRoomId =
-    activeRooms.find((room) => room.id === selectedRoomId)?.id ?? activeRooms[0]?.id ?? "";
+  const currentRoom = activeRooms.find((room) => room.id === selectedRoomId) ?? activeRooms[0];
+  const currentRoomId = currentRoom?.id ?? "";
   const [previousRoomId, setPreviousRoomId] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const [texturesLoaded, setTexturesLoaded] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
   const [sceneStatus, setSceneStatus] = useState<TourSceneStatus>("loading");
+  const [detailRequest, setDetailRequest] = useState<PanoramaDetailRequest | null>(null);
+  const [detailStatus, setDetailStatus] = useState<PanoramaDetailStatus>(null);
   const [shownRoomId, setShownRoomId] = useState<string | null>(null);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
@@ -108,6 +111,7 @@ export function TourViewer({
     setPreviousRoomId(currentRoomId);
     setSelectedRoomId(roomId);
     setTransitioning(true);
+    setDetailRequest(null);
   }
 
   const allRoomsVisited =
@@ -179,6 +183,8 @@ export function TourViewer({
             onStatusChange={handleStatusChange}
             onNavigate={navigateTo}
             retrySignal={retryNonce}
+            detailRequest={detailRequest}
+            onDetailStatusChange={setDetailStatus}
           />
         ) : null}
       </div>
@@ -251,6 +257,24 @@ export function TourViewer({
             allRoomsVisited={allRoomsVisited}
             onFinish={() => setPhase("conclusion")}
           />
+          {detailStatus && !navigationLocked && currentRoom ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="glass"
+              className="absolute bottom-16 left-3 z-30 rounded-full bg-black/45 text-xs text-white md:bottom-20 md:left-6"
+              style={{ marginBottom: "env(safe-area-inset-bottom, 0px)" }}
+              aria-live="polite"
+              aria-disabled={detailStatus === "loading" || detailStatus === "ready"}
+              onClick={() => {
+                if (detailStatus === "available" || detailStatus === "failed") {
+                  setDetailRequest({ roomId: currentRoom.id, originalPath: currentRoom.imagePath });
+                }
+              }}
+            >
+              {tourT(`detail.${detailStatus}`)}
+            </Button>
+          ) : null}
           {activeRooms.length > 1 ? (
             <>
               <div
