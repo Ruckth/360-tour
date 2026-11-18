@@ -17,7 +17,7 @@ import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { addDaysIso, nightsBetweenIso } from "@/lib/booking/dates";
 import { DAY_MS, resortDateTime, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
 import en from "../../messages/en.json";
-import { registerFixtureFunctions } from "./convex-mock";
+import { notifyFixtureStore, registerFixtureFunctions } from "./convex-mock";
 import "@/app.css";
 
 /*
@@ -38,6 +38,11 @@ import "@/app.css";
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 const view = params.get("view") ?? "hotel";
+let heldVilla = params.get("holdVilla");
+window.addEventListener("fixture-release-villa", () => {
+  heldVilla = null;
+  notifyFixtureStore();
+});
 const EMAIL = "ploy@auraliscove.co";
 const now = Date.now();
 const today = resortIsoDate(Date.now());
@@ -175,9 +180,10 @@ function fresh(s: Stay, expectedRevision: number) {
 registerFixtureFunctions({
   queries: {
     "settings/settings:publicProfile": () => ({ businessName: "Auralis Cove", checkInTime: "14:00", checkOutTime: "11:00" }),
-    "bookings/admin:listForAdmin": ({ from, to }: { from: string; to: string }) => ({
-      properties, blocks: [], dateBlocks: [], complete: true,
-      bookings: desk.stays.filter((s) => s.checkIn < to && s.checkOut > from).map(toAdmin),
+    "bookings/admin:listCalendarProperties": () => properties,
+    "bookings/admin:listForAdmin": ({ from, to, propertyId }: { from: string; to: string; propertyId?: string }) => propertyId === heldVilla ? undefined : ({
+      properties: properties.filter((property) => !propertyId || property._id === propertyId), blocks: [], dateBlocks: [], complete: true,
+      bookings: desk.stays.filter((s) => s.checkIn < to && s.checkOut > from && (!propertyId || s.propertyId === propertyId)).map(toAdmin),
     }),
     "bookings/admin:stayAppointments": ({ bookingId }: { bookingId: string }) => ({
       appointments: desk.appointments.filter((a) => a.bookingId === bookingId).sort((a, b) => a.start - b.start).map((a) => ({

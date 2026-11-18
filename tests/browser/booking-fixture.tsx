@@ -62,7 +62,12 @@ const services: Doc<"services">[] = Array.from({ length: 30 }, (_, index) => ({
 // Static server answers; the real hotel calendar owns selection and resort-day policy.
 const hotelData = { properties, bookings: [], dateBlocks: [], blocks: [], complete: true };
 if (params.get("mode") === "hotel-calendar") registerFixtureFunctions({
-  queries: { "bookings/admin:listForAdmin": () => hotelData },
+  queries: {
+    "bookings/admin:listCalendarProperties": () => properties,
+    "bookings/admin:listForAdmin": ({ propertyId }: { propertyId?: string }) => ({
+      ...hotelData, properties: properties.filter((property) => !propertyId || property._id === propertyId),
+    }),
+  },
 });
 
 function Fixture() {

@@ -137,16 +137,20 @@ function HotelBookings() {
   // Below `sm` the villa filter moves into ⋯ and search folds to an icon.
   const phone = useIsMobile(640);
 
-  const data = useQuery(api.bookings.admin.listForAdmin, range);
+  const properties = useQuery(api.bookings.admin.listCalendarProperties, {});
+  const selectedVilla = properties?.find((property) => property._id === storedVilla);
+  const villa = selectedVilla?._id ?? "all";
+  // Wait for the picker to validate a remembered selection before reading its calendar.
+  const rangeArgs = selectedVilla ? { ...range, propertyId: selectedVilla._id } : range;
+  const data = useQuery(api.bookings.admin.listForAdmin,
+    storedVilla !== "all" && properties === undefined ? "skip" : rangeArgs);
   const profile = useQuery(api.settings.settings.publicProfile, {});
   const checkInTime = profile?.checkInTime ?? DEFAULT_CHECK_IN;
   const checkOutTime = profile?.checkOutTime ?? DEFAULT_CHECK_OUT;
   const today = resortTodayIso();
 
   const view: HotelView = (VIEWS as readonly string[]).includes(storedView) ? (storedView as HotelView) : phone ? "agenda" : "month";
-  // A remembered villa that no longer exists falls back to all villas.
-  const villa = storedVilla === "all" || !data || data.properties.some((p) => p._id === storedVilla) ? storedVilla : "all";
-  const villaName = (id: string) => data?.properties.find((p) => p._id === id)?.name ?? "Villa";
+  const villaName = (id: string) => properties?.find((p) => p._id === id)?.name ?? "Villa";
 
   useEffect(() => {
     if (!notice) return;
@@ -353,7 +357,7 @@ function HotelBookings() {
           className={view === "month" || (phone && view === "agenda") ? "[--ec-month-bar-h:2.375rem] w-full" : "[--ec-month-bar-h:2.375rem] h-[calc(100dvh-13rem)] min-h-96 w-full"}
         >
           <AdminCalendarHeader compact primaryAction={<Button size="sm" aria-label="New booking" disabled={!data} onClick={() => setCreating({ propertyId: villa !== "all" ? villa : undefined })}><PlusIcon aria-hidden className="size-4" /><span className="sm:hidden">New</span><span className="hidden sm:inline">New booking</span></Button>}>
-            <GuestSearch properties={data?.properties ?? []} onPick={openFromSearch} />
+            <GuestSearch properties={properties ?? []} onPick={openFromSearch} />
             {phone ? (
               villa !== "all" ? (
                 // The villa filter lives in ⋯ on a phone; a filtered calendar says so and clears in one tap.
@@ -364,8 +368,8 @@ function HotelBookings() {
               ) : null
             ) : (
               <VillaPicker
-                properties={data?.properties ?? []} value={villa} onChange={setVilla}
-                includeAll compact disabled={!data}
+                properties={properties ?? []} value={villa} onChange={setVilla}
+                includeAll compact disabled={!properties}
                 className="w-36"
               />
             )}
@@ -373,12 +377,12 @@ function HotelBookings() {
             <div className="ms-auto flex items-center gap-2">
               <MoreMenu
                 label="More calendar tools"
-                disabled={!data}
+                disabled={!properties}
                 items={[
                   ...(phone
                     ? [
                         { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
-                        ...(data?.properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
+                        ...(properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
                       ]
                     : []),
                   { label: "Show cancelled", checked: showCancelled, onSelect: () => setShowCancelled((value) => !value) },
@@ -421,7 +425,7 @@ function HotelBookings() {
         </div>
       </Card>
 
-      <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={data?.properties ?? []} onClose={() => setSelected(null)} />
+      <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={properties ?? []} onClose={() => setSelected(null)} />
       {quick ? (
         <BookingQuickActions
           key={quick.booking._id}
@@ -458,21 +462,21 @@ function HotelBookings() {
           }}
         />
       ) : null}
-      {data && blockTarget ? (
-        <DateBlockDialog target={blockTarget} properties={data.properties} onClose={() => setBlockTarget(null)} />
+      {properties && blockTarget ? (
+        <DateBlockDialog target={blockTarget} properties={properties} onClose={() => setBlockTarget(null)} />
       ) : null}
-      {data ? (
-        <IcalSourcesDialog open={managingCalendars} onClose={() => setManagingCalendars(false)} properties={data.properties} />
+      {properties ? (
+        <IcalSourcesDialog open={managingCalendars} onClose={() => setManagingCalendars(false)} properties={properties} />
       ) : null}
-      {data ? (
-        <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={data.properties} />
+      {properties ? (
+        <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={properties} />
       ) : null}
-      {data && cleaningUp ? <BookingCleanupDialog properties={data.properties} onClose={() => setCleaningUp(false)} /> : null}
-      {data && moving ? (
+      {properties && cleaningUp ? <BookingCleanupDialog properties={properties} onClose={() => setCleaningUp(false)} /> : null}
+      {properties && moving ? (
         <MoveBookingDialog
           key={`${moving.booking._id}:${moving.propertyId}:${moving.checkIn}:${moving.checkOut}`}
           move={moving}
-          properties={data.properties}
+          properties={properties}
           onClose={() => setMoving(null)}
           onMoved={(text) => {
             setMoving(null);
@@ -484,10 +488,10 @@ function HotelBookings() {
           }}
         />
       ) : null}
-      {data && creating ? (
+      {properties && creating ? (
         <NewBookingDialog
           // Archived villas are offered only for past stays, inside the dialog; drafts never.
-          properties={data.properties.filter((p) => p.status !== "draft")}
+          properties={properties.filter((p) => p.status !== "draft")}
           prefill={creating}
           onClose={() => setCreating(null)}
           onCreated={(id) => {

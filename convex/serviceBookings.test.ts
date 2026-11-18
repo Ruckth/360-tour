@@ -3,6 +3,10 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
+import type { FunctionArgs, FunctionReturnType } from 'convex/server';
+import type { MutationCtx, QueryCtx } from './_generated/server';
+import { findOpenSlots } from './services/admin';
+import { prepareChatServiceBooking } from './services/serviceBookings';
 import { fixtureGuestToken, fixtureGuestTokenHash } from "./testing/fixtures.test-support";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -71,6 +75,51 @@ function mockAi(calls: Array<{ name: string; args?: Record<string, unknown> }>, 
 }
 
 describe('AI service booking', () => {
+	it('reads one selected therapist and reuses the eligible roster when preparing a quote', async () => {
+		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+		const { t, staffId, serviceId, sessionId } = await setup();
+		const staffIds = await t.run(async ctx => {
+			const ids = [staffId];
+			for (let i = 1; i < 20; i++) {
+				ids.push(await ctx.db.insert('staff', {
+					name: `Therapist ${i}`, role: 'Therapist', color: '#abc', status: 'active',
+					workingHours: days.map(weekday => ({ weekday, start: '09:00', end: '18:00' })),
+					breaks: [], createdAt: Date.now(), updatedAt: Date.now()
+				}));
+			}
+			await ctx.db.patch(serviceId, { staffIds: ids });
+			return ids;
+		});
+		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
+		const slotsFunction = api.services.admin.findOpenSlots;
+		const readSlots: (ctx: QueryCtx, args: FunctionArgs<typeof slotsFunction>) => Promise<FunctionReturnType<typeof slotsFunction>> = Reflect.get(findOpenSlots, '_handler');
+		const measureSlots = (args: FunctionArgs<typeof slotsFunction>) => admin.run(async ctx => {
+			const gets = vi.spyOn(ctx.db, 'get');
+			const slots = await readSlots(ctx, args);
+			const staffReads = gets.mock.calls.map(call => call[call.length - 1]).filter(id => staffIds.some(staff => staff === id));
+			gets.mockRestore();
+			return { slots, staffReads };
+		});
+		const all = await measureSlots({ serviceId, date });
+		const selected = await measureSlots({ serviceId, date, staffId });
+		expect(all.staffReads).toHaveLength(20);
+		expect(selected.staffReads).toEqual([staffId]);
+		expect(selected.slots).toEqual(all.slots
+			.filter(slot => slot.staffIds.includes(staffId))
+			.map(slot => ({ start: slot.start, staffIds: [staffId], autoStaffId: staffId })));
+
+		const quoteFunction = internal.services.serviceBookings.prepareChatServiceBooking;
+		const prepareQuote: (ctx: MutationCtx, args: FunctionArgs<typeof quoteFunction>) => Promise<FunctionReturnType<typeof quoteFunction>> = Reflect.get(prepareChatServiceBooking, '_handler');
+		await t.run(async ctx => {
+			const gets = vi.spyOn(ctx.db, 'get');
+			const quote = await prepareQuote(ctx, { sessionId, ...request, staffPreference: 'Mali' });
+			const staffReads = gets.mock.calls.map(call => call[call.length - 1]).filter(id => staffIds.some(staff => staff === id));
+			gets.mockRestore();
+			expect(quote).toMatchObject({ staff: 'Mali', time: '14:00' });
+			expect(staffReads).toEqual(staffIds);
+		});
+	});
+
 	it('never matches an anonymous admin appointment through an empty guest phone', async () => {
 		const s = await setup();
 		await s.t.run((ctx) => createAppointmentRecord(ctx, { serviceId: s.serviceId, staffId: s.staffId, start: at('09:00'), source: 'admin', guestName: '', guestPhone: '' }));

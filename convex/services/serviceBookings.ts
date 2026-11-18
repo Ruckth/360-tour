@@ -8,12 +8,13 @@ import { bookingsByPhone } from '../bookings/model';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../shared/chatWriteGuard';
 import { enforceRateLimit } from '../messaging/model';
-import { SLOT_CONFLICT, assertAppointmentStart, createAppointmentRecord, findOpenSlots, serviceRostered } from './private/serviceSlots';
+import { SLOT_CONFLICT, activeServiceStaff, assertAppointmentStart, createAppointmentRecord, openStarts, serviceRostered, type Slot } from './private/serviceSlots';
 import { localDateTimeUtc } from '../shared/schedule';
 import { resortLocalParts } from '../shared/time';
+import { assertValidIsoDate } from '../shared/validation';
 import { getEffectiveSettings } from '../settings/model';
 import { durableToolValidator, withDurableTool } from '../messaging/model';
-import { NOT_SCHEDULED } from './private/administration';
+import { MINUTE, NOT_SCHEDULED } from './private/administration';
 
 type ReadCtx = QueryCtx | MutationCtx;
 
@@ -33,7 +34,7 @@ function firstName(name: string) {
 	return name.trim().split(/\s+/)[0];
 }
 
-function nearestTimes(slots: Awaited<ReturnType<typeof findOpenSlots>>, start: number) {
+function nearestTimes(slots: Slot[], start: number) {
 	return slots.slice().sort((a, b) => Math.abs(a.start - start) - Math.abs(b.start - start) || a.start - b.start)
 		.slice(0, 3).map((slot) => resortLocalParts(slot.start).time);
 }
@@ -42,10 +43,12 @@ export const checkServiceAvailability = internalQuery({
 	args: { serviceSlug: v.string(), date: v.string(), time: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const service = await activeService(ctx, args.serviceSlug);
-		const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date });
+		assertValidIsoDate(args.date, 'Date');
+		const staff = await activeServiceStaff(ctx, service);
+		const slots = await openStarts(ctx, staff, args.date, (service.durationMin + service.bufferMin) * MINUTE);
 		const openTimes = slots.map((slot) => resortLocalParts(slot.start).time);
 		// Nobody rostered yet is not the same as fully booked.
-		if (!slots.length && !(await serviceRostered(ctx, service._id, args.date))) {
+		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) {
 			return { service: service.name, date: args.date, ...(args.time === undefined ? {} : { time: args.time, available: false, alternatives: [] }), openTimes, scheduled: false, note: NOT_SCHEDULED };
 		}
 		if (args.time === undefined) return { service: service.name, date: args.date, openTimes };
@@ -93,14 +96,13 @@ async function prepareQuote(
 		throw new Error('Choose a future local date and time in HH:mm format.');
 	}
 	assertAppointmentStart(start);
-	const staff = (await Promise.all(service.staffIds.map((id) => ctx.db.get(id))))
-		.filter((person): person is Doc<'staff'> => !!person && person.status === 'active');
+	const staff = await activeServiceStaff(ctx, service);
 	const requestedName = args.staffPreference?.trim();
 	const preferred = requestedName ? staff.find((person) => firstName(person.name).toLowerCase() === requestedName.toLowerCase()) : undefined;
-	const slots = await findOpenSlots(ctx, { serviceId: service._id, date: args.date, staffId: preferred?._id });
+	const slots = await openStarts(ctx, preferred ? [preferred] : staff, args.date, (service.durationMin + service.bufferMin) * MINUTE);
 	if (!slots.some((slot) => slot.start === start)) {
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
-		if (!slots.length && !(await serviceRostered(ctx, service._id, args.date))) return { error: NOT_SCHEDULED, alternatives: [] };
+		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) return { error: NOT_SCHEDULED, alternatives: [] };
 		return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, start) };
 	}
 	const now = Date.now();
@@ -161,7 +163,8 @@ export const confirmChatServiceBooking = internalMutation({
 			});
 		} catch (error) {
 			if (!(error instanceof Error) || error.message !== SLOT_CONFLICT) throw error;
-			const slots = await findOpenSlots(ctx, { serviceId: service._id, date, staffId: quote.staffId });
+			const staff = await activeServiceStaff(ctx, service, quote.staffId);
+			const slots = await openStarts(ctx, staff, date, (service.durationMin + service.bufferMin) * MINUTE);
 			return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, quote.start) };
 		}
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: { ...quote, appointmentId: created.appointmentId } });

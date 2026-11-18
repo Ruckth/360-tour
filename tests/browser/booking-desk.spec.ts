@@ -34,6 +34,29 @@ const inView = (target: Locator) =>
     return true;
   });
 
+test("replaces a pending villa calendar response when the filter changes", async ({ page }) => {
+  await page.setViewportSize(DESK_VIEWPORTS.ipad);
+  await page.addInitScript(() => localStorage.setItem("admin.hotel.villa", "removed-villa"));
+  await openDesk(page, "?holdVilla=fxvilla000001");
+  const picker = page.getByRole("button", { name: /^Villa:/ });
+  await expect(picker).toContainText("All villas");
+  await expect(chip(page, "Anna Schmidt")).toBeVisible();
+  await expect(chip(page, "Maya Lin")).toBeVisible();
+
+  await picker.click();
+  await page.getByRole("option", { name: /Lagoon Pool Villa/ }).click();
+  await expect(page.getByRole("status", { name: "Loading bookings" })).toBeVisible();
+  await expect(chip(page, "Maya Lin")).toHaveCount(0);
+  await picker.click();
+  await page.getByRole("option", { name: /Garden Villa/ }).click();
+  await expect(chip(page, "Maya Lin")).toBeVisible();
+
+  await page.evaluate(() => window.dispatchEvent(new Event("fixture-release-villa")));
+  await expect(chip(page, "Maya Lin")).toBeVisible();
+  await expect(chip(page, "Anna Schmidt")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Today" }).getByRole("button", { name: /Arriving/ })).toContainText("2");
+});
+
 for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
   test.describe(size, () => {
     test.use({ viewport });
