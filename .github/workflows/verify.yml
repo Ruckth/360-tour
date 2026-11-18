@@ -53,6 +53,9 @@ jobs:
       - name: Serial repository guards (once overall)
         if: matrix.shard == 1
         run: pnpm test:guards
+      - name: Verify one durable write per messaging acknowledgement
+        if: matrix.shard == 1
+        run: pnpm bench:messaging
 
   components:
     # Booking component suites run against Vite with mocked Clerk and Next: no backend, no credentials.
@@ -151,6 +154,8 @@ jobs:
             convex-${{ runner.os }}-${{ runner.arch }}-
       - name: Build and run real-backend E2E with fresh local Convex and real Clerk sign-in
         run: pnpm test:e2e
+      - name: Check initial JavaScript budgets on the integration build
+        run: pnpm bench:routes --check-budgets
       - name: Verify persistent local dev restart, real Clerk and failure cleanup
         run: pnpm test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
