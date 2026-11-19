@@ -13,6 +13,7 @@ import { ATTACHED_PRICE, FEE_FIXED, Line, Order, ReadCtx, appointmentLine, asser
 import { linkableRow } from './paidLinkModel';
 import { executeLinkPaidLine, executeUnlinkPaidLine } from './paidLinks';
 import { executeAmendOrderPayment, executeVoidUnreceivedOrder } from './paymentCorrections';
+import { assertCorrectionPreviewSupported, readOrderProjection } from './orderLifecycle';
 
 /** Read-only proposal for the approval card. Execution still runs every original validation. */
 export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
@@ -21,7 +22,7 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
   const totalBefore = roundMoney(orderTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0));
   return { totalBefore, totalAfter: roundMoney(totalBefore - payload.amountSatang), amount: payload.amountSatang };
  }
- const lines = await orderLines(ctx, order._id);
+ const lines = await readOrderProjection(ctx, () => orderLines(ctx, order._id));
  let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
  const totalBefore = orderTotals(lines).total;
  let amount = 0;
@@ -81,6 +82,8 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
   return { totalBefore, totalAfter: totals.total, amount, ...(percent !== undefined ? { percent } : {}) };
  }
  if (order.status !== 'paid') throw new ConvexError('Only a paid order can be corrected');
+ const lineId = payload.kind === 'paymentFix' && payload.action === 'linkPaidLine' ? payload.lineId : undefined;
+ await assertCorrectionPreviewSupported(ctx, order._id, lineId ? lines.filter(line => line._id === lineId) : lines);
  if (payload.kind === 'paymentFix') {
   if (payload.action === 'linkPaidLine') amount = linkableRow(order, await ctx.db.get(payload.lineId)).amount;
   if (payload.action === 'unlinkPaidLine') {

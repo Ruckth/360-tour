@@ -1,10 +1,23 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
-import { lineCouponDiscount, lineDiscount, lineNet, linePrice, orderTotals } from '../../shared/orderMath';
+import { lineCouponDiscount, lineDiscount, lineNet, linePrice } from '../../shared/orderMath';
 import { getEffectiveSettings } from '../../settings/model';
 import type { DisplayCoupon, DisplayOrderState, Shared } from '../../shared/displayTypes';
 import { isOpenOrder } from './orderLinks';
 import { orderLines } from './orderLines';
+import { lineGoodwillDiscount, readOrderProjection, receiptTotals, voucherCodeMask } from './orderLifecycle';
+import { COMMERCE_LIMITS } from '../../shared/commerce/caps';
+
+async function issuedVoucherMasks(ctx: QueryCtx, lines: readonly Doc<'orderLines'>[]) {
+	const ids = new Set(lines.flatMap(line => line.saleSnapshot?.contents.flatMap(content => content.voucherId ? [content.voucherId] : []) ?? []));
+	const masks = await Promise.all([...ids].slice(0, COMMERCE_LIMITS.sale.voucherIssuances).map(async voucherId => {
+		const voucher = await readOrderProjection(ctx, () => ctx.db.get(voucherId));
+		const source = voucher?.source;
+		if (!voucher || !source || source.kind === 'refund_credit' || !lines.some(line => line._id === source.lineId)) return null;
+		return voucherCodeMask(ctx, voucher);
+	}));
+	return masks.filter(mask => mask !== null);
+}
 
 /** "Anna Lee" → "Anna". The display never shows more of a customer's name. */
 export function firstName(name: string | undefined): string | null {
@@ -28,7 +41,7 @@ async function customerFirstName(ctx: QueryCtx, order: Doc<'orders'>) {
 }
 
 /** What the display shows for the till's published order. */
-export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null): Promise<DisplayOrderState> {
+export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null): Promise<DisplayOrderState & { goodwillDiscount?: number; voucherCodeMasks?: string[] }> {
 	const { businessName } = await getEffectiveSettings(ctx);
 	const order = till?.orderId ? await ctx.db.get(till.orderId) : null;
 	if (!order || !(isOpenOrder(order) || order.status === 'paid')) return { state: 'idle', businessName };
@@ -38,27 +51,35 @@ export async function displayOrderState(ctx: QueryCtx, till: Doc<'tills'> | null
 	const lines = await orderLines(ctx, order._id);
 	if (!lines.length) return { state: 'idle', businessName };
 
-	const totals = orderTotals(lines);
+	const totals = receiptTotals(order, lines);
 	const coupon: DisplayCoupon | null = order.promotion && !order.promotion.problem && totals.coupon > 0 ? { code: order.promotion.code, saving: totals.coupon } : null;
 	const shared: Shared = { businessName, customerFirstName: await customerFirstName(ctx, order), orderNumber: order.orderNumber ?? null, currency: order.currency };
+	const goodwill = totals.goodwillDiscount ? { goodwillDiscount: totals.goodwillDiscount } : {};
 	if (order.status === 'paid') {
 		// What the guest paid at the counter: the total less deposits paid before checkout.
-		return { ...shared, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due, receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt, coupon };
+		const voucherCodeMasks = await issuedVoucherMasks(ctx, lines);
+		return { ...shared, ...goodwill, state: 'paid', total: totals.total, vat: totals.vat, amountPaid: totals.due,
+			receiptNumber: order.receiptNumber ?? null, paidAt: order.paidAt ?? order.updatedAt, coupon,
+			...(voucherCodeMasks.length ? { voucherCodeMasks } : {}) };
 	}
 	return {
 		...shared,
 		state: 'order',
-		lines: lines.map((line) => ({
-			name: line.name,
-			detail: line.detail ?? null,
-			qty: line.qty,
-			unitPrice: line.unitPrice,
-			price: linePrice(line),
-			discount: lineDiscount(line),
-			couponDiscount: lineCouponDiscount(line),
-			total: lineNet(line),
-			deposit: line.deposit ?? 0
-		})),
+		...goodwill,
+		lines: lines.map((line) => {
+			const discount = lineGoodwillDiscount(line);
+			return {
+				name: line.kind === 'voucher' ? 'Gift voucher' : line.saleSnapshot?.label ?? line.name,
+				detail: line.kind === 'voucher' || line.kind === 'package' || line.kind === 'product' ? null : line.detail ?? null,
+				qty: line.qty,
+				unitPrice: line.unitPrice,
+				price: linePrice(line),
+				discount: lineDiscount(line) + discount,
+				couponDiscount: lineCouponDiscount(line),
+				total: lineNet(line) - discount,
+				deposit: line.deposit ?? 0
+			};
+		}),
 		subtotal: totals.subtotal,
 		discount: totals.discount,
 		coupon,

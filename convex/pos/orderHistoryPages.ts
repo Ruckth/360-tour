@@ -3,12 +3,17 @@ import { ConvexError, v } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { type QueryCtx, canReadCheckoutOrder, requireStaff, staffQuery } from '../auth/model';
 import { orderRefundView } from './private/orderRefunds';
+import { openOrderReturn } from './private/orderLifecycle';
 
 const args = { orderId: v.id('orders'), paginationOpts: paginationOptsValidator };
 
 async function authorize(ctx: QueryCtx, orderId: Id<'orders'>, numItems: number) {
   const actor = await requireStaff(ctx, 'checkout');
-  if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(orderId))) throw new ConvexError('Order not found');
+  if (actor.role === 'cashier') {
+    const order = await ctx.db.get(orderId);
+    if (!canReadCheckoutOrder(actor, order) &&
+      (order?.status !== 'paid' || (await openOrderReturn(ctx, orderId))?.operator !== actor.tokenIdentifier)) throw new ConvexError('Order not found');
+  }
   if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new Error('Page size must be 1–50');
 }
 
@@ -44,5 +49,9 @@ export const orderRefunds = staffQuery({
   capability: 'checkout', args, handler: async (ctx, input) => {
   await authorize(ctx, input.orderId, input.paginationOpts.numItems);
   const page = await ctx.db.query('orderRefunds').withIndex('by_orderId', q => q.eq('orderId', input.orderId)).order('desc').paginate(input.paginationOpts);
-  return { ...page, page: page.page.map(orderRefundView) };
+  return { ...page, page: page.page.map(row => ({
+    ...orderRefundView(row),
+    ...(row.returnId ? { returnId: row.returnId } : {}),
+    ...(row.method === 'voucher' ? { voucherId: row.voucherId } : {}),
+  })) };
 } });

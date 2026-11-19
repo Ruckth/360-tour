@@ -1,8 +1,10 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { orderTitle } from '../../shared/orderMath';
+import { lineNet, orderTitle, orderTotals } from '../../shared/orderMath';
 import { assertMoney } from '../../shared/money';
+import { receiptVat } from '../../shared/commerce/vat';
+import { readBudget } from '../../lib/readBudget';
 import { isOpenOrder } from './orderLinks';
 
 /**
@@ -85,11 +87,90 @@ export function externalOrderPayments(payments: readonly Doc<'orderPayments'>[])
   return payments.filter(payment => payment.method !== 'voucher');
 }
 
-/** The receipt's current money and business date, shared with reporting. */
+export function voucherOrderPayments(payments: readonly Doc<'orderPayments'>[]) {
+	return payments.filter(payment => payment.method === 'voucher');
+}
+
+/** Tender corrections replace the external methods. Voucher spend keeps its sale-time identity and amount. */
 export function orderPaymentRecord(order: Doc<'orders'>, payments: readonly Doc<'orderPayments'>[]) {
+	const allTenders = payments.map(payment => payment.method === 'voucher'
+		? { method: payment.method, amount: payment.amount, voucherId: payment.voucherId }
+		: { method: payment.method, amount: payment.amount, ...(payment.received !== undefined ? { received: payment.received } : {}) });
+	const tenders = order.amendedTenders ?? allTenders.filter(tender => tender.method !== 'voucher');
+	const voucherTenders = allTenders.filter(tender => tender.method === 'voucher');
 	return {
 		effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
-		tenders: order.amendedTenders ?? externalOrderPayments(payments).map(({ method, amount, received }) => ({ method, amount, ...(received !== undefined ? { received } : {}) })),
+		// Reporting and external refund defaults consume the external column.
+		tenders,
+		...(voucherTenders.length ? { allTenders: order.amendedTenders ? [...tenders, ...voucherTenders] : allTenders } : {}),
 		customer: order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null)
 	};
+}
+
+export function lineGoodwillDiscount(line: Doc<'orderLines'>) {
+	return line.saleSnapshot?.goodwillDiscounts.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
+}
+
+export function receiptTotals(order: Doc<'orders'>, lines: readonly Doc<'orderLines'>[]) {
+	const totals = orderTotals(lines);
+	const goodwillDiscount = lines.reduce((sum, line) => sum + lineGoodwillDiscount(line), 0);
+	const total = totals.total - goodwillDiscount;
+	const deposit = Math.min(total, totals.deposit);
+	const vat = order.vatVersion === 2
+		? receiptVat({ vatVersion: 2, lines: lines.map(line => ({ vatBase: line.saleSnapshot?.vatBase ?? lineNet(line) })) })
+		: null;
+	return {
+		...totals,
+		...(goodwillDiscount ? { goodwillDiscount, discount: totals.discount + goodwillDiscount, total, deposit, due: total - deposit } : {}),
+		...vat,
+	};
+}
+
+export function isCommerceLine(line: Doc<'orderLines'>) {
+	return line.kind === 'product' || line.kind === 'package' || line.kind === 'voucher' || line.coverage !== undefined ||
+		lineGoodwillDiscount(line) > 0 || line.saleSnapshot?.tenderCells.some(cell => cell.kind === 'voucher') === true;
+}
+
+/** Count a single get or bounded index range against the invocation's read budget. */
+export async function readOrderProjection<T>(ctx: ReadCtx, read: () => Promise<T>): Promise<T> {
+	const budget = readBudget(ctx);
+	budget.range();
+	budget.assert();
+	const result = await read();
+	for (const row of Array.isArray(result) ? result : [result]) {
+		if (row !== null) budget.document(row);
+		budget.assert();
+	}
+	return result;
+}
+
+export function openOrderReturn(ctx: ReadCtx, orderId: Id<'orders'>) {
+	return readOrderProjection(ctx, () => ctx.db.query('orderReturns')
+		.withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'authorized')).first());
+}
+
+export async function voucherCodeMask(ctx: ReadCtx, voucher: Doc<'vouchers'>) {
+	const { activeCodeId } = voucher;
+	if (!activeCodeId) return null;
+	const code = await readOrderProjection(ctx, () => ctx.db.get(activeCodeId));
+	return code?.voucherId === voucher._id && code.status === 'active' && code.mask && !code.mask.includes(code.code) ? code.mask : null;
+}
+
+export function correctionPreviewBlocker(commerce: boolean, activeReturn: Doc<'orderReturns'> | null) {
+	if (activeReturn) {
+		return { code: 'RETURN_IN_PROGRESS' as const, message: 'Return in progress', returnId: activeReturn._id };
+	}
+	if (commerce) return { code: 'COMMERCE_CORRECTION_UNAVAILABLE' as const, message: 'This receipt has commerce items or voucher value. Use the commerce correction flow.' };
+	return null;
+}
+
+export async function assertCorrectionPreviewSupported(ctx: ReadCtx, orderId: Id<'orders'>, lines: readonly Doc<'orderLines'>[]) {
+	const activeReturn = await openOrderReturn(ctx, orderId);
+	let commerce = lines.some(isCommerceLine);
+	if (!activeReturn && !commerce) {
+		const payments = await readOrderProjection(ctx, () => ctx.db.query('orderPayments').withIndex('by_orderId', q => q.eq('orderId', orderId)).take(10));
+		commerce = voucherOrderPayments(payments).length > 0;
+	}
+	const blocker = correctionPreviewBlocker(commerce, activeReturn);
+	if (blocker) throw new ConvexError(blocker);
 }
