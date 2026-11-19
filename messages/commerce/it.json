@@ -274,7 +274,8 @@
         "stockAdjusted": "Giacenza modificata",
         "roomCharge": "Addebitato alla camera {room}",
         "takenBack": "Ritirato",
-        "published": "Nuovo prezzo per le vendite future"
+        "published": "Nuovo prezzo per le vendite future",
+        "updated": "Aggiornato"
       },
       "showStaff": "Vista staff",
       "close": "Chiudi"

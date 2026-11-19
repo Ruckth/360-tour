@@ -13,7 +13,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
 import { useNow } from "@/lib/staff-bookings";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
-import { useCheckoutBackend, useCommerce, type ApprovalRequest, type CommerceBackend } from "./backend";
+import { useCheckoutBackend, useCommerce, type ApprovalRequest } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { approvalAsk, minutesLeft, personName } from "./staff-approvals";
 import type { TargetApproval } from "./TargetApproval";
@@ -21,16 +21,10 @@ import type { TargetApproval } from "./TargetApproval";
 // Loaded only when a return or edit request is waiting, so today's panel costs nothing more.
 const TargetApprovalItem = lazy(() => import("./TargetApproval"));
 
-/**
- * Target-scoped requests (returns of items, edits to sold or catalogue items) as a commerce backend
- * reads them. Not in CommerceBackend yet: a backend without the reader has none, as today.
- */
-export type TargetApprovalReader = { useTargetApprovals(): TargetApproval[] | undefined };
 const NONE: TargetApproval[] = [];
-const noTargetApprovals = () => NONE;
+/** Returns and edits waiting for a manager; none from a backend without commerce, as today. */
 function useTargetApprovals(): TargetApproval[] {
-  const read = (useCommerce() as CommerceBackend & Partial<TargetApprovalReader>).useTargetApprovals ?? noTargetApprovals;
-  return read() ?? NONE;
+  return useCommerce().useTargetApprovals() ?? NONE;
 }
 
 /**

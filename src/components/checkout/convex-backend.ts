@@ -1,15 +1,52 @@
 "use client";
 
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useMemo } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import type { CheckoutBackend, CustomerPage } from "./backend";
+import { COMMERCE_OFF, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry } from "./backend";
+import { historyEntry, isTargetRow, targetApproval } from "./commerce-readers";
+import type { TargetApproval } from "./TargetApproval";
 
 const SKIP = "skip" as const;
 const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
 /** Cashiers may only search active customers by at least two characters (customers.browseCustomers). */
 const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
+
+/**
+ * Commerce readers that have a backend so far: History, returns and edits waiting for a manager, and a
+ * requester's own request. The rest stay Off (COMMERCE_OFF) until their wave lands; every sale switch
+ * is Off, so nothing new can be sold.
+ */
+const convexCommerce: CommerceBackend = {
+  ...COMMERCE_OFF,
+  useHistory: (target, audience) => {
+    const benefit = target?.targetType === "voucher" || target?.targetType === "grant" ? target : null;
+    const staff = usePaginatedQuery(api.commerce.history.staffPage, target && audience === "staff" ? { target } : SKIP, { initialNumItems: 20 });
+    const guest = usePaginatedQuery(api.commerce.history.guestPage, benefit && audience === "guest" ? { target: benefit } : SKIP, { initialNumItems: 20 });
+    const page = audience === "guest" ? guest : staff;
+    const results = useMemo(() => page.results.map(historyEntry), [page.results]);
+    if (!target || (audience === "guest" && !benefit)) return NOTHING_TO_LOAD as CustomerPage<HistoryEntry>;
+    return { results, status: page.status, loadMore: page.loadMore };
+  },
+  useTargetApprovals: () => {
+    const approve = useStaffAccess().capabilities.approve;
+    // One page of the queue. Order-scoped requests keep reading staffApprovals.pending.
+    const queue = usePaginatedQuery(api.pos.staffApprovals.pendingPage, approve ? {} : SKIP, { initialNumItems: 20 });
+    const rows = useMemo(() => queue.results.filter(isTargetRow), [queue.results]);
+    const details = useQueries(useMemo(() => Object.fromEntries(rows.map((row) => [row._id, { query: api.pos.staffApprovals.detail, args: { requestId: row._id } }])), [rows]));
+    return useMemo((): TargetApproval[] | undefined => {
+      if (!approve) return [];
+      if (queue.status === "LoadingFirstPage") return undefined;
+      return rows.flatMap((row) => {
+        const detail = details[row._id];
+        const view = targetApproval(row, detail instanceof Error || detail === null ? undefined : detail);
+        return view ? [view] : [];
+      });
+    }, [approve, queue.status, rows, details]);
+  },
+  useMyApproval: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
+};
 
 /** The live checkout: Convex queries and mutations from convex/pos/ and convex/pos/customers.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
@@ -52,6 +89,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useOrderApprovals: (orderId) => useQuery(api.pos.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
   usePendingApprovals: () => useQuery(api.pos.staffApprovals.pending, useStaffAccess().capabilities.approve ? {} : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
+  commerce: convexCommerce,
   useActions: () => {
     const noteCouponRefusal = useMutation(api.marketing.report.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.commands.discardOrder.discardOrder);

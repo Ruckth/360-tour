@@ -274,7 +274,8 @@
         "stockAdjusted": "स्टॉक बदला",
         "roomCharge": "रूम {room} में चार्ज",
         "takenBack": "वापस लिया",
-        "published": "आगे की बिक्री के लिए नई कीमत"
+        "published": "आगे की बिक्री के लिए नई कीमत",
+        "updated": "अपडेट हुआ"
       },
       "showStaff": "स्टाफ़ व्यू",
       "close": "बंद करें"

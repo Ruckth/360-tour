@@ -297,9 +297,11 @@ it.each(['voucher', 'grant'] as const)('keeps %s guest history within the latest
     .rejects.toMatchObject({ data: { code: 'STALE_HISTORY_CURSOR' } });
   const latest = await t.run(ctx => listGuestCommerceHistory(ctx, target, { cursor: null, numItems: 1 }));
   const end = await t.run(ctx => listGuestCommerceHistory(ctx, target, { cursor: latest.continueCursor, numItems: 1 }));
-  expect(latest.page).toEqual([{ kind: targetType === 'grant' ? 'use' : 'spend', recordedAt: 5,
+  expect(latest.page).toEqual([{ entryId: expect.any(String), kind: targetType === 'grant' ? 'use' : 'spend', recordedAt: 5,
+    fact: targetType === 'grant' ? { key: 'updated' } : { key: 'spent', args: { amount: 1 } },
     before: { paid: 3, goodwill: 0 }, after: { paid: 2, goodwill: 0 } }]);
-  expect(end).toMatchObject({ page: [{ kind: 'transfer', recordedAt: 4 }], isDone: true });
+  expect(JSON.stringify(latest)).not.toMatch(/Private|GV-ABCD/);
+  expect(end).toMatchObject({ page: [{ kind: 'transfer', recordedAt: 4, fact: { key: 'transferredIn' } }], isDone: true });
   const staff = await t.run(ctx => listCommerceHistory(ctx, target, { cursor: null, numItems: 20 }));
   expect(staff.page).toHaveLength(6);
 });

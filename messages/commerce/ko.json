@@ -274,7 +274,8 @@
         "stockAdjusted": "재고 변경",
         "roomCharge": "{room}호 객실로 청구",
         "takenBack": "회수",
-        "published": "향후 판매 새 가격"
+        "published": "향후 판매 새 가격",
+        "updated": "변경됨"
       },
       "showStaff": "직원 화면",
       "close": "닫기"

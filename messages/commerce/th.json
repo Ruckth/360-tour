@@ -274,7 +274,8 @@
         "stockAdjusted": "ปรับสต็อก",
         "roomCharge": "ลงบิลห้อง {room}",
         "takenBack": "รับคืนแล้ว",
-        "published": "ราคาใหม่สำหรับการขายต่อไป"
+        "published": "ราคาใหม่สำหรับการขายต่อไป",
+        "updated": "มีการแก้ไข"
       },
       "showStaff": "มุมมองพนักงาน",
       "close": "ปิด"

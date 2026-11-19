@@ -4,12 +4,15 @@ import type { DataModel, Doc } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { readBudget } from '../../lib/readBudget';
 import type { AdjustmentTarget } from './adjustments';
+import { guestHistoryFact, type HistoryFact } from './historyView';
 
 type BenefitTarget = Extract<AdjustmentTarget, { targetType: 'voucher' | 'grant' }>;
 type HistoryTable = 'commerceAdjustments' | 'sessionUses' | 'stockMovements' | 'voucherEntries';
 export type CommerceHistoryRow = Doc<HistoryTable>;
 export type GuestHistoryRow = {
+  entryId: string;
   recordedAt: number;
+  fact: HistoryFact;
   kind: Doc<'voucherEntries' | 'sessionUses'>['kind'];
   before: Doc<'voucherEntries'>['before'];
   after: Doc<'voucherEntries'>['after'];
@@ -139,7 +142,9 @@ export async function listGuestCommerceHistory(
     (row.createdAt === transfer.createdAt && (row._creationTime > transfer._creationTime || row._id === transfer._id))) : result.page;
   return {
     page: visible.filter(row => !('beneficiaryId' in row && row.beneficiaryId && row.beneficiaryId !== grantOwner)).map(row => ({
+      entryId: row._id,
       recordedAt: row.createdAt,
+      fact: guestHistoryFact(row, row._id === transfer?._id),
       kind: row._id === transfer?._id ? 'transfer' : row.kind,
       before: row.before,
       after: row.after,

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import commerceEn from "../../../messages/commerce/en.json";
-import { CheckoutStaffControls, type TargetApprovalReader } from "./ApprovalsPanel";
+import { CheckoutStaffControls } from "./ApprovalsPanel";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "./backend";
 import { CheckoutView } from "./CheckoutView";
 import { CommerceMessages } from "./commerce-messages";
@@ -96,11 +96,10 @@ export function CheckoutPreview({ embedded = false, initial }: { embedded?: bool
 export function previewBackend(state: CheckoutDesignState, commerce: CommerceDesignState | null): CheckoutBackend {
   const base = createFixtureBackend(state, commerce ?? undefined);
   if (!commerce || !base.commerce) return base;
-  const reader: TargetApprovalReader = { useTargetApprovals: () => previewTargetApprovals };
   return {
     ...base,
     useOrder: (id, view) => (id === COMMERCE_RECEIPT_ID ? commerceReceipt : base.useOrder(id, view)),
     usePendingApprovals: () => previewApprovals,
-    commerce: { ...base.commerce, ...reader },
+    commerce: { ...base.commerce, useTargetApprovals: () => previewTargetApprovals },
   };
 }

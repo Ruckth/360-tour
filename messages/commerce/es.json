@@ -274,7 +274,8 @@
         "stockAdjusted": "Stock modificado",
         "roomCharge": "Cargado a la habitación {room}",
         "takenBack": "Recuperado",
-        "published": "Nuevo precio para ventas futuras"
+        "published": "Nuevo precio para ventas futuras",
+        "updated": "Actualizado"
       },
       "showStaff": "Vista del personal",
       "close": "Cerrar"

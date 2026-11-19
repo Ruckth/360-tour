@@ -90,9 +90,8 @@ async function readIssuedBenefits(ctx: QueryCtx, lines: readonly Doc<'orderLines
 
 /** Voucher spends with the voucher's current masked code, so the receipt reads "Gift voucher GV-••••-7PAX". */
 async function readVoucherTenders(ctx: QueryCtx, payments: readonly Doc<'orderPayments'>[]) {
-	return await Promise.all(payments.map(async payment => {
-		const voucherId = payment.method === 'voucher' ? payment.voucherId : undefined;
-		const voucher = voucherId ? await readOrderProjection(ctx, () => ctx.db.get(voucherId)) : null;
+	return await Promise.all(payments.flatMap(payment => payment.method === 'voucher' ? [payment] : []).map(async payment => {
+		const voucher = await readOrderProjection(ctx, () => ctx.db.get(payment.voucherId));
 		const codeMask = voucher ? await voucherCodeMask(ctx, voucher) : null;
 		return { ...payment, ...(codeMask ? { codeMask } : {}) };
 	}));

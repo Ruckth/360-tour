@@ -204,7 +204,7 @@ const facts: { [K in GuestFactKey]: Extract<GuestFact, { key: K }> } = {
   goodwillRemoved: { key: "goodwillRemoved" }, renamed: { key: "renamed", name: "Mia Tanaka" }, reissued: { key: "reissued" }, disabled: { key: "disabled" },
   expired: { key: "expired" }, cancelled: { key: "cancelled" }, spent: { key: "spent", amount: 60000 }, refundCredit: { key: "refundCredit", amount: 50000 },
   serviceAdded: { key: "serviceAdded", service: "Hot stone 60" }, sold: { key: "sold" }, stockAdjusted: { key: "stockAdjusted" }, roomCharge: { key: "roomCharge", room: "12" },
-  takenBack: { key: "takenBack" }, published: { key: "published" },
+  takenBack: { key: "takenBack" }, published: { key: "published" }, updated: { key: "updated" },
 };
 const copyFor = (locale: string): CommerceCopy => {
   const t = createTranslator({ locale, messages: read(locale), namespace: "Commerce", onError: (error) => { throw error; } });

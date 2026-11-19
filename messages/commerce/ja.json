@@ -274,7 +274,8 @@
         "stockAdjusted": "在庫を変更",
         "roomCharge": "{room}号室にルームチャージ",
         "takenBack": "回収",
-        "published": "今後の販売の新価格"
+        "published": "今後の販売の新価格",
+        "updated": "更新"
       },
       "showStaff": "スタッフ表示",
       "close": "閉じる"

@@ -274,7 +274,8 @@
         "stockAdjusted": "库存已变更",
         "roomCharge": "挂账至 {room} 号房",
         "takenBack": "已收回",
-        "published": "后续销售新价格"
+        "published": "后续销售新价格",
+        "updated": "已更新"
       },
       "showStaff": "员工视图",
       "close": "关闭"

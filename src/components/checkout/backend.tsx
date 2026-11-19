@@ -5,6 +5,7 @@ import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from "react";
+import type { TargetApproval } from "./TargetApproval";
 
 /**
  * Everything the checkout UI reads and writes. The admin page implements it with Convex
@@ -46,6 +47,8 @@ type Approvals = typeof api.pos.staffApprovals;
 export type ApprovalRequest = FunctionReturnType<Approvals["forOrder"]>[number];
 export type ApprovalQueue = FunctionReturnType<Approvals["pending"]>;
 export type ApprovalId = Id<"staffApprovalRequests">;
+/** A requester's own request as it stands (staffApprovals.myStatus), for the Ask a manager flow of returns and edits. */
+export type MyApprovalStatus = NonNullable<FunctionReturnType<Approvals["myStatus"]>>;
 
 /** One page-at-a-time list, the same shape as Convex's usePaginatedQuery. */
 export type OrdersPage = {
@@ -456,6 +459,8 @@ type GuestFactArgs = {
   goodwillAdded: object; goodwillRemoved: object; renamed: { name: string }; reissued: object; disabled: object; expired: object;
   cancelled: object; spent: { amount: Satang }; refundCredit: { amount: Satang }; serviceAdded: { service: string }; sold: object;
   stockAdjusted: object; roomCharge: { room: string }; takenBack: object; published: object;
+  /** A change the row's writer didn't describe in guest words. */
+  updated: object;
 };
 export type GuestFactKey = keyof GuestFactArgs;
 export type GuestFact = { [K in GuestFactKey]: { key: K } & GuestFactArgs[K] }[GuestFactKey];
@@ -665,6 +670,10 @@ export type CommerceBackend = {
   useBenefitCard(target: Extract<AdjustTarget, { targetType: "voucher" | "grant" }> | null): BenefitCard | null | undefined;
   useHistory(target: AdjustTarget | null, audience: HistoryAudience): CustomerPage<HistoryEntry>;
   useEditPreview(request: AdjustRequest | null): EditPreview | null | undefined;
+  /** Returns and edits waiting for a manager (staffApprovals.pendingPage and detail); only owners and managers load it. */
+  useTargetApprovals(): TargetApproval[] | undefined;
+  /** The requester's own return or edit request; null when it isn't theirs or doesn't exist. */
+  useMyApproval(requestId: ApprovalId | null): MyApprovalStatus | null | undefined;
   useActions(): CommerceActions;
 };
 
@@ -730,6 +739,8 @@ export const COMMERCE_OFF: CommerceBackend = {
   useBenefitCard: () => null,
   useHistory: () => emptyPage,
   useEditPreview: () => null,
+  useTargetApprovals: () => [],
+  useMyApproval: () => null,
   useActions: () => offActions,
 };
 

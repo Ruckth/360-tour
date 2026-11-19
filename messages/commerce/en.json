@@ -274,7 +274,8 @@
         "stockAdjusted": "Stock changed",
         "roomCharge": "Charged to room {room}",
         "takenBack": "Taken back",
-        "published": "New price for future sales"
+        "published": "New price for future sales",
+        "updated": "Updated"
       },
       "showStaff": "Staff view",
       "close": "Close"

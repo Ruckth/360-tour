@@ -274,7 +274,8 @@
         "stockAdjusted": "Bestand geändert",
         "roomCharge": "Auf Zimmer {room} gebucht",
         "takenBack": "Zurückgenommen",
-        "published": "Neuer Preis für künftige Verkäufe"
+        "published": "Neuer Preis für künftige Verkäufe",
+        "updated": "Aktualisiert"
       },
       "showStaff": "Personalansicht",
       "close": "Schließen"
