@@ -108,14 +108,16 @@ for (const width of [390, 1180, 1440]) {
       await page.getByTestId("approvals-button").click();
       const panel = page.getByRole("dialog", { name: "Approvals", exact: true });
       await expect(panel.getByRole("heading", { name: "Approvals", exact: true })).toBeFocused();
-      await expect(panel.getByTestId("approval-request").first()).toContainText("Thai massage 60 · Order #1043");
+      // The request that expires first opens with its detail; the rest are compact rows.
+      const opened = panel.locator('[data-testid="approval-request"][data-approval-selected="true"]');
+      await expect(opened).toContainText("Thai massage 60 · Order #1043");
       if (width === 390) {
         const box = (await panel.boundingBox())!;
         expect(box.x).toBe(0);
         expect(box.width).toBe(width);
         expect(box.y + box.height).toBeCloseTo(844, 0);
       }
-      const tip = panel.getByTestId("approval-request").first().getByRole("button", { name: "About approvals", exact: true });
+      const tip = opened.getByRole("button", { name: "About approvals", exact: true });
       if (width !== 1440) {
         const gap = await tip.evaluate((button) => {
           const range = document.createRange();

@@ -8,12 +8,14 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, COMMERCE_OFF, type CheckoutBackend, type HistoryEntry } from "@/components/checkout/backend";
 import { previewBackend } from "@/components/checkout/CheckoutPreview";
-import { receiptCommerce, receiptText } from "@/components/checkout/checkout-ui";
-import { COMMERCE_RECEIPT_ID, commerceReceipt } from "@/components/checkout/design/commerce-receipt";
+import { maskReceiptCodes, receiptCommerce, receiptText } from "@/components/checkout/checkout-ui";
+import { COMMERCE_RECEIPT_ID, COMMERCE_REDEMPTION_ID, commerceReceipt, commerceRedemptionReceipt } from "@/components/checkout/design/commerce-receipt";
 import { HistoryList } from "@/components/checkout/EditHistory";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { p95, resetTiming, timingRows, withTiming } from "@/components/checkout/timing";
+import { timingOptIn, useCheckoutTiming } from "@/components/checkout/timing-gate";
+import { receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
 import { Screen } from "@/components/display/DisplayScreens";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
 import en from "../../messages/en.json";
@@ -27,6 +29,8 @@ import displayEn from "../../messages/display/en.json";
  */
 
 vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+const searchParams = vi.hoisted(() => ({ get: (): string | null => null }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams }));
 
 let root: Root;
 const messages = { ...en, ...commerceEn, ...displayEn };
@@ -92,16 +96,17 @@ describe("commerce receipt", () => {
   });
 
   it("keeps goodwill a discount and voucher spend apart from cash and cards", async () => {
-    await receipt(dark());
+    await receipt(dark(), COMMERCE_REDEMPTION_ID);
     const totals = article().querySelector("dl")!;
     expect(totals.querySelector('[data-testid="receipt-goodwill-total"]')?.textContent).toBe("Goodwill credit-฿100");
     expect(rowOf("Lemongrass oil")!.querySelector('[data-testid="receipt-line-goodwill"]')?.textContent).toBe("Goodwill credit-฿100");
     const tenders = [...totals.querySelectorAll('[data-testid="receipt-voucher-tender"]')].map((row) => row.textContent);
-    expect(tenders).toEqual(["Gift voucher GV-••••-7PAX฿2,000"]);
-    expect(totals.textContent).toContain("Card฿7,480");
+    expect(tenders).toEqual(["Gift voucher GV-••••-7PAX฿1,000"]);
+    expect(totals.textContent).toContain("Card฿790");
     // Goodwill is never a way of paying.
     expect(tenders.join()).not.toContain("Goodwill");
-    expect(totals.textContent).toContain("Total฿9,480");
+    expect(totals.textContent).toContain("Total฿1,790");
+    expect(totals.textContent).toContain("VAT 7% included฿117.10");
     // Goodwill is the only discount here, so no staff Discounts row.
     expect(totals.textContent).not.toContain("Discounts");
     expect(document.querySelector("header p")?.textContent).toContain("Paid by card + voucher");
@@ -110,9 +115,27 @@ describe("commerce receipt", () => {
   it("shows the VAT the server worked out from frozen bases, and refunds against the total", async () => {
     await receipt(dark());
     const totals = article().querySelector("dl")!.textContent!;
-    expect(totals).toContain("VAT 7% included฿522.06");
+    expect(totals).toContain("VAT 7% included฿503.08");
+    expect(totals).toContain("Card฿9,190");
     expect(document.querySelector('[data-testid="receipt-refunded"]')?.textContent).toBe("Refunded-฿1,290");
-    expect(document.querySelector('[data-testid="receipt-net"]')?.textContent).toBe("Net฿8,190");
+    expect(document.querySelector('[data-testid="receipt-net"]')?.textContent).toBe("Net฿7,900");
+  });
+
+  it("issues and spends voucher value on separate sales, as v27 requires (no voucher in either bucket on an issuing sale)", async () => {
+    const issues = (view: typeof commerceReceipt) => view.lines.some((line) => line.kind === "voucher" || line.saleSnapshot?.contents.some((content) => content.voucherId));
+    const spends = (view: typeof commerceReceipt) => Boolean(view.voucherPayments?.length) || view.lines.some((line) => line.saleSnapshot?.goodwillDiscounts.length);
+    expect(issues(commerceReceipt)).toBe(true);
+    expect(spends(commerceReceipt)).toBe(false);
+    expect(issues(commerceRedemptionReceipt)).toBe(false);
+    expect(spends(commerceRedemptionReceipt)).toBe(true);
+    // Both still render in the Preview, from its own receipt buttons.
+    await receipt(dark());
+    expect(document.querySelector("header p")?.textContent).toContain("Paid by card");
+    expect(document.querySelectorAll('[data-testid="receipt-voucher-tender"]')).toHaveLength(0);
+    await act(async () => root.unmount());
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await receipt(dark(), COMMERCE_REDEMPTION_ID);
+    expect(document.querySelector("header p")?.textContent).toContain("Paid by card + voucher");
   });
 
   it("marks a voucher-only sale as not a tax invoice (D9)", async () => {
@@ -124,17 +147,50 @@ describe("commerce receipt", () => {
   });
 
   it("never shows a full voucher code, even if one reached the receipt by mistake", async () => {
-    const leaked = { ...commerceReceipt, voucherPayments: [{ ...commerceReceipt.voucherPayments![0], codeMask: "GV-7K2M-7PAX" }] };
+    const leaked = { ...commerceRedemptionReceipt, voucherPayments: [{ ...commerceRedemptionReceipt.voucherPayments![0], codeMask: "GV-7K2M-7PAX" }] };
     const base = dark();
     await receipt({ ...base, useOrder: (id) => (id === COMMERCE_RECEIPT_ID ? leaked : null) });
     expect(text()).toContain("Gift voucher GV-••••-7PAX");
     expect(text()).not.toMatch(FULL_CODE);
   });
 
+  // Audit r1 finding 1: a synthetic full code typed into an item name, then Receipt preview.
+  it("masks a full code typed into a row name, part, staff name, customer or void reason on the paper", async () => {
+    const code = "GV-7K2M-Q9XD";
+    const [gold, ...rest] = commerceReceipt.lines;
+    const typed = {
+      ...commerceReceipt,
+      receiptCustomer: { name: `Maya ${code}` },
+      lines: [
+        { ...gold, name: `Gold Wellness ${code}`, saleSnapshot: { ...gold.saleSnapshot!, contents: gold.saleSnapshot!.contents.map((content, index) => (index ? content : { ...content, label: `Massage ${code}` })) } },
+        ...rest.map((line) => (line.kind === "service" ? { ...line, staffName: `Ploy ${code}` } : line)),
+      ],
+    };
+    const base = dark();
+    await receipt({ ...base, useOrder: (id) => (id === COMMERCE_RECEIPT_ID ? typed : null) });
+    expect(article().textContent).toContain("Gold Wellness GV-••••-Q9XD");
+    expect(article().textContent).toContain("Customer: Maya GV-••••-Q9XD");
+    expect(text()).not.toMatch(FULL_CODE);
+  });
+
+  it("masks a full code typed into an extra on a receipt from before commerce, and changes nothing else", async () => {
+    const plain = createFixtureBackend("coupon-paid");
+    const view = plain.useOrder("fxbill000011" as typeof COMMERCE_RECEIPT_ID)!;
+    expect(maskReceiptCodes(view)).toBe(view);
+    const typed = { ...view, lines: view.lines.map((line, index) => (index ? line : { ...line, name: "Gift for GV-7K2M-Q9XD" })) };
+    await receipt({ ...plain, useOrder: (id) => (id ? typed : null) }, view.order._id);
+    expect(article().textContent).toContain("Gift for GV-••••-Q9XD");
+    expect(text()).not.toMatch(FULL_CODE);
+    expect(receiptText(typed, "Auralis Cove Retreat")).toContain("Gift for GV-••••-Q9XD");
+    expect(receiptText(typed, "Auralis Cove Retreat")).not.toMatch(FULL_CODE);
+    // The masked copy differs from the original only in that name.
+    expect(receiptText(typed, "Auralis Cove Retreat").replace("Gift for GV-••••-Q9XD", view.lines[0].name)).toBe(receiptText(view, "Auralis Cove Retreat"));
+  });
+
   it("reads the receipt the same with every switch Off, without Edit · History or payment status", async () => {
     await receipt(offBackend());
     const printed = article().innerHTML;
-    expect(article().textContent).toContain("Gift voucher GV-••••-7PAX");
+    expect(article().textContent).toContain("GV-••••-Q9XD");
     expect(buttons("Edit · History")).toHaveLength(0);
     await act(async () => root.unmount());
     root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -158,6 +214,65 @@ describe("commerce receipt", () => {
     expect(attempt.textContent).toContain("Money taken · sale not saved");
     expect(attempt.textContent).toContain("What changed: Voucher GV-••••-Q9XD has nothing left on it.");
     expect(attempt.textContent).toContain("฿600 kept · ฿2,000 still due");
+  });
+});
+
+// Sol audit r1 major: getOrder projects paymentAttempt and activeReturn; the live receipt reads them.
+describe("live receipt status (getOrder's projection)", () => {
+  type OrderRead = Parameters<typeof receiptAttempt>[0];
+  const ORDER = commerceReceipt.order._id;
+  const projected = (extra: object) => ({ ...commerceReceipt, voucherPayments: [{ _id: "p", amount: 50000, voucherId: "fxvchgold", codeMask: "GV-••••-H3LN" }], ...extra }) as unknown as OrderRead;
+  const attempt = {
+    _id: "fxatt1", status: "refused", ownerRevision: 2, owner: "https://clerk|user_ploy", tillId: "till-1", due: 260000, updatedAt: 1_700_000_000_000,
+    legs: [{ key: "cash", method: "cash", amount: 60000, state: "taken", received: 100000, change: 40000 }],
+    refusal: { code: "VOUCHER_USED_UP", message: "used up", args: { maskedCode: "GV-••••-Q9XD" } },
+    resolution: { giveBackLegs: [{ key: "back", method: "cash", amount: 10000, state: "planned" }], resolvedAt: 1 },
+  };
+  const activeReturn = {
+    _id: "fxret1", status: "authorized", operator: "https://clerk|user_ploy", tillId: "till-1", operatorRevision: 1, approvalId: undefined, reason: "Too small", createdAt: 1_700_000_000_000,
+    parts: [{ kind: "content", lineId: commerceReceipt.lines[0]._id, contentKey: "robe", units: 1, disposition: "sellable" }],
+    claims: [{ key: "card", method: "card", amount: 113251, operator: "x", state: "instructed", instructedAt: 1_700_000_000_000, dueAt: 1_700_000_000_000 + 45 * 86_400_000 }],
+    voucherCredits: [{ voucherId: "fxvchgold", paid: 50000, goodwill: 0 }],
+  };
+
+  it("maps the attempt's legs, give-backs and refusal, and never shows the owner's token", () => {
+    const view = receiptAttempt(projected({ paymentAttempt: attempt }))!;
+    expect(view).toMatchObject({ attemptId: "fxatt1", orderId: ORDER, status: "refused", ownerRevision: 2, due: 260000, mine: false, recovery: null, startedAt: 1_700_000_000_000 });
+    expect(view.legs).toEqual([
+      { key: "cash", direction: "collect", method: "cash", amount: 60000, state: "taken", received: 100000, change: 40000, reference: null, instructedAt: null },
+      { key: "back", direction: "giveBack", method: "cash", amount: 10000, state: "planned", received: null, change: null, reference: null, instructedAt: null },
+    ]);
+    expect(view.refusal).toEqual({ code: "VOUCHER_USED_UP", maskedCode: "GV-••••-Q9XD" });
+    expect(JSON.stringify(view)).not.toContain("user_ploy");
+    expect(receiptAttempt(projected({}))).toBeNull();
+    expect(receiptAttempt(projected({ paymentAttempt: { ...attempt, refusal: { code: "SOMETHING_NEW", message: "?" } } }))!.refusal).toBeNull();
+  });
+
+  it("maps an open return's parts by row name, claims and voucher credits by their receipt mask", () => {
+    const { open, parts } = receiptReturnable(projected({ activeReturn }));
+    expect(parts).toEqual([]);
+    expect(open).toMatchObject({ returnId: "fxret1", orderId: ORDER, status: "authorized", operatorName: "", approvalId: null, total: 163251 });
+    expect(open!.parts).toEqual([{ partKey: `0:content:${commerceReceipt.lines[0]._id}`, label: "Gold Wellness · Spa robe · Sand / M", units: 1, amount: 163251 }]);
+    expect(open!.claims).toEqual([{ key: "card", method: "card", amount: 113251, state: "instructed", reference: null, instructedAt: 1_700_000_000_000, dueAt: 1_700_000_000_000 + 45 * 86_400_000 }]);
+    expect(open!.voucherCredits).toEqual([{ voucherId: "fxvchgold", maskedCode: "GV-••••-H3LN", paid: 50000, goodwill: 0, newVoucher: false }]);
+    expect(JSON.stringify(open)).not.toContain("user_ploy");
+    expect(receiptReturnable(projected({})).open).toBeNull();
+    // Two parts: no per-part amount is invented.
+    const two = receiptReturnable(projected({ activeReturn: { ...activeReturn, parts: [...activeReturn.parts, { kind: "line", lineId: commerceReceipt.lines[1]._id, units: 1 }] } }));
+    expect(two.open!.parts.map((part) => part.amount)).toEqual([null, null]);
+  });
+
+  it("renders the live cards on the real receipt from the same order read", async () => {
+    const view = projected({ paymentAttempt: attempt, activeReturn });
+    const base = dark();
+    const live = { ...base, useOrder: () => view, commerce: { ...base.commerce!, usePaymentAttempt: () => receiptAttempt(view), useReturnable: () => receiptReturnable(view) } } as CheckoutBackend;
+    await receipt(live);
+    expect(document.querySelector('[data-testid="receipt-attempt"]')?.textContent).toContain("Money taken · sale not saved");
+    const open = document.querySelector('[data-testid="receipt-open-return"]')!;
+    expect(open.textContent).toContain("Gold Wellness · Spa robe · Sand / M");
+    expect(open.textContent).toContain("฿1,132.51 to Card");
+    expect(open.textContent).toContain("฿500 back to voucher GV-••••-H3LN");
+    expect(text()).not.toContain("user_ploy");
   });
 });
 
@@ -200,11 +315,17 @@ describe("shared receipt text", () => {
     expect(shared).toContain("  5 × Thai massage 60 or Hot stone 60  ฿5,267.49");
     expect(shared).toContain("    GV-••••-H3LN");
     expect(shared).toContain("  Session used · was ฿1,200");
-    expect(shared).toContain("  Goodwill credit  -฿100");
     expect(shared).toContain("  Refunded  -฿1,290");
-    expect(shared).toContain("Goodwill credit  -฿100\nTotal  ฿9,480");
-    expect(shared).toContain("Card  ฿7,480\nGift voucher GV-••••-7PAX  ฿2,000");
+    expect(shared).toContain("Total  ฿9,190");
     expect(shared).not.toMatch(FULL_CODE);
+    const spent = receiptText(commerceRedemptionReceipt, "Auralis Cove Retreat", copy);
+    expect(spent).toContain("  Goodwill credit  -฿100");
+    expect(spent).toContain("Goodwill credit  -฿100\nTotal  ฿1,790");
+    expect(spent).toContain("Card  ฿790\nGift voucher GV-••••-7PAX  ฿1,000");
+    // A code typed into a name is masked in the shared text too (audit r1 finding 1).
+    const typed = { ...commerceReceipt, lines: commerceReceipt.lines.map((line) => (line.kind === "voucher" ? { ...line, name: "Gift voucher GV-7K2M-Q9XD" } : line)) };
+    expect(receiptText(typed, "Auralis Cove Retreat", copy)).toContain("Gift voucher GV-••••-Q9XD  ฿1,000");
+    expect(receiptText(typed, "Auralis Cove Retreat", copy)).not.toMatch(FULL_CODE);
   });
 });
 
@@ -240,31 +361,90 @@ describe("Approvals", () => {
     await act(async () => trigger.click());
     await until(() => document.querySelectorAll('[data-testid="approval-request"]').length === 3 || !backend.commerce);
   }
+  const items = () => [...document.querySelectorAll<HTMLElement>('[data-testid="approval-request"]')];
+  /** Counts what the panel reads: the queue once, a detail per selected request, never an order. */
+  function counted(backend: CheckoutBackend) {
+    const details = new Set<string>();
+    const orders = vi.fn();
+    return {
+      details, orders,
+      backend: {
+        ...backend,
+        useOrder: (id: Parameters<CheckoutBackend["useOrder"]>[0], view?: Parameters<CheckoutBackend["useOrder"]>[1]) => { orders(id); return backend.useOrder(id, view); },
+        useApprovalDetail: (id: Parameters<CheckoutBackend["useApprovalDetail"]>[0]) => { if (id) details.add(id); return backend.useApprovalDetail(id); },
+      } satisfies CheckoutBackend,
+    };
+  }
 
-  it("lists today's order requests and target-scoped returns and edits, marking a stale edit", async () => {
-    await openPanel(previewBackend("spa", "live"));
+  it("lists every request as one compact page and opens only the selected one's detail", async () => {
+    const { backend, details, orders } = counted(previewBackend("spa", "live"));
+    await openPanel(backend);
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("3 waiting");
-    const items = [...document.querySelectorAll<HTMLElement>('[data-testid="approval-request"]')];
-    expect(items).toHaveLength(3);
-    expect(items[0].dataset.approvalScope).toBeUndefined();
-    expect(items[0].textContent).toContain("Ploy asks for a ฿180 discount (15%)");
-    expect(items[1].textContent).toContain("Ploy asks to return items · ฿1,290");
-    expect(items[1].textContent).toContain("Return items · Order #1046");
-    expect(items[1].querySelector('[data-testid="approval-stale"]')).toBeNull();
-    expect(items[2].textContent).toContain("Nok asks to extend · Massage 5 · Maya Lin");
-    expect(items[2].textContent).toContain("Package sessions");
-    expect(items[2].querySelector('[data-testid="approval-stale"]')?.textContent).toContain("Changed since asked");
-    expect(items[2].textContent).toContain("Expected revision 6, now 7");
+    expect(items()).toHaveLength(3);
+    // The one that expires first is open: the stale extension, with what changed.
+    await until(() => Boolean(items()[2].querySelector('[data-testid="approval-stale"]')));
+    expect(items().map((item) => item.dataset.approvalSelected)).toEqual(["false", "false", "true"]);
+    expect(items()[2].textContent).toContain("Nok asks to extend · Massage 5 · Maya Lin");
+    expect(items()[2].textContent).toContain("Package sessions");
+    expect(items()[2].querySelector('[data-testid="approval-stale"]')?.textContent).toContain("Changed since asked");
+    expect(items()[2].textContent).toContain("Expected revision 6, now 7");
     // Deciding these opens with returns and edits; nothing here can approve them yet.
-    expect(items[2].querySelectorAll("button")).toHaveLength(0);
+    expect(items()[2].querySelectorAll("button")).toHaveLength(0);
+    // The others are compact rows from the queue alone.
+    expect(items()[0].dataset.approvalScope).toBeUndefined();
+    expect(items()[0].textContent).toContain("Ploy asks for a ฿180 discount (15%)");
+    expect(items()[0].textContent).not.toContain("Regular guest, birthday");
+    expect(items()[1].textContent).toContain("Ploy asks to return items · ฿1,290");
+    expect(items()[1].textContent).not.toContain("Robe too small");
+    expect([...details]).toEqual(["fxappr000003"]);
+    // No order is read for the list.
+    expect(orders).not.toHaveBeenCalled();
+
+    await act(async () => items()[0].querySelector("button")!.click());
+    await until(() => items()[0].textContent!.includes("Regular guest, birthday"));
+    expect(items()[0].dataset.approvalSelected).toBe("true");
+    expect(items()[2].dataset.approvalSelected).toBe("false");
+    expect(items()[0].textContent).toContain("Thai massage 90 · Order #1042");
+    expect(buttons("Approve")).toHaveLength(1);
+
+    await act(async () => items()[1].querySelector("button")!.click());
+    await until(() => items()[1].textContent!.includes("Robe too small"));
+    expect(items()[1].textContent).toContain("Return items · Order #1046");
+    expect([...details]).toEqual(["fxappr000003", "fxappr000001", "fxappr000002"]);
+    expect(orders).not.toHaveBeenCalled();
+  });
+
+  it("loads the next cursor page on Show more requests", async () => {
+    const base = previewBackend("spa", "live");
+    const loadMore = vi.fn();
+    await openPanel({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), status: "CanLoadMore", loadMore }) });
+    expect(document.querySelector("[data-approval-count]")?.textContent).toBe("3+ waiting");
+    const more = buttons("Show more requests")[0];
+    await act(async () => more.click());
+    expect(loadMore).toHaveBeenCalledWith(20);
   });
 
   it("shows only today's requests without the commerce readers", async () => {
     const base = previewBackend("spa", "live");
     await openPanel({ ...base, commerce: undefined });
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("1 waiting");
-    expect(document.querySelectorAll('[data-testid="approval-request"]')).toHaveLength(1);
+    expect(items()).toHaveLength(1);
     expect(COMMERCE_OFF.useAccess()!.switches.vouchers).toBe("off");
+  });
+
+  // Audit r1 finding 7: every control is 44 × 44 px with a mouse too, not only on touch screens.
+  it("sizes About approvals, Close, Decline and Approve to 44 × 44 at any pointer", async () => {
+    await openPanel(previewBackend("spa", "live"));
+    await act(async () => items()[0].querySelector("button")!.click());
+    await until(() => buttons("Approve").length === 1);
+    const panel = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(panel.className).toContain("[&_button]:min-h-11");
+    expect(panel.className).toContain("[&_button]:min-w-11");
+    const tip = panel.querySelector<HTMLElement>('button[aria-label="About approvals"]')!;
+    expect(tip.className).not.toContain("pointer-coarse:-my-3");
+    expect(tip.className).toContain("-my-3");
+    expect(buttons("Approve")).toHaveLength(1);
+    expect(buttons("Decline")).toHaveLength(1);
   });
 });
 
@@ -292,6 +472,59 @@ describe("Edit · History", () => {
     expect(guestSheet.textContent).toContain("Thai massage 60 visit");
   });
 
+  // Audit r1 finding 4: a voucher's History is its own money ledger, not a package's sessions.
+  it("reads a voucher's money balance, spends and goodwill, and a grant's sessions, each from its own stream", async () => {
+    await receipt(dark());
+    const open = async (label: string) => {
+      const trigger = document.querySelector<HTMLElement>(`button[aria-label="Edit · History: ${label}"]`)!;
+      await act(async () => trigger.click());
+      await until(() => document.querySelectorAll('[data-testid="history-entry"]').length > 0);
+      return document.querySelector('[data-testid="edit-history"]')!;
+    };
+    const voucher = await open("Gift voucher");
+    expect(voucher.textContent).toContain("Issued ฿1,000");
+    expect(voucher.textContent).toContain("Paid ฿500");
+    expect(voucher.textContent).toContain("฿1,000 → ฿500");
+    expect(voucher.textContent).toContain("Goodwill added");
+    expect(voucher.textContent).toContain("Name changed to Mia Tanaka");
+    expect(voucher.textContent).not.toMatch(/sessions|Massage 5/);
+    const guest = [...voucher.querySelectorAll("button")].find((el) => el.textContent === "Show guest")!;
+    await act(async () => guest.click());
+    await settle();
+    const guestSheet = document.querySelector('[data-testid="edit-history"]')!;
+    expect(guestSheet.textContent).toContain("Issued ฿1,000");
+    expect(guestSheet.textContent).not.toMatch(/sessions|Massage 5|Ploy|Nok/);
+    await act(async () => root.unmount());
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await receipt(dark());
+    const grant = await open("Gold Wellness · 5 × Thai massage 60 or Hot stone 60");
+    expect(grant.textContent).toContain("3 → 4 sessions");
+    expect(grant.textContent).toContain("Gold Wellness");
+    expect(grant.textContent).not.toContain("Massage 5");
+  });
+
+  // Audit r1 finding 2: Show guest covers the whole staff screen, not only the sheet.
+  it("puts an opaque scrim over the staff screen while the guest view shows, and lifts it for staff", async () => {
+    await receipt(dark());
+    const trigger = document.querySelector<HTMLElement>('button[aria-label="Edit · History: Gold Wellness · 5 × Thai massage 60 or Hot stone 60"]')!;
+    await act(async () => trigger.click());
+    await until(() => document.querySelectorAll('[data-testid="history-entry"]').length > 0);
+    const scrim = () => [...document.querySelectorAll<HTMLElement>("[data-state=open]")].find((el) => el.className.includes("fixed inset-0"))!;
+    expect(scrim().className).toContain("md:bg-black/15");
+    const guest = [...document.querySelectorAll("button")].find((el) => el.textContent === "Show guest")!;
+    await act(async () => guest.click());
+    await settle();
+    expect(document.querySelector('[data-testid="edit-history"]')?.hasAttribute("data-guest-screen")).toBe(true);
+    expect(scrim().className).toMatch(/(^| )bg-background( |$)/);
+    expect(scrim().className).toContain("md:bg-background");
+    expect(scrim().className).not.toContain("md:bg-black/15");
+    expect(scrim().className).not.toContain("/80");
+    const staff = [...document.querySelectorAll("button")].find((el) => el.textContent === "Show staff view" || el.getAttribute("aria-pressed") === "true")!;
+    await act(async () => staff.click());
+    await settle();
+    expect(scrim().className).toContain("md:bg-black/15");
+  });
+
   it("never draws staff, reasons or full codes in the guest view, even if the server sent them", async () => {
     const leaked: HistoryEntry[] = [
       { entryId: "x1", at: Date.UTC(2026, 10, 18), fact: { key: "renamed", name: "Mia GV-7K2M-Q9XD" }, balance: null, staff: { actorName: "Ploy", reason: "spellingCorrection", reasonText: "private note" } },
@@ -316,6 +549,41 @@ describe("?timing=1", () => {
     expect(timingRows()).toEqual([{ action: "addItem", runs: 2, p95: expect.any(Number) }]);
     // The same actions object always gets the same timed wrapper, so memoized consumers stay stable.
     expect(withTiming(base).useActions()).toBe(actions);
+  });
+
+  // Audit r1 finding 3: creating the order drops ?timing=1; the tab stays opted in through settlement.
+  it("keeps timing on for this tab after navigation drops ?timing=1, until ?timing=0", () => {
+    window.sessionStorage.clear();
+    expect(timingOptIn(null)).toBe(false);
+    expect(timingOptIn("1")).toBe(true);
+    expect(timingOptIn(null)).toBe(true);
+    expect(timingOptIn("0")).toBe(false);
+    expect(timingOptIn(null)).toBe(false);
+  });
+
+  it("times settlement after the order's navigation drops the query", async () => {
+    window.sessionStorage.clear();
+    resetTiming();
+    const base = createFixtureBackend("spa");
+    let param: string | null = "1";
+    let actions: ReturnType<CheckoutBackend["useActions"]> | null = null;
+    function Page() {
+      const { backend, readout } = useCheckoutTiming(base);
+      actions = backend.useActions();
+      return readout;
+    }
+    searchParams.get = () => param;
+    await act(async () => root.render(createElement(Page)));
+    await until(() => document.querySelector('[data-testid="checkout-timing"]') !== null);
+    // New order: the URL becomes /admin/checkout?order=… without timing.
+    param = null;
+    await act(async () => root.render(createElement(Page)));
+    await until(() => actions !== base.useActions());
+    await actions!.addItem({ item: { kind: "extra", name: "Tea", price: 10000 } }).catch(() => undefined);
+    await actions!.settleOrder({} as never).catch(() => undefined);
+    expect(timingRows().map((row) => row.action).sort()).toEqual(["addItem", "settleOrder"]);
+    expect(document.querySelector('[data-testid="checkout-timing"]')).not.toBeNull();
+    window.sessionStorage.clear();
   });
 
   it("uses the nearest-rank 95th percentile", () => {

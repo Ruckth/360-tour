@@ -202,6 +202,7 @@ const functionReferenceAllowlist: Record<string, string> = {
   "maintenance/aiEval:cleanup": "Operator command: convex/maintenance/aiEval.ts usage comments.",
   "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
   "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
+  "pos/staffApprovals:pending": "Pre-paging response read by admin tabs still on the previous bundle; ApprovalsPanel reads pendingPage. Remove one deploy later.",
 };
 
 it('gives every exported Convex function a non-test caller or a documented exception', () => {

@@ -163,7 +163,7 @@ export function CommerceReceiptStatus({ orderId }: { orderId: OrderId }) {
               {copy.t(`receipt.attempt.${attempt.status}`)}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">{copy.t("receipt.attemptBy", { till: attempt.tillLabel, staff: attempt.staffName })}</p>
+          {attempt.tillLabel || attempt.staffName ? <p className="text-xs text-muted-foreground">{copy.t("receipt.attemptBy", { till: attempt.tillLabel, staff: attempt.staffName })}</p> : null}
           <ul className="grid gap-1 text-sm">
             {attempt.legs.map((leg) => (
               <li key={leg.key} className={row}>
@@ -187,10 +187,10 @@ export function CommerceReceiptStatus({ orderId }: { orderId: OrderId }) {
       {open ? (
         <Card role="region" aria-label={copy.t("returns.inProgress")} data-testid="receipt-open-return" className="grid gap-2 p-4 sm:p-5">
           <h3 className="text-base font-semibold">{copy.t("returns.inProgress")}</h3>
-          <p className="text-xs text-muted-foreground">{open.operatorName} · {formatResort(open.createdAt, "d MMM yyyy, HH:mm")}</p>
+          <p className="text-xs text-muted-foreground">{[open.operatorName, formatResort(open.createdAt, "d MMM yyyy, HH:mm")].filter(Boolean).join(" · ")}</p>
           <ul className="grid gap-1 text-sm">
             {open.parts.map((part) => (
-              <li key={part.partKey} className={row}><span className="min-w-0">{part.label}</span><span className="shrink-0 font-sans tabular-nums">{copy.money(part.amount)}</span></li>
+              <li key={part.partKey} className={row}><span className="min-w-0">{part.label}</span>{part.amount === null ? null : <span className="shrink-0 font-sans tabular-nums">{copy.money(part.amount)}</span>}</li>
             ))}
           </ul>
           <ul className="grid gap-1.5 border-t border-border pt-2 text-sm">
@@ -205,7 +205,7 @@ export function CommerceReceiptStatus({ orderId }: { orderId: OrderId }) {
             ))}
             {open.voucherCredits.map((credit) => (
               <li key={credit.voucherId}>
-                {credit.newVoucher
+                {credit.newVoucher || !credit.maskedCode
                   ? copy.t("returns.toNewVoucher", { amount: copy.money(credit.paid + credit.goodwill) })
                   : copy.t("returns.toVoucher", { amount: copy.money(credit.paid + credit.goodwill), code: credit.maskedCode })}
               </li>

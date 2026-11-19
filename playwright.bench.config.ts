@@ -6,7 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
  * `next start` in a clean baseline checkout built with placeholder settings. Nothing here starts,
  * syncs or deploys Convex. Results are written to BENCH_OUT (JSON).
  */
-const baseURL = process.env.BENCH_BASE_URL;
+// Inside scripts/local-integration.mjs the harness's own server (E2E_BASE_URL) is the default.
+const baseURL = process.env.BENCH_BASE_URL ?? process.env.E2E_BASE_URL;
 
 
 export default defineConfig({

@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Plus, Printer, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -24,7 +24,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { CorrectPayment, LinkedRefunds, VoidPanel } from "./PaymentRecord";
 import { ReceiptHistory } from "./FinancialHistory";
 import { staffDateTime } from "@/lib/staff-time";
-import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptCommerce, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, maskReceiptCodes, receiptBookings, receiptCommerce, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
 import { CommerceReceiptRow, CommerceReceiptStatus, GoodwillTotals, NotTaxInvoice, RowHistory, ShareCopyBridge, VoucherTenderRows } from "./ReceiptCommerce";
 import { LineLink, linkTarget, useCanLink } from "./AfterPayment";
 
@@ -93,7 +93,9 @@ const serverReceiptViewport = () => "pending";
  */
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
-  const view = backend.useOrder(orderId);
+  const loaded = backend.useOrder(orderId);
+  // A voucher code typed into a name never prints in full (maskReceiptCodes).
+  const view = useMemo(() => loaded && maskReceiptCodes(loaded), [loaded]);
   const business = backend.useBusinessName() ?? "";
   const access = useStaffAccess();
   const cashier = access.role === "cashier";

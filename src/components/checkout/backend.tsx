@@ -6,7 +6,6 @@ import type { Doc, Id } from "convex/_generated/dataModel";
 import type { commerceRefusalCodes, editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from "react";
-import type { TargetApproval } from "./TargetApproval";
 
 /**
  * Everything the checkout UI reads and writes. The admin page implements it with Convex
@@ -46,7 +45,10 @@ export type CustomerId = Id<"customers">;
 type Approvals = typeof api.pos.staffApprovals;
 /** A manager-approval request, as staffApprovals.forOrder and staffApprovals.pending return it. */
 export type ApprovalRequest = FunctionReturnType<Approvals["forOrder"]>[number];
-export type ApprovalQueue = FunctionReturnType<Approvals["pending"]>;
+/** One compact row of the manager queue (staffApprovals.pendingPage): no order or detail reads behind it. */
+export type ApprovalQueueRow = FunctionReturnType<Approvals["pendingPage"]>["page"][number];
+/** The one request a manager has open in Approvals (staffApprovals.detail); null when it's gone or not theirs. */
+export type ApprovalDetail = NonNullable<FunctionReturnType<Approvals["detail"]>>;
 export type ApprovalId = Id<"staffApprovalRequests">;
 /** A requester's own request as it stands (staffApprovals.myStatus), for the Ask a manager flow of returns and edits. */
 export type MyApprovalStatus = NonNullable<FunctionReturnType<Approvals["myStatus"]>>;
@@ -105,8 +107,10 @@ export type CheckoutBackend = {
   useBusinessName(): string | undefined;
   /** Approval requests on this order, newest first (staffApprovals.forOrder). undefined while loading or without an order. */
   useOrderApprovals(orderId: OrderId | null): ApprovalRequest[] | undefined;
-  /** Requests waiting for a manager; only owners and managers load it. */
-  usePendingApprovals(): ApprovalQueue | undefined;
+  /** Requests waiting for a manager, newest first, 20 per cursor page (staffApprovals.pendingPage); only owners and managers load it. */
+  usePendingApprovals(): CustomerPage<ApprovalQueueRow>;
+  /** The selected request's detail (staffApprovals.detail); the panel reads one at a time. */
+  useApprovalDetail(requestId: ApprovalId | null): ApprovalDetail | null | undefined;
   /** An order by its number (pos.findOrderByNumber): null when there is none or this role can't open it. */
   useFindOrder(orderNumber: number | null): OrderId | null | undefined;
   useActions(): CheckoutActions;
@@ -390,7 +394,9 @@ export type ReturnQuote = {
   total: Satang;
   refusal: CommerceRefusal | null;
 };
-export type ReturnView = Omit<ReturnQuote, "refusal"> & {
+export type ReturnView = Omit<ReturnQuote, "refusal" | "parts"> & {
+  /** A part's amount; null when the live projection doesn't split the total per part. */
+  parts: (Omit<ReturnQuote["parts"][number], "amount"> & { amount: Satang | null })[];
   returnId: Id<"orderReturns">;
   orderId: OrderId;
   status: ReturnStatus;
@@ -671,8 +677,6 @@ export type CommerceBackend = {
   useBenefitCard(target: Extract<AdjustTarget, { targetType: "voucher" | "grant" }> | null): BenefitCard | null | undefined;
   useHistory(target: AdjustTarget | null, audience: HistoryAudience): CustomerPage<HistoryEntry>;
   useEditPreview(request: AdjustRequest | null): EditPreview | null | undefined;
-  /** Returns and edits waiting for a manager (staffApprovals.pendingPage and detail); only owners and managers load it. */
-  useTargetApprovals(): TargetApproval[] | undefined;
   /** The requester's own return or edit request; null when it isn't theirs or doesn't exist. */
   useMyApproval(requestId: ApprovalId | null): MyApprovalStatus | null | undefined;
   useActions(): CommerceActions;
@@ -740,7 +744,6 @@ export const COMMERCE_OFF: CommerceBackend = {
   useBenefitCard: () => null,
   useHistory: () => emptyPage,
   useEditPreview: () => null,
-  useTargetApprovals: () => [],
   useMyApproval: () => null,
   useActions: () => offActions,
 };

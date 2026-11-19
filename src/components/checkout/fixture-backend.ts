@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Id, TableNames } from "convex/_generated/dataModel";
 import {
   COMMERCE_OFF,
+  type AdjustTarget,
   type CheckoutActions,
   type CheckoutBackend,
   type CommerceAccess,
@@ -14,6 +15,7 @@ import {
   type ProductTile,
   type PaymentAttemptView,
   type ProductDetail,
+  type ReturnQuote,
   type ReturnView,
   type SaleSwitches,
   type SessionGrantCard,
@@ -130,7 +132,8 @@ export function createFixtureBackend(
     useLinkCandidates: () => [],
     useBusinessName: () => snapshot.businessName,
     useOrderApprovals: () => [],
-    usePendingApprovals: () => ({ count: 0, list: [] }),
+    usePendingApprovals: () => usePage([]),
+    useApprovalDetail: () => null,
     useFindOrder: () => null,
     ...(commerce ? { commerce: createCommerceFixture(commerce) } : {}),
   };
@@ -247,7 +250,7 @@ const refusedAttempt: PaymentAttemptView = {
   recovery: { kept: baht(600), stillDue: baht(2000), action: { kind: "collectRest", amount: baht(2000), methods: ["cash", "promptpay", "card", "transfer"] } },
 };
 // Journey 7: Gold Wellness cancelled after two massages, robe brought back.
-const goldParts: ReturnView["parts"] = [
+const goldParts: ReturnQuote["parts"] = [
   { partKey: "sessions", label: "Gold Wellness · 3 unused sessions", units: 3, amount: baht(3160.49) },
   { partKey: "robe", label: "Spa robe · Sand / M", units: 1, amount: baht(1132.51) },
   { partKey: "credit", label: "Unused voucher value", units: 1, amount: baht(500) },
@@ -259,12 +262,33 @@ const openReturn: ReturnView = {
   voucherCredits: [],
   total: baht(4793),
 };
-const history: HistoryEntry[] = [
+/** A package's sessions (a grant): units before and after, paid and goodwill apart. */
+const grantHistory = (packageName: string): HistoryEntry[] => [
   { entryId: "h4", at: NOW - DAY, fact: { key: "extended", date: NOW + 41 * DAY }, balance: null, staff: { actorName: "Ploy", reason: "healthPause", reasonText: null } },
   { entryId: "h3", at: NOW - 2 * DAY, fact: { key: "goodwillAdded" }, balance: { unit: "sessions", before: { paid: 3, goodwill: 0 }, after: { paid: 3, goodwill: 1 } }, staff: { actorName: "Ploy", reason: "serviceRecovery", reasonText: null } },
   { entryId: "h2", at: NOW - 3 * DAY, fact: { key: "used", service: "Thai massage 60" }, balance: { unit: "sessions", before: { paid: 4, goodwill: 0 }, after: { paid: 3, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
-  { entryId: "h1", at: NOW - 20 * DAY, fact: { key: "purchased", name: "Massage 5" }, balance: { unit: "sessions", before: { paid: 0, goodwill: 0 }, after: { paid: 5, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
+  { entryId: "h1", at: NOW - 20 * DAY, fact: { key: "purchased", name: packageName }, balance: { unit: "sessions", before: { paid: 0, goodwill: 0 }, after: { paid: 5, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
 ];
+/**
+ * A voucher's own ledger (v27 Vouchers): its money balance from issue, each spend, and goodwill
+ * credit kept apart from paid value. A standalone voucher also has its name fixed once.
+ */
+const voucherHistory = (face: number, standalone: boolean): HistoryEntry[] => [
+  { entryId: "v4", at: NOW - DAY, fact: { key: "goodwillAdded" }, balance: { unit: "money", before: { paid: face / 2, goodwill: 0 }, after: { paid: face / 2, goodwill: baht(100) } }, staff: { actorName: "Ploy", reason: "serviceRecovery", reasonText: null } },
+  { entryId: "v3", at: NOW - 3 * DAY, fact: { key: "spent", amount: face / 2 }, balance: { unit: "money", before: { paid: face, goodwill: 0 }, after: { paid: face / 2, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
+  ...(standalone ? [{ entryId: "v2", at: NOW - 19 * DAY, fact: { key: "renamed", name: "Mia Tanaka" }, balance: null, staff: { actorName: "Nok", reason: "spellingCorrection", reasonText: null } } satisfies HistoryEntry] : []),
+  { entryId: "v1", at: NOW - 20 * DAY, fact: { key: "issued", amount: face }, balance: { unit: "money", before: { paid: 0, goodwill: 0 }, after: { paid: face, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
+];
+/** Each History target has its own stream: a package's grant reads sessions, a voucher reads money. */
+const historyFor = (target: AdjustTarget): HistoryEntry[] => {
+  if (target.targetType === "grant") return grantHistory(target.targetId === fx<"sessionGrants">("grantgold") ? "Gold Wellness" : "Massage 5");
+  // Gold Wellness's ฿500 voucher value; Maya's ฿2,000 gift voucher; the gift voucher sold on the receipt.
+  if (target.targetType === "voucher") {
+    if (target.targetId === fx<"vouchers">("vchgold")) return voucherHistory(baht(500), false);
+    return voucherHistory(target.targetId === fx<"vouchers">("vchmaya") ? baht(2000) : baht(1000), true);
+  }
+  return [];
+};
 
 type CommerceScenario = { switches: SaleSwitches; role: "manager" | "cashier"; attempt: PaymentAttemptView | null; returnOpen: boolean; grant: SessionGrantCard["status"]; voucher: VoucherCard["status"] };
 const commerceStates = {
@@ -336,7 +360,7 @@ export function createCommerceFixture(state: CommerceDesignState): CommerceBacke
     } : null,
     useReturnQuote: (args) => (args ? { parts: goldParts, claims: [{ ...openReturn.claims[0], state: "owed", instructedAt: null }], voucherCredits: [], total: baht(4793), refusal: null } : null),
     useBenefitCard: (target) => (!target ? null : target.targetType === "grant" ? grant : voucher),
-    useHistory: (target, audience) => usePage(!target ? [] : audience === "guest" ? history.map(({ entryId, at, fact, balance }) => ({ entryId, at, fact, balance })) : history),
+    useHistory: (target, audience) => usePage(!target ? [] : audience === "guest" ? historyFor(target).map(({ entryId, at, fact, balance }) => ({ entryId, at, fact, balance })) : historyFor(target)),
     useEditPreview: (request) => request ? {
       permission: scenario.role === "manager" ? "direct" : "askManager",
       changes: [{ field: "effectiveExpiresAt", before: NOW + 11 * DAY, after: NOW + 41 * DAY }],

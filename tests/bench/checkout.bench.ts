@@ -1,28 +1,59 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { expect, test, type Browser } from "@playwright/test";
+import { clerk, clerkSetup } from "@clerk/testing/playwright";
+import { expect, test, type Browser, type BrowserContextOptions } from "@playwright/test";
 
 /**
  * Checkout on a desk-iPad profile (1180×820 landscape, touch, DPR 2, CPU 4×), against a running
- * production server (BENCH_BASE_URL). Checkout needs a signed-in staff session: set
- * BENCH_CHECKOUT_STATE to a Playwright storage-state file for a cashier or manager on that server.
- * Without it the cases are skipped. BENCH_RECEIPT_ID adds a receipt case (any paid order).
+ * production server (BENCH_BASE_URL, else E2E_BASE_URL). Checkout needs a signed-in staff session,
+ * from either:
+ * - the e2e Clerk test identities: run it inside the local integration harness, which starts a
+ *   fresh seeded local Convex, a production build and a cashier test user (E2E_CASHIER_EMAIL):
+ *     node scripts/heavy.mjs node scripts/local-integration.mjs -- pnpm bench:browser checkout.bench.ts
+ *   The bench signs that cashier in once (clerkSetup + clerk.signIn, as tests/e2e do) in a context
+ *   it doesn't measure, and reuses its storage state for every cold run.
+ * - BENCH_CHECKOUT_STATE: a Playwright storage-state file for a cashier or manager on that server
+ *   (e.g. saved with `context.storageState({ path })` after signing in).
+ * Without either the case is skipped. BENCH_RECEIPT_ID adds a receipt case (any paid order).
  *
  * Measured per run (cold HTTP cache, new context):
  * - openToCatalogMs: navigation start → the catalog's Frequent tab visible.
  * - initialScriptBytes: encodedBodySize of scripts fetched before that point.
- * - addItemMs: tap a catalog tile → the order shows the row (a real pos.addItem round trip).
+ * - addItemMs: tap a catalog tile → the order pane shows that item (a real pos.addItem round trip).
  * - openReceiptMs: navigation start → the receipt heading visible.
  * Every run uses ?timing=1, so the p95 per action from the staff readout (localStorage
  * "checkout-timing") is reported too: the same numbers the owner reads on the real desk iPad.
+ * Each run is a new context with empty storage, so its samples are added to the ones before.
  */
 const RUNS = Number(process.env.BENCH_RUNS ?? 5);
 const STATE = process.env.BENCH_CHECKOUT_STATE;
+const STAFF_EMAIL = process.env.BENCH_STAFF_EMAIL ?? process.env.E2E_CASHIER_EMAIL;
 const RECEIPT = process.env.BENCH_RECEIPT_ID;
+type StorageState = Exclude<BrowserContextOptions["storageState"], string | undefined>;
 
-async function newPage(browser: Browser) {
+/** A signed-in staff session: the given state file, or the e2e test cashier signed in once. */
+async function staffState(browser: Browser): Promise<StorageState> {
+  if (STATE) return JSON.parse(readFileSync(STATE, "utf8")) as StorageState;
+  await clerkSetup({ dotenv: false });
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto("/admin/chats");
+    await clerk.signIn({ page, emailAddress: STAFF_EMAIL! });
+    return await context.storageState();
+  } finally {
+    await context.close();
+  }
+}
+
+/** Adds one context's samples to those of earlier runs (each new context starts with none). */
+function mergeTiming(into: Record<string, number[]>, from: Record<string, number[]>) {
+  for (const [action, runs] of Object.entries(from)) into[action] = [...(into[action] ?? []), ...runs];
+  return into;
+}
+
+async function newPage(browser: Browser, storageState: StorageState) {
   const context = await browser.newContext({
-    viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: false,
-    storageState: STATE ? JSON.parse(readFileSync(STATE, "utf8")) : undefined,
+    viewport: { width: 1180, height: 820 }, deviceScaleFactor: 2, hasTouch: true, isMobile: false, storageState,
   });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
@@ -36,12 +67,13 @@ const scriptBytes = () => (performance.getEntriesByType("resource") as Performan
   .filter((entry) => entry.initiatorType === "script").reduce((sum, entry) => sum + entry.encodedBodySize, 0);
 
 test("checkout open, add item and receipt on a desk-iPad profile", async ({ browser }) => {
-  test.skip(!STATE, "Set BENCH_CHECKOUT_STATE to a signed-in staff storage state");
-  test.setTimeout(RUNS * 180_000);
+  test.skip(!STATE && !STAFF_EMAIL, "Run inside scripts/local-integration.mjs (E2E_CASHIER_EMAIL), or set BENCH_CHECKOUT_STATE to a signed-in staff storage state");
+  test.setTimeout(RUNS * 180_000 + 120_000);
+  const storageState = await staffState(browser);
   const samples: Array<{ openToCatalogMs: number; initialScriptBytes: number; addItemMs: number | null; openReceiptMs: number | null }> = [];
-  let timing: Record<string, number[]> = {};
+  const timing: Record<string, number[]> = {};
   for (let run = 0; run < RUNS; run++) {
-    const { context, page } = await newPage(browser);
+    const { context, page } = await newPage(browser, storageState);
     await page.goto("/admin/checkout?timing=1", { waitUntil: "commit" });
     const frequent = page.getByRole("tab", { name: "Frequent", exact: true }).first();
     await expect(frequent).toBeVisible({ timeout: 60_000 });
@@ -51,9 +83,12 @@ test("checkout open, add item and receipt on a desk-iPad profile", async ({ brow
     let addItemMs: number | null = null;
     const tile = page.getByRole("button", { name: /Add to order/ }).first();
     if (await tile.isVisible()) {
+      const name = (await tile.locator(".line-clamp-2").first().textContent())?.trim() ?? "";
+      const order = page.getByRole("complementary", { name: "Order", exact: true });
       const started = Date.now();
       await tile.click();
-      await expect(page.getByRole("button", { name: /Remove item/ }).first()).toBeAttached({ timeout: 30_000 });
+      // The row as the order pane draws it once pos.addItem answers (its controls open with the row).
+      await expect(order.getByText(name).first()).toBeVisible({ timeout: 30_000 });
       addItemMs = Date.now() - started;
     }
 
@@ -63,7 +98,7 @@ test("checkout open, add item and receipt on a desk-iPad profile", async ({ brow
       await expect(page.getByRole("heading", { name: /^Receipt / })).toBeVisible({ timeout: 60_000 });
       openReceiptMs = await page.evaluate(() => performance.now());
     }
-    timing = await page.evaluate(() => JSON.parse(localStorage.getItem("checkout-timing") ?? "{}") as Record<string, number[]>);
+    mergeTiming(timing, await page.evaluate(() => JSON.parse(localStorage.getItem("checkout-timing") ?? "{}") as Record<string, number[]>));
     samples.push({ openToCatalogMs, initialScriptBytes, addItemMs, openReceiptMs });
     await context.close();
   }
@@ -71,6 +106,7 @@ test("checkout open, add item and receipt on a desk-iPad profile", async ({ brow
   const p95 = (values: number[]) => values.length ? [...values].sort((a, b) => a - b)[Math.max(0, Math.ceil(values.length * 0.95) - 1)] : null;
   const output = {
     profile: "desk iPad 1180×820, touch, DPR 2, CPU 4×, cold cache",
+    session: STATE ? "BENCH_CHECKOUT_STATE" : "e2e test cashier",
     runs: RUNS,
     median: {
       openToCatalogMs: median(samples.map((s) => s.openToCatalogMs)),

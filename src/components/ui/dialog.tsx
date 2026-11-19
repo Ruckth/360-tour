@@ -30,8 +30,11 @@ export function DialogContent({
   children,
   showCloseButton = true,
   panel = false,
+  overlayClassName,
   ...props
 }: ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** Classes for the scrim behind it, e.g. an opaque one when nothing behind may be read. */
+  overlayClassName?: string;
   showCloseButton?: boolean;
   /**
    * For browsing or longer tasks: a full-height panel on the right from iPad up, over a light
@@ -42,7 +45,7 @@ export function DialogContent({
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay className={panel ? "md:bg-black/15 md:backdrop-blur-none" : undefined} />
+      <DialogOverlay className={cn(panel && "md:bg-black/15 md:backdrop-blur-none", overlayClassName)} />
       <DialogPrimitive.Content
         className={cn(
           // Centred from md up; a bottom sheet on phones. Either way capped to the window and scrolling,

@@ -285,10 +285,9 @@ export async function createFixtureBackend(options: Options = {}) {
     useOrderApprovals: (id) =>
       useRead(api.pos.staffApprovals.forOrder, id ? { orderId: id } : "skip"),
     usePendingApprovals: () =>
-      useRead(
-        api.pos.staffApprovals.pending,
-        staff.role === "cashier" ? "skip" : {},
-      ),
+      usePage(api.pos.staffApprovals.pendingPage, {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
+    useApprovalDetail: (requestId) =>
+      useRead(api.pos.staffApprovals.detail, requestId ? { requestId } : "skip"),
     useFindOrder: (n) =>
       useRead(
         api.pos.orders.findOrderByNumber,

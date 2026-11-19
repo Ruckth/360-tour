@@ -30,7 +30,6 @@ export async function createFixtureBackend(
   options: Parameters<typeof createServerBackend>[0] = {},
 ) {
   const session = await post<string>({ kind: "create", options });
-  let role = options.staff?.role ?? "owner";
   const call = <T>(method: string, args: unknown[]) =>
     post<T>({ kind: "call", session, method, args });
   type Q = FunctionReference<"query">;
@@ -190,7 +189,9 @@ export async function createFixtureBackend(
     useOrderApprovals: (id) =>
       useRead(api.pos.staffApprovals.forOrder, id ? { orderId: id } : "skip"),
     usePendingApprovals: () =>
-      useRead(api.pos.staffApprovals.pending, role === "cashier" ? "skip" : {}),
+      usePage(api.pos.staffApprovals.pendingPage, {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
+    useApprovalDetail: (requestId) =>
+      useRead(api.pos.staffApprovals.detail, requestId ? { requestId } : "skip"),
     useFindOrder: (n) =>
       useRead(
         api.pos.orders.findOrderByNumber,
@@ -267,7 +268,6 @@ export async function createFixtureBackend(
   return Object.assign(backend, {
     async setStaff(next: Parameters<ServerBackend["setStaff"]>[0]) {
       await call("setStaff", [next]);
-      role = next.role;
       await refresh();
     },
     seedApproval: async (...args: Parameters<ServerBackend["seedApproval"]>) => {
