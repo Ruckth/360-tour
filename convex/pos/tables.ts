@@ -73,7 +73,8 @@ export const posTables = {
     }),
   )).index('by_orderId_and_status', ['orderId', 'status'])
     .index('by_orderId_and_createdAt', ['orderId', 'createdAt'])
-    .index('by_status_and_createdAt', ['status', 'createdAt']),
+    .index('by_status_and_createdAt', ['status', 'createdAt'])
+    .index('by_kind_and_requesterTokenIdentifier_and_payload_clientKey', ['kind', 'requesterTokenIdentifier', 'payload.clientKey']),
 
 
 	/**

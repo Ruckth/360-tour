@@ -66,7 +66,6 @@ export type AdjustmentWriter = {
 
 const MAX_AUDIT_BYTES = 8 * 1024;
 const MAX_REVISIONS = 24;
-const MAX_UNINDEXED_APPROVALS = 32;
 const encoder = new TextEncoder();
 const keyForApproval = (id: Id<'staffApprovalRequests'>) => `approval:${id}`;
 const ledgerKind: Partial<Record<AdjustmentTarget['targetType'], Effect['kind']>> = {
@@ -194,21 +193,10 @@ async function findApplied(ctx: MutationCtx, requesterKey: string, clientKey: st
 }
 
 async function findRequest(ctx: MutationCtx, requester: string, clientKey: string) {
-  // The checkpoint has no requester/client-key index for target-scoped approval requests.
-  // Limit the interim lookup and refuse ambiguous misses rather than risking duplicate requests.
-  const budget = readBudget(ctx);
-  budget.range();
-  budget.assert();
-  const rows = await ctx.db.query('staffApprovalRequests')
-    .withIndex('by_orderId_and_createdAt', q => q.eq('orderId', undefined)).order('desc').take(MAX_UNINDEXED_APPROVALS);
-  for (const row of rows) budget.document(row);
-  budget.assert();
-  const match = rows.find((row): row is Approval => row.kind === 'adjustment' &&
-    row.requesterTokenIdentifier === requester && row.payload.clientKey === clientKey);
-  if (!match && rows.length === MAX_UNINDEXED_APPROVALS) {
-    refuse('ADJUSTMENT_REQUEST_LOOKUP_LIMIT', 'The edit request could not be checked safely.');
-  }
-  return match;
+  const request = await measured(ctx, () => ctx.db.query('staffApprovalRequests')
+    .withIndex('by_kind_and_requesterTokenIdentifier_and_payload_clientKey', q =>
+      q.eq('kind', 'adjustment').eq('requesterTokenIdentifier', requester).eq('payload.clientKey', clientKey)).unique());
+  return request?.kind === 'adjustment' ? request : null;
 }
 
 function checkReplay(stored: string, fingerprint: string) {
