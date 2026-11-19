@@ -115,3 +115,39 @@ it('refuses a page over 20 rows', async () => {
   await expect(as('manager').query(api.commerce.history.staffPage, { target: { targetType: 'voucher', targetId: voucherId }, paginationOpts: { numItems: 21, cursor: null } }))
     .rejects.toMatchObject({ data: { code: 'INVALID_PAGE_SIZE' } });
 });
+
+it('passes a stored guest fact through and opens a voucher transfer as the new owner\'s first line', async () => {
+  const { t, as, voucherId } = await setup();
+  await t.run(async ctx => {
+    await ctx.db.insert('voucherEntries', {
+      voucherId, kind: 'transfer', sourceKey: 'guest-transfer:x', createdAt: 4, actor: 'ploy@example.com',
+      guestFact: { key: 'transferredIn' }, before: { paid: 40000, goodwill: 10000 }, after: { paid: 40000, goodwill: 10000 },
+    });
+    await ctx.db.insert('voucherEntries', {
+      voucherId, kind: 'spend', sourceKey: 'entry-5', createdAt: 5, actor: 'ploy@example.com',
+      guestFact: { key: 'spent', args: { amount: 5000 } }, before: { paid: 40000, goodwill: 10000 }, after: { paid: 35000, goodwill: 10000 },
+    });
+  });
+  const page = await as('cashier').query(api.commerce.history.staffPage, { target: { targetType: 'voucher', targetId: voucherId }, paginationOpts: { numItems: 2, cursor: null } });
+  expect(page.page.map(entry => entry.fact)).toEqual([{ key: 'spent', args: { amount: 5000 } }, { key: 'transferredIn' }]);
+});
+
+it('reads one branch\'s stock History through its own index', async () => {
+  const { t, as } = await setup();
+  const stockId = await t.run(async ctx => {
+    const categoryId = await ctx.db.insert('productCategories', { name: 'Clothing', sort: 1 });
+    const productId = await ctx.db.insert('products', {
+      categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [], minPrice: 129000, maxPrice: 129000, variantCount: 1, sort: 1, revision: 0,
+    });
+    const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'M', price: 129000, status: 'active', revision: 0 });
+    const [here, there] = [await ctx.db.insert('branches', { key: 'beach' }), await ctx.db.insert('branches', { key: 'town' })];
+    for (const [branchId, createdAt] of [[here, 1], [there, 2], [here, 3]] as const) {
+      await ctx.db.insert('stockMovements', { branchId, variantId, delta: -1, before: 3, after: 2, kind: 'sale', sourceKey: `s${createdAt}`, actor: 'ploy', createdAt });
+    }
+    return ctx.db.insert('stockLevels', { branchId: here, productId, variantId, onHand: 2, revision: 1 });
+  });
+  const page = await as('cashier').query(api.commerce.history.staffPage, { target: { targetType: 'stock', targetId: stockId }, paginationOpts: { numItems: 1, cursor: null } });
+  expect(page.page).toMatchObject([{ at: 3, fact: { key: 'sold' }, balance: { unit: 'stock', before: 3, after: 2 } }]);
+  const rest = await as('cashier').query(api.commerce.history.staffPage, { target: { targetType: 'stock', targetId: stockId }, paginationOpts: { numItems: 20, cursor: page.continueCursor } });
+  expect(rest.page.map(entry => entry.at)).toEqual([1]);
+});

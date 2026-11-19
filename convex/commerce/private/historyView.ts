@@ -44,7 +44,7 @@ function voucherFact(row: Doc<'voucherEntries'>): HistoryFact {
     case 'reissue': return { key: 'reissued' };
     case 'expire': return { key: 'expired' };
     case 'edit': return goodwillFact(row.before, row.after);
-    default: return UPDATED;
+    case 'transfer': return { key: 'transferredIn' };
   }
 }
 

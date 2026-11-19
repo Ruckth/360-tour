@@ -1,4 +1,5 @@
 import type { api } from "convex/_generated/api";
+import { editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionReturnType } from "convex/server";
 import type { EditReason, GuestFact, GuestFactKey, HistoryEntry, StockReason } from "./backend";
 import type { TargetApproval } from "./TargetApproval";
@@ -23,8 +24,8 @@ const FACT_ARGS: { [K in GuestFactKey]: Record<string, "string" | "number"> } = 
   cancelled: {}, spent: { amount: "number" }, refundCredit: { amount: "number" }, serviceAdded: { service: "string" }, sold: {},
   stockAdjusted: {}, roomCharge: { room: "string" }, takenBack: {}, published: {}, updated: {},
 };
-const EDIT_REASONS = new Set<string>(["healthPause", "serviceRecovery", "spellingCorrection", "lostCode", "guestRequest", "staffMistake", "priceChange", "other"] satisfies EditReason[]);
-const STOCK_REASONS = new Set<string>(["received", "recount", "damaged", "theft", "lost", "returnedToStock"] satisfies StockReason[]);
+const EDIT_REASONS = new Set<string>(editReasons);
+const STOCK_REASONS = new Set<string>(stockReasons);
 
 function guestFact({ key, args = {} }: HistoryRow["fact"]): GuestFact {
   const needs = Object.hasOwn(FACT_ARGS, key) ? FACT_ARGS[key as GuestFactKey] : null;

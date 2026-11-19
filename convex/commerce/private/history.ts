@@ -75,9 +75,8 @@ export async function listCommerceHistory(
       const stock = await ctx.db.get(target.targetId);
       if (!stock) return { page: [], isDone: true, continueCursor: '' };
       budget.document(stock);
-      const result = await readPage<'stockMovements'>(ctx, ctx.db.query('stockMovements')
-        .withIndex('by_variantId_and_createdAt', q => q.eq('variantId', stock.variantId)), pagination);
-      return { ...result, page: result.page.filter(row => row.branchId === stock.branchId) };
+      return await readPage<'stockMovements'>(ctx, ctx.db.query('stockMovements')
+        .withIndex('by_variantId_and_branchId_and_createdAt', q => q.eq('variantId', stock.variantId).eq('branchId', stock.branchId)), pagination);
     }
     default: return await readPage<'commerceAdjustments'>(ctx, ctx.db.query('commerceAdjustments')
       .withIndex('by_targetType_and_targetId_and_recordedAt', q =>
@@ -106,7 +105,7 @@ async function latestTransfer(ctx: QueryCtx, target: BenefitTarget) {
   budget.assert();
   if (row && ('grantId' in row
     ? row.grantId !== target.targetId || row.kind !== 'transfer'
-    : row.voucherId !== target.targetId || row.kind !== 'edit')) {
+    : row.voucherId !== target.targetId || (row.kind !== 'edit' && row.kind !== 'transfer'))) {
     throw new Error('Invalid transfer history boundary');
   }
   return row;
