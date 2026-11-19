@@ -1,6 +1,6 @@
 "use client";
 
-import { BedDouble, CalendarDays, Package, Sparkles, type LucideIcon } from "lucide-react";
+import { BedDouble, CalendarDays, Gift, Package, Sparkles, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { OrderLine } from "./backend";
@@ -14,6 +14,9 @@ export const KIND_ICONS: Record<PhotoKind, LucideIcon> = {
   room: BedDouble,
   booking: CalendarDays,
   extra: Package,
+  product: Package,
+  package: Package,
+  voucher: Gift,
 };
 
 /**

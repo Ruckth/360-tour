@@ -11,7 +11,7 @@ import { activeLineLink } from './lineLinks';
 
 type ReadCtx = QueryCtx | MutationCtx;
 
-export type OrderRefundInput = Pick<Doc<'orderRefunds'>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
+export type OrderRefundInput = Pick<Exclude<Doc<'orderRefunds'>, { method: 'voucher' }>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
 
 function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
 

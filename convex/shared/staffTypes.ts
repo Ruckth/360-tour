@@ -45,3 +45,5 @@ export type ApprovalPayload = Infer<typeof approvalPayload>;
 export const approvalStatus = v.union(v.literal('pending'), v.literal('applied'), v.literal('rejected'), v.literal('cancelled'), v.literal('expired'), v.literal('stale'));
 
 export const storedApprovalPayload = approvalPayload;
+
+export const storedApprovalStatus = v.union(approvalStatus, v.literal('authorized'));

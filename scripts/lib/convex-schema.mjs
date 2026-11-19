@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { posix, resolve } from 'node:path';
 
-export const SCHEMA_DOMAINS = ['auth', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings'];
+export const SCHEMA_DOMAINS = ['auth', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings', 'commerce'];
 
 /** A reader works on a checkout, a historical git tree, or an in-memory test repository.
  * @param {string} root @param {string} [ref]

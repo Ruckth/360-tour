@@ -1,10 +1,9 @@
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
 import { authenticatedMutation, canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
 import { cashierRules } from '../settings/model';
-import { effectiveRequestStatus, orderFingerprint, requesterFingerprint, rulesFingerprint } from './private/staffApprovalState';
+import { effectiveRequestStatus, isCheckoutApproval, orderFingerprint, requesterFingerprint, rulesFingerprint, type CheckoutApprovalRequest } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 
@@ -15,7 +14,7 @@ function cleanReason(reason: string) {
 }
 
 /** Identity tokens and raw fingerprints never leave the backend. */
-function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status']) {
+function requestView(request: CheckoutApprovalRequest, status: CheckoutApprovalRequest['status']) {
   return {
     _id: request._id, _creationTime: request._creationTime,
     orderId: request.orderId, lineId: request.lineId, kind: request.kind, payload: request.payload,
@@ -27,7 +26,7 @@ function requestView(request: Doc<'staffApprovalRequests'>, status: Doc<'staffAp
   };
 }
 
-async function resolve(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, status: Doc<'staffApprovalRequests'>['status'], actor: string, reason?: string) {
+async function resolve(ctx: MutationCtx, request: CheckoutApprovalRequest, status: CheckoutApprovalRequest['status'], actor: string, reason?: string) {
   await ctx.db.patch(request._id, { status, resolvedAt: Date.now(), ...(reason ? { resolutionReason: reason } : {}) });
   await appendRecordHistory(ctx, { entityType: 'staffApproval', entityId: request.orderId, actor, kind: status, reason: reason ?? request.reason,
     after: { requestId: request._id, kind: request.kind, requesterEmail: request.requesterEmail, payload: request.payload } });
@@ -43,7 +42,7 @@ export const create = staffMutation({
   if (!order || !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
   const pending = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', order._id).eq('status', 'pending')).take(201);
   if (pending.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
-  for (const request of pending) {
+  for (const request of pending.filter(isCheckoutApproval)) {
     const status = await effectiveRequestStatus(ctx, request);
     if (status === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the existing request first.', requestId: request._id });
     await resolve(ctx, request, status, actor.email);
@@ -68,7 +67,7 @@ export const approve = staffMutation({
   capability: 'approve', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const request = await ctx.db.get(args.requestId);
-  if (!request) throw new ConvexError('Request not found');
+  if (!request || !isCheckoutApproval(request)) throw new ConvexError('Request not found');
   if (request.requesterTokenIdentifier === actor.tokenIdentifier || request.requesterEmail === actor.email) throw new ConvexError('You cannot approve your own request.');
   if (request.status !== 'pending') return { status: request.status, replayed: true };
   const status = await effectiveRequestStatus(ctx, request);
@@ -87,7 +86,7 @@ export const cancel = authenticatedMutation({ args: { requestId: v.id('staffAppr
   const identity = ctx.identity;
   if (!identity) throw new Error('Not authenticated');
   const request = await ctx.db.get(args.requestId);
-  if (!request || request.requesterTokenIdentifier !== identity.tokenIdentifier) throw new Error('Not authorized');
+  if (!request || !isCheckoutApproval(request) || request.requesterTokenIdentifier !== identity.tokenIdentifier) throw new Error('Not authorized');
   if (request.status !== 'pending') return { status: request.status };
   const status = await effectiveRequestStatus(ctx, request);
   const next = status === 'pending' ? 'cancelled' : status;
@@ -99,7 +98,7 @@ export const reject = staffMutation({
   capability: 'approve', args: { requestId: v.id('staffApprovalRequests'), reason: v.optional(v.string()) }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const request = await ctx.db.get(args.requestId);
-  if (!request) throw new ConvexError('Request not found');
+  if (!request || !isCheckoutApproval(request)) throw new ConvexError('Request not found');
   if (request.status !== 'pending') return { status: request.status };
   const status = await effectiveRequestStatus(ctx, request);
   const next = status === 'pending' ? 'rejected' : status;
@@ -117,14 +116,14 @@ export const forOrder = staffQuery({
   ]);
   if (pending.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   const requests = [...new Map([...pending, ...recent].map(request => [request._id, request])).values()];
-  return await Promise.all(requests.sort((a, b) => b.createdAt - a.createdAt).map(async request => requestView(request, await effectiveRequestStatus(ctx, request))));
+  return await Promise.all(requests.sort((a, b) => b.createdAt - a.createdAt).filter(isCheckoutApproval).map(async request => requestView(request, await effectiveRequestStatus(ctx, request))));
 } });
 
 export const pending = staffQuery({
   capability: 'approve', args: {}, handler: async ctx => {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_status_and_createdAt', q => q.eq('status', 'pending')).take(501);
   if (requests.length > 500) throw new ConvexError('Approval queue is too large. Contact support.');
-  const views = await Promise.all(requests.map(async request => {
+  const views = await Promise.all(requests.filter(isCheckoutApproval).map(async request => {
     const status = await effectiveRequestStatus(ctx, request);
     return status === 'pending' ? requestView(request, status) : null;
   }));
@@ -134,7 +133,7 @@ export const pending = staffQuery({
 
 export const expire = internalMutation({ args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, args) => {
   const request = await ctx.db.get(args.requestId);
-  if (!request || request.status !== 'pending') return null;
+  if (!request || !isCheckoutApproval(request) || request.status !== 'pending') return null;
   const status = await effectiveRequestStatus(ctx, request);
   if (status !== 'pending') await resolve(ctx, request, status, 'system');
   return null;
