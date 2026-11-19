@@ -14,7 +14,7 @@ import ts from 'typescript';
 import { runRequiredSuites } from './lib/scorecard-tests.mjs';
 import { inspectArchitecture, SOURCE_EXTENSION, isConvexEntryFile } from './lib/architecture.mjs';
 import { inspectConvexAccess } from './lib/convex-access.mjs';
-import { inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
+import { COMMERCE_TABLE_NAMES, inspectSchema, schemaSourceReader, SCHEMA_DOMAINS } from './lib/convex-schema.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -157,8 +157,8 @@ add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync
 
 add('tables', 1, 'Convex tables (74 existing + 22 commerce)', tableNames.length, 96, schema.tables.map(table => `${table.name} → ${table.source}`));
 const commercePosTables = new Set(['paymentAttempts', 'orderReturns', 'returnPayouts']);
-const commerceTables = schema.tables.filter(table => table.source === 'convex/commerce/tables.ts'
-	|| (table.source === 'convex/pos/tables.ts' && commercePosTables.has(table.name)));
+const commerceTables = schema.tables.filter(table => COMMERCE_TABLE_NAMES.includes(table.name)
+	&& table.source === (commercePosTables.has(table.name) ? 'convex/pos/tables.ts' : 'convex/commerce/tables.ts'));
 add('commerce-tables', 1, 'Release 1 commerce tables', commerceTables.length, 22, commerceTables.map(table => `${table.name} → ${table.source}`));
 add('channel-events-table', 1, 'Unified channelEvents table exists (1 = yes)', tableNames.includes('channelEvents') ? 1 : 0, 1);
 add('retired-tables', 1, 'Retired tables still in the schema', RETIRED_TABLES.filter((t) => tableNames.includes(t)).length, 0, RETIRED_TABLES.filter((t) => tableNames.includes(t)));

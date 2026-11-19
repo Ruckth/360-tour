@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
+import { COMMERCE_TABLE_NAMES, inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -23,7 +23,12 @@ if (!tables.includes('bills') || !tables.includes('billRefunds') || !tables.incl
 const current = inspectSchema(schemaSourceReader(root));
 const newSchema = current.sources['convex/schema.ts'];
 const newTables = current.tables.map(table => table.name);
-if (newTables.length !== 74 || !newTables.includes('orders') || newTables.includes('bills') || new Set(newTables).size !== newTables.length) throw new Error('The current schema must contain the reviewed final table names');
+const reviewed = inspectSchema(schemaSourceReader(root, 'f2482a0237e28a82c71b0557ea9422f61233845a'));
+const expectedTables = new Set([...reviewed.tables.map(table => table.name), ...COMMERCE_TABLE_NAMES]);
+if (newTables.length !== expectedTables.size || newTables.some(name => !expectedTables.has(name)) ||
+    !newTables.includes('orders') || newTables.includes('bills') || new Set(newTables).size !== newTables.length) {
+  throw new Error('The current schema must contain the reviewed final table names');
+}
 mkdirSync(out, { recursive: true });
 const schemaSources = {};
 for (const [label, schema] of [['old', old], ['new', current]]) {
