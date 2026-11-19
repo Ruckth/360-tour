@@ -104,6 +104,8 @@ describe("commerce receipt", () => {
     // Goodwill is never a way of paying.
     expect(tenders.join()).not.toContain("Goodwill");
     expect(totals.textContent).toContain("Total฿9,480");
+    // Goodwill is the only discount here, so no staff Discounts row.
+    expect(totals.textContent).not.toContain("Discounts");
     expect(document.querySelector("header p")?.textContent).toContain("Paid by card + voucher");
   });
 

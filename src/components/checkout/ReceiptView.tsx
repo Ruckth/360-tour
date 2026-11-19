@@ -404,7 +404,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           {truncated ? <p data-screen-only="" className="mt-2 font-sans text-xs text-muted-foreground print:hidden">Too many refunds to total here. See History.</p> : null}
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
-            {commerce?.goodwill ? <GoodwillTotals subtotal={totals.subtotal} coupon={totals.coupon} couponLabel={coupon} goodwill={commerce.goodwill} /> : totals.coupon ? (
+            {commerce?.goodwill ? <GoodwillTotals subtotal={totals.subtotal} discount={totals.discount} coupon={totals.coupon} couponLabel={coupon} goodwill={commerce.goodwill} /> : totals.coupon ? (
               <>
                 <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="font-sans tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
                 {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="font-sans tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}

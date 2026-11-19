@@ -6,7 +6,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { lineCouponDiscount, lineGross, lineStaffDiscount } from "convex/shared/orderMath";
+import { lineCouponDiscount, lineGross, lineStaffDiscount, roundMoney } from "convex/shared/orderMath";
 import { refusalText, useCommerce, type AdjustTarget, type CommerceCopy, type ExternalMethod, type LegState, type OrderId, type OrderLine } from "./backend";
 import { contentLabel, formatResort, voucherTenderLabel, type ReceiptCommerce, type ReceiptRowExtras, type VoucherTender } from "./checkout-ui";
 import { useCommerceCopy } from "./commerce-copy";
@@ -68,11 +68,14 @@ export function CommerceReceiptRow({ line, extras, coupon, truncated }: { line: 
 }
 
 /** Subtotal and goodwill credit above the total. Goodwill is a discount, never a way of paying. */
-export function GoodwillTotals({ subtotal, coupon, couponLabel, goodwill }: { subtotal: number; coupon: number; couponLabel: string; goodwill: number }) {
+export function GoodwillTotals({ subtotal, discount, coupon, couponLabel, goodwill }: { subtotal: number; discount: number; coupon: number; couponLabel: string; goodwill: number }) {
   const copy = useCommerceCopy();
+  // Staff discounts are what's left of the order's discounts after the coupon and goodwill.
+  const staffDiscount = roundMoney(discount - coupon - goodwill);
   return (
     <>
       <div className={row}><dt>Subtotal</dt><dd className="font-sans tabular-nums">{formatMoney(subtotal)}</dd></div>
+      {staffDiscount > 0 ? <div className={row}><dt>Discounts</dt><dd className="font-sans tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
       {coupon ? <div className={row}><dt className="min-w-0">{couponLabel}</dt><dd className="shrink-0 font-sans tabular-nums">{formatMoney(-coupon)}</dd></div> : null}
       <div className={row} data-testid="receipt-goodwill-total"><dt>{copy.t("receipt.goodwill")}</dt><dd className="font-sans tabular-nums">{formatMoney(-goodwill)}</dd></div>
     </>
