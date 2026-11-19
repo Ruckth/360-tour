@@ -87,7 +87,8 @@
       "shareToPhone": "फ़ोन पर भेजें",
       "print": "प्रिंट",
       "showCodeAtCheckout": "चेकआउट पर यह कोड दिखाएँ",
-      "newCodeFromReturn": "नया वाउचर {code} · {amount} · 90 दिन मान्य"
+      "newCodeFromReturn": "नया वाउचर {code} · {amount} · 90 दिन मान्य",
+      "noExpiry": "कोई समाप्ति तिथि नहीं"
     },
     "packages": {
       "sessionsLeft": "{name} · {count} बचे",
@@ -274,12 +275,14 @@
         "stockAdjusted": "स्टॉक बदला",
         "roomCharge": "रूम {room} में चार्ज",
         "takenBack": "वापस लिया",
-        "published": "आगे की बिक्री के लिए नई कीमत",
+        "published": "आगे की बिक्री के लिए बदला गया",
         "updated": "अपडेट हुआ"
       },
       "showStaff": "स्टाफ़ व्यू",
       "close": "बंद करें",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part} बदला गया",
       "on": "चालू",
       "off": "बंद",
       "items": "{count, plural, one {# आइटम} other {# आइटम}}",

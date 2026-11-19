@@ -87,7 +87,8 @@
       "shareToPhone": "Отправить на телефон",
       "print": "Печать",
       "showCodeAtCheckout": "Покажите этот код на кассе",
-      "newCodeFromReturn": "Новый сертификат {code} · {amount} · действует 90 дней"
+      "newCodeFromReturn": "Новый сертификат {code} · {amount} · действует 90 дней",
+      "noExpiry": "Без срока действия"
     },
     "packages": {
       "sessionsLeft": "{name} · осталось: {count}",
@@ -274,12 +275,14 @@
         "stockAdjusted": "Остаток изменён",
         "roomCharge": "Начислено на номер {room}",
         "takenBack": "Забрано у гостя",
-        "published": "Новая цена для будущих продаж",
+        "published": "Изменено для будущих продаж",
         "updated": "Обновлено"
       },
       "showStaff": "Вид для персонала",
       "close": "Закрыть",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part}: изменено",
       "on": "Вкл.",
       "off": "Выкл.",
       "items": "{count, plural, one {# позиция} few {# позиции} many {# позиций} other {# позиции}}",

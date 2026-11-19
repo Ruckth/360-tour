@@ -31,7 +31,9 @@ export function CommerceReceiptRow({ line, extras, coupon, truncated }: { line: 
   const copy = useCommerceCopy();
   const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
   const refunded = truncated ? 0 : line.refundedAmountSatang || extras.returned;
-  const validUntil = extras.benefits.length ? Math.max(...extras.benefits.map((benefit) => benefit.issuedExpiresAt)) : null;
+  // The latest end date of what the row issued; a benefit that never expires outlasts any date (D20).
+  const ends = extras.benefits.map((benefit) => benefit.issuedExpiresAt);
+  const validity = !ends.length ? null : ends.includes(null) ? copy.t("vouchers.noExpiry") : copy.t("vouchers.validUntil", { date: copy.date(Math.max(...ends as number[])) });
   return (
     <li data-receipt-kind={extras.kind}>
       <div className={row}>
@@ -54,7 +56,7 @@ export function CommerceReceiptRow({ line, extras, coupon, truncated }: { line: 
       ) : null}
       {line.kind === "voucher" ? extras.benefits.map((benefit) => benefit.codeMask ? <p key={benefit.contentKey} data-voucher-mask="" className="text-xs opacity-70">{benefit.codeMask}</p> : null) : null}
       {extras.coveredPrice !== null ? <p className="text-xs opacity-70">{copy.t("receipt.sessionUsed", { price: formatMoney(extras.coveredPrice) })}</p> : null}
-      {validUntil !== null ? <p className="text-xs opacity-70">{copy.t("vouchers.validUntil", { date: copy.date(validUntil) })}</p> : null}
+      {validity ? <p className="text-xs opacity-70">{validity}</p> : null}
       {lineStaffDiscount(line) ? <div className={small}><span>Discount</span><span className="font-sans tabular-nums">{formatMoney(-lineStaffDiscount(line))}</span></div> : null}
       {share ? <div className={small}><span className="min-w-0">{coupon}</span><span className="shrink-0 font-sans tabular-nums">{formatMoney(-share)}</span></div> : null}
       {extras.goodwill ? (

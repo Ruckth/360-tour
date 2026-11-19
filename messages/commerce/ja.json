@@ -87,7 +87,8 @@
       "shareToPhone": "スマートフォンに送る",
       "print": "印刷",
       "showCodeAtCheckout": "お会計時にこのコードをご提示ください",
-      "newCodeFromReturn": "新しいギフト券 {code} · {amount} · 90日間有効"
+      "newCodeFromReturn": "新しいギフト券 {code} · {amount} · 90日間有効",
+      "noExpiry": "有効期限なし"
     },
     "packages": {
       "sessionsLeft": "{name} · 残り{count}回",
@@ -274,12 +275,14 @@
         "stockAdjusted": "在庫を変更",
         "roomCharge": "{room}号室にルームチャージ",
         "takenBack": "回収",
-        "published": "今後の販売の新価格",
+        "published": "今後の販売向けに変更",
         "updated": "更新"
       },
       "showStaff": "スタッフ表示",
       "close": "閉じる",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part}を変更",
       "on": "オン",
       "off": "オフ",
       "items": "{count, plural, other {#件}}",

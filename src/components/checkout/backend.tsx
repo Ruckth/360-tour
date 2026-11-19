@@ -485,8 +485,10 @@ export type HistoryEntry = {
   /** Staff only: each field an edit changed (catalogue, settings and other adjustments), before → after. */
   changes?: FieldChange[];
 };
-/** A changed value: a scalar or a list of them, or a size for anything bigger; undefined when the field was absent. */
-export type ChangeValue = string | number | boolean | null | (string | number | boolean | null)[] | { items: number } | undefined;
+/** One part of a list such as a package's contents: its name, how many (sessions when `sessions`) and any amount. */
+export type PartValue = { part: string; count: number | null; amount: number | null; sessions: boolean };
+/** A changed value: a scalar or a list of them, a list part, or a size for anything bigger; undefined when absent. */
+export type ChangeValue = string | number | boolean | null | (string | number | boolean | null)[] | PartValue | { items: number } | undefined;
 export type FieldChange = { field: string; before: ChangeValue; after: ChangeValue };
 export type HistoryAudience = "staff" | "guest";
 

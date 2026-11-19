@@ -8,7 +8,7 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { AUTO_PAGES, CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, COMMERCE_OFF, type CheckoutBackend, type HistoryEntry } from "@/components/checkout/backend";
 import { previewBackend } from "@/components/checkout/CheckoutPreview";
-import { maskReceiptCodes, receiptCommerce, receiptText } from "@/components/checkout/checkout-ui";
+import { maskReceiptCodes, receiptCommerce, receiptText, type IssuedBenefit } from "@/components/checkout/checkout-ui";
 import { COMMERCE_RECEIPT_ID, COMMERCE_REDEMPTION_ID, commerceReceipt, commerceRedemptionReceipt } from "@/components/checkout/design/commerce-receipt";
 import { HistoryList } from "@/components/checkout/EditHistory";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
@@ -95,6 +95,40 @@ describe("commerce receipt", () => {
     const covered = rowOf("Thai massage 60")!;
     expect(covered.dataset.receiptKind).toBe("covered");
     expect(covered.textContent).toContain("Session used · was ฿1,200");
+  });
+
+  // Astra and Sol r3: getOrder puts a voucher that never expires in `unlimitedIssuedBenefits` (D20).
+  it("reads a voucher with no expiry like any other: its mask on paper and in shared text, and its own History", async () => {
+    const line = commerceReceipt.lines.find((row) => row.kind === "voucher")!;
+    const finite = commerceReceipt.commerce!.issuedBenefits.find((benefit) => benefit.lineId === line._id)! as IssuedBenefit;
+    const unlimited: typeof commerceReceipt = {
+      ...commerceReceipt,
+      commerce: {
+        ...commerceReceipt.commerce!,
+        issuedBenefits: commerceReceipt.commerce!.issuedBenefits.filter((benefit) => benefit.lineId !== line._id),
+        unlimitedIssuedBenefits: [{ ...finite, issuedExpiresAt: null }] as never,
+      },
+    };
+    const extras = receiptCommerce(unlimited)!.rows.get(line._id)!;
+    expect(extras.benefits).toEqual([{ ...finite, issuedExpiresAt: null }]);
+    expect(extras.history).toEqual(finite.editHistory);
+    const copy = { t: (key: string, values?: Record<string, string | number>) => `${key}${values ? JSON.stringify(values) : ""}`, money: String, date: String };
+    expect(receiptText(unlimited, "Auralis Cove Retreat", copy)).toContain(`  ${finite.codeMask}`);
+    const base = dark();
+    const targets: unknown[] = [];
+    const useHistory: NonNullable<CheckoutBackend["commerce"]>["useHistory"] = (target) => {
+      targets.push(target);
+      return { results: [], status: "Exhausted", loadMore: () => {} };
+    };
+    await receipt({ ...base, useOrder: () => unlimited, commerce: { ...base.commerce!, useHistory } });
+    const voucher = rowOf("Gift voucher")!;
+    expect(voucher.querySelector("[data-voucher-mask]")?.textContent).toBe(finite.codeMask);
+    expect(voucher.textContent).toContain("No expiry");
+    expect(voucher.textContent).not.toContain("Valid until");
+    const open = [...document.querySelectorAll<HTMLButtonElement>("button")].find((el) => el.getAttribute("aria-label") === "Edit · History: Gift voucher")!;
+    await act(async () => open.click());
+    await until(() => targets.length > 0);
+    expect(targets.at(-1)).toEqual(finite.editHistory);
   });
 
   it("keeps goodwill a discount and voucher spend apart from cash and cards", async () => {
@@ -655,7 +689,7 @@ describe("Edit · History", () => {
       { field: "validityDays", before: 180, after: 365 },
       { field: "allowTransfer", before: true, after: false },
       { field: "refundDueDays.card", before: 45, after: 30 },
-      { field: "contents", before: { items: 1 }, after: { items: 2 } },
+      { field: "contents", before: undefined, after: { part: "B", count: null, amount: null, sessions: false } },
       { field: "note", before: "GV-••••-Q9XD", after: "GV-••••-H3LN" },
       { field: "expiresAt", before: undefined, after: Date.UTC(2026, 11, 30) },
     ]);
@@ -669,7 +703,7 @@ describe("Edit · History", () => {
     const changes = [...document.querySelectorAll('[data-testid="history-changes"] li')].map((li) => li.textContent);
     expect(changes).toEqual([
       "Price: ฿1,000 → ฿1,200", "Validity days: 180 → 365", "Allow transfer: On → Off", "Refund due days · Card: 45 → 30",
-      "Contents: 1 item → 2 items", "Note: GV-••••-Q9XD → GV-••••-H3LN", "Ends: — → 30 Dec 2026",
+      "Contents: — → B", "Note: GV-••••-Q9XD → GV-••••-H3LN", "Ends: — → 30 Dec 2026",
     ]);
     expect(document.querySelector('[data-testid="history-staff"]')?.textContent).toContain("By Ploy · Health pause or extension · Owner asked");
     expect(text()).not.toMatch(FULL_CODE);
@@ -678,6 +712,46 @@ describe("Edit · History", () => {
     expect(document.querySelector('[data-testid="history-changes"]')).toBeNull();
     expect(text()).not.toContain("฿1,200");
     expect(text()).not.toContain("Ploy");
+  });
+
+  // Astra and Sol r3: a same-size contents edit and a voucher rename keep their before → after (D19).
+  it("shows a package quantity change, a same-size substitution and a rename, and never calls them a new price", async () => {
+    const staff = { actorName: "Ploy", reason: "other", reasonText: "Future sales" };
+    const session = (units: number) => ({ contentKey: "massage", kind: "session", serviceIds: ["svc1"], units });
+    const rows = [
+      // Astra's isolated-backend staff response: five massage sessions published as six.
+      { entryId: "qty", at: Date.UTC(2026, 10, 19, 0), fact: { key: "published" }, balance: null, before: { contents: [session(5)] }, after: { contents: [session(6)] }, staff },
+      // Sol's probe: one part swapped for another with the same count.
+      { entryId: "swap", at: Date.UTC(2026, 10, 19, 1), fact: { key: "published" }, balance: null,
+        before: { contents: [{ key: "service", label: "Massage 60", units: 5 }] }, after: { contents: [{ key: "service", label: "Hot stone 60", units: 5 }] }, staff },
+      // A part replaced under a new content key, and a voucher part's value changed.
+      { entryId: "rekey", at: Date.UTC(2026, 10, 19, 2), fact: { key: "published" }, balance: null,
+        before: { contents: [{ ...session(5), contentKey: "massage", label: "Massage 60" }, { contentKey: "gift", kind: "voucher", faceValue: 50000 }] },
+        after: { contents: [{ ...session(5), contentKey: "hotStone", label: "Hot stone 60" }, { contentKey: "gift", kind: "voucher", faceValue: 60000 }] }, staff },
+      // The price-only control.
+      { entryId: "price", at: Date.UTC(2026, 10, 19, 3), fact: { key: "published" }, balance: null, before: { price: 100000 }, after: { price: 120000 }, staff },
+      // A voucher rename: the ledger row with its linked adjustment's fields (convex/commerce/history.staffPage).
+      { entryId: "name", at: Date.UTC(2026, 10, 19, 4), fact: { key: "renamed", args: { name: "Mia Tanaka" } },
+        balance: { unit: "money", before: { paid: 40000, goodwill: 0 }, after: { paid: 40000, goodwill: 0 } }, before: { name: "Mia Tanka" }, after: { name: "Mia Tanaka" }, staff },
+    ];
+    const entries = rows.map((row) => historyEntry(row as unknown as Parameters<typeof historyEntry>[0]));
+    expect(entries[0].changes).toEqual([{ field: "contents", before: { part: "Massage", count: 5, amount: null, sessions: true }, after: { part: "Massage", count: 6, amount: null, sessions: true } }]);
+    const base = dark();
+    const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: entries, status: "Exhausted" as const, loadMore: () => {} }) } };
+    await render(backend, createElement(HistoryList, { target: { targetType: "package", targetId: "fxpkg" as never }, audience: "staff" }));
+    const items = [...document.querySelectorAll('[data-testid="history-entry"]')];
+    const changes = items.map((item) => [...item.querySelectorAll('[data-testid="history-changes"] li')].map((li) => li.textContent));
+    expect(changes).toEqual([
+      ["Massage: 5 → 6 sessions"],
+      ["Contents: Massage 60 → Hot stone 60"],
+      ["Gift: ฿500 → ฿600", "Contents: Massage 60 → Hot stone 60"],
+      ["Price: ฿1,000 → ฿1,200"],
+      ["Name: Mia Tanka → Mia Tanaka"],
+    ]);
+    expect(text()).not.toContain("New price");
+    expect(items[0].textContent).toContain("Changed for future sales");
+    await render(backend, createElement(HistoryList, { target: { targetType: "voucher", targetId: "fxvch" as never }, audience: "guest" }));
+    expect(text()).not.toMatch(/Mia Tanka\b|5 → 6|Ploy/);
   });
 
   it("never draws staff, reasons or full codes in the guest view, even if the server sent them", async () => {

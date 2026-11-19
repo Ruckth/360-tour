@@ -87,7 +87,8 @@
       "shareToPhone": "Envoyer sur le téléphone",
       "print": "Imprimer",
       "showCodeAtCheckout": "Présentez ce code en caisse",
-      "newCodeFromReturn": "Nouveau bon {code} · {amount} · valable 90 jours"
+      "newCodeFromReturn": "Nouveau bon {code} · {amount} · valable 90 jours",
+      "noExpiry": "Sans date d’expiration"
     },
     "packages": {
       "sessionsLeft": "{name} · reste {count}",
@@ -274,12 +275,14 @@
         "stockAdjusted": "Stock modifié",
         "roomCharge": "Imputé à la chambre {room}",
         "takenBack": "Repris",
-        "published": "Nouveau prix pour les ventes futures",
+        "published": "Modifié pour les ventes futures",
         "updated": "Mis à jour"
       },
       "showStaff": "Vue équipe",
       "close": "Fermer",
       "change": "{label} : {before} → {after}",
+      "partChange": "{part} : {change}",
+      "partChanged": "{part} : modifié",
       "on": "Activé",
       "off": "Désactivé",
       "items": "{count, plural, one {# élément} other {# éléments}}",

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type CommerceCopy, type FieldChange, type HistoryAudience, type HistoryBalance, type HistoryEntry, type StockReason } from "./backend";
+import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type CommerceCopy, type FieldChange, type HistoryAudience, type HistoryBalance, type HistoryEntry, type PartValue, type StockReason } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { formatResort } from "./checkout-ui";
 import { useCommerceCopy } from "./commerce-copy";
@@ -58,13 +58,43 @@ export function changeValueText(field: string, value: ChangeValue, copy: Commerc
   };
   if (value === undefined) return "—";
   if (Array.isArray(value)) return value.length ? value.map(one).join(", ") : "—";
+  if (isPart(value)) return partText(value, true, copy);
   if (value !== null && typeof value === "object") return copy.t("history.items", { count: value.items });
   return one(value);
 }
 
+const isPart = (value: ChangeValue): value is PartValue => value !== null && typeof value === "object" && "part" in value;
+
+/** "5 × Massage", "Spa robe ×2", "Gift voucher · ฿500", or just the name when the count didn't change. */
+function partText(value: PartValue | undefined, withCount: boolean, copy: CommerceCopy) {
+  if (!value) return "—";
+  const named = !withCount || value.count === null ? value.part
+    : value.sessions ? copy.t("packages.contentsSessions", { count: value.count, service: value.part }) : `${value.part} ×${value.count}`;
+  return value.amount === null ? named : `${named} · ${copy.money(value.amount)}`;
+}
+
+/** A package part that changed: "Massage: 5 → 6 sessions", "Contents: Thai massage → Hot stone", "Robe changed". */
+function partChangeText(field: string, before: PartValue | undefined, after: PartValue | undefined, copy: CommerceCopy) {
+  if (before && after && before.part === after.part) {
+    const { part } = after;
+    if (before.count !== after.count) {
+      const change = after.sessions && before.count !== null && after.count !== null
+        ? copy.t("history.sessionsBeforeAfter", { before: before.count, after: after.count })
+        : `${before.count ?? "—"} → ${after.count ?? "—"}`;
+      return copy.t("history.partChange", { part, change });
+    }
+    if (before.amount !== after.amount) return copy.t("history.change", { label: part, before: before.amount === null ? "—" : copy.money(before.amount), after: after.amount === null ? "—" : copy.money(after.amount) });
+    return copy.t("history.partChanged", { part });
+  }
+  const counts = before?.count !== after?.count;
+  return copy.t("history.change", { label: fieldLabel(field, copy), before: partText(before, counts, copy), after: partText(after, counts, copy) });
+}
+
 /** "Price: ฿1,000 → ฿1,200": what an edit changed, for staff only. */
 export function changeText(change: FieldChange, copy: CommerceCopy) {
-  return copy.t("history.change", { label: fieldLabel(change.field, copy), before: changeValueText(change.field, change.before, copy), after: changeValueText(change.field, change.after, copy) });
+  const { before, after } = change;
+  if (isPart(before) || isPart(after)) return partChangeText(change.field, isPart(before) ? before : undefined, isPart(after) ? after : undefined, copy);
+  return copy.t("history.change", { label: fieldLabel(change.field, copy), before: changeValueText(change.field, before, copy), after: changeValueText(change.field, after, copy) });
 }
 
 /** Who did it and why, for staff only: "By Ploy · Health pause or extension". */
@@ -92,7 +122,7 @@ export function HistoryList({ target, audience }: { target: AdjustTarget; audien
             {entry.balance ? <p className="text-sm text-muted-foreground tabular-nums">{balanceText(entry.balance, copy)}</p> : null}
             {!guest && entry.changes?.length ? (
               <ul className="grid gap-0.5 text-sm text-muted-foreground tabular-nums [overflow-wrap:anywhere]" data-testid="history-changes">
-                {entry.changes.map((change) => <li key={change.field}>{changeText(change, copy)}</li>)}
+                {entry.changes.map((change, index) => <li key={`${change.field}:${index}`}>{changeText(change, copy)}</li>)}
               </ul>
             ) : null}
             {!guest && entry.staff ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="history-staff">{staffText(entry.staff, copy)}</p> : null}

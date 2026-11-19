@@ -87,7 +87,8 @@
       "shareToPhone": "Share to phone",
       "print": "Print",
       "showCodeAtCheckout": "Show this code at checkout",
-      "newCodeFromReturn": "New voucher {code} · {amount} · valid 90 days"
+      "newCodeFromReturn": "New voucher {code} · {amount} · valid 90 days",
+      "noExpiry": "No expiry"
     },
     "packages": {
       "sessionsLeft": "{name} · {count} left",
@@ -274,12 +275,14 @@
         "stockAdjusted": "Stock changed",
         "roomCharge": "Charged to room {room}",
         "takenBack": "Taken back",
-        "published": "New price for future sales",
+        "published": "Changed for future sales",
         "updated": "Updated"
       },
       "showStaff": "Staff view",
       "close": "Close",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part} changed",
       "on": "On",
       "off": "Off",
       "items": "{count, plural, one {# item} other {# items}}",

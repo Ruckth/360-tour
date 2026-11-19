@@ -2,7 +2,7 @@ import type { api } from "convex/_generated/api";
 import { editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionReturnType } from "convex/server";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type ChangeValue, type EditReason, type FieldChange, type GuestFact, type GuestFactKey, type HistoryEntry, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
+import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type ChangeValue, type EditReason, type FieldChange, type GuestFact, type GuestFactKey, type HistoryEntry, type PartValue, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
 import type { TargetApproval } from "./TargetApproval";
 
 /**
@@ -58,12 +58,56 @@ function flatFields(fields: StoredFields | undefined) {
   return flat;
 }
 
+type StoredPart = Record<string, unknown>;
+const isPartList = (value: unknown): value is StoredPart[] =>
+  Array.isArray(value) && value.some((item) => item !== null && typeof item === "object");
+const text = (value: unknown) => (typeof value === "string" && value ? value : null);
+const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+/** "hotStone60" → "Hot stone60": a part's key as words, when its writer stored no label. */
+const words = (key: string) => {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+const partKey = (item: StoredPart, index: number) => text(item.contentKey) ?? text(item.key) ?? `#${index + 1}`;
+
+function partValue(item: StoredPart, index: number): PartValue {
+  const key = partKey(item, index);
+  return {
+    part: maskVoucherCodes(text(item.label) ?? text(item.name) ?? (key.startsWith("#") ? key : words(key))),
+    count: number(item.units),
+    amount: number(item.faceValue) ?? number(item.amount),
+    sessions: item.kind === "session" || item.kind === "sessions",
+  };
+}
+
+/**
+ * A list of parts (a package's contents), matched by content key: one change per part that differs.
+ * A part removed and one added in the same edit read as a substitution, in their recorded order.
+ */
+function partChanges(field: string, before: unknown, after: unknown): FieldChange[] {
+  const list = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is StoredPart => item !== null && typeof item === "object") : []);
+  const keyed = (items: StoredPart[]) => new Map(items.map((item, index) => [partKey(item, index), { item, value: partValue(item, index) }]));
+  const was = keyed(list(before));
+  const now = keyed(list(after));
+  const changes: FieldChange[] = [];
+  const removed = [...was].filter(([key]) => !now.has(key)).map(([, part]) => part.value);
+  const added: PartValue[] = [];
+  for (const [key, part] of now) {
+    const old = was.get(key);
+    if (!old) added.push(part.value);
+    else if (JSON.stringify(old.item) !== JSON.stringify(part.item)) changes.push({ field, before: old.value, after: part.value });
+  }
+  for (let i = 0; i < Math.max(removed.length, added.length); i++) changes.push({ field, before: removed[i], after: added[i] });
+  return changes;
+}
+
 /** Each field an edit changed, before → after, in the order the edit recorded them; unchanged fields are left out. */
 export function fieldChanges(before: StoredFields | undefined, after: StoredFields | undefined): FieldChange[] {
   const was = flatFields(before);
   const now = flatFields(after);
   const fields = [...new Set([...now.keys(), ...was.keys()])];
   return fields.flatMap((field) => {
+    if (isPartList(was.get(field)) || isPartList(now.get(field))) return partChanges(field, was.get(field), now.get(field));
     const change = { field, before: changeValue(was.get(field)), after: changeValue(now.get(field)) };
     return JSON.stringify(change.before) === JSON.stringify(change.after) ? [] : [change];
   });

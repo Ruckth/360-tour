@@ -6,6 +6,8 @@ import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, type ApprovalQueueRow } from "@/components/checkout/backend";
 import { CheckoutPreview, previewBackend } from "@/components/checkout/CheckoutPreview";
 import { CommerceMessages } from "@/components/checkout/commerce-messages";
+import { historyEntry } from "@/components/checkout/commerce-readers";
+import EditHistory from "@/components/checkout/EditHistory";
 import { previewQueue } from "@/components/checkout/design/commerce-approvals";
 import { commerceReceipt } from "@/components/checkout/design/commerce-receipt";
 import { commerceDesignStates, type CommerceDesignState } from "@/components/checkout/fixture-backend";
@@ -27,6 +29,10 @@ import "@/app.css";
  *   queue=filtered    only the Approvals button, for a manager whose first page holds only their own
  *                     requests: the first page is empty with more to come, the next holds one discount
  *   display=order     the paired customer display on a room order, with <typed> appended to the extra
+ *   unlimited=1       the issuance receipt's gift voucher never expires: getOrder sends it in
+ *                     `unlimitedIssuedBenefits` with a null date (D20)
+ *   history=publish   staff History for a package, from the backend's response for a five → six
+ *                     session publish, a same-size substitution and the price-only control
  */
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
@@ -34,6 +40,37 @@ const requested = params.get("commerce");
 const commerce = commerceDesignStates.find((key) => key === requested) as CommerceDesignState | undefined;
 const typed = params.get("typed");
 if (typed) commerceReceipt.lines = commerceReceipt.lines.map((line) => ({ ...line, name: `${line.name} ${typed}` }));
+
+if (params.get("unlimited") === "1" && commerceReceipt.commerce) {
+  const sold = commerceReceipt.commerce.issuedBenefits.filter((benefit) => benefit.editHistory.targetType === "voucher" && benefit.contentKey === "voucher");
+  commerceReceipt.commerce = {
+    ...commerceReceipt.commerce,
+    issuedBenefits: commerceReceipt.commerce.issuedBenefits.filter((benefit) => !sold.includes(benefit)),
+    unlimitedIssuedBenefits: sold.map((benefit) => ({ ...benefit, issuedExpiresAt: null })) as never,
+  };
+}
+
+/** commerce/history.staffPage rows, as the isolated backend returned them to the audit (r3). */
+const staff = { actorName: "Ploy", reason: "other", reasonText: "Future sales" };
+const session = (units: number, label?: string) => ({ contentKey: "massage", kind: "session", serviceIds: ["svc1"], units, ...(label ? { label } : {}) });
+const publishRows = [
+  { entryId: "qty", at: Date.UTC(2026, 10, 19, 0), fact: { key: "published" }, balance: null, before: { contents: [session(5)] }, after: { contents: [session(6)] }, staff },
+  { entryId: "swap", at: Date.UTC(2026, 10, 18, 23), fact: { key: "published" }, balance: null, before: { contents: [session(5, "Massage 60")] }, after: { contents: [session(5, "Hot stone 60")] }, staff },
+  { entryId: "price", at: Date.UTC(2026, 10, 18, 22), fact: { key: "published" }, balance: null, before: { price: 100000 }, after: { price: 120000 }, staff },
+].map((row) => historyEntry(row as unknown as Parameters<typeof historyEntry>[0]));
+
+function PublishHistory() {
+  const base = previewBackend("empty", "live");
+  const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: publishRows, status: "Exhausted" as const, loadMore: () => {} }) } };
+  return (
+    <CommerceMessages messages={commerceEn}>
+      <CheckoutBackendProvider backend={backend}>
+        <div className="h-dvh bg-background" />
+        <EditHistory target={{ targetType: "package", targetId: "fxpkggold" as never }} title="Gold Wellness" onClose={() => {}} />
+      </CheckoutBackendProvider>
+    </CommerceMessages>
+  );
+}
 
 const waiting = previewQueue.filter((row) => row.kind === "discount");
 /** The server's pages for a promoted manager: their own 20 newer requests filter to nothing. */
@@ -72,6 +109,7 @@ const roomOrder = {
 } as const;
 
 const tree = params.get("queue") === "filtered" ? <FilteredQueue />
+  : params.get("history") === "publish" ? <PublishHistory />
   : params.get("display") === "order" ? (
     <NextIntlClientProvider locale="en" messages={displayEn} timeZone="Asia/Bangkok"><Screen state={roomOrder as never} /></NextIntlClientProvider>
   ) : <CheckoutPreview initial={{ commerce, receipt: params.get("receipt") === "redemption" ? "redemption" : params.get("receipt") === "1" }} />;

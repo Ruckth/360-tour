@@ -140,6 +140,42 @@ for (const size of WIDTHS) {
       if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/approvals-filtered-${size.name}.png` });
     });
 
+    // Audit r3 (astra and sol) blocker 1: a gift voucher with no expiry (D20) reads like any other.
+    test("a voucher with no expiry shows its mask and opens its own History in two taps", async ({ page }) => {
+      await open(page, "commerce=dark&receipt=1&unlimited=1");
+      const preview = page.locator("summary", { hasText: "Receipt preview" });
+      if (await preview.isVisible()) await preview.click();
+      const row = page.getByLabel("Receipt", { exact: true }).locator('[data-receipt-kind="voucher"]');
+      await expect(row.locator("[data-voucher-mask]")).toHaveText("GV-••••-Q9XD");
+      await expect(row).toContainText("No expiry");
+      await expect(row).not.toContainText("Valid until");
+      await page.getByRole("button", { name: "Edit · History: Gift voucher", exact: true }).click();
+      const sheet = page.getByTestId("edit-history");
+      await expect(sheet.getByText("Issued ฿1,000")).toBeVisible();
+      await expect(sheet.getByText("Nothing recorded yet")).toHaveCount(0);
+      expect.soft(await overflowX(page), "history sideways scroll").toBeLessThanOrEqual(0);
+      if (size.name === "820-keyboard") await sheet.getByRole("button", { name: "Show guest" }).focus();
+      if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/unlimited-history-${size.name}.png` });
+      await sheet.getByRole("button", { name: "Show guest" }).click();
+      await expect(sheet.getByRole("heading", { name: "Your history" })).toBeVisible();
+      await expect(sheet.getByText("Issued ฿1,000")).toBeVisible();
+      expect(await page.locator("body").innerText()).not.toMatch(FULL_CODE);
+    });
+
+    // Audit r3 (astra and sol) blocker 2: a contents edit keeps its before → after and is not a new price.
+    test("staff History shows a package's quantity change and substitution beside the price-only control", async ({ page }) => {
+      await open(page, "history=publish");
+      const sheet = page.getByTestId("edit-history");
+      const changes = sheet.getByTestId("history-changes");
+      await expect(changes).toHaveText(["Massage: 5 → 6 sessions", "Contents: Massage 60 → Hot stone 60", "Price: ฿1,000 → ฿1,200"]);
+      await expect(sheet.getByText("Changed for future sales")).toHaveCount(3);
+      await expect(sheet).not.toContainText("New price");
+      expect.soft(await overflowX(page), "history sideways scroll").toBeLessThanOrEqual(0);
+      if (size.touch) expect.soft(await smallTargets(page), "history targets under 44 × 44 px").toEqual([]);
+      if (size.name === "820-keyboard") await sheet.getByRole("button", { name: "Show guest" }).focus();
+      if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/history-publish-${size.name}.png` });
+    });
+
     // Audit r1 finding 2: shown to the guest, nothing staff-only on the screen behind is legible.
     test("Show guest covers every staff name behind the sheet", async ({ page }) => {
       await open(page, "commerce=dark&receipt=1");

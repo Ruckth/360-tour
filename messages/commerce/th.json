@@ -87,7 +87,8 @@
       "shareToPhone": "แชร์ไปที่มือถือ",
       "print": "พิมพ์",
       "showCodeAtCheckout": "แสดงรหัสนี้ที่เคาน์เตอร์",
-      "newCodeFromReturn": "บัตรกำนัลใหม่ {code} · {amount} · ใช้ได้ 90 วัน"
+      "newCodeFromReturn": "บัตรกำนัลใหม่ {code} · {amount} · ใช้ได้ 90 วัน",
+      "noExpiry": "ไม่มีวันหมดอายุ"
     },
     "packages": {
       "sessionsLeft": "{name} · เหลือ {count}",
@@ -274,12 +275,14 @@
         "stockAdjusted": "ปรับสต็อก",
         "roomCharge": "ลงบิลห้อง {room}",
         "takenBack": "รับคืนแล้ว",
-        "published": "ราคาใหม่สำหรับการขายต่อไป",
+        "published": "แก้ไขสำหรับการขายต่อไป",
         "updated": "มีการแก้ไข"
       },
       "showStaff": "มุมมองพนักงาน",
       "close": "ปิด",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part} มีการเปลี่ยนแปลง",
       "on": "เปิด",
       "off": "ปิด",
       "items": "{count, plural, other {# รายการ}}",

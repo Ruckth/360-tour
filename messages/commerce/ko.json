@@ -87,7 +87,8 @@
       "shareToPhone": "휴대폰으로 공유",
       "print": "인쇄",
       "showCodeAtCheckout": "결제 시 이 코드를 보여주세요",
-      "newCodeFromReturn": "새 상품권 {code} · {amount} · 90일간 유효"
+      "newCodeFromReturn": "새 상품권 {code} · {amount} · 90일간 유효",
+      "noExpiry": "유효기간 없음"
     },
     "packages": {
       "sessionsLeft": "{name} · {count}회 남음",
@@ -274,12 +275,14 @@
         "stockAdjusted": "재고 변경",
         "roomCharge": "{room}호 객실로 청구",
         "takenBack": "회수",
-        "published": "향후 판매 새 가격",
+        "published": "향후 판매용으로 변경",
         "updated": "변경됨"
       },
       "showStaff": "직원 화면",
       "close": "닫기",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part} 변경됨",
       "on": "켜짐",
       "off": "꺼짐",
       "items": "{count, plural, other {#개}}",

@@ -243,13 +243,15 @@ type Satang = number;
 type CommerceLine = OrderView["lines"][number] & { goodwillDiscount?: Satang };
 /** A voucher spend on the receipt. It's never cash, and never counted as money received. */
 export type VoucherTender = { _id: string; amount: Satang; voucherId: Id<"vouchers">; codeMask?: string };
-/** A session grant or voucher issued by a row, with its own Edit · History target. */
-export type IssuedBenefit = { lineId: Id<"orderLines">; contentKey: string; issuedExpiresAt: number; codeMask?: string; editHistory: AdjustTarget };
+/** A session grant or voucher issued by a row, with its own Edit · History target. null: it never expires (D20). */
+export type IssuedBenefit = { lineId: Id<"orderLines">; contentKey: string; issuedExpiresAt: number | null; codeMask?: string; editHistory: AdjustTarget };
 export type ReceiptCommerceFields = {
   voucherPayments?: VoucherTender[];
   commerce?: {
     returnedAmountSatang: Satang;
+    /** Benefits with an end date. Those that never expire come apart, so a reader from before D20 never sees a null date. */
     issuedBenefits: IssuedBenefit[];
+    unlimitedIssuedBenefits?: IssuedBenefit[];
     handovers?: { _id: Id<"handovers">; lineId: Id<"orderLines">; editHistory: AdjustTarget }[];
     editHistory: AdjustTarget;
   };
@@ -298,7 +300,7 @@ export function receiptCommerce(view: ReceiptView): ReceiptCommerce | null {
   const lines = view.lines as CommerceLine[];
   const voucherTenders = view.voucherPayments ?? [];
   if (!view.commerce && !voucherTenders.length && !lines.some(isCommerceLine)) return null;
-  const benefits = view.commerce?.issuedBenefits ?? [];
+  const benefits = [...view.commerce?.issuedBenefits ?? [], ...view.commerce?.unlimitedIssuedBenefits ?? []];
   const handovers = view.commerce?.handovers ?? [];
   const rows = new Map<string, ReceiptRowExtras>();
   for (const line of lines) {

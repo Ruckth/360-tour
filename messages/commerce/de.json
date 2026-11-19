@@ -87,7 +87,8 @@
       "shareToPhone": "Aufs Handy senden",
       "print": "Drucken",
       "showCodeAtCheckout": "Diesen Code an der Kasse vorzeigen",
-      "newCodeFromReturn": "Neuer Gutschein {code} · {amount} · 90 Tage gültig"
+      "newCodeFromReturn": "Neuer Gutschein {code} · {amount} · 90 Tage gültig",
+      "noExpiry": "Ohne Ablaufdatum"
     },
     "packages": {
       "sessionsLeft": "{name} · noch {count}",
@@ -274,12 +275,14 @@
         "stockAdjusted": "Bestand geändert",
         "roomCharge": "Auf Zimmer {room} gebucht",
         "takenBack": "Zurückgenommen",
-        "published": "Neuer Preis für künftige Verkäufe",
+        "published": "Für künftige Verkäufe geändert",
         "updated": "Aktualisiert"
       },
       "showStaff": "Personalansicht",
       "close": "Schließen",
       "change": "{label}: {before} → {after}",
+      "partChange": "{part}: {change}",
+      "partChanged": "{part} geändert",
       "on": "An",
       "off": "Aus",
       "items": "{count, plural, one {# Eintrag} other {# Einträge}}",

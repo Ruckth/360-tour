@@ -1,6 +1,6 @@
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
-import type { Id, TableNames } from '../_generated/dataModel';
+import type { Doc, Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { canReadCheckoutOrder, staffQuery, type StaffActor } from '../auth/model';
 import { readBudget } from '../lib/readBudget';
@@ -55,7 +55,17 @@ export const staffPage = staffQuery({
   handler: async (ctx, { target, paginationOpts }) => {
     if (!await canReadHistory(ctx, ctx.staff, target)) return nothing;
     const result = await listCommerceHistory(ctx, target, paginationOpts);
-    return { ...result, page: result.page.map(staffHistoryEntry) };
+    // A voucher or grant edit keeps its changed fields on the adjustment it links to: ≤ 20 gets a page.
+    const linked = new Map<Id<'commerceAdjustments'>, Doc<'commerceAdjustments'> | null>();
+    for (const row of result.page) {
+      if ((target.targetType === 'voucher' || target.targetType === 'grant') && 'adjustmentId' in row && row.adjustmentId && !linked.has(row.adjustmentId)) {
+        linked.set(row.adjustmentId, await get(ctx, row.adjustmentId));
+      }
+    }
+    return {
+      ...result,
+      page: result.page.map(row => staffHistoryEntry(row, 'adjustmentId' in row && row.adjustmentId ? linked.get(row.adjustmentId) ?? null : null)),
+    };
   },
 });
 

@@ -87,7 +87,8 @@
       "shareToPhone": "分享到手机",
       "print": "打印",
       "showCodeAtCheckout": "结账时请出示此券码",
-      "newCodeFromReturn": "新礼券 {code} · {amount} · 90 天有效"
+      "newCodeFromReturn": "新礼券 {code} · {amount} · 90 天有效",
+      "noExpiry": "永久有效"
     },
     "packages": {
       "sessionsLeft": "{name} · 剩 {count} 次",
@@ -274,12 +275,14 @@
         "stockAdjusted": "库存已变更",
         "roomCharge": "挂账至 {room} 号房",
         "takenBack": "已收回",
-        "published": "后续销售新价格",
+        "published": "已为后续销售更改",
         "updated": "已更新"
       },
       "showStaff": "员工视图",
       "close": "关闭",
       "change": "{label}：{before} → {after}",
+      "partChange": "{part}：{change}",
+      "partChanged": "{part}已更改",
       "on": "开",
       "off": "关",
       "items": "{count, plural, other {# 项}}",
