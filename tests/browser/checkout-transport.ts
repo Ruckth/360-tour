@@ -30,6 +30,7 @@ export async function createFixtureBackend(
   options: Parameters<typeof createServerBackend>[0] = {},
 ) {
   const session = await post<string>({ kind: "create", options });
+  let role = options.staff?.role ?? "owner";
   const call = <T>(method: string, args: unknown[]) =>
     post<T>({ kind: "call", session, method, args });
   type Q = FunctionReference<"query">;
@@ -90,7 +91,7 @@ export async function createFixtureBackend(
   }
   function usePage<R extends Q>(
     ref: R,
-    args: Omit<FunctionArgs<R>, "paginationOpts">,
+    args: Omit<FunctionArgs<R>, "paginationOpts"> | "skip",
   ) {
     const key = JSON.stringify([getFunctionName(ref), args]);
     const [state, setState] = useState({
@@ -99,7 +100,7 @@ export async function createFixtureBackend(
       older: [] as unknown[],
     });
     const active = state.key === key ? state : { key, cursor: null, older: [] };
-    const value = useRead(ref, {
+    const value = useRead(ref, args === "skip" ? "skip" : {
       ...args,
       paginationOpts: { numItems: 20, cursor: active.cursor },
     } as FunctionArgs<R>) as
@@ -108,7 +109,9 @@ export async function createFixtureBackend(
     return {
       results: [...active.older, ...(value?.page ?? [])],
       status:
-        value === undefined
+        args === "skip"
+          ? ("Exhausted" as const)
+          : value === undefined
           ? active.older.length
             ? ("LoadingMore" as const)
             : ("LoadingFirstPage" as const)
@@ -189,7 +192,8 @@ export async function createFixtureBackend(
     useOrderApprovals: (id) =>
       useRead(api.pos.staffApprovals.forOrder, id ? { orderId: id } : "skip"),
     usePendingApprovals: () =>
-      usePage(api.pos.staffApprovals.pendingPage, {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
+      // Only approvers read the queue (a cashier is refused), as the live backend skips it.
+      usePage(api.pos.staffApprovals.pendingPage, role === "cashier" ? "skip" : {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
     useApprovalDetail: (requestId) =>
       useRead(api.pos.staffApprovals.detail, requestId ? { requestId } : "skip"),
     useFindOrder: (n) =>
@@ -268,6 +272,7 @@ export async function createFixtureBackend(
   return Object.assign(backend, {
     async setStaff(next: Parameters<ServerBackend["setStaff"]>[0]) {
       await call("setStaff", [next]);
+      role = next.role;
       await refresh();
     },
     seedApproval: async (...args: Parameters<ServerBackend["seedApproval"]>) => {

@@ -166,7 +166,7 @@ export async function createFixtureBackend(options: Options = {}) {
   }
   function usePage<R extends Q>(
     ref: R,
-    args: Omit<FunctionArgs<R>, "paginationOpts">,
+    args: Omit<FunctionArgs<R>, "paginationOpts"> | "skip",
   ) {
     const key = JSON.stringify([getFunctionName(ref), args]);
     const [state, setState] = useState({
@@ -176,7 +176,7 @@ export async function createFixtureBackend(options: Options = {}) {
       older: [] as unknown[],
     });
     const active = state.key === key ? state : { key, cursor: null, numItems: 20, older: [] };
-    const value = useRead(ref, {
+    const value = useRead(ref, args === "skip" ? "skip" : {
       ...args,
       paginationOpts: { numItems: active.numItems, cursor: active.cursor },
     } as FunctionArgs<R>) as
@@ -185,7 +185,9 @@ export async function createFixtureBackend(options: Options = {}) {
     return {
       results: [...active.older, ...(value?.page ?? [])],
       status:
-        value === undefined
+        args === "skip"
+          ? ("Exhausted" as const)
+          : value === undefined
           ? active.older.length
             ? ("LoadingMore" as const)
             : ("LoadingFirstPage" as const)
@@ -285,7 +287,8 @@ export async function createFixtureBackend(options: Options = {}) {
     useOrderApprovals: (id) =>
       useRead(api.pos.staffApprovals.forOrder, id ? { orderId: id } : "skip"),
     usePendingApprovals: () =>
-      usePage(api.pos.staffApprovals.pendingPage, {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
+      // Only approvers read the queue (a cashier is refused), as the live backend skips it.
+      usePage(api.pos.staffApprovals.pendingPage, staff.role === "cashier" ? "skip" : {}) as ReturnType<CheckoutBackend["usePendingApprovals"]>,
     useApprovalDetail: (requestId) =>
       useRead(api.pos.staffApprovals.detail, requestId ? { requestId } : "skip"),
     useFindOrder: (n) =>
