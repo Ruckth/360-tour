@@ -695,7 +695,7 @@ const off: CommerceAccess = {
   settingsRevision: 0,
   switches: { products: "off", vouchers: "off", sessionPackages: "off", mixedPackages: "off" },
   canSell: { products: false, vouchers: false, sessionPackages: false, mixedPackages: false },
-  paymentsMode: "legacy",
+  paymentsMode: "direct",
   paused: false,
   tillReady: true,
 };

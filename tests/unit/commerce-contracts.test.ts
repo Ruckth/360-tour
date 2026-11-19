@@ -131,7 +131,7 @@ describe("commerce fixtures", () => {
     const view = await read(createFixtureBackend("empty", "dark"));
     expect(view.access.switches).toEqual({ products: "off", vouchers: "off", sessionPackages: "off", mixedPackages: "off" });
     expect(Object.values(view.access.canSell)).toEqual([false, false, false, false]);
-    expect(view.access.paymentsMode).toBe("legacy");
+    expect(view.access.paymentsMode).toBe("direct");
     // Products, both package kinds and vouchers all have something to read.
     expect(view.shop.map((tile) => tile.name)).toEqual(["Spa robe", "Lemongrass oil", "Beach tote"]);
     expect(view.product?.variants.find((variant) => variant.label === "Blue / M")).toMatchObject({ onHand: 0, elsewhere: [{ branchName: "Beach spa", onHand: 3 }] });

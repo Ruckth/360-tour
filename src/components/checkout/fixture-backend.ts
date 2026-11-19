@@ -159,7 +159,7 @@ const access = (switches: SaleSwitches, role: "manager" | "cashier"): CommerceAc
     sessionPackages: switches.sessionPackages === "everyone" || (switches.sessionPackages === "managers" && role === "manager"),
     mixedPackages: switches.mixedPackages === "everyone" || (switches.mixedPackages === "managers" && role === "manager"),
   },
-  paymentsMode: switches === OFF ? "legacy" : "attempts",
+  paymentsMode: switches === OFF ? "direct" : "attempts",
   paused: false,
   tillReady: true,
 });
@@ -296,7 +296,7 @@ export function createCommerceFixture(state: CommerceDesignState): CommerceBacke
     ...COMMERCE_OFF,
     useAccess: () => access(scenario.switches, scenario.role),
     useCheckoutRules: () => ({
-      revision: 3, switches: scenario.switches, paymentsMode: scenario.switches === OFF ? "legacy" : "attempts", canEdit: scenario.role === "manager",
+      revision: 3, switches: scenario.switches, paymentsMode: scenario.switches === OFF ? "direct" : "attempts", canEdit: scenario.role === "manager",
       terms: {
         preserveExpiredPackageValue: true, unusedFullRefundDays: 7, refundDueDays: { cashOrTransfer: 15, card: 45 }, packageValidityDays: 180, voucherValidityDays: 365,
         allowSessionTransfer: true, packageSplit: "voucherFaceValue", packageVatTiming: "atSale", pointsVatTreatment: "discount", pointsExpiryMonths: 12,
