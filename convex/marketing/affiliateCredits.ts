@@ -2,15 +2,39 @@ import type { Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { adminEmails } from '../lib/adminEmails';
+import { readBudget, ReadBudgetExceeded } from '../lib/readBudget';
 import { affiliateSnapshot } from '../shared/affiliateTypes';
 import { resortTodayIso } from '../shared/time';
-import { orderPaymentRecord } from '../pos/model';
-import { MAX_ORDER_REFUNDS, bookingBalance, roundMoney } from '../shared/orderMath';
+import { MAX_ORDER_REFUNDS, bookingBalance, lineNet, roundMoney } from '../shared/orderMath';
+import { excludesAffiliateCredit, projectTender } from '../shared/tenderProjection';
+import { isCouponEligibleLine } from '../shared/posCoupons';
 import { ATTRIBUTION_WINDOW_MS, MAX_SESSIONS_READ, isVisitorKey, type MarketingCapture } from '../shared/marketingAttribution';
 
 export type AffiliateSnapshot = Infer<typeof affiliateSnapshot>;
 
 const LIMIT = 500;
+
+type CreditCtx = QueryCtx | MutationCtx;
+
+async function creditSource<T extends 'bookings' | 'orders'>(ctx: CreditCtx, id: Id<T>) {
+  const budget = readBudget(ctx);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const row = await ctx.db.get(id);
+  if (row && !budget.document(row)) throw new ReadBudgetExceeded();
+  return row;
+}
+
+async function creditRows<T>(ctx: CreditCtx, query: AsyncIterable<T>, limit: number): Promise<T[]> {
+  const budget = readBudget(ctx);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const rows: T[] = [];
+  for await (const row of query) {
+    if (!budget.document(row)) throw new ReadBudgetExceeded();
+    if (rows.length === limit) throw new Error("Sale history exceeds the credit review limit");
+    rows.push(row);
+  }
+  return rows;
+}
 
 /** Frozen once, on booking creation / order settlement. Never reconstruct historical candidates. */
 export async function captureAffiliateSnapshot(
@@ -133,24 +157,20 @@ export async function captureAffiliateSnapshot(
   };
 }
 
-export async function creditMoney(
-  ctx: QueryCtx | MutationCtx,
-  credit: Pick<Doc<"affiliateCredits">, "bookingId" | "orderId">,
-) {
-  if (credit.bookingId) {
-    const row = await ctx.db.get(credit.bookingId);
-    if (!row) return { eligible: false, net: 0 };
-    const money = bookingBalance(row);
-    return {
-      eligible:
-        row.currency === "THB" &&
-        row.status !== "cancelled" &&
-        row.paymentStatus === "paid" &&
-        money.paid > 0,
-      net: row.currency === "THB" ? Math.max(money.paid, 0) : 0,
-    };
-  }
-  const row = credit.orderId ? await ctx.db.get(credit.orderId) : null;
+function bookingCreditMoney(row: Doc<'bookings'> | null) {
+  if (!row) return { eligible: false, net: 0 };
+  const money = bookingBalance(row);
+  return {
+    eligible:
+      row.currency === "THB" &&
+      row.status !== "cancelled" &&
+      row.paymentStatus === "paid" &&
+      money.paid > 0,
+    net: row.currency === "THB" ? Math.max(money.paid, 0) : 0,
+  };
+}
+
+async function orderCreditMoney(ctx: CreditCtx, row: Doc<'orders'> | null) {
   if (
     !row ||
     row.currency !== "THB" ||
@@ -158,37 +178,58 @@ export async function creditMoney(
     row.voidUnreceived
   )
     return { eligible: false, net: 0 };
-  const [tenders, stays, refunds, posRefunds] = await Promise.all([
-    ctx.db
-      .query("orderPayments")
-      .withIndex("by_orderId", (q) => q.eq("orderId", row._id))
-      .take(LIMIT + 1),
-    ctx.db
-      .query("bookingPayments")
-      .withIndex("by_orderId", (q) => q.eq("orderId", row._id))
-      .take(LIMIT + 1),
-    ctx.db
-      .query("appointmentRefunds")
-      .withIndex("by_orderId", (q) => q.eq("orderId", row._id))
-      .take(LIMIT + 1),
-    ctx.db.query("orderRefunds").withIndex("by_orderId", q => q.eq("orderId", row._id)).take(MAX_ORDER_REFUNDS + 1),
+  const [tenders, stays, refunds, posRefunds, lines] = await Promise.all([
+    creditRows(ctx, ctx.db.query("orderPayments").withIndex("by_orderId", q => q.eq("orderId", row._id)), LIMIT),
+    creditRows(ctx, ctx.db.query("bookingPayments").withIndex("by_orderId", q => q.eq("orderId", row._id)), LIMIT),
+    creditRows(ctx, ctx.db.query("appointmentRefunds").withIndex("by_orderId", q => q.eq("orderId", row._id)), LIMIT),
+    creditRows(ctx, ctx.db.query("orderRefunds").withIndex("by_orderId", q => q.eq("orderId", row._id)), MAX_ORDER_REFUNDS),
+    row.vatVersion === 2
+      ? creditRows(ctx, ctx.db.query("orderLines").withIndex("by_orderId", q => q.eq("orderId", row._id)), 100)
+      : [],
   ]);
-  if ([tenders, stays, refunds].some((r) => r.length > LIMIT) || posRefunds.length > MAX_ORDER_REFUNDS)
-    throw new Error("Sale history exceeds the credit review limit");
-  const gross = roundMoney(
-    orderPaymentRecord(row, tenders).tenders.reduce((s, p) => s + p.amount, 0) -
-      stays
-        .filter((p) => p.status === "recorded" && p.origin === "pos")
-        .reduce((s, p) => s + p.amount, 0),
-  );
-  const refunded = refunds.reduce((s, r) => s + r.amount, 0) + posRefunds.reduce((s, r) => s + r.amount, 0);
+  const saleDate = row.paymentEffectiveAt ?? row.paidAt;
+  const excluded = lines.filter(line => excludesAffiliateCredit(line.kind));
+  const excludedIds = new Set(excluded.map(line => line._id));
+  const excludedExternal = excluded.reduce((total, line) => {
+    const external = line.saleSnapshot?.tenderCells.find(cell => cell.kind === 'external');
+    return total + (external?.amount ?? (line.saleSnapshot ? 0 : lineNet(line)));
+  }, 0);
+  // Excluded POS rows' external mirrors supply their share of the payout rollup.
+  const excludedPayouts = posRefunds.reduce((total, refund) =>
+    refund.returnId && refund.method !== 'voucher' && excludedIds.has(refund.lineId)
+      ? total + refund.amount
+      : total, 0);
+  const projection = projectTender({
+    payments: (row.amendedTenders ?? tenders).map(p => ({ ...p, date: saleDate })),
+    stayPayments: stays.filter(p => p.status === 'recorded' && p.origin === 'pos').map(p => ({ ...p, date: saleDate })),
+    refunds: [
+      ...refunds.map(refund => ({ ...refund, date: refund.effectiveAt })),
+      ...posRefunds.filter(refund => !excludedIds.has(refund.lineId)).map(refund => ({ ...refund, date: refund.businessDate })),
+    ],
+    recordedPayoutTotal: Math.max((row.returnedTotal ?? 0) - excludedPayouts, 0),
+  });
+  const gross = roundMoney(projection.collected - excludedExternal);
+  const { refunded } = projection;
   const net = Math.max(roundMoney(gross - refunded), 0);
   // Zero-cash coupon service orders remain reporting activity; full refunds do not.
+  const voucherApplied = tenders.some(tender => tender.method === 'voucher') ||
+    lines.some(line => line.saleSnapshot?.goodwillDiscounts.some(discount => discount.amount > 0));
+  const couponDiscount = row.vatVersion === 2
+    ? lines.reduce((total, line) => total + (isCouponEligibleLine(line) ? line.couponDiscount ?? 0 : 0), 0)
+    : row.promotion?.discount ?? 0;
   const eligible =
     row.status === "paid" &&
     (net > 0 ||
-      (gross === 0 && refunded === 0 && (row.promotion?.discount ?? 0) > 0));
+      (gross === 0 && refunded === 0 && !voucherApplied && couponDiscount > 0));
   return { eligible, net };
+}
+
+export async function creditMoney(
+  ctx: CreditCtx,
+  credit: Pick<Doc<"affiliateCredits">, "bookingId" | "orderId">,
+) {
+  if (credit.bookingId) return bookingCreditMoney(await creditSource(ctx, credit.bookingId));
+  return orderCreditMoney(ctx, credit.orderId ? await creditSource(ctx, credit.orderId) : null);
 }
 
 export async function appendCreditChange(
@@ -218,18 +259,19 @@ export async function syncAffiliateCredit(
   actor = "system:affiliate",
   ineligibilityReason?: "payment_unlinked",
 ) {
-  const bookingId = "bookingId" in source ? source.bookingId : undefined;
-  const orderId = "orderId" in source ? source.orderId : undefined;
-  const sale = await ctx.db.get((bookingId ?? orderId)!);
+  const booking = "bookingId" in source ? await creditSource(ctx, source.bookingId) : null;
+  const order = "orderId" in source ? await creditSource(ctx, source.orderId) : null;
+  const sale = booking ?? order;
   const snapshot = sale?.affiliateSnapshot;
   if (!snapshot?.candidates.length) return null;
-  const sourceKey = `${bookingId ? "booking" : "order"}:${bookingId ?? orderId}`;
+  const sourceKey = "bookingId" in source ? `booking:${source.bookingId}` : `order:${source.orderId}`;
   const old = await ctx.db
     .query("affiliateCredits")
     .withIndex("by_sourceKey", (q) => q.eq("sourceKey", sourceKey))
     .unique();
-  const money = await creditMoney(ctx, { bookingId, orderId });
+  const money = booking ? bookingCreditMoney(booking) : await orderCreditMoney(ctx, order);
   if (!old) {
+    if (order?.vatVersion === 2 && !money.eligible && money.net === 0) return null;
     const id = await ctx.db.insert("affiliateCredits", {
       sourceKey,
       ...source,
@@ -251,7 +293,7 @@ export async function syncAffiliateCredit(
   const unlinked =
     ineligibilityReason === "payment_unlinked" &&
     !!sale &&
-    (bookingId === undefined ||
+    (!booking ||
       ("paymentStatus" in sale &&
         sale.status !== "cancelled" &&
         sale.paymentStatus !== "refunded"));
