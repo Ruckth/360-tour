@@ -40,6 +40,18 @@ async function readHandovers(ctx: QueryCtx, order: Doc<'orders'>, lines: readonl
 	return [...current, ...parent.filter(row => row.successorOrderId === order._id)];
 }
 
+function handoverView(handover: Doc<'handovers'>) {
+	const { _id, kind, orderId, lineId, bookingId, variantId, unitPrice, quantity, withGuest,
+		backSellable, backDamaged, unpaid, paid, contents, status, pendingReturnId, successorOrderId,
+		successorLineId, originalMovementId, movementIds, revision } = handover;
+	return {
+		_id, kind, orderId, lineId, bookingId, variantId, unitPrice, quantity, withGuest,
+		backSellable, backDamaged, unpaid, paid, contents, status, pendingReturnId, successorOrderId,
+		successorLineId, originalMovementId, movementIds, revision,
+		editHistory: { targetType: 'handover' as const, targetId: _id },
+	};
+}
+
 async function readDraftPackages(ctx: QueryCtx, lines: readonly Doc<'orderLines'>[]) {
 	const ids = new Set(lines.flatMap(line =>
 		line.kind === 'package' && !line.saleSnapshot && line.packageVersionId ? [line.packageVersionId] : []));
@@ -204,10 +216,7 @@ export const getOrder = staffQuery({
 			...(commerce ? {
 				commerce: {
 					returnedAmountSatang, issuedBenefits,
-					handovers: handovers.map(({ clientKey: _clientKey, ...handover }) => ({
-						...handover,
-						editHistory: { targetType: 'handover' as const, targetId: handover._id },
-					})),
+					handovers: handovers.map(handoverView),
 					editHistory: { targetType: 'order' as const, targetId: order._id },
 				},
 			} : {}),

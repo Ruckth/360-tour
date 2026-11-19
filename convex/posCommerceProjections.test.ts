@@ -15,7 +15,7 @@ import { insertFixture } from './testing/completeFixture.test-support';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-19T03:00:00Z');
 const businessDate = '2026-11-19';
-const { revision: _revision, saleSwitches: _saleSwitches, paymentsMode: _paymentsMode, cutover: _cutover, ...terms } = resolveCommerceSettings(null);
+const { revision, saleSwitches, paymentsMode, cutover, ...terms } = resolveCommerceSettings(null);
 const rawCode = 'GOLD-X17L-V54Z';
 const codeMask = '•••• V54Z';
 
@@ -65,7 +65,7 @@ function allocation(paidShare: number, vatBase: number, returnedAmount = 0) {
 
 function snapshot(label: string, paidShare: number, vatBase: number): NonNullable<Doc<'orderLines'>['saleSnapshot']> {
   return {
-    label, settingsRevision: 0, terms, ...allocation(paidShare, vatBase),
+    label, settingsRevision: revision, terms, ...allocation(paidShare, vatBase),
     chosenVariants: [], contents: [], goodwillDiscounts: [],
   };
 }
@@ -84,7 +84,7 @@ async function issueVoucher(ctx: MutationCtx, source: Doc<'vouchers'>['source'],
   const issuedExpiresAt = benefitExpiresAt(now, 'voucher', DEFAULT_COMMERCE_SETTINGS)!;
   const voucherId = await ctx.db.insert('vouchers', {
     faceValue: 50000, paidBalance: 50000, goodwillBalance: 0, issuedExpiresAt, effectiveExpiresAt: issuedExpiresAt,
-    status: 'active', branchId, source, revision: 0, settingsRevision: 0, terms,
+    status: 'active', branchId, source, revision: 0, settingsRevision: revision, terms,
   });
   const codeId = await ctx.db.insert('voucherCodes', { voucherId, code: rawCode, mask: codeMask, status: 'active' });
   await ctx.db.patch(voucherId, { activeCodeId: codeId });
@@ -112,6 +112,9 @@ it('preserves pre-commerce receipt and display VAT with absent or unrecognized V
 });
 
 it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and masked codes', async () => {
+  expect(saleSwitches).toEqual({ products: 'off', vouchers: 'off', sessionPackages: 'off', mixedPackages: 'off' });
+  expect(paymentsMode).toBe('direct');
+  expect(cutover).toBeUndefined();
   const { t, view, display } = setup();
   const { orderId, draftId, voucherExpiry, grantExpiry, handoverId } = await t.run(async ctx => {
     const { branchId, productId, variantId } = await retail(ctx);
@@ -139,7 +142,7 @@ it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and
       ownerId, orderId, lineId, contentKey: 'massage', branchId, packageVersionId,
       total: 5, used: 2, paidUnits: 5, goodwillUnits: 0, returnedUnits: 0, paidShare: 526749,
       expiresAt: grantExpiry + 86400000, issuedTerms: { expiresAt: grantExpiry, serviceIds: [], allowTransfer: true },
-      settingsRevision: 0, terms, grantServiceIds: [], revision: 1,
+      settingsRevision: revision, terms, grantServiceIds: [], revision: 1,
     });
     const { voucherId, issuedExpiresAt: voucherExpiry } = await issueVoucher(ctx, { kind: 'package', orderId, lineId, contentKey: 'gift', packageVersionId }, branchId);
     const { shares } = splitPackagePrice({ price: 690000, contents: [
