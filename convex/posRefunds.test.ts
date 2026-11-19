@@ -1,10 +1,12 @@
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { omit } from 'convex-helpers';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
+import { resolveCommerceSettings } from './commerce/model';
 import { creditMoney } from './marketing/affiliateCredits';
 import { APPROVAL_TTL_MS, type CashierRules } from './shared/staffTypes';
 
@@ -404,6 +406,57 @@ describe('POS refund staff approvals', () => {
     await s.rules({ refund: 'cashier' });
     await s.cashier.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 10000, 'cashier-return-attempt'));
     expect((await s.records(orderId))[1].createdBy).toBe('issuer|cashier');
+  });
+
+  it.each(['voucher tender', 'goodwill', 'commerce sibling'] as const)('refuses existing cash refunds on receipts with %s', async funding => {
+    const s = await setup();
+    const { orderId, lineId } = await s.sale();
+    await s.t.run(ctx => ctx.db.patch(lineId, { unitPrice: 60000 }));
+    await s.pay(orderId);
+    const args = s.args(orderId, lineId, 20000);
+    const priorRequest = funding === 'voucher tender' ? await s.request(args) : null;
+    await s.t.run(async ctx => {
+      if (funding === 'commerce sibling') {
+        await ctx.db.insert('orderLines', { orderId, kind: 'product', name: 'Robe', qty: 1,
+          unitPrice: 20000, catalogUnitPrice: 20000, currency: 'THB', createdAt: now });
+        return;
+      }
+      const branchId = await ctx.db.insert('branches', { key: 'refund' });
+      const settings = resolveCommerceSettings(null);
+      const settingsRevision = settings.revision;
+      const terms = omit(settings, ['revision', 'saleSwitches', 'paymentsMode', 'cutover']);
+      const voucherId = await ctx.db.insert('vouchers', {
+        branchId, source: { kind: 'sale', orderId, lineId }, faceValue: 50000, paidBalance: 0, goodwillBalance: 0,
+        issuedExpiresAt: now + day, effectiveExpiresAt: now + day, status: 'active', revision: 1, settingsRevision, terms,
+      });
+      if (funding === 'voucher tender') {
+        const cash = await ctx.db.query('orderPayments').withIndex('by_orderId', q => q.eq('orderId', orderId)).unique();
+        await ctx.db.patch(cash!._id, { amount: 10000 });
+        await ctx.db.insert('orderPayments', {
+          orderId, method: 'voucher', amount: 50000, voucherId, idempotencyKey: 'voucher-funded-payment',
+          createdBy: 'issuer|owner', createdAt: now,
+        });
+      } else {
+        await ctx.db.patch(lineId, { saleSnapshot: {
+          label: 'Spa', settingsRevision, terms, paidShare: 10000, vatBase: 10000,
+          goodwillDiscounts: [{ voucherId, amount: 50000 }], tenderCells: [{ kind: 'external', amount: 10000 }],
+          returnedUnits: 0, returnedAmount: 0, contents: [], chosenVariants: [],
+        } });
+      }
+    });
+    const refusal = { data: expect.objectContaining({ code: 'USE_RETURN_ITEMS', orderId }) };
+    if (priorRequest) {
+      await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: priorRequest.requestId })).rejects.toMatchObject(refusal);
+    } else {
+      await expect(s.request(args)).rejects.toMatchObject(refusal);
+    }
+    // Use another key to reach preview even when the earlier approval remains pending.
+    await expect(s.owner.mutation(api.pos.commands.refundLine.refundLine, { ...args, idempotencyKey: 'direct-commerce-refund' })).rejects.toMatchObject(refusal);
+    if (priorRequest) {
+      await s.cashier.mutation(api.pos.staffApprovals.cancel, { requestId: priorRequest.requestId });
+      await expect(s.request(args)).rejects.toMatchObject(refusal);
+    }
+    expect(await s.records(orderId)).toEqual([]);
   });
 
   it.each(['rule', 'refund', 'line', 'order', 'requester'] as const)('stales a refund request after a change to %s', async change => {

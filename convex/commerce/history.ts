@@ -1,4 +1,4 @@
-import { paginationOptsValidator } from 'convex/server';
+import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
 import type { Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
@@ -46,7 +46,7 @@ async function canReadHistory(ctx: QueryCtx, actor: StaffActor, target: Adjustme
   }
 }
 
-const nothing = { page: [] as HistoryEntryView[], isDone: true, continueCursor: '' };
+const nothing: PaginationResult<HistoryEntryView> = { page: [], isDone: true, continueCursor: '' };
 
 /** One item's History for staff, newest first, ≤ 20 rows and ≤ 160 KiB a page. */
 export const staffPage = staffQuery({

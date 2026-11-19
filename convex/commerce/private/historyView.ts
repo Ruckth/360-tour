@@ -1,5 +1,8 @@
+import { validate } from 'convex-helpers/validators';
 import type { Doc } from '../../_generated/dataModel';
 import type { CommerceHistoryRow } from './history';
+import { structuredGuestFact } from '../validators';
+import { maskVoucherCodes } from './voucherCodes';
 
 type Balances = { paid: number; goodwill: number };
 type CopyArgs = Record<string, string | number>;
@@ -15,6 +18,8 @@ export type HistoryEntryView = {
   at: number;
   fact: HistoryFact;
   balance: HistoryBalance | null;
+  before?: Doc<'commerceAdjustments'>['before'];
+  after?: Doc<'commerceAdjustments'>['after'];
   staff?: { actorName: string; reason: string | null; reasonText: string | null };
 };
 
@@ -23,9 +28,14 @@ const total = (balances: Balances) => balances.paid + balances.goodwill;
 
 /** A structured `{ key, args }` fact written by a ledger writer. Free text is never shown: it may hold notes or a full code. */
 function storedFact(value: unknown): HistoryFact | null {
-  if (typeof value !== 'object' || value === null || !('key' in value) || typeof value.key !== 'string') return null;
-  const args = 'args' in value && typeof value.args === 'object' && value.args !== null ? value.args as CopyArgs : null;
-  return args ? { key: value.key, args } : { key: value.key };
+  if (!validate(structuredGuestFact, value)) return null;
+  const args: CopyArgs = {};
+  for (const [name, arg] of Object.entries(value.args ?? {})) {
+    if (typeof arg === 'number' && Number.isFinite(arg)) args[name] = arg;
+    else if (typeof arg === 'string') args[name] = maskVoucherCodes(arg);
+    else return null;
+  }
+  return Object.keys(args).length ? { key: value.key, args } : { key: value.key };
 }
 
 function goodwillFact(before: Balances, after: Balances): HistoryFact {
@@ -76,12 +86,12 @@ const ADJUSTMENT_FACTS: Partial<Record<Doc<'commerceAdjustments'>['kind'], strin
 };
 
 function adjustmentFact(row: Doc<'commerceAdjustments'>): HistoryFact {
-  const after = row.after as Record<string, unknown>;
+  const { after } = row;
   const date = [after.expiresAt, after.effectiveExpiresAt].find(value => typeof value === 'number');
   if ((row.kind === 'extend' || row.kind === 'resume') && typeof date === 'number') {
     return { key: row.kind === 'extend' ? 'extended' : 'resumed', args: { date } };
   }
-  if (row.kind === 'rename' && typeof after.name === 'string') return { key: 'renamed', args: { name: after.name } };
+  if (row.kind === 'rename' && typeof after.name === 'string') return { key: 'renamed', args: { name: maskVoucherCodes(after.name) } };
   const key = ADJUSTMENT_FACTS[row.kind];
   return key ? { key } : UPDATED;
 }
@@ -96,7 +106,7 @@ export function guestHistoryFact(row: Doc<'voucherEntries'> | Doc<'sessionUses'>
 export function staffHistoryEntry(row: CommerceHistoryRow): HistoryEntryView {
   if ('targetType' in row) {
     return {
-      entryId: row._id, at: row.recordedAt, fact: adjustmentFact(row), balance: null,
+      entryId: row._id, at: row.recordedAt, fact: adjustmentFact(row), balance: null, before: row.before, after: row.after,
       staff: { actorName: row.actorLabel, reason: row.reasonCode ?? null, reasonText: row.reasonText ?? null },
     };
   }
@@ -104,7 +114,7 @@ export function staffHistoryEntry(row: CommerceHistoryRow): HistoryEntryView {
     return {
       entryId: row._id, at: row.createdAt, fact: guestHistoryFact(row, false),
       balance: { unit: 'voucherId' in row ? 'money' : 'sessions', before: row.before, after: row.after },
-      staff: { actorName: row.actor, reason: null, reasonText: null },
+      staff: { actorName: row.actor, reason: row.reasonCode ?? null, reasonText: row.reasonText ?? null },
     };
   }
   return {

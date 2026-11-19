@@ -29,18 +29,19 @@ function checkPageSize({ numItems }: PaginationOptions) {
 async function readPage<Table extends HistoryTable>(
   ctx: QueryCtx,
   query: Query<DataModel[Table]>,
-  { numItems, cursor }: PaginationOptions,
+  { numItems, cursor, endCursor }: PaginationOptions,
 ): Promise<PaginationResult<Doc<Table>>> {
   const budget = readBudget(ctx);
   budget.range();
   budget.assert();
   const startBytes = budget.bytes;
   const result = await query.order('desc').paginate({
-    numItems, cursor, maximumRowsRead: numItems + 1, maximumBytesRead: MAX_PAGE_BYTES,
+    numItems, cursor, endCursor, maximumRowsRead: numItems + 1, maximumBytesRead: MAX_PAGE_BYTES,
   });
   for (const row of result.page) budget.document(row);
   budget.assert();
   if (budget.bytes - startBytes > MAX_PAGE_BYTES) {
+    if (result.pageStatus === 'SplitRequired' && result.splitCursor) return { ...result, page: [] };
     throw new ConvexError({ code: 'HISTORY_PAGE_TOO_LARGE', message: 'This history page exceeds 160 KiB.' });
   }
   return result;
@@ -129,10 +130,17 @@ export async function listGuestCommerceHistory(
     grantOwner = grant.ownerId;
   }
   const cursorPrefix = `${target.targetId}:${transfer?._id ?? 'issued'}:`;
-  if (pagination.cursor !== null && !pagination.cursor.startsWith(cursorPrefix)) {
-    throw new ConvexError({ code: 'STALE_HISTORY_CURSOR', message: 'History has changed. Reopen the first page.' });
-  }
-  const options = { ...pagination, cursor: pagination.cursor?.slice(cursorPrefix.length) ?? null };
+  const unwrapCursor = (cursor: string) => {
+    if (!cursor.startsWith(cursorPrefix)) {
+      throw new ConvexError({ code: 'STALE_HISTORY_CURSOR', message: 'History has changed. Reopen the first page.' });
+    }
+    return cursor.slice(cursorPrefix.length);
+  };
+  const options = {
+    ...pagination,
+    cursor: pagination.cursor === null ? null : unwrapCursor(pagination.cursor),
+    endCursor: pagination.endCursor == null ? pagination.endCursor : unwrapCursor(pagination.endCursor),
+  };
   const result = target.targetType === 'grant'
     ? await readPage<'sessionUses'>(ctx, grantHistory(ctx, target, transfer?.createdAt), options)
     : await readPage<'voucherEntries'>(ctx, voucherHistory(ctx, target, transfer?.createdAt), options);
@@ -140,6 +148,7 @@ export async function listGuestCommerceHistory(
   const visible = transfer ? result.page.filter(row => row.createdAt > transfer.createdAt ||
     (row.createdAt === transfer.createdAt && (row._creationTime > transfer._creationTime || row._id === transfer._id))) : result.page;
   return {
+    ...result,
     page: visible.filter(row => !('beneficiaryId' in row && row.beneficiaryId && row.beneficiaryId !== grantOwner)).map(row => ({
       entryId: row._id,
       recordedAt: row.createdAt,
@@ -150,5 +159,6 @@ export async function listGuestCommerceHistory(
     })),
     isDone: result.isDone || visible.length < result.page.length,
     continueCursor: cursorPrefix + result.continueCursor,
+    ...(result.splitCursor ? { splitCursor: cursorPrefix + result.splitCursor } : {}),
   };
 }

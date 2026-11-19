@@ -2,6 +2,7 @@
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
 import { expect, it } from 'vitest';
+import { api } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { canReadCheckoutOrder, requireStaff } from '../../auth/model';
 import { readBudget, reserveWrites } from '../../lib/readBudget';
@@ -12,7 +13,7 @@ import {
 } from './adjustments';
 import { listCommerceHistory, listGuestCommerceHistory, transferHistorySourceKey } from './history';
 
-const modules = import.meta.glob('../../**/*.ts');
+const modules = import.meta.glob('/convex/**/*.ts');
 const balances = { paid: 50_000, goodwill: 0 };
 const terms = {
   preserveExpiredPackageValue: true, unusedFullRefundDays: 7, refundDueDays: { cashOrTransfer: 15, card: 45 },
@@ -86,12 +87,12 @@ const voucherWriter: AdjustmentWriter = {
       before: { goodwill: before.goodwill, voucherCode: 'GV-ABCD-WXYZ' },
       after: { goodwill: after.goodwill, voucherCode: 'GV-DEFH-QRST' },
       goodwillFaceValueDelta: delta,
-      apply: async ({ revisionAfter, recordedAt, sourceKey }) => {
+      apply: async ({ revisionAfter, recordedAt, sourceKey, reasonCode, reasonText }) => {
         reserveWrites(ctx, 2);
         await ctx.db.patch(voucher._id, { revision: revisionAfter, goodwillBalance: after.goodwill, name, effectiveExpiresAt: expiresAt });
         const id = await ctx.db.insert('voucherEntries', {
           voucherId: voucher._id, before, after, actor: actor.email, createdAt: recordedAt,
-          guestFact: 'Gift voucher updated', kind: 'edit', sourceKey,
+          guestFact: 'Gift voucher updated', kind: 'edit', sourceKey, reasonCode, reasonText,
         });
         return [{ kind: 'voucherEntry', id }];
       },
@@ -263,6 +264,10 @@ it('records Other with a trimmed explanation', async () => {
   expect(await t.run(ctx => ctx.db.get(result.adjustmentId))).toMatchObject({
     reasonCode: 'other', reasonText: 'Guest was charged twice',
   });
+  const history = await manager.query(api.commerce.history.staffPage, {
+    target: { targetType: 'voucher', targetId: voucherId }, paginationOpts: { numItems: 20, cursor: null },
+  });
+  expect(history.page[0].staff).toMatchObject({ reason: 'other', reasonText: 'Guest was charged twice' });
 });
 
 it.each(['voucher', 'grant'] as const)('keeps %s guest history within the latest ownership period', async targetType => {

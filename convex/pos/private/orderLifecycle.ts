@@ -6,6 +6,7 @@ import { assertMoney } from '../../shared/money';
 import { receiptVat } from '../../shared/commerce/vat';
 import { readBudget } from '../../lib/readBudget';
 import { isOpenOrder } from './orderLinks';
+import { orderLines } from './orderLines';
 
 /**
  * Rules for the order lifecycle beyond paying: discarding and restoring unpaid orders, and
@@ -164,13 +165,21 @@ export function correctionPreviewBlocker(commerce: boolean, activeReturn: Doc<'o
 	return null;
 }
 
-export async function assertCorrectionPreviewSupported(ctx: ReadCtx, orderId: Id<'orders'>, lines: readonly Doc<'orderLines'>[]) {
-	const activeReturn = await openOrderReturn(ctx, orderId);
-	let commerce = lines.some(isCommerceLine);
-	if (!activeReturn && !commerce) {
-		const payments = await readOrderProjection(ctx, () => ctx.db.query('orderPayments').withIndex('by_orderId', q => q.eq('orderId', orderId)).take(10));
-		commerce = voucherOrderPayments(payments).length > 0;
-	}
+// W1 treats the whole receipt as the correction unit, including links on a pre-commerce sibling.
+export function isCommerceReceipt(order: Doc<'orders'>, lines: readonly Doc<'orderLines'>[], hasVoucherTender: boolean) {
+	return order.returnedTotal !== undefined || hasVoucherTender || lines.some(isCommerceLine);
+}
+
+export async function readCommerceReceiptStatus(ctx: ReadCtx, order: Doc<'orders'>, lines: readonly Doc<'orderLines'>[]) {
+	if (isCommerceReceipt(order, lines, false)) return true;
+	const voucherTender = await readOrderProjection(ctx, () => ctx.db.query('orderPayments')
+		.withIndex('by_orderId_and_method', q => q.eq('orderId', order._id).eq('method', 'voucher')).first());
+	return voucherTender !== null;
+}
+
+export async function assertReceiptCorrectionSupported(ctx: ReadCtx, order: Doc<'orders'>, lines?: readonly Doc<'orderLines'>[]) {
+	const activeReturn = await openOrderReturn(ctx, order._id);
+	const commerce = !activeReturn && await readCommerceReceiptStatus(ctx, order, lines ?? await readOrderProjection(ctx, () => orderLines(ctx, order._id)));
 	const blocker = correctionPreviewBlocker(commerce, activeReturn);
 	if (blocker) throw new ConvexError(blocker);
 }

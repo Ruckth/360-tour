@@ -4,9 +4,14 @@ import {
   adjustmentConsent, adjustmentEffect, adjustmentFields, adjustmentKind, adjustmentTargets,
   benefitBalances, benefitBucket, benefitPause, catalogueStatus, commerceSaleSource,
   commerceSettingsFields, commerceTerms, handoverContent, handoverCounts, handoverKind, handoverStatus,
-  packageContent, sessionUseKind, stockMovementKind, vatProfile, voucherCodeStatus,
-  voucherEntryKind, voucherGuestFact, voucherSource, voucherStatus,
+  ledgerGuestFact, packageContent, sessionUseKind, stockMovementKind, vatProfile, voucherCodeStatus,
+  voucherEntryKind, voucherSource, voucherStatus,
 } from './validators';
+
+const reasonFields = {
+  reasonCode: v.optional(v.string()),
+  reasonText: v.optional(v.string()),
+};
 
 const adjustmentLogFields = {
   kind: adjustmentKind,
@@ -17,8 +22,7 @@ const adjustmentLogFields = {
   paidLiabilityDelta: v.number(),
   goodwillFaceValueDelta: v.number(),
   quantityDelta: v.number(),
-  reasonCode: v.optional(v.string()),
-  reasonText: v.optional(v.string()),
+  ...reasonFields,
   actor: v.string(),
   actorLabel: v.string(),
   approvalId: v.optional(v.id('staffApprovalRequests')),
@@ -142,7 +146,8 @@ export const commerceTables = {
     createdAt: v.number(),
     before: benefitBalances,
     after: benefitBalances,
-    guestFact: v.string(),
+    guestFact: ledgerGuestFact,
+    ...reasonFields,
     actor: v.string(),
     lineId: v.optional(v.id('orderLines')),
     serviceId: v.optional(v.id('services')),
@@ -183,7 +188,8 @@ export const commerceTables = {
 
   voucherEntries: defineTable({
     voucherId: v.id('vouchers'), kind: voucherEntryKind, sourceKey: v.string(),
-    before: benefitBalances, after: benefitBalances, guestFact: voucherGuestFact, actor: v.string(),
+    before: benefitBalances, after: benefitBalances, guestFact: ledgerGuestFact, actor: v.string(),
+    ...reasonFields,
     adjustmentId: v.optional(v.id('commerceAdjustments')), createdAt: v.number(),
   }).index('by_voucherId_and_createdAt', ['voucherId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
     .index('by_createdAt', ['createdAt']),

@@ -121,6 +121,10 @@ export const returnItemsApprovalPayload = v.object({
   kind: v.literal('returnItems'), parts: v.array(returnPart), idempotencyKey: v.string(),
 });
 
+export const checkoutApprovalKind = v.union(
+  v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund'),
+);
+
 export const adjustmentApprovalPayload = v.object({
   kind: v.literal('adjustment'),
   target: adjustmentTarget,

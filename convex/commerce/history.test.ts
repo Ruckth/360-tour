@@ -54,12 +54,13 @@ async function setup() {
     const log = { before: {}, after: {}, paidLiabilityDelta: 0, goodwillFaceValueDelta: 0, quantityDelta: 0, actor: 'owner',
       actorLabel: 'Owner', requesterKey: 'owner', fingerprint: 'f', recordedAt: now, businessDate: '2026-11-19' };
     await ctx.db.insert('commerceAdjustments', { ...log, targetType: 'settings', targetId: settingsId, kind: 'updateSettings',
+      before: { voucherValidityDays: 365 }, after: { voucherValidityDays: null },
       revisionBefore: 0, revisionAfter: 1, clientKey: 'settings', reasonCode: 'priceChange', reasonText: 'New season' });
     for (const orderId of [today, yesterday]) {
       await ctx.db.insert('commerceAdjustments', { ...log, targetType: 'order', targetId: orderId, kind: 'amendPayment',
         revisionBefore: 0, revisionAfter: 1, clientKey: `order-${orderId}`, reasonCode: 'staffMistake' });
     }
-    return { voucherId, settingsId, today, yesterday };
+    return { voucherId, settingsId, today, yesterday, branchId, lineId };
   });
   return { t, as, ...ids };
 }
@@ -101,6 +102,7 @@ it('opens a receipt or settings History only for staff who may see it', async ()
   expect((await history('manager', settings)).page).toEqual([]);
   expect((await history('owner', settings)).page).toEqual([{
     entryId: expect.any(String), at: now, fact: { key: 'updated' }, balance: null,
+    before: { voucherValidityDays: 365 }, after: { voucherValidityDays: null },
     staff: { actorName: 'Owner', reason: 'priceChange', reasonText: 'New season' },
   }]);
   // A cashier opens today's receipts only, as today.
@@ -130,6 +132,93 @@ it('passes a stored guest fact through and opens a voucher transfer as the new o
   });
   const page = await as('cashier').query(api.commerce.history.staffPage, { target: { targetType: 'voucher', targetId: voucherId }, paginationOpts: { numItems: 2, cursor: null } });
   expect(page.page.map(entry => entry.fact)).toEqual([{ key: 'spent', args: { amount: 5000 } }, { key: 'transferredIn' }]);
+});
+
+it('masks full voucher codes in renamed facts and rejects unknown keys, types and extra guest arguments at write', async () => {
+  const { t, as, voucherId } = await setup();
+  const row = {
+    voucherId, kind: 'edit' as const, sourceKey: 'rename', createdAt: 4, actor: 'Private staff',
+    reasonCode: 'other', reasonText: 'Private notes', before: { paid: 40000, goodwill: 10000 }, after: { paid: 40000, goodwill: 10000 },
+  };
+  await t.run(ctx => ctx.db.insert('voucherEntries', { ...row, guestFact: { key: 'renamed', args: { name: 'GV-ABCD-WXYZ and giftGV1234Q9XD' } } }));
+  for (const guestFact of [
+    { key: 'privateNote' }, { key: 'renamed', args: { name: 1234 } }, { key: 'renamed', args: { name: 'Guest', note: PRIVATE } },
+  ]) {
+    await expect(t.run(ctx => ctx.db.insert('voucherEntries', {
+      ...row, sourceKey: 'invalid-fact',
+      // @ts-expect-error Test that persisted writes enforce the same fact contract as TypeScript.
+      guestFact,
+    }))).rejects.toThrow(/validator|validation/i);
+  }
+  const args = { target: { targetType: 'voucher' as const, targetId: voucherId }, paginationOpts: { numItems: 1, cursor: null } };
+  const guest = await as('cashier').query(api.commerce.history.guestPage, args);
+  expect(guest.page[0].fact).toEqual({ key: 'renamed', args: { name: 'GV-••••-WXYZ and giftGV-••••-Q9XD' } });
+  expect(JSON.stringify(guest)).not.toMatch(/GV-ABCD-WXYZ|GV1234Q9XD|Private|reason/);
+  expect((await as('cashier').query(api.commerce.history.staffPage, args)).page[0].staff).toEqual({
+    actorName: 'Private staff', reason: 'other', reasonText: 'Private notes',
+  });
+});
+
+it('keeps grant ledger reasons and safely displays structured and older text facts', async () => {
+  const { t, as, branchId, today: orderId, lineId } = await setup();
+  const grantId = await t.run(async ctx => {
+    const ownerId = await ctx.db.insert('customers', { name: 'Guest', createdAt: now, updatedAt: now, createdBy: 'manager' });
+    const packageId = await ctx.db.insert('packages', { name: 'Spa', status: 'active', sort: 0, revision: 0 });
+    const packageVersionId = await ctx.db.insert('packageVersions', {
+      packageId, version: 1, name: 'Spa', price: 60000, validityDays: 180, allowTransfer: true, contents: [], estimatedSplit: [],
+    });
+    const grantId = await ctx.db.insert('sessionGrants', {
+      ownerId, packageVersionId, branchId, orderId, lineId, contentKey: 'massage', total: 2, used: 1, paidUnits: 1, goodwillUnits: 0,
+      paidShare: 60000, returnedUnits: 0, expiresAt: now + DAY, issuedTerms: { expiresAt: now + DAY, serviceIds: [], allowTransfer: true },
+      settingsRevision: revision, terms, revision: 1, grantServiceIds: [],
+    });
+    const ledger = { grantId, actor: 'Private staff', reasonCode: 'other', reasonText: 'Private notes' };
+    const atIssue = { paid: 2, goodwill: 0 };
+    await ctx.db.insert('sessionUses', {
+      ...ledger, kind: 'issue', sourceKey: 'issued', createdAt: 1, guestFact: PRIVATE, before: { paid: 0, goodwill: 0 }, after: atIssue,
+    });
+    await ctx.db.insert('sessionUses', {
+      ...ledger, kind: 'use', sourceKey: 'used', createdAt: 2, guestFact: { key: 'used', args: { service: 'Massage' } },
+      before: atIssue, after: { paid: 1, goodwill: 0 },
+    });
+    return grantId;
+  });
+  const args = { target: { targetType: 'grant' as const, targetId: grantId }, paginationOpts: firstPage };
+  const staff = await as('cashier').query(api.commerce.history.staffPage, args);
+  expect(staff.page).toMatchObject([
+    { fact: { key: 'used', args: { service: 'Massage' } }, staff: { reason: 'other', reasonText: 'Private notes' } },
+    { fact: { key: 'updated' }, staff: { reason: 'other', reasonText: 'Private notes' } },
+  ]);
+  const guest = await as('cashier').query(api.commerce.history.guestPage, args);
+  expect(guest.page.map(row => row.fact)).toEqual([{ key: 'used', args: { service: 'Massage' } }, { key: 'updated' }]);
+  expect(JSON.stringify(guest)).not.toMatch(/Private|reason|staff/);
+});
+
+it.each(['staffPage', 'guestPage'] as const)('preserves Convex split metadata and page bounds for %s', async endpoint => {
+  const { as, voucherId, t } = await setup();
+  await t.run(async ctx => {
+    for (const createdAt of [4, 5]) {
+      await ctx.db.insert('voucherEntries', {
+        voucherId, kind: 'edit', sourceKey: `split-${createdAt}`, createdAt, actor: 'manager',
+        guestFact: { key: 'updated' }, before: { paid: 40000, goodwill: 10000 }, after: { paid: 40000, goodwill: 10000 },
+      });
+    }
+  });
+  const query = (paginationOpts: { numItems: number; cursor: string | null; endCursor?: string }) =>
+    as('cashier').query(api.commerce.history[endpoint], { target: { targetType: 'voucher', targetId: voucherId }, paginationOpts });
+  const initial = await query({ numItems: 3, cursor: null });
+  const range = { numItems: 1, cursor: null, endCursor: initial.continueCursor };
+  const split = await query(range);
+  expect(split).toMatchObject({ pageStatus: 'SplitRequired', splitCursor: expect.any(String), isDone: false });
+  const firstHalf = await query({ ...range, endCursor: split.splitCursor! });
+  const secondHalf = await query({ ...range, cursor: split.splitCursor! });
+  expect([...firstHalf.page, ...secondHalf.page].map(row => row.at)).toEqual([5, 4, 3]);
+  expect(secondHalf.continueCursor).toBe(range.endCursor);
+  if (endpoint === 'guestPage') {
+    await expect(query({ ...range, endCursor: 'wrong-ownership-period' })).rejects.toMatchObject({
+      data: { code: 'STALE_HISTORY_CURSOR' },
+    });
+  }
 });
 
 it('reads one branch\'s stock History through its own index', async () => {

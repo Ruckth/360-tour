@@ -1,6 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
+import type { QueryCtx } from '../_generated/server';
 import { canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery } from '../auth/model';
 import { readBudget, reserveWrites } from '../lib/readBudget';
 import { appendRecordHistory, cashierRules } from '../settings/model';
@@ -11,6 +12,7 @@ import {
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
+import { checkoutApprovalKind } from './validators';
 
 function cleanReason(reason: string) {
   const value = reason.trim();
@@ -125,20 +127,51 @@ export const forOrder = staffQuery({
 } });
 
 const APPROVAL_PAGE_SIZE = 20;
+const MAX_COMPATIBILITY_QUEUE_ROWS = 500;
+
+// Merge the five checkout-only ranges in expiry order. Each cursor reads at most one row ahead.
+async function* pendingCheckoutRequests(ctx: QueryCtx) {
+  const budget = readBudget(ctx);
+  const now = Date.now();
+  const read = async (cursor: AsyncIterator<ApprovalRequest>) => {
+    const result = await cursor.next();
+    if (result.done) return null;
+    budget.document(result.value);
+    budget.assert();
+    return result.value;
+  };
+  const sources = await Promise.all(checkoutApprovalKind.members.map(async ({ value: kind }) => {
+    budget.range();
+    const cursor = ctx.db.query('staffApprovalRequests')
+      .withIndex('by_status_and_kind_and_expiresAt', q => q.eq('status', 'pending').eq('kind', kind).gt('expiresAt', now))
+      [Symbol.asyncIterator]();
+    return { cursor, row: await read(cursor) };
+  }));
+  try {
+    for (let scanned = 0; scanned < MAX_COMPATIBILITY_QUEUE_ROWS; scanned++) {
+      sources.sort((a, b) => (a.row?.expiresAt ?? Infinity) - (b.row?.expiresAt ?? Infinity));
+      const source = sources[0];
+      if (!source.row) break;
+      yield source.row;
+      if (scanned + 1 < MAX_COMPATIBILITY_QUEUE_ROWS) source.row = await read(source.cursor);
+    }
+  } finally {
+    await Promise.all(sources.filter(source => source.row !== null).map(source => source.cursor.return?.()));
+  }
+}
 
 /** First page in the original checkout response shape. ApprovalsPanel uses pendingPage after cutover. */
 export const pending = staffQuery({
   capability: 'approve', args: {}, handler: async ctx => {
-  const budget = readBudget(ctx);
-  budget.range();
-  const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_status_and_createdAt', q => q.eq('status', 'pending')).take(APPROVAL_PAGE_SIZE);
-  for (const request of requests) budget.document(request);
-  budget.assert();
-  const views = await Promise.all(requests.filter(isCheckoutApproval).filter(request => canReviewApproval(ctx.staff, request)).map(async request => {
-    const status = await effectiveRequestStatus(ctx, request);
-    return status === 'pending' ? requestView(request, status) : null;
-  }));
-  const list = views.filter(row => row !== null);
+  const list: ReturnType<typeof requestView>[] = [];
+  let rules: Awaited<ReturnType<typeof cashierRules>> | undefined;
+  for await (const request of pendingCheckoutRequests(ctx)) {
+    if (isCheckoutApproval(request) && canReviewApproval(ctx.staff, request)) {
+      rules ??= await readApprovalDocument(ctx, () => cashierRules(ctx));
+      if (await effectiveRequestStatus(ctx, request, rules) === 'pending') list.push(requestView(request, 'pending'));
+    }
+    if (list.length === APPROVAL_PAGE_SIZE) break;
+  }
   return { count: list.length, list };
 } });
 

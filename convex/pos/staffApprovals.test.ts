@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { omit } from 'convex-helpers';
 import { convexToJson } from 'convex/values';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
@@ -113,6 +114,7 @@ it('pages both request shapes at 500 pending while another till pays, reading on
   const sale = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
   const view = await s.cashier.query(api.pos.orders.getOrder, { orderId: sale.orderId });
   const reads = vi.spyOn(ReadBudget.prototype, 'document');
+  const ranges = vi.spyOn(ReadBudget.prototype, 'range');
   const [first, payment] = await Promise.all([
     s.manager.query(approvals.pendingPage, firstPage),
     s.cashier.mutation(api.pos.commands.settleOrder.settleOrder, {
@@ -131,13 +133,48 @@ it('pages both request shapes at 500 pending while another till pays, reading on
   let page = first;
   while (!page.isDone) {
     reads.mockClear();
+    ranges.mockClear();
     page = await s.manager.query(approvals.pendingPage, { paginationOpts: { numItems: 20, cursor: page.continueCursor } });
     expect(reads.mock.calls.length).toBeLessThanOrEqual(20);
+    expect(ranges.mock.calls).toHaveLength(1);
     for (const row of page.page) seen.add(row._id);
   }
   expect(seen.size).toBe(500);
   expect(seen.has(requestId)).toBe(true);
+  expect(await s.manager.query(approvals.pending, {})).toMatchObject({ count: 1, list: [{ _id: requestId }] });
   expect(JSON.stringify(first.page)).not.toContain('payload-fingerprint');
+});
+
+it('keeps a live pre-commerce approval visible after twenty stale requests and skips expired rows by index', async () => {
+  const s = await setup();
+  const serviceId = await s.t.run(ctx => ctx.db.insert('services', {
+    slug: 'queue-backlog-service', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
+    price: 30000, currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
+  }));
+  const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+  const { requestId } = await s.cashier.mutation(approvals.create, {
+    orderId, payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 3000 } }, reason: 'Discount request',
+  });
+  await s.t.run(async ctx => {
+    const request = await ctx.db.get(requestId);
+    if (!request || request.kind !== 'discount') throw new Error('Missing discount request');
+    const live = omit(request, ['_id', '_creationTime']);
+    for (let index = 1; index <= 20; index++) {
+      await ctx.db.insert('staffApprovalRequests', {
+        ...live, createdAt: now - index, expiresAt: now + APPROVAL_TTL_MS - index, rulesRevision: 999,
+      });
+      await ctx.db.insert('staffApprovalRequests', {
+        ...live, createdAt: now - APPROVAL_TTL_MS - index, expiresAt: now - index,
+      });
+    }
+  });
+  const documents = vi.spyOn(ReadBudget.prototype, 'document');
+  const ranges = vi.spyOn(ReadBudget.prototype, 'range');
+  const queue = await s.manager.query(approvals.pending, {});
+  expect(queue).toMatchObject({ count: 1, list: [{ _id: requestId }] });
+  expect(documents.mock.calls.filter(([row]) => row && typeof row === 'object' && 'expiresAt' in row)).toHaveLength(21);
+  expect(documents.mock.calls.length + 1).toBeLessThanOrEqual(26);
+  expect(ranges.mock.calls.length + 1).toBe(12);
 });
 
 it('restricts review to a different manager or owner, and confines own status to the requester', async () => {
@@ -201,7 +238,7 @@ it('shows changed revisions as stale in detail and own status without re-reading
   });
 });
 
-it('reads all 127 affected return revisions, including a changed seventh grant, within 130 document reads', async () => {
+it('checks both return authorities before 127 targets and reports stale within 130 reads', async () => {
   const s = await setup();
   const review = await s.t.run(async ctx => {
     const serviceId = await ctx.db.insert('services', {
@@ -262,16 +299,27 @@ it('reads all 127 affected return revisions, including a changed seventh grant, 
   });
   const requestId = await s.insertReturn({ orderFingerprint: review.orderFingerprint });
   const document = vi.spyOn(ReadBudget.prototype, 'document');
+  const ranges = vi.spyOn(ReadBudget.prototype, 'range');
   const fresh = await s.manager.query(approvals.detail, { requestId });
-  expect(fresh).toMatchObject({ status: 'pending', kind: 'returnItems', rows: [{ label: 'Gift voucher' }] });
-  expect(fresh?.kind === 'returnItems' && fresh.revisions).toHaveLength(127);
-  expect(document.mock.calls.length + 1).toBe(130); // One staff grant is read by the manager access builder.
+  expect(fresh).toMatchObject({ status: 'pending', freshness: 'partial', authorityCurrent: true, kind: 'returnItems', rows: [{ label: 'Gift voucher' }] });
+  expect(fresh?.kind === 'returnItems' && fresh.revisions).toHaveLength(125);
+  expect(document.mock.calls.length + 1).toBe(130); // The manager access builder reads one staff grant.
+  expect(ranges.mock.calls.length + 1).toBe(130);
+  for (const mismatch of [
+    { rulesRevision: 999 }, { requesterAccessFingerprint: 'revoked' },
+    { rulesRevision: 999, requesterAccessFingerprint: 'revoked' },
+  ]) {
+    const staleId = await s.insertReturn({ orderFingerprint: review.orderFingerprint, ...mismatch });
+    ranges.mockClear();
+    expect(await s.manager.query(approvals.detail, { requestId: staleId })).toMatchObject({ status: 'stale', freshness: 'partial', authorityCurrent: false });
+    expect(ranges.mock.calls.length + 1).toBe(130);
+  }
   await s.t.run(ctx => ctx.db.patch(review.affectedGrantId, { revision: 1 }));
-  document.mockClear();
+  ranges.mockClear();
   expect(await s.manager.query(approvals.detail, { requestId })).toMatchObject({
     status: 'stale', revisions: expect.arrayContaining([{ table: 'sessionGrants', id: review.affectedGrantId, expected: 0, current: 1 }]),
   });
-  expect(document.mock.calls.length + 1).toBeLessThanOrEqual(130);
+  expect(ranges.mock.calls.length + 1).toBe(130);
 });
 
 it('sweeps pending commerce requests without a timer and keeps authorized returns in progress', async () => {
