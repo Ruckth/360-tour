@@ -68,7 +68,6 @@ import type * as commerce_private_orderRevision from "../commerce/private/orderR
 import type * as commerce_private_voucherCodes from "../commerce/private/voucherCodes.js";
 import type * as commerce_tables from "../commerce/tables.js";
 import type * as commerce_validators from "../commerce/validators.js";
-import type * as commerce_voucherExpiry from "../commerce/voucherExpiry.js";
 import type * as concierge_businessFacts from "../concierge/businessFacts.js";
 import type * as concierge_context from "../concierge/context.js";
 import type * as concierge_generation from "../concierge/generation.js";
@@ -333,6 +332,7 @@ import type * as shared_tenderProjection from "../shared/tenderProjection.js";
 import type * as shared_time from "../shared/time.js";
 import type * as shared_timeOff from "../shared/timeOff.js";
 import type * as shared_validation from "../shared/validation.js";
+import type * as shared_voucherCode from "../shared/voucherCode.js";
 import type * as testing_harness from "../testing/harness.js";
 
 import type {
@@ -402,7 +402,6 @@ declare const fullApi: ApiFromModules<{
   "commerce/private/voucherCodes": typeof commerce_private_voucherCodes;
   "commerce/tables": typeof commerce_tables;
   "commerce/validators": typeof commerce_validators;
-  "commerce/voucherExpiry": typeof commerce_voucherExpiry;
   "concierge/businessFacts": typeof concierge_businessFacts;
   "concierge/context": typeof concierge_context;
   "concierge/generation": typeof concierge_generation;
@@ -667,6 +666,7 @@ declare const fullApi: ApiFromModules<{
   "shared/time": typeof shared_time;
   "shared/timeOff": typeof shared_timeOff;
   "shared/validation": typeof shared_validation;
+  "shared/voucherCode": typeof shared_voucherCode;
   "testing/harness": typeof testing_harness;
 }>;
 

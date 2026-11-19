@@ -2,10 +2,9 @@
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api, internal } from '../_generated/api';
-import { ReadBudget } from '../lib/readBudget';
+import { api } from '../_generated/api';
 import schema from '../schema';
-import { benefitExpiresAt, DEFAULT_COMMERCE_SETTINGS } from '../shared/commerce/settings';
+import { benefitExpiresAt } from '../shared/commerce/settings';
 import { resolveCommerceSettings } from './model';
 
 const modules = import.meta.glob('/convex/**/*.ts');
@@ -15,14 +14,11 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it('issues an unlimited voucher with frozen null terms and skips it in the nightly expiry range', async () => {
+it('issues an unlimited voucher with frozen null terms and projects it with its own History target and mask', async () => {
   vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const soldAt = Date.parse('2026-11-19T03:00:00Z');
-  const finiteExpiry = benefitExpiresAt(soldAt, 'voucher', DEFAULT_COMMERCE_SETTINGS, 1)!;
-  const effectiveExpiry = finiteExpiry + 86400000;
-  const clock = vi.spyOn(Date, 'now').mockReturnValue(finiteExpiry);
   const t = convexTest(schema, modules);
-  const { orderId, unlimited, finite } = await t.run(async ctx => {
+  const { orderId, unlimited } = await t.run(async ctx => {
     const settings = resolveCommerceSettings(null);
     const { revision } = settings;
     const terms = omit(settings, ['revision', 'saleSwitches', 'paymentsMode', 'cutover']);
@@ -41,35 +37,18 @@ it('issues an unlimited voucher with frozen null terms and skips it in the night
       source: { kind: 'sale' as const, orderId, lineId }, revision: 0, settingsRevision: revision,
     };
     const unlimited = await ctx.db.insert('vouchers', { ...base, terms: frozen, issuedExpiresAt, effectiveExpiresAt: issuedExpiresAt });
-    const finite = await ctx.db.insert('vouchers', { ...base, terms, issuedExpiresAt: finiteExpiry, effectiveExpiresAt: effectiveExpiry });
+    const activeCodeId = await ctx.db.insert('voucherCodes', { voucherId: unlimited, code: 'GV-7K2M-U500', mask: 'GV-••••-U500', status: 'active' });
+    await ctx.db.patch(unlimited, { activeCodeId });
     const allocation = { paidShare: 50000, vatBase: 0, tenderCells: [], returnedUnits: 0, returnedAmount: 0 };
     await ctx.db.patch(lineId, { saleSnapshot: {
       ...allocation, label: 'Unlimited voucher', settingsRevision: revision, terms: frozen, goodwillDiscounts: [], chosenVariants: [],
       contents: [{ ...allocation, contentKey: 'voucher', label: 'Gift voucher', units: 1, vatProfile: 'exempt', voucherId: unlimited }],
     } });
-    return { orderId, unlimited, finite };
+    return { orderId, unlimited };
   });
   const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
   expect(await owner.query(api.pos.orders.getOrder, { orderId })).toMatchObject({
-    commerce: { unlimitedIssuedBenefits: [{ issuedExpiresAt: null, editHistory: { targetType: 'voucher', targetId: unlimited } }] },
+    commerce: { unlimitedIssuedBenefits: [{ issuedExpiresAt: null, codeMask: 'GV-••••-U500', editHistory: { targetType: 'voucher', targetId: unlimited } }] },
     lines: [{ saleSnapshot: { terms: { voucherValidityDays: null } } }],
   });
-
-  const reads = vi.spyOn(ReadBudget.prototype, 'document');
-  const expire = () => t.mutation(internal.commerce.voucherExpiry.expireVouchers, {});
-  await expire();
-  expect(reads).not.toHaveBeenCalled(); // The issued cutoff is past, but the effective one controls expiry.
-  clock.mockReturnValue(effectiveExpiry);
-  await expire();
-  expect(reads.mock.calls.map(([doc]) => doc)).toEqual([expect.objectContaining({ _id: finite }), expect.objectContaining({ _id: orderId })]);
-  await expire();
-  expect(reads).toHaveBeenCalledTimes(2);
-  const state = await t.run(async ctx => ({
-    unlimited: await ctx.db.get(unlimited), finite: await ctx.db.get(finite), order: await ctx.db.get(orderId),
-    entries: await ctx.db.query('voucherEntries').take(2),
-  }));
-  expect(state.unlimited).toMatchObject({ status: 'active', issuedExpiresAt: null, effectiveExpiresAt: null, terms: { voucherValidityDays: null }, revision: 0 });
-  expect(state.finite).toMatchObject({ status: 'expired', issuedExpiresAt: finiteExpiry, effectiveExpiresAt: effectiveExpiry, paidBalance: 0, goodwillBalance: 0, revision: 1 });
-  expect(state.entries).toMatchObject([{ voucherId: finite, kind: 'expire', before: { paid: 50000, goodwill: 1000 }, after: { paid: 0, goodwill: 0 } }]);
-  expect(state.order).toMatchObject({ revision: 1, commerceRevision: 1 });
 });
