@@ -97,6 +97,32 @@ async function readVoucherTenders(ctx: QueryCtx, payments: readonly Doc<'orderPa
 	}));
 }
 
+function returnCreditMask(mask: string | null | undefined) {
+	return mask && /^(?:GV-)?••••[- ]?[A-Z0-9]{4}$/i.test(mask) ? mask : null;
+}
+
+async function readReturnVoucherCredits(
+	ctx: QueryCtx, credits: Doc<'orderReturns'>['voucherCredits'], tenders: Awaited<ReturnType<typeof readVoucherTenders>>,
+) {
+	const tenderMasks = new Map(tenders.map(tender => [tender.voucherId, returnCreditMask(tender.codeMask)]));
+	const lookedUp = new Map<Id<'vouchers'>, Promise<string | null>>();
+	const lookup = (voucherId: Id<'vouchers'>) => {
+		const previous = lookedUp.get(voucherId);
+		if (previous) return previous;
+		if (lookedUp.size >= COMMERCE_LIMITS.sale.distinctFundingVouchers) return null;
+		const read = readOrderProjection(ctx, () => ctx.db.get(voucherId))
+			.then(async voucher => returnCreditMask(voucher ? await voucherCodeMask(ctx, voucher) : null));
+		lookedUp.set(voucherId, read);
+		return read;
+	};
+	return await Promise.all(credits.map(async credit => {
+		if (credit.destination?.kind === 'newVoucher') return { ...credit, destination: credit.destination };
+		const voucherId = credit.destination?.voucherId ?? credit.voucherId;
+		const codeMask = returnCreditMask(credit.destination?.codeMask) ?? tenderMasks.get(voucherId) ?? await lookup(voucherId);
+		return { ...credit, destination: { kind: 'existingVoucher' as const, voucherId, codeMask } };
+	}));
+}
+
 async function readReceiptRefunds(ctx: QueryCtx, order: Doc<'orders'>, settled: boolean, commerce: boolean) {
 	if (!settled || commerce) return [];
 	// Pre-commerce receipts have no aggregate. Preserve their existing totals and truncation cap.
@@ -143,6 +169,8 @@ export const getOrder = staffQuery({
 			open ? readDraftPackages(ctx, lines) : null,
 			readVoucherTenders(ctx, voucherPayments),
 		]);
+		const returnVoucherCredits = activeReturn ? await readReturnVoucherCredits(ctx, activeReturn.voucherCredits, voucherTenders) : [];
+		const unlimitedIssuedBenefits = issuedBenefits.filter(benefit => benefit.issuedExpiresAt === null);
 		const totals = receiptTotals(order, lines);
 		const commerce = isCommerceReceipt(order, lines, voucherPayments.length > 0);
 		const correctionBlocker = settled ? correctionPreviewBlocker(commerce, activeReturn) : null;
@@ -225,14 +253,16 @@ export const getOrder = staffQuery({
 			...refundSummary,
 			...(commerce ? {
 				commerce: {
-					returnedAmountSatang, issuedBenefits,
+					returnedAmountSatang,
+					issuedBenefits: issuedBenefits.flatMap(benefit => benefit.issuedExpiresAt === null ? [] : [{ ...benefit, issuedExpiresAt: benefit.issuedExpiresAt }]),
+					...(unlimitedIssuedBenefits.length ? { unlimitedIssuedBenefits } : {}),
 					handovers: handovers.map(handoverView),
 					editHistory: { targetType: 'order' as const, targetId: order._id },
 				},
 			} : {}),
 			...(activeReturn ? { activeReturn: {
 				_id: activeReturn._id, status: activeReturn.status, parts: activeReturn.parts, claims: activeReturn.claims,
-				voucherCredits: activeReturn.voucherCredits, operator: activeReturn.operator, tillId: activeReturn.tillId,
+				voucherCredits: returnVoucherCredits, operator: activeReturn.operator, tillId: activeReturn.tillId,
 				operatorRevision: activeReturn.operatorRevision, approvalId: activeReturn.approvalId, reason: activeReturn.reason,
 				createdAt: activeReturn.createdAt,
 			} } : {}),

@@ -6,13 +6,15 @@ import { canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashie
 import { readBudget, reserveWrites } from '../lib/readBudget';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
-  adjustmentApprovalDetail, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
+  adjustmentApprovalDetail, approvalPageWindow, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
   orderFingerprint, ownApprovalStatus, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
   type ApprovalRequest, type CheckoutApprovalRequest,
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 import { checkoutApprovalKind } from './validators';
+import { assertReceiptCorrectionSupported } from './private/orderLifecycle';
+import { resortTodayIso } from '../shared/time';
 
 function cleanReason(reason: string) {
   const value = reason.trim();
@@ -78,6 +80,10 @@ export const approve = staffMutation({
   if (isOwnApproval(actor, request)) throw new ConvexError('You cannot approve your own request.');
   if (!canReviewApproval(actor, request) || !isCheckoutApproval(request)) throw new ConvexError('Request not found');
   if (request.status !== 'pending') return { status: request.status, replayed: true };
+  if (request.payload.kind === 'voidPaidSale' && Date.now() < request.expiresAt) {
+    const order = await readApprovalDocument(ctx, () => ctx.db.get(request.orderId));
+    if (order?.status === 'paid') await assertReceiptCorrectionSupported(ctx, order);
+  }
   const status = await effectiveRequestStatus(ctx, request);
   if (status !== 'pending') {
     await resolve(ctx, request, status, actor.email);
@@ -175,10 +181,10 @@ export const pending = staffQuery({
   return { count: list.length, list };
 } });
 
-function queueRow(request: ApprovalRequest) {
+function queueRow(request: ApprovalRequest, actionable: boolean) {
   const common = {
     _id: request._id, requesterEmail: request.requesterEmail,
-    createdAt: request.createdAt, expiresAt: request.expiresAt, status: 'pending' as const,
+    createdAt: request.createdAt, expiresAt: request.expiresAt, status: 'pending' as const, actionable,
   };
   if (request.kind === 'adjustment') {
     const { target, adjustmentKind } = request.payload;
@@ -193,6 +199,15 @@ function queueRow(request: ApprovalRequest) {
   return { ...common, kind, orderId, lineId, label, summary: { amount, percent } };
 }
 
+async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
+  const rules = requests.some(isCheckoutApproval) ? await readApprovalDocument(ctx, () => cashierRules(ctx)) : null;
+  const fingerprint = rules && rulesFingerprint(rules);
+  const today = resortTodayIso();
+  return requests.map(request => queueRow(request, !isCheckoutApproval(request) || (
+    request.rulesRevision === rules?.revision && request.rulesFingerprint === fingerprint && resortTodayIso(request.createdAt) === today
+  )));
+}
+
 export const pendingPage = staffQuery({
   capability: 'approve', args: { paginationOpts: paginationOptsValidator }, handler: async (ctx, { paginationOpts }) => {
     const { numItems, cursor, endCursor } = paginationOpts;
@@ -201,15 +216,18 @@ export const pendingPage = staffQuery({
     }
     const budget = readBudget(ctx);
     budget.range();
-    const result = await ctx.db.query('staffApprovalRequests')
-      .withIndex('by_status_and_createdAt', q => q.eq('status', 'pending')).order('desc')
-      .paginate({ numItems, cursor, endCursor, maximumRowsRead: APPROVAL_PAGE_SIZE + 1, maximumBytesRead: 512 * 1024 });
     const now = Date.now();
+    const window = approvalPageWindow(cursor, endCursor, now);
+    const result = await ctx.db.query('staffApprovalRequests')
+      .withIndex('by_status_and_expiresAt', q => q.eq('status', 'pending').gt('expiresAt', window.cutoff)).order('desc')
+      .paginate({ numItems, cursor: window.cursor, endCursor: window.endCursor, maximumRowsRead: APPROVAL_PAGE_SIZE + 1, maximumBytesRead: 512 * 1024 });
     for (const request of result.page) budget.document(request);
     budget.assert();
     return {
       ...result,
-      page: result.page.filter(request => request.expiresAt > now && canReviewApproval(ctx.staff, request)).map(queueRow),
+      page: await queueRows(ctx, result.page.filter(request => request.expiresAt > now && canReviewApproval(ctx.staff, request))),
+      continueCursor: window.wrap(result.continueCursor),
+      ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
   },
 });

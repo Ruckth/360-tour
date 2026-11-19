@@ -10,6 +10,7 @@ crons.interval('clean rate limits', { hours: 1 }, internal.messaging.maintenance
 crons.interval('clean unattached staff and service photos', { hours: 6 }, internal.services.maintenance.cleanStaffAvatarUploads, {});
 crons.interval('clean pending customer displays', { minutes: 10 }, internal.pos.displays.cleanPending, {});
 crons.interval('expire pending staff approvals', { minutes: 1 }, internal.pos.staffApprovals.expirePending, {});
+crons.cron('expire gift vouchers', '0 17 * * *', internal.commerce.voucherExpiry.expireVouchers, {});
 // 09:00 Asia/Bangkok, so guests get these in the resort's morning rather than at a deploy-relative time.
 crons.cron('queue pre-arrival emails', '0 2 * * *', internal.bookings.maintenance.queueLifecycleEmails, { kind: 'preArrival' });
 crons.cron('queue review emails', '0 2 * * *', internal.bookings.maintenance.queueLifecycleEmails, { kind: 'review' });

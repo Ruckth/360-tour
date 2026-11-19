@@ -14,7 +14,7 @@ import { cashierRules } from '../settings/model';
 import { sha256 } from '../shared/displayTokens';
 import { APPROVAL_TTL_MS } from '../shared/staffTypes';
 import { insertFixture } from '../testing/completeFixture.test-support';
-import { encodeReturnApprovalReview, requesterFingerprint, rulesFingerprint } from './private/staffApprovalState';
+import { encodeReturnApprovalReview, requesterFingerprint, returnApprovalCheckpoint, rulesFingerprint } from './private/staffApprovalState';
 
 const modules = import.meta.glob('/convex/**/*.ts');
 const now = Date.parse('2026-11-19T04:00:00Z');
@@ -92,7 +92,7 @@ async function setup() {
   };
 }
 
-it('pages both request shapes at 500 pending while another till pays, reading only request documents', async () => {
+it('pages both request shapes at 500 pending while another till pays, reading no per-row targets', async () => {
   const s = await setup();
   const serviceId = await s.t.run(ctx => ctx.db.insert('services', {
     slug: 'queue-cash-sale', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
@@ -125,7 +125,7 @@ it('pages both request shapes at 500 pending while another till pays, reading on
   expect(payment.replayed).toBe(false);
   expect(first.page).toHaveLength(20);
   expect(new Set(first.page.map(row => row.kind))).toEqual(new Set(['discount', 'adjustment', 'returnItems']));
-  expect(reads.mock.calls).toHaveLength(20);
+  expect(reads.mock.calls).toHaveLength(21); // Requests plus one shared cashier-rule read.
   expect(reads.mock.calls.map(([row]) => row)).toEqual(expect.arrayContaining([
     expect.objectContaining({ kind: 'adjustment' }), expect.objectContaining({ kind: 'returnItems' }),
   ]));
@@ -175,6 +175,37 @@ it('keeps a live pre-commerce approval visible after twenty stale requests and s
   expect(documents.mock.calls.filter(([row]) => row && typeof row === 'object' && 'expiresAt' in row)).toHaveLength(21);
   expect(documents.mock.calls.length + 1).toBeLessThanOrEqual(26);
   expect(ranges.mock.calls.length + 1).toBe(12);
+
+  await s.t.run(async ctx => {
+    const live = await ctx.db.get(requestId);
+    if (!live || live.kind !== 'discount') throw new Error('Missing discount request');
+    for (let index = 1; index <= 20; index++) {
+      await ctx.db.insert('staffApprovalRequests', {
+        ...omit(live, ['_id', '_creationTime']), createdAt: now + index, expiresAt: live.expiresAt + index, rulesRevision: 999,
+      });
+    }
+    await ctx.db.insert('staffApprovalRequests', { ...omit(live, ['_id', '_creationTime']), expiresAt: now });
+    await ctx.db.insert('staffApprovalRequests', { ...omit(live, ['_id', '_creationTime']), expiresAt: now + 1 });
+  });
+  documents.mockClear();
+  ranges.mockClear();
+  const first = await s.manager.query(approvals.pendingPage, firstPage);
+  expect(first.page).toHaveLength(20);
+  expect(first.page.every(row => !row.actionable)).toBe(true);
+  expect(first.isDone).toBe(false);
+  expect(ranges.mock.calls).toHaveLength(2);
+  expect(documents.mock.calls).toHaveLength(21);
+  vi.mocked(Date.now).mockReturnValue(now + 100);
+  const refetched = await s.manager.query(approvals.pendingPage, { paginationOpts: { ...firstPage.paginationOpts, endCursor: first.continueCursor } });
+  expect(refetched.page.map(row => row._id)).toEqual(first.page.map(row => row._id));
+  const next = await s.manager.query(approvals.pendingPage, { paginationOpts: { numItems: 20, cursor: first.continueCursor } });
+  expect(next.page.filter(row => row.actionable).map(row => row._id)).toEqual([requestId]);
+  expect(next.page.every(row => row.expiresAt > Date.now())).toBe(true);
+  expect(next.isDone).toBe(false);
+  const last = await s.manager.query(approvals.pendingPage, { paginationOpts: { numItems: 20, cursor: next.continueCursor } });
+  expect(last.isDone).toBe(true);
+  expect(last.page).toHaveLength(1);
+  expect(last.page[0]).toMatchObject({ actionable: false, expiresAt: now + APPROVAL_TTL_MS - 20 });
 });
 
 // Audit r2 blocker 2: a promoted cashier's own newer requests fill the first page.
@@ -256,7 +287,9 @@ it('keeps owner-only settings out of manager views', async () => {
 it('shows changed revisions as stale in detail and own status without re-reading targets in the queue', async () => {
   const s = await setup();
   const adjustmentId = await s.insertAdjustment();
-  const returnId = await s.insertReturn();
+  const returnId = await s.insertReturn({ orderFingerprint: encodeReturnApprovalReview({
+    revisions: [{ table: 'vouchers', id: s.voucherId, revision: 3 }], rows: [{ lineId: s.lineId, label: 'Gift voucher' }],
+  }) });
   expect(await s.manager.query(approvals.detail, { requestId: returnId })).toMatchObject({
     kind: 'returnItems', status: 'pending', target: { receiptNumber: 102 }, rows: [{ lineId: s.lineId, label: 'Gift voucher' }],
   });
@@ -274,7 +307,7 @@ it('shows changed revisions as stale in detail and own status without re-reading
   });
 });
 
-it('checks both return authorities before 127 targets and reports stale within 130 reads', async () => {
+it('checks order, authority and all 127 return targets within 130 reads when only the last target changes', async () => {
   const s = await setup();
   const review = await s.t.run(async ctx => {
     const serviceId = await ctx.db.insert('services', {
@@ -320,42 +353,73 @@ it('checks both return authorities before 127 targets and reports stale within 1
       guestName: 'Guest', guestPhone: '0800000000', source: 'admin', status: 'booked', paymentStatus: 'paid',
       price: 60000, currency: 'THB', confirmationCode: `APPT${index}`, accessToken: 'test-only', createdAt: now, revision: 0,
     })));
-    const orderFingerprint = encodeReturnApprovalReview({
+    const review = {
       correctionRevision: 0,
       rows: [{ lineId: s.lineId, label: 'Gift voucher' }],
       revisions: [
         ...grantIds.map(id => ({ table: 'sessionGrants' as const, id, revision: 0 })),
         ...vouchers.map(id => ({ table: 'vouchers' as const, id, revision: 0 })),
         ...stocks.map(id => ({ table: 'stockLevels' as const, id, revision: 0 })),
-        ...handovers.map(id => ({ table: 'handovers' as const, id, revision: 0 })),
         ...visits.map(id => ({ table: 'appointments' as const, id, revision: 0 })),
+        ...handovers.map(id => ({ table: 'handovers' as const, id, revision: 0 })),
       ],
-    });
-    return { orderFingerprint, affectedGrantId: grantIds[6] };
+    };
+    const order = (await ctx.db.get(s.orderId))!;
+    const custody = await Promise.all(handovers.map(async id => (await ctx.db.get(id))!));
+    const lastHandover = custody[custody.length - 1];
+    expect(review.revisions).toHaveLength(127);
+    expect(() => returnApprovalCheckpoint(order, review, [...custody.slice(0, -1), { ...lastHandover, revision: 1 }]))
+      .toThrow('Review the current return targets');
+    return { checkpoint: returnApprovalCheckpoint(order, review, custody), review, affectedGrantId: grantIds[6], lastHandover };
   });
-  const requestId = await s.insertReturn({ orderFingerprint: review.orderFingerprint });
+  const requestId = await s.insertReturn(review.checkpoint);
   const document = vi.spyOn(ReadBudget.prototype, 'document');
   const ranges = vi.spyOn(ReadBudget.prototype, 'range');
   const fresh = await s.manager.query(approvals.detail, { requestId });
-  expect(fresh).toMatchObject({ status: 'pending', freshness: 'partial', authorityCurrent: true, kind: 'returnItems', rows: [{ label: 'Gift voucher' }] });
-  expect(fresh?.kind === 'returnItems' && fresh.revisions).toHaveLength(125);
-  expect(document.mock.calls.length + 1).toBe(130); // The manager access builder reads one staff grant.
-  expect(ranges.mock.calls.length + 1).toBe(130);
+  expect(fresh).toMatchObject({ status: 'pending', freshness: 'checked', authorityCurrent: true, kind: 'returnItems', rows: [{ label: 'Gift voucher' }] });
+  expect(document.mock.calls.length + 1).toBe(112); // The manager access builder reads one staff grant.
+  expect(ranges.mock.calls.length + 1).toBe(112);
   for (const mismatch of [
     { rulesRevision: 999 }, { requesterAccessFingerprint: 'revoked' },
     { rulesRevision: 999, requesterAccessFingerprint: 'revoked' },
   ]) {
-    const staleId = await s.insertReturn({ orderFingerprint: review.orderFingerprint, ...mismatch });
+    const staleId = await s.insertReturn({ ...review.checkpoint, ...mismatch });
     ranges.mockClear();
-    expect(await s.manager.query(approvals.detail, { requestId: staleId })).toMatchObject({ status: 'stale', freshness: 'partial', authorityCurrent: false });
-    expect(ranges.mock.calls.length + 1).toBe(130);
+    expect(await s.manager.query(approvals.detail, { requestId: staleId })).toMatchObject({ status: 'stale', freshness: 'checked', authorityCurrent: false });
+    expect(ranges.mock.calls.length + 1).toBe(112);
   }
+  const handoverId = review.lastHandover._id;
+  await s.manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), {
+    target: { targetType: 'handover', targetId: handoverId }, kind: 'takeBack', input: { quantity: 1 },
+    expectedRevision: 0, clientKey: 'take-back-last-handover', reasonCode: 'other', reasonText: 'Guest brought the item back',
+  }, {
+    assertScope: async () => {},
+    prepare: async () => ({ before: { withGuest: 1 }, after: { withGuest: 0 }, apply: async ({ revisionAfter }) => {
+      await ctx.db.patch(handoverId, { withGuest: 0, backSellable: 1, revision: revisionAfter });
+      return [];
+    } }),
+  }));
+  ranges.mockClear();
+  document.mockClear();
+  expect(await s.manager.query(approvals.detail, { requestId })).toMatchObject({
+    status: 'stale', freshness: 'checked', authorityCurrent: true,
+    orderRevision: { expected: 2, current: 2, expectedCommerce: 0, currentCommerce: 1 },
+  });
+  expect(ranges.mock.calls.length + 1).toBe(112);
+  expect(document.mock.calls.length + 1).toBe(112);
+  expect(await s.cashier.query(approvals.myStatus, { requestId })).toMatchObject({ status: 'stale' });
+
+  // Requests saved before the checkpoint have no proof for targets beyond the read ceiling.
+  const olderRequestId = await s.insertReturn({ orderFingerprint: encodeReturnApprovalReview(review.review) });
+  expect(await s.manager.query(approvals.detail, { requestId: olderRequestId })).toMatchObject({ status: 'stale', freshness: 'partial' });
+
+  const sharedRequestId = await s.insertReturn({ ...review.checkpoint, commerceRevision: 1 });
   await s.t.run(ctx => ctx.db.patch(review.affectedGrantId, { revision: 1 }));
   ranges.mockClear();
-  expect(await s.manager.query(approvals.detail, { requestId })).toMatchObject({
+  expect(await s.manager.query(approvals.detail, { requestId: sharedRequestId })).toMatchObject({
     status: 'stale', revisions: expect.arrayContaining([{ table: 'sessionGrants', id: review.affectedGrantId, expected: 0, current: 1 }]),
   });
-  expect(ranges.mock.calls.length + 1).toBe(130);
+  expect(ranges.mock.calls.length + 1).toBe(112);
 });
 
 it('sweeps pending commerce requests without a timer and keeps authorized returns in progress', async () => {
