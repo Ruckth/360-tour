@@ -4,7 +4,11 @@ import ts from 'typescript';
 import { expect, it } from 'vitest';
 
 const tree = (file: string) => ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
-const resolve = (file: string, spec: string) => normalize(join(dirname(file), spec)) + '.ts';
+// A directory import (`../shared/commerce`) resolves to its index file, as the bundler does.
+const resolve = (file: string, spec: string) => {
+  const path = normalize(join(dirname(file), spec));
+  return !existsSync(`${path}.ts`) && existsSync(join(path, 'index.ts')) ? join(path, 'index.ts') : `${path}.ts`;
+};
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
   entry.isDirectory() ? entry.name === '_generated' ? [] : walk(join(dir, entry.name)) : [join(dir, entry.name)]);
 const retired = ['adminPhotos'];

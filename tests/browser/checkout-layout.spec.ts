@@ -337,6 +337,8 @@ test.describe("receipt print page size (PM-01)", () => {
       await page.getByRole("button", { name: /^Confirm cash · ฿[\d,.]+ received/ }).click();
       const receipt = page.getByRole("article", { name: "Receipt" });
       await expect(receipt).toBeVisible();
+      // The business name arrives after the first paint; the page length is measured again then.
+      await expect(receipt).toContainText("Auralis Cove Retreat");
       // Paper width is a per-device setting in ⋯; 80 mm until changed.
       if (paper === 58) {
         await page.getByRole("button", { name: "More receipt actions" }).click();

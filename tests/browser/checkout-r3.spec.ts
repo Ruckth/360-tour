@@ -372,6 +372,8 @@ for (const width of [390, 1180]) {
     test("link and unlink drafts guard Escape, outside, Back and Cancel without changing the receipt", async ({ page }) => {
       await open(page, "checkout", "?scenario=unscheduled-paid");
       const paper = page.locator(".pos-receipt");
+      // The business name arrives after the first paint; read the receipt once it has.
+      await expect(paper).toContainText("Auralis Cove Retreat");
       const issued = await paper.textContent();
       const items = page.getByTestId("receipt-items");
       await items.getByRole("button", { name: "Link appointment", exact: true }).click();
@@ -526,6 +528,7 @@ for (const paperWidth of [58, 80]) test(`a closed phone receipt preview prints e
   await expect(page.getByTestId("receipt-items")).toBeVisible();
   await preview.locator("summary").click();
   await expect(paper).toBeVisible();
+  await expect(paper).toContainText("Auralis Cove Retreat");
   const issued = await paper.textContent();
   await preview.locator("summary").click();
   await expect(preview).not.toHaveAttribute("open");
