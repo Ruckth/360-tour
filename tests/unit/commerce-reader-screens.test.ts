@@ -1,11 +1,11 @@
 import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { NextIntlClientProvider } from "next-intl";
-import { createElement, type ComponentProps, type ReactNode } from "react";
+import { createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
-import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
+import { AUTO_PAGES, CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, COMMERCE_OFF, type CheckoutBackend, type HistoryEntry } from "@/components/checkout/backend";
 import { previewBackend } from "@/components/checkout/CheckoutPreview";
 import { maskReceiptCodes, receiptCommerce, receiptText } from "@/components/checkout/checkout-ui";
@@ -15,7 +15,7 @@ import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { p95, resetTiming, timingRows, withTiming } from "@/components/checkout/timing";
 import { timingOptIn, useCheckoutTiming } from "@/components/checkout/timing-gate";
-import { receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
+import { fieldChanges, historyEntry, receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
 import { Screen } from "@/components/display/DisplayScreens";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
 import en from "../../messages/en.json";
@@ -47,8 +47,10 @@ const settle = () => act(async () => { await new Promise((resolve) => setTimeout
 async function until(done: () => boolean) {
   for (let i = 0; i < 50 && !done(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
-/** A full voucher code: two to four letters, then two groups of four with no bullets. */
-const FULL_CODE = /\b[A-Z]{2,4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b/;
+/** A full voucher code in any spelling: any case, with or without separators, never bullets. */
+const FULL_CODE = /GV[\s\-\u2010-\u2015._]{0,3}[A-Z0-9]{4}[\s\-\u2010-\u2015._]{0,3}[A-Z0-9]{4}/i;
+/** Audit r2 blocker 1: uppercase with hyphens, lowercase with hyphens, uppercase without separators, and more. */
+const SPELLINGS = ["GV-7K2M-Q9XD", "gv-7k2m-q9xd", "GV7K2MQ9XD", "gv7k2mq9xd", "GV 7K2M Q9XD"];
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -173,6 +175,26 @@ describe("commerce receipt", () => {
     expect(text()).not.toMatch(FULL_CODE);
   });
 
+  // Audit r2 blocker 1: the dark receipt, a code appended to the item name in each spelling.
+  it.each(SPELLINGS)("masks %s typed into an item name on the paper and in the shared text", async (code) => {
+    const typed = { ...commerceReceipt, lines: commerceReceipt.lines.map((line, index) => (index ? line : { ...line, name: `${line.name} ${code}` })) };
+    const base = dark();
+    await receipt({ ...base, useOrder: (id) => (id === COMMERCE_RECEIPT_ID ? typed : null) });
+    expect(article().textContent).toContain("Gold Wellness GV-••••-Q9XD");
+    expect(text()).not.toMatch(FULL_CODE);
+    const shared = receiptText(typed, "Auralis Cove Retreat");
+    expect(shared).toContain("Gold Wellness GV-••••-Q9XD");
+    expect(shared).not.toMatch(FULL_CODE);
+  });
+
+  it("leaves room numbers, phone numbers, amounts and names on the paper as they are", () => {
+    const plain = createFixtureBackend("coupon-paid");
+    const view = plain.useOrder("fxbill000011" as typeof COMMERCE_RECEIPT_ID)!;
+    const ordinary = ["Room 1204 minibar", "Call +66 81 234 5678", "Tip ฿2,600.00", "Mia Tanaka", "Gvantsa Beridze", "Booking SPA-2026-AB12CD"];
+    const typed = { ...view, receiptCustomer: { name: "Maya Lin" }, lines: view.lines.map((line, index) => ({ ...line, name: ordinary[index % ordinary.length] })) };
+    expect(maskReceiptCodes(typed)).toBe(typed);
+  });
+
   it("masks a full code typed into an extra on a receipt from before commerce, and changes nothing else", async () => {
     const plain = createFixtureBackend("coupon-paid");
     const view = plain.useOrder("fxbill000011" as typeof COMMERCE_RECEIPT_ID)!;
@@ -260,6 +282,31 @@ describe("live receipt status (getOrder's projection)", () => {
     // Two parts: no per-part amount is invented.
     const two = receiptReturnable(projected({ activeReturn: { ...activeReturn, parts: [...activeReturn.parts, { kind: "line", lineId: commerceReceipt.lines[1]._id, units: 1 }] } }));
     expect(two.open!.parts.map((part) => part.amount)).toEqual([null, null]);
+  });
+
+  // Sol r2: goodwill going back onto a voucher the guest holds has no tender to read a mask from.
+  it("names an existing voucher as the credit's destination when the return says so, and a new one otherwise", async () => {
+    const credit = { voucherId: "fxvchgold", paid: 0, goodwill: 10000 };
+    const existing = { ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "existingVoucher", voucherId: "fxvchgold", codeMask: "GV-••••-7PAX" } }] };
+    const plain = (extra: object) => ({ ...commerceReceipt, voucherPayments: [], ...extra }) as unknown as OrderRead;
+    expect(receiptReturnable(plain({ activeReturn: existing })).open!.voucherCredits).toEqual([{ ...credit, maskedCode: "GV-••••-7PAX", newVoucher: false, existingVoucher: true }]);
+    expect(receiptReturnable(plain({ activeReturn: { ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "newVoucher" } }] } })).open!.voucherCredits)
+      .toEqual([{ ...credit, maskedCode: "", newVoucher: true }]);
+    // Before the backend says where it goes, the receipt's masks decide, as before.
+    expect(receiptReturnable(plain({ activeReturn: { ...activeReturn, voucherCredits: [credit] } })).open!.voucherCredits).toEqual([{ ...credit, maskedCode: "", newVoucher: false }]);
+    // A full code sent by mistake is masked.
+    const leaked = { ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "existingVoucher", voucherId: "fxvchgold", codeMask: "gv7k2m7pax" } }] };
+    expect(receiptReturnable(plain({ activeReturn: leaked })).open!.voucherCredits[0].maskedCode).toBe("GV-••••-7PAX");
+
+    const render = async (open: object) => {
+      const view = plain({ activeReturn: open });
+      const base = dark();
+      await receipt({ ...base, useOrder: () => view, commerce: { ...base.commerce!, useReturnable: () => receiptReturnable(view) } } as CheckoutBackend);
+      return document.querySelector('[data-testid="receipt-open-return"]')!.textContent;
+    };
+    expect(await render(existing)).toContain("฿100 back to voucher GV-••••-7PAX");
+    expect(await render(existing)).not.toContain("new voucher");
+    expect(await render({ ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "newVoucher" } }] })).toContain("฿100 on a new voucher (90 days)");
   });
 
   it("renders the live cards on the real receipt from the same order read", async () => {
@@ -350,7 +397,18 @@ describe("customer display", () => {
   });
 
   it("masks every code shape the display could carry", () => {
-    expect(maskVoucherCodes("GV-7K2M-Q9XD, GIFT-AB12-CD34 and GV-••••-Q9XD")).toBe("GV-••••-Q9XD, GIFT-••••-CD34 and GV-••••-Q9XD");
+    expect(maskVoucherCodes("GV-7K2M-Q9XD, gv-ab12-cd34, GV7K2MH3LN and GV-••••-Q9XD")).toBe("GV-••••-Q9XD, GV-••••-CD34, GV-••••-H3LN and GV-••••-Q9XD");
+    expect(maskVoucherCodes("Room 1204 · +66 81 234 5678 · ฿2,600")).toBe("Room 1204 · +66 81 234 5678 · ฿2,600");
+  });
+
+  // Audit r2 blocker 1: a room order with the code appended to an extra, on the paired display.
+  it.each(SPELLINGS)("masks %s in a row's name, detail and the customer's name", async (code) => {
+    await show({
+      ...shared, customerFirstName: `Maya ${code}`, state: "order", subtotal: 100000, discount: 0, coupon: null, deposit: 0, total: 100000, vat: 0, due: 100000, activeAt: Date.now(),
+      lines: [{ name: `Tideglass Pool Residence ${code}`, detail: `Extra ${code}`, qty: 1, unitPrice: 100000, price: 100000, discount: 0, couponDiscount: 0, total: 100000, deposit: 0 }],
+    });
+    expect(text()).toContain("Tideglass Pool Residence GV-••••-Q9XD");
+    expect(text()).not.toMatch(FULL_CODE);
   });
 });
 
@@ -422,6 +480,63 @@ describe("Approvals", () => {
     const more = buttons("Show more requests")[0];
     await act(async () => more.click());
     expect(loadMore).toHaveBeenCalledWith(20);
+  });
+
+  // Audit r2 blocker 2: a promoted cashier's own newer requests fill the first page.
+  it("reads past a first page with nothing to approve and never says Nothing waiting while pages remain", async () => {
+    const base = previewBackend("spa", "live");
+    const waiting = base.usePendingApprovals().results.filter((row) => row.kind === "discount");
+    const loadMore = vi.fn();
+    function usePendingApprovals() {
+      const [pages, setPages] = useState(1);
+      return pages === 1
+        ? { results: [], status: "CanLoadMore" as const, loadMore: (n: number) => { loadMore(n); setPages(2); } }
+        : { results: waiting, status: "Exhausted" as const, loadMore };
+    }
+    await render({ ...base, usePendingApprovals }, createElement(CheckoutStaffControls));
+    await settle();
+    expect(loadMore).toHaveBeenCalledWith(20);
+    expect(document.querySelector("[data-approval-count]")?.textContent).toBe("1 waiting");
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="approvals-button"]')!.click());
+    await until(() => items().length === 1);
+    expect(items()[0].textContent).toContain("Ploy asks for a ฿180 discount (15%)");
+    expect(text()).not.toContain("Nothing waiting");
+  });
+
+  it(`stops reading on its own after ${AUTO_PAGES} pages and offers Show more requests instead of Nothing waiting`, async () => {
+    const base = previewBackend("spa", "live");
+    const loadMore = vi.fn();
+    await render({ ...base, usePendingApprovals: () => ({ results: [], status: "CanLoadMore" as const, loadMore }) }, createElement(CheckoutStaffControls));
+    await settle();
+    expect(loadMore).toHaveBeenCalledTimes(AUTO_PAGES);
+    expect(document.querySelector("[data-approval-count]")).toBeNull();
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="approvals-button"]')!.click());
+    expect(text()).not.toContain("Nothing waiting");
+    expect(document.querySelector('[data-testid="approvals-none-loaded"]')?.textContent).toBe("None you can approve in the newest requests.");
+    await act(async () => buttons("Show more requests")[0].click());
+    expect(loadMore).toHaveBeenCalledTimes(AUTO_PAGES + 1);
+    // Exhausted and empty: now it is nothing.
+    await render({ ...base, usePendingApprovals: () => ({ results: [], status: "Exhausted" as const, loadMore }) }, createElement(CheckoutStaffControls));
+    expect(text()).toContain("Nothing waiting.");
+    expect(buttons("Show more requests")).toHaveLength(0);
+  });
+
+  // Sol r2: stale requests from before commerce don't count as waiting or open first.
+  it("counts only requests that can still be decided and opens the first of those", async () => {
+    const base = previewBackend("spa", "live");
+    const rows = base.usePendingApprovals().results;
+    const soonest = rows.reduce((a, b) => (a.expiresAt < b.expiresAt ? a : b));
+    const marked = rows.map((row) => (row._id === soonest._id ? { ...row, status: "stale" } : row)) as typeof rows;
+    const { backend, details } = counted({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: marked }) });
+    await openPanel(backend);
+    expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
+    expect(items()).toHaveLength(3);
+    expect(details.has(soonest._id)).toBe(false);
+    expect(details.size).toBe(1);
+    // The other mark the queue may send counts the same way.
+    const flagged = rows.map((row) => (row._id === soonest._id ? { ...row, actionable: false } : row)) as typeof rows;
+    await render({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: flagged }) }, createElement(CheckoutStaffControls));
+    expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
   });
 
   it("shows only today's requests without the commerce readers", async () => {
@@ -523,6 +638,45 @@ describe("Edit · History", () => {
     await act(async () => staff.click());
     await settle();
     expect(scrim().className).toContain("md:bg-black/15");
+  });
+
+  // Sol r2: staff rows carry each field an edit changed, before → after, with the reason.
+  it("shows staff what an edit changed, before → after, with the reason, and never shows it to the guest", async () => {
+    const row = {
+      entryId: "adj1", at: Date.UTC(2026, 10, 18), fact: { key: "published" }, balance: null,
+      before: { price: 100000, name: "Gold Wellness", validityDays: 180, allowTransfer: true, refundDueDays: { cashOrTransfer: 15, card: 45 }, contents: [{ key: "a" }], note: "GV-7K2M-Q9XD" },
+      after: { price: 120000, name: "Gold Wellness", validityDays: 365, allowTransfer: false, refundDueDays: { cashOrTransfer: 15, card: 30 }, contents: [{ key: "a" }, { key: "b" }], note: "gv7k2mh3ln", expiresAt: Date.UTC(2026, 11, 30) },
+      staff: { actorName: "Ploy", reason: "healthPause", reasonText: "Owner asked" },
+    } as unknown as Parameters<typeof historyEntry>[0];
+    const entry = historyEntry(row);
+    expect(entry.changes).toEqual([
+      { field: "price", before: 100000, after: 120000 },
+      { field: "validityDays", before: 180, after: 365 },
+      { field: "allowTransfer", before: true, after: false },
+      { field: "refundDueDays.card", before: 45, after: 30 },
+      { field: "contents", before: { items: 1 }, after: { items: 2 } },
+      { field: "note", before: "GV-••••-Q9XD", after: "GV-••••-H3LN" },
+      { field: "expiresAt", before: undefined, after: Date.UTC(2026, 11, 30) },
+    ]);
+    expect(fieldChanges({ name: "Same" }, { name: "Same" })).toEqual([]);
+    const guestRow = { ...(row as unknown as Record<string, unknown>), staff: undefined };
+    expect(historyEntry(guestRow as unknown as Parameters<typeof historyEntry>[0]).changes).toBeUndefined();
+
+    const base = dark();
+    const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: [entry], status: "Exhausted" as const, loadMore: () => {} }) } };
+    await render(backend, createElement(HistoryList, { target: { targetType: "package", targetId: "fxpkg" as never }, audience: "staff" }));
+    const changes = [...document.querySelectorAll('[data-testid="history-changes"] li')].map((li) => li.textContent);
+    expect(changes).toEqual([
+      "Price: ฿1,000 → ฿1,200", "Validity days: 180 → 365", "Allow transfer: On → Off", "Refund due days · Card: 45 → 30",
+      "Contents: 1 item → 2 items", "Note: GV-••••-Q9XD → GV-••••-H3LN", "Ends: — → 30 Dec 2026",
+    ]);
+    expect(document.querySelector('[data-testid="history-staff"]')?.textContent).toContain("By Ploy · Health pause or extension · Owner asked");
+    expect(text()).not.toMatch(FULL_CODE);
+    // The same entry, if it ever reached the guest view, shows no changes, staff or reason.
+    await render(backend, createElement(HistoryList, { target: { targetType: "package", targetId: "fxpkg" as never }, audience: "guest" }));
+    expect(document.querySelector('[data-testid="history-changes"]')).toBeNull();
+    expect(text()).not.toContain("฿1,200");
+    expect(text()).not.toContain("Ploy");
   });
 
   it("never draws staff, reasons or full codes in the guest view, even if the server sent them", async () => {

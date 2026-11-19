@@ -278,7 +278,23 @@
         "updated": "已更新"
       },
       "showStaff": "员工视图",
-      "close": "关闭"
+      "close": "关闭",
+      "change": "{label}：{before} → {after}",
+      "on": "开",
+      "off": "关",
+      "items": "{count, plural, other {# 项}}",
+      "fields": {
+        "name": "名称",
+        "price": "价格",
+        "expiresAt": "到期",
+        "effectiveExpiresAt": "到期",
+        "status": "状态",
+        "pause": "暂停",
+        "goodwillBalance": "赠送额度",
+        "paidBalance": "已付金额",
+        "contents": "内容",
+        "services": "服务"
+      }
     },
     "customer": {
       "packageLine": "{name} · 剩 {count} 次 · 至 {date}",

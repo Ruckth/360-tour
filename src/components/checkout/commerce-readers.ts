@@ -2,7 +2,7 @@ import type { api } from "convex/_generated/api";
 import { editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionReturnType } from "convex/server";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type EditReason, type GuestFact, type GuestFactKey, type HistoryEntry, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
+import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type ChangeValue, type EditReason, type FieldChange, type GuestFact, type GuestFactKey, type HistoryEntry, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
 import type { TargetApproval } from "./TargetApproval";
 
 /**
@@ -34,13 +34,49 @@ function guestFact({ key, args = {} }: HistoryRow["fact"]): GuestFact {
   return { ...args, key } as GuestFact;
 }
 
-/** One History row from commerce/history.staffPage or guestPage. Show guest rows never carry `staff`. */
+type StoredFields = NonNullable<Extract<HistoryRow, { before?: unknown }>["before"]>;
+type StoredValue = StoredFields[string];
+const scalar = (value: unknown): value is string | number | boolean | null => value === null || ["string", "number", "boolean"].includes(typeof value);
+const mask = (value: string | number | boolean | null) => (typeof value === "string" ? maskVoucherCodes(value) : value);
+
+/** A stored value as a change shows it: scalars and lists of them as they are, anything bigger as its size. */
+function changeValue(value: unknown): ChangeValue {
+  if (value === undefined) return undefined;
+  if (scalar(value)) return mask(value);
+  if (Array.isArray(value)) return value.every(scalar) ? value.map(mask) : { items: value.length };
+  return { items: Object.keys(value as object).length };
+}
+
+/** "pause.endsAt" → its value: objects open one level, so a settings group shows each field that changed. */
+function flatFields(fields: StoredFields | undefined) {
+  const flat = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(fields ?? {}) as [string, StoredValue][]) {
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      for (const [inner, leaf] of Object.entries(value)) flat.set(`${key}.${inner}`, leaf);
+    } else flat.set(key, value);
+  }
+  return flat;
+}
+
+/** Each field an edit changed, before → after, in the order the edit recorded them; unchanged fields are left out. */
+export function fieldChanges(before: StoredFields | undefined, after: StoredFields | undefined): FieldChange[] {
+  const was = flatFields(before);
+  const now = flatFields(after);
+  const fields = [...new Set([...now.keys(), ...was.keys()])];
+  return fields.flatMap((field) => {
+    const change = { field, before: changeValue(was.get(field)), after: changeValue(now.get(field)) };
+    return JSON.stringify(change.before) === JSON.stringify(change.after) ? [] : [change];
+  });
+}
+
+/** One History row from commerce/history.staffPage or guestPage. Show guest rows never carry `staff` or changes. */
 export function historyEntry(row: HistoryRow): HistoryEntry {
   const entry: HistoryEntry = { entryId: row.entryId, at: row.at, fact: guestFact(row.fact), balance: row.balance };
   if (!("staff" in row) || !row.staff) return entry;
   const { actorName, reason, reasonText } = row.staff;
   const known = reason !== null && (EDIT_REASONS.has(reason) || STOCK_REASONS.has(reason)) ? (reason as EditReason | StockReason) : null;
-  return { ...entry, staff: { actorName, reason: known, reasonText } };
+  const changes = "before" in row || "after" in row ? fieldChanges(row.before, row.after) : [];
+  return { ...entry, staff: { actorName, reason: known, reasonText }, ...(changes.length ? { changes } : {}) };
 }
 
 export const isTargetRow = (row: QueueRow): row is TargetQueueRow => row.kind === "adjustment" || row.kind === "returnItems";
@@ -109,6 +145,12 @@ export function receiptAttempt(view: OrderRead): PaymentAttemptView | null {
 }
 
 /**
+ * Where a voucher credit goes, once getOrder's activeReturn says (W2 backend): back onto a voucher
+ * the guest already holds, or onto a new 90-day one. Without it, the receipt's voucher masks decide.
+ */
+type CreditDestination = { kind: "newVoucher" } | { kind: "existingVoucher"; voucherId: string; codeMask: string };
+
+/**
  * The receipt's open return from getOrder's projection: each part named from its row (codes
  * masked), each claim with its state and due date, and voucher credits by their receipt masks.
  * A part's amount shows only when it is the whole return; nothing is recalculated here.
@@ -139,7 +181,16 @@ export function receiptReturnable(view: OrderRead): Returnable {
         key: claim.key, method: claim.method, amount: claim.amount, state: claim.state,
         reference: claim.reference ?? null, instructedAt: claim.instructedAt ?? null, dueAt: claim.dueAt,
       })),
-      voucherCredits: open.voucherCredits.map((credit) => ({ voucherId: credit.voucherId, maskedCode: masks.get(credit.voucherId) ?? "", paid: credit.paid, goodwill: credit.goodwill, newVoucher: false })),
+      voucherCredits: open.voucherCredits.map((credit) => {
+        const destination = (credit as typeof credit & { destination?: CreditDestination }).destination;
+        const existing = destination?.kind === "existingVoucher" ? destination : null;
+        return {
+          voucherId: credit.voucherId, paid: credit.paid, goodwill: credit.goodwill,
+          maskedCode: maskVoucherCodes(existing?.codeMask ?? masks.get(credit.voucherId) ?? ""),
+          newVoucher: destination?.kind === "newVoucher",
+          ...(existing ? { existingVoucher: true } : {}),
+        };
+      }),
     },
   };
 }

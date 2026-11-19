@@ -278,7 +278,23 @@
         "updated": "변경됨"
       },
       "showStaff": "직원 화면",
-      "close": "닫기"
+      "close": "닫기",
+      "change": "{label}: {before} → {after}",
+      "on": "켜짐",
+      "off": "꺼짐",
+      "items": "{count, plural, other {#개}}",
+      "fields": {
+        "name": "이름",
+        "price": "가격",
+        "expiresAt": "만료",
+        "effectiveExpiresAt": "만료",
+        "status": "상태",
+        "pause": "일시 중지",
+        "goodwillBalance": "서비스 크레딧",
+        "paidBalance": "결제 금액",
+        "contents": "구성",
+        "services": "서비스"
+      }
     },
     "customer": {
       "packageLine": "{name} · {count}회 남음 · {date}까지",

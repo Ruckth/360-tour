@@ -177,6 +177,42 @@ it('keeps a live pre-commerce approval visible after twenty stale requests and s
   expect(ranges.mock.calls.length + 1).toBe(12);
 });
 
+// Audit r2 blocker 2: a promoted cashier's own newer requests fill the first page.
+it('pages past a first page of the viewer\'s own requests to another cashier\'s, at most 21 documents a page', async () => {
+  const s = await setup();
+  const serviceId = await s.t.run(ctx => ctx.db.insert('services', {
+    slug: 'queue-own-prefix', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
+    price: 30000, currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
+  }));
+  const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+  const { requestId } = await s.cashier.mutation(approvals.create, {
+    orderId, payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 3000 } }, reason: 'Discount request',
+  });
+  await s.t.run(async ctx => {
+    const request = await ctx.db.get(requestId);
+    if (!request || request.kind !== 'discount') throw new Error('Missing discount request');
+    const own = { ...omit(request, ['_id', '_creationTime']), requesterEmail: 'manager@example.com', requesterTokenIdentifier: 'manager' };
+    for (let index = 1; index <= 20; index++) {
+      await ctx.db.insert('staffApprovalRequests', { ...own, createdAt: now + index, expiresAt: now + APPROVAL_TTL_MS + index });
+    }
+  });
+  const documents = vi.spyOn(ReadBudget.prototype, 'document');
+  let page = await s.manager.query(approvals.pendingPage, firstPage);
+  // The server reports the page as filtered, not finished: the panel must keep paging.
+  expect(page.page).toEqual([]);
+  expect(page.isDone).toBe(false);
+  const pages = [page];
+  while (!page.isDone) {
+    expect(documents.mock.calls.length).toBeLessThanOrEqual(21);
+    documents.mockClear();
+    page = await s.manager.query(approvals.pendingPage, { paginationOpts: { numItems: 20, cursor: page.continueCursor } });
+    pages.push(page);
+  }
+  expect(pages.flatMap(({ page }) => page.map(row => row._id))).toEqual([requestId]);
+  // An owner sees the manager's requests and the cashier's on the same first page.
+  expect((await s.owner.query(approvals.pendingPage, firstPage)).page).toHaveLength(20);
+});
+
 it('restricts review to a different manager or owner, and confines own status to the requester', async () => {
   const s = await setup();
   const requestId = await s.insertAdjustment();

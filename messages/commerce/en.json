@@ -278,7 +278,23 @@
         "updated": "Updated"
       },
       "showStaff": "Staff view",
-      "close": "Close"
+      "close": "Close",
+      "change": "{label}: {before} → {after}",
+      "on": "On",
+      "off": "Off",
+      "items": "{count, plural, one {# item} other {# items}}",
+      "fields": {
+        "name": "Name",
+        "price": "Price",
+        "expiresAt": "Ends",
+        "effectiveExpiresAt": "Ends",
+        "status": "Status",
+        "pause": "Pause",
+        "goodwillBalance": "Goodwill",
+        "paidBalance": "Paid value",
+        "contents": "Contents",
+        "services": "Services"
+      }
     },
     "customer": {
       "packageLine": "{name} · {count} left · until {date}",

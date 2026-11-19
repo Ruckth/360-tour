@@ -205,9 +205,10 @@ export function CommerceReceiptStatus({ orderId }: { orderId: OrderId }) {
             ))}
             {open.voucherCredits.map((credit) => (
               <li key={credit.voucherId}>
-                {credit.newVoucher || !credit.maskedCode
+                {/* Back onto a voucher the guest holds when the return says so, or when the receipt names it; else a new one. */}
+                {!credit.existingVoucher && (credit.newVoucher || !credit.maskedCode)
                   ? copy.t("returns.toNewVoucher", { amount: copy.money(credit.paid + credit.goodwill) })
-                  : copy.t("returns.toVoucher", { amount: copy.money(credit.paid + credit.goodwill), code: credit.maskedCode })}
+                  : copy.t("returns.toVoucher", { amount: copy.money(credit.paid + credit.goodwill), code: credit.maskedCode || "GV-••••" })}
               </li>
             ))}
           </ul>

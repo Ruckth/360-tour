@@ -278,7 +278,23 @@
         "updated": "Aggiornato"
       },
       "showStaff": "Vista staff",
-      "close": "Chiudi"
+      "close": "Chiudi",
+      "change": "{label}: {before} → {after}",
+      "on": "Attivo",
+      "off": "Disattivo",
+      "items": "{count, plural, one {# elemento} other {# elementi}}",
+      "fields": {
+        "name": "Nome",
+        "price": "Prezzo",
+        "expiresAt": "Scade",
+        "effectiveExpiresAt": "Scade",
+        "status": "Stato",
+        "pause": "Pausa",
+        "goodwillBalance": "Cortesia",
+        "paidBalance": "Valore pagato",
+        "contents": "Contenuto",
+        "services": "Servizi"
+      }
     },
     "customer": {
       "packageLine": "{name} · residue: {count} · fino al {date}",

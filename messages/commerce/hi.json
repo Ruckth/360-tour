@@ -278,7 +278,23 @@
         "updated": "अपडेट हुआ"
       },
       "showStaff": "स्टाफ़ व्यू",
-      "close": "बंद करें"
+      "close": "बंद करें",
+      "change": "{label}: {before} → {after}",
+      "on": "चालू",
+      "off": "बंद",
+      "items": "{count, plural, one {# आइटम} other {# आइटम}}",
+      "fields": {
+        "name": "नाम",
+        "price": "कीमत",
+        "expiresAt": "समाप्ति",
+        "effectiveExpiresAt": "समाप्ति",
+        "status": "स्थिति",
+        "pause": "रोक",
+        "goodwillBalance": "सद्भावना क्रेडिट",
+        "paidBalance": "भुगतान किया मूल्य",
+        "contents": "सामग्री",
+        "services": "सेवाएँ"
+      }
     },
     "customer": {
       "packageLine": "{name} · {count} बचे · {date} तक",

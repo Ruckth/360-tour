@@ -1,13 +1,16 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { Timer } from "lucide-react";
+import { useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { CheckoutBackend } from "./backend";
 
 /**
  * ?timing=1 on checkout or a receipt: every checkout write (sale, payment, refund, approval and the
  * commerce writers) is timed on this device, and a small staff-only panel shows each action's p95
- * over its last 100 runs. The desk-iPad rehearsal doubles as the real-iPad speed check (plan v27,
+ * over its last 100 runs, from a Timing button in the admin header. The desk-iPad rehearsal doubles as the real-iPad speed check (plan v27,
  * Speed gates). Samples stay on this device (localStorage) across reloads until Reset. Loaded only
  * when asked for; the customer display never loads it.
  */
@@ -93,19 +96,34 @@ const subscribe = (listener: () => void) => {
 const read = () => samples;
 const readNone = (): Samples => ({});
 
-/** The staff-only panel: p95 per action on this device. */
+/** The admin header's slot for page tools (AdminShell); absent outside the admin shell. */
+export const HEADER_TOOLS = "data-admin-header-tools";
+const noSubscribe = () => () => {};
+const headerSlot = () => document.querySelector<HTMLElement>(`[${HEADER_TOOLS}]`);
+
+/**
+ * The staff-only readout: a Timing button in the admin header that opens p95 per action on this
+ * device. It never sits over the page: closed it is only the header button, and open it is a
+ * non-modal popover, so a tap on the till outside it closes it and still reaches its control.
+ */
 export function TimingReadout() {
   const current = useSyncExternalStore(subscribe, read, readNone);
-  const [open, setOpen] = useState(true);
+  const slot = useSyncExternalStore(noSubscribe, headerSlot, () => null);
   const rows = timingRows(current);
-  return (
-    <aside aria-label="Checkout timing" data-testid="checkout-timing" className="fixed bottom-3 left-3 z-50 grid max-w-[min(22rem,calc(100vw-1.5rem))] gap-1 rounded-xl border border-border bg-card/95 p-2 text-xs shadow-lg backdrop-blur print:hidden">
-      <div className="flex items-center justify-between gap-2">
-        <Button type="button" variant="ghost" size="sm" className="h-11 px-2 font-semibold" aria-expanded={open} onClick={() => setOpen(!open)}>Timing · p95 on this device</Button>
-        {open ? <Button type="button" variant="ghost" size="sm" className="h-11 px-2" onClick={resetTiming}>Reset</Button> : null}
-      </div>
-      {open ? (
-        rows.length ? (
+  const readout = (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" className="h-11 shrink-0 px-3" data-testid="checkout-timing" aria-label="Checkout timing">
+          <Timer aria-hidden className="size-4" />
+          <span className="max-sm:sr-only">Timing</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="grid w-[min(22rem,calc(100vw-1.5rem))] gap-1 p-2 text-xs print:hidden" aria-label="Checkout timing" data-testid="checkout-timing-panel">
+        <div className="flex items-center justify-between gap-2">
+          <p className="px-2 font-semibold">Timing · p95 on this device</p>
+          <Button type="button" variant="ghost" size="sm" className="h-11 px-2" onClick={resetTiming}>Reset</Button>
+        </div>
+        {rows.length ? (
           <table className="w-full tabular-nums">
             <thead className="text-muted-foreground"><tr><th className="px-2 text-left font-medium">Action</th><th className="px-2 text-right font-medium">p95</th><th className="px-2 text-right font-medium">Runs</th></tr></thead>
             <tbody>
@@ -114,8 +132,10 @@ export function TimingReadout() {
               ))}
             </tbody>
           </table>
-        ) : <p className="px-2 pb-1 text-muted-foreground">Nothing timed yet. Each checkout action shows here once it runs.</p>
-      ) : null}
-    </aside>
+        ) : <p className="px-2 pb-1 text-muted-foreground">Nothing timed yet. Each checkout action shows here once it runs.</p>}
+      </PopoverContent>
+    </Popover>
   );
+  // Outside the admin shell (a test, a bare page) it sits where it is rendered, in the page's flow.
+  return slot ? createPortal(readout, slot) : readout;
 }

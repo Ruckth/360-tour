@@ -385,7 +385,8 @@ export type ReturnClaimView = {
   dueAt: number;
 };
 /** Back onto a voucher first (D8), or onto a new 90-day voucher when that one can't take it. */
-export type VoucherCreditView = { voucherId: Id<"vouchers">; maskedCode: string; paid: Satang; goodwill: Satang; newVoucher: boolean };
+/** A voucher credit on an open return. existingVoucher: the return said it goes back onto this voucher, even with no mask to show. */
+export type VoucherCreditView = { voucherId: Id<"vouchers">; maskedCode: string; paid: Satang; goodwill: Satang; newVoucher: boolean; existingVoucher?: boolean };
 /** Each part and destination with its amount, shown before anything is recorded. */
 export type ReturnQuote = {
   parts: { partKey: string; label: string; units: number; amount: Satang }[];
@@ -481,7 +482,12 @@ export type HistoryEntry = {
   fact: GuestFact;
   balance: HistoryBalance | null;
   staff?: { actorName: string; reason: EditReason | StockReason | null; reasonText: string | null };
+  /** Staff only: each field an edit changed (catalogue, settings and other adjustments), before → after. */
+  changes?: FieldChange[];
 };
+/** A changed value: a scalar or a list of them, or a size for anything bigger; undefined when the field was absent. */
+export type ChangeValue = string | number | boolean | null | (string | number | boolean | null)[] | { items: number } | undefined;
+export type FieldChange = { field: string; before: ChangeValue; after: ChangeValue };
 export type HistoryAudience = "staff" | "guest";
 
 // Refusals ──────────────────────────────────────────────────────────────────────────────────────
@@ -583,6 +589,8 @@ export function commerceRefusal(err: unknown): CommerceRefusal | null {
 /** A translator scoped to the "Commerce" namespace, plus the page's money and date formatting. */
 export type CommerceCopy = {
   t: (key: string, values?: Record<string, string | number>) => string;
+  /** Whether the catalog has this key; without it, optional words fall back to plain ones. */
+  has?: (key: string) => boolean;
   money: (satang: Satang) => string;
   date: (at: number) => string;
 };

@@ -51,10 +51,30 @@ export function CheckoutStaffControls() {
 
 // Every control here is at least 44 × 44 px with any pointer (a mouse included), as at the till.
 const PANEL_TARGETS = "[&_button]:min-h-11 [&_button]:min-w-11";
+/** Requests per page, as staffApprovals.pendingPage allows. */
+const APPROVAL_PAGE = 20;
+
+/**
+ * Whether a queue row can still be decided. The queue may mark a request from before commerce that
+ * no longer matches its order (`status: "stale"` or `actionable: false`); a row without either
+ * mark counts as waiting, as it always has.
+ */
+export function isActionable(row: ApprovalQueueRow) {
+  const marks = row as { status: string; actionable?: boolean };
+  return marks.status !== "stale" && marks.actionable !== false;
+}
+
+/**
+ * Pages read on their own while none of what's loaded can be approved: a manager's own requests
+ * (a cashier who was promoted) never show to them, so a first page can hold none they may review.
+ * Each page reads at most 21 requests; past this many, Show more requests keeps going.
+ */
+export const AUTO_PAGES = 5;
 
 /**
  * The queue is one cursor-paged list of compact rows (staffApprovals.pendingPage), newest first.
  * Only the selected request reads its detail, so the panel never fans out to orders or details.
+ * "Nothing waiting" shows only once the server says there are no more pages.
  */
 function ApprovalsButton() {
   const backend = useCheckoutBackend();
@@ -62,34 +82,47 @@ function ApprovalsButton() {
   // Returns and edits need the commerce readers; without them only today's requests show.
   const commerce = backend.commerce !== undefined;
   const rows = useMemo(() => (commerce ? page.results : page.results.filter((row) => !isTarget(row))), [commerce, page.results]);
+  const actionable = useMemo(() => rows.filter(isActionable), [rows]);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState<ApprovalId | null>(null);
-  // The one open request: the one tapped, else the one that expires first.
-  const selected = rows.find((row) => row._id === selectedId) ?? rows.reduce<ApprovalQueueRow | null>((soonest, row) => (!soonest || row.expiresAt < soonest.expiresAt ? row : soonest), null);
+  // The one open request: the one tapped, else the one that can be decided and expires first.
+  const selected = rows.find((row) => row._id === selectedId) ?? actionable.reduce<ApprovalQueueRow | null>((soonest, row) => (!soonest || row.expiresAt < soonest.expiresAt ? row : soonest), null);
   // The last decision's result, shown as a toast once the panel has closed and the page is
   // readable again (the open sheet hides the rest of the page from screen readers).
   const closedWith = useRef("");
   const toast = useToast();
   const more = page.status === "CanLoadMore" || page.status === "LoadingMore";
-  const count = rows.length;
+  const count = actionable.length;
+
+  // Nothing here can be approved but older pages exist: read the next one, a few times at most.
+  const [autoPages, setAutoPages] = useState(0);
+  const { status, loadMore } = page;
+  useEffect(() => {
+    if (status !== "CanLoadMore" || count || autoPages >= AUTO_PAGES) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- counts pages this effect asked for, so it stops after AUTO_PAGES; the next page arrives from the server, not from render
+    setAutoPages(autoPages + 1);
+    loadMore(APPROVAL_PAGE);
+  }, [status, count, autoPages, loadMore]);
+  const searching = !count && more && (page.status === "LoadingMore" || autoPages < AUTO_PAGES);
 
   // Read the queue as it is when the decision lands, not as it was when Approve was tapped.
   const rowsNow = useRef(rows);
   useEffect(() => { rowsNow.current = rows; }, [rows]);
   // Another manager can clear what's left while the panel shows a result: close then too.
   useEffect(() => {
-    if (!open || count || !notice) return;
+    if (!open || rows.length || more || !notice) return;
     closedWith.current = notice;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- the closing message lives in a ref (a decision landing after the queue empties overwrites it before onCloseAutoFocus reads it), and render can't write refs
     setNotice("");
     setOpen(false);
-  }, [open, count, notice]);
+  }, [open, rows.length, more, notice]);
 
   function onDecided(requestId: string, result: string) {
     const others = rowsNow.current.filter((row) => row._id !== requestId).length;
     setSelectedId(null);
-    if (others) {
+    // Older pages may still hold requests: keep the panel open on them.
+    if (others || more) {
       setNotice(result);
       return;
     }
@@ -140,32 +173,35 @@ function ApprovalsButton() {
           <p role="status" className={notice ? "rounded-lg bg-muted/60 px-3 py-2 text-sm" : "sr-only"}>{notice}</p>
           {page.status === "LoadingFirstPage" ? (
             <Spinner label="Loading approvals" />
-          ) : rows.length ? (
+          ) : (
             <>
-              <ul className="grid gap-3" aria-label="Requests">
-                {rows.map((row) => {
-                  const chosen = row._id === selected?._id;
-                  if (isTarget(row)) {
-                    return (
-                      <Suspense key={row._id} fallback={<li><Spinner label="Loading approvals" /></li>}>
-                        {chosen ? <SelectedTarget row={row} /> : <TargetApprovalItem row={row} detail={undefined} onSelect={() => setSelectedId(row._id)} />}
-                      </Suspense>
-                    );
-                  }
-                  return chosen
-                    ? <SelectedOrderRequest key={row._id} row={row} onResult={(result) => onDecided(row._id, result)} />
-                    : <QueueRow key={row._id} row={row} onSelect={() => setSelectedId(row._id)} />;
-                })}
-              </ul>
-              {more ? (
-                <Button type="button" variant="outline" className="w-full" disabled={page.status === "LoadingMore"} onClick={() => page.loadMore(20)}>
+              {rows.length ? (
+                <ul className="grid gap-3" aria-label="Requests">
+                  {rows.map((row) => {
+                    const chosen = row._id === selected?._id;
+                    if (isTarget(row)) {
+                      return (
+                        <Suspense key={row._id} fallback={<li><Spinner label="Loading approvals" /></li>}>
+                          {chosen ? <SelectedTarget row={row} /> : <TargetApprovalItem row={row} detail={undefined} onSelect={() => setSelectedId(row._id)} />}
+                        </Suspense>
+                      );
+                    }
+                    return chosen
+                      ? <SelectedOrderRequest key={row._id} row={row} onResult={(result) => onDecided(row._id, result)} />
+                      : <QueueRow key={row._id} row={row} onSelect={() => setSelectedId(row._id)} />;
+                  })}
+                </ul>
+              ) : null}
+              {searching ? <Spinner label="Checking older requests" /> : null}
+              {!count && more && !searching ? <p className="text-sm text-muted-foreground" data-testid="approvals-none-loaded">None you can approve in the newest requests.</p> : null}
+              {more && !searching ? (
+                <Button type="button" variant="outline" className="w-full" disabled={page.status === "LoadingMore"} onClick={() => page.loadMore(APPROVAL_PAGE)}>
                   {page.status === "LoadingMore" ? <Spinner label="Loading more" className="text-current" /> : null}
                   Show more requests
                 </Button>
               ) : null}
+              {!rows.length && !more ? <p className="text-sm text-muted-foreground">Nothing waiting.</p> : null}
             </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Nothing waiting.</p>
           )}
         </CheckoutDialogContent>
       </Dialog>

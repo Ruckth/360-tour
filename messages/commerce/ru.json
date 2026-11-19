@@ -278,7 +278,23 @@
         "updated": "Обновлено"
       },
       "showStaff": "Вид для персонала",
-      "close": "Закрыть"
+      "close": "Закрыть",
+      "change": "{label}: {before} → {after}",
+      "on": "Вкл.",
+      "off": "Выкл.",
+      "items": "{count, plural, one {# позиция} few {# позиции} many {# позиций} other {# позиции}}",
+      "fields": {
+        "name": "Имя",
+        "price": "Цена",
+        "expiresAt": "Действует до",
+        "effectiveExpiresAt": "Действует до",
+        "status": "Статус",
+        "pause": "Пауза",
+        "goodwillBalance": "Бонус",
+        "paidBalance": "Оплаченная сумма",
+        "contents": "Состав",
+        "services": "Услуги"
+      }
     },
     "customer": {
       "packageLine": "{name} · осталось: {count} · до {date}",

@@ -278,7 +278,23 @@
         "updated": "มีการแก้ไข"
       },
       "showStaff": "มุมมองพนักงาน",
-      "close": "ปิด"
+      "close": "ปิด",
+      "change": "{label}: {before} → {after}",
+      "on": "เปิด",
+      "off": "ปิด",
+      "items": "{count, plural, other {# รายการ}}",
+      "fields": {
+        "name": "ชื่อ",
+        "price": "ราคา",
+        "expiresAt": "หมดอายุ",
+        "effectiveExpiresAt": "หมดอายุ",
+        "status": "สถานะ",
+        "pause": "พักการใช้",
+        "goodwillBalance": "เครดิตน้ำใจ",
+        "paidBalance": "มูลค่าที่ชำระ",
+        "contents": "รายการในแพ็กเกจ",
+        "services": "บริการ"
+      }
     },
     "customer": {
       "packageLine": "{name} · เหลือ {count} · ถึง {date}",

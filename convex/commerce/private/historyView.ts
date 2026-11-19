@@ -2,7 +2,7 @@ import { validate } from 'convex-helpers/validators';
 import type { Doc } from '../../_generated/dataModel';
 import type { CommerceHistoryRow } from './history';
 import { structuredGuestFact } from '../validators';
-import { maskVoucherCodes } from './voucherCodes';
+import { maskVoucherCodes } from '../../shared/voucherCode';
 
 type Balances = { paid: number; goodwill: number };
 type CopyArgs = Record<string, string | number>;

@@ -278,7 +278,23 @@
         "updated": "Aktualisiert"
       },
       "showStaff": "Personalansicht",
-      "close": "Schließen"
+      "close": "Schließen",
+      "change": "{label}: {before} → {after}",
+      "on": "An",
+      "off": "Aus",
+      "items": "{count, plural, one {# Eintrag} other {# Einträge}}",
+      "fields": {
+        "name": "Bezeichnung",
+        "price": "Preis",
+        "expiresAt": "Endet",
+        "effectiveExpiresAt": "Endet",
+        "status": "Zustand",
+        "pause": "Pausierung",
+        "goodwillBalance": "Kulanz",
+        "paidBalance": "Bezahlter Wert",
+        "contents": "Inhalt",
+        "services": "Leistungen"
+      }
     },
     "customer": {
       "packageLine": "{name} · noch {count} · bis {date}",

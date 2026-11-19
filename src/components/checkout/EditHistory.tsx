@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { guestFactText, useCommerce, type AdjustTarget, type CommerceCopy, type HistoryAudience, type HistoryBalance, type HistoryEntry, type StockReason } from "./backend";
+import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type CommerceCopy, type FieldChange, type HistoryAudience, type HistoryBalance, type HistoryEntry, type StockReason } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { formatResort } from "./checkout-ui";
 import { useCommerceCopy } from "./commerce-copy";
@@ -33,6 +33,40 @@ export function balanceText(balance: HistoryBalance, copy: CommerceCopy) {
   return balance.after.goodwill ? `${sessions} · ${copy.t("packages.paidPlusGoodwill", { paid: balance.after.paid, goodwill: balance.after.goodwill })}` : sessions;
 }
 
+// Satang fields; other numbers are counts or days. Fields ending in "At" are dates.
+const MONEY_FIELDS = new Set(["price", "unitPrice", "minPrice", "maxPrice", "faceValue", "paidBalance", "goodwillBalance", "amount"]);
+const leaf = (field: string) => field.slice(field.lastIndexOf(".") + 1);
+
+/** "refundDueDays.card" → "Refund due days · Card", in the page's words where the catalog has the field. */
+export function fieldLabel(field: string, copy: CommerceCopy) {
+  return field.split(".").map((part) => {
+    const key = `history.fields.${part}`;
+    if (copy.has?.(key)) return copy.t(key);
+    const words = part.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }).join(" · ");
+}
+
+/** One side of a change: money as money, dates as dates, on/off, a list, or a size. Never a full code. */
+export function changeValueText(field: string, value: ChangeValue, copy: CommerceCopy): string {
+  const one = (item: string | number | boolean | null): string => {
+    if (item === null) return "—";
+    if (typeof item === "boolean") return copy.t(item ? "history.on" : "history.off");
+    if (typeof item === "string") return maskVoucherCodes(item) || "—";
+    if (MONEY_FIELDS.has(leaf(field))) return copy.money(item);
+    return /At$/.test(leaf(field)) ? copy.date(item) : String(item);
+  };
+  if (value === undefined) return "—";
+  if (Array.isArray(value)) return value.length ? value.map(one).join(", ") : "—";
+  if (value !== null && typeof value === "object") return copy.t("history.items", { count: value.items });
+  return one(value);
+}
+
+/** "Price: ฿1,000 → ฿1,200": what an edit changed, for staff only. */
+export function changeText(change: FieldChange, copy: CommerceCopy) {
+  return copy.t("history.change", { label: fieldLabel(change.field, copy), before: changeValueText(change.field, change.before, copy), after: changeValueText(change.field, change.after, copy) });
+}
+
 /** Who did it and why, for staff only: "By Ploy · Health pause or extension". */
 function staffText(staff: NonNullable<HistoryEntry["staff"]>, copy: CommerceCopy) {
   const reason = staff.reason ? copy.t(`edits.${STOCK_REASONS.has(staff.reason) ? "stockReasons" : "reasons"}.${staff.reason}`) : null;
@@ -56,6 +90,11 @@ export function HistoryList({ target, audience }: { target: AdjustTarget; audien
               <time className="shrink-0 text-xs text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()}>{formatResort(entry.at, guest ? "d MMM yyyy" : "d MMM yyyy, HH:mm")}</time>
             </div>
             {entry.balance ? <p className="text-sm text-muted-foreground tabular-nums">{balanceText(entry.balance, copy)}</p> : null}
+            {!guest && entry.changes?.length ? (
+              <ul className="grid gap-0.5 text-sm text-muted-foreground tabular-nums [overflow-wrap:anywhere]" data-testid="history-changes">
+                {entry.changes.map((change) => <li key={change.field}>{changeText(change, copy)}</li>)}
+              </ul>
+            ) : null}
             {!guest && entry.staff ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="history-staff">{staffText(entry.staff, copy)}</p> : null}
           </li>
         ))}

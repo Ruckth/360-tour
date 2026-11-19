@@ -125,7 +125,7 @@ function Paid({ paid }: { paid: PaidState }) {
       <p className="font-serif text-3xl font-semibold tracking-tight lg:text-4xl">{paid.businessName}</p>
       <span aria-hidden className="h-px w-20 bg-gold" />
       <h1 className="text-balance text-6xl font-semibold leading-[1.05] tracking-tight lg:text-8xl">
-        {paid.customerFirstName ? t("thankYouName", { name: paid.customerFirstName }) : t("thankYou")}
+        {paid.customerFirstName ? t("thankYouName", { name: maskVoucherCodes(paid.customerFirstName) }) : t("thankYou")}
       </h1>
       <div className="space-y-3">
         <p className="text-4xl font-semibold tabular-nums [overflow-wrap:anywhere] lg:text-5xl">
@@ -176,7 +176,7 @@ function Order({ order }: { order: OrderState }) {
       <header className="flex shrink-0 flex-wrap items-baseline justify-between gap-x-8 gap-y-2 px-[5vw] pb-[3vh] pt-[5vh]">
         <p className="font-serif text-3xl font-semibold tracking-tight lg:text-4xl">{order.businessName}</p>
         <p className="text-2xl text-muted-foreground lg:text-3xl">
-          {order.customerFirstName ? t("welcomeName", { name: order.customerFirstName }) : t("yourOrder")}
+          {order.customerFirstName ? t("welcomeName", { name: maskVoucherCodes(order.customerFirstName) }) : t("yourOrder")}
           {order.orderNumber !== null ? <span className="ml-4 tabular-nums">· {t("orderNumber", { number: formatOrderNumber(order.orderNumber) })}</span> : null}
         </p>
       </header>

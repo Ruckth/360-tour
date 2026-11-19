@@ -278,7 +278,23 @@
         "updated": "更新"
       },
       "showStaff": "スタッフ表示",
-      "close": "閉じる"
+      "close": "閉じる",
+      "change": "{label}: {before} → {after}",
+      "on": "オン",
+      "off": "オフ",
+      "items": "{count, plural, other {#件}}",
+      "fields": {
+        "name": "名前",
+        "price": "価格",
+        "expiresAt": "有効期限",
+        "effectiveExpiresAt": "有効期限",
+        "status": "状態",
+        "pause": "一時停止",
+        "goodwillBalance": "サービス分",
+        "paidBalance": "支払済み額",
+        "contents": "内容",
+        "services": "サービス"
+      }
     },
     "customer": {
       "packageLine": "{name} · 残り{count}回 · {date}まで",

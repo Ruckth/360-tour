@@ -278,7 +278,23 @@
         "updated": "Mis à jour"
       },
       "showStaff": "Vue équipe",
-      "close": "Fermer"
+      "close": "Fermer",
+      "change": "{label} : {before} → {after}",
+      "on": "Activé",
+      "off": "Désactivé",
+      "items": "{count, plural, one {# élément} other {# éléments}}",
+      "fields": {
+        "name": "Nom",
+        "price": "Prix",
+        "expiresAt": "Fin",
+        "effectiveExpiresAt": "Fin",
+        "status": "Statut",
+        "pause": "Mise en pause",
+        "goodwillBalance": "Geste commercial",
+        "paidBalance": "Valeur payée",
+        "contents": "Contenu",
+        "services": "Prestations"
+      }
     },
     "customer": {
       "packageLine": "{name} · reste {count} · jusqu’au {date}",

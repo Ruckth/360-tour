@@ -11,6 +11,7 @@ export function useCommerceCopy(): CommerceCopy {
   const t = useTranslations("Commerce");
   return useMemo(() => ({
     t: (key, values) => t(key, values),
+    has: (key) => t.has(key),
     money: (satang) => formatMoney(satang),
     date: (at) => formatResort(at, "d MMM yyyy"),
   }), [t]);
