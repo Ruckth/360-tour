@@ -163,12 +163,18 @@ for (const size of WIDTHS) {
     });
 
     // Audit r3 (astra and sol) blocker 2: a contents edit keeps its before → after and is not a new price.
-    test("staff History shows a package's quantity change and substitution beside the price-only control", async ({ page }) => {
+    // Audit r4 (astra): a change of eligible service names both treatments.
+    test("staff History shows a package's quantity change, substitutions and service change beside the price-only control", async ({ page }) => {
       await open(page, "history=publish");
       const sheet = page.getByTestId("edit-history");
       const changes = sheet.getByTestId("history-changes");
-      await expect(changes).toHaveText(["Massage: 5 → 6 sessions", "Contents: Massage 60 → Hot stone 60", "Price: ฿1,000 → ฿1,200"]);
-      await expect(sheet.getByText("Changed for future sales")).toHaveCount(3);
+      await expect(changes).toHaveText([
+        "Massage: 5 → 6 sessions", "Contents: Massage 60 → Hot stone 60", "Price: ฿1,000 → ฿1,200",
+        "Contents: Traditional Thai Massage → Aromatherapy Massage",
+      ]);
+      await expect(sheet.getByText("Changed for future sales")).toHaveCount(4);
+      await expect(sheet.getByText("Updated eligible treatment")).toBeVisible();
+      await expect(sheet).not.toContainText("Massage changed");
       await expect(sheet).not.toContainText("New price");
       expect.soft(await overflowX(page), "history sideways scroll").toBeLessThanOrEqual(0);
       if (size.touch) expect.soft(await smallTargets(page), "history targets under 44 × 44 px").toEqual([]);

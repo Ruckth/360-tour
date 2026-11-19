@@ -102,19 +102,11 @@ export function guestHistoryFact(row: Doc<'voucherEntries'> | Doc<'sessionUses'>
   return storedFact(row.guestFact) ?? ('voucherId' in row ? voucherFact(row) : sessionFact(row));
 }
 
-/** A ledger row's adjustment, when it is this voucher's or grant's own: it holds the fields the edit changed. */
-export function linkedFields(row: CommerceHistoryRow, adjustment: Doc<'commerceAdjustments'> | null) {
-  if (!adjustment || !('adjustmentId' in row) || row.adjustmentId !== adjustment._id) return {};
-  const own = 'voucherId' in row ? adjustment.targetType === 'voucher' && adjustment.targetId === row.voucherId
-    : 'grantId' in row && adjustment.targetType === 'grant' && adjustment.targetId === row.grantId;
-  return own ? { before: adjustment.before, after: adjustment.after } : {};
-}
-
 /**
  * A row of one item's history for staff: its fact, balance before and after, and who did it and why.
- * A voucher or grant ledger row also carries the fields its linked adjustment changed (a rename's old name).
+ * A voucher or grant edit's own ledger row also carries the fields it changed (a rename's old name).
  */
-export function staffHistoryEntry(row: CommerceHistoryRow, adjustment: Doc<'commerceAdjustments'> | null = null): HistoryEntryView {
+export function staffHistoryEntry(row: CommerceHistoryRow): HistoryEntryView {
   if ('targetType' in row) {
     return {
       entryId: row._id, at: row.recordedAt, fact: adjustmentFact(row), balance: null, before: row.before, after: row.after,
@@ -125,7 +117,7 @@ export function staffHistoryEntry(row: CommerceHistoryRow, adjustment: Doc<'comm
     return {
       entryId: row._id, at: row.createdAt, fact: guestHistoryFact(row, false),
       balance: { unit: 'voucherId' in row ? 'money' : 'sessions', before: row.before, after: row.after },
-      ...linkedFields(row, adjustment),
+      ...(row.changes ? { before: row.changes.before, after: row.changes.after } : {}),
       staff: { actorName: row.actor, reason: row.reasonCode ?? null, reasonText: row.reasonText ?? null },
     };
   }

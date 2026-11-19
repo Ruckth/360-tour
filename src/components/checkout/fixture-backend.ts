@@ -276,7 +276,7 @@ const grantHistory = (packageName: string): HistoryEntry[] => [
 const voucherHistory = (face: number, standalone: boolean): HistoryEntry[] => [
   { entryId: "v4", at: NOW - DAY, fact: { key: "goodwillAdded" }, balance: { unit: "money", before: { paid: face / 2, goodwill: 0 }, after: { paid: face / 2, goodwill: baht(100) } }, staff: { actorName: "Ploy", reason: "serviceRecovery", reasonText: null } },
   { entryId: "v3", at: NOW - 3 * DAY, fact: { key: "spent", amount: face / 2 }, balance: { unit: "money", before: { paid: face, goodwill: 0 }, after: { paid: face / 2, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
-  ...(standalone ? [{ entryId: "v2", at: NOW - 19 * DAY, fact: { key: "renamed", name: "Mia Tanaka" }, balance: null, changes: [{ field: "name", before: "Mia Tanka", after: "Mia Tanaka" }], staff: { actorName: "Nok", reason: "spellingCorrection", reasonText: null } } satisfies HistoryEntry] : []),
+  ...(standalone ? [{ entryId: "v2", at: NOW - 19 * DAY, fact: { key: "renamed", name: "Mia Tanaka" }, balance: null, fields: { before: { name: "Mia Tanka" }, after: { name: "Mia Tanaka" } }, staff: { actorName: "Nok", reason: "spellingCorrection", reasonText: null } } satisfies HistoryEntry] : []),
   { entryId: "v1", at: NOW - 20 * DAY, fact: { key: "issued", amount: face }, balance: { unit: "money", before: { paid: 0, goodwill: 0 }, after: { paid: face, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
 ];
 /** Each History target has its own stream: a package's grant reads sessions, a voucher reads money. */

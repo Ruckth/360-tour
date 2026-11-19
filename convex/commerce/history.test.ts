@@ -159,24 +159,24 @@ it('masks full voucher codes in renamed facts and rejects unknown keys, types an
   });
 });
 
-it('gives staff a voucher rename with the old and new name from its linked adjustment, never the guest', async () => {
+it('gives staff a voucher rename with the old and new name from its own ledger row, never the guest', async () => {
   const { t, as, voucherId, today } = await setup();
   await t.run(async ctx => {
     const log = { paidLiabilityDelta: 0, goodwillFaceValueDelta: 0, quantityDelta: 0, actor: 'cashier', actorLabel: 'Ploy',
       requesterKey: 'cashier', fingerprint: 'f', recordedAt: now, businessDate: '2026-11-19', revisionBefore: 3, revisionAfter: 4 };
-    const rename = await ctx.db.insert('commerceAdjustments', { ...log, targetType: 'voucher', targetId: voucherId, kind: 'rename',
-      before: { name: 'Mia Tanka' }, after: { name: 'Mia Tanaka' }, clientKey: 'rename', reasonCode: 'spellingCorrection' });
-    // Another item's adjustment must never lend its fields to this voucher's row.
+    // History reads the voucher's own stream only (D19): an adjustment link alone lends it no fields.
     const foreign = await ctx.db.insert('commerceAdjustments', { ...log, targetType: 'order', targetId: today, kind: 'amendPayment',
       before: { note: 'Private' }, after: { note: 'Other' }, clientKey: 'foreign', reasonCode: 'staffMistake' });
     const row = { voucherId, kind: 'edit' as const, createdAt: 4, actor: 'Ploy', before: { paid: 40000, goodwill: 10000 }, after: { paid: 40000, goodwill: 10000 } };
-    await ctx.db.insert('voucherEntries', { ...row, sourceKey: 'rename', adjustmentId: rename, guestFact: { key: 'renamed', args: { name: 'Mia Tanaka' } } });
+    await ctx.db.insert('voucherEntries', { ...row, sourceKey: 'rename', guestFact: { key: 'renamed', args: { name: 'Mia Tanaka' } },
+      changes: { before: { name: 'Mia Tanka' }, after: { name: 'Mia Tanaka' } } });
     await ctx.db.insert('voucherEntries', { ...row, createdAt: 5, sourceKey: 'foreign', adjustmentId: foreign, guestFact: { key: 'updated' } });
   });
   const args = { target: { targetType: 'voucher' as const, targetId: voucherId }, paginationOpts: { numItems: 2, cursor: null } };
   const staff = await as('cashier').query(api.commerce.history.staffPage, args);
   expect(staff.page[1]).toMatchObject({ fact: { key: 'renamed', args: { name: 'Mia Tanaka' } }, before: { name: 'Mia Tanka' }, after: { name: 'Mia Tanaka' } });
   expect(staff.page[0]).not.toHaveProperty('before');
+  expect(JSON.stringify(staff)).not.toContain('Private');
   const guest = await as('cashier').query(api.commerce.history.guestPage, args);
   expect(JSON.stringify(guest)).not.toMatch(/Mia Tanka|Private|Ploy/);
 });

@@ -2,20 +2,18 @@ import type { api } from "convex/_generated/api";
 import { editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionReturnType } from "convex/server";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type ChangeValue, type EditReason, type FieldChange, type GuestFact, type GuestFactKey, type HistoryEntry, type PartValue, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
-import type { TargetApproval } from "./TargetApproval";
+import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type EditReason, type GuestFact, type GuestFactKey, type HistoryEntry, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
 
 /**
  * The live backend's commerce reads, turned into the views commerce screens draw. Pure, so the
- * shapes are tested without a Convex client (convex-backend.ts calls these).
+ * shapes are tested without a Convex client (convex-backend.ts calls these). Checkout loads this
+ * with its first screen, so code only a lazy sheet needs lives beside that sheet instead:
+ * history-changes.ts (History) and approval-readers.ts (an item's approval request).
  */
 
 type HistoryRow =
   | FunctionReturnType<typeof api.commerce.history.staffPage>["page"][number]
   | FunctionReturnType<typeof api.commerce.history.guestPage>["page"][number];
-type QueueRow = FunctionReturnType<typeof api.pos.staffApprovals.pendingPage>["page"][number];
-export type TargetQueueRow = Extract<QueueRow, { kind: "adjustment" | "returnItems" }>;
-type ApprovalDetail = FunctionReturnType<typeof api.pos.staffApprovals.detail>;
 
 /** The arguments each fact's words need. A fact without them reads as a plain "Updated". */
 const FACT_ARGS: { [K in GuestFactKey]: Record<string, "string" | "number"> } = {
@@ -34,122 +32,17 @@ function guestFact({ key, args = {} }: HistoryRow["fact"]): GuestFact {
   return { ...args, key } as GuestFact;
 }
 
-type StoredFields = NonNullable<Extract<HistoryRow, { before?: unknown }>["before"]>;
-type StoredValue = StoredFields[string];
-const scalar = (value: unknown): value is string | number | boolean | null => value === null || ["string", "number", "boolean"].includes(typeof value);
-const mask = (value: string | number | boolean | null) => (typeof value === "string" ? maskVoucherCodes(value) : value);
-
-/** A stored value as a change shows it: scalars and lists of them as they are, anything bigger as its size. */
-function changeValue(value: unknown): ChangeValue {
-  if (value === undefined) return undefined;
-  if (scalar(value)) return mask(value);
-  if (Array.isArray(value)) return value.every(scalar) ? value.map(mask) : { items: value.length };
-  return { items: Object.keys(value as object).length };
-}
-
-/** "pause.endsAt" → its value: objects open one level, so a settings group shows each field that changed. */
-function flatFields(fields: StoredFields | undefined) {
-  const flat = new Map<string, unknown>();
-  for (const [key, value] of Object.entries(fields ?? {}) as [string, StoredValue][]) {
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      for (const [inner, leaf] of Object.entries(value)) flat.set(`${key}.${inner}`, leaf);
-    } else flat.set(key, value);
-  }
-  return flat;
-}
-
-type StoredPart = Record<string, unknown>;
-const isPartList = (value: unknown): value is StoredPart[] =>
-  Array.isArray(value) && value.some((item) => item !== null && typeof item === "object");
-const text = (value: unknown) => (typeof value === "string" && value ? value : null);
-const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
-/** "hotStone60" → "Hot stone60": a part's key as words, when its writer stored no label. */
-const words = (key: string) => {
-  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").toLowerCase();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-};
-const partKey = (item: StoredPart, index: number) => text(item.contentKey) ?? text(item.key) ?? `#${index + 1}`;
-
-function partValue(item: StoredPart, index: number): PartValue {
-  const key = partKey(item, index);
-  return {
-    part: maskVoucherCodes(text(item.label) ?? text(item.name) ?? (key.startsWith("#") ? key : words(key))),
-    count: number(item.units),
-    amount: number(item.faceValue) ?? number(item.amount),
-    sessions: item.kind === "session" || item.kind === "sessions",
-  };
-}
-
 /**
- * A list of parts (a package's contents), matched by content key: one change per part that differs.
- * A part removed and one added in the same edit read as a substitution, in their recorded order.
+ * One History row from commerce/history.staffPage or guestPage. Show guest rows never carry `staff`
+ * or fields. What the fields changed is worked out by the History sheet (history-changes.ts), on demand.
  */
-function partChanges(field: string, before: unknown, after: unknown): FieldChange[] {
-  const list = (value: unknown) => (Array.isArray(value) ? value.filter((item): item is StoredPart => item !== null && typeof item === "object") : []);
-  const keyed = (items: StoredPart[]) => new Map(items.map((item, index) => [partKey(item, index), { item, value: partValue(item, index) }]));
-  const was = keyed(list(before));
-  const now = keyed(list(after));
-  const changes: FieldChange[] = [];
-  const removed = [...was].filter(([key]) => !now.has(key)).map(([, part]) => part.value);
-  const added: PartValue[] = [];
-  for (const [key, part] of now) {
-    const old = was.get(key);
-    if (!old) added.push(part.value);
-    else if (JSON.stringify(old.item) !== JSON.stringify(part.item)) changes.push({ field, before: old.value, after: part.value });
-  }
-  for (let i = 0; i < Math.max(removed.length, added.length); i++) changes.push({ field, before: removed[i], after: added[i] });
-  return changes;
-}
-
-/** Each field an edit changed, before → after, in the order the edit recorded them; unchanged fields are left out. */
-export function fieldChanges(before: StoredFields | undefined, after: StoredFields | undefined): FieldChange[] {
-  const was = flatFields(before);
-  const now = flatFields(after);
-  const fields = [...new Set([...now.keys(), ...was.keys()])];
-  return fields.flatMap((field) => {
-    if (isPartList(was.get(field)) || isPartList(now.get(field))) return partChanges(field, was.get(field), now.get(field));
-    const change = { field, before: changeValue(was.get(field)), after: changeValue(now.get(field)) };
-    return JSON.stringify(change.before) === JSON.stringify(change.after) ? [] : [change];
-  });
-}
-
-/** One History row from commerce/history.staffPage or guestPage. Show guest rows never carry `staff` or changes. */
 export function historyEntry(row: HistoryRow): HistoryEntry {
   const entry: HistoryEntry = { entryId: row.entryId, at: row.at, fact: guestFact(row.fact), balance: row.balance };
   if (!("staff" in row) || !row.staff) return entry;
   const { actorName, reason, reasonText } = row.staff;
   const known = reason !== null && (EDIT_REASONS.has(reason) || STOCK_REASONS.has(reason)) ? (reason as EditReason | StockReason) : null;
-  const changes = "before" in row || "after" in row ? fieldChanges(row.before, row.after) : [];
-  return { ...entry, staff: { actorName, reason: known, reasonText }, ...(changes.length ? { changes } : {}) };
-}
-
-export const isTargetRow = (row: QueueRow): row is TargetQueueRow => row.kind === "adjustment" || row.kind === "returnItems";
-
-/**
- * A return or edit request in the Approvals panel: the queue row, completed by its detail (reason,
- * label and the revisions it was asked against). null once the detail says it's no longer waiting.
- */
-export function targetApproval(row: TargetQueueRow, detail: ApprovalDetail | undefined): TargetApproval | null {
-  const known = detail && detail.kind === row.kind ? detail : null;
-  if (known && known.status !== "pending" && known.status !== "stale") return null;
-  const common = {
-    _id: row._id, requesterEmail: row.requesterEmail, createdAt: row.createdAt, expiresAt: row.expiresAt,
-    reason: known?.request.reason ?? "", status: known?.status === "stale" ? "stale" as const : "pending" as const,
-  };
-  if (row.kind === "adjustment") {
-    const adjustment = known?.kind === "adjustment" ? known : null;
-    return {
-      ...common, kind: "adjustment", target: row.target, adjustmentKind: row.summary.adjustmentKind,
-      targetLabel: (adjustment?.target && "label" in adjustment.target ? adjustment.target.label : null) ?? null, orderId: null, amount: null,
-      revisions: adjustment?.revisions.map(({ expected, current }) => ({ expected, current })) ?? [],
-    };
-  }
-  const items = known?.kind === "returnItems" ? known : null;
-  return {
-    ...common, kind: "returnItems", target: null, adjustmentKind: null, targetLabel: null, orderId: row.orderId,
-    amount: row.summary.amount ?? null,
-    revisions: items ? [items.orderRevision, ...items.revisions].map(({ expected, current }) => ({ expected, current })) : [],
-  };
+  const fields = "before" in row || "after" in row ? { before: row.before, after: row.after } : null;
+  return { ...entry, staff: { actorName, reason: known, reasonText }, ...(fields ? { fields } : {}) };
 }
 
 // ─── Receipt status (getOrder's paymentAttempt and activeReturn) ────────────────────────────────

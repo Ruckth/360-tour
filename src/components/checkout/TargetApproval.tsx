@@ -5,7 +5,7 @@ import { useNow } from "@/lib/staff-bookings";
 import { Spinner } from "@/components/ui/spinner";
 import { orderTitle } from "convex/shared/orderMath";
 import type { AdjustKind, AdjustTarget, ApprovalDetail, ApprovalId, OrderId } from "./backend";
-import { targetApproval, type TargetQueueRow } from "./commerce-readers";
+import { targetApproval, type TargetQueueRow } from "./approval-readers";
 import { useCommerceCopy } from "./commerce-copy";
 import { minutesLeft, personName } from "./staff-approvals";
 

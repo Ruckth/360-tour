@@ -1,11 +1,11 @@
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
-import type { Doc, Id, TableNames } from '../_generated/dataModel';
+import type { Id, TableNames } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { canReadCheckoutOrder, staffQuery, type StaffActor } from '../auth/model';
 import { readBudget } from '../lib/readBudget';
 import type { AdjustmentTarget } from './private/adjustments';
-import { listCommerceHistory, listGuestCommerceHistory } from './private/history';
+import { assertPageBytes, listCommerceHistory, listGuestCommerceHistory, nameHistoryParts } from './private/history';
 import { staffHistoryEntry, type HistoryEntryView } from './private/historyView';
 import { adjustmentTarget } from './validators';
 
@@ -48,24 +48,14 @@ async function canReadHistory(ctx: QueryCtx, actor: StaffActor, target: Adjustme
 
 const nothing: PaginationResult<HistoryEntryView> = { page: [], isDone: true, continueCursor: '' };
 
-/** One item's History for staff, newest first, ≤ 20 rows and ≤ 160 KiB a page. */
+/** One item's History for staff, newest first, ≤ 20 rows and ≤ 160 KiB a page, from its one stream (D19). */
 export const staffPage = staffQuery({
   capability: 'checkout',
   args: { target: adjustmentTarget, paginationOpts: paginationOptsValidator },
   handler: async (ctx, { target, paginationOpts }) => {
     if (!await canReadHistory(ctx, ctx.staff, target)) return nothing;
     const result = await listCommerceHistory(ctx, target, paginationOpts);
-    // A voucher or grant edit keeps its changed fields on the adjustment it links to: ≤ 20 gets a page.
-    const linked = new Map<Id<'commerceAdjustments'>, Doc<'commerceAdjustments'> | null>();
-    for (const row of result.page) {
-      if ((target.targetType === 'voucher' || target.targetType === 'grant') && 'adjustmentId' in row && row.adjustmentId && !linked.has(row.adjustmentId)) {
-        linked.set(row.adjustmentId, await get(ctx, row.adjustmentId));
-      }
-    }
-    return {
-      ...result,
-      page: result.page.map(row => staffHistoryEntry(row, 'adjustmentId' in row && row.adjustmentId ? linked.get(row.adjustmentId) ?? null : null)),
-    };
+    return assertPageBytes({ ...result, page: await nameHistoryParts(ctx, result.page.map(row => staffHistoryEntry(row))) });
   },
 });
 
@@ -79,12 +69,12 @@ export const guestPage = staffQuery({
   handler: async (ctx, { target, paginationOpts }) => {
     if (!await canReadHistory(ctx, ctx.staff, target)) return nothing;
     const result = await listGuestCommerceHistory(ctx, target, paginationOpts);
-    return {
+    return assertPageBytes({
       ...result,
       page: result.page.map(({ entryId, recordedAt, fact, before, after }): HistoryEntryView => ({
         entryId, at: recordedAt, fact,
         balance: { unit: target.targetType === 'voucher' ? 'money' : 'sessions', before, after },
       })),
-    };
+    });
   },
 });

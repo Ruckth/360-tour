@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
-import { historyEntry, isTargetRow, targetApproval, type TargetQueueRow } from "@/components/checkout/commerce-readers";
+import { isTargetRow, targetApproval, type TargetQueueRow } from "@/components/checkout/approval-readers";
+import { historyEntry } from "@/components/checkout/commerce-readers";
 
 const id = (value: string) => value as Id<"staffApprovalRequests">;
 const balance = { unit: "money" as const, before: { paid: 600, goodwill: 0 }, after: { paid: 400, goodwill: 0 } };

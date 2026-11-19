@@ -482,9 +482,13 @@ export type HistoryEntry = {
   fact: GuestFact;
   balance: HistoryBalance | null;
   staff?: { actorName: string; reason: EditReason | StockReason | null; reasonText: string | null };
-  /** Staff only: each field an edit changed (catalogue, settings and other adjustments), before → after. */
-  changes?: FieldChange[];
+  /** Staff only: the fields an edit stored (catalogue, settings, a rename), before and after. History shows what changed. */
+  fields?: { before?: StoredFields; after?: StoredFields };
 };
+/** An edit's stored fields as the server sends them: values, lists, settings groups or package parts. */
+export type StoredFields = Record<string, StoredValue>;
+type StoredScalar = string | number | boolean | null;
+type StoredValue = StoredScalar | StoredScalar[] | Record<string, unknown> | Record<string, unknown>[];
 /** One part of a list such as a package's contents: its name, how many (sessions when `sessions`) and any amount. */
 export type PartValue = { part: string; count: number | null; amount: number | null; sessions: boolean };
 /** A changed value: a scalar or a list of them, a list part, or a size for anything bigger; undefined when absent. */

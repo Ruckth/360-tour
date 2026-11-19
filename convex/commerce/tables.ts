@@ -13,6 +13,9 @@ const reasonFields = {
   reasonText: v.optional(v.string()),
 };
 
+/** Staff-only: what an edit changed, written by the shared adjustment helper so History reads one stream (D19). */
+const editChanges = { changes: v.optional(v.object({ before: adjustmentFields, after: adjustmentFields })) };
+
 const adjustmentLogFields = {
   kind: adjustmentKind,
   before: adjustmentFields,
@@ -156,6 +159,7 @@ export const commerceTables = {
     activeAppointmentId: v.optional(v.id('appointments')),
     restoresUseId: v.optional(v.id('sessionUses')),
     adjustmentId: v.optional(v.id('commerceAdjustments')),
+    ...editChanges,
   }).index('by_grantId_and_createdAt', ['grantId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
     .index('by_activeAppointmentId', ['activeAppointmentId']),
 
@@ -190,7 +194,7 @@ export const commerceTables = {
     voucherId: v.id('vouchers'), kind: voucherEntryKind, sourceKey: v.string(),
     before: benefitBalances, after: benefitBalances, guestFact: ledgerGuestFact, actor: v.string(),
     ...reasonFields,
-    adjustmentId: v.optional(v.id('commerceAdjustments')), createdAt: v.number(),
+    adjustmentId: v.optional(v.id('commerceAdjustments')), ...editChanges, createdAt: v.number(),
   }).index('by_voucherId_and_createdAt', ['voucherId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
     .index('by_createdAt', ['createdAt']),
 

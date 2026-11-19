@@ -32,7 +32,8 @@ import "@/app.css";
  *   unlimited=1       the issuance receipt's gift voucher never expires: getOrder sends it in
  *                     `unlimitedIssuedBenefits` with a null date (D20)
  *   history=publish   staff History for a package, from the backend's response for a five → six
- *                     session publish, a same-size substitution and the price-only control
+ *                     session publish, a same-size substitution, the price-only control and a
+ *                     change of eligible service (astra r4)
  */
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
@@ -57,6 +58,12 @@ const publishRows = [
   { entryId: "qty", at: Date.UTC(2026, 10, 19, 0), fact: { key: "published" }, balance: null, before: { contents: [session(5)] }, after: { contents: [session(6)] }, staff },
   { entryId: "swap", at: Date.UTC(2026, 10, 18, 23), fact: { key: "published" }, balance: null, before: { contents: [session(5, "Massage 60")] }, after: { contents: [session(5, "Hot stone 60")] }, staff },
   { entryId: "price", at: Date.UTC(2026, 10, 18, 22), fact: { key: "published" }, balance: null, before: { price: 100000 }, after: { price: 120000 }, staff },
+  // Astra r4 (audits/pr91-r4-astra-evidence/service-substitution.json): only the eligible service
+  // changed. staffPage now names each stored service ID (convex/commerce/historyEvidence.test.ts).
+  { entryId: "ms78asjbfrc9za866sp9sdxawx8jg3bf", at: 1795046402000, fact: { key: "published" }, balance: null,
+    before: { contents: [{ contentKey: "massage", kind: "session", serviceIds: ["v574az9yevd878g3ttnq5vqrm58jh4qs"], units: 5, label: "Traditional Thai Massage" }] },
+    after: { contents: [{ contentKey: "massage", kind: "session", serviceIds: ["v5716vh32a09k3mrge6ek8mrds8jgdax"], units: 5, label: "Aromatherapy Massage" }] },
+    staff: { actorName: "Ploy", reason: "other", reasonText: "Updated eligible treatment" } },
 ].map((row) => historyEntry(row as unknown as Parameters<typeof historyEntry>[0]));
 
 function PublishHistory() {

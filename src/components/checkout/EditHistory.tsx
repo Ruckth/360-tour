@@ -10,6 +10,7 @@ import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type C
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { formatResort } from "./checkout-ui";
 import { useCommerceCopy } from "./commerce-copy";
+import { fieldChanges } from "./history-changes";
 
 /**
  * Edit · History for one sold or catalogue item (D19): its history, newest first, 20 at a time, with
@@ -97,6 +98,17 @@ export function changeText(change: FieldChange, copy: CommerceCopy) {
   return copy.t("history.change", { label: fieldLabel(change.field, copy), before: changeValueText(change.field, before, copy), after: changeValueText(change.field, after, copy) });
 }
 
+/** Each field an edit changed, before → after; nothing when it changed none. */
+function EntryChanges({ fields, copy }: { fields: NonNullable<HistoryEntry["fields"]>; copy: CommerceCopy }) {
+  const changes = fieldChanges(fields.before, fields.after);
+  if (!changes.length) return null;
+  return (
+    <ul className="grid gap-0.5 text-sm text-muted-foreground tabular-nums [overflow-wrap:anywhere]" data-testid="history-changes">
+      {changes.map((change, index) => <li key={`${change.field}:${index}`}>{changeText(change, copy)}</li>)}
+    </ul>
+  );
+}
+
 /** Who did it and why, for staff only: "By Ploy · Health pause or extension". */
 function staffText(staff: NonNullable<HistoryEntry["staff"]>, copy: CommerceCopy) {
   const reason = staff.reason ? copy.t(`edits.${STOCK_REASONS.has(staff.reason) ? "stockReasons" : "reasons"}.${staff.reason}`) : null;
@@ -120,11 +132,7 @@ export function HistoryList({ target, audience }: { target: AdjustTarget; audien
               <time className="shrink-0 text-xs text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()}>{formatResort(entry.at, guest ? "d MMM yyyy" : "d MMM yyyy, HH:mm")}</time>
             </div>
             {entry.balance ? <p className="text-sm text-muted-foreground tabular-nums">{balanceText(entry.balance, copy)}</p> : null}
-            {!guest && entry.changes?.length ? (
-              <ul className="grid gap-0.5 text-sm text-muted-foreground tabular-nums [overflow-wrap:anywhere]" data-testid="history-changes">
-                {entry.changes.map((change, index) => <li key={`${change.field}:${index}`}>{changeText(change, copy)}</li>)}
-              </ul>
-            ) : null}
+            {!guest && entry.fields ? <EntryChanges fields={entry.fields} copy={copy} /> : null}
             {!guest && entry.staff ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="history-staff">{staffText(entry.staff, copy)}</p> : null}
           </li>
         ))}

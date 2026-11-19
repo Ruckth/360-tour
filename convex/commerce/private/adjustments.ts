@@ -62,7 +62,10 @@ type Change = {
  * The owning command supplies the scope check for the primary and related targets.
  * Scope must be read-only and independent of revision freshness so authorized retries still work.
  * Prepare must be read-only. Apply writes the parent revision and any ledger effects in this transaction.
- * Use the supplied source key and reasons for the primary ledger effect and return the linked IDs.
+ * Use the supplied source key and reasons for the primary ledger effect and return the linked IDs,
+ * the target's own ledger entry first: the helper stores the changed fields on it for History.
+ * A changed part naming services, a variant or a product may carry its display `label`: staff
+ * History shows the record's current name and falls back to that label once the record is gone.
  * Owners meter their own reads and reserve their own parent and ledger writes.
  */
 export type AdjustmentWriter = {
@@ -268,7 +271,8 @@ async function applyChange(
     revisionAfter, recordedAt, sourceKey, reasonCode: audit.reasonCode, reasonText: audit.reasonText,
   });
   const requiredEffect = ledgerKind[target.targetType];
-  if (requiredEffect && !effects.some(effect => effect.kind === requiredEffect)) {
+  const primary = requiredEffect && effects.find(effect => effect.kind === requiredEffect);
+  if (requiredEffect && !primary) {
     throw new Error(`The ${target.targetType} adjustment did not write its ledger entry`);
   }
   if (kind === 'moveRoomCharge') {
@@ -284,7 +288,27 @@ async function applyChange(
   const row = { ...audit, ...(effects.length ? { effects } : {}) };
   assertAuditSize(row);
   const adjustmentId = await ctx.db.insert('commerceAdjustments', row);
+  if (primary) await recordLedgerChanges(ctx, target, primary, adjustmentId, audit);
   return { status: 'applied', adjustmentId, revision: revisionAfter, effects };
+}
+
+/**
+ * Staff History reads one stream per item (D19), so the voucher's or grant's own ledger entry keeps
+ * what the edit changed (masked, labelled) and its adjustment. The writer never has to remember it.
+ */
+async function recordLedgerChanges(
+  ctx: MutationCtx, target: AdjustmentTarget, effect: Effect, adjustmentId: Id<'commerceAdjustments'>, audit: AuditRow,
+) {
+  const fields = { adjustmentId, changes: { before: audit.before, after: audit.after } };
+  const entry = effect.kind === 'voucherEntry' ? await measured(ctx, () => ctx.db.get(effect.id))
+    : effect.kind === 'sessionUse' ? await measured(ctx, () => ctx.db.get(effect.id)) : null;
+  const own = entry && ('voucherId' in entry ? entry.voucherId : entry.grantId) === target.targetId;
+  if (!entry || !own) throw new Error(`The ${target.targetType} adjustment's first ledger entry is not its own`);
+  if (encoder.encode(JSON.stringify(convexToJson({ ...entry, ...fields }))).length > MAX_AUDIT_BYTES) {
+    refuse('ADJUSTMENT_TOO_LARGE', 'The change history exceeds 8 KiB.');
+  }
+  reserveWrites(ctx, 1);
+  await ctx.db.patch(entry._id, fields);
 }
 
 function assertAuditSize(row: AuditRow) {

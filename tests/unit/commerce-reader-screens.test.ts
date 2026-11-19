@@ -15,7 +15,8 @@ import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
 import { HEADER_TOOLS, p95, resetTiming, TimingReadout, timingRows, withTiming } from "@/components/checkout/timing";
 import { timingOptIn, useCheckoutTiming } from "@/components/checkout/timing-gate";
-import { fieldChanges, historyEntry, receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
+import { historyEntry, receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
+import { fieldChanges } from "@/components/checkout/history-changes";
 import { Screen } from "@/components/display/DisplayScreens";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
 import en from "../../messages/en.json";
@@ -684,7 +685,7 @@ describe("Edit · History", () => {
       staff: { actorName: "Ploy", reason: "healthPause", reasonText: "Owner asked" },
     } as unknown as Parameters<typeof historyEntry>[0];
     const entry = historyEntry(row);
-    expect(entry.changes).toEqual([
+    expect(fieldChanges(entry.fields?.before, entry.fields?.after)).toEqual([
       { field: "price", before: 100000, after: 120000 },
       { field: "validityDays", before: 180, after: 365 },
       { field: "allowTransfer", before: true, after: false },
@@ -695,7 +696,7 @@ describe("Edit · History", () => {
     ]);
     expect(fieldChanges({ name: "Same" }, { name: "Same" })).toEqual([]);
     const guestRow = { ...(row as unknown as Record<string, unknown>), staff: undefined };
-    expect(historyEntry(guestRow as unknown as Parameters<typeof historyEntry>[0]).changes).toBeUndefined();
+    expect(historyEntry(guestRow as unknown as Parameters<typeof historyEntry>[0]).fields).toBeUndefined();
 
     const base = dark();
     const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: [entry], status: "Exhausted" as const, loadMore: () => {} }) } };
@@ -735,7 +736,7 @@ describe("Edit · History", () => {
         balance: { unit: "money", before: { paid: 40000, goodwill: 0 }, after: { paid: 40000, goodwill: 0 } }, before: { name: "Mia Tanka" }, after: { name: "Mia Tanaka" }, staff },
     ];
     const entries = rows.map((row) => historyEntry(row as unknown as Parameters<typeof historyEntry>[0]));
-    expect(entries[0].changes).toEqual([{ field: "contents", before: { part: "Massage", count: 5, amount: null, sessions: true }, after: { part: "Massage", count: 6, amount: null, sessions: true } }]);
+    expect(fieldChanges(entries[0].fields?.before, entries[0].fields?.after)).toEqual([{ field: "contents", before: { part: "Massage", count: 5, amount: null, sessions: true }, after: { part: "Massage", count: 6, amount: null, sessions: true } }]);
     const base = dark();
     const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: entries, status: "Exhausted" as const, loadMore: () => {} }) } };
     await render(backend, createElement(HistoryList, { target: { targetType: "package", targetId: "fxpkg" as never }, audience: "staff" }));
@@ -752,6 +753,23 @@ describe("Edit · History", () => {
     expect(items[0].textContent).toContain("Changed for future sales");
     await render(backend, createElement(HistoryList, { target: { targetType: "voucher", targetId: "fxvch" as never }, audience: "guest" }));
     expect(text()).not.toMatch(/Mia Tanka\b|5 → 6|Ploy/);
+  });
+
+  // Astra r4: only the eligible service changed. staffPage names the stored IDs (convex/commerce/historyEvidence.test.ts).
+  it("names both treatments when a package's eligible service changes", async () => {
+    const part = (serviceId: string, label: string) => ({ contentKey: "massage", kind: "session", serviceIds: [serviceId], units: 5, label });
+    const row = {
+      entryId: "ms78asjbfrc9za866sp9sdxawx8jg3bf", at: 1795046402000, fact: { key: "published" }, balance: null,
+      before: { contents: [part("v574az9yevd878g3ttnq5vqrm58jh4qs", "Traditional Thai Massage")] },
+      after: { contents: [part("v5716vh32a09k3mrge6ek8mrds8jgdax", "Aromatherapy Massage")] },
+      staff: { actorName: "Ploy", reason: "other", reasonText: "Updated eligible treatment" },
+    } as unknown as Parameters<typeof historyEntry>[0];
+    const base = dark();
+    const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => ({ results: [historyEntry(row)], status: "Exhausted" as const, loadMore: () => {} }) } };
+    await render(backend, createElement(HistoryList, { target: { targetType: "package", targetId: "pkg" as never }, audience: "staff" }));
+    expect(document.querySelector('[data-testid="history-changes"]')?.textContent).toBe("Contents: Traditional Thai Massage → Aromatherapy Massage");
+    expect(text()).toContain("Changed for future sales");
+    expect(text()).toContain("Updated eligible treatment");
   });
 
   it("never draws staff, reasons or full codes in the guest view, even if the server sent them", async () => {
