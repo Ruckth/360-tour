@@ -185,6 +185,7 @@ export const displaysCurrentResult = v.union(v.object({
 "vat": v.number(),
 "due": v.number(),
 "activeAt": v.number(),
+"goodwillDiscount": v.optional(v.number()),
 }), v.object({
 "businessName": v.string(),
 "customerFirstName": v.union(v.null(), v.string()),
@@ -196,6 +197,8 @@ export const displaysCurrentResult = v.union(v.object({
 "amountPaid": v.number(),
 "receiptNumber": v.union(v.null(), v.number()),
 "paidAt": v.number(),
+"goodwillDiscount": v.optional(v.number()),
+"voucherCodeMasks": v.optional(v.array(v.string())),
 "coupon": v.union(v.null(), v.object({
 "code": v.string(),
 "saving": v.number(),

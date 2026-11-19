@@ -7,18 +7,69 @@ import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
 import { orderLineLinks } from './private/lineLinks';
-import { externalOrderPayments, orderPaymentRecord } from './private/orderLifecycle';
+import { correctionPreviewBlocker, externalOrderPayments, isCommerceLine, lineGoodwillDiscount, openOrderReturn, orderPaymentRecord, readOrderProjection, receiptTotals, voucherCodeMask, voucherOrderPayments } from './private/orderLifecycle';
 import { orderLines } from './private/orderLines';
 import { activeOrderFor, orderState, ordersForSource } from './private/orderLinks';
 import { isOpenOrder } from './private/orderLinks';
-import { MAX_ORDER_REFUNDS, lineNet, orderTitle, orderTotals, roundMoney } from '../shared/orderMath';
+import { MAX_ORDER_REFUNDS, lineNet, orderTitle, roundMoney } from '../shared/orderMath';
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from './private/orderRefunds';
+import { COMMERCE_LIMITS } from '../shared/commerce/caps';
 import { type OrderPromotionView } from '../shared/posCoupons';
 import { canReadCheckoutOrder } from '../auth/model';
 import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
 import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
+
+const RECEIPT_REFUNDS = 50;
+
+async function readPaymentAttempt(ctx: QueryCtx, order: Doc<'orders'>) {
+	const { activeAttemptId } = order;
+	if (!activeAttemptId) return null;
+	const attempt = await readOrderProjection(ctx, () => ctx.db.get(activeAttemptId));
+	if (!attempt || attempt.orderId !== order._id) return null;
+	const { _id, status, legs, owner, tillId, ownerRevision, parentAttemptId, refusal, resolution, updatedAt } = attempt;
+	return { _id, status, legs, owner, tillId, ownerRevision, parentAttemptId, refusal, resolution, updatedAt, due: attempt.reviewedRequest.due };
+}
+
+async function readHandovers(ctx: QueryCtx, order: Doc<'orders'>, lines: readonly Doc<'orderLines'>[]) {
+	if (!lines.some(line => line.kind === 'product' || line.kind === 'package')) return [];
+	const forOrder = (orderId: Id<'orders'>) => readOrderProjection(ctx, () => ctx.db.query('handovers')
+		.withIndex('by_orderId_and_status', q => q.eq('orderId', orderId)).take(COMMERCE_LIMITS.sale.rows));
+	const [current, parent] = await Promise.all([forOrder(order._id), order.parentOrderId ? forOrder(order.parentOrderId) : []]);
+	return [...current, ...parent.filter(row => row.successorOrderId === order._id)];
+}
+
+async function readIssuedBenefits(ctx: QueryCtx, lines: readonly Doc<'orderLines'>[]) {
+	const contents = lines.flatMap(line => (line.saleSnapshot?.contents ?? []).map(content => ({ lineId: line._id, ...content })));
+	const grants = contents.flatMap(({ lineId, contentKey, grantId }) => grantId ? [{ lineId, contentKey, grantId }] : [])
+		.slice(0, COMMERCE_LIMITS.sale.sessionGrants);
+	const vouchers = contents.flatMap(({ lineId, contentKey, voucherId }) => voucherId ? [{ lineId, contentKey, voucherId }] : [])
+		.slice(0, COMMERCE_LIMITS.sale.voucherIssuances);
+	const benefits = await Promise.all([
+		...grants.map(async ({ lineId, contentKey, grantId }) => {
+			const grant = await readOrderProjection(ctx, () => ctx.db.get(grantId));
+			if (grant?.lineId !== lineId || grant.contentKey !== contentKey) return null;
+			return { lineId, contentKey, issuedExpiresAt: grant.issuedTerms.expiresAt,
+				editHistory: { targetType: 'grant' as const, targetId: grant._id } };
+		}),
+		...vouchers.map(async ({ lineId, contentKey, voucherId }) => {
+			const voucher = await readOrderProjection(ctx, () => ctx.db.get(voucherId));
+			if (!voucher || voucher.source.kind === 'refund_credit' || voucher.source.lineId !== lineId) return null;
+			if (voucher.source.kind === 'package' && voucher.source.contentKey !== contentKey) return null;
+			const codeMask = await voucherCodeMask(ctx, voucher);
+			return { lineId, contentKey, issuedExpiresAt: voucher.issuedExpiresAt, ...(codeMask ? { codeMask } : {}),
+				editHistory: { targetType: 'voucher' as const, targetId: voucher._id } };
+		}),
+	]);
+	return benefits.filter(benefit => benefit !== null);
+}
+
+async function readReceiptRefunds(ctx: QueryCtx, order: Doc<'orders'>, settled: boolean, commerce: boolean) {
+	if (!settled || commerce) return [];
+	// Pre-commerce receipts have no aggregate. Preserve their existing totals and truncation cap.
+	return readOrderProjection(ctx, () => orderRefunds(ctx, order._id, true));
+}
 
 export const getOrder = staffQuery({
   capability: 'checkout',
@@ -29,28 +80,41 @@ export const getOrder = staffQuery({
 		const actor = ctx.staff;
 		const orderId = ctx.db.normalizeId('orders', args.orderId);
 		if (!orderId) return null;
-		const order = await ctx.db.get(orderId);
-		if (!order || !canReadCheckoutOrder(actor, order)) return null;
+		const order = await readOrderProjection(ctx, () => ctx.db.get(orderId));
+		if (!order) return null;
+		const settled = order.status === 'paid' || order.status === 'void';
+		const activeReturn = order.status === 'paid' ? await openOrderReturn(ctx, orderId) : null;
+		if (!canReadCheckoutOrder(actor, order) && activeReturn?.operator !== actor.tokenIdentifier) return null;
 		const open = isOpenOrder(order);
 		// The till needs operational data while the order is draft. Preserve the full receipt for
 		// existing callers and when a subscribed order becomes paid, void or discarded.
 		const receiptHistory = args.view !== 'checkout' || !open;
-		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, links, posRefunds] = await Promise.all([
-			orderLines(ctx, order._id),
-			ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10),
-			receiptHistory ? ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).order('desc').take(50) : [],
-			order.customerId ? ctx.db.get(order.customerId) : null,
-			order.parentOrderId ? ctx.db.get(order.parentOrderId) : null,
-			receiptHistory ? ctx.db.query('bookingRefunds').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(MAX_STAY_ROWS) : [],
-			receiptHistory ? ctx.db.query('orderCorrections').withIndex('by_orderId_and_sequence', (q) => q.eq('orderId', order._id)).order('desc').take(20) : [],
-			receiptHistory ? ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).order('desc').take(MAX_STAY_ROWS) : [],
-			open ? [] : orderLineLinks(ctx, order._id),
-			order.status === 'paid' || order.status === 'void' ? orderRefunds(ctx, order._id, true) : []
+		const read = <T>(fetch: () => Promise<T>) => readOrderProjection(ctx, fetch);
+		const [lines, payments, audit, customer, parent, refunds, corrections, appointmentRefunds, activeLinks, unlinkedHistory, paymentAttempt] = await Promise.all([
+			read(() => orderLines(ctx, order._id)),
+			read(() => ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10)),
+			receiptHistory ? read(() => ctx.db.query('orderAudit').withIndex('by_orderId_and_at', (q) => q.eq('orderId', order._id)).order('desc').take(50)) : [],
+			order.customerId ? read(() => ctx.db.get(order.customerId!)) : null,
+			order.parentOrderId ? read(() => ctx.db.get(order.parentOrderId!)) : null,
+			receiptHistory ? read(() => ctx.db.query('bookingRefunds').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(MAX_STAY_ROWS)) : [],
+			receiptHistory ? read(() => ctx.db.query('orderCorrections').withIndex('by_orderId_and_sequence', (q) => q.eq('orderId', order._id)).order('desc').take(20)) : [],
+			receiptHistory ? read(() => ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', order._id)).order('desc').take(MAX_STAY_ROWS)) : [],
+			open ? [] : read(() => orderLineLinks(ctx, order._id, 'active')),
+			open ? [] : read(() => orderLineLinks(ctx, order._id, 'unlinked')),
+			readPaymentAttempt(ctx, order),
 		]);
+		const links = [...activeLinks, ...unlinkedHistory];
+		const voucherPayments = voucherOrderPayments(payments);
+		const [handovers, issuedBenefits] = await Promise.all([readHandovers(ctx, order, lines), readIssuedBenefits(ctx, lines)]);
+		const totals = receiptTotals(order, lines);
+		const commerce = lines.some(isCommerceLine) || voucherPayments.length > 0 || handovers.length > 0 || order.returnedTotal !== undefined;
+		const correctionBlocker = settled ? correctionPreviewBlocker(commerce, activeReturn) : null;
+		const posRefunds = await readReceiptRefunds(ctx, order, settled, commerce);
 		const refundHistoryTruncated = posRefunds.length > MAX_ORDER_REFUNDS;
 		const refundedByLine = new Map<Id<'orderLines'>, number>();
 		for (const refund of posRefunds) refundedByLine.set(refund.lineId, (refundedByLine.get(refund.lineId) ?? 0) + refund.amount);
-		const refundedAmountSatang = posRefunds.reduce((sum, row) => sum + row.amount, 0);
+		const refundedAmountSatang = commerce ? order.returnedTotal ?? 0 : posRefunds.reduce((sum, row) => sum + row.amount, 0);
+		const returnedAmountSatang = lines.reduce((sum, line) => sum + (line.saleSnapshot?.returnedAmount ?? 0), 0);
 		const reads = orderReads(ctx);
 		const sources = await orderSourceRefs(ctx, order, lines, reads);
 		const linkRows = [];
@@ -63,10 +127,9 @@ export const getOrder = staffQuery({
 				target: { id: target.id, reference: target.reference, name: target.name, guestName: target.guestName ?? null }
 			});
 		}
-		const settled = order.status === 'paid' || order.status === 'void';
 		const staffNames = new Map<Id<'staff'>, string>();
 		for (const id of new Set(lines.flatMap((line) => (line.staffId && (!settled || line.staffName == null) ? [line.staffId] : [])))) {
-			const person = await ctx.db.get(id);
+			const person = await read(() => ctx.db.get(id));
 			if (person) staffNames.set(id, person.name);
 		}
 		const photos = new Map<string, Promise<string | undefined>>();
@@ -76,14 +139,18 @@ export const getOrder = staffQuery({
 			if (photoKey && !photos.has(photoKey)) photos.set(photoKey, linePhoto(ctx, line, reads));
 			const stay = line.bookingId ? await reads.booking(line.bookingId) : null;
 			// Optional at the type boundary so existing offline checkout adapters remain compatible.
+			const refunded = commerce ? line.saleSnapshot?.returnedAmount ?? 0 : refundedByLine.get(line._id) ?? 0;
 			const refundAmounts: { refundedAmountSatang?: number; remainingRefundableSatang?: number } = {
-				refundedAmountSatang: refundedByLine.get(line._id) ?? 0,
-				remainingRefundableSatang: !refundHistoryTruncated && posRefunds.length < MAX_ORDER_REFUNDS && order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !links.some(link => link.lineId === line._id && link.status === 'active')
-					? Math.max(0, lineNet(line) - (refundedByLine.get(line._id) ?? 0)) : 0,
+				refundedAmountSatang: refunded,
+				remainingRefundableSatang: !commerce && posRefunds.length < MAX_ORDER_REFUNDS && order.status === 'paid' && order.paidAt !== undefined && isWalkInLine(line) && !activeLinks.some(link => link.lineId === line._id)
+					? Math.max(0, lineNet(line) - refunded) : 0,
 			};
+			const goodwillDiscount = lineGoodwillDiscount(line);
 			rows.push({
 				...line,
-				net: lineNet(line),
+				name: line.saleSnapshot?.label ?? line.name,
+				net: lineNet(line) - goodwillDiscount,
+				...(goodwillDiscount ? { goodwillDiscount } : {}),
 				...refundAmounts,
 				imageUrl: photoKey ? await photos.get(photoKey) : undefined,
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
@@ -96,8 +163,8 @@ export const getOrder = staffQuery({
 		}
 		const refundSummary: { posRefunds?: ReturnType<typeof orderRefundView>[]; refundedAmountSatang?: number; fullyRefunded?: boolean; refundHistoryTruncated?: boolean } = {
 			refundHistoryTruncated,
-			posRefunds: posRefunds.slice(-50).reverse().map(orderRefundView), refundedAmountSatang,
-			fullyRefunded: !refundHistoryTruncated && order.status === 'paid' && refundedAmountSatang > 0 && refundedAmountSatang === orderTotals(lines).total,
+			posRefunds: posRefunds.slice(-RECEIPT_REFUNDS).reverse().map(orderRefundView), refundedAmountSatang,
+			fullyRefunded: !refundHistoryTruncated && order.status === 'paid' && totals.total > 0 && (commerce ? returnedAmountSatang === totals.total : refundedAmountSatang === totals.total),
 		};
 		const promotion: OrderPromotionView | null = order.promotion ? {
 			code: order.promotion.code, couponVersion: order.promotion.couponVersion, discount: order.promotion.discount,
@@ -117,12 +184,31 @@ export const getOrder = staffQuery({
 			parentOrder: parent ? { _id: parent._id, title: orderTitle(parent.orderNumber) } : null,
 			lines: rows,
 			...refundSummary,
+			...(commerce ? {
+				commerce: {
+					returnedAmountSatang, issuedBenefits,
+					handovers: handovers.map(({ clientKey: _clientKey, ...handover }) => ({
+						...handover,
+						editHistory: { targetType: 'handover' as const, targetId: handover._id },
+					})),
+					editHistory: { targetType: 'order' as const, targetId: order._id },
+				},
+			} : {}),
+			...(activeReturn ? { activeReturn: {
+				_id: activeReturn._id, status: activeReturn.status, parts: activeReturn.parts, claims: activeReturn.claims,
+				voucherCredits: activeReturn.voucherCredits, operator: activeReturn.operator, tillId: activeReturn.tillId,
+				operatorRevision: activeReturn.operatorRevision, approvalId: activeReturn.approvalId, reason: activeReturn.reason,
+				createdAt: activeReturn.createdAt,
+			} } : {}),
+			...(paymentAttempt ? { paymentAttempt } : {}),
+			...(correctionBlocker ? { correctionBlocker } : {}),
 			/** R2b: the order's coupon; the split is on each row's `couponDiscount`, the total in `totals.coupon`. */
 			promotion,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
 			payments: externalOrderPayments(payments),
+			...(voucherPayments.length ? { voucherPayments } : {}),
 			audit,
-			totals: orderTotals(lines),
+			totals,
 			/**
 			 * The payment as it stands after corrections (pos.amendOrderPayment), for the receipt screen.
 			 * `correctionRevision` is what a correction must send back.
@@ -332,7 +418,7 @@ export const appointmentFees = adminQuery({
 
 async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
 		const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
-			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: await orderRefundTotal(ctx, order._id) };
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: order.returnedTotal ?? await orderRefundTotal(ctx, order._id) };
 			return {
 				_id: order._id,
 				orderNumber: order.orderNumber,
