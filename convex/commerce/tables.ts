@@ -5,7 +5,7 @@ import {
   benefitBalances, benefitBucket, benefitPause, catalogueStatus, commerceSaleSource,
   commerceSettingsFields, commerceTerms, handoverContent, handoverCounts, handoverKind, handoverStatus,
   packageContent, sessionUseKind, stockMovementKind, vatProfile, voucherCodeStatus,
-  voucherEntryKind, voucherSource, voucherStatus,
+  voucherEntryKind, voucherGuestFact, voucherSource, voucherStatus,
 } from './validators';
 
 const adjustmentLogFields = {
@@ -76,7 +76,8 @@ export const commerceTables = {
     delta: v.number(), before: v.number(), after: v.number(), kind: stockMovementKind,
     sourceKey: v.string(), reason: v.optional(v.string()), actor: v.string(), createdAt: v.number(),
     adjustmentId: v.optional(v.id('commerceAdjustments')),
-  }).index('by_variantId_and_createdAt', ['variantId', 'createdAt']).index('by_sourceKey', ['sourceKey']),
+  }).index('by_variantId_and_createdAt', ['variantId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
+    .index('by_variantId_and_branchId_and_createdAt', ['variantId', 'branchId', 'createdAt']),
 
   handovers: defineTable({
     kind: handoverKind,
@@ -182,9 +183,10 @@ export const commerceTables = {
 
   voucherEntries: defineTable({
     voucherId: v.id('vouchers'), kind: voucherEntryKind, sourceKey: v.string(),
-    before: benefitBalances, after: benefitBalances, guestFact: v.string(), actor: v.string(),
+    before: benefitBalances, after: benefitBalances, guestFact: voucherGuestFact, actor: v.string(),
     adjustmentId: v.optional(v.id('commerceAdjustments')), createdAt: v.number(),
-  }).index('by_voucherId_and_createdAt', ['voucherId', 'createdAt']).index('by_sourceKey', ['sourceKey']),
+  }).index('by_voucherId_and_createdAt', ['voucherId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
+    .index('by_createdAt', ['createdAt']),
 
   commerceAdjustments: defineTable(v.union(
     ...adjustmentTargets.map(target => v.object({ ...target.fields, ...adjustmentLogFields })),

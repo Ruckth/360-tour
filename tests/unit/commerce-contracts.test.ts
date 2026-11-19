@@ -41,8 +41,8 @@ describe("commerce view types follow storage", () => {
     expectTypeOf<ReturnPart>().toEqualTypeOf<Doc<"orderReturns">["parts"][number]>();
     expectTypeOf<AdjustTarget["targetType"]>().toEqualTypeOf<Doc<"commerceAdjustments">["targetType"]>();
     expectTypeOf<AdjustTarget["targetId"]>().toEqualTypeOf<Doc<"commerceAdjustments">["targetId"]>();
-    // Every stored edit kind has a typed input, except the two with their own commands.
-    expectTypeOf<Exclude<AdjustKind, AdjustInput["kind"]>>().toEqualTypeOf<"takeBack" | "amendPayment">();
+    // Take back, payment corrections and session waivers use dedicated flows.
+    expectTypeOf<Exclude<AdjustKind, AdjustInput["kind"]>>().toEqualTypeOf<"takeBack" | "amendPayment" | "waive">();
     expectTypeOf<Exclude<AdjustInput["kind"], AdjustKind>>().toEqualTypeOf<never>();
   });
 

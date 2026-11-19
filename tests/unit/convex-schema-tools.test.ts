@@ -14,6 +14,24 @@ const inspect = (files: Record<string, string>) => inspectSchema(path => files[p
 const server = "import { defineSchema as assemble, defineTable as table } from 'convex/server';";
 const table = "table({ label: v.string() }).index('by_label', ['label'])";
 
+it('matches the reviewed stock movement and voucher entry index inventories', () => {
+  // Read the same runtime export as scripts/schema-equivalence.mjs.
+  const runtimeSchema = schema as typeof schema & { export(): string };
+  const { tables } = JSON.parse(runtimeSchema.export()) as {
+    tables: { tableName: string; indexes: { indexDescriptor: string; fields: string[] }[] }[];
+  };
+  expect(tables.find(table => table.tableName === 'stockMovements')?.indexes).toEqual([
+    { indexDescriptor: 'by_variantId_and_createdAt', fields: ['variantId', 'createdAt'] },
+    { indexDescriptor: 'by_sourceKey', fields: ['sourceKey'] },
+    { indexDescriptor: 'by_variantId_and_branchId_and_createdAt', fields: ['variantId', 'branchId', 'createdAt'] },
+  ]);
+  expect(tables.find(table => table.tableName === 'voucherEntries')?.indexes).toEqual([
+    { indexDescriptor: 'by_voucherId_and_createdAt', fields: ['voucherId', 'createdAt'] },
+    { indexDescriptor: 'by_sourceKey', fields: ['sourceKey'] },
+    { indexDescriptor: 'by_createdAt', fields: ['createdAt'] },
+  ]);
+});
+
 it('follows reachable bindings and spreads, excluding unused and component definitions', () => {
   const result = inspect({
     'convex/schema.ts': `${server} import primary from './primary'; import { selected as alias } from './part'; const unused = { decoy: ${table} }; export default assemble({ ...primary, ...alias, direct: ${table} });`,
