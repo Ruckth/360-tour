@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { commerceCopyArgs } from '../shared/commerce/reasons';
 import { adjustmentKind, adjustmentTarget, adjustmentFields, commerceTerms, vatProfile } from '../commerce/model';
 import { storedRefundMethod, tenderMethod } from '../shared/financeValidators';
 import { LINE_KINDS } from '../shared/orderMath';
@@ -55,6 +56,10 @@ export const orderLineSaleSnapshot = v.object({
     voucherId: v.optional(v.id('vouchers')),
   })),
   goodwillDiscounts: v.array(v.object({ voucherId: v.id('vouchers'), amount: v.number() })),
+});
+
+export const paymentAttemptRefusal = v.object({
+  code: v.string(), message: v.string(), args: v.optional(commerceCopyArgs),
 });
 
 export const paymentAttemptStatus = v.union(

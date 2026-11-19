@@ -1,4 +1,5 @@
 import { v, type Infer } from 'convex/values';
+import { commerceCopyArgs } from '../shared/commerce/reasons';
 
 export const catalogueStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('archived'));
 export const vatProfile = v.union(v.literal('standard'), v.literal('exempt'));
@@ -52,7 +53,11 @@ export const voucherStatus = v.union(v.literal('active'), v.literal('disabled'),
 export const voucherCodeStatus = v.union(v.literal('active'), v.literal('replaced'), v.literal('disabled'));
 export const voucherEntryKind = v.union(
   v.literal('issue'), v.literal('spend'), v.literal('refund_credit'), v.literal('revoke'),
-  v.literal('disable'), v.literal('reissue'), v.literal('expire'), v.literal('edit'),
+  v.literal('disable'), v.literal('reissue'), v.literal('expire'), v.literal('edit'), v.literal('transfer'),
+);
+export const voucherGuestFact = v.union(
+  v.string(),
+  v.object({ key: v.string(), args: v.optional(commerceCopyArgs) }),
 );
 export const voucherSource = v.union(
   v.object({ kind: v.literal('sale'), orderId: v.id('orders'), lineId: v.id('orderLines'), templateId: v.optional(v.id('voucherTemplates')) }),
@@ -81,7 +86,7 @@ export const adjustmentKind = v.union(
   v.literal('addGoodwill'), v.literal('removeGoodwill'), v.literal('rename'), v.literal('reissue'),
   v.literal('disable'), v.literal('transfer'), v.literal('addService'), v.literal('substituteService'),
   v.literal('narrowServices'), v.literal('shorten'), v.literal('adjustStock'), v.literal('takeBack'),
-  v.literal('moveRoomCharge'), v.literal('amendPayment'), v.literal('updateSettings'),
+  v.literal('moveRoomCharge'), v.literal('amendPayment'), v.literal('updateSettings'), v.literal('waive'),
 );
 
 export const adjustmentEffect = v.union(

@@ -29,7 +29,8 @@ export const propertiesFields = {
 			)
 		),
 		// Set when an admin edits name/tagline/description/amenities, so edited English beats bundled i18n copy.
-		contentEditedAt: v.optional(v.number())
+		contentEditedAt: v.optional(v.number()),
+		revision: v.optional(v.number())
 	};
 
 export const tourScenesFields = {

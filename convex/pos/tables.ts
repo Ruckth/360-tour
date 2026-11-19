@@ -8,7 +8,7 @@ import { posCouponProblemValidator } from '../shared/posCoupons';
 import {
   adjustmentApprovalPayload, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
   orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, paymentAttemptReview,
-  paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
+  paymentAttemptRefusal, paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
   returnPart, returnSourceOwner, reviewedVoucher,
 } from './validators';
 
@@ -298,7 +298,7 @@ export const posTables = {
     status: paymentAttemptStatus,
     owner: v.string(), tillId: v.string(), ownerRevision: v.number(),
     parentAttemptId: v.optional(v.id('paymentAttempts')),
-    refusal: v.optional(v.object({ code: v.string(), message: v.string() })),
+    refusal: v.optional(paymentAttemptRefusal),
     resolution: v.optional(v.object({
       settledAttemptId: v.optional(v.id('paymentAttempts')),
       giveBackLegs: v.array(paymentExternalLeg),

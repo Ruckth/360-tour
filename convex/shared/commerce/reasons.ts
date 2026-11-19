@@ -1,0 +1,69 @@
+import { v } from 'convex/values';
+
+export const commerceRefusalCodes = [
+  'STALE_REVISION',
+  'SALE_SWITCH_OFF',
+  'SALE_SWITCH_MANAGERS_ONLY',
+  'NEEDS_MANAGER',
+  'OWNER_ONLY',
+  'CONSENT_REQUIRED',
+  'REASON_REQUIRED',
+  'VOUCHER_NOT_FOUND',
+  'VOUCHER_EXPIRED',
+  'VOUCHER_PAUSED',
+  'VOUCHER_DISABLED',
+  'VOUCHER_USED_UP',
+  'VOUCHER_WRONG_BRANCH',
+  'VOUCHER_NOT_ALLOWED',
+  'VOUCHER_LIMIT',
+  'PAYMENT_ROWS_LIMIT',
+  'STOCK_CONFIRM_NEEDED',
+  'OTHER_BRANCH_STOCK',
+  'OVER_CAP',
+  'ITEM_ARCHIVED',
+  'SESSION_UNAVAILABLE',
+  'SESSION_EXPIRED',
+  'SESSION_PAUSED',
+  'NO_SESSIONS_LEFT',
+  'ATTENDEE_MISMATCH',
+  'PAYMENT_IN_PROGRESS',
+  'PAYMENT_HANDED_OVER',
+  'CHECK_PREVIOUS_PAYMENT',
+  'CHECKOUT_PAUSED',
+  'TILL_NEEDS_RELOAD',
+  'PRICE_CHANGED',
+  'RETURN_IN_PROGRESS',
+  'RETURN_HANDED_OVER',
+  'RETURN_TOO_LARGE',
+  'ROOM_CHARGES_OFF',
+  'STAY_NOT_CHECKED_IN',
+  'ITEM_WITH_GUEST',
+  'KEY_CONFLICT',
+  'RECEIPT_TOO_OLD',
+] as const;
+
+export const editReasons = [
+  'healthPause',
+  'serviceRecovery',
+  'spellingCorrection',
+  'lostCode',
+  'guestRequest',
+  'staffMistake',
+  'priceChange',
+  'other',
+] as const;
+
+export const stockReasons = [
+  'received',
+  'recount',
+  'damaged',
+  'theft',
+  'lost',
+  'returnedToStock',
+] as const;
+
+export const commerceRefusalCode = v.union(...commerceRefusalCodes.map(code => v.literal(code)));
+export const editReason = v.union(...editReasons.map(code => v.literal(code)));
+export const stockReason = v.union(...stockReasons.map(code => v.literal(code)));
+
+export const commerceCopyArgs = v.record(v.string(), v.union(v.string(), v.number()));

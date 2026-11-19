@@ -311,7 +311,7 @@ it('replays an adjustment request beyond the former 32-request lookup window', a
   };
   const submit = (clientKey: string) => s.cashier.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), {
     target: { targetType: 'voucher', targetId: s.voucherId }, kind: 'addGoodwill', input: { delta: 1000 },
-    expectedRevision: 3, clientKey, reasonCode: 'goodwill',
+    expectedRevision: 3, clientKey, reasonCode: 'serviceRecovery',
   }, writer));
   const first = await submit('older-key');
   for (let index = 0; index < 33; index++) await submit(`newer-key-${index}`);

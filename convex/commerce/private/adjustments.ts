@@ -4,6 +4,7 @@ import type { MutationCtx } from '../../_generated/server';
 import { staffCapabilities, type StaffActor } from '../../auth/model';
 import { readBudget, reserveWrites } from '../../lib/readBudget';
 import { cashierRules } from '../../settings/model';
+import { editReasons, stockReasons } from '../../shared/commerce/reasons';
 import { sha256 } from '../../shared/displayTokens';
 import { assertSatang } from '../../shared/money';
 import { APPROVAL_TTL_MS } from '../../shared/staffTypes';
@@ -74,6 +75,13 @@ const ledgerKind: Partial<Record<AdjustmentTarget['targetType'], Effect['kind']>
 
 function refuse(code: string, message: string): never {
   throw new ConvexError({ code, message });
+}
+
+function assertKnownReasonCode({ target, reasonCode }: AdjustmentCommand) {
+  const reasons = target.targetType === 'stock' ? stockReasons : editReasons;
+  if (reasonCode && !reasons.some(reason => reason === reasonCode)) {
+    refuse('INVALID_ADJUSTMENT_REASON', 'Choose a valid reason for this edit.');
+  }
 }
 
 async function measured<T>(ctx: MutationCtx, read: () => Promise<T>) {
@@ -284,6 +292,7 @@ export async function adjust(
     checkReplay(request.payload.payloadFingerprint, fingerprint);
     return requestResult(request);
   }
+  assertKnownReasonCode(command);
   await assertRevisions(ctx, command);
   const change = await writer.prepare(ctx, actor, command);
   if (direct) return await applyChange(ctx, actor, command, change, requester, fingerprint);
@@ -369,6 +378,7 @@ export async function executeApprovedAdjustment(
   };
   adjustmentPermission(requester, command);
   await writer.assertScope(ctx, requester, command);
+  assertKnownReasonCode(command);
   await assertRevisions(ctx, command);
   const change = await writer.prepare(ctx, actor, command);
   const result = await applyChange(ctx, actor, command, change, requesterKey, fingerprint, request._id);
