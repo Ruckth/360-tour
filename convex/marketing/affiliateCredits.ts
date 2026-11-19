@@ -259,8 +259,8 @@ export async function syncAffiliateCredit(
   actor = "system:affiliate",
   ineligibilityReason?: "payment_unlinked",
 ) {
-  const booking = "bookingId" in source ? await creditSource(ctx, source.bookingId) : null;
-  const order = "orderId" in source ? await creditSource(ctx, source.orderId) : null;
+  const booking = "bookingId" in source ? await ctx.db.get(source.bookingId) : null;
+  const order = "orderId" in source ? await ctx.db.get(source.orderId) : null;
   const sale = booking ?? order;
   const snapshot = sale?.affiliateSnapshot;
   if (!snapshot?.candidates.length) return null;
