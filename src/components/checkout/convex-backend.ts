@@ -2,15 +2,35 @@
 
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { COMMERCE_OFF, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry } from "./backend";
-import { historyEntry, receiptAttempt, receiptReturnable } from "./commerce-readers";
 
 const SKIP = "skip" as const;
 const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
 /** Cashiers may only search active customers by at least two characters (customers.browseCustomers). */
 const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
+
+type Readers = typeof import("./commerce-readers");
+let readers: Readers | null = null;
+let loading: Promise<Readers> | null = null;
+
+/**
+ * The commerce view mappers, loaded by the first commerce screen that reads (History, a receipt's
+ * attempt or return card) rather than with checkout. null until then; a failed load reaches the
+ * screen's error boundary and is retried on the next mount.
+ */
+function useReaders(): Readers | null {
+  const [loaded, setLoaded] = useState(readers);
+  useEffect(() => {
+    if (loaded) return;
+    let live = true;
+    loading ??= import("./commerce-readers").then((module) => (readers = module), (error: unknown) => { loading = null; throw error; });
+    loading.then((module) => { if (live) setLoaded(module); }, (error: unknown) => { if (live) setLoaded(() => { throw error; }); });
+    return () => { live = false; };
+  }, [loaded]);
+  return loaded;
+}
 
 /**
  * Commerce readers that have a backend so far: History, the receipt's payment attempt and open
@@ -24,19 +44,23 @@ const convexCommerce: CommerceBackend = {
     const staff = usePaginatedQuery(api.commerce.history.staffPage, target && audience === "staff" ? { target } : SKIP, { initialNumItems: 20 });
     const guest = usePaginatedQuery(api.commerce.history.guestPage, benefit && audience === "guest" ? { target: benefit } : SKIP, { initialNumItems: 20 });
     const page = audience === "guest" ? guest : staff;
-    const results = useMemo(() => page.results.map(historyEntry), [page.results]);
+    const mappers = useReaders();
+    const results = useMemo(() => (mappers ? page.results.map(mappers.historyEntry) : []), [mappers, page.results]);
     if (!target || (audience === "guest" && !benefit)) return NOTHING_TO_LOAD as CustomerPage<HistoryEntry>;
+    if (!mappers) return { results, status: "LoadingFirstPage", loadMore: () => {} };
     return { results, status: page.status, loadMore: page.loadMore };
   },
   // The receipt's status cards read getOrder's own projection: the same subscription ReceiptView
   // already holds ({ orderId }), so they add no reads.
   usePaymentAttempt: (orderId) => {
     const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
-    return useMemo(() => (view === undefined ? undefined : view ? receiptAttempt(view) : null), [view]);
+    const mappers = useReaders();
+    return useMemo(() => (view === undefined || !mappers ? undefined : view ? mappers.receiptAttempt(view) : null), [mappers, view]);
   },
   useReturnable: (orderId) => {
     const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
-    return useMemo(() => (view === undefined ? undefined : view ? receiptReturnable(view) : null), [view]);
+    const mappers = useReaders();
+    return useMemo(() => (view === undefined || !mappers ? undefined : view ? mappers.receiptReturnable(view) : null), [mappers, view]);
   },
   useMyApproval: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
 };
