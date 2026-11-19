@@ -16,7 +16,9 @@ const WIDTHS = [
   { name: "1440", width: 1440, height: 900, touch: false },
 ] as const;
 const EVIDENCE = process.env.COMMERCE_SCREENS_EVIDENCE;
-const FULL_CODE = /\b[A-Z]{2,4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b/;
+const FULL_CODE = /\b[A-Z]{2,4}-[A-Z0-9]{4}-[A-Z0-9]{4}\b|GV[\s\-_.]{0,3}[A-Z0-9]{4}[\s\-_.]{0,3}[A-Z0-9]{4}/i;
+// Audit r2 blocker 1: the spellings that survived round 1 (lowercase with hyphens, uppercase without separators).
+const SPELLINGS = [{ slug: "lower", code: "gv-7k2m-q9xd" }, { slug: "compact", code: "GV7K2MQ9XD" }] as const;
 
 async function open(page: Page, query: string) {
   await page.goto(`/tests/browser/commerce-screens.html?${query}`);
@@ -107,6 +109,35 @@ for (const size of WIDTHS) {
       expect(await page.locator("body").innerText()).not.toMatch(FULL_CODE);
       if (size.name === "820-keyboard") await page.getByRole("button", { name: "More receipt actions" }).focus();
       if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/receipt-name-${size.name}.png`, fullPage: true });
+    });
+
+    for (const { slug, code } of SPELLINGS) {
+      test(`the receipt paper and the paired display mask ${code} typed into an item name`, async ({ page }) => {
+        await open(page, `commerce=dark&receipt=1&typed=${code}`);
+        const preview = page.locator("summary", { hasText: "Receipt preview" });
+        if (await preview.isVisible()) await preview.click();
+        await expect(page.getByLabel("Receipt", { exact: true }).getByText("Gift voucher GV-••••-Q9XD").first()).toBeVisible();
+        expect(await page.locator("body").innerText()).not.toMatch(FULL_CODE);
+        if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/typed-${slug}-${size.name}.png`, fullPage: true });
+        await open(page, `display=order&typed=${code}`);
+        await expect(page.getByText("Sunset cocktail GV-••••-Q9XD")).toBeVisible();
+        expect(await page.locator("body").innerText()).not.toMatch(FULL_CODE);
+        if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/display-${slug}-${size.name}.png` });
+      });
+    }
+
+    // Audit r2 blocker 2: a promoted manager's own newer requests fill the first page.
+    test("Approvals reads past a first page with nothing to approve, never saying Nothing waiting", async ({ page }) => {
+      await open(page, "queue=filtered");
+      await expect(page.locator("[data-approval-count]")).toHaveText("1 waiting");
+      await page.getByTestId("approvals-button").click();
+      const panel = page.getByRole("dialog", { name: "Approvals" });
+      await expect(panel.getByTestId("approval-request")).toHaveCount(1);
+      await expect(panel).toContainText("Ploy asks for a ฿180 discount (15%)");
+      await expect(panel).not.toContainText("Nothing waiting");
+      await expect(panel.getByRole("button", { name: "Approve" })).toBeVisible();
+      expect.soft(await overflowX(page), "approvals sideways scroll").toBeLessThanOrEqual(0);
+      if (EVIDENCE) await page.screenshot({ path: `${EVIDENCE}/approvals-filtered-${size.name}.png` });
     });
 
     // Audit r1 finding 2: shown to the guest, nothing staff-only on the screen behind is legible.

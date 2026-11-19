@@ -13,7 +13,7 @@ import { COMMERCE_RECEIPT_ID, COMMERCE_REDEMPTION_ID, commerceReceipt, commerceR
 import { HistoryList } from "@/components/checkout/EditHistory";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
 import { ReceiptView } from "@/components/checkout/ReceiptView";
-import { p95, resetTiming, timingRows, withTiming } from "@/components/checkout/timing";
+import { HEADER_TOOLS, p95, resetTiming, TimingReadout, timingRows, withTiming } from "@/components/checkout/timing";
 import { timingOptIn, useCheckoutTiming } from "@/components/checkout/timing-gate";
 import { fieldChanges, historyEntry, receiptAttempt, receiptReturnable } from "@/components/checkout/commerce-readers";
 import { Screen } from "@/components/display/DisplayScreens";
@@ -738,6 +738,23 @@ describe("?timing=1", () => {
     expect(timingRows().map((row) => row.action).sort()).toEqual(["addItem", "settleOrder"]);
     expect(document.querySelector('[data-testid="checkout-timing"]')).not.toBeNull();
     window.sessionStorage.clear();
+  });
+
+  // Audit r2 finding 3: at 390 the fixed panel took taps meant for View order and Cash.
+  it("sits in the admin header as a button, closed, and never over the page", async () => {
+    resetTiming();
+    const header = document.body.appendChild(document.createElement("header"));
+    const slot = header.appendChild(document.createElement("div"));
+    slot.setAttribute(HEADER_TOOLS, "");
+    await act(async () => root.render(createElement(TimingReadout)));
+    const trigger = document.querySelector<HTMLElement>('[data-testid="checkout-timing"]')!;
+    expect(slot.contains(trigger)).toBe(true);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.querySelector('[data-testid="checkout-timing-panel"]')).toBeNull();
+    expect(document.querySelector(".fixed")).toBeNull();
+    await act(async () => trigger.click());
+    await until(() => document.querySelector('[data-testid="checkout-timing-panel"]') !== null);
+    expect(document.querySelector('[data-testid="checkout-timing-panel"]')!.textContent).toContain("Nothing timed yet");
   });
 
   it("uses the nearest-rank 95th percentile", () => {
