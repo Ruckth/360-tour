@@ -6,7 +6,9 @@ import { staffDate, staffDateTime, staffTime } from "@/lib/staff-time";
 import type { ServiceSchedule } from "convex/shared/serviceSchedule";
 import { MAX_ORDER, changeDue, formatReceiptNumber, lineCouponDiscount, roundMoney, type TenderMethod } from "convex/shared/orderMath";
 import { posCouponMessage, type PosCouponProblem } from "convex/shared/posCoupons";
-import type { OrderView } from "./backend";
+import type { Id } from "convex/_generated/dataModel";
+import { maskVoucherCodes } from "@/components/display/voucher-mask";
+import type { AdjustTarget, CommerceCopy, OrderView } from "./backend";
 
 /**
  * One name per method everywhere in checkout: PromptPay, Transfer, Cash, Card. `confirm` names the
@@ -155,8 +157,10 @@ export function couponRefusal(err: unknown): CouponRefusal | null {
 }
 
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
-export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs, business: string) {
+export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs & ReceiptCommerceFields, business: string, copy?: CommerceCopy) {
   const { order, lines, payments, totals } = view;
+  // Commerce rows need the Commerce copy; a receipt from before commerce never reads it.
+  const commerce = copy ? receiptCommerce(view) : null;
   // POS line refunds (satang), as on the printed receipt; none past the history limit.
   const refunds = !view.refundHistoryTruncated;
   const refunded = refunds ? view.refundedAmountSatang ?? 0 : 0;
@@ -178,16 +182,158 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
     ...lines.flatMap((line) => {
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
       const when = line.kind === "service" ? receiptSchedule(line.schedule) : null;
+      const extras = commerce?.rows.get(line._id);
+      if (extras && copy) return commerceTextRows(line, extras, share, coupon, copy, row);
       return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(roundMoney(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : []), ...(refunds && line.refundedAmountSatang ? [row("  Refunded", formatMoney(-line.refundedAmountSatang))] : [])];
     }),
     "",
-    ...(totals.coupon ? [row("Subtotal", formatMoney(roundMoney(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
+    ...(totals.coupon && !commerce?.goodwill ? [row("Subtotal", formatMoney(roundMoney(totals.total + totals.coupon))), row(coupon, formatMoney(-totals.coupon))] : []),
+    ...(commerce?.goodwill && copy ? [
+      row("Subtotal", formatMoney(roundMoney(totals.total + totals.coupon + commerce.goodwill))),
+      ...(totals.coupon ? [row(coupon, formatMoney(-totals.coupon))] : []),
+      row(copy.t("receipt.goodwill"), formatMoney(-commerce.goodwill)),
+    ] : []),
     row("Total", formatMoney(totals.total)),
-    row("VAT 7% included", formatMoney(totals.vat)),
+    commerce?.voucherSaleOnly && copy ? copy.t("receipt.notTaxInvoice") : row("VAT 7% included", formatMoney(totals.vat)),
     ...(totals.deposit ? [row("Paid in advance", formatMoney(-totals.deposit))] : []),
     ...payments.map((p) => row(TENDER_LABELS[p.method].long, formatMoney(p.received ?? p.amount))),
+    ...(commerce && copy ? commerce.voucherTenders.map((tender) => row(voucherTenderLabel(tender, copy), formatMoney(tender.amount))) : []),
     ...(change ? [row("Change", formatMoney(change))] : []),
     ...(refunded ? [row("Refunded", formatMoney(-refunded)), row("Net", formatMoney(totals.total - refunded))] : []),
     ...(totals.coupon ? ["", `You saved ${formatMoney(totals.coupon)} with ${view.promotion?.code ?? "a coupon"}`] : []),
   ].join("\n");
+}
+
+// ─── Commerce receipts (plan v27) ─────────────────────────────────────────────────────────────
+// What getOrder adds for a receipt with products, packages, vouchers, session cover or goodwill
+// (convex/pos/orders.ts, W1·L1). Every field is optional, so a pre-commerce receipt reads exactly
+// as before and nothing below runs for it. Codes are masked; the full code is only on a gift slip.
+
+type Satang = number;
+type CommerceLine = OrderView["lines"][number] & { goodwillDiscount?: Satang };
+/** A voucher spend on the receipt. It's never cash, and never counted as money received. */
+export type VoucherTender = { _id: string; amount: Satang; voucherId: Id<"vouchers">; codeMask?: string };
+/** A session grant or voucher issued by a row, with its own Edit · History target. */
+export type IssuedBenefit = { lineId: Id<"orderLines">; contentKey: string; issuedExpiresAt: number; codeMask?: string; editHistory: AdjustTarget };
+export type ReceiptCommerceFields = {
+  voucherPayments?: VoucherTender[];
+  commerce?: {
+    returnedAmountSatang: Satang;
+    issuedBenefits: IssuedBenefit[];
+    handovers?: { _id: Id<"handovers">; lineId: Id<"orderLines">; editHistory: AdjustTarget }[];
+    editHistory: AdjustTarget;
+  };
+};
+export type ReceiptView = Pick<OrderView, "order" | "lines" | "payments" | "totals"> & ReceiptCommerceFields;
+
+/** One part of a package as sold, with its frozen share of the price (D1). */
+export type ReceiptContent = {
+  contentKey: string;
+  kind: "sessions" | "product" | "voucher";
+  label: string;
+  units: number;
+  amount: Satang;
+  returned: Satang;
+  codeMask: string | null;
+  expiresAt: number | null;
+};
+/** A commerce row's extras: what it holds, its goodwill, its session cover and what was returned. */
+export type ReceiptRowExtras = {
+  kind: "product" | "package" | "voucher" | "covered" | "other";
+  contents: ReceiptContent[];
+  goodwill: Satang;
+  /** A visit paid with a package session: what it would have cost. */
+  coveredPrice: Satang | null;
+  returned: Satang;
+  benefits: IssuedBenefit[];
+  history: AdjustTarget | null;
+};
+export type ReceiptCommerce = {
+  rows: Map<string, ReceiptRowExtras>;
+  voucherTenders: VoucherTender[];
+  goodwill: Satang;
+  returned: Satang;
+  /** Only voucher value sold: the receipt isn't a tax invoice (D9). */
+  voucherSaleOnly: boolean;
+  history: AdjustTarget | null;
+};
+
+const COMMERCE_KINDS = new Set(["product", "package", "voucher"]);
+const isCommerceLine = (line: CommerceLine) =>
+  COMMERCE_KINDS.has(line.kind) || line.coverage !== undefined || line.saleSnapshot !== undefined || (line.goodwillDiscount ?? 0) > 0;
+
+
+/** The commerce parts of a receipt, or null for a receipt from before commerce (shown exactly as today). */
+export function receiptCommerce(view: ReceiptView): ReceiptCommerce | null {
+  const lines = view.lines as CommerceLine[];
+  const voucherTenders = view.voucherPayments ?? [];
+  if (!view.commerce && !voucherTenders.length && !lines.some(isCommerceLine)) return null;
+  const benefits = view.commerce?.issuedBenefits ?? [];
+  const handovers = view.commerce?.handovers ?? [];
+  const rows = new Map<string, ReceiptRowExtras>();
+  for (const line of lines) {
+    if (!isCommerceLine(line)) continue;
+    const mine = benefits.filter((benefit) => benefit.lineId === line._id);
+    const contents = (line.saleSnapshot?.contents ?? []).map((content): ReceiptContent => {
+      const benefit = mine.find((item) => item.contentKey === content.contentKey);
+      return {
+        contentKey: content.contentKey,
+        kind: content.voucherId ? "voucher" : content.grantId ? "sessions" : "product",
+        label: content.label,
+        units: content.units,
+        amount: content.paidShare,
+        returned: content.returnedAmount,
+        codeMask: benefit?.codeMask ? maskVoucherCodes(benefit.codeMask) : null,
+        expiresAt: benefit?.issuedExpiresAt ?? null,
+      };
+    });
+    const handover = handovers.find((item) => item.lineId === line._id);
+    rows.set(line._id, {
+      kind: line.kind === "product" || line.kind === "package" || line.kind === "voucher" ? line.kind : line.coverage ? "covered" : "other",
+      contents: line.kind === "package" ? contents : [],
+      goodwill: line.goodwillDiscount ?? line.saleSnapshot?.goodwillDiscounts.reduce((sum, item) => sum + item.amount, 0) ?? 0,
+      coveredPrice: line.coverage ? line.coverage.priceBefore : null,
+      returned: line.saleSnapshot?.returnedAmount ?? 0,
+      benefits: mine,
+      history: mine.length === 1 ? mine[0].editHistory : handover?.editHistory ?? view.commerce?.editHistory ?? null,
+    });
+  }
+  const goodwill = (view.totals as { goodwillDiscount?: Satang }).goodwillDiscount
+    ?? [...rows.values()].reduce((sum, row) => sum + row.goodwill, 0);
+  return {
+    rows,
+    voucherTenders: voucherTenders.map((tender) => ({ ...tender, codeMask: tender.codeMask ? maskVoucherCodes(tender.codeMask) : undefined })),
+    goodwill,
+    returned: view.commerce?.returnedAmountSatang ?? [...rows.values()].reduce((sum, row) => sum + row.returned, 0),
+    voucherSaleOnly: lines.length > 0 && lines.every((line) => line.kind === "voucher"),
+    history: view.commerce?.editHistory ?? null,
+  };
+}
+
+/** "Gift voucher GV-••••-Q9XD": a voucher spend, named apart from cash and cards. */
+export const voucherTenderLabel = (tender: Pick<VoucherTender, "codeMask">, copy: CommerceCopy) =>
+  tender.codeMask ? copy.t("receipt.voucherTender", { code: tender.codeMask }) : copy.t("buttons.giftVoucher");
+
+/** A package's part as one phrase: "5 × Thai or Hot stone 60", "Spa robe · Sand / M", "฿500 voucher value". */
+export function contentLabel(content: Pick<ReceiptContent, "kind" | "label" | "units" | "amount">, copy: CommerceCopy) {
+  if (content.kind === "voucher") return copy.t("packages.contentsVoucher", { amount: copy.money(content.amount) });
+  if (content.kind === "sessions") return copy.t("packages.contentsSessions", { count: content.units, service: content.label });
+  return content.units > 1 ? `${content.label} ×${content.units}` : content.label;
+}
+
+/** The shared text of one commerce row, in the printed receipt's order. */
+function commerceTextRows(line: OrderView["lines"][number], extras: ReceiptRowExtras, share: number, coupon: string, copy: CommerceCopy, row: (left: string, right: string) => string) {
+  const gross = roundMoney(line.net + share + extras.goodwill);
+  return [
+    row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(gross)),
+    ...extras.contents.flatMap((content) => [
+      row(`  ${contentLabel(content, copy)}`, formatMoney(content.amount)),
+      ...(content.codeMask ? [`    ${content.codeMask}`] : []),
+    ]),
+    ...(extras.coveredPrice !== null ? [`  ${copy.t("receipt.sessionUsed", { price: formatMoney(extras.coveredPrice) })}`] : []),
+    ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []),
+    ...(extras.goodwill ? [row(`  ${copy.t("receipt.goodwill")}`, formatMoney(-extras.goodwill))] : []),
+    ...(line.kind === "voucher" ? extras.benefits.flatMap((benefit) => benefit.codeMask ? [`  ${maskVoucherCodes(benefit.codeMask)}`] : []) : []),
+    ...(extras.returned ? [row(`  ${copy.t("receipt.returned")}`, formatMoney(-extras.returned))] : []),
+  ];
 }

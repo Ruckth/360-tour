@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +13,25 @@ import { Spinner } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
 import { useNow } from "@/lib/staff-bookings";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
-import { useCheckoutBackend, type ApprovalRequest } from "./backend";
+import { useCheckoutBackend, useCommerce, type ApprovalRequest, type CommerceBackend } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { approvalAsk, minutesLeft, personName } from "./staff-approvals";
+import type { TargetApproval } from "./TargetApproval";
+
+// Loaded only when a return or edit request is waiting, so today's panel costs nothing more.
+const TargetApprovalItem = lazy(() => import("./TargetApproval"));
+
+/**
+ * Target-scoped requests (returns of items, edits to sold or catalogue items) as a commerce backend
+ * reads them. Not in CommerceBackend yet: a backend without the reader has none, as today.
+ */
+export type TargetApprovalReader = { useTargetApprovals(): TargetApproval[] | undefined };
+const NONE: TargetApproval[] = [];
+const noTargetApprovals = () => NONE;
+function useTargetApprovals(): TargetApproval[] {
+  const read = (useCommerce() as CommerceBackend & Partial<TargetApprovalReader>).useTargetApprovals ?? noTargetApprovals;
+  return read() ?? NONE;
+}
 
 /**
  * Marks the approvals button and panel. A checkout sheet stays open when they are used, so a
@@ -36,19 +52,22 @@ export function CheckoutStaffControls() {
 
 function ApprovalsButton() {
   const queue = useCheckoutBackend().usePendingApprovals();
+  const targets = useTargetApprovals();
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
   // The last decision's result, shown as a toast once the panel has closed and the page is
   // readable again (the open sheet hides the rest of the page from screen readers).
   const closedWith = useRef("");
   const toast = useToast();
-  const count = queue?.count ?? 0;
+  const count = (queue?.count ?? 0) + targets.length;
 
   // Read the queue as it is when the decision lands, not as it was when Approve was tapped.
   const queueNow = useRef(queue);
+  const targetsNow = useRef(targets.length);
   useEffect(() => {
     queueNow.current = queue;
-  }, [queue]);
+    targetsNow.current = targets.length;
+  }, [queue, targets.length]);
   // Another manager can clear what's left while the panel shows a result: close then too.
   useEffect(() => {
     if (!open || count || !notice) return;
@@ -59,7 +78,7 @@ function ApprovalsButton() {
   }, [open, count, notice]);
 
   function onDecided(requestId: string, result: string) {
-    const others = queueNow.current?.list.filter((request) => request._id !== requestId).length ?? 0;
+    const others = (queueNow.current?.list.filter((request) => request._id !== requestId).length ?? 0) + targetsNow.current;
     if (others) {
       setNotice(result);
       return;
@@ -111,9 +130,14 @@ function ApprovalsButton() {
           <p role="status" className={notice ? "rounded-lg bg-muted/60 px-3 py-2 text-sm" : "sr-only"}>{notice}</p>
           {queue === undefined ? (
             <Spinner label="Loading approvals" />
-          ) : queue.list.length ? (
+          ) : queue.list.length || targets.length ? (
             <ul className="grid gap-3" aria-label="Requests">
               {queue.list.map((request) => <ApprovalItem key={request._id} request={request} onResult={(result) => onDecided(request._id, result)} />)}
+              {targets.length ? (
+                <Suspense fallback={<li><Spinner label="Loading approvals" /></li>}>
+                  {targets.map((request) => <TargetApprovalItem key={request._id} request={request} />)}
+                </Suspense>
+              ) : null}
             </ul>
           ) : (
             <p className="text-sm text-muted-foreground">Nothing waiting.</p>

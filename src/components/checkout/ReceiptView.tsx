@@ -16,7 +16,7 @@ import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, roundMoney } from "convex/shared/orderMath";
 import { cn } from "@/lib/utils";
 import { OrderApprovalStatus } from "./ApprovalRequest";
-import { useCheckoutBackend, type OrderId } from "./backend";
+import { useCheckoutBackend, type CommerceCopy, type OrderId } from "./backend";
 import { RefundForm } from "./RefundForm";
 import { hasLineRefunds, refundElsewhere, refundedSatang, satangMoney } from "./refunds";
 import { TONES } from "@/components/admin/status-tones";
@@ -24,7 +24,8 @@ import type { Id } from "convex/_generated/dataModel";
 import { CorrectPayment, LinkedRefunds, VoidPanel } from "./PaymentRecord";
 import { ReceiptHistory } from "./FinancialHistory";
 import { staffDateTime } from "@/lib/staff-time";
-import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
+import { TENDER_LABELS, TOUCH_TARGETS, couponLabel, formatResort, receiptBookings, receiptCommerce, receiptName, receiptSchedule, receiptText } from "./checkout-ui";
+import { CommerceReceiptRow, CommerceReceiptStatus, GoodwillTotals, NotTaxInvoice, RowHistory, ShareCopyBridge, VoucherTenderRows } from "./ReceiptCommerce";
 import { LineLink, linkTarget, useCanLink } from "./AfterPayment";
 
 type Paper = "58" | "80";
@@ -116,6 +117,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [taskBusy, setTaskBusy] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const receiptRef = useRef<HTMLElement>(null);
+  // Commerce copy for Share, set only while a commerce receipt is shown (ShareCopyBridge).
+  const shareCopy = useRef<CommerceCopy | null>(null);
   const viewport = useSyncExternalStore(subscribeReceiptViewport, receiptViewport, serverReceiptViewport);
   const phone = viewport === "phone";
   const printPreview = useRef<{ element: HTMLDetailsElement; open: boolean } | null>(null);
@@ -203,6 +206,11 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const refundLocked = cashier && access.cashierRules.refund === "manager" && waiting;
   const refundsRecorded = hasLineRefunds(view);
   const shownTask = paid ? task : null;
+  // Products, packages, vouchers, session cover or goodwill: null for every receipt from before commerce.
+  const commerce = receiptCommerce(view);
+  // Edit · History and payment or return status need the commerce readers; without them (every
+  // sale switch Off) only the receipt's own rows show.
+  const commerceReaders = backend.commerce !== undefined;
 
   /** Focus the notice once it renders, or the ⋯ / a fallback control. */
   function focusAfter(target: HTMLElement | null | undefined) {
@@ -254,7 +262,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   // Share opens the system sheet where there is one; anywhere else (or if it fails) it copies.
   async function share() {
     setNotice("");
-    const text = receiptText(view!, business);
+    const text = receiptText(view!, business, shareCopy.current ?? undefined);
     if (canShare) {
       try {
         await navigator.share({ title: `Receipt ${formatReceiptNumber(order.receiptNumber ?? 0)}`, text });
@@ -273,7 +281,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   }
 
   const receiptNumber = formatReceiptNumber(order.receiptNumber ?? 0);
-  const paidWith = [...new Set(payments.map((payment) => payment.method === "promptpay" ? "PromptPay" : TENDER_LABELS[payment.method].short.toLowerCase()))].join(" + ");
+  const paidWith = [...new Set([...payments.map((payment) => payment.method === "promptpay" ? "PromptPay" : TENDER_LABELS[payment.method].short.toLowerCase()), ...(commerce?.voucherTenders.length ? ["voucher"] : [])])].join(" + ");
 
   return (
     <div
@@ -354,6 +362,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <hr className="my-3 border-dashed border-border" />
           <ul className="space-y-2">
             {lines.map((line) => {
+              const extras = commerce?.rows.get(line._id);
+              if (extras) return <CommerceReceiptRow key={line._id} line={line} extras={extras} coupon={coupon} truncated={truncated} />;
               const lineRefunded = truncated ? 0 : line.refundedAmountSatang ?? 0;
               return (
               <li key={line._id}>
@@ -394,7 +404,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           {truncated ? <p data-screen-only="" className="mt-2 font-sans text-xs text-muted-foreground print:hidden">Too many refunds to total here. See History.</p> : null}
           <hr className="my-3 border-dashed border-border" />
           <dl className="space-y-1">
-            {totals.coupon ? (
+            {commerce?.goodwill ? <GoodwillTotals subtotal={totals.subtotal} coupon={totals.coupon} couponLabel={coupon} goodwill={commerce.goodwill} /> : totals.coupon ? (
               <>
                 <div className="flex justify-between gap-2"><dt>Subtotal</dt><dd className="font-sans tabular-nums">{formatMoney(totals.subtotal)}</dd></div>
                 {staffDiscount ? <div className="flex justify-between gap-2"><dt>Discounts</dt><dd className="font-sans tabular-nums">{formatMoney(-staffDiscount)}</dd></div> : null}
@@ -402,7 +412,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
               </>
             ) : null}
             <div className="flex justify-between font-bold"><dt>Total</dt><dd className="font-sans tabular-nums">{formatMoney(totals.total)}</dd></div>
-            <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="font-sans tabular-nums">{formatMoney(totals.vat)}</dd></div>
+            {commerce?.voucherSaleOnly ? <NotTaxInvoice /> : <div className="flex justify-between text-xs"><dt>VAT 7% included</dt><dd className="font-sans tabular-nums">{formatMoney(totals.vat)}</dd></div>}
             {totals.deposit ? <div className="flex justify-between"><dt>Paid in advance</dt><dd className="font-sans tabular-nums">{formatMoney(-totals.deposit)}</dd></div> : null}
             {payments.map((payment) => (
               <div key={payment._id} className="flex justify-between">
@@ -410,6 +420,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                 <dd className="font-sans tabular-nums">{formatMoney(payment.received ?? payment.amount)}</dd>
               </div>
             ))}
+            {commerce?.voucherTenders.length ? <VoucherTenderRows tenders={commerce.voucherTenders} /> : null}
             {change ? <div className="flex justify-between"><dt>Change</dt><dd className="font-sans tabular-nums">{formatMoney(change)}</dd></div> : null}
             {refunded ? (
               <>
@@ -437,6 +448,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           </div>
         ) : null}
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
+        {commerce ? <ShareCopyBridge copyRef={shareCopy} /> : null}
+        {commerceReaders ? <CommerceReceiptStatus orderId={order._id} /> : null}
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
@@ -454,6 +467,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                   <p className="text-[15px] font-medium">{line.name}{line.qty > 1 ? ` ×${line.qty}` : ""}</p>
                   <p className="shrink-0 text-[15px] font-medium font-sans tabular-nums">{formatMoney(line.net)}</p>
                 </div>
+                {commerce && commerceReaders && commerce.rows.has(line._id) ? <RowHistory line={line} extras={commerce.rows.get(line._id)!} receipt={commerce} /> : null}
                 {unscheduled ? <span className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800 dark:bg-amber-400/10 dark:text-amber-300">Not scheduled</span> : null}
                 {elsewhere ? <span className="ml-2"><InfoTip label={`Refunding ${line.name}`}>{elsewhere === "booking" ? "Refund this on the booking." : "Refund this on the appointment."}</InfoTip></span> : null}
                 {note ? (

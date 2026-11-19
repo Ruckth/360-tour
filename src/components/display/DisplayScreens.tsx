@@ -7,11 +7,16 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { cn } from "@/lib/utils";
+import { maskVoucherCodes } from "./voucher-mask";
 
 /** What the customer display shows: pairing code, welcome, the order, and "Thank you" once paid. Large type, landscape or portrait. */
 
 type OrderState = Extract<DisplayOrderState, { state: "order" }>;
-type PaidState = Extract<DisplayOrderState, { state: "paid" }>;
+/**
+ * A paid order may also name the gift vouchers it issued, by their masks only (W1·L1's display view).
+ * The display never shows a full code, a note or a tender: masks pass through maskVoucherCodes too.
+ */
+type PaidState = Extract<DisplayOrderState, { state: "paid" }> & { voucherCodeMasks?: string[] };
 
 /** How long "Thank you" stays up after payment before the welcome screen returns. */
 const PAID_SHOWN_MS = 3 * 60_000;
@@ -136,6 +141,14 @@ function Paid({ paid }: { paid: PaidState }) {
             {t("savedWithCoupon", { amount: formatMoney(paid.coupon.saving, paid.currency), code: paid.coupon.code })}
           </p>
         ) : null}
+        {paid.voucherCodeMasks?.length ? (
+          <ul className="flex flex-wrap justify-center gap-3 text-xl text-muted-foreground lg:text-2xl" data-testid="display-voucher-codes">
+            {paid.voucherCodeMasks.map((mask, index) => {
+              const code = maskVoucherCodes(mask);
+              return <li key={index} className="rounded-full border border-border px-5 py-1.5 font-mono tracking-wide">{t.has("giftVoucherCode") ? t("giftVoucherCode", { code }) : `Gift voucher ${code}`}</li>;
+            })}
+          </ul>
+        ) : null}
         {paid.receiptNumber !== null ? (
           <p className="text-xl text-muted-foreground tabular-nums lg:text-2xl">{t("receiptNumber", { number: formatReceiptNumber(paid.receiptNumber) })}</p>
         ) : null}
@@ -174,7 +187,7 @@ function Order({ order }: { order: OrderState }) {
             {order.lines.map((line, index) => {
               const isNewest = index === count - 1;
               const notes = [
-                line.detail,
+                line.detail ? maskVoucherCodes(line.detail) : null,
                 line.qty > 1 ? t("qtyTimes", { qty: line.qty, price: money(line.price) }) : null,
                 line.price !== line.unitPrice ? t("priceWas", { price: money(line.unitPrice) }) : null,
                 line.discount - line.couponDiscount > 0 ? t("lineDiscount", { amount: money(line.discount - line.couponDiscount) }) : null,
@@ -192,7 +205,7 @@ function Order({ order }: { order: OrderState }) {
                   )}
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="break-words text-2xl font-medium leading-snug xl:text-3xl">{line.name}</p>
+                    <p className="break-words text-2xl font-medium leading-snug xl:text-3xl">{maskVoucherCodes(line.name)}</p>
                     {notes.length ? (
                       <p className="mt-1.5 flex flex-wrap gap-x-5 text-lg tabular-nums text-muted-foreground xl:text-xl">
                         {notes.map((note, i) => <span key={i}>{note}</span>)}
