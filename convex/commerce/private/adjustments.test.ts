@@ -9,7 +9,7 @@ import schema from '../../schema';
 import { resortTodayIso } from '../../shared/time';
 import {
   adjust, cashierAdjustmentRoute, executeApprovedAdjustment, type AdjustmentCommand, type AdjustmentWriter,
-} from '../model';
+} from './adjustments';
 import { listCommerceHistory, listGuestCommerceHistory, transferHistorySourceKey } from './history';
 
 const modules = import.meta.glob('../../**/*.ts');
