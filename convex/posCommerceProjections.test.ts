@@ -237,7 +237,8 @@ it('keeps corrected external money, voucher paid value and goodwill separate thr
   expect(issued.totals).toMatchObject({ total: 50000, vatBase: 0, vat: 0 });
   const receipt = await view(orderId);
   expect(receipt.payments).toMatchObject([{ method: 'cash', amount: 30000, received: 40000 }]);
-  expect(receipt.voucherPayments).toMatchObject([{ method: 'voucher', voucherId, amount: 20000 }]);
+  expect(receipt.voucherPayments).toMatchObject([{ method: 'voucher', voucherId, amount: 20000, codeMask }]);
+  expect(JSON.stringify(receipt.voucherPayments)).not.toContain(rawCode);
   expect(receipt.paymentRecord).toMatchObject({
     tenders: [{ method: 'transfer', amount: 30000 }],
     allTenders: [{ method: 'transfer', amount: 30000 }, { method: 'voucher', voucherId, amount: 20000 }],

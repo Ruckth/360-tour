@@ -88,6 +88,16 @@ async function readIssuedBenefits(ctx: QueryCtx, lines: readonly Doc<'orderLines
 	return benefits.filter(benefit => benefit !== null);
 }
 
+/** Voucher spends with the voucher's current masked code, so the receipt reads "Gift voucher GV-••••-7PAX". */
+async function readVoucherTenders(ctx: QueryCtx, payments: readonly Doc<'orderPayments'>[]) {
+	return await Promise.all(payments.map(async payment => {
+		const voucherId = payment.method === 'voucher' ? payment.voucherId : undefined;
+		const voucher = voucherId ? await readOrderProjection(ctx, () => ctx.db.get(voucherId)) : null;
+		const codeMask = voucher ? await voucherCodeMask(ctx, voucher) : null;
+		return { ...payment, ...(codeMask ? { codeMask } : {}) };
+	}));
+}
+
 async function readReceiptRefunds(ctx: QueryCtx, order: Doc<'orders'>, settled: boolean, commerce: boolean) {
 	if (!settled || commerce) return [];
 	// Pre-commerce receipts have no aggregate. Preserve their existing totals and truncation cap.
@@ -128,10 +138,11 @@ export const getOrder = staffQuery({
 		]);
 		const links = [...activeLinks, ...unlinkedHistory];
 		const voucherPayments = voucherOrderPayments(payments);
-		const [handovers, issuedBenefits, draftPackages] = await Promise.all([
+		const [handovers, issuedBenefits, draftPackages, voucherTenders] = await Promise.all([
 			readHandovers(ctx, order, lines),
 			readIssuedBenefits(ctx, lines),
 			open ? readDraftPackages(ctx, lines) : null,
+			readVoucherTenders(ctx, voucherPayments),
 		]);
 		const totals = receiptTotals(order, lines);
 		const commerce = lines.some(isCommerceLine) || voucherPayments.length > 0 || handovers.length > 0 || order.returnedTotal !== undefined;
@@ -232,7 +243,7 @@ export const getOrder = staffQuery({
 			promotion,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
 			payments: externalOrderPayments(payments),
-			...(voucherPayments.length ? { voucherPayments } : {}),
+			...(voucherTenders.length ? { voucherPayments: voucherTenders } : {}),
 			audit,
 			totals,
 			/**
