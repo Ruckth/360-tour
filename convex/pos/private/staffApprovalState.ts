@@ -9,6 +9,7 @@ import { resortTodayIso } from '../../shared/time';
 import { cashierRules } from '../../settings/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
+import { readOrderProjection } from './orderLifecycle';
 import { orderRefunds } from './orderRefunds';
 
 /** Stable serialization includes optional fields, revisions, coupons and source records. */
@@ -45,10 +46,13 @@ export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string
 }
 
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
-export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payload: CheckoutApprovalRequest['payload']) {
-  const order = await ctx.db.get(orderId);
-  const lines = await orderLines(ctx, orderId);
-  const links = await orderLineLinks(ctx, orderId);
+export async function orderFingerprint(
+  ctx: ReadCtx, orderId: Id<'orders'>, payload: CheckoutApprovalRequest['payload'], currentOrder?: Doc<'orders'>,
+) {
+  const read = <T>(load: () => Promise<T>) => readOrderProjection(ctx, load);
+  const [order, lines, links] = await Promise.all([
+    currentOrder ?? read(() => ctx.db.get(orderId)), read(() => orderLines(ctx, orderId)), read(() => orderLineLinks(ctx, orderId)),
+  ]);
   const bookingIds = new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []));
   const appointmentIds = new Set(lines.flatMap(line => line.appointmentId ? [line.appointmentId] : []));
   for (const line of lines) if (line.feeAppointmentId) appointmentIds.add(line.feeAppointmentId);
@@ -61,25 +65,30 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payl
     if (payload.appointmentId) appointmentIds.add(payload.appointmentId);
   }
   const customerId = payload.kind === 'paymentFix' && payload.action === 'amendOrderPayment' ? payload.customer?.customerId : order?.customerId;
-  const coupon = order?.promotion ? await ctx.db.get(order.promotion.couponId) : null;
-  const couponHistory = coupon ? await ctx.db.query('recordChanges')
-    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'coupon').eq('entityId', coupon._id)).order('desc').first() : null;
-  return canonical({ order, lines, links, refunds: await orderRefunds(ctx, orderId), coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
-    bookings: await Promise.all([...bookingIds].sort().map(id => ctx.db.get(id))),
-    appointments: await Promise.all([...appointmentIds].sort().map(id => ctx.db.get(id))),
-    customer: customerId ? await ctx.db.get(customerId) : null,
+  const couponId = order?.promotion?.couponId;
+  const coupon = couponId ? await read(() => ctx.db.get(couponId)) : null;
+  const couponHistory = coupon ? await read(() => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'coupon').eq('entityId', coupon._id)).order('desc').first()) : null;
+  return canonical({ order, lines, links, refunds: await read(() => orderRefunds(ctx, orderId)), coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
+    bookings: await Promise.all([...bookingIds].sort().map(id => read(() => ctx.db.get(id)))),
+    appointments: await Promise.all([...appointmentIds].sort().map(id => read(() => ctx.db.get(id)))),
+    customer: customerId ? await read(() => ctx.db.get(customerId)) : null,
   });
 }
 
 /** Queries expose the effective terminal status immediately; mutations persist it when touched. */
-export async function effectiveRequestStatus(ctx: ReadCtx, request: CheckoutApprovalRequest): Promise<CheckoutApprovalRequest['status']> {
+export async function effectiveRequestStatus(
+  ctx: ReadCtx, request: CheckoutApprovalRequest, currentRules?: Awaited<ReturnType<typeof cashierRules>>,
+): Promise<CheckoutApprovalRequest['status']> {
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
-  const [rules, requester] = await Promise.all([
-    cashierRules(ctx), requesterFingerprint(ctx, request.requesterTokenIdentifier),
-  ]);
-  if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint || requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
-  if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';
+  const rules = currentRules ?? await readApprovalDocument(ctx, () => cashierRules(ctx));
+  if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint) return 'stale';
+  const requester = await requesterFingerprint(ctx, request.requesterTokenIdentifier);
+  if (requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
+  const order = await getApprovalTarget(ctx, request.orderId);
+  if (!order || order.revision !== request.orderRevision ||
+    await orderFingerprint(ctx, request.orderId, request.payload, order) !== request.orderFingerprint) return 'stale';
   return 'pending';
 }
 
@@ -113,7 +122,7 @@ function getApprovalTarget<Table extends TableNames>(ctx: ReadCtx, id: Id<Table>
 // Reserve room for that read in the selected-detail ceiling.
 const DETAIL_READS = 130;
 function availableDetailReads(ctx: ReadCtx, actor: StaffActor) {
-  return DETAIL_READS - readBudget(ctx).documents - (actor.role === 'owner' ? 0 : 1);
+  return DETAIL_READS - readBudget(ctx).ranges - (actor.role === 'owner' ? 0 : 1);
 }
 
 function checkDetailReads(ctx: ReadCtx, actor: StaffActor) {
@@ -277,6 +286,16 @@ function parseReturnReview(ctx: ReadCtx, request: ReturnRequest) {
 
 export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, request: ReturnRequest, includeTarget: boolean) {
   const baseStatus = pendingStatus(request);
+  let authorityCurrent = true;
+  if (baseStatus === 'pending') {
+    const [rules, requester] = await Promise.all([
+      readApprovalDocument(ctx, () => cashierRules(ctx)),
+      requesterFingerprint(ctx, request.requesterTokenIdentifier),
+    ]);
+    authorityCurrent = rules.revision === request.rulesRevision &&
+      (request.rulesFingerprint === undefined || rulesFingerprint(rules) === request.rulesFingerprint) &&
+      requester.role === 'cashier' && requester.fingerprint === request.requesterAccessFingerprint;
+  }
   const order = await getApprovalTarget(ctx, request.orderId);
   const review = parseReturnReview(ctx, request);
   const lineIds = new Set(request.payload.parts.slice(0, MAX_RETURN_PARTS).map(part => part.lineId));
@@ -287,33 +306,26 @@ export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, requ
     ? review.rows.filter(row => lineIds.has(row.lineId))
     : (await Promise.all([...lineIds].map(id => getApprovalTarget(ctx, id))))
       .flatMap(line => line?.orderId === request.orderId ? [lineView(line)] : []);
-  const revisions = await Promise.all((review?.revisions ?? []).map(async ref => ({
+  const targets = review?.revisions.slice(0, availableDetailReads(ctx, actor)) ?? [];
+  const revisions = await Promise.all(targets.map(async ref => ({
     table: ref.table, id: ref.id, expected: ref.revision, current: revisionOf(await getApprovalTarget(ctx, ref.id)),
   })));
   const orderRevision = {
     expected: request.orderRevision, current: revisionOf(order),
     expectedCorrection: review?.correctionRevision, currentCorrection: order ? order.correctionRevision ?? 0 : null,
   };
-  let status = baseStatus;
-  let freshness: 'partial' | 'resolved' | 'checked' = baseStatus === 'pending' ? 'partial' : 'resolved';
-  if (baseStatus === 'pending') {
-    if (!validParts || !order || order.status !== 'paid' || orderRevision.current !== orderRevision.expected ||
-      (orderRevision.expectedCorrection !== undefined && orderRevision.expectedCorrection !== orderRevision.currentCorrection) ||
-      revisions.some(ref => ref.current !== ref.expected)) {
-      status = 'stale';
-    } else if (availableDetailReads(ctx, actor) >= 2) {
-      const [rules, requester] = await Promise.all([
-        readApprovalDocument(ctx, () => cashierRules(ctx)),
-        requesterFingerprint(ctx, request.requesterTokenIdentifier),
-      ]);
-      if (rules.revision !== request.rulesRevision ||
-        (request.rulesFingerprint !== undefined && rulesFingerprint(rules) !== request.rulesFingerprint) ||
-        requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) status = 'stale';
-      if (review) freshness = 'checked';
-    }
-  }
+  const stale = !authorityCurrent || !validParts || !order || order.status !== 'paid' ||
+    orderRevision.current !== orderRevision.expected ||
+    (orderRevision.expectedCorrection !== undefined && orderRevision.expectedCorrection !== orderRevision.currentCorrection) ||
+    revisions.some(ref => ref.current !== ref.expected);
+  const status = baseStatus === 'pending' && stale ? 'stale' : baseStatus;
+  const freshness = baseStatus !== 'pending' ? 'resolved' as const
+    : review && targets.length === review.revisions.length ? 'checked' as const : 'partial' as const;
   checkDetailReads(ctx, actor);
-  return { status, freshness, target: order && orderView(order), orderRevision, rows, revisions };
+  return {
+    status, freshness, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,
+    target: order && orderView(order), orderRevision, rows, revisions,
+  };
 }
 
 export async function checkoutApprovalDetail(ctx: ReadCtx, request: CheckoutApprovalRequest) {

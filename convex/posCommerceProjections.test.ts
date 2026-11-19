@@ -358,7 +358,25 @@ it('projects an open return with custody and gives link and correction previews 
   const unsupported = { data: { code: 'COMMERCE_CORRECTION_UNAVAILABLE' } };
   await expect(link(lineId)).rejects.toMatchObject(unsupported);
   await expect(correct()).rejects.toMatchObject(unsupported);
-  expect(await link(oldLineId)).toEqual([]);
+  await expect(link(oldLineId)).rejects.toMatchObject(unsupported);
   const history = await owner.query(api.pos.orderHistoryPages.orderRefunds, { orderId, paginationOpts: { numItems: 20, cursor: null } });
   expect(history.page).toMatchObject([{ method: 'voucher', voucherId, returnId: expect.any(String), amount: 1000 }]);
+});
+
+it('blocks receipt correction, link candidates and direct amendments on a mixed product and service receipt', async () => {
+  const { t, owner, view } = setup();
+  const { orderId, lineId } = await t.run(async ctx => {
+    const orderId = await order(ctx, 80_000, { itemCount: 2 });
+    const lineId = await line(ctx, orderId, 'service', 60_000);
+    await line(ctx, orderId, 'product', 20_000);
+    return { orderId, lineId };
+  });
+  const blocker = (await view(orderId)).correctionBlocker;
+  expect(blocker).toMatchObject({ code: 'COMMERCE_CORRECTION_UNAVAILABLE' });
+  await expect(owner.query(api.pos.sourceReads.linkCandidates, { orderId, lineId })).rejects.toMatchObject({ data: blocker });
+  await expect(owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, {
+    orderId, expectedCorrectionRevision: 0, idempotencyKey: 'mixed-order-amend', reason: 'Correct the payment day',
+    effectiveAt: now - 86_400_000,
+  })).rejects.toMatchObject({ data: blocker });
+  expect((await view(orderId)).paymentRecord.correctionRevision).toBe(0);
 });

@@ -1,3 +1,4 @@
+import { maskVoucherCodes } from './voucherCodes';
 import { ConvexError, convexToJson, type Infer } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
@@ -50,14 +51,17 @@ type Change = {
   goodwillFaceValueDelta?: number;
   quantityDelta?: number;
   consent?: AuditRow['consent'];
-  apply: (args: { revisionAfter: number; recordedAt: number; sourceKey: string }) => Promise<Effect[]>;
+  apply: (args: {
+    revisionAfter: number; recordedAt: number; sourceKey: string;
+    reasonCode?: string; reasonText?: string;
+  }) => Promise<Effect[]>;
 };
 
 /**
  * The owning command supplies the scope check for the primary and related targets.
  * Scope must be read-only and independent of revision freshness so authorized retries still work.
  * Prepare must be read-only. Apply writes the parent revision and any ledger effects in this transaction.
- * Use the supplied source key for the primary ledger effect and return the IDs of the linked effects.
+ * Use the supplied source key and reasons for the primary ledger effect and return the linked IDs.
  * Owners meter their own reads and reserve their own parent and ledger writes.
  */
 export type AdjustmentWriter = {
@@ -94,10 +98,6 @@ async function measured<T>(ctx: MutationCtx, read: () => Promise<T>) {
   return row;
 }
 
-function maskCodes(text: string) {
-  return text.replace(/\bGV[- ]?[A-Z0-9]{4}[- ]?([A-Z0-9]{4})\b/gi, 'GV-••••-$1');
-}
-
 function maskFields(fields: Fields): Fields {
   const mask = (key: string, value: Fields[string]): Fields[string] => {
     if (typeof value === 'string') {
@@ -105,7 +105,7 @@ function maskFields(fields: Fields): Fields {
         const suffix = value.replace(/[^a-z0-9]/gi, '').slice(-4);
         return suffix.length === 4 ? `GV-••••-${suffix}` : '••••';
       }
-      return maskCodes(value);
+      return maskVoucherCodes(value);
     }
     if (Array.isArray(value)) return value.map(item => mask(key, item)) as Fields[string];
     if (value !== null && typeof value === 'object') return maskFields(value) as Fields[string];
@@ -238,10 +238,10 @@ async function applyChange(
     paidLiabilityDelta: assertSatang(change.paidLiabilityDelta ?? 0),
     goodwillFaceValueDelta: assertSatang(change.goodwillFaceValueDelta ?? 0),
     quantityDelta: change.quantityDelta ?? 0,
-    ...(command.reasonCode ? { reasonCode: maskCodes(command.reasonCode) } : {}),
-    ...(command.reasonText ? { reasonText: maskCodes(command.reasonText) } : {}),
+    ...(command.reasonCode ? { reasonCode: maskVoucherCodes(command.reasonCode) } : {}),
+    ...(command.reasonText ? { reasonText: maskVoucherCodes(command.reasonText) } : {}),
     ...(approvalId ? { approvalId } : {}),
-    ...(change.consent ? { consent: { ...change.consent, evidence: maskCodes(change.consent.evidence) } } : {}),
+    ...(change.consent ? { consent: { ...change.consent, evidence: maskVoucherCodes(change.consent.evidence) } } : {}),
     actor: actor.tokenIdentifier, actorLabel: actor.email,
     requesterKey, clientKey, fingerprint, recordedAt, businessDate: resortTodayIso(recordedAt),
   };
@@ -251,7 +251,9 @@ async function applyChange(
     ? transferHistorySourceKey(target, revisionAfter)
     : approvalId ? clientKey : `adjustment:${await sha256(JSON.stringify([requesterKey, clientKey]))}`;
   reserveWrites(ctx, 1);
-  const effects = await change.apply({ revisionAfter, recordedAt, sourceKey });
+  const effects = await change.apply({
+    revisionAfter, recordedAt, sourceKey, reasonCode: audit.reasonCode, reasonText: audit.reasonText,
+  });
   const requiredEffect = ledgerKind[target.targetType];
   if (requiredEffect && !effects.some(effect => effect.kind === requiredEffect)) {
     throw new Error(`The ${target.targetType} adjustment did not write its ledger entry`);
@@ -300,8 +302,8 @@ export async function adjust(
 
   const grant = await requesterGrant(ctx, requester);
   if (grant?.role !== 'cashier' || !rules) refuse('ADJUSTMENT_FORBIDDEN', 'Cashier access changed.');
-  if (maskCodes(command.reasonText ?? '') !== (command.reasonText ?? '') ||
-    maskCodes(command.reasonCode ?? '') !== (command.reasonCode ?? '') ||
+  if (maskVoucherCodes(command.reasonText ?? '') !== (command.reasonText ?? '') ||
+    maskVoucherCodes(command.reasonCode ?? '') !== (command.reasonCode ?? '') ||
     JSON.stringify(convexToJson(command.input)) !== JSON.stringify(convexToJson(maskFields(command.input)))) {
     refuse('INVALID_ADJUSTMENT_INPUT', 'Remove codes from the approval request.');
   }

@@ -9,7 +9,7 @@ import { canReadCheckoutOrder, requireCashierAction } from '../auth/model';
 import { ATTACH_SCAN, LINK_TARGET, appointmentAttachable, bookingCheckoutBlock, bookingClosed, bookingPayable } from './private/orderModel';
 import { appointmentLinkProblem, bookingLinkProblem } from './private/paidLinkModel';
 import { attachContacts, contactBookings, findSources } from './private/sourceModel';
-import { assertCorrectionPreviewSupported } from './private/orderLifecycle';
+import { assertReceiptCorrectionSupported } from './private/orderLifecycle';
 
 /** Whether this contact lookup reached its result limit/exhausted its bounded scans. */
 export const attachLookupStatus = staffQuery({
@@ -89,7 +89,7 @@ export const linkCandidates = staffQuery({
 		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
 		const line = await ctx.db.get(args.lineId);
 		if (!order || order.status !== 'paid' || !line || line.orderId !== order._id) return null;
-		await assertCorrectionPreviewSupported(ctx, order._id, [line]);
+		await assertReceiptCorrectionSupported(ctx, order);
 		if (!LINK_TARGET[line.kind] || line.fee) return null;
 		const amount = lineNet(line);
 		const { bookings, appointments } = await findSources(ctx, { orderId: order._id, query: args.query });

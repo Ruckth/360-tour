@@ -64,6 +64,7 @@ import type * as commerce_model from "../commerce/model.js";
 import type * as commerce_private_adjustments from "../commerce/private/adjustments.js";
 import type * as commerce_private_history from "../commerce/private/history.js";
 import type * as commerce_private_historyView from "../commerce/private/historyView.js";
+import type * as commerce_private_voucherCodes from "../commerce/private/voucherCodes.js";
 import type * as commerce_tables from "../commerce/tables.js";
 import type * as commerce_validators from "../commerce/validators.js";
 import type * as concierge_businessFacts from "../concierge/businessFacts.js";
@@ -395,6 +396,7 @@ declare const fullApi: ApiFromModules<{
   "commerce/private/adjustments": typeof commerce_private_adjustments;
   "commerce/private/history": typeof commerce_private_history;
   "commerce/private/historyView": typeof commerce_private_historyView;
+  "commerce/private/voucherCodes": typeof commerce_private_voucherCodes;
   "commerce/tables": typeof commerce_tables;
   "commerce/validators": typeof commerce_validators;
   "concierge/businessFacts": typeof concierge_businessFacts;

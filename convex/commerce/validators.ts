@@ -1,5 +1,4 @@
 import { v, type Infer } from 'convex/values';
-import { commerceCopyArgs } from '../shared/commerce/reasons';
 
 export const catalogueStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('archived'));
 export const vatProfile = v.union(v.literal('standard'), v.literal('exempt'));
@@ -55,10 +54,26 @@ export const voucherEntryKind = v.union(
   v.literal('issue'), v.literal('spend'), v.literal('refund_credit'), v.literal('revoke'),
   v.literal('disable'), v.literal('reissue'), v.literal('expire'), v.literal('edit'), v.literal('transfer'),
 );
-export const voucherGuestFact = v.union(
-  v.string(),
-  v.object({ key: v.string(), args: v.optional(commerceCopyArgs) }),
+export const structuredGuestFact = v.union(
+  v.object({
+    key: v.union(
+      v.literal('updated'), v.literal('restored'), v.literal('noShow'), v.literal('waived'),
+      v.literal('transferredIn'), v.literal('transferredOut'), v.literal('paused'),
+      v.literal('goodwillAdded'), v.literal('goodwillRemoved'), v.literal('reissued'),
+      v.literal('disabled'), v.literal('expired'), v.literal('cancelled'), v.literal('sold'),
+      v.literal('stockAdjusted'), v.literal('takenBack'), v.literal('published'),
+    ),
+    args: v.optional(v.object({})),
+  }),
+  v.object({ key: v.union(v.literal('purchased'), v.literal('renamed')), args: v.object({ name: v.string() }) }),
+  v.object({ key: v.union(v.literal('used'), v.literal('serviceAdded')), args: v.object({ service: v.string() }) }),
+  v.object({ key: v.union(v.literal('issued'), v.literal('spent'), v.literal('refundCredit')), args: v.object({ amount: v.number() }) }),
+  v.object({ key: v.union(v.literal('extended'), v.literal('resumed')), args: v.object({ date: v.number() }) }),
+  v.object({ key: v.literal('roomCharge'), args: v.object({ room: v.string() }) }),
 );
+
+// Earlier ledger writers stored text. History derives a safe fact from those rows.
+export const ledgerGuestFact = v.union(v.string(), structuredGuestFact);
 export const voucherSource = v.union(
   v.object({ kind: v.literal('sale'), orderId: v.id('orders'), lineId: v.id('orderLines'), templateId: v.optional(v.id('voucherTemplates')) }),
   v.object({ kind: v.literal('package'), ...commerceSaleSource, packageVersionId: v.id('packageVersions') }),
@@ -114,10 +129,12 @@ export const saleSwitches = v.object({
 export const paymentsMode = v.union(v.literal('direct'), v.literal('attempts'));
 export const commerceTermsFields = {
   preserveExpiredPackageValue: v.boolean(),
-  unusedFullRefundDays: v.number(),
+  // null disables the special unused-full-refund window.
+  unusedFullRefundDays: v.union(v.number(), v.null()),
   refundDueDays: v.object({ cashOrTransfer: v.number(), card: v.number() }),
   packageValidityDays: v.number(),
-  voucherValidityDays: v.number(),
+  // null is unlimited standalone voucher validity.
+  voucherValidityDays: v.union(v.number(), v.null()),
   allowSessionTransfer: v.boolean(),
   packageSplit: v.union(v.literal('voucherFaceValue'), v.literal('normalPrice')),
   packageVatTiming: v.union(v.literal('atSale'), v.literal('atUse')),

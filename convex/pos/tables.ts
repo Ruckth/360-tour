@@ -6,7 +6,7 @@ import { correctedTender, receiptCustomer, tenderMethod } from '../shared/financ
 import { posCouponProblemValidator } from '../shared/posCoupons';
 
 import {
-  adjustmentApprovalPayload, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
+  adjustmentApprovalPayload, checkoutApprovalKind, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
   orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, paymentAttemptReview,
   paymentAttemptRefusal, paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
   returnPart, returnSourceOwner, reviewedVoucher,
@@ -62,7 +62,7 @@ export const posTables = {
   staffApprovalRequests: defineTable(v.union(
     v.object({
       ...orderApprovalFields,
-      kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
+      kind: checkoutApprovalKind,
       payload: storedApprovalPayload,
     }),
     v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus }),
@@ -74,6 +74,7 @@ export const posTables = {
   )).index('by_orderId_and_status', ['orderId', 'status'])
     .index('by_orderId_and_createdAt', ['orderId', 'createdAt'])
     .index('by_status_and_createdAt', ['status', 'createdAt'])
+    .index('by_status_and_kind_and_expiresAt', ['status', 'kind', 'expiresAt'])
     .index('by_kind_and_requesterTokenIdentifier_and_payload_clientKey', ['kind', 'requesterTokenIdentifier', 'payload.clientKey']),
 
 
@@ -289,6 +290,7 @@ export const posTables = {
     v.object({ ...orderPaymentFields, ...orderPaymentTenderFields[0], received: v.optional(v.number()) }),
     v.object({ ...orderPaymentFields, ...orderPaymentTenderFields[1] }),
   )).index('by_orderId', ['orderId'])
+    .index('by_orderId_and_method', ['orderId', 'method'])
     // Release 3b: tenders are written with createdAt = the order's paidAt.
     .index('by_createdAt', ['createdAt']),
 

@@ -70,10 +70,10 @@ async function voucher(ctx: MutationCtx, source: Doc<'vouchers'>['source'], amou
 	});
 }
 
-async function voucherEntry(ctx: MutationCtx, voucherId: Id<'vouchers'>, kind: Doc<'voucherEntries'>['kind'], before: number, after: number) {
+async function voucherEntry(ctx: MutationCtx, voucherId: Id<'vouchers'>, kind: Doc<'voucherEntries'>['kind'], before: number, after: number, createdAt = Date.now()) {
 	return ctx.db.insert('voucherEntries', {
 		voucherId, kind, sourceKey: `${voucherId}:${kind}`, before: { paid: before, goodwill: 0 },
-		after: { paid: after, goodwill: 0 }, actor: email, guestFact: 'Private fixture text', createdAt: Date.now(),
+		after: { paid: after, goodwill: 0 }, actor: email, guestFact: 'Private fixture text', createdAt,
 	});
 }
 
@@ -129,6 +129,21 @@ it('counts a voucher sale once and shows the voucher-only sale across the Bangko
 	expect(redeemed.creditId).toBeNull();
 	expect(await t.run(ctx => creditMoney(ctx, { orderId: sold.orderId }))).toEqual({ eligible: true, net: 100_000 });
 	expect(await t.run(ctx => creditMoney(ctx, { orderId: redeemed.orderId }))).toEqual({ eligible: false, net: 0 });
+});
+
+it('reports an imported voucher spend on the Bangkok ledger day', async () => {
+	const { t, report } = setup();
+	const voucherId = await t.run(async ctx => {
+		const orderId = await order(ctx, 50_000);
+		const lineId = await line(ctx, orderId, 'voucher', 50_000);
+		return await voucher(ctx, { kind: 'sale', orderId, lineId }, 50_000);
+	});
+	vi.setSystemTime(paidBackAt);
+	await t.run(ctx => voucherEntry(ctx, voucherId, 'spend', 50_000, 37_655, redeemedAt));
+	expect(await report(redeemDay)).toMatchObject({
+		truncated: false, voucherByDay: [{ day: redeemDay, kind: 'redeemed', paid: 12_345, goodwill: 0 }],
+	});
+	expect(await report(payoutDay)).toMatchObject({ voucherByDay: [] });
 });
 
 it('projects mixed commerce rows, reconciles paid and goodwill voucher value, and uses the payout day', async () => {

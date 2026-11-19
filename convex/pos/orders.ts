@@ -7,7 +7,7 @@ import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
 import { orderLineLinks } from './private/lineLinks';
-import { correctionPreviewBlocker, externalOrderPayments, isCommerceLine, lineGoodwillDiscount, openOrderReturn, orderPaymentRecord, readOrderProjection, receiptTotals, voucherCodeMask, voucherOrderPayments } from './private/orderLifecycle';
+import { correctionPreviewBlocker, externalOrderPayments, isCommerceReceipt, lineGoodwillDiscount, openOrderReturn, orderPaymentRecord, readOrderProjection, receiptTotals, voucherCodeMask, voucherOrderPayments } from './private/orderLifecycle';
 import { orderLines } from './private/orderLines';
 import { activeOrderFor, orderState, ordersForSource } from './private/orderLinks';
 import { isOpenOrder } from './private/orderLinks';
@@ -144,7 +144,7 @@ export const getOrder = staffQuery({
 			readVoucherTenders(ctx, voucherPayments),
 		]);
 		const totals = receiptTotals(order, lines);
-		const commerce = lines.some(isCommerceLine) || voucherPayments.length > 0 || handovers.length > 0 || order.returnedTotal !== undefined;
+		const commerce = isCommerceReceipt(order, lines, voucherPayments.length > 0);
 		const correctionBlocker = settled ? correctionPreviewBlocker(commerce, activeReturn) : null;
 		const posRefunds = await readReceiptRefunds(ctx, order, settled, commerce);
 		const refundHistoryTruncated = posRefunds.length > MAX_ORDER_REFUNDS;

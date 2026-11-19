@@ -1,4 +1,5 @@
 import { convexTest } from 'convex-test';
+import { omit } from 'convex-helpers';
 import type { Infer } from 'convex/values';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -12,6 +13,7 @@ import {
   orderLineKind, orderRefundMethod, orderReturnStatus, orderTenderMethod, paymentAttemptStatus,
   paymentLegState, returnClaimState, returnPart,
 } from './pos/validators';
+import { benefitExpiresAt, benefitState, isProtectedUnusedRefund } from './shared/commerce/settings';
 import { approvalStatus, type CashierRules } from './shared/staffTypes';
 import { insertFixture } from './testing/completeFixture.test-support';
 import { adminIdentity, asAdmin, createHarness } from './testing/harness';
@@ -207,6 +209,42 @@ it('resolves the D20 defaults and independently stores rollout and attempt cutov
   });
 });
 
+it('freezes D20 Off and unlimited from stored settings and uses them in refund and voucher rules', async () => {
+  const t = createHarness(convexTest);
+  const { settingsId, voucherId, grantId, lineId } = await t.run(commerceRecords);
+  const frozen = await t.run(async ctx => {
+    await ctx.db.patch(settingsId, { revision: 1, unusedFullRefundDays: null, voucherValidityDays: null });
+    const settings = (await ctx.db.get(settingsId))!;
+    const { revision, saleSwitches, paymentsMode } = settings;
+    const terms = omit(settings, ['_id', '_creationTime', 'key', 'revision', 'saleSwitches', 'paymentsMode', 'cutover']);
+    expect(saleSwitches).toEqual({ products: 'off', vouchers: 'off', sessionPackages: 'off', mixedPackages: 'off' });
+    expect(paymentsMode).toBe('direct');
+    await ctx.db.patch(voucherId, { settingsRevision: revision, terms });
+    await ctx.db.patch(grantId, { settingsRevision: revision, terms });
+    await ctx.db.patch(lineId, { saleSnapshot: {
+      terms, settingsRevision: revision, label: 'Massage', paidShare: 120000, vatBase: 120000,
+      returnedUnits: 0, returnedAmount: 0, tenderCells: [{ kind: 'external', amount: 120000 }],
+      contents: [], chosenVariants: [], goodwillDiscounts: [],
+    } });
+    await ctx.db.patch(settingsId, { revision: 2, unusedFullRefundDays: 7, voucherValidityDays: 365 });
+    return {
+      voucher: (await ctx.db.get(voucherId))!,
+      grant: (await ctx.db.get(grantId))!,
+      receipt: (await ctx.db.get(lineId))!.saleSnapshot,
+    };
+  });
+  for (const record of [frozen.voucher, frozen.grant, frozen.receipt]) {
+    expect(record).toMatchObject({ settingsRevision: 1, terms: { unusedFullRefundDays: null, voucherValidityDays: null } });
+  }
+  const expiresAt = benefitExpiresAt(now, 'voucher', frozen.voucher.terms);
+  expect(expiresAt).toBeNull();
+  expect(benefitState({ kind: 'standalone_voucher', expiresAt, paused: false }, now + 400 * 86_400_000,
+    { retainExpiredPackageValue: frozen.voucher.terms.preserveExpiredPackageValue })).toBe('active');
+  const sale = { soldOn: businessDate, cancelOn: businessDate, unused: true };
+  expect(isProtectedUnusedRefund(sale, { unusedRefundDays: frozen.grant.terms.unusedFullRefundDays })).toBe(false);
+  expect(isProtectedUnusedRefund(sale, { unusedRefundDays: 0 })).toBe(true);
+});
+
 it('round-trips each row and tender kind, and only permits vouchers on POS tender records', async () => {
   vi.stubEnv('ADMIN_EMAILS', adminIdentity.email);
   const t = createHarness(convexTest);
@@ -278,7 +316,7 @@ it('round-trips stock, session and voucher ledger discriminators and covered app
       const id = await ctx.db.insert('voucherEntries', { ...ledger, voucherId, kind, sourceKey: 'voucher-' + kind });
       expect(await ctx.db.get(id)).toMatchObject({ kind, voucherId, guestFact: ledger.guestFact });
     }
-    for (const guestFact of [{ key: 'transferredIn' }, { key: 'issued', args: { amount: 50000 } }]) {
+    for (const guestFact of [{ key: 'transferredIn' }, { key: 'issued', args: { amount: 50000 } }] as const) {
       const id = await ctx.db.insert('voucherEntries', {
         ...ledger, voucherId, kind: 'transfer', sourceKey: 'structured-' + guestFact.key, guestFact,
       });

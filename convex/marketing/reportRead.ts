@@ -174,7 +174,7 @@ export async function readMarketingReport(
 
 	async function readVoucherAndGoodwill() {
 		const vouchers = new Map<string, VoucherDay>();
-		for await (const entry of scan(ctx.db.query('voucherEntries').withIndex('by_creation_time', q => q.gte('_creationTime', start).lt('_creationTime', end)))) {
+		for await (const entry of scan(ctx.db.query('voucherEntries').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end)))) {
 			const voucher = entry.kind === 'issue' ? await get(entry.voucherId) : null;
 			const movement = projectVoucherMovement(entry, voucher?.source.kind);
 			if (!movement || !inRange(movement.day)) continue;
