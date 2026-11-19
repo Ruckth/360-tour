@@ -236,7 +236,8 @@
         "theft": "चोरी",
         "lost": "खो गया",
         "returnedToStock": "स्टॉक में वापस"
-      }
+      },
+      "notYet": "एडिट करना आगे के अपडेट में आएगा। हिस्ट्री अप-टू-डेट है।"
     },
     "history": {
       "title": "हिस्ट्री",
@@ -274,7 +275,9 @@
         "roomCharge": "रूम {room} में चार्ज",
         "takenBack": "वापस लिया",
         "published": "आगे की बिक्री के लिए नई कीमत"
-      }
+      },
+      "showStaff": "स्टाफ़ व्यू",
+      "close": "बंद करें"
     },
     "customer": {
       "packageLine": "{name} · {count} बचे · {date} तक",
@@ -356,6 +359,66 @@
       "itemWithGuest": "यह आइटम अभी गेस्ट के पास है। “वापस लें” इस्तेमाल करें।",
       "keyConflict": "यह पहले ही अलग जानकारी के साथ भेजा जा चुका है। फिर से शुरू करें।",
       "receiptTooOld": "पिछले दिनों की रसीदें सिर्फ मैनेजर खोल सकते हैं।"
+    },
+    "receipt": {
+      "voucherTender": "गिफ्ट वाउचर {code}",
+      "goodwill": "कॉम्प्लिमेंटरी क्रेडिट",
+      "sessionUsed": "सेशन इस्तेमाल हुआ · सामान्य कीमत {price}",
+      "notTaxInvoice": "वाउचर बिक्री · टैक्स इनवॉइस नहीं",
+      "payment": "भुगतान",
+      "attempt": {
+        "collecting": "जारी है",
+        "settled": "भुगतान हो गया",
+        "refused": "पैसे लिए · बिक्री सेव नहीं हुई",
+        "recovering": "सुलझाया जा रहा है",
+        "resolved": "सुलझ गया",
+        "cancelled": "रद्द"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "अनुरोध के बाद बदला",
+      "staleHelp": "अनुरोध के बाद आइटम बदल गया। नया अनुरोध चाहिए।",
+      "revision": "अपेक्षित वर्ज़न {expected}, अभी {current}",
+      "returnItems": "ने आइटम वापसी का अनुरोध किया · {amount}",
+      "edit": "ने {what} का अनुरोध किया · {target}",
+      "notYet": "चेकआउट पर रिटर्न और एडिट शुरू होने पर इसे तय करें।",
+      "targets": {
+        "product": "प्रोडक्ट",
+        "variant": "प्रोडक्ट विकल्प",
+        "package": "पैकेज",
+        "voucherTemplate": "वाउचर डिज़ाइन",
+        "service": "सर्विस",
+        "property": "रूम रेट",
+        "voucher": "गिफ्ट वाउचर",
+        "grant": "पैकेज सेशन",
+        "stock": "स्टॉक",
+        "handover": "रूम चार्ज",
+        "order": "रसीद",
+        "settings": "चेकआउट नियम"
+      },
+      "what": {
+        "publish": "आगे की बिक्री के लिए पब्लिश करने",
+        "editCatalogue": "आगे की बिक्री के लिए बदलने",
+        "extend": "अवधि बढ़ाने",
+        "pause": "रोकने",
+        "resume": "फिर से शुरू करने",
+        "addGoodwill": "कॉम्प्लिमेंटरी जोड़ने",
+        "removeGoodwill": "कॉम्प्लिमेंटरी हटाने",
+        "rename": "नाम ठीक करने",
+        "reissue": "कोड दोबारा जारी करने",
+        "disable": "वाउचर बंद करने",
+        "transfer": "सेशन ट्रांसफ़र करने",
+        "addService": "मान्य सर्विस जोड़ने",
+        "substituteService": "सर्विस बदलने",
+        "narrowServices": "सर्विस सीमित करने",
+        "shorten": "तारीख घटाने",
+        "adjustStock": "स्टॉक एडजस्ट करने",
+        "takeBack": "वापस लेने",
+        "moveRoomCharge": "दूसरे रूम में डालने",
+        "amendPayment": "भुगतान ठीक करने",
+        "updateSettings": "चेकआउट नियम बदलने"
+      }
     }
   }
 }

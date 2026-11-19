@@ -236,7 +236,8 @@
         "theft": "Furto",
         "lost": "Smarrito",
         "returnedToStock": "Rientrato in magazzino"
-      }
+      },
+      "notYet": "La modifica arriverà con un prossimo aggiornamento. La cronologia è aggiornata."
     },
     "history": {
       "title": "Cronologia",
@@ -274,7 +275,9 @@
         "roomCharge": "Addebitato alla camera {room}",
         "takenBack": "Ritirato",
         "published": "Nuovo prezzo per le vendite future"
-      }
+      },
+      "showStaff": "Vista staff",
+      "close": "Chiudi"
     },
     "customer": {
       "packageLine": "{name} · residue: {count} · fino al {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "L’ospite ha ancora questo articolo. Usa Ritira.",
       "keyConflict": "Questa richiesta è già stata inviata con dati diversi. Ricomincia.",
       "receiptTooOld": "Solo un responsabile può aprire scontrini di giorni precedenti."
+    },
+    "receipt": {
+      "voucherTender": "Buono regalo {code}",
+      "goodwill": "Credito in omaggio",
+      "sessionUsed": "Seduta usata · prezzo pieno {price}",
+      "notTaxInvoice": "Vendita di buono · non è una fattura fiscale",
+      "payment": "Pagamento",
+      "attempt": {
+        "collecting": "In corso",
+        "settled": "Pagato",
+        "refused": "Denaro incassato · vendita non salvata",
+        "recovering": "In verifica",
+        "resolved": "Risolto",
+        "cancelled": "Annullato"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "Cambiato dopo la richiesta",
+      "staleHelp": "L’elemento è cambiato dopo la richiesta. Serve una nuova richiesta.",
+      "revision": "Versione attesa {expected}, ora {current}",
+      "returnItems": "chiede un reso di articoli · {amount}",
+      "edit": "chiede di {what} · {target}",
+      "notYet": "Decidi quando resi e modifiche saranno disponibili in cassa.",
+      "targets": {
+        "product": "Prodotto",
+        "variant": "Variante prodotto",
+        "package": "Pacchetto",
+        "voucherTemplate": "Modello di buono",
+        "service": "Servizio",
+        "property": "Tariffa camera",
+        "voucher": "Buono regalo",
+        "grant": "Sedute del pacchetto",
+        "stock": "Magazzino",
+        "handover": "Addebito in camera",
+        "order": "Ricevuta",
+        "settings": "Regole di cassa"
+      },
+      "what": {
+        "publish": "pubblicare per le vendite future",
+        "editCatalogue": "modificare per le vendite future",
+        "extend": "prorogare",
+        "pause": "sospendere",
+        "resume": "riprendere",
+        "addGoodwill": "aggiungere un omaggio",
+        "removeGoodwill": "rimuovere l’omaggio",
+        "rename": "correggere il nome",
+        "reissue": "riemettere il codice",
+        "disable": "disattivare il buono",
+        "transfer": "cedere sedute",
+        "addService": "aggiungere un servizio valido",
+        "substituteService": "sostituire un servizio",
+        "narrowServices": "limitare i servizi",
+        "shorten": "anticipare la scadenza",
+        "adjustStock": "rettificare la giacenza",
+        "takeBack": "ritirare",
+        "moveRoomCharge": "spostare su un’altra camera",
+        "amendPayment": "correggere il pagamento",
+        "updateSettings": "cambiare le regole di cassa"
+      }
     }
   }
 }

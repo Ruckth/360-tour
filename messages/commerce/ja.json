@@ -236,7 +236,8 @@
         "theft": "盗難",
         "lost": "紛失",
         "returnedToStock": "在庫に戻す"
-      }
+      },
+      "notYet": "編集は今後のアップデートで使えるようになります。履歴は最新です。"
     },
     "history": {
       "title": "履歴",
@@ -274,7 +275,9 @@
         "roomCharge": "{room}号室にルームチャージ",
         "takenBack": "回収",
         "published": "今後の販売の新価格"
-      }
+      },
+      "showStaff": "スタッフ表示",
+      "close": "閉じる"
     },
     "customer": {
       "packageLine": "{name} · 残り{count}回 · {date}まで",
@@ -356,6 +359,66 @@
       "itemWithGuest": "この商品はまだお客様が持っています。「回収」を使ってください。",
       "keyConflict": "異なる内容ですでに送信されています。最初からやり直してください。",
       "receiptTooOld": "前日以前のレシートを開けるのはマネージャーのみです。"
+    },
+    "receipt": {
+      "voucherTender": "ギフト券 {code}",
+      "goodwill": "無償クレジット",
+      "sessionUsed": "1回利用 · 通常 {price}",
+      "notTaxInvoice": "ギフト券の販売 · 税務インボイスではありません",
+      "payment": "支払い",
+      "attempt": {
+        "collecting": "処理中",
+        "settled": "支払い済み",
+        "refused": "入金済み · 販売未保存",
+        "recovering": "確認中",
+        "resolved": "解決済み",
+        "cancelled": "キャンセル済み"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "依頼後に変更あり",
+      "staleHelp": "依頼の後に内容が変わりました。新しい依頼が必要です。",
+      "revision": "想定バージョン {expected}、現在 {current}",
+      "returnItems": "が返品を申請 · {amount}",
+      "edit": "が{what}を申請 · {target}",
+      "notYet": "会計で返品と編集が使えるようになったら判断してください。",
+      "targets": {
+        "product": "商品",
+        "variant": "商品オプション",
+        "package": "パッケージ",
+        "voucherTemplate": "ギフト券デザイン",
+        "service": "サービス",
+        "property": "客室料金",
+        "voucher": "ギフト券",
+        "grant": "パッケージ回数",
+        "stock": "在庫",
+        "handover": "ルームチャージ",
+        "order": "レシート",
+        "settings": "会計ルール"
+      },
+      "what": {
+        "publish": "今後の販売向けの公開",
+        "editCatalogue": "今後の販売向けの編集",
+        "extend": "延長",
+        "pause": "一時停止",
+        "resume": "再開",
+        "addGoodwill": "無償分の追加",
+        "removeGoodwill": "無償分の削除",
+        "rename": "名前の修正",
+        "reissue": "コードの再発行",
+        "disable": "ギフト券の無効化",
+        "transfer": "回数の譲渡",
+        "addService": "対象サービスの追加",
+        "substituteService": "サービスの差し替え",
+        "narrowServices": "対象サービスの絞り込み",
+        "shorten": "期限の短縮",
+        "adjustStock": "在庫の調整",
+        "takeBack": "回収",
+        "moveRoomCharge": "別の客室への移動",
+        "amendPayment": "支払いの修正",
+        "updateSettings": "会計ルールの変更"
+      }
     }
   }
 }

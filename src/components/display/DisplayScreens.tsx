@@ -145,7 +145,7 @@ function Paid({ paid }: { paid: PaidState }) {
           <ul className="flex flex-wrap justify-center gap-3 text-xl text-muted-foreground lg:text-2xl" data-testid="display-voucher-codes">
             {paid.voucherCodeMasks.map((mask, index) => {
               const code = maskVoucherCodes(mask);
-              return <li key={index} className="rounded-full border border-border px-5 py-1.5 font-mono tracking-wide">{t.has("giftVoucherCode") ? t("giftVoucherCode", { code }) : `Gift voucher ${code}`}</li>;
+              return <li key={index} className="rounded-full border border-border px-5 py-1.5 font-mono tracking-wide">{t("giftVoucherCode", { code })}</li>;
             })}
           </ul>
         ) : null}

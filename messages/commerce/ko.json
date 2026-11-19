@@ -236,7 +236,8 @@
         "theft": "도난",
         "lost": "분실",
         "returnedToStock": "재고로 복귀"
-      }
+      },
+      "notYet": "수정 기능은 이후 업데이트에서 제공됩니다. 기록은 최신 상태입니다."
     },
     "history": {
       "title": "내역",
@@ -274,7 +275,9 @@
         "roomCharge": "{room}호 객실로 청구",
         "takenBack": "회수",
         "published": "향후 판매 새 가격"
-      }
+      },
+      "showStaff": "직원 화면",
+      "close": "닫기"
     },
     "customer": {
       "packageLine": "{name} · {count}회 남음 · {date}까지",
@@ -356,6 +359,66 @@
       "itemWithGuest": "고객이 아직 이 상품을 가지고 있습니다. 회수를 사용하세요.",
       "keyConflict": "이미 다른 내용으로 전송되었습니다. 처음부터 다시 시작하세요.",
       "receiptTooOld": "이전 날짜의 영수증은 매니저만 열 수 있습니다."
+    },
+    "receipt": {
+      "voucherTender": "상품권 {code}",
+      "goodwill": "무료 크레딧",
+      "sessionUsed": "1회 사용 · 정가 {price}",
+      "notTaxInvoice": "상품권 판매 · 세금계산서 아님",
+      "payment": "결제",
+      "attempt": {
+        "collecting": "진행 중",
+        "settled": "결제 완료",
+        "refused": "결제 받음 · 판매 미저장",
+        "recovering": "확인 중",
+        "resolved": "해결됨",
+        "cancelled": "취소됨"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "요청 후 변경됨",
+      "staleHelp": "요청 후 항목이 변경되었습니다. 새 요청이 필요합니다.",
+      "revision": "예상 버전 {expected}, 현재 {current}",
+      "returnItems": "반품 요청 · {amount}",
+      "edit": "{what} 요청 · {target}",
+      "notYet": "결제 화면에서 반품과 수정이 열리면 결정하세요.",
+      "targets": {
+        "product": "상품",
+        "variant": "상품 옵션",
+        "package": "패키지",
+        "voucherTemplate": "상품권 디자인",
+        "service": "서비스",
+        "property": "객실 요금",
+        "voucher": "상품권",
+        "grant": "패키지 회차",
+        "stock": "재고",
+        "handover": "객실 청구",
+        "order": "영수증",
+        "settings": "결제 규칙"
+      },
+      "what": {
+        "publish": "향후 판매용 게시",
+        "editCatalogue": "향후 판매용 수정",
+        "extend": "연장",
+        "pause": "일시 정지",
+        "resume": "재개",
+        "addGoodwill": "무료분 추가",
+        "removeGoodwill": "무료분 제거",
+        "rename": "이름 수정",
+        "reissue": "코드 재발급",
+        "disable": "상품권 비활성화",
+        "transfer": "회차 양도",
+        "addService": "적용 서비스 추가",
+        "substituteService": "서비스 교체",
+        "narrowServices": "적용 서비스 축소",
+        "shorten": "기한 단축",
+        "adjustStock": "재고 조정",
+        "takeBack": "회수",
+        "moveRoomCharge": "다른 객실로 이동",
+        "amendPayment": "결제 수정",
+        "updateSettings": "결제 규칙 변경"
+      }
     }
   }
 }

@@ -236,7 +236,8 @@
         "theft": "失窃",
         "lost": "遗失",
         "returnedToStock": "退回库存"
-      }
+      },
+      "notYet": "编辑功能将在后续更新中开放。历史记录已是最新。"
     },
     "history": {
       "title": "记录",
@@ -274,7 +275,9 @@
         "roomCharge": "挂账至 {room} 号房",
         "takenBack": "已收回",
         "published": "后续销售新价格"
-      }
+      },
+      "showStaff": "员工视图",
+      "close": "关闭"
     },
     "customer": {
       "packageLine": "{name} · 剩 {count} 次 · 至 {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "客人仍持有此商品。请使用“收回”。",
       "keyConflict": "此请求已以不同内容提交。请重新开始。",
       "receiptTooOld": "仅经理可以打开以前日期的收据。"
+    },
+    "receipt": {
+      "voucherTender": "礼券 {code}",
+      "goodwill": "赠送额度",
+      "sessionUsed": "已用 1 次 · 原价 {price}",
+      "notTaxInvoice": "礼券销售 · 非税务发票",
+      "payment": "付款",
+      "attempt": {
+        "collecting": "处理中",
+        "settled": "已付款",
+        "refused": "已收款 · 销售未保存",
+        "recovering": "正在处理",
+        "resolved": "已解决",
+        "cancelled": "已取消"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "申请后已变更",
+      "staleHelp": "该项目在申请后已变更，需要重新申请。",
+      "revision": "预期版本 {expected}，当前 {current}",
+      "returnItems": "申请退货 · {amount}",
+      "edit": "申请{what} · {target}",
+      "notYet": "待结账开放退货和编辑后再处理。",
+      "targets": {
+        "product": "商品",
+        "variant": "商品规格",
+        "package": "套餐",
+        "voucherTemplate": "礼券样式",
+        "service": "服务",
+        "property": "房价",
+        "voucher": "礼券",
+        "grant": "套餐次数",
+        "stock": "库存",
+        "handover": "挂房账",
+        "order": "收据",
+        "settings": "结账规则"
+      },
+      "what": {
+        "publish": "发布供今后销售",
+        "editCatalogue": "修改供今后销售",
+        "extend": "延期",
+        "pause": "暂停",
+        "resume": "恢复",
+        "addGoodwill": "添加赠送",
+        "removeGoodwill": "移除赠送",
+        "rename": "修改姓名",
+        "reissue": "重新发放券码",
+        "disable": "停用礼券",
+        "transfer": "转让次数",
+        "addService": "添加可用服务",
+        "substituteService": "替换服务",
+        "narrowServices": "缩小可用服务范围",
+        "shorten": "缩短有效期",
+        "adjustStock": "调整库存",
+        "takeBack": "收回",
+        "moveRoomCharge": "转到其他房间",
+        "amendPayment": "更正付款",
+        "updateSettings": "更改结账规则"
+      }
     }
   }
 }

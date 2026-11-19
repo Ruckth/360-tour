@@ -236,7 +236,8 @@
         "theft": "Vol",
         "lost": "Perdu",
         "returnedToStock": "Remis en stock"
-      }
+      },
+      "notYet": "La modification arrivera dans une prochaine mise à jour. L’historique est à jour."
     },
     "history": {
       "title": "Historique",
@@ -274,7 +275,9 @@
         "roomCharge": "Imputé à la chambre {room}",
         "takenBack": "Repris",
         "published": "Nouveau prix pour les ventes futures"
-      }
+      },
+      "showStaff": "Vue équipe",
+      "close": "Fermer"
     },
     "customer": {
       "packageLine": "{name} · reste {count} · jusqu’au {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "Le client a encore cet article. Utilisez Reprendre.",
       "keyConflict": "Ceci a déjà été envoyé avec d’autres informations. Recommencez.",
       "receiptTooOld": "Seul un responsable peut ouvrir les tickets des jours précédents."
+    },
+    "receipt": {
+      "voucherTender": "Bon cadeau {code}",
+      "goodwill": "Crédit offert",
+      "sessionUsed": "Séance utilisée · prix normal {price}",
+      "notTaxInvoice": "Vente de bon · pas une facture fiscale",
+      "payment": "Paiement",
+      "attempt": {
+        "collecting": "En cours",
+        "settled": "Payé",
+        "refused": "Argent encaissé · vente non enregistrée",
+        "recovering": "En cours de résolution",
+        "resolved": "Résolu",
+        "cancelled": "Annulé"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "Modifié depuis la demande",
+      "staleHelp": "L’élément a changé après la demande. Une nouvelle demande est nécessaire.",
+      "revision": "Version attendue {expected}, actuelle {current}",
+      "returnItems": "demande un retour d’articles · {amount}",
+      "edit": "demande à {what} · {target}",
+      "notYet": "Décidez-en quand les retours et les modifications seront ouverts en caisse.",
+      "targets": {
+        "product": "Produit",
+        "variant": "Option de produit",
+        "package": "Forfait",
+        "voucherTemplate": "Modèle de bon",
+        "service": "Soin",
+        "property": "Tarif de chambre",
+        "voucher": "Bon cadeau",
+        "grant": "Séances du forfait",
+        "stock": "Stock",
+        "handover": "Note de chambre",
+        "order": "Reçu",
+        "settings": "Règles de caisse"
+      },
+      "what": {
+        "publish": "publier pour les prochaines ventes",
+        "editCatalogue": "modifier pour les prochaines ventes",
+        "extend": "prolonger",
+        "pause": "mettre en pause",
+        "resume": "reprendre",
+        "addGoodwill": "ajouter un geste commercial",
+        "removeGoodwill": "retirer le geste commercial",
+        "rename": "corriger le nom",
+        "reissue": "réémettre le code",
+        "disable": "désactiver le bon",
+        "transfer": "céder des séances",
+        "addService": "ajouter un soin éligible",
+        "substituteService": "remplacer un soin",
+        "narrowServices": "restreindre les soins",
+        "shorten": "raccourcir la validité",
+        "adjustStock": "ajuster le stock",
+        "takeBack": "récupérer l’article",
+        "moveRoomCharge": "déplacer vers une autre chambre",
+        "amendPayment": "corriger le paiement",
+        "updateSettings": "modifier les règles de caisse"
+      }
     }
   }
 }

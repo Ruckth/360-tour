@@ -236,7 +236,8 @@
         "theft": "Diebstahl",
         "lost": "Verloren",
         "returnedToStock": "Zurück ins Lager"
-      }
+      },
+      "notYet": "Bearbeiten kommt mit einem späteren Update. Der Verlauf ist aktuell."
     },
     "history": {
       "title": "Verlauf",
@@ -274,7 +275,9 @@
         "roomCharge": "Auf Zimmer {room} gebucht",
         "takenBack": "Zurückgenommen",
         "published": "Neuer Preis für künftige Verkäufe"
-      }
+      },
+      "showStaff": "Personalansicht",
+      "close": "Schließen"
     },
     "customer": {
       "packageLine": "{name} · noch {count} · bis {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "Der Gast hat diesen Artikel noch. Zurücknehmen verwenden.",
       "keyConflict": "Dies wurde bereits mit anderen Angaben gesendet. Neu beginnen.",
       "receiptTooOld": "Nur ein Manager kann Belege von früheren Tagen öffnen."
+    },
+    "receipt": {
+      "voucherTender": "Geschenkgutschein {code}",
+      "goodwill": "Kulanzguthaben",
+      "sessionUsed": "Anwendung eingelöst · regulär {price}",
+      "notTaxInvoice": "Gutscheinverkauf · keine Steuerrechnung",
+      "payment": "Zahlung",
+      "attempt": {
+        "collecting": "Läuft",
+        "settled": "Bezahlt",
+        "refused": "Geld erhalten · Verkauf nicht gespeichert",
+        "recovering": "Wird geklärt",
+        "resolved": "Geklärt",
+        "cancelled": "Storniert"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "Seit der Anfrage geändert",
+      "staleHelp": "Der Eintrag wurde nach der Anfrage geändert. Eine neue Anfrage ist nötig.",
+      "revision": "Erwartete Version {expected}, jetzt {current}",
+      "returnItems": "möchte Artikel zurückgeben · {amount}",
+      "edit": "möchte {what} · {target}",
+      "notYet": "Entscheiden Sie das, sobald Rückgaben und Bearbeitungen an der Kasse verfügbar sind.",
+      "targets": {
+        "product": "Produkt",
+        "variant": "Produktvariante",
+        "package": "Paket",
+        "voucherTemplate": "Gutscheinvorlage",
+        "service": "Leistung",
+        "property": "Zimmerpreis",
+        "voucher": "Geschenkgutschein",
+        "grant": "Paketanwendungen",
+        "stock": "Bestand",
+        "handover": "Zimmerbelastung",
+        "order": "Beleg",
+        "settings": "Kassenregeln"
+      },
+      "what": {
+        "publish": "für künftige Verkäufe veröffentlichen",
+        "editCatalogue": "für künftige Verkäufe bearbeiten",
+        "extend": "verlängern",
+        "pause": "pausieren",
+        "resume": "fortsetzen",
+        "addGoodwill": "Kulanz hinzufügen",
+        "removeGoodwill": "Kulanz entfernen",
+        "rename": "den Namen korrigieren",
+        "reissue": "den Code neu ausstellen",
+        "disable": "den Gutschein deaktivieren",
+        "transfer": "Anwendungen weitergeben",
+        "addService": "eine anrechenbare Leistung hinzufügen",
+        "substituteService": "eine Leistung tauschen",
+        "narrowServices": "die Leistungen einschränken",
+        "shorten": "die Laufzeit verkürzen",
+        "adjustStock": "den Bestand anpassen",
+        "takeBack": "zurücknehmen",
+        "moveRoomCharge": "auf ein anderes Zimmer umbuchen",
+        "amendPayment": "die Zahlung korrigieren",
+        "updateSettings": "die Kassenregeln ändern"
+      }
     }
   }
 }

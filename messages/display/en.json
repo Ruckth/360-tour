@@ -31,6 +31,7 @@
     "receiptNumber": "Receipt {number}",
     "reconnecting": "Reconnecting…",
     "reconnectingBody": "The connection dropped. This screen updates as soon as it is back.",
-    "notConfigured": "This display isn't set up on this server yet."
+    "notConfigured": "This display isn't set up on this server yet.",
+    "giftVoucherCode": "Gift voucher {code}"
   }
 }

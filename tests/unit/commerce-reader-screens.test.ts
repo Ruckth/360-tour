@@ -1,6 +1,5 @@
 import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { readFileSync } from "node:fs";
 import { NextIntlClientProvider } from "next-intl";
 import { createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -10,7 +9,6 @@ import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
 import { CheckoutBackendProvider, COMMERCE_OFF, type CheckoutBackend, type HistoryEntry } from "@/components/checkout/backend";
 import { previewBackend } from "@/components/checkout/CheckoutPreview";
 import { receiptCommerce, receiptText } from "@/components/checkout/checkout-ui";
-import { PENDING_COMMERCE_COPY } from "@/components/checkout/commerce-copy";
 import { COMMERCE_RECEIPT_ID, commerceReceipt } from "@/components/checkout/design/commerce-receipt";
 import { HistoryList } from "@/components/checkout/EditHistory";
 import { createFixtureBackend } from "@/components/checkout/fixture-backend";
@@ -190,9 +188,8 @@ describe("shared receipt text", () => {
   it("lists contents, cover, goodwill, refunds and the voucher spend, with masked codes", () => {
     const copy = {
       t: (key: string, values?: Record<string, string | number>) => {
-        const messages = commerceEn.Commerce as unknown as Record<string, Record<string, string>>;
-        const [group, name] = key.split(".");
-        const template = messages[group]?.[name] ?? PENDING_COMMERCE_COPY[key] ?? key;
+        const found = key.split(".").reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], commerceEn.Commerce);
+        const template = typeof found === "string" ? found : key;
         return template.replace(/\{(\w+)\}/g, (_, field: string) => String(values?.[field] ?? ""));
       },
       money: (satang: number) => `฿${(satang / 100).toLocaleString("en", { minimumFractionDigits: satang % 100 ? 2 : 0 })}`,
@@ -326,14 +323,5 @@ describe("?timing=1", () => {
     expect(p95([5])).toBe(5);
     expect(p95(Array.from({ length: 20 }, (_, index) => index + 1))).toBe(19);
     expect(p95(Array.from({ length: 100 }, (_, index) => 100 - index))).toBe(95);
-  });
-});
-
-describe("Commerce copy patch", () => {
-  it("matches the keys and English this lane sent the lead", () => {
-    const patch = JSON.parse(readFileSync("docs/commerce/copy-patches/commerce-w1-l4-screens.json", "utf8")) as Record<string, { en: string }>;
-    const commerce = Object.fromEntries(Object.entries(patch).filter(([key]) => key.startsWith("Commerce.")).map(([key, value]) => [key.slice("Commerce.".length), value.en]));
-    expect(PENDING_COMMERCE_COPY).toEqual(commerce);
-    expect(Object.keys(patch).filter((key) => !key.startsWith("Commerce."))).toEqual(["Display.giftVoucherCode"]);
   });
 });

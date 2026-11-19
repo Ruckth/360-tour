@@ -236,7 +236,8 @@
         "theft": "Theft",
         "lost": "Lost",
         "returnedToStock": "Returned to stock"
-      }
+      },
+      "notYet": "Editing opens in a later update. History is up to date."
     },
     "history": {
       "title": "History",
@@ -274,7 +275,9 @@
         "roomCharge": "Charged to room {room}",
         "takenBack": "Taken back",
         "published": "New price for future sales"
-      }
+      },
+      "showStaff": "Staff view",
+      "close": "Close"
     },
     "customer": {
       "packageLine": "{name} · {count} left · until {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "The guest still has this item. Use Take back.",
       "keyConflict": "This was already sent with different details. Start again.",
       "receiptTooOld": "Only a manager can open receipts from earlier days."
+    },
+    "receipt": {
+      "voucherTender": "Gift voucher {code}",
+      "goodwill": "Goodwill credit",
+      "sessionUsed": "Session used · was {price}",
+      "notTaxInvoice": "Voucher sale · not a tax invoice",
+      "payment": "Payment",
+      "attempt": {
+        "collecting": "In progress",
+        "settled": "Paid",
+        "refused": "Money taken · sale not saved",
+        "recovering": "Being sorted out",
+        "resolved": "Sorted out",
+        "cancelled": "Cancelled"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "Changed since asked",
+      "staleHelp": "The item changed after this was asked. A new request is needed.",
+      "revision": "Expected revision {expected}, now {current}",
+      "returnItems": "asks to return items · {amount}",
+      "edit": "asks to {what} · {target}",
+      "notYet": "Decide this once returns and edits open at checkout.",
+      "targets": {
+        "product": "Product",
+        "variant": "Product option",
+        "package": "Package",
+        "voucherTemplate": "Voucher design",
+        "service": "Service",
+        "property": "Room rate",
+        "voucher": "Gift voucher",
+        "grant": "Package sessions",
+        "stock": "Stock",
+        "handover": "Room charge",
+        "order": "Receipt",
+        "settings": "Checkout rules"
+      },
+      "what": {
+        "publish": "publish for future sales",
+        "editCatalogue": "edit for future sales",
+        "extend": "extend",
+        "pause": "pause",
+        "resume": "resume",
+        "addGoodwill": "add goodwill",
+        "removeGoodwill": "remove goodwill",
+        "rename": "fix the name",
+        "reissue": "reissue the code",
+        "disable": "disable the voucher",
+        "transfer": "pass sessions on",
+        "addService": "add a service that counts",
+        "substituteService": "swap a service",
+        "narrowServices": "narrow the services",
+        "shorten": "shorten the date",
+        "adjustStock": "adjust stock",
+        "takeBack": "take back",
+        "moveRoomCharge": "move to another room",
+        "amendPayment": "correct the payment",
+        "updateSettings": "change checkout rules"
+      }
     }
   }
 }

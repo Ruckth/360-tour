@@ -236,7 +236,8 @@
         "theft": "Robo",
         "lost": "Perdido",
         "returnedToStock": "Devuelto al stock"
-      }
+      },
+      "notYet": "La edición llegará en una próxima actualización. El historial está al día."
     },
     "history": {
       "title": "Historial",
@@ -274,7 +275,9 @@
         "roomCharge": "Cargado a la habitación {room}",
         "takenBack": "Recuperado",
         "published": "Nuevo precio para ventas futuras"
-      }
+      },
+      "showStaff": "Vista del personal",
+      "close": "Cerrar"
     },
     "customer": {
       "packageLine": "{name} · quedan {count} · hasta el {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "El cliente aún tiene este artículo. Usa Recuperar.",
       "keyConflict": "Esto ya se envió con otros datos. Empieza de nuevo.",
       "receiptTooOld": "Solo un gerente puede abrir tickets de días anteriores."
+    },
+    "receipt": {
+      "voucherTender": "Vale regalo {code}",
+      "goodwill": "Saldo de cortesía",
+      "sessionUsed": "Sesión usada · precio normal {price}",
+      "notTaxInvoice": "Venta de vale · no es factura fiscal",
+      "payment": "Pago",
+      "attempt": {
+        "collecting": "En curso",
+        "settled": "Pagado",
+        "refused": "Dinero cobrado · venta no guardada",
+        "recovering": "En revisión",
+        "resolved": "Resuelto",
+        "cancelled": "Cancelado"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "Cambió tras la solicitud",
+      "staleHelp": "El elemento cambió después de la solicitud. Hace falta una nueva.",
+      "revision": "Versión esperada {expected}, ahora {current}",
+      "returnItems": "pide devolver artículos · {amount}",
+      "edit": "pide {what} · {target}",
+      "notYet": "Decide esto cuando las devoluciones y ediciones estén disponibles en caja.",
+      "targets": {
+        "product": "Producto",
+        "variant": "Opción de producto",
+        "package": "Paquete",
+        "voucherTemplate": "Diseño de vale",
+        "service": "Servicio",
+        "property": "Tarifa de habitación",
+        "voucher": "Vale regalo",
+        "grant": "Sesiones del paquete",
+        "stock": "Existencias",
+        "handover": "Cargo a la habitación",
+        "order": "Recibo",
+        "settings": "Reglas de caja"
+      },
+      "what": {
+        "publish": "publicar para ventas futuras",
+        "editCatalogue": "editar para ventas futuras",
+        "extend": "ampliar el plazo",
+        "pause": "pausar",
+        "resume": "reanudar",
+        "addGoodwill": "añadir cortesía",
+        "removeGoodwill": "quitar cortesía",
+        "rename": "corregir el nombre",
+        "reissue": "reemitir el código",
+        "disable": "desactivar el vale",
+        "transfer": "ceder sesiones",
+        "addService": "añadir un servicio que cuente",
+        "substituteService": "cambiar un servicio",
+        "narrowServices": "limitar los servicios",
+        "shorten": "acortar la vigencia",
+        "adjustStock": "ajustar el stock",
+        "takeBack": "recuperar",
+        "moveRoomCharge": "pasar a otra habitación",
+        "amendPayment": "corregir el pago",
+        "updateSettings": "cambiar las reglas de caja"
+      }
     }
   }
 }

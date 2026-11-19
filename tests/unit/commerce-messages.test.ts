@@ -71,10 +71,10 @@ function argumentNames(message: string): string[] {
 }
 
 /** A value for every argument any commerce message uses. */
-const sample = { amount: "฿600", rest: "฿600", price: "฿1,290", count: 3, max: 2, cash: 15, card: 45, here: 0, there: 3, before: "3", after: "2", paid: 3, goodwill: 1, spent: "฿300", left: "฿200", min: "฿100", name: "Maya Lin", product: "Spa robe", service: "Thai massage 60", variant: "Blue / M", option: "Size", branch: "Beach spa", room: "12", guest: "Maya Lin", till: "Till 1", staff: "Ploy", method: "Card", time: "14:02", date: "30 Dec 2026", code: "GV-••••-Q9XD", kind: "Products", label: "Spa robe", reason: "Voucher used up" };
+const sample = { amount: "฿600", rest: "฿600", price: "฿1,290", count: 3, max: 2, cash: 15, card: 45, here: 0, there: 3, before: "3", after: "2", paid: 3, goodwill: 1, spent: "฿300", left: "฿200", min: "฿100", name: "Maya Lin", product: "Spa robe", service: "Thai massage 60", variant: "Blue / M", option: "Size", branch: "Beach spa", room: "12", guest: "Maya Lin", till: "Till 1", staff: "Ploy", method: "Card", time: "14:02", date: "30 Dec 2026", code: "GV-••••-Q9XD", kind: "Products", label: "Spa robe", reason: "Voucher used up", expected: 3, current: 4, what: "extend", target: "Massage 5" };
 
 /** Loanwords these languages use as is at a till: Spa, Shop, Stock, Code, Name, PromptPay. */
-const LOANWORDS = /^Commerce\.(tabs\.(spa|shop)|vouchers\.giftSlipCode|edits\.name|admin\.stock|history\.stockBeforeAfter|pay\.promptPay)$/;
+const LOANWORDS = /^Commerce\.(tabs\.(spa|shop)|vouchers\.giftSlipCode|edits\.name|admin\.stock|approvals\.targets\.stock|history\.stockBeforeAfter|pay\.promptPay)$/;
 /** Same text as English is fine only where the message is nothing but arguments and symbols. */
 const symbolsOnly = (message: string) => message.replace(/\{[^}]*\}/g, "").replace(/[\s·→–×:()]/g, "") === "";
 

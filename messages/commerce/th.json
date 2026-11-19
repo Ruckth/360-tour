@@ -236,7 +236,8 @@
         "theft": "ถูกขโมย",
         "lost": "สูญหาย",
         "returnedToStock": "คืนเข้าสต็อก"
-      }
+      },
+      "notYet": "การแก้ไขจะเปิดใช้ในอัปเดตถัดไป ประวัติเป็นปัจจุบันแล้ว"
     },
     "history": {
       "title": "ประวัติ",
@@ -274,7 +275,9 @@
         "roomCharge": "ลงบิลห้อง {room}",
         "takenBack": "รับคืนแล้ว",
         "published": "ราคาใหม่สำหรับการขายต่อไป"
-      }
+      },
+      "showStaff": "มุมมองพนักงาน",
+      "close": "ปิด"
     },
     "customer": {
       "packageLine": "{name} · เหลือ {count} · ถึง {date}",
@@ -356,6 +359,66 @@
       "itemWithGuest": "ลูกค้ายังมีของชิ้นนี้อยู่ ใช้ รับคืน แทน",
       "keyConflict": "รายการนี้ถูกส่งไปแล้วด้วยรายละเอียดต่างกัน เริ่มใหม่อีกครั้ง",
       "receiptTooOld": "ใบเสร็จของวันก่อนหน้าเปิดได้เฉพาะผู้จัดการ"
+    },
+    "receipt": {
+      "voucherTender": "บัตรกำนัล {code}",
+      "goodwill": "เครดิตน้ำใจ",
+      "sessionUsed": "ใช้สิทธิ์ 1 ครั้ง · ราคาปกติ {price}",
+      "notTaxInvoice": "ขายบัตรกำนัล · ไม่ใช่ใบกำกับภาษี",
+      "payment": "การชำระเงิน",
+      "attempt": {
+        "collecting": "กำลังดำเนินการ",
+        "settled": "ชำระแล้ว",
+        "refused": "รับเงินแล้ว · ยังไม่บันทึกการขาย",
+        "recovering": "กำลังตรวจสอบ",
+        "resolved": "เรียบร้อยแล้ว",
+        "cancelled": "ยกเลิกแล้ว"
+      },
+      "attemptBy": "{till} · {staff}"
+    },
+    "approvals": {
+      "stale": "มีการเปลี่ยนแปลงหลังส่งคำขอ",
+      "staleHelp": "รายการนี้ถูกเปลี่ยนหลังส่งคำขอ ต้องส่งคำขอใหม่",
+      "revision": "เวอร์ชันตอนขอ {expected} · ตอนนี้ {current}",
+      "returnItems": "ขอคืนสินค้า · {amount}",
+      "edit": "ขอ{what} · {target}",
+      "notYet": "อนุมัติได้เมื่อหน้าขายเปิดใช้การคืนสินค้าและการแก้ไข",
+      "targets": {
+        "product": "สินค้า",
+        "variant": "ตัวเลือกสินค้า",
+        "package": "แพ็กเกจ",
+        "voucherTemplate": "แบบบัตรกำนัล",
+        "service": "บริการ",
+        "property": "ราคาห้องพัก",
+        "voucher": "บัตรกำนัล",
+        "grant": "สิทธิ์ในแพ็กเกจ",
+        "stock": "สต็อก",
+        "handover": "ลงบิลห้อง",
+        "order": "ใบเสร็จ",
+        "settings": "กฎการขาย"
+      },
+      "what": {
+        "publish": "เผยแพร่สำหรับการขายต่อไป",
+        "editCatalogue": "แก้ไขสำหรับการขายต่อไป",
+        "extend": "ขยายเวลา",
+        "pause": "พักการใช้",
+        "resume": "ใช้ต่อ",
+        "addGoodwill": "แถมน้ำใจ",
+        "removeGoodwill": "ลบสิทธิ์น้ำใจ",
+        "rename": "แก้ชื่อ",
+        "reissue": "ออกรหัสใหม่",
+        "disable": "ระงับบัตรกำนัล",
+        "transfer": "โอนสิทธิ์ให้คนอื่น",
+        "addService": "เพิ่มบริการที่ใช้สิทธิ์ได้",
+        "substituteService": "เปลี่ยนบริการ",
+        "narrowServices": "ลดบริการที่ใช้สิทธิ์ได้",
+        "shorten": "ร่นวันหมดอายุ",
+        "adjustStock": "ปรับสต็อก",
+        "takeBack": "รับคืน",
+        "moveRoomCharge": "ย้ายไปห้องอื่น",
+        "amendPayment": "แก้ไขการชำระเงิน",
+        "updateSettings": "เปลี่ยนกฎการขาย"
+      }
     }
   }
 }
