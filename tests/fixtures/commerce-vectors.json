@@ -1,0 +1,1054 @@
+[
+  {
+    "name": "Gold Wellness: pay, return the robe, then cancel with ฿300.50 spent",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 690000, "discount": 0, "weights": [600000, 129000, 50000], "gross": [526749, 113251, 50000], "discounts": [0, 0, 0], "paid": [526749, 113251, 50000]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 640000, "deferredVatBase": 0, "vat": 41869, "contents": [{"vatBase": 526749, "deferredVatBase": 0}, {"vatBase": 113251, "deferredVatBase": 0}, {"vatBase": 0, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "eligible",
+        "lines": [{"kind": "package", "issuesVoucher": true}],
+        "expect": false
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "card", "amount": 690000}],
+        "expect": {"receipt": [690000], "rows": [[690000]], "contents": [[[526749], [113251], [50000]]]}
+      },
+      {
+        "kind": "content",
+        "content": 1,
+        "through": 1,
+        "expect": {"amount": 113251, "total": 113251}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 113251,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 113251}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 316049, "total": 316049}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 19950,
+        "expect": {"amount": 19950, "total": 19950},
+        "spent": 30050
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 335999,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 335999}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 0, "total": 316049}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 19950,
+        "expect": {"amount": 0, "total": 19950},
+        "spent": 30050
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Gold: whole cancellation after two paid uses and expiry with 0 satang spent",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 690000, "discount": 0, "weights": [600000, 129000, 50000], "gross": [526749, 113251, 50000], "discounts": [0, 0, 0], "paid": [526749, 113251, 50000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "card", "amount": 690000}],
+        "expect": {"receipt": [690000], "rows": [[690000]], "contents": [[[526749], [113251], [50000]]]}
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "package_voucher", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_retained"
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 316049, "total": 316049}
+      },
+      {
+        "kind": "content",
+        "content": 1,
+        "through": 1,
+        "expect": {"amount": 113251, "total": 113251}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 50000,
+        "expect": {"amount": 50000, "total": 50000},
+        "spent": 0
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 479300,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 479300}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Gold: whole cancellation after two paid uses and expiry with 20000 satang spent",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 690000, "discount": 0, "weights": [600000, 129000, 50000], "gross": [526749, 113251, 50000], "discounts": [0, 0, 0], "paid": [526749, 113251, 50000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "card", "amount": 690000}],
+        "expect": {"receipt": [690000], "rows": [[690000]], "contents": [[[526749], [113251], [50000]]]}
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "package_voucher", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_retained"
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 316049, "total": 316049}
+      },
+      {
+        "kind": "content",
+        "content": 1,
+        "through": 1,
+        "expect": {"amount": 113251, "total": 113251}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 30000,
+        "expect": {"amount": 30000, "total": 30000},
+        "spent": 20000
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 459300,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 459300}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Gold full TFRS: voucher spends face but returns the frozen ฿442.88 share pro rata",
+    "settings": {"packageSplit": "relative_standalone"},
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 690000, "discount": 0, "weights": [600000, 129000, 50000], "gross": [531450, 114262, 44288], "discounts": [0, 0, 0], "paid": [531450, 114262, 44288]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 645712, "deferredVatBase": 0, "vat": 42243, "contents": [{"vatBase": 531450, "deferredVatBase": 0}, {"vatBase": 114262, "deferredVatBase": 0}, {"vatBase": 0, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "card", "amount": 690000}],
+        "expect": {"receipt": [690000], "rows": [[690000]], "contents": [[[531450], [114262], [44288]]]}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 19950,
+        "expect": {"amount": 17671, "total": 17671},
+        "spent": 30050
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 17671,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 17671}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Gold: 10 percent staff discount only from the session and chosen robe",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}], "staffDiscount": {"type": "percent", "value": 1000}},
+        "expect": {"price": 626000, "discount": 64000, "weights": [600000, 129000, 50000], "gross": [526749, 113251, 50000], "discounts": [52675, 11325, 0], "paid": [474074, 101926, 50000]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 576000, "deferredVatBase": 0, "vat": 37682, "contents": [{"vatBase": 474074, "deferredVatBase": 0}, {"vatBase": 101926, "deferredVatBase": 0}, {"vatBase": 0, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "transfer", "amount": 626000}],
+        "expect": {"receipt": [626000], "rows": [[626000]], "contents": [[[474074], [101926], [50000]]]}
+      }
+    ]
+  },
+  {
+    "name": "Spa care gift set: oil kept, scrub returned, and ฿300.50 of face spent",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 125000, "contents": [{"contentKey": "oil", "kind": "product", "quantity": 1, "variantUnitPrice": 39000}, {"contentKey": "scrub", "kind": "product", "quantity": 1, "variantUnitPrice": 45000}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 125000, "discount": 0, "weights": [39000, 45000, 50000], "gross": [34821, 40179, 50000], "discounts": [0, 0, 0], "paid": [34821, 40179, 50000]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 75000, "deferredVatBase": 0, "vat": 4907, "contents": [{"vatBase": 34821, "deferredVatBase": 0}, {"vatBase": 40179, "deferredVatBase": 0}, {"vatBase": 0, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 125000}],
+        "expect": {"receipt": [125000], "rows": [[125000]], "contents": [[[34821], [40179], [50000]]]}
+      },
+      {
+        "kind": "content",
+        "content": 0,
+        "through": 0,
+        "expect": {"amount": 0, "total": 0}
+      },
+      {
+        "kind": "content",
+        "content": 1,
+        "through": 1,
+        "expect": {"amount": 40179, "total": 40179}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 19950,
+        "expect": {"amount": 19950, "total": 19950},
+        "spent": 30050
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 60129,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 60129}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Spa care gift set: both products and all untouched face returned",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 125000, "contents": [{"contentKey": "oil", "kind": "product", "quantity": 1, "variantUnitPrice": 39000}, {"contentKey": "scrub", "kind": "product", "quantity": 1, "variantUnitPrice": 45000}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 125000, "discount": 0, "weights": [39000, 45000, 50000], "gross": [34821, 40179, 50000], "discounts": [0, 0, 0], "paid": [34821, 40179, 50000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 125000}],
+        "expect": {"receipt": [125000], "rows": [[125000]], "contents": [[[34821], [40179], [50000]]]}
+      },
+      {
+        "kind": "content",
+        "content": 0,
+        "through": 1,
+        "expect": {"amount": 34821, "total": 34821}
+      },
+      {
+        "kind": "content",
+        "content": 1,
+        "through": 1,
+        "expect": {"amount": 40179, "total": 40179}
+      },
+      {
+        "kind": "content",
+        "content": 2,
+        "through": 50000,
+        "expect": {"amount": 50000, "total": 50000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 125000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 125000}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Massage 5: goodwill used first and three unused paid sessions retain ฿3,240 at expiry",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 540000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}]},
+        "expect": {"price": 540000, "discount": 0, "weights": [600000], "gross": [540000], "discounts": [0], "paid": [540000]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 540000, "deferredVatBase": 0, "vat": 35327, "contents": [{"vatBase": 540000, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "eligible",
+        "lines": [{"kind": "package"}],
+        "expect": true
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 100000}, {"method": "cash", "amount": 440000}],
+        "expect": {"receipt": [100000, 440000], "rows": [[100000, 440000]], "contents": [[[100000, 440000]]]}
+      },
+      {
+        "kind": "benefitUse",
+        "balances": {"paid": 3, "goodwill": 1},
+        "requested": 1,
+        "expect": {"paid": 0, "goodwill": 1}
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "sessions", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": true},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "paused"
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "sessions", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_retained"
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 324000, "total": 324000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 324000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 100000, "replacementValidityDays": null}], "external": {"method": "cash", "amount": 224000}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Massage 5: normal D2 price charges ฿1,200 for each of two used sessions",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 540000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}]},
+        "expect": {"price": 540000, "discount": 0, "weights": [600000], "gross": [540000], "discounts": [0], "paid": [540000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 540000}],
+        "expect": {"receipt": [540000], "rows": [[540000]], "contents": [[[540000]]]}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 1,
+        "expect": {"amount": 60000, "total": 60000},
+        "rule": "normal_price"
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 60000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 60000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 3,
+        "expect": {"amount": 240000, "total": 300000},
+        "rule": "normal_price"
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 240000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 240000}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Massage 5: an intervening paid use still converges to the normal-price cancellation value",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 540000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}]},
+        "expect": {"price": 540000, "discount": 0, "weights": [600000], "gross": [540000], "discounts": [0], "paid": [540000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 540000}],
+        "expect": {"receipt": [540000], "rows": [[540000]], "contents": [[[540000]]]}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 2,
+        "through": 1,
+        "expect": {"amount": 60000, "total": 60000},
+        "rule": "normal_price"
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 60000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 60000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 3,
+        "through": 2,
+        "expect": {"amount": 120000, "total": 180000},
+        "rule": "normal_price"
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 120000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 120000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 3,
+        "through": 2,
+        "expect": {"amount": 0, "total": 180000},
+        "rule": "normal_price"
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Massage 5: one-unit returns exhaust a three-satang voucher and cash",
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 540000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}]},
+        "expect": {"price": 540000, "discount": 0, "weights": [600000], "gross": [540000], "discounts": [0], "paid": [540000]}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 3}, {"method": "cash", "amount": 539997}],
+        "expect": {"receipt": [3, 539997], "rows": [[3, 539997]], "contents": [[[3, 539997]]]}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 1,
+        "expect": {"amount": 108000, "total": 108000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 108000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 3, "replacementValidityDays": null}], "external": {"method": "cash", "amount": 107997}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 2,
+        "expect": {"amount": 108000, "total": 216000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 108000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 108000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 3,
+        "expect": {"amount": 108000, "total": 324000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 108000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 108000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 4,
+        "expect": {"amount": 108000, "total": 432000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 108000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 108000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 5,
+        "expect": {"amount": 108000, "total": 540000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 108000,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 108000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "session",
+        "content": 0,
+        "used": 0,
+        "through": 5,
+        "expect": {"amount": 0, "total": 540000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Two one-satang rows tie in row and tender order",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 1}, {"method": "voucher", "voucherId": "a", "amount": 1}],
+        "expect": {"receipt": [1, 1], "rows": [[1, 0], [0, 1]], "contents": [null, null]},
+        "rows": [{"net": 1}, {"net": 1}]
+      }
+    ]
+  },
+  {
+    "name": "Three one-satang tenders tie in package contents",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "b", "amount": 1}, {"method": "voucher", "voucherId": "a", "amount": 1}, {"method": "cash", "amount": 1}],
+        "expect": {"receipt": [1, 1, 1], "rows": [[1, 1, 1]], "contents": [[[1, 0, 0], [0, 1, 0], [0, 0, 1]]]},
+        "rows": [{"net": 3, "contentPaidShares": [1, 1, 1]}]
+      },
+      {
+        "kind": "part",
+        "key": "first",
+        "share": 1,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 1, "total": 1}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 1,
+        "expect": {"voucherCredits": [{"voucherId": "b", "amount": 1, "replacementValidityDays": null}], "external": null, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "second",
+        "share": 1,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 1, "total": 1}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 1,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 1, "replacementValidityDays": null}], "external": null, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "third",
+        "share": 1,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 1, "total": 1}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 1,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 1}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Package content capacities are filled one tender cell at a time",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 1}, {"method": "voucher", "voucherId": "b", "amount": 1}, {"method": "cash", "amount": 4}],
+        "expect": {"receipt": [1, 1, 4], "rows": [[1, 1, 4]], "contents": [[[1, 0, 1], [0, 1, 1], [0, 0, 2]]]},
+        "rows": [{"net": 6, "contentPaidShares": [2, 2, 2]}]
+      }
+    ]
+  },
+  {
+    "name": "Deposit plus voucher plus retail conserves allocations even though stay checkout refuses it",
+    "steps": [
+      {
+        "kind": "eligible",
+        "lines": [{"kind": "booking"}, {"kind": "product"}],
+        "bookingId": "stay",
+        "expect": false
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 50}, {"method": "cash", "amount": 100}, {"method": "transfer", "amount": 60}],
+        "expect": {"receipt": [50, 160], "rows": [[24, 76], [19, 61], [7, 23]], "contents": [null, null, null]},
+        "rows": [{"net": 140, "deposit": 40}, {"net": 80}, {"net": 30}]
+      }
+    ]
+  },
+  {
+    "name": "Two vouchers fund one receipt, earlier refunds and replacements count against each voucher",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 70000}, {"method": "voucher", "voucherId": "b", "amount": 50000}, {"method": "card", "amount": 60000}],
+        "expect": {"receipt": [70000, 50000, 60000], "rows": [[19444, 13889, 16667], [15556, 11111, 13333], [35000, 25000, 30000]], "contents": [null, null, null]},
+        "rows": [{"net": 50000}, {"net": 40000}, {"net": 90000}]
+      },
+      {
+        "kind": "part",
+        "key": "first",
+        "share": 50000,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 50000, "total": 50000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 50000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 50000, "replacementValidityDays": null}], "external": null, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "second",
+        "share": 40000,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 40000, "total": 40000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 40000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 20000, "replacementValidityDays": 90}, {"voucherId": "b", "amount": 20000, "replacementValidityDays": 90}], "external": null, "goodwillCredits": []},
+        "statuses": {"a": "expired", "b": "disabled"}
+      },
+      {
+        "kind": "part",
+        "key": "third",
+        "share": 90000,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 90000, "total": 90000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 90000,
+        "expect": {"voucherCredits": [{"voucherId": "b", "amount": 30000, "replacementValidityDays": 90}], "external": {"method": "card", "amount": 60000}, "goodwillCredits": []},
+        "statuses": {"b": "expired"}
+      }
+    ]
+  },
+  {
+    "name": "External correction followed by two returns preserves frozen cells",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 20000}, {"method": "cash", "amount": 50000}, {"method": "card", "amount": 30000}],
+        "expect": {"receipt": [20000, 80000], "rows": [[20000, 80000]], "contents": [null]},
+        "rows": [{"net": 100000}]
+      },
+      {
+        "kind": "correct",
+        "tenders": [{"method": "cash", "amount": 20000}, {"method": "card", "amount": 60000}],
+        "expectFrozen": [20000, 80000]
+      },
+      {
+        "kind": "part",
+        "key": "items",
+        "share": 100000,
+        "units": 2,
+        "through": 1,
+        "expect": {"amount": 50000, "total": 50000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 50000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 20000, "replacementValidityDays": null}], "external": {"method": "card", "amount": 30000}, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "items",
+        "share": 100000,
+        "units": 2,
+        "through": 2,
+        "expect": {"amount": 50000, "total": 100000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 50000,
+        "expect": {"voucherCredits": [], "external": {"method": "card", "amount": 50000}, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Fractional paid-share return conserves tiny balances after every unit",
+    "steps": [
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "cash", "amount": 2}],
+        "expect": {"receipt": [2], "rows": [[2]], "contents": [null]},
+        "rows": [{"net": 2}]
+      },
+      {
+        "kind": "part",
+        "key": "tiny",
+        "share": 2,
+        "units": 5,
+        "through": 1,
+        "expect": {"amount": 0, "total": 0}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "tiny",
+        "share": 2,
+        "units": 5,
+        "through": 2,
+        "expect": {"amount": 1, "total": 1}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 1,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 1}, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "tiny",
+        "share": 2,
+        "units": 5,
+        "through": 3,
+        "expect": {"amount": 0, "total": 1}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "tiny",
+        "share": 2,
+        "units": 5,
+        "through": 4,
+        "expect": {"amount": 1, "total": 2}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 1,
+        "expect": {"voucherCredits": [], "external": {"method": "cash", "amount": 1}, "goodwillCredits": []}
+      },
+      {
+        "kind": "part",
+        "key": "tiny",
+        "share": 2,
+        "units": 5,
+        "through": 5,
+        "expect": {"amount": 0, "total": 2}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": []}
+      }
+    ]
+  },
+  {
+    "name": "Goodwill voucher discount lowers VAT and credit is restored separately from paid value",
+    "steps": [
+      {
+        "kind": "benefitUse",
+        "balances": {"paid": 50000, "goodwill": 10000},
+        "requested": 60000,
+        "expect": {"paid": 50000, "goodwill": 10000}
+      },
+      {
+        "kind": "goodwill",
+        "net": 60000,
+        "amount": 10000,
+        "expect": {"vatBase": 50000, "vat": 3271, "due": 50000}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [{"method": "voucher", "voucherId": "a", "amount": 50000}],
+        "expect": {"receipt": [50000, 0], "rows": [[50000, 0]], "contents": [null]},
+        "rows": [{"net": 50000}]
+      },
+      {
+        "kind": "part",
+        "key": "paid",
+        "share": 50000,
+        "units": 1,
+        "through": 1,
+        "expect": {"amount": 50000, "total": 50000}
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 50000,
+        "expect": {"voucherCredits": [{"voucherId": "a", "amount": 50000, "replacementValidityDays": null}], "external": null, "goodwillCredits": [{"voucherId": "a", "amount": 10000}]},
+        "goodwill": [{"voucherId": "a", "amount": 10000, "status": "active"}]
+      }
+    ]
+  },
+  {
+    "name": "An all-goodwill receipt can restore goodwill or let an expired credit go, with zero cash",
+    "steps": [
+      {
+        "kind": "goodwill",
+        "net": 60000,
+        "amount": 60000,
+        "expect": {"vatBase": 0, "vat": 0, "due": 0}
+      },
+      {
+        "kind": "allocate",
+        "tenders": [],
+        "expect": {"receipt": [0], "rows": [[0]], "contents": [null]},
+        "rows": [{"net": 0}]
+      },
+      {
+        "kind": "refund",
+        "expectedAmount": 0,
+        "expect": {"voucherCredits": [], "external": null, "goodwillCredits": [{"voucherId": "a", "amount": 50000}]},
+        "goodwill": [{"voucherId": "a", "amount": 50000, "status": "paused"}, {"voucherId": "b", "amount": 10000, "status": "expired"}]
+      }
+    ]
+  },
+  {
+    "name": "Standalone voucher: D8 exception requires an untouched mistaken sale on its issuing receipt",
+    "steps": [
+      {
+        "kind": "standalone",
+        "input": {"face": 100000, "paidBalance": 100000, "everSpent": false, "onIssuingReceipt": true, "mistakenSale": true},
+        "expect": 100000
+      },
+      {
+        "kind": "standalone",
+        "input": {"face": 100000, "paidBalance": 100000, "everSpent": true, "onIssuingReceipt": true, "mistakenSale": true},
+        "expect": 0
+      },
+      {
+        "kind": "standalone",
+        "input": {"face": 100000, "paidBalance": 100000, "everSpent": false, "onIssuingReceipt": false, "mistakenSale": true},
+        "expect": 0
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "standalone_voucher", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_forfeited"
+      },
+      {
+        "kind": "standalone",
+        "input": {"face": 100000, "paidBalance": 0, "everSpent": false, "onIssuingReceipt": true, "mistakenSale": true},
+        "expect": 0
+      }
+    ]
+  },
+  {
+    "name": "D20 defaults: validity, deadlines, transfer, protected refund and points as discount",
+    "steps": [
+      {
+        "kind": "dates",
+        "lastPurchase": "2024-02-29",
+        "soldAt": "2026-11-18T18:00:00.000Z",
+        "cancelledOn": "2026-11-19",
+        "expect": {"sessions": "2027-05-18T17:00:00.000Z", "voucher": "2027-11-19T17:00:00.000Z", "card": "2027-01-03", "cash": "2026-12-04", "points": "2025-02-28"}
+      },
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-26", "unused": true},
+        "expect": {"protected": true, "transfer": true}
+      },
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-27", "unused": true},
+        "expect": {"protected": false, "transfer": true}
+      },
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-26", "unused": false},
+        "expect": {"protected": false, "transfer": true}
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "standalone_voucher", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T16:59:59.999Z",
+        "expect": "active"
+      },
+      {
+        "kind": "points",
+        "net": 60000,
+        "spend": 10000,
+        "expect": {"discount": 10000, "payment": 0, "due": 50000, "vatBase": 50000, "vat": 3271}
+      }
+    ]
+  },
+  {
+    "name": "D20 alternatives: expiry forfeiture, revised deadlines, transfer off and points as payment",
+    "settings": {"retainExpiredPackageValue": false, "unusedRefundDays": null, "refundDays": {"card": 30, "other": 10}, "packageValidityDays": 90, "voucherValidityDays": null, "allowSessionTransfers": false, "pointsExpiryMonths": 24, "pointsTreatment": "payment"},
+    "steps": [
+      {
+        "kind": "dates",
+        "lastPurchase": "2024-02-29",
+        "soldAt": "2026-11-18T18:00:00.000Z",
+        "cancelledOn": "2026-11-19",
+        "expect": {"sessions": "2027-02-17T17:00:00.000Z", "voucher": null, "card": "2026-12-19", "cash": "2026-11-29", "points": "2026-02-28"}
+      },
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-19", "unused": true},
+        "expect": {"protected": false, "transfer": false}
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "sessions", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_forfeited"
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "package_voucher", "expiresAt": "2027-11-19T17:00:00.000Z", "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "expired_forfeited"
+      },
+      {
+        "kind": "state",
+        "input": {"kind": "standalone_voucher", "expiresAt": null, "paused": false},
+        "now": "2027-11-19T17:00:00.000Z",
+        "expect": "active"
+      },
+      {
+        "kind": "points",
+        "net": 60000,
+        "spend": 10000,
+        "expect": {"discount": 0, "payment": 10000, "due": 50000, "vatBase": 60000, "vat": 3925}
+      }
+    ]
+  },
+  {
+    "name": "D20 custom unused refund window and standalone voucher validity",
+    "settings": {"unusedRefundDays": 2, "voucherValidityDays": 730},
+    "steps": [
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-21", "unused": true},
+        "expect": {"protected": true, "transfer": true}
+      },
+      {
+        "kind": "rights",
+        "input": {"soldOn": "2026-11-19", "cancelOn": "2026-11-22", "unused": true},
+        "expect": {"protected": false, "transfer": true}
+      },
+      {
+        "kind": "dates",
+        "lastPurchase": "2024-02-29",
+        "soldAt": "2026-11-18T18:00:00.000Z",
+        "cancelledOn": "2026-11-19",
+        "expect": {"sessions": "2027-05-18T17:00:00.000Z", "voucher": "2028-11-18T17:00:00.000Z", "card": "2027-01-03", "cash": "2026-12-04", "points": "2025-02-28"}
+      }
+    ]
+  },
+  {
+    "name": "D20 VAT at use defers Gold sessions and recognizes frozen paid bases as they are used",
+    "settings": {"packageVatTiming": "at_use"},
+    "steps": [
+      {
+        "kind": "package",
+        "input": {"price": 690000, "contents": [{"contentKey": "massage", "kind": "sessions", "units": 5, "serviceUnitPrices": [120000, 150000]}, {"contentKey": "robe", "kind": "product", "quantity": 1, "variantUnitPrice": 129000, "chooseAtSale": true}, {"contentKey": "gift", "kind": "voucher", "face": 50000}]},
+        "expect": {"price": 690000, "discount": 0, "weights": [600000, 129000, 50000], "gross": [526749, 113251, 50000], "discounts": [0, 0, 0], "paid": [526749, 113251, 50000]}
+      },
+      {
+        "kind": "packageVat",
+        "expect": {"vatBase": 113251, "deferredVatBase": 526749, "vat": 7409, "contents": [{"vatBase": 0, "deferredVatBase": 526749}, {"vatBase": 113251, "deferredVatBase": 0}, {"vatBase": 0, "deferredVatBase": 0}]}
+      },
+      {
+        "kind": "deferredUse",
+        "paidUses": 0,
+        "expectedAmount": 0,
+        "expect": {"vatBase": 0, "vat": 0}
+      },
+      {
+        "kind": "deferredUse",
+        "paidUses": 1,
+        "expectedAmount": 105350,
+        "expect": {"vatBase": 105350, "vat": 6892}
+      },
+      {
+        "kind": "deferredUse",
+        "paidUses": 2,
+        "expectedAmount": 105350,
+        "expect": {"vatBase": 105350, "vat": 6892}
+      },
+      {
+        "kind": "deferredUse",
+        "paidUses": 3,
+        "expectedAmount": 105349,
+        "expect": {"vatBase": 105349, "vat": 6892}
+      },
+      {
+        "kind": "deferredUse",
+        "paidUses": 5,
+        "expectedAmount": 210700,
+        "expect": {"vatBase": 210700, "vat": 13784}
+      }
+    ]
+  },
+  {
+    "name": "Legacy VAT uses priced lines and v2 uses frozen bases with one receipt rounding",
+    "steps": [
+      {
+        "kind": "vat",
+        "input": {"lines": [{"unitPrice": 100000, "qty": 1, "deposit": 20000, "couponDiscount": 10000, "discount": {"type": "amount", "value": 10000}}]},
+        "expect": {"vatBase": 80000, "vat": 5234}
+      },
+      {
+        "kind": "vat",
+        "input": {"vatVersion": 2, "lines": [{"vatBase": 8}, {"vatBase": 8}]},
+        "expect": {"vatBase": 16, "vat": 1}
+      },
+      {
+        "kind": "vat",
+        "input": {"vatVersion": 2, "lines": [{"vatBase": 0}]},
+        "expect": {"vatBase": 0, "vat": 0}
+      }
+    ]
+  }
+]
