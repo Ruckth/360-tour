@@ -22,6 +22,8 @@ export type TargetApproval = {
   /** An edit's item; null for a return, which is about its receipt. */
   target: AdjustTarget | null;
   adjustmentKind: AdjustKind | null;
+  /** The item as staff know it ("Massage 5 · Maya Lin"), from the request's detail; null until read. */
+  targetLabel: string | null;
   orderId: OrderId | null;
   /** A return's total. */
   amount: number | null;
@@ -41,7 +43,7 @@ export default function TargetApprovalItem({ request }: { request: TargetApprova
   const targetName = request.target ? copy.t(`approvals.targets.${request.target.targetType}`) : null;
   const ask = request.kind === "returnItems"
     ? copy.t("approvals.returnItems", { amount: copy.money(request.amount ?? 0) })
-    : copy.t("approvals.edit", { what: copy.t(`approvals.what.${request.adjustmentKind ?? "editCatalogue"}`), target: targetName ?? "" });
+    : copy.t("approvals.edit", { what: copy.t(`approvals.what.${request.adjustmentKind ?? "editCatalogue"}`), target: request.targetLabel ?? targetName ?? "" });
   const soon = request.expiresAt - now <= 2 * 60_000;
   return (
     <li data-testid="approval-request" data-approval-scope="target">
@@ -54,7 +56,7 @@ export default function TargetApprovalItem({ request }: { request: TargetApprova
         {stale ? (
           <div className="grid gap-1 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/10 dark:text-amber-200" data-testid="approval-stale">
             <p className="font-medium">{copy.t("approvals.stale")}</p>
-            <p>{copy.t("refusals.staleRevision")}</p>
+            <p>{copy.t("approvals.staleHelp")}</p>
             {changed ? <p className="text-xs tabular-nums">{copy.t("approvals.revision", { expected: changed.expected, current: changed.current ?? "–" })}</p> : null}
           </div>
         ) : null}

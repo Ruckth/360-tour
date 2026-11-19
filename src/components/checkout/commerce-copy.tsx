@@ -14,7 +14,6 @@ import { formatResort } from "./checkout-ui";
 export const PENDING_COMMERCE_COPY: Record<string, string> = {
   "receipt.voucherTender": "Gift voucher {code}",
   "receipt.goodwill": "Goodwill credit",
-  "receipt.returned": "Returned",
   "receipt.sessionUsed": "Session used · was {price}",
   "receipt.notTaxInvoice": "Voucher sale · not a tax invoice",
   "receipt.payment": "Payment",
@@ -29,6 +28,7 @@ export const PENDING_COMMERCE_COPY: Record<string, string> = {
   "history.close": "Close",
   "edits.notYet": "Editing opens in a later update. History is up to date.",
   "approvals.stale": "Changed since asked",
+  "approvals.staleHelp": "The item changed after this was asked. A new request is needed.",
   "approvals.revision": "Expected revision {expected}, now {current}",
   "approvals.returnItems": "asks to return items · {amount}",
   "approvals.edit": "asks to {what} · {target}",

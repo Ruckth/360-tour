@@ -19,12 +19,12 @@ import { ReceiptView } from "./ReceiptView";
  * Commerce picks one of the plan's commerce states (every switch Off in the dark state, as production
  * ships); without one the backend has no commerce, exactly as today's checkout.
  */
-export function CheckoutPreview({ embedded = false }: { embedded?: boolean }) {
+export function CheckoutPreview({ embedded = false, initial }: { embedded?: boolean; initial?: { commerce?: CommerceDesignState; receipt?: boolean } }) {
   const [state, setState] = useState<CheckoutDesignState>("empty");
-  const [commerce, setCommerce] = useState<CommerceDesignState | null>(null);
+  const [commerce, setCommerce] = useState<CommerceDesignState | null>(initial?.commerce ?? null);
   const backend = useMemo(() => previewBackend(state, commerce), [state, commerce]);
   const [orderId, setOrderId] = useState<OrderId | null>(null);
-  const [receiptId, setReceiptId] = useState<OrderId | null>(null);
+  const [receiptId, setReceiptId] = useState<OrderId | null>(initial?.commerce && initial.receipt ? COMMERCE_RECEIPT_ID : null);
 
   return (
     // ReceiptView guards refund drafts with a confirm dialog, so the standalone preview needs the provider too.

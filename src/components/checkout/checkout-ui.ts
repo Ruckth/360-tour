@@ -183,7 +183,7 @@ export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments"
       const share = line.couponDiscount ? lineCouponDiscount(line) : 0;
       const when = line.kind === "service" ? receiptSchedule(line.schedule) : null;
       const extras = commerce?.rows.get(line._id);
-      if (extras && copy) return commerceTextRows(line, extras, share, coupon, copy, row);
+      if (extras && copy) return commerceTextRows(line, extras, share, coupon, copy, row, refunds);
       return [row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(roundMoney(line.net + share))), ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []), ...(when ? [`  ${when}`] : []), ...(refunds && line.refundedAmountSatang ? [row("  Refunded", formatMoney(-line.refundedAmountSatang))] : [])];
     }),
     "",
@@ -322,7 +322,8 @@ export function contentLabel(content: Pick<ReceiptContent, "kind" | "label" | "u
 }
 
 /** The shared text of one commerce row, in the printed receipt's order. */
-function commerceTextRows(line: OrderView["lines"][number], extras: ReceiptRowExtras, share: number, coupon: string, copy: CommerceCopy, row: (left: string, right: string) => string) {
+function commerceTextRows(line: OrderView["lines"][number], extras: ReceiptRowExtras, share: number, coupon: string, copy: CommerceCopy, row: (left: string, right: string) => string, refunds: boolean) {
+  const refunded = refunds ? line.refundedAmountSatang || extras.returned : 0;
   const gross = roundMoney(line.net + share + extras.goodwill);
   return [
     row(`${line.name}${line.qty > 1 ? ` ×${line.qty}` : ""}`, formatMoney(gross)),
@@ -334,6 +335,6 @@ function commerceTextRows(line: OrderView["lines"][number], extras: ReceiptRowEx
     ...(share ? [row(`  ${coupon}`, formatMoney(-share))] : []),
     ...(extras.goodwill ? [row(`  ${copy.t("receipt.goodwill")}`, formatMoney(-extras.goodwill))] : []),
     ...(line.kind === "voucher" ? extras.benefits.flatMap((benefit) => benefit.codeMask ? [`  ${maskVoucherCodes(benefit.codeMask)}`] : []) : []),
-    ...(extras.returned ? [row(`  ${copy.t("receipt.returned")}`, formatMoney(-extras.returned))] : []),
+    ...(refunded ? [row("  Refunded", formatMoney(-refunded))] : []),
   ];
 }

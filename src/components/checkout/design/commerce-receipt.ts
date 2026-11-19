@@ -54,7 +54,7 @@ const voucher = line("line0vch", {
   saleSnapshot: snapshot("Gift voucher", 100000, 0),
 });
 const covered = line("line0cover", {
-  kind: "service", name: "Thai massage 60", detail: "60 min", unitPrice: 0, catalogUnitPrice: 120000, net: 0, serviceId: fx<"services">("svc000001"), staffName: "Ploy",
+  kind: "service", name: "Thai massage 60", detail: "60 min", unitPrice: 0, catalogUnitPrice: 120000, net: 0, serviceId: fx<"services">("svc000001"), appointmentId: fx<"appointments">("appt0maya"), staffName: "Ploy",
   coverage: { grantId: fx<"sessionGrants">("grantmaya"), attendeeId: fx<"customers">("cust00maya"), useId: fx<"sessionUses">("use0maya"), priceBefore: 120000 },
 });
 const oil = line("line0oil", {

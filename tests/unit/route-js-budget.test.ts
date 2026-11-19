@@ -9,6 +9,7 @@ import { expect, it } from "vitest";
 const script = fileURLToPath(new URL("../../scripts/bench/route-js-size.mjs", import.meta.url));
 const guestRoutes = ["/[locale]/(home)", "/[locale]/rooms/[id]"];
 const editor = "/admin/properties/[id]";
+const checkout = "/admin/checkout";
 
 it("checks the complete built routes and fails when an entry disappears or exceeds the byte budget", () => {
   const root = mkdtempSync(join(tmpdir(), "route-budget-"));
@@ -25,7 +26,7 @@ it("checks the complete built routes and fails when an entry disappears or excee
     mkdirSync(build);
     writeFileSync(join(build, "build-manifest.json"), JSON.stringify({ rootMainFiles: ["shell.js"] }));
     writeFileSync(join(build, "shell.js"), "shared shell");
-    for (const route of guestRoutes) manifest(route, ["shell.js"]);
+    for (const route of [...guestRoutes, checkout]) manifest(route, ["shell.js"]);
     expect(check().status).toBe(1);
     manifest(editor, []);
     expect(check().status).toBe(1);

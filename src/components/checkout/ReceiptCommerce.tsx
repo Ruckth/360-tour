@@ -123,9 +123,9 @@ export function RowHistory({ line, extras, receipt }: { line: OrderLine; extras:
     <>
       <ul className="mt-1 grid gap-1 font-sans">
         {targets.map((item) => (
-          <li key={`${item.target.targetType}:${item.target.targetId}`} className="flex flex-wrap items-center justify-between gap-x-3">
-            {targets.length > 1 ? <span className="min-w-0 text-xs text-muted-foreground">{item.title.slice(line.name.length + 3)}</span> : null}
-            <Button type="button" variant="ghost" size="sm" className="h-11 px-3 text-sm" aria-label={`${label}: ${item.title}`} onClick={() => setOpen(item)}>
+          <li key={`${item.target.targetType}:${item.target.targetId}`} className="flex items-center gap-3">
+            {targets.length > 1 ? <span className="min-w-0 flex-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{item.title.slice(line.name.length + 3)}</span> : null}
+            <Button type="button" variant="ghost" size="sm" className="h-11 shrink-0 px-3 text-sm" aria-label={`${label}: ${item.title}`} onClick={() => setOpen(item)}>
               <History aria-hidden className="size-4" />{label}
             </Button>
           </li>

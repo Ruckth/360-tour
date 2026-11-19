@@ -9,7 +9,8 @@ import { COMMERCE_RECEIPT_ID } from "./commerce-receipt";
  * Massage 5 that went stale when another till used a session (expected revision 6, now 7).
  */
 
-const NOW = Date.UTC(2026, 10, 19, 7, 45);
+// Relative to now, so the preview shows live expiry times.
+const NOW = Date.now();
 const MIN = 60_000;
 
 export const previewApprovals: ApprovalQueue = {
@@ -25,12 +26,12 @@ export const previewApprovals: ApprovalQueue = {
 export const previewTargetApprovals: TargetApproval[] = [
   {
     _id: "fxappr000002" as Id<"staffApprovalRequests">, kind: "returnItems", requesterEmail: "ploy@example.com", reason: "Robe too small, guest brought it back unworn",
-    createdAt: NOW - 2 * MIN, expiresAt: NOW + 3 * MIN, status: "pending", target: null, adjustmentKind: null, orderId: COMMERCE_RECEIPT_ID, amount: 129000,
+    createdAt: NOW - 2 * MIN, expiresAt: NOW + 3 * MIN, status: "pending", target: null, adjustmentKind: null, targetLabel: null, orderId: COMMERCE_RECEIPT_ID, amount: 129000,
     revisions: [{ expected: 9, current: 9 }],
   },
   {
     _id: "fxappr000003" as Id<"staffApprovalRequests">, kind: "adjustment", requesterEmail: "nok@example.com", reason: "Maya was ill for two weeks",
     createdAt: NOW - 3 * MIN, expiresAt: NOW + 2 * MIN, status: "pending", target: { targetType: "grant", targetId: "fxgrantmaya" as Id<"sessionGrants"> },
-    adjustmentKind: "extend", orderId: null, amount: null, revisions: [{ expected: 6, current: 7 }],
+    adjustmentKind: "extend", targetLabel: "Massage 5 · Maya Lin", orderId: null, amount: null, revisions: [{ expected: 6, current: 7 }],
   },
 ];
