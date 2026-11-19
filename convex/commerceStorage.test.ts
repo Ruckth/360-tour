@@ -125,7 +125,15 @@ async function commerceRecords(ctx: MutationCtx) {
 it('validates and reads pre-commerce orders, lines, payments, refunds, appointments and approvals', async () => {
   const t = createHarness(convexTest);
   await t.run(async ctx => {
-    const { orderId, lineId, appointmentId } = await existingRecords(ctx);
+    const { orderId, lineId, appointmentId, serviceId, propertyId } = await existingRecords(ctx);
+    expect(await ctx.db.get(serviceId)).not.toHaveProperty('revision');
+    expect(await ctx.db.get(propertyId)).not.toHaveProperty('revision');
+    const appointmentRefundId = await ctx.db.insert('appointmentRefunds', {
+      appointmentId, amount: 100, currency, method: 'card', reason: 'Refund',
+      effectiveAt: now, recordedAt: now, recordedBy: actor, idempotencyKey: 'appointment-refund',
+      netBefore: 100, netAfter: 0,
+    });
+    expect(await ctx.db.get(appointmentRefundId)).not.toHaveProperty('returnId');
     const paymentId = await ctx.db.insert('orderPayments', {
       orderId, method: 'cash', amount: 120000, received: 150000, idempotencyKey: 'payment-1', createdBy: actor, createdAt: now,
     });
@@ -268,7 +276,13 @@ it('round-trips stock, session and voucher ledger discriminators and covered app
     }
     for (const { value: kind } of voucherEntryKind.members) {
       const id = await ctx.db.insert('voucherEntries', { ...ledger, voucherId, kind, sourceKey: 'voucher-' + kind });
-      expect(await ctx.db.get(id)).toMatchObject({ kind, voucherId });
+      expect(await ctx.db.get(id)).toMatchObject({ kind, voucherId, guestFact: ledger.guestFact });
+    }
+    for (const guestFact of [{ key: 'transferredIn' }, { key: 'issued', args: { amount: 50000 } }]) {
+      const id = await ctx.db.insert('voucherEntries', {
+        ...ledger, voucherId, kind: 'transfer', sourceKey: 'structured-' + guestFact.key, guestFact,
+      });
+      expect((await ctx.db.get(id))?.guestFact).toEqual(guestFact);
     }
     for (const { value: status } of voucherCodeStatus.members) {
       const id = await ctx.db.insert('voucherCodes', { voucherId, status, code: 'CODE-' + status, mask: '••••-ABCD' });
@@ -338,8 +352,10 @@ it('round-trips payment attempts, returns, payout claims and return approval aut
       key: state, method: 'card' as const, amount: 100, state, operator: actor, dueAt: now,
     }));
     for (const { value: status } of paymentAttemptStatus.members) {
+      const refusal = { code: 'VOUCHER_LIMIT', message: 'Voucher limit reached' };
       const attemptId = await ctx.db.insert('paymentAttempts', {
         orderId, key: 'attempt-' + status, fingerprint: status, legs, status,
+        ...(status === 'refused' ? { refusal } : {}),
         reviewedRequest: {
           revision: 0, due: 100, customers: [], vouchers: [{ voucherId, paid: 100, goodwill: 0 }],
           settingsRevision, businessDate,
@@ -348,6 +364,12 @@ it('round-trips payment attempts, returns, payout claims and return approval aut
       });
       await ctx.db.patch(orderId, { activeAttemptId: attemptId, vatVersion: 1, returnedTotal: 0 });
       expect(await ctx.db.get(attemptId)).toMatchObject({ status, legs });
+      if (status === 'refused') {
+        expect((await ctx.db.get(attemptId))?.refusal).toEqual(refusal);
+        const withArgs = { ...refusal, args: { max: 2 } };
+        await ctx.db.patch(attemptId, { refusal: withArgs });
+        expect((await ctx.db.get(attemptId))?.refusal).toEqual(withArgs);
+      }
       expect(await ctx.db.get(orderId)).toMatchObject({ activeAttemptId: attemptId, vatVersion: 1, returnedTotal: 0 });
     }
     for (const { value: status } of orderReturnStatus.members) {
@@ -358,6 +380,12 @@ it('round-trips payment attempts, returns, payout claims and return approval aut
       });
       expect(await ctx.db.get(returnId)).toMatchObject({ status, parts, claims: claimed, approvalId: returnApprovalId });
       if (status === 'completed') {
+        const appointmentRefundId = await ctx.db.insert('appointmentRefunds', {
+          appointmentId, returnId, amount: 100, currency, method: 'card', reason: 'Guest return',
+          effectiveAt: now, recordedAt: now, recordedBy: actor, idempotencyKey: 'visit-return',
+          netBefore: 100, netAfter: 0,
+        });
+        expect(await ctx.db.get(appointmentRefundId)).toMatchObject({ appointmentId, returnId });
         const payoutId = await ctx.db.insert('returnPayouts', {
           returnId, key: 'return-payout', destinationKey: 'given', sourceOwner: { kind: 'appointment', appointmentId },
           amount: 100, method: 'card', businessDate, operator: actor, createdAt: now,
@@ -378,6 +406,10 @@ it('round-trips adjustments and allows target-scoped requests without an order',
   await t.run(async ctx => {
     const { orderId, lineId, bookingId, productId, variantId, packageId, templateId, serviceId,
       propertyId, voucherId, grantId, stockId, settingsId } = await commerceRecords(ctx);
+    await ctx.db.patch(serviceId, { revision: 1 });
+    await ctx.db.patch(propertyId, { revision: 2 });
+    expect(await ctx.db.get(serviceId)).toMatchObject({ revision: 1 });
+    expect(await ctx.db.get(propertyId)).toMatchObject({ revision: 2 });
     const handoverId = await ctx.db.insert('handovers', {
       kind: 'room_bill', status: 'open', bookingId, orderId, lineId, variantId,
       unitPrice: 39000, quantity: 1, withGuest: 1, backSellable: 0, backDamaged: 0, unpaid: 1, paid: 0,
@@ -410,6 +442,7 @@ it('round-trips adjustments and allows target-scoped requests without an order',
       });
       expect(await ctx.db.get(id)).toMatchObject({ ...target, after: edit.after });
     }
+    expect(adjustmentKind.members.map(member => member.value)).toContain('waive');
     for (const { value: kind } of adjustmentKind.members) {
       const id = await ctx.db.insert('commerceAdjustments', {
         ...edit, targetType: 'product', targetId: productId, kind, clientKey: 'kind-' + kind,

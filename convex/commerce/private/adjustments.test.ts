@@ -255,6 +255,16 @@ it('enforces required reasons, Other text, reason length and the row byte limit'
   expect(await t.run(ctx => ctx.db.get(voucherId))).toMatchObject({ revision: 0, goodwillBalance: 0 });
 });
 
+it('records Other with a trimmed explanation', async () => {
+  const { t, manager, voucherId } = await fixture();
+  const edit = command(voucherId, { reasonCode: 'other', reasonText: '  Guest was charged twice  ' });
+  const result = await manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), edit, voucherWriter));
+  if (result.status !== 'applied') throw new Error('Expected a direct edit');
+  expect(await t.run(ctx => ctx.db.get(result.adjustmentId))).toMatchObject({
+    reasonCode: 'other', reasonText: 'Guest was charged twice',
+  });
+});
+
 it.each(['voucher', 'grant'] as const)('keeps %s guest history within the latest ownership period', async targetType => {
   const { t, voucherId, branchId, orderId, lineId } = await fixture();
   const target = targetType === 'voucher' ? { targetType, targetId: voucherId } : await t.run(async ctx => {

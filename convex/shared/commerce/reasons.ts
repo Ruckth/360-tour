@@ -62,8 +62,4 @@ export const stockReasons = [
   'returnedToStock',
 ] as const;
 
-export const commerceRefusalCode = v.union(...commerceRefusalCodes.map(code => v.literal(code)));
-export const editReason = v.union(...editReasons.map(code => v.literal(code)));
-export const stockReason = v.union(...stockReasons.map(code => v.literal(code)));
-
 export const commerceCopyArgs = v.record(v.string(), v.union(v.string(), v.number()));

@@ -292,6 +292,7 @@ export async function adjust(
     checkReplay(request.payload.payloadFingerprint, fingerprint);
     return requestResult(request);
   }
+  // New reasons are checked after replay so recorded edits keep their original receipt.
   assertKnownReasonCode(command);
   await assertRevisions(ctx, command);
   const change = await writer.prepare(ctx, actor, command);
