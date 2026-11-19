@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 
 export const catalogueStatus = v.union(v.literal('draft'), v.literal('active'), v.literal('archived'));
 export const vatProfile = v.union(v.literal('standard'), v.literal('exempt'));
@@ -95,7 +95,8 @@ export const adjustmentEffect = v.union(
 const changeScalar = v.union(v.string(), v.number(), v.boolean(), v.null());
 const changeLeaf = v.union(changeScalar, v.array(changeScalar));
 const changeRecord = v.record(v.string(), changeLeaf);
-export const adjustmentFields = v.record(v.string(), v.union(changeLeaf, changeRecord, v.array(changeRecord)));
+const changeObject = v.record(v.string(), v.union(changeLeaf, changeRecord, v.array(changeRecord)));
+export const adjustmentFields = v.record(v.string(), v.union(changeLeaf, changeObject, v.array(changeObject)));
 export const adjustmentConsent = v.object({ recordedAt: v.number(), evidence: v.string() });
 
 export const saleSwitch = v.union(v.literal('off'), v.literal('managers'), v.literal('everyone'));
@@ -105,7 +106,7 @@ export const saleSwitches = v.object({
   sessionPackages: saleSwitch,
   mixedPackages: saleSwitch,
 });
-export const paymentsMode = v.union(v.literal('legacy'), v.literal('attempts'));
+export const paymentsMode = v.union(v.literal('direct'), v.literal('attempts'));
 export const commerceTermsFields = {
   preserveExpiredPackageValue: v.boolean(),
   unusedFullRefundDays: v.number(),
@@ -130,3 +131,24 @@ export const commerceSettingsFields = {
     actor: v.string(),
   })),
 };
+
+export const commerceSettingsValidator = v.object(commerceSettingsFields);
+export type CommerceSettings = Infer<typeof commerceSettingsValidator>;
+
+export function resolveCommerceSettings(settings: CommerceSettings | null | undefined): CommerceSettings {
+  return settings ?? {
+    revision: 0,
+    preserveExpiredPackageValue: true,
+    unusedFullRefundDays: 7,
+    refundDueDays: { cashOrTransfer: 15, card: 45 },
+    packageValidityDays: 180,
+    voucherValidityDays: 365,
+    allowSessionTransfer: true,
+    packageSplit: 'voucherFaceValue',
+    packageVatTiming: 'atSale',
+    pointsVatTreatment: 'discount',
+    pointsExpiryMonths: 12,
+    saleSwitches: { products: 'off', vouchers: 'off', sessionPackages: 'off', mixedPackages: 'off' },
+    paymentsMode: 'direct',
+  };
+}

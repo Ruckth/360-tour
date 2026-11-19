@@ -159,6 +159,7 @@ export const commerceTables = {
   }).index('by_ownerId_and_serviceId_and_branchId_and_usable_and_expiresAt',
     ['ownerId', 'serviceId', 'branchId', 'usable', 'expiresAt']),
 
+  // Presets for future sales. Custom amounts skip the template and issued vouchers keep their terms.
   voucherTemplates: defineTable({
     name: v.string(), faceValue: v.number(), validityDays: v.number(),
     status: catalogueStatus, sort: v.number(), revision: v.number(),
