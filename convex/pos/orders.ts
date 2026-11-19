@@ -7,7 +7,7 @@ import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
 import { orderLineLinks } from './private/lineLinks';
-import { orderPaymentRecord } from './private/orderLifecycle';
+import { externalOrderPayments, orderPaymentRecord } from './private/orderLifecycle';
 import { orderLines } from './private/orderLines';
 import { activeOrderFor, orderState, ordersForSource } from './private/orderLinks';
 import { isOpenOrder } from './private/orderLinks';
@@ -120,7 +120,7 @@ export const getOrder = staffQuery({
 			/** R2b: the order's coupon; the split is on each row's `couponDiscount`, the total in `totals.coupon`. */
 			promotion,
 			/** As recorded when the receipt was issued; never changed (see `paymentRecord` for corrections). */
-			payments,
+			payments: externalOrderPayments(payments),
 			audit,
 			totals: orderTotals(lines),
 			/**

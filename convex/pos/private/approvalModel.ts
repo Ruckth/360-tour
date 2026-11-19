@@ -1,5 +1,6 @@
+import type { CheckoutApprovalRequest } from './staffApprovalState';
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { orderLines } from './orderLines';
 import { isOpenOrder } from './orderLinks';
@@ -104,7 +105,7 @@ export async function requireAppointment(ctx: ReadCtx, id: Id<'appointments'>) {
 }
 
 /** Internal TypeScript helper, not a Convex endpoint; approval identity is server-derived. */
-export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, actor: StaffActor) {
+export async function executeStaffApproval(ctx: MutationCtx, request: CheckoutApprovalRequest, actor: StaffActor) {
  const payload = request.payload;
  const order = await ctx.db.get(request.orderId);
  if (!order) throw new ConvexError('Order not found');

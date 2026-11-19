@@ -59,6 +59,9 @@ import type * as catalog_reviewMaintenance from "../catalog/reviewMaintenance.js
 import type * as catalog_reviewStats from "../catalog/reviewStats.js";
 import type * as catalog_tables from "../catalog/tables.js";
 import type * as catalog_validators from "../catalog/validators.js";
+import type * as commerce_model from "../commerce/model.js";
+import type * as commerce_tables from "../commerce/tables.js";
+import type * as commerce_validators from "../commerce/validators.js";
 import type * as concierge_businessFacts from "../concierge/businessFacts.js";
 import type * as concierge_context from "../concierge/context.js";
 import type * as concierge_generation from "../concierge/generation.js";
@@ -373,6 +376,9 @@ declare const fullApi: ApiFromModules<{
   "catalog/reviewStats": typeof catalog_reviewStats;
   "catalog/tables": typeof catalog_tables;
   "catalog/validators": typeof catalog_validators;
+  "commerce/model": typeof commerce_model;
+  "commerce/tables": typeof commerce_tables;
+  "commerce/validators": typeof commerce_validators;
   "concierge/businessFacts": typeof concierge_businessFacts;
   "concierge/context": typeof concierge_context;
   "concierge/generation": typeof concierge_generation;

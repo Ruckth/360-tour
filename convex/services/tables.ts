@@ -146,6 +146,8 @@ export const servicesTables = {
 
 
 	appointments: defineTable({
+		attendeeId: v.optional(v.id('customers')),
+		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
 
@@ -204,6 +206,7 @@ export const servicesTables = {
 		/** The cancelled or no-show appointment this one was booked again from. */
 		rebookedFromId: v.optional(v.id('appointments'))
 	})
+		.index('by_attendeeId_and_start', ['attendeeId', 'start'])
 		.index('by_staff_start', ['staffId', 'start'])
 		.index('by_service_start', ['serviceId', 'start'])
 		.index('by_start', ['start'])

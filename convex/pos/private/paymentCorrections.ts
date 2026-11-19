@@ -28,7 +28,9 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the correction')!;
 		const payments = await ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10);
-		const paidTotal = roundMoney(payments.reduce((sum, payment) => sum + payment.amount, 0));
+		const externalPayments = payments.filter(payment => payment.method !== 'voucher');
+		if (externalPayments.length !== payments.length) throw new ConvexError('This receipt includes voucher payments.');
+		const paidTotal = roundMoney(externalPayments.reduce((sum, payment) => sum + payment.amount, 0));
 		const now = Date.now();
 		const patch: Partial<Order> = {};
 		const correction: Partial<Doc<'orderCorrections'>> = {};
@@ -36,7 +38,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		if (args.tenders) {
 			if (paidTotal === 0) throw new ConvexError('Nothing was paid on this order, so there are no tenders to correct.');
 			assertTenders(args.tenders, paidTotal);
-			const before = order.amendedTenders ?? payments.map(cleanTender);
+			const before = order.amendedTenders ?? externalPayments.map(cleanTender);
 			const after = args.tenders.map(cleanTender);
 			if (JSON.stringify(before) !== JSON.stringify(after)) {
 				patch.amendedTenders = after;

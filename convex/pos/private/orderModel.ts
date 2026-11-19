@@ -1,4 +1,4 @@
-import { ConvexError, v } from 'convex/values';
+import { ConvexError, v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { isDocumentedLiveRefund } from '../../bookings/model';
@@ -592,7 +592,7 @@ export function assertCorrectionRevision(order: Order, expected: number) {
 	if (expected !== (order.correctionRevision ?? 0)) throw new ConvexError('This receipt was corrected since you opened it. Review it and try again.');
 }
 
-export const cleanTender = (tender: { method: Doc<'orderPayments'>['method']; amount: number; received?: number }) => ({
+export const cleanTender = (tender: Infer<typeof correctedTender>) => ({
 	method: tender.method, amount: tender.amount, ...(tender.received !== undefined ? { received: tender.received } : {})
 });
 

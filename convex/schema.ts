@@ -4,6 +4,7 @@ import { catalogTables } from './catalog/tables';
 import { bookingsTables } from './bookings/tables';
 import { servicesTables } from './services/tables';
 import { posTables } from './pos/tables';
+import { commerceTables } from './commerce/tables';
 import { conciergeTables } from './concierge/tables';
 import { messagingTables } from './messaging/tables';
 import { marketingTables } from './marketing/tables';
@@ -16,6 +17,7 @@ export default defineSchema({
 	...bookingsTables,
 	...servicesTables,
 	...posTables,
+	...commerceTables,
 	...conciergeTables,
 	...messagingTables,
 	...marketingTables,

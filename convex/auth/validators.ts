@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { resolvedCashierRulesValidator } from '../shared/staffTypes';
 
 export const usersFields = {
 		clerkId: v.string(),
@@ -26,14 +27,7 @@ export const staffAccessMyAccessResult = v.object({
 "roster": v.boolean(),
 "reports": v.boolean(),
 }),
-"cashierRules": v.object({
-"refund": v.union(v.literal("manager"), v.literal("cashier")),
-"customPrice": v.union(v.literal("manager"), v.literal("cashier")),
-"voidPaidSale": v.union(v.literal("manager"), v.literal("cashier")),
-"paymentFix": v.union(v.literal("manager"), v.literal("cashier")),
-"discountLimitPercent": v.number(),
-"revision": v.number(),
-}),
+"cashierRules": resolvedCashierRulesValidator,
 "marketingRole": v.union(v.null(), v.literal("manager"), v.literal("admin"), v.literal("marketer"), v.literal("finance"), v.literal("viewer")),
 "email": v.union(v.null(), v.string()),
 "role": v.union(v.null(), v.literal("manager"), v.literal("cashier"), v.literal("owner")),

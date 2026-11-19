@@ -81,11 +81,15 @@ export function otherFeeMessage(other: { order: Doc<'orders'> } | undefined) {
 		: `A fee for this appointment was already charged on ${orderTitle(other.order.orderNumber)}${other.order.receiptNumber !== undefined ? ` (receipt ${other.order.receiptNumber})` : ''}.`;
 }
 
+export function externalOrderPayments(payments: readonly Doc<'orderPayments'>[]) {
+  return payments.filter(payment => payment.method !== 'voucher');
+}
+
 /** The receipt's current money and business date, shared with reporting. */
-export function orderPaymentRecord(order: Doc<'orders'>, payments: Pick<Doc<'orderPayments'>, 'method' | 'amount' | 'received'>[]) {
+export function orderPaymentRecord(order: Doc<'orders'>, payments: readonly Doc<'orderPayments'>[]) {
 	return {
 		effectiveAt: order.paymentEffectiveAt ?? order.paidAt ?? null,
-		tenders: order.amendedTenders ?? payments.map(({ method, amount, received }) => ({ method, amount, ...(received !== undefined ? { received } : {}) })),
+		tenders: order.amendedTenders ?? externalOrderPayments(payments).map(({ method, amount, received }) => ({ method, amount, ...(received !== undefined ? { received } : {}) })),
 		customer: order.amendedCustomer !== undefined ? order.amendedCustomer : (order.customerSnapshot ?? null)
 	};
 }

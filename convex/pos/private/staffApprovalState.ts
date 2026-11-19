@@ -15,7 +15,16 @@ function canonical(value: unknown): string {
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
 
-export const rulesFingerprint = (rules: Awaited<ReturnType<typeof cashierRules>>) => canonical(rules);
+export function rulesFingerprint(rules: Awaited<ReturnType<typeof cashierRules>>) {
+  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund } = rules;
+  return canonical({ revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund });
+}
+
+type ApprovalRequest = Doc<'staffApprovalRequests'>;
+export type CheckoutApprovalRequest = Exclude<ApprovalRequest, { kind: 'adjustment' | 'returnItems' }>;
+export function isCheckoutApproval(request: ApprovalRequest): request is CheckoutApprovalRequest {
+  return request.kind !== 'adjustment' && request.kind !== 'returnItems';
+}
 
 type ReadCtx = MutationCtx | QueryCtx;
 
@@ -56,7 +65,7 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payl
 }
 
 /** Queries expose the effective terminal status immediately; mutations persist it when touched. */
-export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffApprovalRequests'>): Promise<Doc<'staffApprovalRequests'>['status']> {
+export async function effectiveRequestStatus(ctx: ReadCtx, request: CheckoutApprovalRequest): Promise<CheckoutApprovalRequest['status']> {
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
   const [rules, requester] = await Promise.all([
@@ -71,6 +80,6 @@ export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'or
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'pending')).take(201);
   if (requests.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   for (const request of requests) {
-    if (await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the manager request before taking payment.', requestId: request._id });
+    if (isCheckoutApproval(request) && await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the manager request before taking payment.', requestId: request._id });
   }
 }
