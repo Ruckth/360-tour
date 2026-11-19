@@ -278,6 +278,21 @@ it('reports a legacy refund unchanged and reads zero of 900 unrelated old refund
 	expect(after.documents).toBeLessThanOrEqual(5);
 });
 
+it('reports the frozen VAT on a prepaid session taxed at use without adding cash', async () => {
+	const { t, report } = setup();
+	const orderId = await t.run(async ctx => {
+		const orderId = await order(ctx, 0, { vatVersion: 2 });
+		await line(ctx, orderId, 'appointment', 0, {
+			...snapshot(0, 50_000, []),
+			terms: { ...terms, packageVatTiming: 'atUse' },
+		});
+		return orderId;
+	});
+	const result = await report(saleDay);
+	expect(result.sales).toMatchObject([{ id: orderId, collected: 0, saleValue: 0, vatBase: 50_000, vat: 3271 }]);
+	expect(result.events).toEqual([]);
+});
+
 it('projects a return-tagged appointment mirror once from the payout, keeping the original date for legacy refunds', () => {
 	const projection = projectTender({
 		refunds: [

@@ -136,8 +136,10 @@ export function projectOrderSale(lines: readonly SaleLine[]) {
 	let saleValue = 0;
 	let vatBase = 0;
 	for (const line of lines) {
+		// The booking ledger owns the accommodation charged on an attached booking row.
+		if (line.kind === 'booking') continue;
 		vatBase += line.saleSnapshot?.vatBase ?? 0;
-		if (line.kind !== 'booking') saleValue += line.saleSnapshot?.paidShare ?? lineNet(line);
+		saleValue += line.saleSnapshot?.paidShare ?? lineNet(line);
 	}
 	return { saleValue, vatBase, vat: orderTotals([{ unitPrice: vatBase, qty: 1 }]).vat };
 }

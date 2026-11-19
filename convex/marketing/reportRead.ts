@@ -210,7 +210,8 @@ export async function readMarketingReport(
 	const completed = new Map<string, ReportSale | null>();
 	function include(sale: ProjectedSale, events: ReportMoneyEvent[], projection: ReturnType<typeof projectTender>) {
 		const selected = events.filter(e => inRange(e.day));
-		const settledSale = sale.kind === 'order' && (sale.discount > 0 || (sale.saleValue ?? 0) > 0) && sale.settlementDay !== undefined && inRange(sale.settlementDay);
+		const saleActivity = sale.discount > 0 || (sale.saleValue ?? 0) > 0 || (sale.vatBase ?? 0) > 0;
+		const settledSale = sale.kind === 'order' && saleActivity && sale.settlementDay !== undefined && inRange(sale.settlementDay);
 		if (basis === 'cash' ? selected.length > 0 || settledSale : inRange(sale.createdDay)) {
 			if (data.sales.length >= 8000 || (basis === 'cash' && data.events.length + selected.length > 8000)) throw new ReadBudgetExceeded();
 			data.sales.push(sale);
@@ -315,7 +316,7 @@ export async function readMarketingReport(
 			? projectOrderSale(await rows(ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', id))))
 			: undefined;
 		const discount = bill.promotion?.discount ?? 0;
-		if (collected === 0 && refunded === 0 && discount === 0 && !saleAmounts?.saleValue) return null;
+		if (collected === 0 && refunded === 0 && discount === 0 && !saleAmounts?.saleValue && !saleAmounts?.vatBase) return null;
 		// The order's own stay, or the stay it charged when that stay already had another open order.
 		const bookingId = bill.bookingId ?? stayRows[0]?.bookingId;
 		const booking = bookingId ? await get(bookingId) : null;
