@@ -1,12 +1,11 @@
 "use client";
 
-import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useMemo } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { COMMERCE_OFF, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry } from "./backend";
-import { historyEntry, isTargetRow, targetApproval } from "./commerce-readers";
-import type { TargetApproval } from "./TargetApproval";
+import { historyEntry, receiptAttempt, receiptReturnable } from "./commerce-readers";
 
 const SKIP = "skip" as const;
 const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
@@ -14,8 +13,8 @@ const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: (
 const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
 
 /**
- * Commerce readers that have a backend so far: History, returns and edits waiting for a manager, and a
- * requester's own request. The rest stay Off (COMMERCE_OFF) until their wave lands; every sale switch
+ * Commerce readers that have a backend so far: History, the receipt's payment attempt and open
+ * return, and a requester's own request. The rest stay Off (COMMERCE_OFF) until their wave lands; every sale switch
  * is Off, so nothing new can be sold.
  */
 const convexCommerce: CommerceBackend = {
@@ -29,21 +28,15 @@ const convexCommerce: CommerceBackend = {
     if (!target || (audience === "guest" && !benefit)) return NOTHING_TO_LOAD as CustomerPage<HistoryEntry>;
     return { results, status: page.status, loadMore: page.loadMore };
   },
-  useTargetApprovals: () => {
-    const approve = useStaffAccess().capabilities.approve;
-    // One page of the queue. Order-scoped requests keep reading staffApprovals.pending.
-    const queue = usePaginatedQuery(api.pos.staffApprovals.pendingPage, approve ? {} : SKIP, { initialNumItems: 20 });
-    const rows = useMemo(() => queue.results.filter(isTargetRow), [queue.results]);
-    const details = useQueries(useMemo(() => Object.fromEntries(rows.map((row) => [row._id, { query: api.pos.staffApprovals.detail, args: { requestId: row._id } }])), [rows]));
-    return useMemo((): TargetApproval[] | undefined => {
-      if (!approve) return [];
-      if (queue.status === "LoadingFirstPage") return undefined;
-      return rows.flatMap((row) => {
-        const detail = details[row._id];
-        const view = targetApproval(row, detail instanceof Error || detail === null ? undefined : detail);
-        return view ? [view] : [];
-      });
-    }, [approve, queue.status, rows, details]);
+  // The receipt's status cards read getOrder's own projection: the same subscription ReceiptView
+  // already holds ({ orderId }), so they add no reads.
+  usePaymentAttempt: (orderId) => {
+    const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
+    return useMemo(() => (view === undefined ? undefined : view ? receiptAttempt(view) : null), [view]);
+  },
+  useReturnable: (orderId) => {
+    const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
+    return useMemo(() => (view === undefined ? undefined : view ? receiptReturnable(view) : null), [view]);
   },
   useMyApproval: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
 };
@@ -87,7 +80,9 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useLinkCandidates: ({ orderId, lineId, query }) => useQuery(api.pos.sourceReads.linkCandidates, { orderId, lineId, query: query.trim() || undefined }),
   useBusinessName: () => useQuery(api.settings.settings.publicProfile, {})?.businessName,
   useOrderApprovals: (orderId) => useQuery(api.pos.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
-  usePendingApprovals: () => useQuery(api.pos.staffApprovals.pending, useStaffAccess().capabilities.approve ? {} : SKIP),
+  // One cursor-paged compact list; only the selected request's detail is read (no per-row order or detail reads).
+  usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
+  useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
   commerce: convexCommerce,
   useActions: () => {

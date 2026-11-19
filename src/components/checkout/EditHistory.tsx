@@ -18,6 +18,9 @@ import { useCommerceCopy } from "./commerce-copy";
  * on the server; this screen also never draws staff, notes or a full code in it.
  */
 
+/** An opaque scrim over the whole staff screen while the guest looks at their history. */
+const GUEST_SCRIM = "bg-background md:bg-background backdrop-blur-none md:backdrop-blur-none";
+
 const STOCK_REASONS = new Set<string>(["received", "recount", "damaged", "theft", "lost", "returnedToStock"] satisfies StockReason[]);
 
 /** "4 → 3 sessions", "3 paid + 1 goodwill", "฿2,000 → ฿1,400", "Stock 3 → 2". */
@@ -74,7 +77,8 @@ export default function EditHistory({ target, title, onClose, audience: initial 
   const guest = audience === "guest";
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <CheckoutDialogContent panel className="gap-4" data-testid="edit-history">
+      {/* Shown to the guest, the whole screen behind the sheet is covered: no staff names, notes or codes show through (D19). */}
+      <CheckoutDialogContent panel className="gap-4" data-testid="edit-history" overlayClassName={guest ? GUEST_SCRIM : undefined} data-guest-screen={guest ? "" : undefined}>
         <DialogHeader>
           <DialogTitle className="[overflow-wrap:anywhere]">{guest ? copy.t("history.guestTitle") : title}</DialogTitle>
           <DialogDescription>{guest ? title : copy.t("buttons.editHistory")}</DialogDescription>

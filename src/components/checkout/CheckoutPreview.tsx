@@ -8,8 +8,8 @@ import { CheckoutStaffControls } from "./ApprovalsPanel";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId } from "./backend";
 import { CheckoutView } from "./CheckoutView";
 import { CommerceMessages } from "./commerce-messages";
-import { COMMERCE_RECEIPT_ID, commerceReceipt } from "./design/commerce-receipt";
-import { previewApprovals, previewTargetApprovals } from "./design/commerce-approvals";
+import { COMMERCE_RECEIPT_ID, COMMERCE_REDEMPTION_ID, commerceReceipt, commerceRedemptionReceipt } from "./design/commerce-receipt";
+import { previewDetails, previewQueue } from "./design/commerce-approvals";
 import { checkoutDesignStates, commerceDesignStates, createFixtureBackend, type CheckoutDesignState, type CommerceDesignState } from "./fixture-backend";
 import { ReceiptView } from "./ReceiptView";
 
@@ -19,12 +19,18 @@ import { ReceiptView } from "./ReceiptView";
  * Commerce picks one of the plan's commerce states (every switch Off in the dark state, as production
  * ships); without one the backend has no commerce, exactly as today's checkout.
  */
-export function CheckoutPreview({ embedded = false, initial }: { embedded?: boolean; initial?: { commerce?: CommerceDesignState; receipt?: boolean } }) {
+// The pickers are touch targets too: at least 44 × 44 px, label and select alike.
+const PICKER_LABEL = "flex min-h-11 items-center gap-2";
+const PICKER_SELECT = "h-11 min-w-11 rounded-md border border-input bg-background px-2 text-sm";
+
+const COMMERCE_RECEIPTS = new Set<OrderId>([COMMERCE_RECEIPT_ID, COMMERCE_REDEMPTION_ID]);
+
+export function CheckoutPreview({ embedded = false, initial }: { embedded?: boolean; initial?: { commerce?: CommerceDesignState; receipt?: boolean | "redemption" } }) {
   const [state, setState] = useState<CheckoutDesignState>("empty");
   const [commerce, setCommerce] = useState<CommerceDesignState | null>(initial?.commerce ?? null);
   const backend = useMemo(() => previewBackend(state, commerce), [state, commerce]);
   const [orderId, setOrderId] = useState<OrderId | null>(null);
-  const [receiptId, setReceiptId] = useState<OrderId | null>(initial?.commerce && initial.receipt ? COMMERCE_RECEIPT_ID : null);
+  const [receiptId, setReceiptId] = useState<OrderId | null>(initial?.commerce && initial.receipt ? (initial.receipt === "redemption" ? COMMERCE_REDEMPTION_ID : COMMERCE_RECEIPT_ID) : null);
 
   return (
     // ReceiptView guards refund drafts with a confirm dialog, so the standalone preview needs the provider too.
@@ -40,9 +46,9 @@ export function CheckoutPreview({ embedded = false, initial }: { embedded?: bool
           </header>
         )}
         <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2 text-sm print:hidden">
-          <label className="flex items-center gap-2">
+          <label className={PICKER_LABEL}>
             Design state
-            <select value={state} onChange={(event) => {
+            <select className={PICKER_SELECT} value={state} onChange={(event) => {
               const design = checkoutDesignStates.find(({ key }) => key === event.target.value);
               if (!design) return;
               setState(design.key);
@@ -52,12 +58,12 @@ export function CheckoutPreview({ embedded = false, initial }: { embedded?: bool
               {checkoutDesignStates.map(({ key }) => <option key={key} value={key}>{key}</option>)}
             </select>
           </label>
-          <label className="flex items-center gap-2">
+          <label className={PICKER_LABEL}>
             Commerce
-            <select data-testid="commerce-state" value={commerce ?? ""} onChange={(event) => {
+            <select className={PICKER_SELECT} data-testid="commerce-state" value={commerce ?? ""} onChange={(event) => {
               const next = commerceDesignStates.find((key) => key === event.target.value) ?? null;
               setCommerce(next);
-              if (!next && receiptId === COMMERCE_RECEIPT_ID) setReceiptId(null);
+              if (!next && receiptId && COMMERCE_RECEIPTS.has(receiptId)) setReceiptId(null);
             }}>
               <option value="">none (today)</option>
               {commerceDesignStates.map((key) => <option key={key} value={key}>{key}</option>)}
@@ -65,7 +71,9 @@ export function CheckoutPreview({ embedded = false, initial }: { embedded?: bool
           </label>
           {commerce ? (
             <>
-              <Button type="button" variant="outline" size="sm" className="h-11" onClick={() => setReceiptId(COMMERCE_RECEIPT_ID)}>Commerce receipt</Button>
+              {/* Voucher value sold, and voucher value spent: v27 never mixes them on one sale. */}
+              <Button type="button" variant="outline" size="sm" className="h-11" onClick={() => setReceiptId(COMMERCE_RECEIPT_ID)}>Commerce receipt · issued</Button>
+              <Button type="button" variant="outline" size="sm" className="h-11" onClick={() => setReceiptId(COMMERCE_REDEMPTION_ID)}>Commerce receipt · voucher spend</Button>
               <CheckoutStaffControls />
             </>
           ) : null}
@@ -98,8 +106,8 @@ export function previewBackend(state: CheckoutDesignState, commerce: CommerceDes
   if (!commerce || !base.commerce) return base;
   return {
     ...base,
-    useOrder: (id, view) => (id === COMMERCE_RECEIPT_ID ? commerceReceipt : base.useOrder(id, view)),
-    usePendingApprovals: () => previewApprovals,
-    commerce: { ...base.commerce, useTargetApprovals: () => previewTargetApprovals },
+    useOrder: (id, view) => (id === COMMERCE_RECEIPT_ID ? commerceReceipt : id === COMMERCE_REDEMPTION_ID ? commerceRedemptionReceipt : base.useOrder(id, view)),
+    usePendingApprovals: () => ({ results: previewQueue, status: "Exhausted", loadMore: () => {} }),
+    useApprovalDetail: (requestId) => (requestId ? previewDetails[requestId] ?? null : null),
   };
 }

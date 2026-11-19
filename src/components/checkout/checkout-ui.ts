@@ -156,8 +156,38 @@ export function couponRefusal(err: unknown): CouponRefusal | null {
   return { code, message: worded || (typeof message === "string" && message ? message : fallback) };
 }
 
+type MaskableReceipt = {
+  order: { title: string; voidReason?: string };
+  lines: readonly { name: string; staffName?: string; saleSnapshot?: { label: string; contents: readonly { label: string }[] } }[];
+  receiptCustomer?: { name: string } | null;
+};
+
+/**
+ * The receipt as the paper and the shared text show it: every free text a guest can read (row
+ * names, package parts, staff names, the customer and the void reason) with any voucher code
+ * masked, as on the customer display. A receipt without code-shaped text comes back unchanged.
+ */
+export function maskReceiptCodes<V extends MaskableReceipt>(view: V): V {
+  const mask = (text: string) => maskVoucherCodes(text);
+  const has = (text: string | undefined) => text !== undefined && mask(text) !== text;
+  const lineHas = (line: V["lines"][number]) => has(line.name) || has(line.staffName) || has(line.saleSnapshot?.label) || Boolean(line.saleSnapshot?.contents.some((content) => has(content.label)));
+  if (!has(view.order.title) && !has(view.order.voidReason) && !has(view.receiptCustomer?.name) && !view.lines.some(lineHas)) return view;
+  return {
+    ...view,
+    order: { ...view.order, title: mask(view.order.title), ...(view.order.voidReason !== undefined ? { voidReason: mask(view.order.voidReason) } : {}) },
+    ...(view.receiptCustomer ? { receiptCustomer: { ...view.receiptCustomer, name: mask(view.receiptCustomer.name) } } : {}),
+    lines: view.lines.map((line) => !lineHas(line) ? line : {
+      ...line,
+      name: mask(line.name),
+      ...(line.staffName !== undefined ? { staffName: mask(line.staffName) } : {}),
+      ...(line.saleSnapshot ? { saleSnapshot: { ...line.saleSnapshot, label: mask(line.saleSnapshot.label), contents: line.saleSnapshot.contents.map((content) => ({ ...content, label: mask(content.label) })) } } : {}),
+    }),
+  };
+}
+
 /** Plain-text receipt for share and copy. Tenders show what was handed over, plus change, like the printed receipt. */
 export function receiptText(view: Pick<OrderView, "order" | "lines" | "payments" | "totals" | "receiptCustomer"> & Partial<Pick<OrderView, "promotion" | "refundedAmountSatang" | "refundHistoryTruncated">> & BookingRefs & ReceiptCommerceFields, business: string, copy?: CommerceCopy) {
+  view = maskReceiptCodes(view);
   const { order, lines, payments, totals } = view;
   // Commerce rows need the Commerce copy; a receipt from before commerce never reads it.
   const commerce = copy ? receiptCommerce(view) : null;

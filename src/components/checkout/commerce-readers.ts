@@ -1,7 +1,8 @@
 import type { api } from "convex/_generated/api";
 import { editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionReturnType } from "convex/server";
-import type { EditReason, GuestFact, GuestFactKey, HistoryEntry, StockReason } from "./backend";
+import { maskVoucherCodes } from "@/components/display/voucher-mask";
+import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type EditReason, type GuestFact, type GuestFactKey, type HistoryEntry, type PaymentAttemptView, type PaymentLeg, type Returnable, type StockReason } from "./backend";
 import type { TargetApproval } from "./TargetApproval";
 
 /**
@@ -68,5 +69,77 @@ export function targetApproval(row: TargetQueueRow, detail: ApprovalDetail | und
     ...common, kind: "returnItems", target: null, adjustmentKind: null, targetLabel: null, orderId: row.orderId,
     amount: row.summary.amount ?? null,
     revisions: items ? [items.orderRevision, ...items.revisions].map(({ expected, current }) => ({ expected, current })) : [],
+  };
+}
+
+// ─── Receipt status (getOrder's paymentAttempt and activeReturn) ────────────────────────────────
+
+type OrderRead = NonNullable<FunctionReturnType<typeof api.pos.orders.getOrder>>;
+type StoredAttempt = NonNullable<OrderRead["paymentAttempt"]>;
+type StoredLeg = StoredAttempt["legs"][number];
+/** Fields a later backend may add to the projection; today staff are named by token only, which never reaches the screen. */
+type AttemptExtras = { tillLabel?: string; staffName?: string; mine?: boolean; createdAt?: number };
+
+/** A stored refusal as the screens word it; null for a code this screen doesn't know. */
+function storedRefusal(refusal: StoredAttempt["refusal"]): CommerceRefusal | null {
+  if (!refusal || !Object.hasOwn(COMMERCE_REFUSAL_MESSAGES, refusal.code)) return null;
+  return { ...(refusal.args ?? {}), code: refusal.code } as CommerceRefusal;
+}
+
+const legView = (direction: PaymentLeg["direction"]) => (leg: StoredLeg): PaymentLeg => ({
+  key: leg.key, direction, method: leg.method, amount: leg.amount, state: leg.state,
+  received: leg.received ?? null, change: leg.change ?? null, reference: leg.reference ?? null, instructedAt: leg.instructedAt ?? null,
+});
+
+/** The receipt's payment attempt card from getOrder's projection; null when the order never had one. */
+export function receiptAttempt(view: OrderRead): PaymentAttemptView | null {
+  const attempt = view.paymentAttempt;
+  if (!attempt) return null;
+  const extras = attempt as StoredAttempt & AttemptExtras;
+  return {
+    attemptId: attempt._id, orderId: view.order._id, status: attempt.status, ownerRevision: attempt.ownerRevision,
+    tillLabel: extras.tillLabel ?? "", staffName: extras.staffName ?? "", mine: extras.mine ?? false, due: attempt.due,
+    legs: [...attempt.legs.map(legView("collect")), ...(attempt.resolution?.giveBackLegs ?? []).map(legView("giveBack"))],
+    // Voucher legs aren't in the projection yet; the receipt's voucher rows name what was spent.
+    vouchers: [],
+    refusal: storedRefusal(attempt.refusal),
+    recovery: null,
+    startedAt: extras.createdAt ?? attempt.updatedAt,
+  };
+}
+
+/**
+ * The receipt's open return from getOrder's projection: each part named from its row (codes
+ * masked), each claim with its state and due date, and voucher credits by their receipt masks.
+ * A part's amount shows only when it is the whole return; nothing is recalculated here.
+ */
+export function receiptReturnable(view: OrderRead): Returnable {
+  const open = view.activeReturn;
+  if (!open || open.status !== "authorized") return { orderId: view.order._id, parts: [], open: null };
+  const lines = new Map(view.lines.map((line) => [line._id as string, line]));
+  const masks = new Map((view.voucherPayments ?? []).map((tender) => [tender.voucherId as string, tender.codeMask]));
+  const total = open.claims.reduce((sum, claim) => sum + claim.amount, 0) + open.voucherCredits.reduce((sum, credit) => sum + credit.paid + credit.goodwill, 0);
+  return {
+    orderId: view.order._id,
+    parts: [],
+    open: {
+      returnId: open._id, orderId: view.order._id, status: open.status, operatorRevision: open.operatorRevision,
+      operatorName: "", mine: false, approvalId: open.approvalId ?? null, createdAt: open.createdAt, total,
+      parts: open.parts.map((part, index) => {
+        const line = lines.get(part.lineId);
+        const content = part.kind === "content" ? line?.saleSnapshot?.contents.find((item) => item.contentKey === part.contentKey) : undefined;
+        return {
+          partKey: `${index}:${part.kind}:${part.lineId}`,
+          label: maskVoucherCodes([line?.name, content?.label].filter(Boolean).join(" · ")),
+          units: "units" in part ? part.units : 1,
+          amount: open.parts.length === 1 ? total : null,
+        };
+      }),
+      claims: open.claims.map((claim) => ({
+        key: claim.key, method: claim.method, amount: claim.amount, state: claim.state,
+        reference: claim.reference ?? null, instructedAt: claim.instructedAt ?? null, dueAt: claim.dueAt,
+      })),
+      voucherCredits: open.voucherCredits.map((credit) => ({ voucherId: credit.voucherId, maskedCode: masks.get(credit.voucherId) ?? "", paid: credit.paid, goodwill: credit.goodwill, newVoucher: false })),
+    },
   };
 }
