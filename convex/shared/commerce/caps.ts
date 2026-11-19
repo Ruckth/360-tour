@@ -58,7 +58,7 @@ function assertCounts<Field extends string>(limits: Record<Field, number>, count
 /**
  * Counts describe the proposed state, including already present rows or expanded return parts.
  * Count a funding voucher once across both its paid and goodwill buckets. Pass zero stay/night
- * counts for legacy-only stay orders and count only nights being collected in a commerce sale.
+ * counts for pre-commerce stay-only orders and count only nights being collected in a commerce sale.
  */
 export function assertCommerceCaps(input: CommerceCapsInput): void {
   switch (input.kind) {

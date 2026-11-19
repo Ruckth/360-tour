@@ -10,7 +10,7 @@
  * splitPointsSpend / pointsExpireOn — monetary treatment and expiry of already-valued loyalty points.
  * apportionMoney / allocateSalePayments / allocateGoodwillDiscount — deterministic sale allocations.
  * splitPackagePrice — freeze D1 content values and shares after staff discount.
- * freezeRowVatBase / freezePackageVatBases / receiptVat — frozen v2 bases and legacy VAT.
+ * freezeRowVatBase / freezePackageVatBases / receiptVat — frozen v2 bases and pre-commerce (v1) VAT.
  * incrementalShare / quoteSessionReturn / quotePackageVoucherReturn — cumulative reversal math.
  * assertStandaloneVoucherPrice / quoteStandaloneVoucherReturn — D8 pricing and mistaken-sale exception.
  * splitBenefitUse — separate paid and goodwill use so undo can restore both.

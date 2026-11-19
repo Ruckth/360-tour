@@ -241,14 +241,14 @@ it('projects mixed commerce rows, reconciles paid and goodwill voucher value, an
 	expect(await t.run(ctx => ctx.db.get(seeded.creditId))).toMatchObject({ state: 'reversed', eligibleNet: 0, approvedNet: 0, revision: 1 });
 });
 
-it('reports a legacy refund unchanged and reads zero of 900 unrelated old refunds', async () => {
+it('reports a pre-commerce refund unchanged and reads zero of 900 unrelated old refunds', async () => {
 	const { t } = setup();
 	const refundFields = { currency: 'THB', method: 'cash' as const, reason: 'Return', createdBy: email, createdByEmail: email };
 	const orderId = await t.run(async ctx => {
 		const orderId = await order(ctx, 90_000);
 		const lineId = await line(ctx, orderId, 'extra', 90_000);
 		await payment(ctx, orderId, { method: 'cash', amount: 90_000 });
-		await ctx.db.insert('orderRefunds', { ...refundFields, orderId, lineId, amount: 5000, createdAt: soldAt, businessDate: saleDay, idempotencyKey: 'legacy' });
+		await ctx.db.insert('orderRefunds', { ...refundFields, orderId, lineId, amount: 5000, createdAt: soldAt, businessDate: saleDay, idempotencyKey: 'pre-commerce' });
 		return orderId;
 	});
 	const args = { from: saleDay, to: saleDay, basis: 'cash' as const };
@@ -293,7 +293,7 @@ it('reports the frozen VAT on a prepaid session taxed at use without adding cash
 	expect(result.events).toEqual([]);
 });
 
-it('projects a return-tagged appointment mirror once from the payout, keeping the original date for legacy refunds', () => {
+it('projects a return-tagged appointment mirror once from the payout, keeping the original date for pre-commerce refunds', () => {
 	const projection = projectTender({
 		refunds: [
 			{ method: 'card', date: redeemedAt, amount: 260_000, returnId: 'appointment-mirror' },

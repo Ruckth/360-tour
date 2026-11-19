@@ -66,7 +66,7 @@ export function projectTender({
 		if (!isExternalRefund(refund)) continue;
 		moneyOut.push({ kind: 'refund', day: tenderDay(refund.date), method: refund.method, amount: refund.amount });
 	}
-	const legacyRefunded = moneyOut.reduce((sum, movement) => sum + movement.amount, 0);
+	const existingRefunded = moneyOut.reduce((sum, movement) => sum + movement.amount, 0);
 	let payoutAmount = 0;
 	for (const payout of payouts) {
 		moneyOut.push({ kind: 'refund', day: payout.businessDate, method: payout.method, amount: payout.amount });
@@ -76,7 +76,7 @@ export function projectTender({
 		moneyIn,
 		moneyOut,
 		collected: roundMoney(moneyIn.reduce((sum, movement) => sum + movement.amount, 0)),
-		refunded: roundMoney(legacyRefunded + (recordedPayoutTotal ?? payoutAmount)),
+		refunded: roundMoney(existingRefunded + (recordedPayoutTotal ?? payoutAmount)),
 	};
 }
 
