@@ -12,6 +12,7 @@ import { APPROVAL_TTL_MS } from '../../shared/staffTypes';
 import { resortTodayIso } from '../../shared/time';
 import type { adjustmentEffect, adjustmentFields, adjustmentKind, adjustmentTarget } from '../validators';
 import { transferHistorySourceKey } from './history';
+import { bumpOrderCommerceRevision } from './orderRevision';
 
 export type AdjustmentTarget = Infer<typeof adjustmentTarget>;
 type AdjustmentKind = Infer<typeof adjustmentKind>;
@@ -147,6 +148,8 @@ function validateCommand(command: AdjustmentCommand) {
 }
 
 async function assertRevisions(ctx: MutationCtx, command: AdjustmentCommand) {
+  const orderIds = new Set<Id<'orders'>>();
+  const handoverIds: Id<'handovers'>[] = [];
   for (const { target, revision } of [{ target: command.target, revision: command.expectedRevision }, ...(command.relatedRevisions ?? [])]) {
     const row = await measured(ctx, () => ctx.db.get(target.targetId));
     if (!row) refuse('ADJUSTMENT_TARGET_MISSING', 'The edited record no longer exists.');
@@ -160,7 +163,16 @@ async function assertRevisions(ctx: MutationCtx, command: AdjustmentCommand) {
     if ('pendingReturnId' in row && row.pendingReturnId) {
       refuse('ADJUSTMENT_RETURN_PENDING', 'Finish the open return before editing this record.');
     }
+    if ('orderNumber' in row) orderIds.add(row._id);
+    if ('effectiveExpiresAt' in row) orderIds.add(row.source.orderId);
+    if ('grantServiceIds' in row) orderIds.add(row.orderId);
+    if ('withGuest' in row) {
+      handoverIds.push(row._id);
+      orderIds.add(row.orderId);
+      if (row.successorOrderId) orderIds.add(row.successorOrderId);
+    }
   }
+  return { orderIds, handoverIds };
 }
 
 type CashierRule = 'benefitEdit' | 'sessionWaive' | 'paymentFix';
@@ -221,7 +233,8 @@ function requestResult(request: Approval): RequestedAdjustment {
 
 async function applyChange(
   ctx: MutationCtx, actor: StaffActor, command: AdjustmentCommand,
-  change: Change, requesterKey: string, fingerprint: string, approvalId?: Approval['_id'],
+  change: Change, requesterKey: string, fingerprint: string, ownership: Awaited<ReturnType<typeof assertRevisions>>,
+  approvalId?: Approval['_id'],
 ): Promise<AppliedAdjustment> {
   const { target, kind } = command;
   const recordedAt = Date.now();
@@ -258,6 +271,16 @@ async function applyChange(
   if (requiredEffect && !effects.some(effect => effect.kind === requiredEffect)) {
     throw new Error(`The ${target.targetType} adjustment did not write its ledger entry`);
   }
+  if (kind === 'moveRoomCharge') {
+    for (const handoverId of ownership.handoverIds) {
+      const row = await measured(ctx, () => ctx.db.get(handoverId));
+      if (row) {
+        ownership.orderIds.add(row.orderId);
+        if (row.successorOrderId) ownership.orderIds.add(row.successorOrderId);
+      }
+    }
+  }
+  await bumpOrderCommerceRevision(ctx, ownership.orderIds);
   const row = { ...audit, ...(effects.length ? { effects } : {}) };
   assertAuditSize(row);
   const adjustmentId = await ctx.db.insert('commerceAdjustments', row);
@@ -296,9 +319,9 @@ export async function adjust(
   }
   // New reasons are checked after replay so recorded edits keep their original receipt.
   assertKnownReasonCode(command);
-  await assertRevisions(ctx, command);
+  const ownership = await assertRevisions(ctx, command);
   const change = await writer.prepare(ctx, actor, command);
-  if (direct) return await applyChange(ctx, actor, command, change, requester, fingerprint);
+  if (direct) return await applyChange(ctx, actor, command, change, requester, fingerprint, ownership);
 
   const grant = await requesterGrant(ctx, requester);
   if (grant?.role !== 'cashier' || !rules) refuse('ADJUSTMENT_FORBIDDEN', 'Cashier access changed.');
@@ -382,9 +405,9 @@ export async function executeApprovedAdjustment(
   adjustmentPermission(requester, command);
   await writer.assertScope(ctx, requester, command);
   assertKnownReasonCode(command);
-  await assertRevisions(ctx, command);
+  const ownership = await assertRevisions(ctx, command);
   const change = await writer.prepare(ctx, actor, command);
-  const result = await applyChange(ctx, actor, command, change, requesterKey, fingerprint, request._id);
+  const result = await applyChange(ctx, actor, command, change, requesterKey, fingerprint, ownership, request._id);
   reserveWrites(ctx, 1);
   await ctx.db.patch(request._id, {
     status: 'applied', resolvedAt: Date.now(), approverEmail: actor.email, approverTokenIdentifier: actor.tokenIdentifier,

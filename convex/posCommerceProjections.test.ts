@@ -363,6 +363,90 @@ it('projects an open return with custody and gives link and correction previews 
   expect(history.page).toMatchObject([{ method: 'voucher', voucherId, returnId: expect.any(String), amount: 1000 }]);
 });
 
+it('refuses direct and approved paid-sale voids on voucher receipts and preserves an authorized return', async () => {
+  const { t, owner, view } = setup();
+  const email = 'cashier@example.com';
+  const cashier = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'cashier' });
+  await owner.mutation(api.auth.staffAccess.setGrant, { email, role: 'cashier' });
+  await cashier.mutation(api.auth.staffAccess.claimInvite, {});
+  const { orderId, lineId, voucherId } = await t.run(async ctx => {
+    const { branchId } = await retail(ctx);
+    const orderId = await order(ctx, 60000);
+    const lineId = await line(ctx, orderId, 'service', 60000);
+    const issueOrder = await order(ctx, 50000, { orderNumber: 2 });
+    const issueLine = await line(ctx, issueOrder, 'voucher', 50000);
+    const { voucherId } = await issueVoucher(ctx, { kind: 'sale', orderId: issueOrder, lineId: issueLine }, branchId);
+    return { orderId, lineId, voucherId };
+  });
+  const input = { orderId, reason: 'Mistaken sale' };
+  const requestVoid = () => cashier.mutation(api.pos.staffApprovals.create, { ...input, payload: { kind: 'voidPaidSale' } });
+  const { requestId } = await requestVoid();
+  const approveVoid = () => owner.mutation(api.pos.staffApprovals.approve, { requestId });
+  const directVoid = () => owner.mutation(api.pos.commands.voidOrder.voidOrder, input);
+  await t.run(ctx => ctx.db.insert('orderPayments', {
+    orderId, method: 'voucher', voucherId, amount: 50000, createdBy: 'cashier', createdAt: now, idempotencyKey: 'voucher-tender',
+  }));
+  const unsupported = { data: { code: 'COMMERCE_CORRECTION_UNAVAILABLE' } };
+  await expect(directVoid()).rejects.toMatchObject(unsupported);
+  await expect(approveVoid()).rejects.toMatchObject(unsupported);
+  const returnId = await t.run(async ctx => {
+    await ctx.db.patch(orderId, { revision: 2, returnedTotal: 0 });
+    return await ctx.db.insert('orderReturns', {
+      orderId, key: 'open-return', fingerprint: 'return request', status: 'authorized',
+      parts: [{ kind: 'line', lineId, units: 1 }], effectsApplied: [], claims: [],
+      voucherCredits: [{ voucherId, paid: 50000, goodwill: 0 }], operator: 'cashier', tillId: 'Till 1', operatorRevision: 0,
+      reason: 'Guest return', createdAt: now,
+    });
+  });
+  const inProgress = { data: { code: 'RETURN_IN_PROGRESS', returnId } };
+  await expect(directVoid()).rejects.toMatchObject(inProgress);
+  await expect(approveVoid()).rejects.toMatchObject(inProgress);
+  expect(await view(orderId)).toMatchObject({
+    order: { status: 'paid' }, activeReturn: { _id: returnId, status: 'authorized' }, voucherPayments: [{ voucherId, amount: 50000 }],
+  });
+  expect(await t.run(ctx => ctx.db.get(returnId))).toMatchObject({ status: 'authorized' });
+});
+
+it('projects existing goodwill credit even without a voucher tender or code mask and reserves newVoucher for replacements', async () => {
+  const { t, view } = setup();
+  const { orderId, returnId, voucherId, expiredVoucherId } = await t.run(async ctx => {
+    const { branchId } = await retail(ctx);
+    const issueOrder = await order(ctx, 50000);
+    const issueLine = await line(ctx, issueOrder, 'voucher', 50000);
+    const source = { kind: 'sale' as const, orderId: issueOrder, lineId: issueLine };
+    const { voucherId } = await issueVoucher(ctx, source, branchId);
+    const { voucherId: expiredVoucherId } = await issueVoucher(ctx, source, branchId);
+    await ctx.db.patch(expiredVoucherId, { status: 'expired' });
+    const orderId = await order(ctx, 60000, { orderNumber: 2, returnedTotal: 0 });
+    const lineId = await line(ctx, orderId, 'service', 60000);
+    const returnId = await ctx.db.insert('orderReturns', {
+      orderId, key: 'goodwill-return', fingerprint: 'return request', status: 'authorized',
+      parts: [{ kind: 'line', lineId, units: 1 }], effectsApplied: [], claims: [],
+      voucherCredits: [
+        { voucherId, paid: 0, goodwill: 10000 },
+        { voucherId: expiredVoucherId, paid: 50000, goodwill: 0, destination: { kind: 'newVoucher' } },
+      ],
+      operator: 'cashier', tillId: 'Till 1', operatorRevision: 0, reason: 'Guest return', createdAt: now,
+    });
+    return { orderId, returnId, voucherId, expiredVoucherId };
+  });
+  const first = await view(orderId);
+  expect(first.voucherPayments).toBeUndefined();
+  expect(first.activeReturn?.voucherCredits).toEqual([
+    { voucherId, paid: 0, goodwill: 10000, destination: { kind: 'existingVoucher', voucherId, codeMask } },
+    { voucherId: expiredVoucherId, paid: 50000, goodwill: 0, destination: { kind: 'newVoucher' } },
+  ]);
+  await t.run(async ctx => {
+    await ctx.db.patch(voucherId, { activeCodeId: undefined });
+    await ctx.db.patch(returnId, { voucherCredits: [
+      { voucherId, paid: 0, goodwill: 10000, destination: { kind: 'existingVoucher', voucherId, codeMask: rawCode } },
+    ] });
+  });
+  const second = await view(orderId);
+  expect(second.activeReturn?.voucherCredits[0].destination).toEqual({ kind: 'existingVoucher', voucherId, codeMask: null });
+  expect(JSON.stringify(second)).not.toContain(rawCode);
+});
+
 it('blocks receipt correction, link candidates and direct amendments on a mixed product and service receipt', async () => {
   const { t, owner, view } = setup();
   const { orderId, lineId } = await t.run(async ctx => {

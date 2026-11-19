@@ -9,7 +9,7 @@ import {
   adjustmentApprovalPayload, checkoutApprovalKind, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
   orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, paymentAttemptReview,
   paymentAttemptRefusal, paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
-  returnPart, returnSourceOwner, reviewedVoucher,
+  returnPart, returnSourceOwner, returnVoucherCredit,
 } from './validators';
 
 const approvalFields = {
@@ -65,7 +65,8 @@ export const posTables = {
       kind: checkoutApprovalKind,
       payload: storedApprovalPayload,
     }),
-    v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus }),
+    v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus,
+      commerceRevision: v.optional(v.number()) }),
     v.object({
       ...approvalFields,
       kind: v.literal('adjustment'),
@@ -74,6 +75,7 @@ export const posTables = {
   )).index('by_orderId_and_status', ['orderId', 'status'])
     .index('by_orderId_and_createdAt', ['orderId', 'createdAt'])
     .index('by_status_and_createdAt', ['status', 'createdAt'])
+    .index('by_status_and_expiresAt', ['status', 'expiresAt'])
     .index('by_status_and_kind_and_expiresAt', ['status', 'kind', 'expiresAt'])
     .index('by_kind_and_requesterTokenIdentifier_and_payload_clientKey', ['kind', 'requesterTokenIdentifier', 'payload.clientKey']),
 
@@ -116,6 +118,8 @@ export const posTables = {
 		hasItems: v.boolean(),
 		/** Bumped on every change to the lines or customer; settleOrder refuses a payment reviewed on an older one. */
 		revision: v.number(),
+		/** Advances in the transaction that changes this order's commerce effects. */
+		commerceRevision: v.optional(v.number()),
 		/** Sequential, issued once when paid and never reused (also not after a void). */
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
@@ -314,7 +318,7 @@ export const posTables = {
     parts: v.array(returnPart),
     effectsApplied: v.array(returnEffect),
     claims: v.array(returnClaim),
-    voucherCredits: v.array(reviewedVoucher),
+    voucherCredits: v.array(returnVoucherCredit),
     status: orderReturnStatus,
     operator: v.string(), tillId: v.string(), operatorRevision: v.number(),
     approvalId: v.optional(v.id('staffApprovalRequests')),
