@@ -284,10 +284,13 @@ The inventory test compares every source registration with this table and requir
 | `settings/cashierRules.updateCashierRules` | `staffMutation` | Owner-only team/settings capability from the authoritative role model. | Existing entity existence, validation, state/revision and record checks remain in handlers/helpers. |
 | `pos/staffApprovals.create` | `staffMutation` | Staff capability 'checkout'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.approve` | `staffMutation` | Staff capability 'approve'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
-| `pos/staffApprovals.cancel` | `authenticatedMutation` | Server-derived Clerk identity; record-specific or invitation authorization stays in the handler. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
+| `pos/staffApprovals.cancel` | `staffMutation` | Staff capability 'checkout'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.reject` | `staffMutation` | Staff capability 'approve'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.forOrder` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.pending` | `staffQuery` | Staff capability 'approve'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
+| `pos/staffApprovals.pendingPage` | `staffQuery` | Staff capability 'approve'. | Bounded pending queue filtered by expiry and approval review policy. |
+| `pos/staffApprovals.detail` | `staffQuery` | Staff capability 'approve'. | Per-request review policy, followed by kind-specific detail and freshness checks. |
+| `pos/staffApprovals.myStatus` | `staffQuery` | Staff capability 'checkout'. | Requester token ownership and kind-specific status checks. |
 
 HTTP registrations (all pass through the maintenance-gated `httpAction` in `auth/model.ts`):
 

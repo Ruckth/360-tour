@@ -103,7 +103,7 @@ function command(voucherId: Id<'vouchers'>, extra: Partial<AdjustmentCommand> = 
   return {
     target: { targetType: 'voucher', targetId: voucherId }, kind: 'addGoodwill',
     input: { delta: 2500, scope: 'counter' }, expectedRevision: 0, clientKey: 'test-key',
-    reasonCode: 'goodwill', reasonText: 'Customer service', ...extra,
+    reasonCode: 'serviceRecovery', reasonText: 'Customer service', ...extra,
   };
 }
 
@@ -137,7 +137,7 @@ it('returns the original edit for the same payload and refuses a different paylo
     before: { goodwill: 0, voucherCode: 'GV-••••-WXYZ' },
     after: { goodwill: 2500, voucherCode: 'GV-••••-QRST' },
     revisionBefore: 0, revisionAfter: 1, paidLiabilityDelta: 0, goodwillFaceValueDelta: 2500, quantityDelta: 0,
-    reasonCode: 'goodwill', reasonText: 'Customer service', businessDate: resortTodayIso(stored.audit[0].recordedAt),
+    reasonCode: 'serviceRecovery', reasonText: 'Customer service', businessDate: resortTodayIso(stored.audit[0].recordedAt),
     effects: [{ kind: 'voucherEntry', id: stored.ledger[0]._id }],
   });
 });
@@ -236,7 +236,8 @@ it('rechecks the reviewed revision when the manager applies a request', async ()
 it('enforces required reasons, Other text, reason length and the row byte limit', async () => {
   const { t, manager, voucherId } = await fixture();
   for (const edits of [
-    { reasonCode: '' }, { reasonCode: 'Other', reasonText: '   ' }, { reasonText: 'a'.repeat(501) },
+    { reasonCode: '' }, { reasonCode: 'unknown' }, { reasonCode: 'received' },
+    { reasonCode: 'other', reasonText: '   ' }, { reasonText: 'a'.repeat(501) },
   ]) {
     await expect(manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), command(voucherId, edits), voucherWriter)))
       .rejects.toMatchObject({ data: { code: 'INVALID_ADJUSTMENT_REASON' } });
@@ -252,6 +253,16 @@ it('enforces required reasons, Other text, reason length and the row byte limit'
   expect(await t.run(ctx => ctx.db.query('commerceAdjustments').first())).toBeNull();
   expect(await t.run(ctx => ctx.db.query('voucherEntries').first())).toBeNull();
   expect(await t.run(ctx => ctx.db.get(voucherId))).toMatchObject({ revision: 0, goodwillBalance: 0 });
+});
+
+it('records Other with a trimmed explanation', async () => {
+  const { t, manager, voucherId } = await fixture();
+  const edit = command(voucherId, { reasonCode: 'other', reasonText: '  Guest was charged twice  ' });
+  const result = await manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), edit, voucherWriter));
+  if (result.status !== 'applied') throw new Error('Expected a direct edit');
+  expect(await t.run(ctx => ctx.db.get(result.adjustmentId))).toMatchObject({
+    reasonCode: 'other', reasonText: 'Guest was charged twice',
+  });
 });
 
 it.each(['voucher', 'grant'] as const)('keeps %s guest history within the latest ownership period', async targetType => {

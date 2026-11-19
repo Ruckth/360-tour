@@ -3,6 +3,7 @@
 import { createCouponRefusalReporter, type RefusalNote } from "@/lib/booking/coupon-refusals";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
+import type { commerceRefusalCodes, editReasons, stockReasons } from "convex/shared/commerce/reasons";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from "react";
 import type { TargetApproval } from "./TargetApproval";
@@ -412,8 +413,8 @@ type TargetTables = {
 export type AdjustTarget = { [T in Adjustment["targetType"]]: { targetType: T; targetId: Id<TargetTables[T]> } }[Adjustment["targetType"]];
 export type AdjustTargetType = AdjustTarget["targetType"];
 export type AdjustKind = Adjustment["kind"];
-export type EditReason = "healthPause" | "serviceRecovery" | "spellingCorrection" | "lostCode" | "guestRequest" | "staffMistake" | "priceChange" | "other";
-export type StockReason = "received" | "recount" | "damaged" | "theft" | "lost" | "returnedToStock";
+export type EditReason = (typeof editReasons)[number];
+export type StockReason = (typeof stockReasons)[number];
 export type GuestConsent = NonNullable<Adjustment["consent"]>;
 /** One typed input per edit kind; Take back and payment fixes keep their own commands. */
 export type AdjustInput =
@@ -520,7 +521,7 @@ type RefusalArgs = {
   KEY_CONFLICT: object;
   RECEIPT_TOO_OLD: object;
 };
-export type CommerceRefusalCode = keyof RefusalArgs;
+export type CommerceRefusalCode = (typeof commerceRefusalCodes)[number];
 export type CommerceRefusal = { [C in CommerceRefusalCode]: { code: C } & RefusalArgs[C] }[CommerceRefusalCode];
 
 /** Every refusal code and its message under Commerce.refusals. */

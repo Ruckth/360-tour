@@ -285,6 +285,7 @@ import type * as shared_commerce_caps from "../shared/commerce/caps.js";
 import type * as shared_commerce_eligibility from "../shared/commerce/eligibility.js";
 import type * as shared_commerce_index from "../shared/commerce/index.js";
 import type * as shared_commerce_pricing from "../shared/commerce/pricing.js";
+import type * as shared_commerce_reasons from "../shared/commerce/reasons.js";
 import type * as shared_commerce_returns from "../shared/commerce/returns.js";
 import type * as shared_commerce_settings from "../shared/commerce/settings.js";
 import type * as shared_commerce_vat from "../shared/commerce/vat.js";
@@ -615,6 +616,7 @@ declare const fullApi: ApiFromModules<{
   "shared/commerce/eligibility": typeof shared_commerce_eligibility;
   "shared/commerce/index": typeof shared_commerce_index;
   "shared/commerce/pricing": typeof shared_commerce_pricing;
+  "shared/commerce/reasons": typeof shared_commerce_reasons;
   "shared/commerce/returns": typeof shared_commerce_returns;
   "shared/commerce/settings": typeof shared_commerce_settings;
   "shared/commerce/vat": typeof shared_commerce_vat;
