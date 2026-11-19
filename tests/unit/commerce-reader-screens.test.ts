@@ -294,6 +294,9 @@ describe("live receipt status (getOrder's projection)", () => {
       .toEqual([{ ...credit, maskedCode: "", newVoucher: true }]);
     // Before the backend says where it goes, the receipt's masks decide, as before.
     expect(receiptReturnable(plain({ activeReturn: { ...activeReturn, voucherCredits: [credit] } })).open!.voucherCredits).toEqual([{ ...credit, maskedCode: "", newVoucher: false }]);
+    // An existing voucher whose mask the server couldn't read still isn't called new.
+    const unknown = { ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "existingVoucher", voucherId: "fxvchgold", codeMask: null } }] };
+    expect(receiptReturnable(plain({ activeReturn: unknown })).open!.voucherCredits).toEqual([{ ...credit, maskedCode: "", newVoucher: false, existingVoucher: true }]);
     // A full code sent by mistake is masked.
     const leaked = { ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "existingVoucher", voucherId: "fxvchgold", codeMask: "gv7k2m7pax" } }] };
     expect(receiptReturnable(plain({ activeReturn: leaked })).open!.voucherCredits[0].maskedCode).toBe("GV-••••-7PAX");
@@ -307,6 +310,8 @@ describe("live receipt status (getOrder's projection)", () => {
     expect(await render(existing)).toContain("฿100 back to voucher GV-••••-7PAX");
     expect(await render(existing)).not.toContain("new voucher");
     expect(await render({ ...activeReturn, voucherCredits: [{ ...credit, destination: { kind: "newVoucher" } }] })).toContain("฿100 on a new voucher (90 days)");
+    expect(await render(unknown)).toContain("฿100 back to voucher GV-••••");
+    expect(await render(unknown)).not.toContain("new voucher");
   });
 
   it("renders the live cards on the real receipt from the same order read", async () => {
@@ -526,17 +531,13 @@ describe("Approvals", () => {
     const base = previewBackend("spa", "live");
     const rows = base.usePendingApprovals().results;
     const soonest = rows.reduce((a, b) => (a.expiresAt < b.expiresAt ? a : b));
-    const marked = rows.map((row) => (row._id === soonest._id ? { ...row, status: "stale" } : row)) as typeof rows;
+    const marked = rows.map((row) => (row._id === soonest._id ? { ...row, actionable: false } : row));
     const { backend, details } = counted({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: marked }) });
     await openPanel(backend);
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
     expect(items()).toHaveLength(3);
     expect(details.has(soonest._id)).toBe(false);
     expect(details.size).toBe(1);
-    // The other mark the queue may send counts the same way.
-    const flagged = rows.map((row) => (row._id === soonest._id ? { ...row, actionable: false } : row)) as typeof rows;
-    await render({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: flagged }) }, createElement(CheckoutStaffControls));
-    expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
   });
 
   it("shows only today's requests without the commerce readers", async () => {

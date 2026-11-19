@@ -145,12 +145,6 @@ export function receiptAttempt(view: OrderRead): PaymentAttemptView | null {
 }
 
 /**
- * Where a voucher credit goes, once getOrder's activeReturn says (W2 backend): back onto a voucher
- * the guest already holds, or onto a new 90-day one. Without it, the receipt's voucher masks decide.
- */
-type CreditDestination = { kind: "newVoucher" } | { kind: "existingVoucher"; voucherId: string; codeMask: string };
-
-/**
  * The receipt's open return from getOrder's projection: each part named from its row (codes
  * masked), each claim with its state and due date, and voucher credits by their receipt masks.
  * A part's amount shows only when it is the whole return; nothing is recalculated here.
@@ -182,7 +176,8 @@ export function receiptReturnable(view: OrderRead): Returnable {
         reference: claim.reference ?? null, instructedAt: claim.instructedAt ?? null, dueAt: claim.dueAt,
       })),
       voucherCredits: open.voucherCredits.map((credit) => {
-        const destination = (credit as typeof credit & { destination?: CreditDestination }).destination;
+        // Where it goes: back onto a voucher the guest holds (its mask may be unknown), or a new 90-day one.
+        const { destination } = credit;
         const existing = destination?.kind === "existingVoucher" ? destination : null;
         return {
           voucherId: credit.voucherId, paid: credit.paid, goodwill: credit.goodwill,

@@ -55,14 +55,10 @@ const PANEL_TARGETS = "[&_button]:min-h-11 [&_button]:min-w-11";
 const APPROVAL_PAGE = 20;
 
 /**
- * Whether a queue row can still be decided. The queue may mark a request from before commerce that
- * no longer matches its order (`status: "stale"` or `actionable: false`); a row without either
- * mark counts as waiting, as it always has.
+ * Whether a queue row can still be decided: the queue marks a request from before commerce whose
+ * rules or business day have moved on `actionable: false`. It still lists, but isn't counted or opened first.
  */
-export function isActionable(row: ApprovalQueueRow) {
-  const marks = row as { status: string; actionable?: boolean };
-  return marks.status !== "stale" && marks.actionable !== false;
-}
+export const isActionable = (row: ApprovalQueueRow) => row.actionable !== false;
 
 /**
  * Pages read on their own while none of what's loaded can be approved: a manager's own requests
