@@ -153,7 +153,7 @@ export async function voucherCodeMask(ctx: ReadCtx, voucher: Doc<'vouchers'>) {
 	const { activeCodeId } = voucher;
 	if (!activeCodeId) return null;
 	const code = await readOrderProjection(ctx, () => ctx.db.get(activeCodeId));
-	return code?.voucherId === voucher._id && code.status === 'active' && code.mask !== code.code ? code.mask : null;
+	return code?.voucherId === voucher._id && code.status === 'active' && code.mask && !code.mask.includes(code.code) ? code.mask : null;
 }
 
 export function correctionPreviewBlocker(commerce: boolean, activeReturn: Doc<'orderReturns'> | null) {

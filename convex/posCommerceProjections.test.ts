@@ -77,7 +77,7 @@ async function retail(ctx: MutationCtx) {
   });
   const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'Robe · Gold', price: 129000, status: 'active', revision: 0 });
   const branchId = await ctx.db.insert('branches', { key: 'default' });
-  return { branchId, variantId };
+  return { branchId, productId, variantId };
 }
 
 async function issueVoucher(ctx: MutationCtx, source: Doc<'vouchers'>['source'], branchId: Id<'branches'>) {
@@ -113,14 +113,26 @@ it('preserves pre-commerce receipt and display VAT with absent or unrecognized V
 
 it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and masked codes', async () => {
   const { t, view, display } = setup();
-  const { orderId, voucherExpiry, grantExpiry, handoverId } = await t.run(async ctx => {
-    const { branchId, variantId } = await retail(ctx);
+  const { orderId, draftId, voucherExpiry, grantExpiry, handoverId } = await t.run(async ctx => {
+    const { branchId, productId, variantId } = await retail(ctx);
     const orderId = await order(ctx, 690000, { vatVersion: 2, returnedTotal: 113251 });
     const lineId = await line(ctx, orderId, 'package', 690000, { detail: 'Private package note' });
     const packageId = await ctx.db.insert('packages', { name: 'Gold Wellness', status: 'active', sort: 0, revision: 1 });
-    const packageVersionId = await ctx.db.insert('packageVersions', {
-      packageId, version: 1, name: 'Gold Wellness', price: 690000, validityDays: 180, allowTransfer: true, contents: [], estimatedSplit: [],
+    const serviceId = await ctx.db.insert('services', {
+      slug: 'spa', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 120000,
+      currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
     });
+    const packageVersionId = await ctx.db.insert('packageVersions', {
+      packageId, version: 1, name: 'Gold Wellness', price: 690000, validityDays: 180, allowTransfer: true,
+      contents: [
+        { kind: 'session', contentKey: 'massage', units: 5, serviceIds: [serviceId] },
+        { kind: 'chooseProduct', contentKey: 'robe', units: 1, productId },
+        { kind: 'voucher', contentKey: 'gift', faceValue: 50000 },
+      ],
+      estimatedSplit: [{ contentKey: 'massage', amount: 526749 }, { contentKey: 'robe', amount: 113251 }, { contentKey: 'gift', amount: 50000 }],
+    });
+    const draftId = await order(ctx, 690000, { orderNumber: 2, status: 'draft', due: 690000, paidAt: undefined, receiptNumber: undefined });
+    await line(ctx, draftId, 'package', 690000, { name: 'Gold Wellness', packageVersionId });
     const ownerId = await ctx.db.insert('customers', { name: 'Payer', createdBy: 'owner', createdAt: now, updatedAt: now });
     const grantExpiry = benefitExpiresAt(now, 'sessions', DEFAULT_COMMERCE_SETTINGS)!;
     const grantId = await ctx.db.insert('sessionGrants', {
@@ -161,7 +173,11 @@ it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and
       })),
     } });
     await ctx.db.insert('orderPayments', { orderId, method: 'card', amount: 690000, createdAt: now, createdBy: 'owner', idempotencyKey: 'gold-payment' });
-    return { orderId, voucherExpiry, grantExpiry, handoverId };
+    return { orderId, draftId, voucherExpiry, grantExpiry, handoverId };
+  });
+  expect((await view(draftId)).lines[0].draftPackage).toMatchObject({
+    contents: [{ kind: 'session', units: 5 }, { kind: 'chooseProduct', units: 1 }, { kind: 'voucher', faceValue: 50000 }],
+    estimatedSplit: [{ amount: 526749 }, { amount: 113251 }, { amount: 50000 }],
   });
   const receipt = await view(orderId);
   expect(receipt.totals).toMatchObject({ total: 690000, vatBase: 640000, vat: 41869 });

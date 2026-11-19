@@ -40,6 +40,17 @@ async function readHandovers(ctx: QueryCtx, order: Doc<'orders'>, lines: readonl
 	return [...current, ...parent.filter(row => row.successorOrderId === order._id)];
 }
 
+async function readDraftPackages(ctx: QueryCtx, lines: readonly Doc<'orderLines'>[]) {
+	const ids = new Set(lines.flatMap(line =>
+		line.kind === 'package' && !line.saleSnapshot && line.packageVersionId ? [line.packageVersionId] : []));
+	const versions = await Promise.all([...ids].slice(0, COMMERCE_LIMITS.sale.packageRows).map(
+		id => readOrderProjection(ctx, () => ctx.db.get(id)),
+	));
+	return new Map(versions.flatMap(version => version ? [[version._id, {
+		contents: version.contents, estimatedSplit: version.estimatedSplit,
+	}] as const] : []));
+}
+
 async function readIssuedBenefits(ctx: QueryCtx, lines: readonly Doc<'orderLines'>[]) {
 	const contents = lines.flatMap(line => (line.saleSnapshot?.contents ?? []).map(content => ({ lineId: line._id, ...content })));
 	const grants = contents.flatMap(({ lineId, contentKey, grantId }) => grantId ? [{ lineId, contentKey, grantId }] : [])
@@ -105,7 +116,11 @@ export const getOrder = staffQuery({
 		]);
 		const links = [...activeLinks, ...unlinkedHistory];
 		const voucherPayments = voucherOrderPayments(payments);
-		const [handovers, issuedBenefits] = await Promise.all([readHandovers(ctx, order, lines), readIssuedBenefits(ctx, lines)]);
+		const [handovers, issuedBenefits, draftPackages] = await Promise.all([
+			readHandovers(ctx, order, lines),
+			readIssuedBenefits(ctx, lines),
+			open ? readDraftPackages(ctx, lines) : null,
+		]);
 		const totals = receiptTotals(order, lines);
 		const commerce = lines.some(isCommerceLine) || voucherPayments.length > 0 || handovers.length > 0 || order.returnedTotal !== undefined;
 		const correctionBlocker = settled ? correctionPreviewBlocker(commerce, activeReturn) : null;
@@ -146,11 +161,13 @@ export const getOrder = staffQuery({
 					? Math.max(0, lineNet(line) - refunded) : 0,
 			};
 			const goodwillDiscount = lineGoodwillDiscount(line);
+			const draftPackage = !line.saleSnapshot && line.packageVersionId ? draftPackages?.get(line.packageVersionId) : undefined;
 			rows.push({
 				...line,
 				name: line.saleSnapshot?.label ?? line.name,
 				net: lineNet(line) - goodwillDiscount,
 				...(goodwillDiscount ? { goodwillDiscount } : {}),
+				...(draftPackage ? { draftPackage } : {}),
 				...refundAmounts,
 				imageUrl: photoKey ? await photos.get(photoKey) : undefined,
 				// A paid row keeps the name it was issued with; an open row shows the therapist's current name.
