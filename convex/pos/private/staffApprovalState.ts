@@ -104,6 +104,22 @@ export function canReviewApproval(actor: StaffActor, request: ApprovalRequest) {
     adjustmentKind !== 'updateSettings' && adjustmentKind !== 'shorten' && adjustmentKind !== 'narrowServices';
 }
 
+/** Convex cursors are bound to the index range, so keep its expiry cutoff across a page window. */
+export function approvalPageWindow(cursor: string | null, endCursor: string | null | undefined, now: number) {
+  const boundary = cursor ?? endCursor;
+  const cutoff = boundary == null ? now : Number(/^([0-9]+):/.exec(boundary)?.[1]);
+  if (!Number.isSafeInteger(cutoff) || cutoff > now) throw new ConvexError('InvalidCursor: Reopen the approvals queue.');
+  const prefix = `${cutoff}:`;
+  const unwrap = (value: string) => {
+    if (!value.startsWith(prefix)) throw new ConvexError('InvalidCursor: Reopen the approvals queue.');
+    return value.slice(prefix.length);
+  };
+  return {
+    cutoff, cursor: cursor === null ? null : unwrap(cursor), endCursor: endCursor == null ? endCursor : unwrap(endCursor),
+    wrap: (value: string) => prefix + value,
+  };
+}
+
 export async function readApprovalDocument<T>(ctx: ReadCtx, read: () => Promise<T>) {
   const budget = readBudget(ctx);
   budget.range();
@@ -263,6 +279,24 @@ export function encodeReturnApprovalReview(review: Omit<Infer<typeof returnRevie
   return JSON.stringify({ version: 1, ...review });
 }
 
+/** Capture from the same transaction and documents as the quote. Execution still checks every target. */
+export function returnApprovalCheckpoint(
+  order: Doc<'orders'>, review: Parameters<typeof encodeReturnApprovalReview>[0], handovers: readonly Doc<'handovers'>[],
+) {
+  const byId = new Map(handovers.map(row => [row._id, row]));
+  for (const ref of review.revisions) {
+    if (ref.table !== 'handovers') continue;
+    const row = byId.get(ref.id);
+    if (!row || row.revision !== ref.revision || (row.orderId !== order._id && row.successorOrderId !== order._id)) {
+      throw new ConvexError({ code: 'RETURN_STALE', message: 'Review the current return targets before requesting approval.' });
+    }
+  }
+  return {
+    orderRevision: order.revision, commerceRevision: order.commerceRevision ?? 0,
+    orderFingerprint: encodeReturnApprovalReview(review),
+  };
+}
+
 function parseReturnReview(ctx: ReadCtx, request: ReturnRequest) {
   if (!request.orderFingerprint || request.orderFingerprint.length > 32 * 1024) return null;
   let value: unknown;
@@ -306,21 +340,28 @@ export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, requ
     ? review.rows.filter(row => lineIds.has(row.lineId))
     : (await Promise.all([...lineIds].map(id => getApprovalTarget(ctx, id))))
       .flatMap(line => line?.orderId === request.orderId ? [lineView(line)] : []);
-  const targets = review?.revisions.slice(0, availableDetailReads(ctx, actor)) ?? [];
+  // A checkpoint covers all handovers owned by this order. Shared stock, vouchers,
+  // grants and appointments can change on other receipts and are compared directly.
+  const hasCheckpoint = request.commerceRevision !== undefined;
+  const directTargets = review?.revisions.filter(ref => !hasCheckpoint || ref.table !== 'handovers') ?? [];
+  const checked = review !== null && directTargets.length <= availableDetailReads(ctx, actor);
+  const targets = checked ? directTargets : [];
   const revisions = await Promise.all(targets.map(async ref => ({
     table: ref.table, id: ref.id, expected: ref.revision, current: revisionOf(await getApprovalTarget(ctx, ref.id)),
   })));
   const orderRevision = {
     expected: request.orderRevision, current: revisionOf(order),
     expectedCorrection: review?.correctionRevision, currentCorrection: order ? order.correctionRevision ?? 0 : null,
+    expectedCommerce: request.commerceRevision, currentCommerce: order ? order.commerceRevision ?? 0 : null,
   };
-  const stale = !authorityCurrent || !validParts || !order || order.status !== 'paid' ||
+  const stale = !checked || !authorityCurrent || !validParts || !order || order.status !== 'paid' ||
     orderRevision.current !== orderRevision.expected ||
     (orderRevision.expectedCorrection !== undefined && orderRevision.expectedCorrection !== orderRevision.currentCorrection) ||
+    (hasCheckpoint && orderRevision.expectedCommerce !== orderRevision.currentCommerce) ||
     revisions.some(ref => ref.current !== ref.expected);
   const status = baseStatus === 'pending' && stale ? 'stale' : baseStatus;
   const freshness = baseStatus !== 'pending' ? 'resolved' as const
-    : review && targets.length === review.revisions.length ? 'checked' as const : 'partial' as const;
+    : checked ? 'checked' as const : 'partial' as const;
   checkDetailReads(ctx, actor);
   return {
     status, freshness, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,

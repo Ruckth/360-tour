@@ -173,7 +173,7 @@ export const commerceTables = {
 
   vouchers: defineTable({
     faceValue: v.number(), paidBalance: v.number(), goodwillBalance: v.number(),
-    issuedExpiresAt: v.number(), effectiveExpiresAt: v.number(), pause: v.optional(benefitPause),
+    issuedExpiresAt: v.union(v.number(), v.null()), effectiveExpiresAt: v.union(v.number(), v.null()), pause: v.optional(benefitPause),
     status: voucherStatus, branchId: v.id('branches'), source: voucherSource,
     name: v.optional(v.string()), customerId: v.optional(v.id('customers')),
     activeCodeId: v.optional(v.id('voucherCodes')), revision: v.number(),

@@ -80,6 +80,11 @@ export const paymentExternalLeg = v.object({
   instructedAt: v.optional(v.number()),
 });
 export const reviewedVoucher = v.object({ voucherId: v.id('vouchers'), paid: v.number(), goodwill: v.number() });
+const returnVoucherDestination = v.union(
+  v.object({ kind: v.literal('newVoucher') }),
+  v.object({ kind: v.literal('existingVoucher'), voucherId: v.id('vouchers'), codeMask: v.union(v.string(), v.null()) }),
+);
+export const returnVoucherCredit = v.object({ ...reviewedVoucher.fields, destination: v.optional(returnVoucherDestination) });
 export const paymentAttemptReview = v.object({
   revision: v.number(),
   due: v.number(),

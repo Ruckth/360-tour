@@ -28,7 +28,7 @@ describe("History rows from the live backend", () => {
 
 describe("Returns and edits waiting for a manager", () => {
   const edit: TargetQueueRow = {
-    _id: id("fxappr3"), kind: "adjustment", requesterEmail: "nok@example.com", createdAt: 1, expiresAt: 2, status: "pending",
+    _id: id("fxappr3"), kind: "adjustment", requesterEmail: "nok@example.com", createdAt: 1, expiresAt: 2, status: "pending", actionable: true,
     target: { targetType: "grant", targetId: "fxgrant" as Id<"sessionGrants"> }, label: "grant", summary: { adjustmentKind: "extend" },
   };
   const ret = {

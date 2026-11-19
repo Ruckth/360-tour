@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { omit } from 'convex-helpers';
 import { ConvexError } from 'convex/values';
 import { expect, it } from 'vitest';
 import { api } from '../../_generated/api';
@@ -109,7 +110,7 @@ function command(voucherId: Id<'vouchers'>, extra: Partial<AdjustmentCommand> = 
 }
 
 it('returns the original edit for the same payload and refuses a different payload under that key', async () => {
-  const { t, manager, voucherId } = await fixture();
+  const { t, manager, voucherId, orderId } = await fixture();
   const edit = command(voucherId);
   const result = await manager.run(async ctx => {
     const actor = await requireStaff(ctx, 'checkout');
@@ -131,6 +132,7 @@ it('returns the original edit for the same payload and refuses a different paylo
     ledger: await ctx.db.query('voucherEntries').collect(),
   }));
   expect(stored.voucher).toMatchObject({ paidBalance: 50_000, goodwillBalance: 2500, revision: 1 });
+  expect(await t.run(ctx => ctx.db.get(orderId))).toMatchObject({ revision: 1, commerceRevision: 1 });
   expect(stored.ledger).toHaveLength(1);
   expect(stored.audit).toHaveLength(1);
   expect(stored.audit[0]).toMatchObject({
@@ -155,6 +157,33 @@ it('refuses a stale primary or related revision before writing', async () => {
   }
   expect(await t.run(ctx => ctx.db.query('commerceAdjustments').first())).toBeNull();
   expect(await t.run(ctx => ctx.db.query('voucherEntries').first())).toBeNull();
+});
+
+it('advances the commerce revision for both orders when a room charge moves', async () => {
+  const { t, manager, orderId, lineId } = await fixture();
+  const { handoverId, destinationId, destinationLineId } = await t.run(async ctx => {
+    const order = (await ctx.db.get(orderId))!;
+    const line = (await ctx.db.get(lineId))!;
+    const destinationId = await ctx.db.insert('orders', { ...omit(order, ['_id', '_creationTime']), orderNumber: 2 });
+    const destinationLineId = await ctx.db.insert('orderLines', { ...omit(line, ['_id', '_creationTime']), orderId: destinationId });
+    const handoverId = await ctx.db.insert('handovers', {
+      kind: 'room_bill', orderId, lineId, unitPrice: 50000, quantity: 1, withGuest: 1,
+      backSellable: 0, backDamaged: 0, paid: 0, unpaid: 1, status: 'open', movementIds: [], clientKey: 'room-post', revision: 0,
+    });
+    return { handoverId, destinationId, destinationLineId };
+  });
+  await manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), {
+    target: { targetType: 'handover', targetId: handoverId }, kind: 'moveRoomCharge', input: { orderId: destinationId },
+    expectedRevision: 0, clientKey: 'move-room-post', reasonCode: 'staffMistake',
+  }, {
+    assertScope: async () => {},
+    prepare: async () => ({ before: { orderId }, after: { orderId: destinationId }, apply: async ({ revisionAfter }) => {
+      await ctx.db.patch(handoverId, { orderId: destinationId, lineId: destinationLineId, revision: revisionAfter });
+      return [];
+    } }),
+  }));
+  const orders = await t.run(ctx => Promise.all([ctx.db.get(orderId), ctx.db.get(destinationId)]));
+  expect(orders).toMatchObject([{ commerceRevision: 1 }, { commerceRevision: 1 }]);
 });
 
 it('checks scope and role before looking up a replay', async () => {
@@ -187,7 +216,7 @@ it('uses the stored benefitEdit and sessionWaive cashier rules', async () => {
 });
 
 it('replays a target-scoped request and applies it at most once through manager approval', async () => {
-  const { t, manager, cashier, voucherId } = await fixture();
+  const { t, manager, cashier, voucherId, orderId } = await fixture();
   const edit = command(voucherId);
   const request = await cashier.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), edit, voucherWriter));
   if (request.status !== 'approvalRequired') throw new Error('Expected manager approval');
@@ -215,6 +244,7 @@ it('replays a target-scoped request and applies it at most once through manager 
     target: edit.target, requester: 'cashier', clientKey: edit.clientKey,
   } });
   expect(stored.request).not.toHaveProperty('orderId');
+  expect(await t.run(ctx => ctx.db.get(orderId))).toMatchObject({ revision: 1, commerceRevision: 1 });
   expect(stored.audit).toHaveLength(1);
   expect(stored.ledger).toHaveLength(1);
   expect(stored.audit[0]).toMatchObject({
