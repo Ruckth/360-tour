@@ -15,10 +15,13 @@ const jsonOut = jsonIndex >= 0 ? args[jsonIndex + 1] : undefined;
 // Budgets use the CI integration build (isolated backend and test Clerk tenant), including the shared app shell.
 // Limits allow normal variation in this build
 // while catching a renderer-sized regression in the property editor entry.
+// /admin/checkout: origin/main 1d932256 measured 600.4 KiB gzip / 523.9 KiB Brotli (34 chunks) in a local
+// production build on 20 Nov 2026. Checkout commerce (plan v27) may add at most 10 KiB; later screens lazy-load.
 const routeBudgetsKiB = new Map([
   ["/[locale]/(home)", 285],
   ["/[locale]/rooms/[id]", 285],
   ["/admin/properties/[id]", 430],
+  ["/admin/checkout", 534],
 ]);
 const checkBudgets = args.includes("--check-budgets");
 const routesIndex = args.indexOf("--routes");

@@ -9,12 +9,16 @@ import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/bac
 import { orderPath, parseCheckoutSource, receiptPath } from "@/components/checkout/checkout-source";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
+import { useCheckoutTiming } from "@/components/checkout/timing-gate";
 import { errorText } from "@/lib/staff-bookings";
 
 export default function AdminCheckoutPage() {
+  // ?timing=1: the staff-only speed readout (p95 per checkout action on this device).
+  const timing = useCheckoutTiming(convexCheckoutBackend);
   return (
-    <CheckoutBackendProvider backend={convexCheckoutBackend}>
+    <CheckoutBackendProvider backend={timing.backend}>
       <CheckoutPage />
+      {timing.readout}
     </CheckoutBackendProvider>
   );
 }

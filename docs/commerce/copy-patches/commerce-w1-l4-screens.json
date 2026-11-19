@@ -1,0 +1,180 @@
+{
+  "Commerce.receipt.voucherTender": {
+    "en": "Gift voucher {code}",
+    "th": "บัตรกำนัล {code}"
+  },
+  "Commerce.receipt.goodwill": {
+    "en": "Goodwill credit"
+  },
+  "Commerce.receipt.sessionUsed": {
+    "en": "Session used · was {price}",
+    "th": "ใช้สิทธิ์ 1 ครั้ง · ราคาปกติ {price}"
+  },
+  "Commerce.receipt.notTaxInvoice": {
+    "en": "Voucher sale · not a tax invoice",
+    "th": "ขายบัตรกำนัล · ไม่ใช่ใบกำกับภาษี"
+  },
+  "Commerce.receipt.payment": {
+    "en": "Payment",
+    "th": "การชำระเงิน"
+  },
+  "Commerce.receipt.attempt.collecting": {
+    "en": "In progress"
+  },
+  "Commerce.receipt.attempt.settled": {
+    "en": "Paid",
+    "th": "ชำระแล้ว"
+  },
+  "Commerce.receipt.attempt.refused": {
+    "en": "Money taken · sale not saved",
+    "th": "รับเงินแล้ว · ยังไม่บันทึกการขาย"
+  },
+  "Commerce.receipt.attempt.recovering": {
+    "en": "Being sorted out"
+  },
+  "Commerce.receipt.attempt.resolved": {
+    "en": "Sorted out"
+  },
+  "Commerce.receipt.attempt.cancelled": {
+    "en": "Cancelled",
+    "th": "ยกเลิกแล้ว"
+  },
+  "Commerce.receipt.attemptBy": {
+    "en": "{till} · {staff}",
+    "th": "{till} · {staff}"
+  },
+  "Commerce.history.showStaff": {
+    "en": "Staff view"
+  },
+  "Commerce.history.close": {
+    "en": "Close",
+    "th": "ปิด"
+  },
+  "Commerce.edits.notYet": {
+    "en": "Editing opens in a later update. History is up to date."
+  },
+  "Commerce.approvals.stale": {
+    "en": "Changed since asked"
+  },
+  "Commerce.approvals.staleHelp": {
+    "en": "The item changed after this was asked. A new request is needed."
+  },
+  "Commerce.approvals.revision": {
+    "en": "Expected revision {expected}, now {current}"
+  },
+  "Commerce.approvals.returnItems": {
+    "en": "asks to return items · {amount}"
+  },
+  "Commerce.approvals.edit": {
+    "en": "asks to {what} · {target}"
+  },
+  "Commerce.approvals.notYet": {
+    "en": "Decide this once returns and edits open at checkout."
+  },
+  "Commerce.approvals.targets.product": {
+    "en": "Product",
+    "th": "สินค้า"
+  },
+  "Commerce.approvals.targets.variant": {
+    "en": "Product option"
+  },
+  "Commerce.approvals.targets.package": {
+    "en": "Package",
+    "th": "แพ็กเกจ"
+  },
+  "Commerce.approvals.targets.voucherTemplate": {
+    "en": "Voucher design"
+  },
+  "Commerce.approvals.targets.service": {
+    "en": "Service",
+    "th": "บริการ"
+  },
+  "Commerce.approvals.targets.property": {
+    "en": "Room rate"
+  },
+  "Commerce.approvals.targets.voucher": {
+    "en": "Gift voucher",
+    "th": "บัตรกำนัล"
+  },
+  "Commerce.approvals.targets.grant": {
+    "en": "Package sessions"
+  },
+  "Commerce.approvals.targets.stock": {
+    "en": "Stock",
+    "th": "สต็อก"
+  },
+  "Commerce.approvals.targets.handover": {
+    "en": "Room charge"
+  },
+  "Commerce.approvals.targets.order": {
+    "en": "Receipt",
+    "th": "ใบเสร็จ"
+  },
+  "Commerce.approvals.targets.settings": {
+    "en": "Checkout rules"
+  },
+  "Commerce.approvals.what.publish": {
+    "en": "publish for future sales"
+  },
+  "Commerce.approvals.what.editCatalogue": {
+    "en": "edit for future sales"
+  },
+  "Commerce.approvals.what.extend": {
+    "en": "extend"
+  },
+  "Commerce.approvals.what.pause": {
+    "en": "pause"
+  },
+  "Commerce.approvals.what.resume": {
+    "en": "resume"
+  },
+  "Commerce.approvals.what.addGoodwill": {
+    "en": "add goodwill"
+  },
+  "Commerce.approvals.what.removeGoodwill": {
+    "en": "remove goodwill"
+  },
+  "Commerce.approvals.what.rename": {
+    "en": "fix the name"
+  },
+  "Commerce.approvals.what.reissue": {
+    "en": "reissue the code"
+  },
+  "Commerce.approvals.what.disable": {
+    "en": "disable the voucher"
+  },
+  "Commerce.approvals.what.transfer": {
+    "en": "pass sessions on"
+  },
+  "Commerce.approvals.what.addService": {
+    "en": "add a service that counts"
+  },
+  "Commerce.approvals.what.substituteService": {
+    "en": "swap a service"
+  },
+  "Commerce.approvals.what.narrowServices": {
+    "en": "narrow the services"
+  },
+  "Commerce.approvals.what.shorten": {
+    "en": "shorten the date"
+  },
+  "Commerce.approvals.what.adjustStock": {
+    "en": "adjust stock"
+  },
+  "Commerce.approvals.what.takeBack": {
+    "en": "take back"
+  },
+  "Commerce.approvals.what.moveRoomCharge": {
+    "en": "move to another room"
+  },
+  "Commerce.approvals.what.amendPayment": {
+    "en": "correct the payment"
+  },
+  "Commerce.approvals.what.updateSettings": {
+    "en": "change checkout rules"
+  },
+  "Display.giftVoucherCode": {
+    "en": "Gift voucher {code}",
+    "th": "บัตรกำนัล {code}"
+  }
+}
