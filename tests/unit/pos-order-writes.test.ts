@@ -220,7 +220,13 @@ describe("checkout order screen", () => {
 
     // 12 × 1,200 plus the stay's 26,000 still owed.
     await act(async () => button("Card").click());
-    await act(async () => button("Confirm ฿40,400 card").click());
+    const confirm = await vi.waitFor(async () => {
+      await settle();
+      const tender = button("Confirm ฿40,400 card");
+      expect(tender).toBeDefined();
+      return tender;
+    });
+    await act(async () => confirm.click());
     await settle();
 
     // Extras after payment go on the stay's own Order #1041, which shows the stay.

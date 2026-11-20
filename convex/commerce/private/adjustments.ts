@@ -191,8 +191,15 @@ export async function cashierAdjustmentRoute(ctx: MutationCtx, actor: StaffActor
   return actor.role === 'cashier' && (await approvalRules(ctx))[rule] !== 'cashier' ? 'approval' : 'direct';
 }
 
-function adjustmentPermission(actor: StaffActor, { target, kind }: AdjustmentCommand): 'direct' | 'approval' | CashierRule {
+function adjustmentPermission(actor: StaffActor, { target, kind, input }: AdjustmentCommand): 'direct' | 'approval' | CashierRule {
   if (!actor.capabilities.checkout || !actor.role) refuse('ADJUSTMENT_FORBIDDEN', 'Staff access is required.');
+  if (target.targetType === 'settings' && kind === 'updateSettings' && Object.keys(input).length === 1 &&
+      (typeof input.paused === 'boolean' || input.paymentsMode === 'attempts')) {
+    if (!actor.capabilities.approve) {
+      refuse('ADJUSTMENT_FORBIDDEN', 'This payment rollout edit requires a manager.');
+    }
+    return 'direct';
+  }
   if (target.targetType === 'settings' || kind === 'updateSettings' || kind === 'shorten' || kind === 'narrowServices') {
     if (actor.role !== 'owner') refuse('ADJUSTMENT_FORBIDDEN', 'This edit requires the owner.');
     return 'direct';

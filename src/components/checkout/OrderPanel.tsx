@@ -2,10 +2,8 @@
 import { CloseNothingDue } from "./CloseNothingDue";
 import { satangToBaht } from "convex/shared/money";
 import { parseMoneyInput } from "@/lib/money-input";
-
-
 import { ArrowLeft, ChevronDown, ChevronRight, Minus, Plus, ReceiptText, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -20,17 +18,13 @@ import { ReasonField } from "@/components/ui/reason-field";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { isTimeValue } from "@/lib/dates/values";
-import {
-  resortIsoDate,
-  resortTime24,
-  useNow,
-} from "@/lib/staff-bookings";
-import { staffDate } from "@/lib/staff-time";
+import { useNow } from "@/lib/staff-bookings";
+import { serviceScheduleValue, serviceStartLabel } from "./service-row-dates";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/shared/orderMath";
 import type { ApprovalPayload } from "convex/shared/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
-import { useCheckoutBackend, type ApprovalRequest, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
+import { useCheckoutBackend, useCommerce, type ApprovalRequest, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto } from "./CheckoutPhoto";
@@ -40,9 +34,13 @@ import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
 import { OrderHistory } from "./OrderHistory";
 import { DiscardOrderDialog } from "./OrderLifecycle";
 import { useCheckoutDraft, useCheckoutDraftState, useCheckoutDiscountNotice, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
-import { PayPanel } from "./PayPanel";
+import { preloadPayDesk } from "./pay-desk-backend";
+import { payMode, resumeMode } from "./pay-desk";
 import { discountOverLimit, formatPercent, needsApproval, shownRequest } from "./staff-approvals";
 import type { Run } from "./useOrderWrites";
+
+const PayPanel = lazy(() => import("./PayPanel").then((module) => ({ default: module.PayPanel })));
+const OrderPayNotice = lazy(() => import("./PayDeskNotices").then((module) => ({ default: module.OrderPayNotice })));
 
 /** A request the cashier is about to send: what it is, its exact payload, and a reason to start from. */
 type Ask = { what: string; payload: ApprovalPayload; reason?: string };
@@ -50,25 +48,7 @@ type Ask = { what: string; payload: ApprovalPayload; reason?: string };
 const EMPTY_LINES: OrderLine[] = [];
 const EMPTY_TOTALS: OrderTotals = { subtotal: 0, discount: 0, coupon: 0, total: 0, vat: 0, deposit: 0, due: 0 };
 
-/** Optional schedule fields remain blank until staff chooses them. */
-export function serviceScheduleValue(line: Pick<OrderLine, "schedule">): { date: string; time: string } {
-  if (line.schedule) return { date: line.schedule.date ?? "", time: line.schedule.time ?? "" };
-  return { date: "", time: "" };
-}
-
-/** A legacy row's start: "14:00" today, "Mon 26 Oct, 14:00" on another day this year, with the year otherwise. */
-export function serviceStartLabel(startAt: number, now: number) {
-  const time = resortTime24(startAt);
-  const day = resortIsoDate(startAt);
-  const today = resortIsoDate(now);
-  if (day === today) return time;
-  return `${staffDate(startAt, { weekday: true, now })}, ${time}`;
-}
-
-/**
- * Whether the order can be paid now: it has rows, none whose booking changed, no coupon that stopped
- * fitting and no request waiting for a manager (settleOrder refuses all of these, whoever pays).
- */
+/** Whether the order can be paid now: rows, no changed booking, no unfit coupon, no pending request (settleOrder refuses these too). */
 export function usePayState(view: OrderView | null | undefined) {
   const now = useNow();
   const lines = view?.lines ?? EMPTY_LINES;
@@ -78,8 +58,17 @@ export function usePayState(view: OrderView | null | undefined) {
   const couponBlocked = Boolean(view?.promotion?.problem) && lines.length > 0;
   const approvals = useCheckoutBackend().useOrderApprovals(view?.order._id ?? null);
   const waiting = approvals?.some((request) => request.status === "pending") ?? false;
-  const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting;
-  return { now, stale, couponBlocked, approvals, waiting, cannotPay };
+  // A payment in progress (on any till), the checkout pause, or a till that must reload first.
+  const commerce = useCommerce();
+  const mode = payMode(commerce.useAccess(), commerce);
+  const connected = commerce.useConnected();
+  useEffect(() => { if (mode === "attempts") preloadPayDesk(); }, [mode]);
+  const attemptActive = Boolean(view?.paymentAttempt);
+  const payDesk = attemptActive || mode === "paused" || mode === "reload" || mode === "loading";
+  // On the new payments a payment starts on the server: nothing starts while disconnected.
+  const offline = mode === "attempts" && !connected;
+  const cannotPay = !lines.length || stale > 0 || couponBlocked || waiting || payDesk || offline;
+  return { now, stale, couponBlocked, approvals, waiting, cannotPay, payMode: mode, attemptActive, payDesk, offline };
 }
 
 /**
@@ -98,6 +87,7 @@ export function OrderPanel({
   onClose,
   initialPay,
   discountNotice,
+  onOpenOrder,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -110,6 +100,8 @@ export function OrderPanel({
   /** Open on this tender's panel instead of the rows (the phone's "Cash ฿X"). */
   initialPay?: TenderMethod;
   discountNotice?: ReactNode;
+  /** Opens another order (the stay's Shop & spa bill after Pay the room first). */
+  onOpenOrder?: (orderId: OrderId) => void;
 }) {
   const { confirmDiscard } = useCheckoutDraft();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -128,7 +120,13 @@ export function OrderPanel({
   const totals = view?.totals ?? EMPTY_TOTALS;
   const orderId = view?.order._id;
   const itemCount = lines.reduce((n, line) => n + line.qty, 0);
-  const { now, stale, couponBlocked, approvals, waiting, cannotPay } = usePayState(view);
+  const { now, stale, couponBlocked, approvals, waiting, cannotPay, payMode: mode, attemptActive, payDesk, offline } = usePayState(view);
+  // Part of a split already taken: the header shows what is still to collect.
+  const attemptTaken = view?.paymentAttempt?.status === "collecting"
+    ? view.paymentAttempt.legs.reduce((sum, leg) => sum + (leg.state === "taken" ? leg.amount : 0), 0) : 0;
+  // While a payment holds the order its rows can't change; a swap after a refusal reopens them.
+  const swapping = view?.paymentAttempt?.status === "refused" && view.paymentAttempt.refusal?.code === "swap_requested";
+  const rowsLocked = attemptActive && !swapping;
   // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
   const payLocked = cannotPay || busy;
   const payLockedRef = useRef(payLocked);
@@ -170,6 +168,18 @@ export function OrderPanel({
     setPaying(mode);
   }
 
+  /** Reopens this till's own payment where it was (v27 Resume). */
+  function resumePayment() {
+    if (view?.paymentAttempt) setPaying(resumeMode(view.paymentAttempt.legs));
+  }
+
+  // The payment lock, pause or reload screen in place of the tenders (lazy: only when one applies).
+  const payNotice = view ? (
+    <Suspense fallback={<div className="grid h-14 place-items-center"><Spinner /></div>}>
+      <OrderPayNotice view={view} mode={mode} onResume={resumePayment} autoResume={!swapping} onCheckPrevious={() => setPaying("card")} />
+    </Suspense>
+  ) : null;
+
   async function clear() {
     if (!await confirmDiscard()) return;
     setConfirm(null);
@@ -195,8 +205,8 @@ export function OrderPanel({
             <ReceiptText className="size-[18px]" strokeWidth={1.5} />
           </span>}
           <div className="min-w-0 flex-1">
-            <h2 className={cn("min-w-0 truncate leading-tight font-semibold lining-nums", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? "Balance due" : title}</h2>
-            {paying ? <p className="mt-1 text-[40px] leading-tight font-semibold font-sans tabular-nums">{formatMoney(totals.due)}</p> : null}
+            <h2 className={cn("min-w-0 truncate leading-tight font-semibold lining-nums", paying ? "text-xs font-normal text-muted-foreground" : "font-serif text-2xl")} data-testid="order-panel-title">{paying ? (attemptTaken ? "Still to collect" : "Balance due") : title}</h2>
+            {paying ? <p className="mt-1 text-[40px] leading-tight font-semibold font-sans tabular-nums" data-testid="pay-header-due">{formatMoney(totals.due - attemptTaken)}</p> : null}
             <p className="text-[13px] text-muted-foreground">
               {paying ? `${title} · ` : ""}{itemCount} {itemCount === 1 ? "item" : "items"}
               {/* Beside the catalog the strip above already names the customer; the phone sheet covers the strip. */}
@@ -208,10 +218,13 @@ export function OrderPanel({
         <div className="ml-auto flex shrink-0 max-w-full flex-wrap max-sm:flex-nowrap items-center justify-end gap-2">
         {paying ? (
           <Button variant="ghost" size="sm" className="min-h-11 text-sm" disabled={paymentSubmitting} onClick={() => {
+            // The tender pressed in the panel; while the panel is still loading, the one it opened with.
             const active = panelRef.current?.querySelector<HTMLButtonElement>('[aria-label="Take payment by"] [aria-pressed="true"]');
-            const label = active?.getAttribute("aria-label") ?? active?.textContent?.trim();
+            const opened = paying === "split" ? "Split payment" : paying && paying !== "none" ? TENDER_LABELS[paying].short : undefined;
+            const label = active ? active.getAttribute("aria-label") ?? active.textContent?.trim() : opened;
             setPaying(null);
-            setTimeout(() => [...(panelRef.current?.querySelectorAll("button") ?? [])].find((button) => getComputedStyle(button).display !== "none" && ((button.getAttribute("aria-label") ?? button.textContent?.trim()) === label || (label === "Cash" && button.textContent?.trim().startsWith("Cash ฿"))))?.focus());
+            // While paused the tenders are replaced: back on the control that opened the panel (Check previous payment).
+            setTimeout(() => ([...(panelRef.current?.querySelectorAll("button") ?? [])].find((button) => getComputedStyle(button).display !== "none" && ((button.getAttribute("aria-label") ?? button.textContent?.trim()) === label || (label === "Cash" && button.textContent?.trim().startsWith("Cash ฿")))) ?? panelRef.current?.querySelector<HTMLButtonElement>("[data-pay-return]"))?.focus());
           }}><ArrowLeft aria-hidden className="size-4" /> Order</Button>
         ) : (
           <>
@@ -259,14 +272,16 @@ export function OrderPanel({
 
       {discountNotice}
       {paying && view ? (
-        <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onSubmittingChange={setPaymentSubmitting} onBack={() => setPaying(null)} onPaid={onPaid} />
+        <Suspense fallback={<div className="grid flex-1 place-items-center"><Spinner /></div>}>
+          <PayPanel key={`${view.order._id}:${paying}`} mode={paying} view={view} onSubmittingChange={setPaymentSubmitting} onBack={() => setPaying(null)} onPaid={onPaid} onOpenOrder={onOpenOrder} />
+        </Suspense>
       ) : (
         <>
           {/* Items first; their change history follows them. With no items the hint fills the space above it. */}
           <div className={cn("flex flex-1 flex-col", moreBelow
             ? "min-h-[calc(min(14rem,28dvh)+1.5rem)] [@media(max-height:36rem)]:min-h-[calc(max(3rem,14dvh)+1.5rem)]"
             : "min-h-[min(14rem,28dvh)] [@media(max-height:36rem)]:min-h-[max(3rem,14dvh)]")}>
-          <div ref={itemsRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          <div ref={itemsRef} className="flex min-h-0 flex-1 flex-col overflow-y-auto" inert={rowsLocked || undefined}>
             {lines.length === 0 ? (
               <div className="grid flex-1 place-items-center px-6 py-8 text-center text-sm text-muted-foreground">
                 <div className="grid justify-items-center gap-2"><ReceiptText aria-hidden className="size-8 text-muted-foreground/60" /><p className="text-[15px] font-medium text-foreground">No items yet</p><p className="text-[13px] text-pretty">Choose an item to add it.</p></div>
@@ -295,7 +310,7 @@ export function OrderPanel({
           {moreBelow ? <div className="pointer-events-none flex min-h-6 shrink-0 items-center justify-center py-1"><span className="flex items-center gap-1 rounded-full bg-card px-2 text-xs text-muted-foreground"><ChevronDown aria-hidden className="size-3" />More item options</span></div> : null}
           </div>
 
-          {lines.length || (shown && !shownLine) ? <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5 [@media(max-height:32rem)]:pt-1 [@media(max-height:32rem)]:pb-[calc(0.25rem+env(safe-area-inset-bottom))]">
+          {lines.length || attemptActive || (shown && !shownLine) ? <div className="@container shrink-0 border-t border-border/70 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:px-5 lg:pb-5 [@media(max-height:32rem)]:pt-1 [@media(max-height:32rem)]:pb-[calc(0.25rem+env(safe-area-inset-bottom))]">
             {/* Outside the empty-order branch: a request for the first custom item starts on an empty order. */}
             {shown && !shownLine ? <ApprovalInline key={shown._id} request={shown} className="mb-2" /> : null}
             {lines.length ? <>
@@ -325,6 +340,9 @@ export function OrderPanel({
                   {stale === 1 ? "A booking row changed" : `${stale} booking rows changed`}. Update {stale === 1 ? "it" : "them"} before taking payment.
                 </p>
               ) : null}
+              {offline && !payDesk ? (
+                <p role="status" data-testid="pay-offline-order" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Offline. Payments start again once the connection is back.</p>
+              ) : null}
               {couponBlocked ? (
                 <p role="status" className="mb-2 text-xs text-amber-800 dark:text-amber-300">Fix or remove the coupon before taking payment.</p>
               ) : null}
@@ -335,7 +353,7 @@ export function OrderPanel({
                 </p>
               ) : null}
               {/* A waiting request shows once, on its bar (the line's, or the one above); the tenders stay off meanwhile. */}
-              {lines.length && totals.due === 0 ? (
+              {payDesk && view ? payNotice : lines.length && totals.due === 0 ? (
                 <CloseNothingDue view={view!} disabled={payLocked} onPaid={onPaid} onReview={() => { void openPayment("none"); }} />
               ) : (
                 <>
@@ -348,7 +366,7 @@ export function OrderPanel({
                   </div>
                 </>
               )}
-            </> : null}
+            </> : attemptActive ? payNotice : null /* a swap that removed every row: the money taken stays reachable */}
           </div> : null}
         </>
       )}

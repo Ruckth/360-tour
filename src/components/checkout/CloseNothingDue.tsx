@@ -1,11 +1,23 @@
 "use client";
-import { useRef, useState } from "react";
+import { Suspense, lazy, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
-import { useCheckoutBackend, newAttemptKey, type CheckoutActions, type OrderId, type OrderView } from "./backend";
+import { useCheckoutBackend, useCommerce, newAttemptKey, type CheckoutActions, type OrderId, type OrderView } from "./backend";
+import { payMode } from "./pay-desk";
 
-export function CloseNothingDue({ view, disabled, onPaid, onReview }: { view: OrderView; disabled: boolean; onPaid: (orderId: OrderId) => void; onReview: () => void }) {
+type Props = { view: OrderView; disabled: boolean; onPaid: (orderId: OrderId) => void; onReview: () => void };
+// A ฿0 close is a keyed attempt with no parts once payments go through attempts (v27 Paying).
+const CloseWithAttempt = lazy(() => import("./PayDeskNotices").then((module) => ({ default: module.CloseWithAttempt })));
+
+export function CloseNothingDue(props: Props) {
+  const commerce = useCommerce();
+  const mode = payMode(commerce.useAccess(), commerce);
+  if (mode === "direct" || mode === "paused") return <DirectClose {...props} />;
+  return <Suspense fallback={<Button className="h-12 w-full rounded-xl" disabled><Spinner className="text-current" /></Button>}><CloseWithAttempt {...props} mode={mode} /></Suspense>;
+}
+
+function DirectClose({ view, disabled, onPaid, onReview }: Props) {
   const actions = useCheckoutBackend().useActions();
   const attempt = useRef<Parameters<CheckoutActions["settleOrder"]>[0] | null>(null);
   const [pending, setPending] = useState(false);

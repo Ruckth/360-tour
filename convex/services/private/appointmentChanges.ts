@@ -31,7 +31,7 @@ const TRACKED = [
 
 type Tracked = (typeof TRACKED)[number];
 
-export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'refundedAt' | 'cancelledAt' | 'cancelledBy' | 'cancellationReason'>>;
+export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'coverage' | 'refundedAt' | 'cancelledAt' | 'cancelledBy' | 'cancellationReason'>>;
 
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 

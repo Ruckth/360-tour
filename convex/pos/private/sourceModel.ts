@@ -2,6 +2,8 @@ import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { activeOrderFor, insertOrder, linkedOpenOrder, openOrderCharging, type OrderSource } from './orderLinks';
+import { openShopOrder, readRoomRoute, updateRoomRoute } from './stayPaymentRouting';
+import { paymentGet } from './paymentAttempt';
 import { type StaffActor } from '../../auth/model';
 import { ATTACH_SCAN, PAYABLE_LOOKUP_SCAN, ReadCtx, appointmentAttachable, attachTo, bookingClosedReason, bookingPayable, editableOrder, lastPaidOrder } from './orderModel';
 
@@ -119,6 +121,23 @@ export async function findSources(ctx: ReadCtx, args: { orderId?: Id<'orders'>; 
  * charges what is still owed. An appointment that is part of a stay goes on the stay's order.
  */
 export async function openSourceOrder(ctx: MutationCtx, source: OrderSource, actor: StaffActor) {
+  if ('bookingId' in source) {
+    const route = await readRoomRoute(ctx, source.bookingId);
+    if (route) {
+      const [room, shop] = await Promise.all([paymentGet(ctx, route.roomOrderId), paymentGet(ctx, route.shopOrderId)]);
+      if (room?.status === 'draft') return { ...route, orderId: room._id };
+      const booking = await paymentGet(ctx, source.bookingId);
+      if (booking && bookingPayable(booking)) {
+        const successor = await insertOrder(ctx, actor.email, { bookingId: booking._id, parentOrderId: room?._id, customerId: room?.customerId });
+        await attachTo(ctx, successor, source, actor);
+        const updated = { ...route, roomOrderId: successor._id };
+        await updateRoomRoute(ctx, booking._id, actor.email, updated, false);
+        return { ...updated, orderId: successor._id };
+      }
+      if (shop?.status === 'draft') return { ...route, orderId: shop._id };
+      if (room?.status === 'paid') return { ...route, orderId: room._id };
+    }
+  }
 	const charging = await openOrderCharging(ctx, source);
 	if (charging) return { orderId: charging._id };
 
@@ -131,7 +150,7 @@ export async function openSourceOrder(ctx: MutationCtx, source: OrderSource, act
 		// still owes, unless another open order already does (checked above).
 		const linked = await linkedOpenOrder(ctx, source);
 		if (linked) {
-			const order = await editableOrder(ctx, linked._id, actor.email);
+			const order = await editableOrder(ctx, linked._id, actor);
 			if (bookingPayable(booking)) await attachTo(ctx, order, source, actor);
 			return { orderId: order._id };
 		}
@@ -145,13 +164,24 @@ export async function openSourceOrder(ctx: MutationCtx, source: OrderSource, act
 	if (appointment.status === 'cancelled' || appointment.status === 'no_show' || appointment.paymentStatus === 'refunded') {
 		throw new ConvexError('This appointment has nothing left to pay');
 	}
+  if (appointment.bookingId) {
+    const route = await readRoomRoute(ctx, appointment.bookingId);
+    if (route) {
+      const shop = await openShopOrder(ctx, appointment.bookingId, route, actor.email, appointmentAttachable(appointment));
+      if (shop) {
+        if (appointmentAttachable(appointment)) await attachTo(ctx, await editableOrder(ctx, shop._id, actor), source, actor);
+        return { ...route, shopOrderId: shop._id, orderId: shop._id };
+      }
+      return { ...route, orderId: route.roomOrderId };
+    }
+  }
 	const stay: OrderSource | null = appointment.bookingId ? { bookingId: appointment.bookingId } : null;
 	let order = stay ? await activeOrderFor(ctx, stay) : await linkedOpenOrder(ctx, source);
 	if (!order) {
 		const parentOrderId = (await lastPaidOrder(ctx, stay ?? source))?._id;
 		order = await insertOrder(ctx, actor.email, stay ? { bookingId: appointment.bookingId, parentOrderId } : { appointmentId: appointment._id, parentOrderId });
 	} else {
-		order = await editableOrder(ctx, order._id, actor.email);
+		order = await editableOrder(ctx, order._id, actor);
 	}
 	if (appointmentAttachable(appointment)) await attachTo(ctx, order, source, actor);
 	return { orderId: order._id };

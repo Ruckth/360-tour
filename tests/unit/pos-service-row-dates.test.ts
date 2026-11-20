@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
 import { CheckoutBackendProvider, type CheckoutActions, type CheckoutBackend, type OrderId } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
-import { serviceScheduleValue, serviceStartLabel } from "@/components/checkout/OrderPanel";
+import { serviceScheduleValue, serviceStartLabel } from "@/components/checkout/service-row-dates";
 import { receiptSchedule, scheduleLabel } from "@/components/checkout/checkout-ui";
 import { createFixtureBackend } from "../support/checkout-backend";
 import { changeSchedule } from "convex/shared/serviceSchedule";

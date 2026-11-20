@@ -274,7 +274,13 @@ describe("paying with a coupon", () => {
   async function payByCard(fixture: Fixture, orderId: OrderId) {
     await show(fixture, orderId);
     await click(button("Card"));
-    await click(button(/^Confirm ฿[\d,.]+ card$/));
+    const confirm = await vi.waitFor(async () => {
+      await settle();
+      const tender = button(/^Confirm ฿[\d,.]+ card$/);
+      expect(tender).toBeDefined();
+      return tender;
+    });
+    await click(confirm);
     await settle();
   }
 

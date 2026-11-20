@@ -203,6 +203,16 @@ const functionReferenceAllowlist: Record<string, string> = {
   "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
   "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
   "pos/staffApprovals:pending": "Pre-paging response read by admin tabs still on the previous bundle; ApprovalsPanel reads pendingPage. Remove one deploy later.",
+  "commerce/paymentCutover:closeDirectPanel": "Compatibility for open direct-pay tabs from the prior bundle. The RPC refuses unresolved panels; remove it after cutover reloads those tills.",
+  // Commerce W2A ships dormant; these screens land in later lanes (remove each line when its caller lands).
+  "commerce/paymentCutover:activate": "Owner cutover screen in Settings › Checkout rules lands with W2B·L4 (Checkout rules).",
+  "commerce/paymentCutover:directPanels": "Manager panel reconcile list in Settings › Checkout rules lands with W2B·L4 (Checkout rules).",
+  "commerce/paymentCutover:reconcileDirectPanel": "Manager panel reconcile action in Settings › Checkout rules lands with W2B·L4 (Checkout rules).",
+  "commerce/paymentCutover:setPaused": "Owner pause control in Settings › Checkout rules lands with W2B·L4 (Checkout rules).",
+  "commerce/paymentCutover:status": "Cutover till status in Settings › Checkout rules lands with W2B·L4 (Checkout rules).",
+  "commerce/settings:getRules": "Settings › Checkout rules page lands with W2B·L4 (Checkout rules).",
+  "commerce/settings:updateRules": "Settings › Checkout rules page lands with W2B·L4 (Checkout rules).",
+  "pos/commands/handoverPaymentAttempt:releasePaymentAttempt": "Pay desk Hand over needs a till picker; deferred to W2B·L4 with named tills (manager takeover covers it meanwhile).",
 };
 
 it('gives every exported Convex function a non-test caller or a documented exception', () => {

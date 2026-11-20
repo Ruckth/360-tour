@@ -11,6 +11,7 @@ import type {
   CheckoutActions,
   CheckoutBackend,
 } from "@/components/checkout/backend";
+import { cutoverAccess, payDeskCommerce, withSwapOwner, type PayDeskTransport } from "@/components/checkout/pay-desk-backend";
 import type { createFixtureBackend as createServerBackend } from "../support/checkout-backend";
 type ServerBackend = Awaited<ReturnType<typeof createServerBackend>>;
 async function post<T>(body: unknown): Promise<T> {
@@ -28,8 +29,12 @@ async function post<T>(body: unknown): Promise<T> {
 }
 export async function createFixtureBackend(
   options: Parameters<typeof createServerBackend>[0] = {},
+  /** Keep the same database across page reloads (tab-scoped), for reload and resume checks. */
+  reuse?: { key: string },
 ) {
-  const session = await post<string>({ kind: "create", options });
+  const kept = reuse ? sessionStorage.getItem(reuse.key) : null;
+  const session = kept ?? await post<string>({ kind: "create", options });
+  if (reuse) sessionStorage.setItem(reuse.key, session);
   let role = options.staff?.role ?? "owner";
   const call = <T>(method: string, args: unknown[]) =>
     post<T>({ kind: "call", session, method, args });
@@ -59,6 +64,8 @@ export async function createFixtureBackend(
       ]);
       entry.error = undefined;
     } catch (e) {
+      // No connection (fetch failed): keep the last answer, as the live client does while offline.
+      if (e instanceof TypeError) return;
       entry.error = e;
     }
   }
@@ -166,15 +173,19 @@ export async function createFixtureBackend(
     rejectApproval: api.pos.staffApprovals.reject,
     cancelApproval: api.pos.staffApprovals.cancel,
   };
+  const swapEdits = new Set<keyof typeof refs>([
+    "addAppointmentFee", "addItem", "attach", "updateLine", "overrideLinePrice", "removeLine", "updateSourceLine",
+    "linkCustomer", "unlinkCustomer", "saveOrder", "applyOrderCoupon", "removeOrderCoupon", "recheckOrderCoupon",
+  ]);
   const actions = Object.fromEntries(
-    Object.keys(refs).map((key) => [
-      key,
-      async (args: unknown) => {
+    (Object.keys(refs) as (keyof typeof refs)[]).map((key) => {
+      async function mutate(args: { swapOwner?: { tillId: string; tabKey?: string } }) {
         const result = await call("action:" + key, [args]);
         await refresh();
         return result;
-      },
-    ]),
+      }
+      return [key, swapEdits.has(key) ? withSwapOwner(mutate) : mutate];
+    }),
   ) as unknown as CheckoutActions;
   const backend: CheckoutBackend = {
     useActions: () => actions,
@@ -269,7 +280,41 @@ export async function createFixtureBackend(
         orderId,
       }) as ReturnType<CheckoutBackend["useOrderRefundHistory"]>,
   };
+  // The pay desk over the same database, wired as the live checkout wires it.
+  const lost = new Set<string>();
+  const first = new Set<string>();
+  const payTransport: PayDeskTransport = {
+    useMutation: (ref) => async (args) => {
+      const name = getFunctionName(ref);
+      // Another tab on this till sent the identical call a moment earlier (a race).
+      if (first.delete(name)) await call("runFixtureMutation", [name, args]);
+      const result = await call("runFixtureMutation", [name, args]);
+      await refresh();
+      if (lost.delete(name)) throw new Error("Connection lost");
+      return result as never;
+    },
+    useQuery: useRead,
+  };
+  backend.commerce = payDeskCommerce(payTransport, cutoverAccess(payTransport));
   return Object.assign(backend, {
+    /** True when this page reopened an existing fixture database (a reload). */
+    reused: kept !== null,
+    async setCommerceSettings(patch: Parameters<ServerBackend["setCommerceSettings"]>[0]) {
+      await call("setCommerceSettings", [patch]);
+      await refresh();
+    },
+    runFixtureMutation: async (...args: Parameters<ServerBackend["runFixtureMutation"]>) => {
+      const result = await call("runFixtureMutation", args);
+      await refresh();
+      return result;
+    },
+    insertFixtureRows: async (...args: Parameters<ServerBackend["insertFixtureRows"]>) => { await call("insertFixtureRows", args); await refresh(); },
+    patchFixtureRow: async (...args: Parameters<ServerBackend["patchFixtureRow"]>) => { await call("patchFixtureRow", args); await refresh(); },
+    fixtureRows: (...args: Parameters<ServerBackend["fixtureRows"]>) => call<Record<string, unknown>[]>("fixtureRows", args),
+    /** The next answer from this function is lost after it commits, like a dropped connection. */
+    loseNextAnswer: (name: string) => { lost.add(name); },
+    /** Another tab on this till sends the panel's next call to this function just before it does. */
+    raceNextCall: (name: string) => { first.add(name); },
     async setStaff(next: Parameters<ServerBackend["setStaff"]>[0]) {
       await call("setStaff", [next]);
       role = next.role;

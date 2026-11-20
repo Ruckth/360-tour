@@ -569,6 +569,52 @@ export async function createFixtureBackend(options: Options = {}) {
       );
       return name === "pos/catalog:recentCatalogRanking" ? CATALOG.frequent : name === "pos/catalog:stableCatalog" ? { ...(value as object), extras: CATALOG.extras } : value;
     },
+    /** Any registered mutation as the current staff member (the pay desk's attempt commands). */
+    async runFixtureMutation(name: string, args: Record<string, unknown>) {
+      const value = await t.withIdentity(identity()).mutation(makeFunctionReference<"mutation">(name), translate(args) as Record<string, unknown>);
+      return translate(value, true);
+    },
+    /** Test data: the D20 settings row (payments mode, checkout pause). */
+    async setCommerceSettings(patch: { paymentsMode?: "direct" | "attempts"; paused?: boolean; revision?: number }) {
+      await t.run(async (ctx) => {
+        const { resolveCommerceSettings } = await import("../../convex/commerce/model");
+        const row = await ctx.db.query("commerceSettings").withIndex("by_key", (q) => q.eq("key", "default")).unique();
+        const current = row ?? { key: "default", ...resolveCommerceSettings(null) };
+        const next = {
+          ...current,
+          ...(patch.paymentsMode ? { paymentsMode: patch.paymentsMode } : {}),
+          ...(patch.revision !== undefined ? { revision: patch.revision } : {}),
+          ...(patch.paused !== undefined ? { cutover: patch.paused ? { pausedAt: Date.now(), actor: "owner" } : undefined } : {}),
+          // As setPaused: the first pause starts the cutover window, which an unpause keeps.
+          ...(patch.paused ? { cutoverStartedAt: current.cutoverStartedAt ?? Date.now() } : {}),
+          // Switched on as the manager's activate does: an activated cutover and a till to acknowledge.
+          ...(patch.paymentsMode === "attempts" ? { cutover: { pausedAt: Date.now() - 60_000, activatedAt: Date.now(), actor: "owner", revision: patch.revision ?? 1 } } : {}),
+        };
+        if (patch.paymentsMode === "attempts" && !(await ctx.db.query("tills").withIndex("by_key", (q) => q.eq("key", "default")).unique())) {
+          await ctx.db.insert("tills", { key: "default" });
+        }
+        const { _id, _creationTime, ...fields } = next as typeof next & { _id?: unknown; _creationTime?: unknown };
+        void _creationTime;
+        if (row) await ctx.db.replace(row._id, fields);
+        else await ctx.db.insert("commerceSettings", fields);
+        void _id;
+      });
+      await refresh();
+    },
+    /** Test data rows for scenarios no registered writer creates yet (products before W3). */
+    async insertFixtureRows(rows: { alias: string; table: TableNames; fields: Record<string, unknown> }[]) {
+      await t.run(async (ctx) => {
+        for (const row of rows) aliases.set(row.alias, await ctx.db.insert(row.table, translate(row.fields) as never));
+      });
+      await refresh();
+    },
+    async patchFixtureRow(table: TableNames, id: string, patch: Record<string, unknown>) {
+      await t.run((ctx) => ctx.db.patch(translate(id) as Id<typeof table>, translate(patch) as never));
+      await refresh();
+    },
+    async fixtureRows(table: TableNames) {
+      return translate(await t.run((ctx) => ctx.db.query(table).take(50)), true) as Record<string, unknown>[];
+    },
     async setCouponSnapshot(code: string, patch: Partial<CouponRules>) {
       await t.run(async (ctx) => {
         const coupon = await ctx.db

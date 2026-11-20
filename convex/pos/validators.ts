@@ -74,10 +74,12 @@ export const paymentExternalLeg = v.object({
   method: tenderMethod,
   amount: v.number(),
   state: paymentLegState,
-  received: v.optional(v.number()),
+  tendered: v.optional(v.number()), received: v.optional(v.number()),
   change: v.optional(v.number()),
   reference: v.optional(v.string()),
   instructedAt: v.optional(v.number()),
+  instructedTillId: v.optional(v.string()),
+  instructedTab: v.optional(v.string()),
 });
 export const reviewedVoucher = v.object({ voucherId: v.id('vouchers'), paid: v.number(), goodwill: v.number() });
 const returnVoucherDestination = v.union(

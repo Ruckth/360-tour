@@ -1,3 +1,4 @@
+import { assertNoActivePayment } from '../private/paymentAttempt';
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../shared/bookingMoney';
@@ -30,6 +31,7 @@ export const discardOrder = staffMutation({
 		if (order.status === 'paid') throw new ConvexError('A paid order can’t be discarded. Void it instead.');
 		if (order.status === 'void') throw new ConvexError('This order was voided');
 		if (order.revision !== args.expectedRevision) throw new ConvexError('The order changed since you opened it. Review it and try again.');
+		assertNoActivePayment(order);
 		const reason = cleanReason(args.reason, 'Reason', false);
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new ConvexError('This order has no items, so it isn’t listed and there is nothing to discard.');

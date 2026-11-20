@@ -3,7 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import { staffMutation } from '../../auth/model';
 import { normalizeCouponCode } from '../../shared/offers';
 import { orderLines } from '../private/orderLines';
-import { editableOrder, logOrder, orderCouponUnavailable, quoteOrderCoupon, refreshOrder, writeCouponShares } from '../private/orderModel';
+import { swapOwnerArgs, editableOrder, logOrder, orderCouponUnavailable, quoteOrderCoupon, refreshOrder, writeCouponShares } from '../private/orderModel';
 
 /**
  * Marketing release 2b. Applies one coupon to an unpaid order, replacing any coupon already on it.
@@ -16,10 +16,10 @@ import { editableOrder, logOrder, orderCouponUnavailable, quoteOrderCoupon, refr
  */
 export const applyOrderCoupon = staffMutation({
   capability: 'checkout',
-	args: { orderId: v.id('orders'), code: v.optional(v.string()), slug: v.optional(v.string()) },
+	args: { ...swapOwnerArgs, orderId: v.id('orders'), code: v.optional(v.string()), slug: v.optional(v.string()) },
 	handler: async (ctx, args): Promise<{ code: string; discount: number; revision: number }> => {
 		const admin = ctx.staff;
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const order = await editableOrder(ctx, args.orderId, admin, args.swapOwner);
 		if ((args.code !== undefined) === (args.slug !== undefined)) throw new ConvexError('Choose one coupon code or link');
 		let coupon: Doc<'coupons'> | null;
 		let viaLinkId: Id<'marketingLinks'> | undefined;

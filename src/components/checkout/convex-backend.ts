@@ -1,10 +1,11 @@
 "use client";
 
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvexConnectionState, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import { COMMERCE_OFF, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry } from "./backend";
+import type { CheckoutBackend, CommerceBackend, CustomerPage, HistoryEntry } from "./backend";
+import { cutoverAccess, payDeskCommerce, type PayDeskTransport, withSwapOwner } from "./pay-desk-backend";
 
 const SKIP = "skip" as const;
 const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
@@ -20,25 +21,38 @@ let loading: Promise<Readers> | null = null;
  * attempt or return card) rather than with checkout. null until then; a failed load reaches the
  * screen's error boundary and is retried on the next mount.
  */
-function useReaders(): Readers | null {
+function useReaders(wanted = true): Readers | null {
   const [loaded, setLoaded] = useState(readers);
   useEffect(() => {
-    if (loaded) return;
+    if (!wanted || loaded) return;
     let live = true;
     loading ??= import("./commerce-readers").then((module) => (readers = module), (error: unknown) => { loading = null; throw error; });
     loading.then((module) => { if (live) setLoaded(module); }, (error: unknown) => { if (live) setLoaded(() => { throw error; }); });
     return () => { live = false; };
-  }, [loaded]);
+  }, [loaded, wanted]);
   return loaded;
 }
 
 /**
- * Commerce readers that have a backend so far: History, the receipt's payment attempt and open
- * return, and a requester's own request. The rest stay Off (COMMERCE_OFF) until their wave lands; every sale switch
- * is Off, so nothing new can be sold.
+ * Pay desk (W2A·L3): the attempt commands, the direct-panel registration and the cutover's access
+ * reader over Convex. While paymentsMode is "direct" only the registration is new; the attempt
+ * flow appears once the owner switches to new payments and this till reloads.
+ */
+// Late-bound, so module mocks of convex/react without these still load the backend.
+const transport: PayDeskTransport = {
+  useConnectionState: () => useConvexConnectionState(),
+  useMutation: (ref) => useMutation(ref),
+  useQuery: ((ref, args) => useQuery(ref, args)) as PayDeskTransport["useQuery"],
+};
+const payDesk = payDeskCommerce(transport, cutoverAccess(transport));
+
+/**
+ * Commerce readers that have a backend so far: History, the receipt's payment attempt and open return,
+ * and a requester's own request, beside the pay desk. The rest stay Off (COMMERCE_OFF) until their wave
+ * lands; every sale switch is Off, so nothing new can be sold.
  */
 const convexCommerce: CommerceBackend = {
-  ...COMMERCE_OFF,
+  ...payDesk,
   useHistory: (target, audience) => {
     const benefit = target?.targetType === "voucher" || target?.targetType === "grant" ? target : null;
     const staff = usePaginatedQuery(api.commerce.history.staffPage, target && audience === "staff" ? { target } : SKIP, { initialNumItems: 20 });
@@ -52,10 +66,13 @@ const convexCommerce: CommerceBackend = {
   },
   // The receipt's status cards read getOrder's own projection: the same subscription ReceiptView
   // already holds ({ orderId }), so they add no reads.
-  usePaymentAttempt: (orderId) => {
-    const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
-    const mappers = useReaders();
-    return useMemo(() => (view === undefined || !mappers ? undefined : view ? mappers.receiptAttempt(view) : null), [mappers, view]);
+  usePaymentAttempt: (orderId, activeAttemptId) => {
+    const onReceipt = activeAttemptId === undefined;
+    const live = payDesk.usePaymentAttempt(onReceipt ? null : orderId, activeAttemptId);
+    const view = useQuery(api.pos.orders.getOrder, onReceipt && orderId ? { orderId } : SKIP);
+    const mappers = useReaders(onReceipt && orderId !== null);
+    const settled = useMemo(() => (view === undefined || !mappers ? undefined : view ? mappers.receiptAttempt(view) : null), [mappers, view]);
+    return onReceipt ? (orderId ? settled : null) : live;
   },
   useReturnable: (orderId) => {
     const view = useQuery(api.pos.orders.getOrder, orderId ? { orderId } : SKIP);
@@ -67,6 +84,7 @@ const convexCommerce: CommerceBackend = {
 
 /** The live checkout: Convex queries and mutations from convex/pos/ and convex/pos/customers.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
+  commerce: convexCommerce,
   useRestoreCheck: (orderId) => useQuery(api.pos.orders.restoreCheck, { orderId }),
   useAppointmentFees: (appointmentId) => useQuery(api.pos.orders.appointmentFees, { appointmentId }),
   useCorrectionHistory: (orderId) => usePaginatedQuery(api.pos.orderHistoryPages.corrections, { orderId }, { initialNumItems: 20 }),
@@ -108,7 +126,6 @@ export const convexCheckoutBackend: CheckoutBackend = {
   usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
   useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
-  commerce: convexCommerce,
   useActions: () => {
     const noteCouponRefusal = useMutation(api.marketing.report.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.commands.discardOrder.discardOrder);
@@ -147,9 +164,9 @@ export const convexCheckoutBackend: CheckoutBackend = {
     const cancelApproval = useMutation(api.pos.staffApprovals.cancel);
     return useMemo(
       () => ({
-        noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine,
-        linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
-        applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, linkPaidLine, unlinkPaidLine, refundLine,
+        noteCouponRefusal, discardOrder, restoreOrder, addAppointmentFee: withSwapOwner(addAppointmentFee), openOrderFor, addItem: withSwapOwner(addItem), attach: withSwapOwner(attach), updateLine: withSwapOwner(updateLine), overrideLinePrice: withSwapOwner(overrideLinePrice), removeLine: withSwapOwner(removeLine), updateSourceLine: withSwapOwner(updateSourceLine),
+        linkCustomer: withSwapOwner(linkCustomer), unlinkCustomer: withSwapOwner(unlinkCustomer), saveOrder: withSwapOwner(saveOrder), clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers,
+        applyOrderCoupon: withSwapOwner(applyOrderCoupon), removeOrderCoupon: withSwapOwner(removeOrderCoupon), recheckOrderCoupon: withSwapOwner(recheckOrderCoupon), linkPaidLine, unlinkPaidLine, refundLine,
         createOrder, createApproval, approveApproval, rejectApproval, cancelApproval,
       }),
       [createOrder, createApproval, approveApproval, rejectApproval, cancelApproval, noteCouponRefusal, applyOrderCoupon, removeOrderCoupon, recheckOrderCoupon, discardOrder, restoreOrder, addAppointmentFee, openOrderFor, addItem, attach, updateLine, overrideLinePrice, removeLine, updateSourceLine, linkCustomer, unlinkCustomer, saveOrder, clearOrder, settleOrder, amendOrderPayment, voidUnreceivedOrder, resumeCustomerMerge, voidOrder, createCustomer, updateCustomer, setCustomerArchived, mergeCustomers, linkPaidLine, unlinkPaidLine, refundLine],

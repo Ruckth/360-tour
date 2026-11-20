@@ -175,6 +175,8 @@ export type CommerceAccess = {
   paused: boolean;
   /** This till acknowledged the new pay panel (false only mid-cutover). */
   tillReady: boolean;
+  /** From the cutover's first pause on: a reopened direct panel checks its earlier instruction first. */
+  cutoverStarted?: boolean;
 };
 /** Settings › Checkout rules (owner only to change). */
 export type CheckoutRulesView = { revision: number; terms: CheckoutTerms; switches: SaleSwitches; paymentsMode: PaymentsMode; canEdit: boolean };
@@ -322,6 +324,7 @@ export type PaymentLeg = {
   method: ExternalMethod;
   amount: Satang;
   state: LegState;
+  tendered?: Satang;
   received: Satang | null;
   change: Satang | null;
   reference: string | null;
@@ -334,7 +337,7 @@ export type RecoveryAction =
   | { kind: "finishSale" }
   | { kind: "finishSwap" }
   | { kind: "giveBack"; amount: Satang }
-  | { kind: "swapOrGiveBack"; reason: CommerceRefusal };
+  | { kind: "swapOrGiveBack"; reason: PayRefusal };
 export type PaymentAttemptView = {
   attemptId: Id<"paymentAttempts">;
   orderId: OrderId;
@@ -348,14 +351,113 @@ export type PaymentAttemptView = {
   legs: PaymentLeg[];
   vouchers: { voucherId: Id<"vouchers">; maskedCode: string; paid: Satang; goodwill: Satang }[];
   /** "Money taken · sale not saved" names what changed. */
-  refusal: CommerceRefusal | null;
+  refusal: PayRefusal | null;
   recovery: { kept: Satang; stillDue: Satang; action: RecoveryAction } | null;
   startedAt: number;
 };
 export type PlannedLeg = { method: ExternalMethod; amount: Satang };
 export type PlannedVoucher = { voucherId: Id<"vouchers">; paid: Satang; goodwill: Satang };
-export type LegOutcome = "taken" | "declined" | "notTaken";
-export type SettleResult = { status: "settled"; orderId: OrderId } | { status: "refused"; refusal: CommerceRefusal };
+/** "notTaken" and "declined" record the same thing; "unknown" keeps the part locked until checked. */
+export type LegOutcome = "taken" | "declined" | "notTaken" | "unknown";
+export type SettleResult = { status: "settled"; orderId: OrderId; receiptNumber?: number } | { status: "refused"; refusal: PayRefusal };
+
+// ─── Pay desk (W2A·L3) ────────────────────────────────────────────────────────────────────────
+// The attempt flow's own requests. A payment is quoted, started (which locks the order on every
+// till), armed part by part before staff are told to charge, recorded, then settled. Every call is
+// keyed or revision-checked, so a retry after a lost answer repeats the same step and never invites
+// a second charge. Only reachable once paymentsMode is "attempts" (the owner's cutover).
+
+/** A refusal the server words itself, for codes outside CommerceRefusal (order_changed, pay_room_first…). */
+export type ServerRefusal = { code: "SERVER"; reason: string; message: string };
+export type PayRefusal = CommerceRefusal | ServerRefusal;
+/** One planned external part, keyed so arming and recording it can be retried. */
+export type PayLegPlan = { key: string; method: ExternalMethod; amount: Satang };
+/** The reviewed customers on the order (payer, package owners, visit attendees). */
+export type ReviewedCustomer = { customerId: CustomerId; revision: number };
+/** What staff reviewed before the first instruction; frozen by the server under a fingerprint. */
+export type AttemptQuote = {
+  orderId: OrderId;
+  orderRevision: number;
+  due: Satang;
+  /** The Bangkok business date the money is received ("2026-11-19"). */
+  businessDate: string;
+  customers: ReviewedCustomer[];
+  legs: PayLegPlan[];
+  vouchers: PlannedVoucher[];
+};
+export type AttemptRef = { attemptId: Id<"paymentAttempts">; ownerRevision: number };
+/** The order as reviewed now, sent with every recovery step. */
+export type RecoveryReview = { orderRevision: number; customers: ReviewedCustomer[]; vouchers: PlannedVoucher[] };
+/** What was verified as kept, what is still due, and the one next step (D18). */
+export type RecoveryPreview = {
+  kept: { method: ExternalMethod; amount: Satang }[];
+  /** Positive: still due. Negative: too much was taken. */
+  balance: Satang;
+  next: "collect" | "finish" | "giveBack" | "swapOrGiveBack";
+  /** Why the cart can't be sold as it is (only with swapOrGiveBack). */
+  refusal: PayRefusal | null;
+};
+export type RecoveryStep =
+  | { action: "collectRest"; legs: PayLegPlan[] }
+  | { action: "finishSale" }
+  | { action: "giveBack"; leg: PayLegPlan; cancelSale?: boolean }
+  | { action: "swap" };
+/** An armed part: the attempt, and whether this call (not an earlier one) gave the instruction. */
+export type Armed = { attempt: PaymentAttemptView; instructed: boolean };
+export type PayActions = {
+  /** Claims the order with the reviewed quote. Same key, same quote: the same attempt. */
+  startAttempt(args: Keyed & AttemptQuote): Promise<PaymentAttemptView>;
+  /** Replaces the planned (unarmed) parts; armed and taken parts never change. */
+  changePlan(args: AttemptRef & { legs: PayLegPlan[] }): Promise<PaymentAttemptView>;
+  /**
+   * Persists the instruction before it is shown. An earlier unchecked instruction comes back
+   * instead: `instructed` is true only when this call armed the part, the one case where the
+   * panel may show a fresh instruction (any other answer shows Check previous payment).
+   */
+  armLeg(args: AttemptRef & { legKey: string; stockInHand?: boolean; tendered?: Satang }): Promise<Armed>;
+  saveCashTendered(args: AttemptRef & { legKey: string; tendered: Satang | null }): Promise<void>;
+  recordLeg(args: AttemptRef & { legKey: string; direction?: PaymentLeg["direction"]; outcome: LegOutcome; received?: Satang; reference?: string }): Promise<PaymentAttemptView>;
+  settleAttempt(args: AttemptRef & { orderId: OrderId; stockInHand?: boolean }): Promise<SettleResult>;
+  /** Releases the order when nothing was taken. */
+  cancelAttempt(args: AttemptRef): Promise<null>;
+  previewRecovery(args: AttemptRef & RecoveryReview): Promise<RecoveryPreview>;
+  /**
+   * One recovery step. Collect and finish start a keyed child attempt; give back arms its own part
+   * (`instructed` only when this call armed it, as with armLeg).
+   */
+  recover(args: Keyed & AttemptRef & RecoveryReview & RecoveryStep): Promise<{ child: PaymentAttemptView | null; instructed: boolean }>;
+  /** A manager takes over after checking the terminal and drawer; earlier instructions stay locked. */
+  takeOver(args: { orderId: OrderId; ownerRevision: number; stoppedPreviousOperator: boolean }): Promise<PaymentAttemptView>;
+  /** Pay the room first (D17): accommodation stays on this order, everything else moves to Shop & spa. */
+  payRoomFirst(args: Keyed & { orderId: OrderId; orderRevision: number }): Promise<{ roomOrderId: OrderId; shopOrderId: OrderId }>;
+  /**
+   * The direct panel registers with the instruction it shows, so the cutover can see which panels
+   * are still open; it belongs to this till and tab. Settlement closes it; anything else is a
+   * manager's reconciliation. `previous`: this tab's earlier unrecorded panel for the order, which
+   * the panel continues; `check` (from the cutover's first pause on): Check previous payment
+   * before any instruction, recording only exactly `instruction` while `matches`. Another till or
+   * tab's open panel refuses with PAY_PANEL_ELSEWHERE from the first pause on.
+   */
+  openDirectPanel(args: DirectPanelRequest & { instruction?: DirectInstruction }): Promise<{ previous?: DirectPanelPrevious } | null>;
+  /**
+   * The instruction the panel shows now (`null`: none, a split not yet covered) and its booking
+   * email choice. Best effort before the cutover starts; from then on the panel shows an
+   * instruction only once this resolved. A new instruction is refused while the earlier one is checked.
+   */
+  instructDirectPanel(args: DirectPanelRequest & { instruction?: DirectInstruction | null; notifyGuest?: boolean }): Promise<null>;
+  /** Check previous payment → Not taken, outside the pause: the panel may instruct again. */
+  answerDirectPanel(args: DirectPanelRequest): Promise<null>;
+  /** A manager moves another till's open panel to this till and tab, after its operator stopped. */
+  takeOverDirectPanel(args: { orderId: OrderId; tillId: Id<"tills">; panelKey: string; tabKey: string; stoppedPreviousOperator: boolean }): Promise<null>;
+};
+
+/** What a direct panel asks staff to collect, against the order revision and due it shows. */
+export type DirectInstruction = { revision: number; due: number; tenders: { method: ExternalMethod; amount: number }[] };
+export type DirectPanelRequest = { orderId: OrderId; panelKey: string; tillId?: Id<"tills">; tabKey?: string };
+export type DirectPanelPrevious = DirectPanelRegistration & { tillId: Id<"tills">; openedAt: number; check: boolean; matches: boolean; instruction?: DirectInstruction & { at: number }; notifyGuest?: boolean };
+
+/** The rollout registration a direct panel settles under. */
+export type DirectPanelRegistration = { panelKey: string; tillId?: Id<"tills">; tabKey?: string };
 
 // Returns (D8, D14) ─────────────────────────────────────────────────────────────────────────────
 export type ReturnPart = Doc<"orderReturns">["parts"][number];
@@ -684,8 +786,13 @@ export type CommerceBackend = {
   /** null until the full code is in. */
   useVoucherCheck(args: { orderId: OrderId; code: string } | null): VoucherCheck | null | undefined;
   useGiftSlip(voucherId: Id<"vouchers"> | null): GiftSlip | null | undefined;
-  /** The order's live or last attempt; null when it never had one. */
-  usePaymentAttempt(orderId: OrderId | null): PaymentAttemptView | null | undefined;
+  /**
+   * The order's live attempt; null when it has none. Pass the order's active attempt id: another
+   * till's attempt is known only by it ("Payment in progress on Till 1 · Ploy").
+   */
+  usePaymentAttempt(orderId: OrderId | null, activeAttemptId?: Id<"paymentAttempts">): PaymentAttemptView | null | undefined;
+  /** Whether payments can reach the server now: the browser is online and the live connection is up. */
+  useConnected(): boolean;
   useReturnable(orderId: OrderId | null): Returnable | null | undefined;
   useReturnQuote(args: { orderId: OrderId; parts: ReturnPart[] } | null): ReturnQuote | null | undefined;
   useBenefitCard(target: Extract<AdjustTarget, { targetType: "voucher" | "grant" }> | null): BenefitCard | null | undefined;
@@ -707,17 +814,11 @@ export type CommerceActions = {
   /** Use session on a visit or service row (named so it isn't mistaken for a React hook). */
   applySession(args: Keyed & { orderId: OrderId; appointmentId: Id<"appointments"> | null; lineId: Id<"orderLines"> | null; grantId: Id<"sessionGrants">; expectedRevision: number }): Promise<{ lineId: Id<"orderLines"> }>;
   confirmAttendee(args: { appointmentId: Id<"appointments">; customerId: CustomerId }): Promise<null>;
-  startAttempt(args: Keyed & { orderId: OrderId; orderRevision: number; legs: PlannedLeg[]; vouchers: PlannedVoucher[] }): Promise<PaymentAttemptView>;
-  armLeg(args: { attemptId: Id<"paymentAttempts">; legKey: string; ownerRevision: number }): Promise<PaymentAttemptView>;
-  recordLeg(args: { attemptId: Id<"paymentAttempts">; legKey: string; ownerRevision: number; outcome: LegOutcome; received?: Satang; reference?: string }): Promise<PaymentAttemptView>;
-  settleAttempt(args: { attemptId: Id<"paymentAttempts">; ownerRevision: number }): Promise<SettleResult>;
-  recover(args: Keyed & { attemptId: Id<"paymentAttempts">; ownerRevision: number; action: RecoveryAction["kind"]; legs?: PlannedLeg[] }): Promise<PaymentAttemptView>;
-  handOver(args: { attemptId: Id<"paymentAttempts">; ownerRevision: number; legOutcomes?: { legKey: string; outcome: LegOutcome; reference?: string }[] }): Promise<PaymentAttemptView>;
   authorizeReturn(args: Keyed & { orderId: OrderId; parts: ReturnPart[]; reason: string }): Promise<{ status: "authorized" | "completed"; returnId: Id<"orderReturns"> } | { status: "requested"; approvalId: ApprovalId }>;
   recordPayout(args: Keyed & { returnId: Id<"orderReturns">; claimKey: string; operatorRevision: number; outcome: "given" | "failed" | "unknown"; reference?: string; method?: ExternalMethod }): Promise<ReturnView>;
   cancelReturn(args: Keyed & { returnId: Id<"orderReturns">; operatorRevision: number }): Promise<ReturnView>;
   adjust(args: Keyed & AdjustRequest): Promise<AdjustResult>;
-};
+} & PayActions;
 
 const off: CommerceAccess = {
   settingsRevision: 0,
@@ -733,9 +834,15 @@ const notOnSale = async (): Promise<never> => {
 };
 const offActions: CommerceActions = {
   addProduct: notOnSale, postToRoom: notOnSale, takeBack: notOnSale, addPackage: notOnSale, addVoucher: notOnSale,
-  applySession: notOnSale, confirmAttendee: notOnSale, startAttempt: notOnSale, armLeg: notOnSale, recordLeg: notOnSale,
-  settleAttempt: notOnSale, recover: notOnSale, handOver: notOnSale, authorizeReturn: notOnSale, recordPayout: notOnSale,
+  applySession: notOnSale, confirmAttendee: notOnSale, authorizeReturn: notOnSale, recordPayout: notOnSale,
   cancelReturn: notOnSale, adjust: notOnSale,
+  startAttempt: notOnSale, changePlan: notOnSale, armLeg: notOnSale, saveCashTendered: notOnSale, recordLeg: notOnSale, settleAttempt: notOnSale,
+  cancelAttempt: notOnSale, previewRecovery: notOnSale, recover: notOnSale, takeOver: notOnSale, payRoomFirst: notOnSale,
+  // Without a cutover there is nothing to register.
+  openDirectPanel: async () => null,
+  instructDirectPanel: async () => null,
+  answerDirectPanel: async () => null,
+  takeOverDirectPanel: notOnSale,
 };
 /** A backend without commerce: every switch Off, nothing sold, nothing to show. */
 export const COMMERCE_OFF: CommerceBackend = {
@@ -753,6 +860,7 @@ export const COMMERCE_OFF: CommerceBackend = {
   useVoucherCheck: () => null,
   useGiftSlip: () => null,
   usePaymentAttempt: () => null,
+  useConnected: () => true,
   useReturnable: () => null,
   useReturnQuote: () => null,
   useBenefitCard: () => null,

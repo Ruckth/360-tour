@@ -198,7 +198,7 @@ function CheckoutContent({
 
   // Keyed by order, so opening another order starts from its rows, never a payment begun on the last one.
   const panel = (onClose?: () => void, initialPay?: "cash") => (
-    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} initialPay={initialPay} discountNotice={discountAlert} />
+    <OrderPanel key={orderId ?? "new"} view={missing ? null : view} title={title} catalog={catalog} run={run} busy={busy} onPaid={toReceipt} onClose={onClose} initialPay={initialPay} discountNotice={discountAlert} onOpenOrder={(id) => { void changeOrder(id); }} />
   );
 
   // Danger-tone colours: red text on the red tint stays ≥4.5:1 (destructive/10 was 3.8:1).

@@ -86,7 +86,7 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
   const out = mkdtempSync(join(tmpdir(), 'schema-reset-')); scratch.push(out);
   const result = spawnSync(process.execPath, ['scripts/architecture-reset.mjs', '--old-ref', '72a657f', '--out', out], { encoding: 'utf8' });
   expect(result.stderr).toBe(''); expect(result.status).toBe(0);
-  for (const [name, count] of [['old', 91], ['new', 96]] as const) {
+  for (const [name, count] of [['old', 91], ['new', 97]] as const) {
     const tables = JSON.parse(readFileSync(join(out, `${name}-tables.json`), 'utf8')) as string[];
     expect(tables).toHaveLength(count);
     const zip = name === 'old' ? 'empty-root.zip' : 'empty-new-root.zip';
@@ -96,7 +96,7 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
     expect(snapshot.tables.map(t => t.name).sort()).toEqual(tables.sort());
   }
   const manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'));
-  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 96 });
+  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 97 });
   const current = inspectSchema(schemaSourceReader('.'));
   expect(JSON.parse(readFileSync(join(out, 'new-tables.json'), 'utf8')).sort()).toEqual(current.tables.map(table => table.name).sort());
   expect(Object.keys(manifest.schemaSources.new).sort()).toEqual(Object.keys(current.sources).sort());

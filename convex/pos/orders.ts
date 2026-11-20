@@ -28,8 +28,8 @@ async function readPaymentAttempt(ctx: QueryCtx, order: Doc<'orders'>) {
 	if (!activeAttemptId) return null;
 	const attempt = await readOrderProjection(ctx, () => ctx.db.get(activeAttemptId));
 	if (!attempt || attempt.orderId !== order._id) return null;
-	const { _id, status, legs, owner, tillId, ownerRevision, parentAttemptId, refusal, resolution, updatedAt } = attempt;
-	return { _id, status, legs, owner, tillId, ownerRevision, parentAttemptId, refusal, resolution, updatedAt, due: attempt.reviewedRequest.due };
+	const { _id, status, legs, owner, tillId, tillLabel, ownerDisplayName, ownerRevision, parentAttemptId, refusal, resolution, updatedAt } = attempt;
+	return { _id, status, legs, owner, tillId, tillLabel, ownerDisplayName, ownerRevision, parentAttemptId, refusal, resolution, updatedAt, due: attempt.reviewedRequest.due };
 }
 
 async function readHandovers(ctx: QueryCtx, order: Doc<'orders'>, lines: readonly Doc<'orderLines'>[]) {
