@@ -28,6 +28,7 @@ it('matches the reviewed stock movement and voucher entry index inventories', ()
   expect(tables.find(table => table.tableName === 'voucherEntries')?.indexes).toEqual([
     { indexDescriptor: 'by_voucherId_and_createdAt', fields: ['voucherId', 'createdAt'] },
     { indexDescriptor: 'by_sourceKey', fields: ['sourceKey'] },
+    { indexDescriptor: 'by_voucherId_and_kind', fields: ['voucherId', 'kind'] },
     { indexDescriptor: 'by_createdAt', fields: ['createdAt'] },
   ]);
 });

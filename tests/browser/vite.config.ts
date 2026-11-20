@@ -14,7 +14,8 @@ export default defineConfig({
           const input = JSON.parse(raw);
           let value: unknown;
           if (input.kind === 'create') {
-            const fixtureModule = await server.ssrLoadModule('/tests/support/checkout-backend.ts');
+            // Return items (W2B·L3) seeds commerce receipts in its own harness.
+            const fixtureModule = await server.ssrLoadModule(input.harness === 'returns' ? '/tests/support/returns-desk-harness.ts' : '/tests/support/checkout-backend.ts');
             const backend = await fixtureModule.createFixtureBackend(input.options);
             value = crypto.randomUUID(); sessions.set(String(value), backend);
           } else {

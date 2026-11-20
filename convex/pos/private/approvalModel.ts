@@ -12,6 +12,7 @@ import { executeAddItem, executeAttach, executeOverrideLinePrice, executeUpdateL
 import { ATTACHED_PRICE, FEE_FIXED, Line, Order, ReadCtx, appointmentLine, assertRoom, bookingLine, cleanText, isSourceRow, oneSource, orderCouponUnavailable, quoteOrderCoupon, sourceIssue } from './orderModel';
 import { linkableRow } from './paidLinkModel';
 import { executeLinkPaidLine, executeUnlinkPaidLine } from './paidLinks';
+import { assertNoOpenReturn } from './returnGuards';
 import { executeAmendOrderPayment, executeVoidUnreceivedOrder } from './paymentCorrections';
 import { assertReceiptCorrectionSupported, readOrderProjection } from './orderLifecycle';
 
@@ -82,7 +83,8 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
   return { totalBefore, totalAfter: totals.total, amount, ...(percent !== undefined ? { percent } : {}) };
  }
  if (order.status !== 'paid') throw new ConvexError('Only a paid order can be corrected');
- await assertReceiptCorrectionSupported(ctx, order, lines);
+ if (payload.kind === 'paymentFix' && payload.action === 'voidUnreceivedOrder') await assertNoOpenReturn(ctx, order);
+ else await assertReceiptCorrectionSupported(ctx, order, lines);
  if (payload.kind === 'paymentFix') {
   if (payload.action === 'linkPaidLine') amount = linkableRow(order, await ctx.db.get(payload.lineId)).amount;
   if (payload.action === 'unlinkPaidLine') {
@@ -126,7 +128,7 @@ export async function executeStaffApproval(ctx: MutationCtx, request: CheckoutAp
   case 'paymentFix':
    switch (payload.action) {
     case 'amendOrderPayment': return await executeAmendOrderPayment(ctx, { ...correction, ...payload }, actor);
-    case 'voidUnreceivedOrder': return await executeVoidUnreceivedOrder(ctx, correction, actor);
+    case 'voidUnreceivedOrder': return await executeVoidUnreceivedOrder(ctx, correction, actor, true);
     case 'linkPaidLine': return await executeLinkPaidLine(ctx, { ...correction, ...payload }, actor);
     case 'unlinkPaidLine': return await executeUnlinkPaidLine(ctx, { ...correction, ...payload }, actor);
    }

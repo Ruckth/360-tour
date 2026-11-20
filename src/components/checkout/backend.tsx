@@ -4,6 +4,7 @@ import { createCouponRefusalReporter, type RefusalNote } from "@/lib/booking/cou
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { commerceRefusalCodes, editReasons, stockReasons } from "convex/shared/commerce/reasons";
+import { lastUsableAt } from "convex/shared/commerce/validity";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { createContext, useContext, useMemo, useCallback, type ReactNode } from "react";
 
@@ -116,6 +117,8 @@ export type CheckoutBackend = {
   useActions(): CheckoutActions;
   /** Products, vouchers, packages, attempts, returns and edits. Absent: every sale switch is Off (useCommerce). */
   commerce?: CommerceBackend;
+  /** Return items on commerce receipts (W2B·L3). Absent: no Return items sheet anywhere. */
+  returns?: ReturnsDesk;
 };
 
 const BackendContext = createContext<CheckoutBackend | null>(null);
@@ -330,6 +333,11 @@ export type PaymentLeg = {
   reference: string | null;
   /** Shown on Check previous payment: "Card ฿4,900 · 14:02". */
   instructedAt: number | null;
+  /**
+   * The server's word that no screen may show this part's instruction again (its outcome is unknown,
+   * or it was sent before a handover): Check previous payment, whichever till holds it now.
+   */
+  checkPrevious?: boolean;
 };
 /** The one next step once the cart can be sold again; only Swap or Give back while the refusal applies. */
 export type RecoveryAction =
@@ -352,8 +360,12 @@ export type PaymentAttemptView = {
   vouchers: { voucherId: Id<"vouchers">; maskedCode: string; paid: Satang; goodwill: Satang }[];
   /** "Money taken · sale not saved" names what changed. */
   refusal: PayRefusal | null;
+  /** Handed over and not yet accepted: the till it waits for, and whether that is this till. */
+  handedOverTo?: { label: string; here: boolean } | null;
   recovery: { kept: Satang; stillDue: Satang; action: RecoveryAction } | null;
   startedAt: number;
+  /** The cashier's booking payment confirmation email choice, kept on the attempt across reloads and handovers. */
+  notifyGuest?: boolean;
 };
 export type PlannedLeg = { method: ExternalMethod; amount: Satang };
 export type PlannedVoucher = { voucherId: Id<"vouchers">; paid: Satang; goodwill: Satang };
@@ -386,6 +398,7 @@ export type AttemptQuote = {
   vouchers: PlannedVoucher[];
 };
 export type AttemptRef = { attemptId: Id<"paymentAttempts">; ownerRevision: number };
+export type HandoverTills = { thisTill: string | null; tills: { tillId: string; label: string }[] };
 /** The order as reviewed now, sent with every recovery step. */
 export type RecoveryReview = { orderRevision: number; customers: ReviewedCustomer[]; vouchers: PlannedVoucher[] };
 /** What was verified as kept, what is still due, and the one next step (D18). */
@@ -417,7 +430,10 @@ export type PayActions = {
   armLeg(args: AttemptRef & { legKey: string; stockInHand?: boolean; tendered?: Satang }): Promise<Armed>;
   saveCashTendered(args: AttemptRef & { legKey: string; tendered: Satang | null }): Promise<void>;
   recordLeg(args: AttemptRef & { legKey: string; direction?: PaymentLeg["direction"]; outcome: LegOutcome; received?: Satang; reference?: string }): Promise<PaymentAttemptView>;
-  settleAttempt(args: AttemptRef & { orderId: OrderId; stockInHand?: boolean }): Promise<SettleResult>;
+  /** `notifyGuest`: the cashier's choice to email the booking payment confirmation, as on the direct panel. */
+  settleAttempt(args: AttemptRef & { orderId: OrderId; stockInHand?: boolean; notifyGuest?: boolean }): Promise<SettleResult>;
+  /** Keeps the booking email choice on the attempt, so a reload or the till it is handed to settles with it. */
+  setEmailChoice(args: AttemptRef & { notifyGuest: boolean }): Promise<void>;
   /** Releases the order when nothing was taken. */
   cancelAttempt(args: AttemptRef): Promise<null>;
   previewRecovery(args: AttemptRef & RecoveryReview): Promise<RecoveryPreview>;
@@ -426,7 +442,12 @@ export type PayActions = {
    * (`instructed` only when this call armed it, as with armLeg).
    */
   recover(args: Keyed & AttemptRef & RecoveryReview & RecoveryStep): Promise<{ child: PaymentAttemptView | null; instructed: boolean }>;
-  /** A manager takes over after checking the terminal and drawer; earlier instructions stay locked. */
+  /**
+   * The owner hands the payment to another admitted till (v27 Handover); it continues there once
+   * that till accepts (takeOver). Instructions already shown stay locked as Check previous payment.
+   */
+  handOver(args: AttemptRef & { nextTillId: string }): Promise<void>;
+  /** A manager takes over after checking the terminal and drawer, or the till a payment was handed to accepts it. */
   takeOver(args: { orderId: OrderId; ownerRevision: number; stoppedPreviousOperator: boolean }): Promise<PaymentAttemptView>;
   /** Pay the room first (D17): accommodation stays on this order, everything else moves to Shop & spa. */
   payRoomFirst(args: Keyed & { orderId: OrderId; orderRevision: number }): Promise<{ roomOrderId: OrderId; shopOrderId: OrderId }>;
@@ -474,6 +495,17 @@ export type ReturnablePart = {
   needsDisposition: boolean;
   /** Visits already booked against these sessions, shown as a warning (D5). */
   upcomingVisits: { appointmentId: Id<"appointments">; start: number; serviceName: string }[];
+};
+/**
+ * A visit on a commerce receipt the server can return (pos.orders.getOrder commerce.returnableVisitParts):
+ * a paid visit refunds through its appointment's money adapter, a covered one restores its session (฿0).
+ */
+export type ReturnableVisitPart = {
+  lineId: Id<"orderLines">;
+  label: string;
+  amount: Satang;
+  appointmentId: Id<"appointments">;
+  part: Extract<ReturnPart, { kind: "restoreSession" }> | Extract<ReturnPart, { kind: "line" }>;
 };
 /** Money to a card, cash drawer or account, with its own state; one person gives it back. */
 export type ReturnClaimView = {
@@ -569,6 +601,8 @@ type GuestFactArgs = {
   goodwillAdded: object; goodwillRemoved: object; renamed: { name: string }; reissued: object; disabled: object; expired: object;
   cancelled: object; spent: { amount: Satang }; refundCredit: { amount: Satang }; serviceAdded: { service: string }; sold: object;
   stockAdjusted: object; roomCharge: { room: string }; takenBack: object; published: object;
+  /** Settings › Checkout rules (D20); staff only, never on a guest item. */
+  rulesChanged: object; paymentsSwitched: object; checkoutPaused: object; checkoutResumed: object;
   /** A change the row's writer didn't describe in guest words. */
   updated: object;
 };
@@ -586,7 +620,10 @@ export type HistoryEntry = {
   staff?: { actorName: string; reason: EditReason | StockReason | null; reasonText: string | null };
   /** Staff only: the fields an edit stored (catalogue, settings, a rename), before and after. History shows what changed. */
   fields?: { before?: StoredFields; after?: StoredFields };
+  /** Checkout rules rows only: each changed rule before → after (`refundDueDays.card`, `saleSwitches.vouchers`). */
+  ruleChanges?: SettingsChange[];
 };
+export type SettingsChange = { field: string; before: string | number | boolean | null; after: string | number | boolean | null };
 /** An edit's stored fields as the server sends them: values, lists, settings groups or package parts. */
 export type StoredFields = Record<string, StoredValue>;
 type StoredScalar = string | number | boolean | null;
@@ -761,7 +798,8 @@ export function guestFactText(fact: GuestFact, { t, money, date }: CommerceCopy)
       return t(key, { service: fact.service });
     case "extended":
     case "resumed":
-      return t(key, { date: date(fact.date) });
+      // A benefit's stored end is exclusive: say the last day it can be used.
+      return t(key, { date: date(lastUsableAt(fact.date)) });
     case "roomCharge":
       return t(key, { room: fact.room });
     default:
@@ -793,6 +831,8 @@ export type CommerceBackend = {
   usePaymentAttempt(orderId: OrderId | null, activeAttemptId?: Id<"paymentAttempts">): PaymentAttemptView | null | undefined;
   /** Whether payments can reach the server now: the browser is online and the live connection is up. */
   useConnected(): boolean;
+  /** The other admitted tills a payment can be handed over to, and this till's label; read only while `wanted`. */
+  useHandoverTills(wanted: boolean): HandoverTills | undefined;
   useReturnable(orderId: OrderId | null): Returnable | null | undefined;
   useReturnQuote(args: { orderId: OrderId; parts: ReturnPart[] } | null): ReturnQuote | null | undefined;
   useBenefitCard(target: Extract<AdjustTarget, { targetType: "voucher" | "grant" }> | null): BenefitCard | null | undefined;
@@ -837,7 +877,7 @@ const offActions: CommerceActions = {
   applySession: notOnSale, confirmAttendee: notOnSale, authorizeReturn: notOnSale, recordPayout: notOnSale,
   cancelReturn: notOnSale, adjust: notOnSale,
   startAttempt: notOnSale, changePlan: notOnSale, armLeg: notOnSale, saveCashTendered: notOnSale, recordLeg: notOnSale, settleAttempt: notOnSale,
-  cancelAttempt: notOnSale, previewRecovery: notOnSale, recover: notOnSale, takeOver: notOnSale, payRoomFirst: notOnSale,
+  cancelAttempt: notOnSale, previewRecovery: notOnSale, recover: notOnSale, handOver: notOnSale, takeOver: notOnSale, payRoomFirst: notOnSale, setEmailChoice: notOnSale,
   // Without a cutover there is nothing to register.
   openDirectPanel: async () => null,
   instructDirectPanel: async () => null,
@@ -861,6 +901,7 @@ export const COMMERCE_OFF: CommerceBackend = {
   useGiftSlip: () => null,
   usePaymentAttempt: () => null,
   useConnected: () => true,
+  useHandoverTills: () => ({ thisTill: null, tills: [] }),
   useReturnable: () => null,
   useReturnQuote: () => null,
   useBenefitCard: () => null,
@@ -873,4 +914,48 @@ export const COMMERCE_OFF: CommerceBackend = {
 /** The checkout's commerce readers and writers, or COMMERCE_OFF when the backend has none yet. */
 export function useCommerce(): CommerceBackend {
   return useCheckoutBackend().commerce ?? COMMERCE_OFF;
+}
+
+// ─── Returns desk (W2B·L3) ─────────────────────────────────────────────────────────────────────
+// The Return items sheet over api.pos.commands.returnItems, in the server's own shapes. A return is
+// claimed by one operator at one till: authorize (or a manager's approval) reserves everything and
+// creates one claim per payout destination; each destination is armed on the server before its
+// instruction shows, then recorded as given, failed or unknown. Only a successful arm or the first
+// authorize answer carries a fresh instruction; an instructed or unknown claim seen on any later
+// read means "Check previous refund". Server refusals are ConvexError({ code, message, ... }).
+
+type ReturnFns = typeof api.pos.commands.returnItems;
+type ReturnCommand = "preview" | "authorize" | "askManager" | "decideApproval" | "claim" | "arm" | "recordPayout" | "retry" | "cancel" | "release";
+/** What a return request names: the receipt as reviewed, the till, the reason and the parts. */
+export type ReturnRequestArgs = FunctionArgs<ReturnFns["preview"]>;
+export type ReturnPreview = FunctionReturnType<ReturnFns["preview"]>;
+/** The open (or just finished) return as its operator or a manager reads it. */
+export type ReturnRecord = NonNullable<FunctionReturnType<ReturnFns["get"]>>;
+export type ReturnClaim = ReturnRecord["claims"][number];
+/** A cashier's request as they see it (staffApprovals.myStatus). */
+export type ReturnRequestStatus = NonNullable<FunctionReturnType<typeof api.pos.staffApprovals.myStatus>>;
+/** A pending return request in the managers' queue (staffApprovals.pendingPage). */
+export type ReturnQueueRow = Extract<FunctionReturnType<typeof api.pos.staffApprovals.pendingPage>["page"][number], { kind: "returnItems" }>;
+export type ReturnsDeskActions = { [K in ReturnCommand]: (args: FunctionArgs<ReturnFns[K]>) => Promise<FunctionReturnType<ReturnFns[K]>> };
+/**
+ * Which return to read: the receipt's open return for this staff member at this till (or the given
+ * return), or, `completed`, its latest completed return that issued replacement vouchers.
+ */
+export type ReturnLookup = { orderId: OrderId; returnId: Id<"orderReturns"> | null; tillId: string } | { orderId: OrderId; completed: true };
+/** pos.commands.returnItems.get's arguments for a lookup. */
+export const returnArgs = (args: ReturnLookup) => "completed" in args
+  ? { orderId: args.orderId, completed: true }
+  : { orderId: args.orderId, tillId: args.tillId, ...(args.returnId ? { returnId: args.returnId } : {}) };
+export type ReturnsDesk = {
+  /** The return a lookup names (ReturnLookup). undefined while loading, null when there is none. */
+  useReturn(args: ReturnLookup | null): ReturnRecord | null | undefined;
+  /** The signed-in cashier's own request; null when it isn't theirs. */
+  useRequestStatus(requestId: ApprovalId | null): ReturnRequestStatus | null | undefined;
+  /** Pending return requests for approvers, newest first. [] when this staff member can't approve. */
+  useActions(): ReturnsDeskActions;
+};
+
+/** The returns desk, or null where the backend has none (canned previews). */
+export function useReturnsDesk(): ReturnsDesk | null {
+  return useCheckoutBackend().returns ?? null;
 }

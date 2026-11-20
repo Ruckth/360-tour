@@ -332,3 +332,37 @@ export async function syncAffiliateCredit(
   );
   return old._id;
 }
+
+/**
+ * A Return items payout on a POS order (v27 Returns: "updates partner credit at once"): lowers the
+ * order's credit by the external money this payout returned from credit-earning rows, without
+ * reading the order's payment or refund history. One indexed credit read and at most two writes.
+ * Gives the same credit as a full syncAffiliateCredit: after any payout the zero-cash coupon case no
+ * longer applies, so the credit is eligible exactly while money is left on it. A payout never
+ * creates a credit; with none, there is nothing to lower.
+ */
+export async function applyAffiliatePayout(
+  ctx: MutationCtx,
+  order: Pick<Doc<"orders">, "_id" | "status" | "affiliateSnapshot">,
+  creditedPayout: number,
+  actor: string,
+) {
+  if (!order.affiliateSnapshot?.candidates.length || creditedPayout <= 0) return null;
+  const budget = readBudget(ctx);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const old = await ctx.db
+    .query("affiliateCredits")
+    .withIndex("by_sourceKey", (q) => q.eq("sourceKey", `order:${order._id}`))
+    .unique();
+  if (!old) return null;
+  if (!budget.document(old)) throw new ReadBudgetExceeded();
+  const net = Math.max(roundMoney(old.eligibleNet - creditedPayout), 0);
+  const eligible = order.status === "paid" && net > 0;
+  const state = old.state === "approved" && !eligible ? "reversed" : old.state;
+  const approvedNet = state === "approved" ? net : 0;
+  if (old.eligibleNet === net && old.eligible === eligible && old.state === state && old.approvedNet === approvedNet) return old._id;
+  const next = { ...old, state, eligible, eligibleNet: net, approvedNet, revision: old.revision + 1, updatedAt: Date.now() };
+  await ctx.db.patch(old._id, { state, eligible, eligibleNet: net, approvedNet, revision: next.revision, updatedAt: next.updatedAt });
+  await appendCreditChange(ctx, next, actor, state !== old.state ? "reversed" : "amount_changed");
+  return old._id;
+}

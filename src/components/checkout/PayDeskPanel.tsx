@@ -27,9 +27,9 @@ import {
   type RecoveryStep,
 } from "./backend";
 import { amountInput, cashNotes } from "./checkout-ui";
-import { collected, deskStep, isUnchecked, methodsWithinRows, reviewedCustomers, stillToCharge, todayBusinessDate } from "./pay-desk-rules";
+import { collected, deskStep, isUnchecked, methodsWithinRows, reviewedCustomers, showsInstruction, stillToCharge, todayBusinessDate } from "./pay-desk-rules";
 import { instruction, methodName, payCopy, payRefusalText } from "./pay-desk-copy";
-import { CashChange, CheckPrevious, ConnectionNotice, DeskButton, InProgressElsewhere, Notice, ProblemNotice, payProblem, type Problem } from "./PayRecovery";
+import { CashChange, CheckPrevious, ConnectionNotice, DeskButton, HandOver, InProgressElsewhere, Notice, ProblemNotice, payProblem, type Problem } from "./PayRecovery";
 
 /*
  * The pay panel once payments go through attempts (paymentsMode "attempts"). The order is quoted,
@@ -86,6 +86,12 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   // instruction nor Check previous payment.
   const [arming, setArming] = useState<string | null>(null);
   const [roomSplit, setRoomSplit] = useState<{ shopOrderId: OrderId } | null>(null);
+  // The booking payment confirmation email, as on the direct panel: the cashier's choice, kept on the
+  // attempt (so a reload or the till it is handed to shows it) and sent with settlement. A choice made
+  // here counts only for the owner revision it was made under; after a handover the server's stands.
+  // Before any attempt the choice belongs to the one about to start (owner revision 0).
+  const [emailChoice, setEmailChoice] = useState<{ value: boolean; revision: number } | null>(null);
+  const booking = view.sources.some((source) => source.kind === "booking");
   const lock = useRef(false);
   const mounted = useRef(true);
   const keys = useRef({ base: newAttemptKey(), n: 0 });
@@ -95,6 +101,14 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   // One key per Pay the room first, kept until it is answered, so Retry replays the same split.
   const roomKey = useRef<string | null>(null);
 
+  const localEmail = emailChoice && emailChoice.revision === (attempt?.ownerRevision ?? 0) ? emailChoice.value : null;
+  const notifyGuest = localEmail ?? attempt?.notifyGuest ?? false;
+  useEffect(() => {
+    if (!attempt?.mine || localEmail === null) return;
+    if ((attempt.notifyGuest ?? false) === localEmail) return;
+    void actions.setEmailChoice({ attemptId: attempt.attemptId, ownerRevision: attempt.ownerRevision, notifyGuest: localEmail }).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per attempt, owner revision and choice
+  }, [attempt?.attemptId, attempt?.ownerRevision, attempt?.mine, attempt?.notifyGuest, localEmail]);
   const step = attempt ? deskStep(attempt, armedHere) : null;
   const moneyHeld = attempt ? attempt.legs.some((leg) => leg.state === "taken" || isUnchecked(leg)) : false;
   const instructing = step?.kind === "instruct";
@@ -108,7 +122,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   // Leaving with nothing taken releases the order for the other tills (best effort; the panel
   // reopens the same attempt if this answer is lost).
   const release = useRef<(() => void) | null>(null);
-  release.current = attempt && !moneyHeld && !instructing && step?.kind !== "settle" && attempt.status === "collecting"
+  release.current = attempt?.mine && !moneyHeld && !instructing && step?.kind !== "settle" && attempt.status === "collecting"
     ? () => void actions.cancelAttempt({ attemptId: attempt.attemptId, ownerRevision: attempt.ownerRevision }).catch(() => undefined)
     : null;
   useEffect(() => () => {
@@ -228,7 +242,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
     if (settled.current === attempt.attemptId) return;
     settled.current = attempt.attemptId;
     void run(async () => {
-      const result = await actions.settleAttempt({ ...ref(attempt), orderId });
+      const result = await actions.settleAttempt({ ...ref(attempt), orderId, notifyGuest });
       if (!mounted.current) return;
       if (result.status === "settled") onPaid(orderId);
       else setProblem({ refusal: result.refusal });
@@ -323,7 +337,16 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
         <p role="status" className="text-sm text-muted-foreground">{t("pay.saving")}</p>
       ) : null}
 
+      {booking && !elsewhere ? (
+        <label className="flex min-h-11 items-center gap-2 text-sm">
+          <input type="checkbox" className="size-5" checked={notifyGuest} disabled={step?.kind === "settle"} onChange={(e) => setEmailChoice({ value: e.target.checked, revision: attempt?.ownerRevision ?? 0 })} />
+          {t("pay.notifyGuest")}
+        </label>
+      ) : null}
       {roomFirst ? <DeskButton busy={busy} className="mt-auto" onClick={() => void payRoomFirst()}>{t("pay.payRoomFirst")}</DeskButton> : null}
+      {attempt?.mine && !elsewhere && (attempt.status === "collecting" || attempt.status === "recovering") && step?.kind !== "settle" ? (
+        <HandOver key={attempt.ownerRevision} attempt={attempt} disabled={busy || !connected} />
+      ) : null}
       {mode === "none" && !attempt && !loadingAttempt ? (
         <DeskButton busy={busy} disabled={!connected} className="mt-auto" onClick={() => void run(() => charge([], ""))}>{t("pay.closeNothingDue", { amount: money(0) })}</DeskButton>
       ) : null}
@@ -439,7 +462,7 @@ function SplitParts({ attempt, armedHere, remaining, busy, nextKey, onCharge, on
   const open = parts.filter((part) => !part.key || !heldKeys.has(part.key))
     .map((part) => (part.key && declinedKeys.has(part.key) ? { ...part, key: null } : part))
     .slice(0, Math.max(1, MAX_TENDERS - held.length));
-  const instructed = held.find((leg) => leg.state === "instructed" && armedHere.has(leg.key));
+  const instructed = held.find((leg) => showsInstruction(leg, armedHere));
   const typed = open.slice(0, -1);
   const rest = remaining - typed.reduce((sum, part) => sum + (parseMoneyInput(part.amount) || 0), 0);
   const amounts = [...typed.map((part) => parseMoneyInput(part.amount) || 0), Math.max(0, rest)];

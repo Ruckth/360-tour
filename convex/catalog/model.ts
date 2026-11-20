@@ -1,6 +1,7 @@
 import type { Doc } from '../_generated/dataModel';
 
 export { initializeReviewStats, adjustReviewStats } from './reviewStats';
+export { preparePropertyPriceEdit } from './private/propertyEdits';
 
 export type PublicProperty = NonNullable<ReturnType<typeof toPublicProperty>>;
 

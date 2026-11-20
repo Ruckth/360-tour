@@ -5,6 +5,8 @@ import { uploadProblem } from '../shared/imageUploads';
 import { MAX_SLUG_LENGTH, SLUG_PATTERN, slugify } from '../shared/slug';
 import { configurationWriter, logOtaRate } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
+import { catalogueRevision } from '../commerce/model';
+import { savePropertyEdit } from './private/propertyEdits';
 
 // Villa admin: create/delete drafts, slug, status, uploads, 360 rooms and hotspots.
 // Plain field edits stay in `properties.update` / `properties.updateRoom`.
@@ -201,32 +203,34 @@ export const duplicate = adminMutation({
 });
 
 export const setSlug = adminMutation({
-	args: { propertyId: v.id('properties'), slug: v.string() },
+	args: { propertyId: v.id('properties'), slug: v.string(), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
-		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
+		catalogueRevision({ targetType: 'property', targetId: property._id }, property, args.expectedRevision);
 		const slug = validSlug(args.slug, 'Slug');
 		if (slug === property.slug) return slug;
 		if (await hasBookings(ctx, property._id)) {
 			throw new Error('The slug is locked because this villa has bookings: guest links and emails use it');
 		}
 		if (await propertySlugTaken(ctx, slug, property._id)) throw new Error(`Slug "${slug}" is already used`);
-		await history.patchProperty(property._id, { slug });
+		await savePropertyEdit(ctx, property, { slug }, admin.email);
 		return slug;
 	}
 });
 
 export const setStatus = adminMutation({
-	args: { propertyId: v.id('properties'), status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')) },
+	args: {
+		propertyId: v.id('properties'), status: v.union(v.literal('active'), v.literal('draft'), v.literal('archived')),
+		expectedRevision: v.optional(v.number()),
+	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
-		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		if (args.status === 'active' && property.pricePerNight <= 0) {
 			throw new Error('Set a price per night before publishing');
 		}
-		await history.patchProperty(property._id, { status: args.status });
+		await savePropertyEdit(ctx, property, { status: args.status }, admin.email, args.expectedRevision);
 	}
 });
 
@@ -298,7 +302,7 @@ export const saveUploadedImage = adminMutation({
 // 360 rooms. `properties.tourRoomIds` holds room slugs in tour order; hotspots point at room slugs.
 
 export const createRoom = adminMutation({
-	args: { propertyId: v.id('properties'), name: v.string(), slug: v.optional(v.string()), imagePath: v.string() },
+	args: { propertyId: v.id('properties'), name: v.string(), slug: v.optional(v.string()), imagePath: v.string(), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
@@ -310,13 +314,13 @@ export const createRoom = adminMutation({
 		const taken = new Set(rooms.map((room) => room.slug));
 		const slug = await pickSlug(args.slug, name, 'room', 'Room slug', async (s) => taken.has(s));
 		const roomId = await history.insertRoom({ propertyId: property._id, slug, name, imagePath, hotspots: [] });
-		await history.patchProperty(property._id, { tourRoomIds: [...property.tourRoomIds.filter((id) => id !== slug), slug] });
+		await savePropertyEdit(ctx, property, { tourRoomIds: [...property.tourRoomIds.filter((id) => id !== slug), slug] }, admin.email, args.expectedRevision);
 		return roomId;
 	}
 });
 
 export const deleteRoom = adminMutation({
-	args: { roomId: v.id('tourScenes') },
+	args: { roomId: v.id('tourScenes'), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
@@ -330,24 +334,23 @@ export const deleteRoom = adminMutation({
 		const snippets = await ctx.db.query('tourSnippets').withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(MAX_DELETE_CHILDREN + 1);
 		if (snippets.length > MAX_DELETE_CHILDREN) throw new Error('Too many tour snippets to safely remove this room');
 		for (const snippet of snippets) if (snippet.roomSlug === room.slug) await ctx.db.delete(snippet._id);
-		await history.patchProperty(property._id, { tourRoomIds: property.tourRoomIds.filter((slug) => slug !== room.slug) });
+		await savePropertyEdit(ctx, property, { tourRoomIds: property.tourRoomIds.filter((slug) => slug !== room.slug) }, admin.email, args.expectedRevision);
 		await history.deleteRoom(room._id);
 	}
 });
 
 /** `roomSlugs` must list every room of the villa once, in the new tour order. */
 export const reorderRooms = adminMutation({
-	args: { propertyId: v.id('properties'), roomSlugs: v.array(v.string()) },
+	args: { propertyId: v.id('properties'), roomSlugs: v.array(v.string()), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
-		const history = configurationWriter(ctx, admin.email);
 		const property = await getProperty(ctx, args.propertyId);
 		const slugs = new Set((await propertyRooms(ctx, property._id)).map((room) => room.slug));
 		const given = new Set(args.roomSlugs);
 		if (given.size !== args.roomSlugs.length || given.size !== slugs.size || !args.roomSlugs.every((slug) => slugs.has(slug))) {
 			throw new Error('The room order is out of date. Reload and try again.');
 		}
-		await history.patchProperty(property._id, { tourRoomIds: args.roomSlugs });
+		await savePropertyEdit(ctx, property, { tourRoomIds: args.roomSlugs }, admin.email, args.expectedRevision);
 	}
 });
 

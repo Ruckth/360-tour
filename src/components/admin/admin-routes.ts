@@ -26,6 +26,7 @@ const STAFF_TAB_KEYWORDS: Record<AdminStaffTab, readonly string[]> = {
 export const ADMIN_SETTINGS_TABS = [
   { id: "business", label: "Business", keywords: ["profile", "contact"] },
   { id: "bookingRules", label: "Booking rules", keywords: ["holds", "minimum nights", "cutoff"] },
+  { id: "checkoutRules", label: "Checkout rules", keywords: ["refunds", "VAT", "vouchers", "packages", "sale switches", "new payments"] },
   { id: "ai", label: "AI assistant", keywords: ["model", "concierge"] },
   { id: "email", label: "Email", keywords: ["notifications"] },
   { id: "channels", label: "Channels", keywords: ["LINE", "Facebook", "Messenger", "Instagram", "WhatsApp"] },

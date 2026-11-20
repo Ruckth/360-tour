@@ -41,3 +41,22 @@ export function containsVoucherCode(text: string): boolean {
 export function maskVoucherCodes(text: string): string {
   return text.replace(IN_TEXT, (_match, _first: string, last: string) => `${VOUCHER_CODE_PREFIX}-••••-${last.toUpperCase()}`);
 }
+
+// Letters and digits a guest can't misread (no 0/O, 1/I/L), all inside the recognised groups.
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+
+/**
+ * A new code in the one format every reader recognises: "GV-7K2M-Q9XD". `random` returns `count`
+ * random bytes (crypto.getRandomValues by default); a byte maps to a character only below a whole
+ * multiple of the alphabet, so every character is equally likely.
+ */
+export function newVoucherCode(random: (count: number) => ArrayLike<number> = count => crypto.getRandomValues(new Uint8Array(count))): string {
+  const limit = 256 - (256 % CODE_ALPHABET.length);
+  let body = '';
+  while (body.length < 8) {
+    for (const byte of Array.from(random(16))) {
+      if (byte < limit && body.length < 8) body += CODE_ALPHABET[byte % CODE_ALPHABET.length];
+    }
+  }
+  return `${VOUCHER_CODE_PREFIX}-${body.slice(0, 4)}-${body.slice(4)}`;
+}

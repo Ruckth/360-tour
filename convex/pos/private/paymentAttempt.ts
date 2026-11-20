@@ -105,11 +105,23 @@ export function assertNewPayments(settings: Awaited<ReturnType<typeof checkoutPa
   if (settings.cutover && !settings.cutover.activatedAt) paymentError('checkout_paused', 'Checkout is paused for update.');
 }
 
+/**
+ * `checkPrevious` on a part: no screen may show its instruction again, only Check previous payment.
+ * Its outcome is unknown, or it was instructed under an earlier owner revision (before a handover,
+ * however many times the payment has since come back). Within the current revision only the call
+ * that armed it may show the instruction; every other screen also checks (the panel decides that).
+ */
+export function legView(attempt: Pick<Attempt, 'ownerRevision'>, leg: ExternalLeg) {
+  return { ...leg, checkPrevious: leg.state === 'unknown' || (leg.state === 'instructed' && leg.instructedOwnerRevision !== attempt.ownerRevision) };
+}
+
 export function attemptView(attempt: Attempt) {
   return {
     attemptId: attempt._id, orderId: attempt.orderId, status: attempt.status,
-    ...attemptOwnerView(attempt), reviewedRequest: attempt.reviewedRequest, legs: attempt.legs,
-    parentAttemptId: attempt.parentAttemptId, refusal: attempt.refusal, giveBackLegs: attempt.resolution?.giveBackLegs ?? [],
+    ...attemptOwnerView(attempt), reviewedRequest: attempt.reviewedRequest, legs: attempt.legs.map(leg => legView(attempt, leg)),
+    parentAttemptId: attempt.parentAttemptId, refusal: attempt.refusal,
+    giveBackLegs: (attempt.resolution?.giveBackLegs ?? []).map(leg => legView(attempt, leg)),
+    notifyGuest: attempt.notifyGuest ?? false,
   };
 }
 
@@ -203,7 +215,7 @@ export async function attemptForOwner(ctx: PaymentCtx, actor: StaffActor, args: 
 }
 
 export function instructionOrigin(attempt: Attempt) {
-  return { instructedTillId: attempt.tillId, instructedTab: attempt.ownerTab };
+  return { instructedTillId: attempt.tillId, instructedTab: attempt.ownerTab, instructedOwnerRevision: attempt.ownerRevision };
 }
 
 /** Lifecycle operations can proceed once cancellation or settlement removes the live attempt. */

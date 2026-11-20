@@ -6,7 +6,7 @@ import type { FunctionReturnType } from "convex/server";
 import { ConvexError } from "convex/values";
 import { MAX_TENDERS } from "convex/shared/orderMath";
 import { COMMERCE_REFUSAL_MESSAGES, type CommerceRefusal, type OrderId, type PayRefusal, type PaymentAttemptView, type PaymentLeg, type RecoveryPreview } from "./backend";
-import { tillId } from "./pay-desk";
+import { serverTillId, tillId } from "./pay-desk";
 import { claimTabKey } from "./pay-desk-tab";
 
 export { currentTab, subscribeTab } from "./pay-desk-tab";
@@ -27,6 +27,7 @@ type Refused = { status: "refused"; code: string; message: string };
 const leg = (direction: PaymentLeg["direction"]) => (row: ServerLeg): PaymentLeg => ({
   key: row.key, direction, method: row.method, amount: row.amount, state: row.state,
   tendered: row.tendered, received: row.received ?? null, change: row.change ?? null, reference: row.reference ?? null, instructedAt: row.instructedAt ?? null,
+  checkPrevious: row.checkPrevious,
 });
 
 /** The server's codes that have a CommerceRefusal of their own. */
@@ -68,6 +69,7 @@ export function attemptView(attempt: ServerAttempt): PaymentAttemptView {
     refusal: attempt.refusal ? payRefusal(attempt.refusal) : null,
     recovery: null,
     startedAt: Math.min(...attempt.legs.map((row) => row.instructedAt ?? Infinity), Date.now()),
+    notifyGuest: attempt.notifyGuest,
   };
 }
 
@@ -119,14 +121,18 @@ export function payActions(call: AttemptCalls): AttemptActions {
       if (result.status === "refused") refuse(result);
       return attemptView(result.attempt);
     },
-    async settleAttempt({ orderId, stockInHand, ...ref }) {
-      const result = await call.settle({ ...await owner(ref), stockInHand });
+    async settleAttempt({ orderId, stockInHand, notifyGuest, ...ref }) {
+      const result = await call.settle({ ...await owner(ref), stockInHand, ...(notifyGuest === undefined ? {} : { notifyGuest }) });
       if (result.status === "settled") return { status: "settled", orderId, receiptNumber: result.receiptNumber };
       if (result.status === "confirm_stock") {
         const [first] = result.shortages;
         throw new ConvexError({ code: "STOCK_CONFIRM_NEEDED", variantId: first.variantId, variantLabel: first.label, onHand: first.onHand, quantity: first.quantity } satisfies CommerceRefusal);
       }
       return { status: "refused", refusal: payRefusal(result) };
+    },
+    async setEmailChoice({ notifyGuest, ...ref }) {
+      const result = await call.emailChoice({ ...await owner(ref), notifyGuest });
+      if (result.status === "refused") refuse(result);
     },
     async cancelAttempt(ref) {
       const result = await call.cancel(await owner(ref));
@@ -155,6 +161,10 @@ export function payActions(call: AttemptCalls): AttemptActions {
       if (result.status === "refused") refuse(result);
       return { child: attemptView(result.attempt), instructed: false };
     },
+    async handOver({ nextTillId, ...ref }) {
+      const result = await call.release({ ...await owner(ref), nextTillId });
+      if (result.status === "refused") refuse(result);
+    },
     async takeOver({ orderId, ownerRevision, stoppedPreviousOperator }) {
       const result = await call.takeOver({ orderId, tillId: till(), tabKey: await claimTabKey(), ...tillLoad(), expectedOwnerRevision: ownerRevision, stoppedPreviousOperator });
       if (result.status === "refused") refuse(result);
@@ -172,9 +182,11 @@ export function payActions(call: AttemptCalls): AttemptActions {
 export function attemptReading(result: FunctionReturnType<typeof api.pos.commands.resumePaymentAttempt.resumePaymentAttempt>, orderId: OrderId, activeAttemptId: Id<"paymentAttempts"> | undefined): PaymentAttemptView | null {
   if (result.status === "resume") return attemptView(result.attempt);
   if (result.status !== "in_progress_elsewhere" || !activeAttemptId) return null;
+  // Handed over: nobody owns it until the chosen till accepts.
+  const handedOverTo = result.owner ? null : { label: tillLabelOf(result), here: result.tillId === serverTillId() };
   return {
     attemptId: activeAttemptId, orderId, status: "collecting", ownerRevision: result.ownerRevision,
     tillLabel: tillLabelOf(result), staffName: ownerName(result), mine: false, due: 0, legs: [], vouchers: [],
-    refusal: null, recovery: null, startedAt: 0,
+    refusal: null, recovery: null, startedAt: 0, handedOverTo,
   };
 }

@@ -3,25 +3,31 @@ import { ConvexError, v } from 'convex/values';
 import { staffMutation, staffQuery } from '../auth/model';
 import { findDevicePaymentTill, paymentTillsAtRevision, validPaymentDeviceKey } from '../pos/model';
 import { checkoutPaused, cutoverRevision, cutoverStarted, tillAcknowledged } from './private/paymentAdmission';
-import { readCommerceSettings, termsOf } from './private/readSettings';
+import { readCommerceSettings, settingsDocument, termsOf } from './private/readSettings';
 import { editCommerceSettings, settingsEditArgs, settingsEditResult } from './private/settings';
-import { commerceTerms, paymentsMode, saleSwitches } from './validators';
+import { commerceTerms, paymentsMode, resolveCommerceSettings, saleSwitches } from './validators';
 
 const switchRank = { off: 0, managers: 1, everyone: 2 };
 const kinds = ['products', 'vouchers', 'sessionPackages', 'mixedPackages'] as const;
 
+/**
+ * Settings › Checkout rules (D20). Owners and managers read it; only the owner (settings) changes
+ * the rules and switches, which updateRules enforces. `settingsId` opens the page's History; null
+ * until the first change creates the row.
+ */
 export const getRules = staffQuery({
-  capability: 'settings',
+  capability: 'operations',
   args: {},
   returns: v.object({
     revision: v.number(), terms: commerceTerms, switches: saleSwitches,
-    paymentsMode, canEdit: v.literal(true),
+    paymentsMode, canEdit: v.boolean(), settingsId: v.union(v.id('commerceSettings'), v.null()),
   }),
   handler: async ctx => {
-    const settings = await readCommerceSettings(ctx);
+    const row = await settingsDocument(ctx);
+    const settings = resolveCommerceSettings(row);
     return {
       revision: settings.revision, terms: termsOf(settings), switches: settings.saleSwitches,
-      paymentsMode: settings.paymentsMode, canEdit: true as const,
+      paymentsMode: settings.paymentsMode, canEdit: ctx.staff.capabilities.settings, settingsId: row?._id ?? null,
     };
   },
 });
@@ -71,7 +77,7 @@ export const updateRules = staffMutation({
     if (terms) {
       const refundPeriods = [terms.unusedFullRefundDays, terms.refundDueDays?.cashOrTransfer, terms.refundDueDays?.card];
       const validityPeriods = [terms.packageValidityDays, terms.voucherValidityDays, terms.pointsExpiryMonths];
-      // null is "no expiry" (a voucher validity period may be unlimited).
+      // null: no unused-refund window, or unlimited voucher validity (only those two terms allow it).
       const invalid = (periods: (number | null | undefined)[], minimum: number) =>
         periods.some(period => period !== undefined && period !== null && (!Number.isSafeInteger(period) || period < minimum));
       if (invalid(refundPeriods, 0) || invalid(validityPeriods, 1)) {

@@ -1,4 +1,5 @@
 import { assertNoActivePayment } from '../private/paymentAttempt';
+import { assertHandoverEditable } from '../private/handoverCustody';
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../shared/bookingMoney';
@@ -33,6 +34,7 @@ export const discardOrder = staffMutation({
 		if (order.revision !== args.expectedRevision) throw new ConvexError('The order changed since you opened it. Review it and try again.');
 		assertNoActivePayment(order);
 		const reason = cleanReason(args.reason, 'Reason', false);
+		await assertHandoverEditable(ctx, order);
 		const lines = await orderLines(ctx, order._id);
 		if (!lines.length) throw new ConvexError('This order has no items, so it isn’t listed and there is nothing to discard.');
 		if (await ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first()) {

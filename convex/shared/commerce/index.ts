@@ -29,6 +29,7 @@ export {
   benefitExpiresAt, benefitState, canTransferSessions, DEFAULT_COMMERCE_SETTINGS, isProtectedUnusedRefund,
   pointsExpireOn, refundDueOn, splitPointsSpend, type BenefitState, type CommerceSettings,
 } from './settings';
+export { lastUsableAt } from './validity';
 export { freezePackageVatBases, freezeRowVatBase, receiptVat, type FrozenVatBase, type ReceiptVatInput } from './vat';
 export {
   assertExternalCorrection, incrementalShare, quotePackageVoucherReturn, quoteSessionReturn,

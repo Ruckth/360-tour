@@ -26,13 +26,14 @@ export const servicesTables = {
 	}).index('by_idempotencyKey', ['idempotencyKey']),
 
 	appointmentRefunds: defineTable({
-		appointmentId: v.id('appointments'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
+		appointmentId: v.id('appointments'), amount: v.number(), currency: v.string(), method: v.union(storedRefundMethod, v.literal('voucher')),
 		reason: v.string(), effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
 		paymentId: v.optional(v.id('appointmentPayments')), orderId: v.optional(v.id('orders')),
 		returnId: v.optional(v.id('orderReturns')),
 		netBefore: v.number(), netAfter: v.number()
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
-		.index('by_orderId', ['orderId']).index('by_idempotencyKey', ['idempotencyKey'])
+		.index('by_orderId', ['orderId']).index('by_orderId_and_effectiveAt', ['orderId', 'effectiveAt'])
+		.index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_recordedAt', ['recordedAt']),
 
 	staff: defineTable({
@@ -150,6 +151,7 @@ export const servicesTables = {
 	appointments: defineTable({
 		attendeeId: v.optional(v.id('customers')),
 		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
+		pendingReturn: v.optional(v.object({ returnId: v.id('orderReturns'), remaining: v.number() })),
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
 

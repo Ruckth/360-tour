@@ -22,6 +22,7 @@ const FACT_ARGS: { [K in GuestFactKey]: Record<string, "string" | "number"> } = 
   goodwillAdded: {}, goodwillRemoved: {}, renamed: { name: "string" }, reissued: {}, disabled: {}, expired: {},
   cancelled: {}, spent: { amount: "number" }, refundCredit: { amount: "number" }, serviceAdded: { service: "string" }, sold: {},
   stockAdjusted: {}, roomCharge: { room: "string" }, takenBack: {}, published: {}, updated: {},
+  rulesChanged: {}, paymentsSwitched: {}, checkoutPaused: {}, checkoutResumed: {},
 };
 const EDIT_REASONS = new Set<string>(editReasons);
 const STOCK_REASONS = new Set<string>(stockReasons);
@@ -42,7 +43,8 @@ export function historyEntry(row: HistoryRow): HistoryEntry {
   const { actorName, reason, reasonText } = row.staff;
   const known = reason !== null && (EDIT_REASONS.has(reason) || STOCK_REASONS.has(reason)) ? (reason as EditReason | StockReason) : null;
   const fields = "before" in row || "after" in row ? { before: row.before, after: row.after } : null;
-  return { ...entry, staff: { actorName, reason: known, reasonText }, ...(fields ? { fields } : {}) };
+  const ruleChanges = "changes" in row && row.changes ? row.changes : null;
+  return { ...entry, staff: { actorName, reason: known, reasonText }, ...(fields ? { fields } : {}), ...(ruleChanges ? { ruleChanges } : {}) };
 }
 
 // ─── Receipt status (getOrder's paymentAttempt and activeReturn) ────────────────────────────────

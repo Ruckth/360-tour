@@ -394,8 +394,9 @@ export const acknowledge = staffMutation({
 });
 
 const tillStatus = { tillId: v.id('tills'), key: v.string() };
+/** Which tills have reloaded since the cutover: the owner and managers who run it read this. */
 export const status = staffQuery({
-  capability: 'settings',
+  capability: 'operations',
   args: {},
   returns: v.object({
     mode: paymentsMode, settingsRevision: v.number(), paused: v.boolean(),

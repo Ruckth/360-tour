@@ -6,6 +6,7 @@ import { configurationWriter } from '../settings/model';
 import { appendRecordHistory } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 import { toPublicProperty, type PublicProperty } from './model';
+import { propertyNightlyPrice, savePropertyEdit } from './private/propertyEdits';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 1_000_000_000;
@@ -148,14 +149,6 @@ function textList(values: string[], label: string, maxItems: number): string[] {
 	return trimmed;
 }
 
-/** True when guest-facing English copy changed, so the public site stops showing bundled i18n text. */
-function contentChanged(existing: Doc<'properties'>, changes: Partial<Doc<'properties'>>): boolean {
-	const textChanged = (['name', 'tagline', 'description'] as const).some(
-		(field) => changes[field] !== undefined && changes[field] !== existing[field]
-	);
-	return textChanged || (changes.amenities !== undefined && changes.amenities.join('\n') !== existing.amenities.join('\n'));
-}
-
 export const adminList = adminQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -178,18 +171,18 @@ export const update = adminMutation({
 		amenities: v.optional(v.array(v.string())),
 		images: v.optional(v.array(v.string())),
 		directDiscountPercent: v.optional(v.number()),
-		status: v.optional(propertyStatus)
+		status: v.optional(propertyStatus),
+		expectedRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, { propertyId, ...args }) => {
+	handler: async (ctx, { propertyId, expectedRevision, ...args }) => {
 		const admin = ctx.admin;
-		const history = configurationWriter(ctx, admin.email);
 		const existing = await ctx.db.get(propertyId);
 		if (!existing) throw new Error('Property not found');
 		const changes: Partial<Doc<'properties'>> = {};
 		if (args.name !== undefined) changes.name = required(args.name, 'Name');
 		if (args.tagline !== undefined) changes.tagline = args.tagline.trim();
 		if (args.description !== undefined) changes.description = args.description.trim();
-		if (args.pricePerNight !== undefined) changes.pricePerNight = amount(args.pricePerNight, 'Price per night', { integer: true });
+		if (args.pricePerNight !== undefined) changes.pricePerNight = propertyNightlyPrice(args.pricePerNight);
 		if (args.currency !== undefined) {
 			changes.currency = args.currency.trim().toUpperCase();
 			if (!/^[A-Z]{3}$/.test(changes.currency)) throw new Error('Currency must be a 3-letter code');
@@ -204,8 +197,7 @@ export const update = adminMutation({
 			changes.directDiscountPercent = amount(args.directDiscountPercent, 'Direct discount', { integer: true, max: 10000 });
 		}
 		if (args.status !== undefined) changes.status = args.status;
-		if (contentChanged(existing, changes)) changes.contentEditedAt = Date.now();
-		await history.patchProperty(propertyId, changes);
+		await savePropertyEdit(ctx, existing, changes, admin.email, expectedRevision);
 	}
 });
 

@@ -1,10 +1,10 @@
 "use client";
 
-import { useConvexConnectionState, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useConvexConnectionState, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import type { CheckoutBackend, CommerceBackend, CustomerPage, HistoryEntry } from "./backend";
+import { returnArgs, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry, type ReturnsDesk } from "./backend";
 import { cutoverAccess, payDeskCommerce, type PayDeskTransport, withSwapOwner } from "./pay-desk-backend";
 
 const SKIP = "skip" as const;
@@ -46,6 +46,30 @@ const transport: PayDeskTransport = {
 };
 const payDesk = payDeskCommerce(transport, cutoverAccess(transport));
 
+// ─── Returns desk (W2B·L3) ───
+// Return items over pos.commands.returnItems. Only commerce receipts open the sheet, so with every
+// sale switch Off nothing here runs; the managers' return queue loads only once payments use attempts.
+const returnsDesk: ReturnsDesk = {
+  useReturn: (args) => useQuery(api.pos.commands.returnItems.get, args ? returnArgs(args) : SKIP),
+  useRequestStatus: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
+  useActions: () => {
+    const convex = useConvex();
+    const authorize = useMutation(api.pos.commands.returnItems.authorize);
+    const askManager = useMutation(api.pos.commands.returnItems.askManager);
+    const decideApproval = useMutation(api.pos.commands.returnItems.decideApproval);
+    const claim = useMutation(api.pos.commands.returnItems.claim);
+    const arm = useMutation(api.pos.commands.returnItems.arm);
+    const recordPayout = useMutation(api.pos.commands.returnItems.recordPayout);
+    const retry = useMutation(api.pos.commands.returnItems.retry);
+    const cancel = useMutation(api.pos.commands.returnItems.cancel);
+    const release = useMutation(api.pos.commands.returnItems.release);
+    return useMemo(() => ({
+      preview: (args) => convex.query(api.pos.commands.returnItems.preview, args),
+      authorize, askManager, decideApproval, claim, arm, recordPayout, retry, cancel, release,
+    }), [convex, authorize, askManager, decideApproval, claim, arm, recordPayout, retry, cancel, release]);
+  },
+};
+
 /**
  * Commerce readers that have a backend so far: History, the receipt's payment attempt and open return,
  * and a requester's own request, beside the pay desk. The rest stay Off (COMMERCE_OFF) until their wave
@@ -84,7 +108,6 @@ const convexCommerce: CommerceBackend = {
 
 /** The live checkout: Convex queries and mutations from convex/pos/ and convex/pos/customers.ts. */
 export const convexCheckoutBackend: CheckoutBackend = {
-  commerce: convexCommerce,
   useRestoreCheck: (orderId) => useQuery(api.pos.orders.restoreCheck, { orderId }),
   useAppointmentFees: (appointmentId) => useQuery(api.pos.orders.appointmentFees, { appointmentId }),
   useCorrectionHistory: (orderId) => usePaginatedQuery(api.pos.orderHistoryPages.corrections, { orderId }, { initialNumItems: 20 }),
@@ -126,6 +149,8 @@ export const convexCheckoutBackend: CheckoutBackend = {
   usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
   useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
   useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
+  commerce: convexCommerce,
+  returns: returnsDesk,
   useActions: () => {
     const noteCouponRefusal = useMutation(api.marketing.report.noteCouponRefusal);
     const discardOrder = useMutation(api.pos.commands.discardOrder.discardOrder);

@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { commerceCopyArgs } from '../shared/commerce/reasons';
-import { adjustmentKind, adjustmentTarget, adjustmentFields, commerceTerms, vatProfile } from '../commerce/model';
+import { adjustmentKind, adjustmentTarget, adjustmentFields, commerceTerms, vatProfile } from '../shared/commerce/validators';
 import { storedRefundMethod, tenderMethod } from '../shared/financeValidators';
 import { LINE_KINDS } from '../shared/orderMath';
 
@@ -51,6 +51,7 @@ export const orderLineSaleSnapshot = v.object({
     units: v.number(),
     ...saleAllocationFields,
     vatProfile,
+    goodwillShare: v.optional(v.number()),
     stockMovementId: v.optional(v.id('stockMovements')),
     grantId: v.optional(v.id('sessionGrants')),
     voucherId: v.optional(v.id('vouchers')),
@@ -80,6 +81,8 @@ export const paymentExternalLeg = v.object({
   instructedAt: v.optional(v.number()),
   instructedTillId: v.optional(v.string()),
   instructedTab: v.optional(v.string()),
+  /** The attempt's owner revision when this part was instructed. A handover moves past it for good. */
+  instructedOwnerRevision: v.optional(v.number()),
 });
 export const reviewedVoucher = v.object({ voucherId: v.id('vouchers'), paid: v.number(), goodwill: v.number() });
 const returnVoucherDestination = v.union(
@@ -110,7 +113,7 @@ export const returnPart = v.union(
 );
 export const returnClaim = v.object({
   key: v.string(), method: tenderMethod, amount: v.number(), operator: v.string(),
-  state: returnClaimState, reference: v.optional(v.string()), instructedAt: v.optional(v.number()),
+  state: returnClaimState, instructionId: v.optional(v.string()), reference: v.optional(v.string()), instructedAt: v.optional(v.number()),
   dueAt: v.number(),
 });
 export const returnSourceOwner = v.union(

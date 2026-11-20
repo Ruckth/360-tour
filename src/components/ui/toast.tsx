@@ -113,6 +113,11 @@ export function Toast({
       data-slot="toast"
       className={cn(
         "pointer-events-none fixed inset-x-4 bottom-[calc(var(--admin-tab-bar,0px)+1rem)] z-[60] flex justify-center sm:left-auto sm:right-6 sm:justify-end",
+        // While a modal dialog or sheet is open, a page's notice steps aside too: it never covers
+        // (or takes the tap meant for) that dialog's buttons, and shows again once it closes. A
+        // notice inside the open sheet itself stays. Radix keeps live regions like this one out of
+        // its aria-hidden, so the open modal (`data-modal-content`) is what's matched.
+        "[[aria-hidden=true]_&]:invisible [[inert]_&]:invisible [body:has([data-modal-content][data-state=open])_&:not([data-modal-content]_*)]:invisible",
         // Clear a page's own bottom bar: the till's order bar below lg, the coupon save bar below sm.
         "max-lg:[body:has([data-admin-bottom-bar=lg])_&]:bottom-[calc(var(--admin-tab-bar,0px)+5.5rem)]",
         "max-sm:[body:has([data-admin-bottom-bar=sm])_&]:bottom-[calc(var(--admin-tab-bar,0px)+5rem)]",

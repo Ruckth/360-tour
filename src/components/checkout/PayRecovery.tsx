@@ -145,10 +145,63 @@ export function CheckPrevious({ leg, draft, busy, onRecord, onTendered }: {
   );
 }
 
-/** Another till is taking this order's payment. A manager can take over after checking the terminal. */
+/**
+ * Hand over (v27 Handover): the owner picks another admitted till; the payment continues there once
+ * that till accepts. This till's own label is shown so staff can tell the tills apart.
+ */
+export function HandOver({ attempt, disabled }: { attempt: PaymentAttemptView; disabled?: boolean }) {
+  const commerce = useCommerce();
+  const actions = commerce.useActions();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<Problem | null>(null);
+  const tills = commerce.useHandoverTills(open);
+  async function handOver(nextTillId: string) {
+    setBusy(true);
+    setProblem(null);
+    try {
+      await actions.handOver({ attemptId: attempt.attemptId, ownerRevision: attempt.ownerRevision, nextTillId });
+    } catch (err) {
+      setProblem(payProblem(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+  if (!open) {
+    return (
+      <Button variant="ghost" className="h-11 self-start px-3 text-sm text-muted-foreground" disabled={disabled} onClick={() => setOpen(true)} data-testid="pay-hand-over">
+        {t("pay.handOver")}
+      </Button>
+    );
+  }
+  return (
+    <section className="grid gap-2 rounded-xl border border-border p-3 text-sm" aria-label={t("pay.handOver")} data-testid="pay-hand-over-picker">
+      <p className="text-muted-foreground">{t("pay.handOverHint")}</p>
+      {tills?.thisTill ? <p className="text-xs text-muted-foreground">{t("pay.thisTill", { till: tills.thisTill })}</p> : null}
+      {tills === undefined ? <Spinner /> : tills.tills.length ? (
+        <div className="grid gap-2">
+          {tills.tills.map((till) => (
+            <Button key={till.tillId} variant="outline" className="h-12 bg-transparent" disabled={busy || disabled} onClick={() => void handOver(till.tillId)}>
+              {busy ? <Spinner className="text-current" /> : null}{t("pay.handOverTo", { till: till.label })}
+            </Button>
+          ))}
+        </div>
+      ) : <p>{t("pay.noOtherTill")}</p>}
+      <Button variant="ghost" className="h-11 justify-self-start px-3" disabled={busy} onClick={() => setOpen(false)}>{t("pay.keepPayment")}</Button>
+      <ConnectionNotice lost={problem !== null && "lost" in problem} busy={busy} />
+      <ProblemNotice problem={problem} />
+    </section>
+  );
+}
+
+/**
+ * Another till is taking this order's payment. A manager can take over after checking the terminal;
+ * a payment handed over to this till is accepted here by anyone at it.
+ */
 export function InProgressElsewhere({ attempt, compact, onTakenOver }: { attempt: PaymentAttemptView; compact?: boolean; onTakenOver?: () => void }) {
   const actions = useCommerce().useActions();
   const manager = useStaffAccess().capabilities.approve;
+  const handed = attempt.handedOverTo ?? null;
   const [stopped, setStopped] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -166,9 +219,19 @@ export function InProgressElsewhere({ attempt, compact, onTakenOver }: { attempt
       setBusy(false);
     }
   }
+  if (handed?.here) {
+    return (
+      <div className={cn("grid gap-2", compact && "text-sm")} data-testid="payment-handed-here">
+        <Notice tone="info" title={t("pay.handedOverHere")}><p>{t("pay.acceptHint")}</p></Notice>
+        <DeskButton busy={busy} onClick={() => void takeOver()}>{t("pay.acceptHandover")}</DeskButton>
+        <ConnectionNotice lost={problem !== null && "lost" in problem} busy={busy} onRetry={() => void takeOver()} />
+        <ProblemNotice problem={problem} />
+      </div>
+    );
+  }
   return (
     <div className={cn("grid gap-2", compact && "text-sm")} data-testid="payment-elsewhere">
-      <Notice title={t("pay.inProgressOn", { till: attempt.tillLabel || t("pay.anotherTill"), staff: attempt.staffName || "" }).replace(/ · $/, "")}>
+      <Notice title={handed ? t("pay.handedOverTo", { till: handed.label || t("pay.anotherTill") }) : t("pay.inProgressOn", { till: attempt.tillLabel || t("pay.anotherTill"), staff: attempt.staffName || "" }).replace(/ · $/, "")}>
         {manager ? null : <p>{t("pay.managerTakesOver")}</p>}
       </Notice>
       {manager ? (

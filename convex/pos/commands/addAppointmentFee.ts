@@ -1,5 +1,6 @@
 import { ConvexError, v } from 'convex/values';
 import { adminMutation } from '../../auth/model';
+import { assertVisitReturnAvailable } from '../../services/model';
 import { attemptKey, cleanReason } from '../../shared/bookingMoney';
 import { FEE_LABEL, assertFeeAmount, feeBlocker, liveFees, otherFeeMessage, type FeeKind } from '../private/orderLifecycle';
 import { isOpenOrder } from '../private/orderLinks';
@@ -50,6 +51,7 @@ export const addAppointmentFee = adminMutation({
 		}
 		const kind: FeeKind = args.kind;
 		const appointment = await ctx.db.get(args.appointmentId);
+		assertVisitReturnAvailable(appointment);
 		if (args.expectedRevision !== undefined && (!Number.isInteger(args.expectedRevision) || args.expectedRevision !== (appointment?.revision ?? 0))) throw new ConvexError('This appointment changed. Review it before adding a fee.');
 		const blocked = feeBlocker(appointment, kind);
 		if (blocked || !appointment) throw new ConvexError(blocked ?? 'Appointment not found');

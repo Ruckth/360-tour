@@ -280,7 +280,8 @@ it('uses frozen balances with zero refund ledger reads on a receipt with 900 ear
   const receipt = await view(orderId);
   expect(receipt).toMatchObject({ refundedAmountSatang: 900, posRefunds: [], lines: [{ _id: lineId, refundedAmountSatang: 900 }] });
   expect(documents.mock.calls.map(([doc]) => doc)).toEqual([expect.objectContaining({ _id: orderId }), expect.objectContaining({ _id: lineId })]);
-  expect(ranges).toHaveBeenCalledTimes(11);
+  // 11, plus one index range asking whether a completed return issued gift slips (none here: no document read).
+  expect(ranges).toHaveBeenCalledTimes(12);
   const budget = ranges.mock.instances[0];
   if (!(budget instanceof ReadBudget)) throw new Error('No receipt read budget recorded');
   expect(budget.documents).toBe(2);
@@ -387,7 +388,7 @@ it('refuses direct and approved paid-sale voids on voucher receipts and preserve
     orderId, method: 'voucher', voucherId, amount: 50000, createdBy: 'cashier', createdAt: now, idempotencyKey: 'voucher-tender',
   }));
   const unsupported = { data: { code: 'COMMERCE_CORRECTION_UNAVAILABLE' } };
-  await expect(directVoid()).rejects.toMatchObject(unsupported);
+  await expect(directVoid()).rejects.toMatchObject({ data: { code: 'USE_RETURN_ITEMS' } });
   await expect(approveVoid()).rejects.toMatchObject(unsupported);
   const returnId = await t.run(async ctx => {
     await ctx.db.patch(orderId, { revision: 2, returnedTotal: 0 });

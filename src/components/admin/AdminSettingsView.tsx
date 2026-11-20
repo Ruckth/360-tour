@@ -14,7 +14,7 @@ import {
 } from "convex/shared/siteSettings";
 import { RotateCw } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { Card } from "@/components/ui/card";
@@ -46,6 +46,8 @@ import { statusMeta, TONES, type StatusMeta } from "./status-tones";
 import { useChannelConfig, type ChannelConfig } from "./useChannelConfig";
 
 const TABS = ADMIN_SETTINGS_TABS;
+// Checkout rules carries the commerce copy catalog; only its tab loads it.
+const CheckoutRulesPanel = lazy(() => import("./checkout-rules/CheckoutRulesPanel").then((module) => ({ default: module.CheckoutRulesPanel })));
 type Tab = AdminSettingsTab;
 
 function PanelSpinner({ label }: { label: string }) {
@@ -87,7 +89,7 @@ export function AdminSettingsView() {
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 sm:px-6 sm:py-6">
-      {readOnly ? (
+      {readOnly && tab !== "checkoutRules" ? (
         <Alert data-testid="read-only-banner">
           <AlertDescription><strong className="font-semibold">Read only.</strong> Only owners can change settings.</AlertDescription>
         </Alert>
@@ -104,6 +106,8 @@ export function AdminSettingsView() {
       <div {...tabPanelProps("settings", tab)} className="grid gap-4">
         {tab === "channels" ? (
           <ChannelsPanel />
+        ) : tab === "checkoutRules" ? (
+          <Suspense fallback={<PanelSpinner label="Loading checkout rules" />}><CheckoutRulesPanel onDirtyChange={setDirty} /></Suspense>
         ) : tab === "team" ? (
           <TeamSettings onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
         ) : settings === undefined ? (

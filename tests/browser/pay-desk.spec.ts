@@ -655,6 +655,138 @@ test("before any pause, reopening a direct panel left open is today's panel: no 
   expect(await directPanels(page)).toEqual([]);
 });
 
+// ─── PR #93 round 3 (astra B1, B2) ──────────────────────────────────────────────────────────────
+type Desk = {
+  runFixtureMutation(name: string, args: object): Promise<{ status: string } & Record<string, unknown>>;
+  fixtureRows(table: string): Promise<Record<string, unknown>[]>;
+  setStaff(staff: { role: "cashier" | "manager"; email: string }): Promise<void>;
+};
+type OtherTill = { tillId: string; label: string; deviceKey: string; load: object };
+
+/** Another admitted till (another browser): its own device key, acknowledged at this cutover. */
+const otherTill = (page: Page) => page.evaluate(async () => {
+  const desk = (window as unknown as { payDesk: Desk }).payDesk;
+  let revision: number | undefined;
+  for (let i = 0; i < 50 && revision === undefined; i++) {
+    revision = (await desk.fixtureRows("tills") as { paymentRollout?: { acknowledged?: { revision: number } } }[]).find((till) => till.paymentRollout?.acknowledged)?.paymentRollout?.acknowledged?.revision;
+    if (revision === undefined) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (revision === undefined) throw new Error("This till never acknowledged the new panel");
+  const deviceKey = "other-till-device-key-0001";
+  const { tillId } = await desk.runFixtureMutation("commerce/paymentCutover:acknowledge", { deviceKey, loadedMode: "attempts", loadedRevision: revision }) as unknown as { tillId: string };
+  return { tillId, label: `Till ${tillId.slice(-6).toUpperCase()}`, deviceKey, load: { tillId, deviceKey, loadedMode: "attempts", loadedRevision: revision } } satisfies OtherTill;
+});
+
+/** The collecting attempt on this page's order, as stored. */
+const liveAttempt = (page: Page) => page.evaluate(async () => {
+  const orderId = sessionStorage.getItem("pay-desk-fixture-order");
+  const rows = await (window as unknown as { payDesk: Desk }).payDesk.fixtureRows("paymentAttempts") as { _id: string; orderId: string; status: string; ownerRevision: number; notifyGuest?: boolean }[];
+  return rows.find((row) => row.orderId === orderId && row.status === "collecting") ?? null;
+});
+
+/** Till B's cashier (Nok) accepts the handed-over payment, records nothing, and sends it back to Till A. */
+async function handBack(page: Page, tillB: OtherTill) {
+  const attempt = (await liveAttempt(page))!;
+  await page.evaluate(async ({ tillB, attempt }) => {
+    const desk = (window as unknown as { payDesk: Desk }).payDesk;
+    const orderId = sessionStorage.getItem("pay-desk-fixture-order")!;
+    const tillA = localStorage.getItem("checkout.tillId")!;
+    const own = { tillId: tillB.tillId, tabKey: "other-till-tab-key-000001" };
+    await desk.setStaff({ role: "cashier", email: "nok@example.com" });
+    const accepted = await desk.runFixtureMutation("pos/commands/handoverPaymentAttempt:takeOverPaymentAttempt", { ...own, load: tillB.load, orderId, expectedOwnerRevision: attempt.ownerRevision });
+    if (accepted.status !== "taken_over") throw new Error(JSON.stringify(accepted));
+    const released = await desk.runFixtureMutation("pos/commands/handoverPaymentAttempt:releasePaymentAttempt", { ...own, attemptId: attempt._id, ownerRevision: attempt.ownerRevision + 1, nextTillId: tillA });
+    if (released.status !== "released") throw new Error(JSON.stringify(released));
+    await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
+  }, { tillB, attempt });
+}
+
+const queuedConfirmation = (page: Page) => page.evaluate(async () =>
+  ((await (window as unknown as { payDesk: Desk }).payDesk.fixtureRows("bookings")).find((row) => row._id === "fxbkg000001") as { confirmationEmailsQueuedAt?: number }).confirmationEmailsQueuedAt !== undefined);
+
+for (const width of Object.keys(WIDTHS) as Width[]) test.describe(`PR 93 round 3 at ${width}`, () => {
+  const touch = width !== "desktop";
+  test.use({ hasTouch: touch, isMobile: touch });
+
+  test(`B1: a card payment handed A → B → A shows Check previous payment on the still-open original, never a second charge, at ${width}`, async ({ page }) => {
+    await open(page, width, "mode=attempts&role=cashier");
+    const taps = new Taps(page);
+    const panel = await order(page, taps);
+    await taps.tap(panel.getByRole("button", { name: "Card", exact: true }), "Card");
+    await expect(panel.getByText("Charge ฿1,200 on the terminal")).toBeVisible();
+    const tillB = await otherTill(page);
+    await taps.tap(panel.getByRole("button", { name: "Hand over", exact: true }), "Hand over");
+    await taps.tap(panel.getByRole("button", { name: `Hand over to ${tillB.label}` }), "Hand over to B");
+    await expect(panel.getByText(`Handed over to ${tillB.label}`)).toBeVisible();
+    await handBack(page, tillB);
+    await expect(panel.getByText("Handed over to this till")).toBeVisible();
+    await taps.tap(panel.getByRole("button", { name: "Accept the payment" }), "Accept the payment");
+    await expect(panel.getByTestId("check-previous")).toContainText(/Card ฿1,200 · \d\d:\d\d/);
+    await expect(panel.getByText("on the terminal")).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: /^Confirm/ })).toHaveCount(0);
+    await shot(page, "r3-hand-back-check");
+    await taps.tap(panel.getByRole("button", { name: "Taken", exact: true }), "Taken");
+    // The fixture pins this browser's clock to 19 Nov while its server runs today, so a cashier's
+    // same-day receipt scope hides the receipt here: check what was recorded instead.
+    await expect.poll(() => payments(page)).toMatchObject([{ method: "card", amount: 120000 }]);
+    await expect(page.getByTestId("check-previous")).toHaveCount(0);
+    console.log(`hand back ${width}: ${JSON.stringify(taps.summary().log)}`);
+  });
+
+  test(`B2: a checked booking email survives a reload and is queued at settlement, at ${width}`, async ({ page }) => {
+    await open(page, width, "mode=attempts&scenario=stay");
+    const taps = new Taps(page);
+    const panel = await order(page, taps);
+    await taps.tap(panel.getByRole("button", { name: "Card", exact: true }), "Card");
+    await expect(panel.getByText(/Charge ฿[\d,]+ on the terminal/)).toBeVisible();
+    const email = () => panel.getByRole("checkbox", { name: "Send booking payment confirmation email" });
+    await taps.tap(email(), "email");
+    await expect(email()).toBeChecked();
+    await expect.poll(async () => (await liveAttempt(page))?.notifyGuest).toBe(true);
+    await page.reload();
+    await page.locator("[data-fixture-ready]").waitFor();
+    const resumed = await order(page, taps);
+    await expect(resumed.getByTestId("check-previous")).toBeVisible();
+    await expect(resumed.getByRole("checkbox", { name: "Send booking payment confirmation email" })).toBeChecked();
+    await shot(page, "r3-email-reloaded");
+    await taps.tap(resumed.getByRole("button", { name: "Taken", exact: true }), "Taken");
+    await expect(page.getByTestId("receipt-screen")).toBeVisible();
+    expect(await queuedConfirmation(page)).toBe(true);
+  });
+
+  test(`B2: the till a checked booking payment is handed to shows the choice and sends it, at ${width}`, async ({ page }) => {
+    await open(page, width, "mode=attempts&scenario=stay&role=cashier");
+    const taps = new Taps(page);
+    const panel = await order(page, taps);
+    await taps.tap(panel.getByRole("button", { name: "Card", exact: true }), "Card");
+    await taps.tap(panel.getByRole("checkbox", { name: "Send booking payment confirmation email" }), "email");
+    await expect.poll(async () => (await liveAttempt(page))?.notifyGuest).toBe(true);
+    const tillB = await otherTill(page);
+    await taps.tap(panel.getByRole("button", { name: "Hand over", exact: true }), "Hand over");
+    await taps.tap(panel.getByRole("button", { name: `Hand over to ${tillB.label}` }), "Hand over to B");
+    await expect(panel.getByText(`Handed over to ${tillB.label}`)).toBeVisible();
+    // This browser becomes Till B with its own cashier (Nok), as another device would.
+    await page.evaluate(async (tillB) => {
+      localStorage.setItem("checkout.deviceKey", tillB.deviceKey);
+      localStorage.setItem("checkout.tillId", tillB.tillId);
+      await (window as unknown as { payDesk: Desk }).payDesk.setStaff({ role: "cashier", email: "nok@example.com" });
+    }, tillB);
+    await page.reload();
+    await page.locator("[data-fixture-ready]").waitFor();
+    const onB = await order(page, taps);
+    await expect(onB.getByText("Handed over to this till")).toBeVisible();
+    await taps.tap(onB.getByRole("button", { name: "Accept the payment" }), "Accept the payment");
+    await expect(onB.getByTestId("check-previous")).toBeVisible();
+    await expect(onB.getByRole("checkbox", { name: "Send booking payment confirmation email" })).toBeChecked();
+    await shot(page, "r3-email-handed-over");
+    await taps.tap(onB.getByRole("button", { name: "Taken", exact: true }), "Taken");
+    // As above: a cashier's receipt is out of scope under the fixture's pinned browser clock.
+    await expect.poll(() => queuedConfirmation(page)).toBe(true);
+    expect(await payments(page)).toHaveLength(1);
+  });
+});
+
+
 // ─── Audit round 4 (PR #92): today's direct panel before any pause, the instruction across it ──
 const isOpenPanel = (body: string | null) => (body ?? "").includes("paymentCutover:openDirectPanel");
 
