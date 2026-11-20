@@ -5,7 +5,7 @@ import type { QueryCtx } from '../_generated/server';
 import { canReadCheckoutOrder, staffQuery, type StaffActor } from '../auth/model';
 import { readBudget } from '../lib/readBudget';
 import type { AdjustmentTarget } from './private/adjustments';
-import { assertPageBytes, listCommerceHistory, listGuestCommerceHistory, nameHistoryParts } from './private/history';
+import { assertPageBytes, listGuestCommerceHistory, listStaffCommerceHistory } from './private/history';
 import { staffHistoryEntry, type HistoryEntryView } from './private/historyView';
 import { adjustmentTarget } from './validators';
 
@@ -54,8 +54,7 @@ export const staffPage = staffQuery({
   args: { target: adjustmentTarget, paginationOpts: paginationOptsValidator },
   handler: async (ctx, { target, paginationOpts }) => {
     if (!await canReadHistory(ctx, ctx.staff, target)) return nothing;
-    const result = await listCommerceHistory(ctx, target, paginationOpts);
-    return assertPageBytes({ ...result, page: await nameHistoryParts(ctx, result.page.map(row => staffHistoryEntry(row))) });
+    return await listStaffCommerceHistory(ctx, target, paginationOpts, staffHistoryEntry);
   },
 });
 

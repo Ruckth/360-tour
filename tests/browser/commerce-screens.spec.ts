@@ -162,6 +162,33 @@ for (const size of WIDTHS) {
       expect(await page.locator("body").innerText()).not.toMatch(FULL_CODE);
     });
 
+    // Audit r5 (astra): a cold open of a populated History flashed "Nothing recorded yet" while
+    // Convex split its first page. Every frame is watched; the empty message is only for no rows.
+    for (const fixture of [{ query: "history=cold", rows: true }, { query: "history=cold-empty", rows: false }]) {
+      test(`a cold History open shows loading until ${fixture.rows ? "its rows arrive" : "the server says it is empty"}`, async ({ page }) => {
+        await page.addInitScript(() => {
+          const seen = { empty: false, loading: false };
+          (window as unknown as { historySeen: typeof seen }).historySeen = seen;
+          const check = () => {
+            const sheet = document.querySelector('[data-testid="edit-history"]');
+            if (!sheet) return;
+            if (sheet.textContent?.includes("Nothing recorded yet")) seen.empty = true;
+            if (sheet.querySelector('[role="status"], [aria-busy="true"], svg.animate-spin')) seen.loading = true;
+          };
+          new MutationObserver(check).observe(document, { childList: true, subtree: true, characterData: true });
+          const frame = () => { check(); requestAnimationFrame(frame); };
+          requestAnimationFrame(frame);
+        });
+        await open(page, fixture.query);
+        const sheet = page.getByTestId("edit-history");
+        if (fixture.rows) await expect(sheet.getByTestId("history-entry")).toHaveCount(4);
+        else await expect(sheet.getByText("Nothing recorded yet")).toBeVisible();
+        const seen = await page.evaluate(() => (window as unknown as { historySeen: { empty: boolean; loading: boolean } }).historySeen);
+        expect(seen).toEqual({ empty: !fixture.rows, loading: true });
+        expect.soft(await overflowX(page), "history sideways scroll").toBeLessThanOrEqual(0);
+      });
+    }
+
     // Audit r3 (astra and sol) blocker 2: a contents edit keeps its before → after and is not a new price.
     // Audit r4 (astra): a change of eligible service names both treatments.
     test("staff History shows a package's quantity change, substitutions and service change beside the price-only control", async ({ page }) => {

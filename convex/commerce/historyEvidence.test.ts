@@ -8,11 +8,11 @@ import { canReadCheckoutOrder, requireStaff } from '../auth/model';
 import { readBudget, reserveWrites } from '../lib/readBudget';
 import schema from '../schema';
 import { adjust, type AdjustmentCommand, type AdjustmentWriter } from './private/adjustments';
-import { listCommerceHistory, MAX_PAGE_BYTES, nameHistoryParts } from './private/history';
+import { listCommerceHistory, listStaffCommerceHistory, MAX_PAGE_BYTES } from './private/history';
 import { staffHistoryEntry } from './private/historyView';
 
 /**
- * PR #91 round 4: staff History keeps D19 before → after for edits written through the shared
+ * PR #91 rounds 4 and 5: staff History keeps D19 before → after for edits written through the shared
  * adjustment helper, and a page of near-cap edits stays ≤ 160 KiB with a cursor that loses nothing.
  */
 
@@ -51,7 +51,7 @@ async function fixture() {
       name: 'Mia', revision: 0, settingsRevision: 0, terms,
     });
     const packageId = await ctx.db.insert('packages', { name: 'Massage 5', status: 'active', sort: 0, revision: 0 });
-    return { voucherId: await voucher(), otherVoucherId: await voucher(), packageId };
+    return { voucherId: await voucher(), otherVoucherId: await voucher(), packageId, branchId };
   });
   return { t, manager, cashier, ...ids };
 }
@@ -209,22 +209,161 @@ it('names a same-key service substitution for staff from the services, then the 
   expect(first).toMatchObject({ before: { contents: [part([thai])] }, after: { contents: [part([aroma], 'Aromatherapy Massage')] } });
 });
 
-it('reads each part name once per page and at most 20 names', async () => {
+it('reads each part name once per page and at most 20 names, ending the page before a row it cannot name', async () => {
   const f = await fixture();
   const ids = await Promise.all(Array.from({ length: 25 }, (_, i) => service(f.t, `Service ${i}`)));
-  // 25 distinct services across two edits, one of them in both: a page reads 20.
+  // 25 distinct services across two edits, two of them in both: the newer edit is named, the wide one waits for page 2.
   await publish(f, 'wide', 0, packageWriter(ids.slice(0, 13), ids.slice(12)));
   await publish(f, 'again', 1, packageWriter(ids.slice(0, 1), ids.slice(1, 2)));
   const target = { targetType: 'package' as const, targetId: f.packageId };
-  const reads = await f.t.run(async ctx => {
-    const result = await listCommerceHistory(ctx, target, { numItems: 20, cursor: null });
-    const rows = await nameHistoryParts(ctx, result.page.map(row => staffHistoryEntry(row)));
-    return { documents: readBudget(ctx).documents, rows };
+  const read = (cursor: string | null) => f.t.run(async ctx => {
+    const result = await listStaffCommerceHistory(ctx, target, { numItems: 20, cursor }, staffHistoryEntry);
+    return { documents: readBudget(ctx).documents, result };
   });
-  expect(reads.documents).toBe(2 + 20);
-  const labels = reads.rows.flatMap(row => [row.before, row.after]).map(fields => (fields?.contents as { label?: string }[])[0].label);
-  expect(labels.filter(Boolean).length).toBeGreaterThan(0);
-  expect(labels.filter(label => label === undefined).length).toBeGreaterThan(0);
+  const label = (fields: unknown) => ((fields as { contents: { label?: string }[] }).contents[0]).label;
+  const first = await read(null);
+  expect(first.documents).toBe(2 + 2);
+  expect(first.result.page.map(row => [label(row.before), label(row.after)])).toEqual([['Service 0', 'Service 1']]);
+  expect(first.result.isDone).toBe(false);
+  const second = await read(first.result.continueCursor);
+  // The wide edit alone needs 25 names: it shows first on its page with the 20 the page can read.
+  expect(second.documents).toBe(2 + 20);
+  expect(second.result.page).toHaveLength(1);
+  expect(second.result.isDone).toBe(true);
+});
+
+// Sol round 5 (output/pr91-audit/package-history-r5.mjs): an older five-unit same-key swap shared a
+// page with a newer edit naming 22 services, and showed "Massage changed" instead of both names.
+it('names an older same-key swap after a newer edit used up the page\'s name reads', async () => {
+  const f = await fixture();
+  const ids = await Promise.all(Array.from({ length: 24 }, (_, i) => service(f.t, `Treatment ${i}`)));
+  const parts = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => ({ ...part([ids[from + i]]), contentKey: `part-${from + i}` }));
+  const writer = (before: object[], after: object[]): AdjustmentWriter => ({
+    assertScope: async () => {},
+    prepare: async (ctx, _actor, { target }) => {
+      if (target.targetType !== 'package') throw new Error('Invalid package operation');
+      return {
+        before: { contents: before as never }, after: { contents: after as never },
+        apply: async ({ revisionAfter }) => { reserveWrites(ctx, 1); await ctx.db.patch(target.targetId, { revision: revisionAfter }); return []; },
+      };
+    },
+  });
+  const target = await publish(f, 'swap', 0, packageWriter([ids[22]], [ids[23]]));
+  await publish(f, 'wide', 1, writer(parts(0, 11), parts(11, 22)));
+  const seen: { entryId: string; before?: unknown; after?: unknown }[] = [];
+  let cursor: string | null = null;
+  do {
+    const result: Awaited<ReturnType<typeof listStaffCommerceHistory>> = await f.manager.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor } });
+    seen.push(...result.page);
+    cursor = result.isDone ? null : result.continueCursor;
+  } while (cursor);
+  expect(seen).toHaveLength(2);
+  expect(new Set(seen.map(row => row.entryId)).size).toBe(2);
+  const [wide, swap] = seen;
+  expect((wide.before as { contents: unknown[] }).contents).toHaveLength(11);
+  expect(swap).toMatchObject({ before: { contents: [part([ids[22]], 'Treatment 22')] }, after: { contents: [part([ids[23]], 'Treatment 23')] } });
+});
+
+// Sol round 5: 20 publishes × 12 contents × 3 services with long names refused its first page
+// (HISTORY_PAGE_TOO_LARGE, no cursor). Every page now fits, with every row exactly once.
+it('pages 20 wide package publishes within 160 KiB and 41 documents, every row exactly once', async () => {
+  const f = await fixture();
+  const names = Array.from({ length: 6 }, (_, i) => `Treatment ${i} · ` + Array.from({ length: 10 }, (_, j) => `aroma-${j} `).join(''));
+  const ids = await Promise.all(names.map(name => service(f.t, name)));
+  const contents = (serviceIds: string[], units: number) => Array.from({ length: 12 }, (_, j) => ({ ...part(serviceIds), contentKey: `treatment-${j}`, units }));
+  for (let i = 0; i < 20; i++) {
+    await publish(f, `publish-${i}`, i, {
+      assertScope: async () => {},
+      prepare: async (ctx, _actor, { target }) => {
+        if (target.targetType !== 'package') throw new Error('Invalid package operation');
+        return {
+          before: { contents: contents(ids.slice(0, 3), 5 + i % 2) }, after: { contents: contents(ids.slice(3), 6 - i % 2) },
+          apply: async ({ revisionAfter }) => { reserveWrites(ctx, 1); await ctx.db.patch(target.targetId, { revision: revisionAfter }); return []; },
+        };
+      },
+    });
+  }
+  const target = { targetType: 'package' as const, targetId: f.packageId };
+  const seen: string[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  do {
+    const result: Awaited<ReturnType<typeof listStaffCommerceHistory>> = await f.manager.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor } });
+    expect(bytes(result)).toBeLessThanOrEqual(MAX_PAGE_BYTES);
+    expect(result.page.length).toBeGreaterThan(0);
+    expect(result.page.length).toBeLessThanOrEqual(20);
+    for (const row of result.page) {
+      const contentsOf = (fields: unknown) => (fields as { contents: { label?: string }[] }).contents;
+      expect(contentsOf(row.before)[0].label).toBe(names.slice(0, 3).join(' / '));
+      expect(contentsOf(row.after)[0].label).toBe(names.slice(3).join(' / '));
+    }
+    seen.push(...result.page.map(row => row.entryId));
+    const documents = await f.t.run(async ctx => {
+      await listStaffCommerceHistory(ctx, target, { numItems: 20, cursor }, staffHistoryEntry);
+      return readBudget(ctx).documents;
+    });
+    expect(documents).toBeLessThanOrEqual(41);
+    cursor = result.isDone ? null : result.continueCursor;
+    expect(++pages).toBeLessThan(20);
+  } while (cursor);
+  const all = await f.t.run(async ctx => (await ctx.db.query('commerceAdjustments').collect()).map(row => row._id).reverse());
+  expect(seen).toEqual(all);
+  expect(pages).toBeGreaterThan(1);
+});
+
+// Sol round 5 (output/pr91-audit/writer-r5.test.ts): a manager's recount through the shared helper
+// rolled back because the stock movement is not a voucher or grant ledger entry.
+it('commits a manager stock recount through the shared helper once, with one movement and one adjustment', async () => {
+  const { t, manager, branchId } = await fixture();
+  const stockId = await t.run(async ctx => {
+    const categoryId = await ctx.db.insert('productCategories', { name: 'Spa', sort: 1 });
+    const productId = await ctx.db.insert('products', {
+      categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [],
+      minPrice: 5000, maxPrice: 5000, variantCount: 1, sort: 1, revision: 0,
+    });
+    const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'Medium', price: 5000, status: 'active', revision: 0 });
+    return ctx.db.insert('stockLevels', { branchId, productId, variantId, onHand: 2, revision: 0 });
+  });
+  const target = { targetType: 'stock' as const, targetId: stockId };
+  const writer: AdjustmentWriter = {
+    assertScope: (_ctx, actor) => {
+      if (!actor.capabilities.operations) throw new Error('Stock operations denied');
+      return Promise.resolve();
+    },
+    prepare: async ctx => {
+      const stock = await ctx.db.get(stockId);
+      if (!stock) throw new Error('Stock does not exist');
+      return {
+        before: { onHand: 2 }, after: { onHand: 3 }, quantityDelta: 1,
+        apply: async ({ revisionAfter, recordedAt, sourceKey, reasonCode }) => {
+          reserveWrites(ctx, 2);
+          await ctx.db.patch(stockId, { onHand: 3, revision: revisionAfter });
+          const id = await ctx.db.insert('stockMovements', {
+            branchId, variantId: stock.variantId, before: 2, after: 3, delta: 1, kind: 'adjust',
+            reason: reasonCode, actor: 'Manager', createdAt: recordedAt, sourceKey,
+          });
+          return [{ kind: 'stockMovement', id }];
+        },
+      };
+    },
+  };
+  const command: AdjustmentCommand = { target, kind: 'adjustStock', input: { delta: 1 }, expectedRevision: 0, clientKey: 'stock-recount', reasonCode: 'recount' };
+  const apply = () => manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), command, writer));
+  const applied = await apply();
+  expect(applied.status).toBe('applied');
+  expect(await apply()).toEqual(applied);
+  const stored = await t.run(async ctx => ({
+    stock: await ctx.db.get(stockId),
+    movements: await ctx.db.query('stockMovements').collect(),
+    audits: await ctx.db.query('commerceAdjustments').collect(),
+  }));
+  expect(stored.stock).toMatchObject({ onHand: 3, revision: 1 });
+  expect(stored.movements).toHaveLength(1);
+  expect(stored.movements[0]).not.toHaveProperty('changes');
+  expect(stored.audits).toHaveLength(1);
+  expect(stored.audits[0]).toMatchObject({ effects: [{ kind: 'stockMovement', id: stored.movements[0]._id }] });
+  const { page } = await manager.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor: null } });
+  expect(page).toHaveLength(1);
 });
 
 /** Twenty schema-valid edits, each ledger row near or above the helper's 8 KiB cap (the auditor's sizes). */

@@ -63,7 +63,8 @@ type Change = {
  * Scope must be read-only and independent of revision freshness so authorized retries still work.
  * Prepare must be read-only. Apply writes the parent revision and any ledger effects in this transaction.
  * Use the supplied source key and reasons for the primary ledger effect and return the linked IDs,
- * the target's own ledger entry first: the helper stores the changed fields on it for History.
+ * the target's own ledger entry first: for a voucher or grant the helper stores the changed fields
+ * on it for History; a stock movement already records its count before → after.
  * A changed part naming services, a variant or a product may carry its display `label`: staff
  * History shows the record's current name and falls back to that label once the record is gone.
  * Owners meter their own reads and reserve their own parent and ledger writes.
@@ -288,7 +289,8 @@ async function applyChange(
   const row = { ...audit, ...(effects.length ? { effects } : {}) };
   assertAuditSize(row);
   const adjustmentId = await ctx.db.insert('commerceAdjustments', row);
-  if (primary) await recordLedgerChanges(ctx, target, primary, adjustmentId, audit);
+  // A stock movement is its own History row (its count before → after); only benefit ledgers keep the fields.
+  if (primary && primary.kind !== 'stockMovement') await recordLedgerChanges(ctx, target, primary, adjustmentId, audit);
   return { status: 'applied', adjustmentId, revision: revisionAfter, effects };
 }
 

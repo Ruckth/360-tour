@@ -177,32 +177,47 @@ export async function listGuestCommerceHistory(
 
 /** Name reads per staff page: with ≤ 20 rows and staff access a page stays ≤ 41 documents. */
 export const MAX_PART_NAME_READS = 20;
+type NameTable = 'services' | 'productVariants' | 'products';
+type Fields = NonNullable<HistoryEntryView['before']>;
 type Part = Record<string, unknown>;
 const isPart = (value: unknown): value is Part => value !== null && typeof value === 'object' && !Array.isArray(value);
 const partsOf = (fields: HistoryEntryView['before']): Part[] =>
   Object.values(fields ?? {}).flatMap(value => Array.isArray(value) ? (value as unknown[]).filter(isPart) : []);
 const strings = (value: unknown) => Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string')
   : typeof value === 'string' ? [value] : [];
+const partIds = (part: Part): [string, NameTable][] => [
+  ...strings(part.serviceIds).map(id => [id, 'services'] as [string, NameTable]),
+  ...strings(part.variantId).map(id => [id, 'productVariants'] as [string, NameTable]),
+  ...strings(part.productId).map(id => [id, 'products'] as [string, NameTable]),
+];
+const partKey = (part: Part) => typeof part.contentKey === 'string' ? part.contentKey : typeof part.key === 'string' ? part.key : null;
+
+/**
+ * The names an entry's changed parts count, same-key substitutions first: without their names
+ * "Thai massage → Hot stone" would read as "Massage changed".
+ */
+function wantedNames(entry: HistoryEntryView): Map<string, NameTable> {
+  const before = partsOf(entry.before);
+  const after = partsOf(entry.after);
+  const keyed = new Map(before.flatMap(part => partKey(part) === null ? [] : [[partKey(part), part] as const]));
+  const swapped = after.flatMap(part => {
+    const old = partKey(part) === null ? undefined : keyed.get(partKey(part));
+    return old && JSON.stringify(old) !== JSON.stringify(part) ? [old, part] : [];
+  });
+  return new Map([...swapped, ...before, ...after].flatMap(partIds));
+}
 
 /**
  * Staff History names what a changed package part counts (its services, variant or product), so a
  * same-key swap reads "Traditional Thai Massage → Aromatherapy Massage". Names are read once per page,
  * de-duplicated and capped; a record that is gone (or past the cap) keeps the part's stored label.
  */
-export async function nameHistoryParts(ctx: QueryCtx, entries: HistoryEntryView[]): Promise<HistoryEntryView[]> {
-  const parts = entries.flatMap(entry => [...partsOf(entry.before), ...partsOf(entry.after)]);
-  const wanted = new Map<string, 'services' | 'productVariants' | 'products'>();
-  for (const part of parts) {
-    for (const id of strings(part.serviceIds)) wanted.set(id, 'services');
-    for (const id of strings(part.variantId)) wanted.set(id, 'productVariants');
-    for (const id of strings(part.productId)) wanted.set(id, 'products');
-  }
-  if (!wanted.size) return entries;
+function partNamer(ctx: QueryCtx) {
   const budget = readBudget(ctx);
   const names = new Map<string, string>();
-  const variantProducts = new Map<string, { productId: string; label: string }>();
+  const tried = new Set<string>();
   let reads = 0;
-  const read = async <T extends 'services' | 'productVariants' | 'products'>(table: T, raw: string) => {
+  const read = async <T extends NameTable>(table: T, raw: string) => {
     const id = ctx.db.normalizeId(table, raw);
     if (!id || reads >= MAX_PART_NAME_READS) return null;
     reads++;
@@ -213,26 +228,95 @@ export async function nameHistoryParts(ctx: QueryCtx, entries: HistoryEntryView[
     budget.assert();
     return doc;
   };
-  for (const [raw, table] of wanted) {
-    const doc = await read(table, raw);
-    if (!doc) continue;
-    if ('productId' in doc) variantProducts.set(raw, { productId: doc.productId, label: doc.label });
-    else names.set(raw, doc.name);
+  const unread = (entry: HistoryEntryView) => [...wantedNames(entry)].filter(([raw]) => !tried.has(raw));
+  return {
+    /** Reads still left on this page. */
+    get left() { return MAX_PART_NAME_READS - reads; },
+    /** The most reads naming this entry can take (a variant also reads its product). */
+    cost: (entry: HistoryEntryView) => unread(entry).reduce((sum, [, table]) => sum + (table === 'productVariants' ? 2 : 1), 0),
+    /** Read this entry's names, in priority order, while the page has reads left. */
+    async read(entry: HistoryEntryView) {
+      for (const [raw, table] of unread(entry)) {
+        if (reads >= MAX_PART_NAME_READS) return;
+        tried.add(raw);
+        const doc = await read(table, raw);
+        if (!doc) continue;
+        if (!('productId' in doc)) { names.set(raw, doc.name); continue; }
+        const product = names.get(doc.productId) ?? (await read('products', doc.productId))?.name;
+        if (product) names.set(doc.productId, product);
+        names.set(raw, product ? `${product} · ${doc.label}` : doc.label);
+      }
+    },
+    /** The entry with each part named once every record it counts was read. */
+    name(entry: HistoryEntryView): HistoryEntryView {
+      const named = (fields: Fields): Fields => Object.fromEntries(Object.entries(fields).map(([key, value]) =>
+        [key, Array.isArray(value) ? (value as unknown[]).map(item => {
+          if (!isPart(item)) return item;
+          const found = partIds(item).map(([id]) => names.get(id));
+          return found.length && found.every(Boolean) ? { ...item, label: found.join(' / ') } : item;
+        }) : value])) as Fields;
+      return entry.before || entry.after
+        ? { ...entry, ...(entry.before ? { before: named(entry.before) } : {}), ...(entry.after ? { after: named(entry.after) } : {}) }
+        : entry;
+    },
+  };
+}
+
+/**
+ * A page that ended early, before every row it read fit: the next page reads the same range again
+ * (`cursor`) and starts after the last row shown (`after`). Never paired with a split cursor.
+ */
+const CUT_PREFIX = 'cut:';
+const cutCursor = (cursor: string | null, after: string) => CUT_PREFIX + JSON.stringify([cursor, after]);
+function staleCursor(): never {
+  throw new ConvexError({ code: 'STALE_HISTORY_CURSOR', message: 'History has changed. Reopen the first page.' });
+}
+function parseCut(cursor: string | null): { cursor: string | null; after: string | null } {
+  if (cursor === null || !cursor.startsWith(CUT_PREFIX)) return { cursor, after: null };
+  let value: unknown;
+  try { value = JSON.parse(cursor.slice(CUT_PREFIX.length)); } catch { staleCursor(); }
+  if (!Array.isArray(value) || value.length !== 2 || (value[0] !== null && typeof value[0] !== 'string') || typeof value[1] !== 'string') staleCursor();
+  return { cursor: value[0] as string | null, after: value[1] as string };
+}
+/** Room in a page for its cursors and framing; the rows get the rest of MAX_PAGE_BYTES. */
+const PAGE_FRAMING_BYTES = 4 * 1024;
+
+/**
+ * Call after authorizing the target. One item's History for staff, ≤ 20 rows, ≤ 41 documents and
+ * ≤ 160 KiB. A page ends early, with a cursor to the next row, before a row whose names no longer
+ * fit the page's reads or whose bytes no longer fit the page; its first row always shows.
+ */
+export async function listStaffCommerceHistory(
+  ctx: QueryCtx, target: AdjustmentTarget, pagination: PaginationOptions,
+  entryOf: (row: CommerceHistoryRow) => HistoryEntryView,
+): Promise<PaginationResult<HistoryEntryView>> {
+  const start = parseCut(pagination.cursor);
+  if (pagination.endCursor?.startsWith(CUT_PREFIX)) staleCursor();
+  const result = await listCommerceHistory(ctx, target, { ...pagination, cursor: start.cursor });
+  let rows = result.page;
+  if (start.after !== null) {
+    const index = rows.findIndex(row => row._id === start.after);
+    if (index < 0) staleCursor();
+    rows = rows.slice(index + 1);
   }
-  for (const [raw, { productId, label }] of variantProducts) {
-    const product = names.get(productId) ?? (await read('products', productId))?.name;
-    if (product) names.set(productId, product);
-    names.set(raw, product ? `${product} · ${label}` : label);
+  const namer = partNamer(ctx);
+  const page: HistoryEntryView[] = [];
+  let used = PAGE_FRAMING_BYTES;
+  for (const row of rows) {
+    const entry = entryOf(row);
+    if (page.length && namer.cost(entry) > namer.left) break;
+    await namer.read(entry);
+    let shown = namer.name(entry);
+    // A first row too large once named shows its stored labels (writers keep rows ≤ 8 KiB).
+    if (!page.length && used + encoder.encode(JSON.stringify(shown)).length + 1 > MAX_PAGE_BYTES) shown = entry;
+    const size = encoder.encode(JSON.stringify(shown)).length + 1;
+    if (page.length && used + size > MAX_PAGE_BYTES) break;
+    used += size;
+    page.push(shown);
   }
-  type Fields = NonNullable<HistoryEntryView['before']>;
-  const named = (fields: Fields): Fields => Object.fromEntries(Object.entries(fields).map(([key, value]) =>
-    [key, Array.isArray(value) ? (value as unknown[]).map(item => {
-      if (!isPart(item)) return item;
-      const ids = [...strings(item.serviceIds), ...strings(item.variantId), ...strings(item.productId)];
-      const found = ids.map(id => names.get(id));
-      return ids.length && found.every(Boolean) ? { ...item, label: found.join(' / ') } : item;
-    }) : value])) as Fields;
-  return entries.map(entry => entry.before || entry.after
-    ? { ...entry, ...(entry.before ? { before: named(entry.before) } : {}), ...(entry.after ? { after: named(entry.after) } : {}) }
-    : entry);
+  if (page.length < rows.length) {
+    return { page, isDone: false, continueCursor: cutCursor(start.cursor, rows[page.length - 1]._id) };
+  }
+  // A cut page re-reads rows it skips, so Convex's split of that range would not match this page.
+  return start.after === null ? { ...result, page } : { page, isDone: result.isDone, continueCursor: result.continueCursor };
 }

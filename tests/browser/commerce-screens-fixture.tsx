@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CheckoutStaffControls } from "@/components/checkout/ApprovalsPanel";
@@ -34,6 +34,9 @@ import "@/app.css";
  *   history=publish   staff History for a package, from the backend's response for a five → six
  *                     session publish, a same-size substitution, the price-only control and a
  *                     change of eligible service (astra r4)
+ *   history=cold      staff History as a cold open of a populated voucher arrives (astra r5): loading,
+ *                     then the first page split by Convex (LoadingMore, no rows yet), then its rows
+ *   history=cold-empty  the same steps for a voucher with no History, ending Exhausted with no rows
  */
 const params = new URLSearchParams(location.search);
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
@@ -79,6 +82,32 @@ function PublishHistory() {
   );
 }
 
+/** usePaginatedQuery's states for a first page that Convex splits (SplitRequired), 250 ms apart. */
+function useColdHistory(rows: typeof publishRows) {
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    if (step >= 2) return;
+    const timer = setTimeout(() => setStep(step + 1), 250);
+    return () => clearTimeout(timer);
+  }, [step]);
+  if (step === 0) return { results: [], status: "LoadingFirstPage" as const, loadMore: () => {} };
+  if (step === 1) return { results: [], status: "LoadingMore" as const, loadMore: () => {} };
+  return { results: rows, status: "Exhausted" as const, loadMore: () => {} };
+}
+
+function ColdHistory({ empty }: { empty: boolean }) {
+  const base = previewBackend("empty", "live");
+  const backend = { ...base, commerce: { ...base.commerce!, useHistory: () => useColdHistory(empty ? [] : publishRows) } };
+  return (
+    <CommerceMessages messages={commerceEn}>
+      <CheckoutBackendProvider backend={backend}>
+        <div className="h-dvh bg-background" />
+        <EditHistory target={{ targetType: "voucher", targetId: "fxvoucher" as never }} title="Gift voucher" onClose={() => {}} />
+      </CheckoutBackendProvider>
+    </CommerceMessages>
+  );
+}
+
 const waiting = previewQueue.filter((row) => row.kind === "discount");
 /** The server's pages for a promoted manager: their own 20 newer requests filter to nothing. */
 function useFilteredQueue() {
@@ -117,6 +146,7 @@ const roomOrder = {
 
 const tree = params.get("queue") === "filtered" ? <FilteredQueue />
   : params.get("history") === "publish" ? <PublishHistory />
+  : params.get("history")?.startsWith("cold") ? <ColdHistory empty={params.get("history") === "cold-empty"} />
   : params.get("display") === "order" ? (
     <NextIntlClientProvider locale="en" messages={displayEn} timeZone="Asia/Bangkok"><Screen state={roomOrder as never} /></NextIntlClientProvider>
   ) : <CheckoutPreview initial={{ commerce, receipt: params.get("receipt") === "redemption" ? "redemption" : params.get("receipt") === "1" }} />;

@@ -119,8 +119,9 @@ function staffText(staff: NonNullable<HistoryEntry["staff"]>, copy: CommerceCopy
 export function HistoryList({ target, audience }: { target: AdjustTarget; audience: HistoryAudience }) {
   const copy = useCommerceCopy();
   const page = useCommerce().useHistory(target, audience);
-  if (page.status === "LoadingFirstPage") return <Spinner label={copy.t("history.title")} />;
-  if (!page.results.length) return <p className="text-sm text-muted-foreground">{copy.t("history.empty")}</p>;
+  // A first page Convex splits arrives as "LoadingMore" with nothing yet: still loading, not empty.
+  if (page.status === "LoadingFirstPage" || (!page.results.length && page.status === "LoadingMore")) return <Spinner label={copy.t("history.title")} />;
+  if (!page.results.length && page.status === "Exhausted") return <p className="text-sm text-muted-foreground">{copy.t("history.empty")}</p>;
   const guest = audience === "guest";
   return (
     <div className="grid gap-3">
