@@ -1,11 +1,31 @@
 import { ConvexError, v } from 'convex/values';
-import { staffMutation } from '../../auth/model';
+import { staffMutation, staffQuery } from '../../auth/model';
+import { cutoverRevision, readCommerceSettings } from '../../commerce/model';
 import { reserveWrites } from '../../lib/readBudget';
 import {
   assertActiveAttempt, assertOperatorLoad, assertTillId, attemptForOwner, attemptOwnerArgs, attemptView,
   ownsPaymentAttempt, paymentError, paymentGet, paymentLoadArgs, paymentOperator, paymentOrder, paymentRefusal, paymentTabArgs,
 } from '../private/paymentAttempt';
-import { findPaymentTill, paymentTillLabel } from '../private/tillPayments';
+import { findPaymentTill, paymentTillLabel, paymentTillsAtRevision } from '../private/tillPayments';
+
+/**
+ * Where the owner can hand a payment over (v27 Handover): every other till admitted at the current
+ * cutover, by its label, and this till's own label so staff can tell them apart. The till that
+ * receives it accepts it there (takeOverPaymentAttempt).
+ */
+export const handoverTills = staffQuery({
+  capability: 'checkout',
+  args: { tillId: v.string() },
+  returns: v.object({ thisTill: v.union(v.string(), v.null()), tills: v.array(v.object({ tillId: v.id('tills'), label: v.string() })) }),
+  handler: async (ctx, args) => {
+    const own = ctx.db.normalizeId('tills', args.tillId);
+    const thisTill = own ? paymentTillLabel({ _id: own, key: 'payment' }) : null;
+    const revision = cutoverRevision(await readCommerceSettings(ctx));
+    if (revision === null) return { thisTill, tills: [] };
+    const { acknowledged } = await paymentTillsAtRevision(ctx, revision);
+    return { thisTill, tills: acknowledged.filter(till => till._id !== own).map(till => ({ tillId: till._id, label: paymentTillLabel(till) })) };
+  },
+});
 
 export const releasePaymentAttempt = staffMutation({
   capability: 'checkout',
@@ -18,6 +38,7 @@ export const releasePaymentAttempt = staffMutation({
       const nextTillId = ctx.db.normalizeId('tills', args.nextTillId);
       const nextTill = nextTillId ? await findPaymentTill(ctx, nextTillId) : undefined;
       if (nextTill?.key !== 'payment') paymentError('invalid_till', 'Choose a till before handing over.');
+      if (nextTill._id === attempt.tillId) paymentError('invalid_till', 'Choose another till to hand over to.');
       reserveWrites(ctx, 1);
       await ctx.db.patch(attempt._id, { owner: '', ownerToken: undefined, ownerTab: undefined, ownerDisplayName: undefined,
         tillId: nextTill._id, tillLabel: paymentTillLabel(nextTill), ownerRevision: attempt.ownerRevision + 1, updatedAt: Date.now() });

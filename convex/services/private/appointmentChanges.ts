@@ -6,6 +6,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { appointmentRevision } from '../../shared/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { appointmentLookupFields } from './serviceSlots';
+import { assertVisitReturnAvailable } from './visitReturnGuard';
 
 /**
  * Shared recording for calendar edits and guest cancellations. Each tracked change
@@ -31,7 +32,7 @@ const TRACKED = [
 
 type Tracked = (typeof TRACKED)[number];
 
-export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'coverage' | 'refundedAt' | 'cancelledAt' | 'cancelledBy' | 'cancellationReason'>>;
+export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'coverage' | 'pendingReturn'>>;
 
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
@@ -47,7 +48,8 @@ export function cleanReason(reason: string | undefined): string | undefined {
 }
 
 /** Applies the patch and records it. Returns false (and writes nothing) when no tracked field changes. */
-export async function recordAppointmentChange(ctx: MutationCtx, appointment: Appointment, patch: AppointmentPatch, entry: ChangeEntry): Promise<boolean> {
+export async function recordAppointmentChange(ctx: MutationCtx, appointment: Appointment, patch: AppointmentPatch, entry: ChangeEntry, returnId?: Id<'orderReturns'>): Promise<boolean> {
+	assertVisitReturnAvailable(appointment, returnId);
 	const changes = [...TRACKED
 		.filter((field) => field in patch && (patch[field] ?? null) !== (appointment[field] ?? null))
 		.map((field) => ({ field, from: appointment[field] ?? null, to: patch[field] ?? null })), ...(entry.details ?? [])];

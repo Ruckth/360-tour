@@ -16,8 +16,9 @@ import { useStoredState } from "@/lib/use-stored-state";
 import { changeDue, formatReceiptNumber, lineCouponDiscount, lineGross, linePrice, lineStaffDiscount, roundMoney } from "convex/shared/orderMath";
 import { cn } from "@/lib/utils";
 import { OrderApprovalStatus } from "./ApprovalRequest";
-import { useCheckoutBackend, type CommerceCopy, type OrderId } from "./backend";
+import { useCheckoutBackend, useCommerce, type CommerceCopy, type OrderId } from "./backend";
 import { RefundForm } from "./RefundForm";
+import { ReplacementVouchers, ReturnInProgressNotice, ReturnItemsAction } from "./ReturnItemsEntry";
 import { hasLineRefunds, refundElsewhere, refundedSatang, satangMoney } from "./refunds";
 import { TONES } from "@/components/admin/status-tones";
 import type { Id } from "convex/_generated/dataModel";
@@ -94,6 +95,9 @@ const serverReceiptViewport = () => "pending";
 export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: OrderId; onNewSale: () => void; onOpenOrder: (orderId: OrderId) => void }) {
   const backend = useCheckoutBackend();
   const loaded = backend.useOrder(orderId);
+  // The payments cutover leaves staff on this receipt and asks each till to reload once: reading
+  // access here acknowledges the reloaded till, as the checkout workspace does (W2A till admission).
+  useCommerce().useAccess();
   // A voucher code typed into a name never prints in full (maskReceiptCodes).
   const view = useMemo(() => loaded && maskReceiptCodes(loaded), [loaded]);
   const business = backend.useBusinessName() ?? "";
@@ -452,6 +456,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
         {commerce ? <ShareCopyBridge copyRef={shareCopy} /> : null}
         {commerceReaders ? <CommerceReceiptStatus orderId={order._id} /> : null}
+        <ReturnInProgressNotice view={view} />
+        <ReplacementVouchers view={view} />
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         <Card role="region" aria-label="Items" data-testid="receipt-items" className={cn("overflow-hidden", shownTask && "hidden")}>
@@ -459,7 +465,9 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           <ul className="divide-y divide-border">
             {lines.map((line) => {
               const refundable = paid && !truncated && (line.remainingRefundableSatang ?? 0) > 0;
-              const elsewhere = paid && line.net > 0 ? refundElsewhere(view, line) : null;
+              // A commerce receipt's visits go through Return items; only room stays point to their booking.
+              const routed = paid && line.net > 0 ? refundElsewhere(view, line) : null;
+              const elsewhere = routed === "appointment" && view.commerce ? null : routed;
               const showRefund = refundable && refunding === null;
               const linkable = paid && Boolean(linkTarget(line)) && (canLink || view.links.some((l) => l.lineId === line._id && l.status === "active"));
               const note = lineNotes[line._id];
@@ -499,6 +507,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                     ) : null}
                   </div>
                 ) : null}
+                {paid ? <ReturnItemsAction view={view} line={line} /> : null}
               </li>;
             })}
           </ul>

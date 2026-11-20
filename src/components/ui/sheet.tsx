@@ -39,6 +39,7 @@ export function SheetContent({
     <SheetPortal>
       <SheetOverlay />
       <DialogPrimitive.Content
+        data-modal-content=""
         className={cn(
           // Scrolls on its own and keeps clear of notches and the home indicator.
           "fixed z-50 flex flex-col gap-4 overflow-y-auto overscroll-contain border-border bg-card p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] text-card-foreground shadow-2xl outline-none transition ease-out data-[state=closed]:opacity-0 data-[state=open]:opacity-100",
@@ -52,7 +53,7 @@ export function SheetContent({
       >
         {children}
         {showCloseButton ? (
-          <DialogPrimitive.Close className="absolute right-2 top-[max(0.5rem,env(safe-area-inset-top))] inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11">
+          <DialogPrimitive.Close data-slot="sheet-close" className="absolute right-2 top-[max(0.5rem,env(safe-area-inset-top))] inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

@@ -17,6 +17,7 @@ import "@/app.css";
  *   paused=1               checkout paused for update (direct only)
  *   scenario=              tea (฿1,200) · big (฿3,000 + ฿2,000) · room (a dense stay with a room-bill tote)
  *                          · tote (a ฿1,900 product sale; window.productSales("off") refuses it after the charge)
+ *                          · stay (Anna's Lagoon Pool Villa balance, the guest has an email: the booking confirmation choice)
  *   role=cashier           sign in as a cashier (manager otherwise)
  */
 const params = new URLSearchParams(location.search);
@@ -55,6 +56,11 @@ async function seed(): Promise<OrderId> {
     ]);
     await backend.patchFixtureRow("orderLines", lineId, { kind: "product", variantId: "fxvar0tote" });
     return orderId;
+  }
+  if (scenario === "stay") {
+    const bookingId = "fxbkg000001" as Id<"bookings">;
+    await backend.patchFixtureRow("bookings", bookingId, { guestEmail: "anna@example.com" });
+    return (await actions.openOrderFor({ bookingId })).orderId;
   }
   if (scenario === "tote") {
     // A ฿1,900 product sale with stock in hand and product sales on, so the owner can switch them

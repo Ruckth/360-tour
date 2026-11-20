@@ -47,6 +47,7 @@ export function DialogContent({
     <DialogPortal>
       <DialogOverlay className={cn(panel && "md:bg-black/15 md:backdrop-blur-none", overlayClassName)} />
       <DialogPrimitive.Content
+        data-modal-content=""
         className={cn(
           // Centred from md up; a bottom sheet on phones. Either way capped to the window and scrolling,
           // so a long form or the on-screen keyboard can't push the actions out of reach.
@@ -59,7 +60,7 @@ export function DialogContent({
       >
         {children}
         {showCloseButton ? (
-          <DialogPrimitive.Close className="absolute right-2 top-2 inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11">
+          <DialogPrimitive.Close data-slot="dialog-close" className="absolute right-2 top-2 inline-flex size-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11">
             <X className="h-4 w-4" />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>

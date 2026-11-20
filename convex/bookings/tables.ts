@@ -205,6 +205,7 @@ export const bookingsTables = {
 	})
 		.index('by_bookingId_and_recordedAt', ['bookingId', 'recordedAt'])
 		.index('by_orderId', ['orderId'])
+		.index('by_orderId_and_effectiveAt', ['orderId', 'effectiveAt'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
 		.index('by_providerRefundId', ['providerRefundId'])
 		.index('by_recordedAt', ['recordedAt']),

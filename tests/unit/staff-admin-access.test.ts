@@ -33,7 +33,7 @@ describe("navigation by staff role", () => {
   it("gives a manager every section except Team, and Marketing only with a Marketing grant", () => {
     const items = nav("manager");
     expect(hrefs(items)).toEqual(ADMIN_NAV.map((item) => item.href).filter((href) => !href.startsWith("/admin/marketing")));
-    expect(settingsLinks(items)).toEqual(["Business", "Booking rules", "AI assistant", "Email", "Channels"]);
+    expect(settingsLinks(items)).toEqual(["Business", "Booking rules", "Checkout rules", "AI assistant", "Email", "Channels"]);
     expect(settingsLinks(nav("owner"))).toContain("Team");
     expect(searchAdminNav("cashier", items)).toEqual([]);
     expect(hrefs(nav("manager", { marketing: true }))).toContain("/admin/marketing/dashboard");

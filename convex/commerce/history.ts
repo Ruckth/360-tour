@@ -33,7 +33,7 @@ async function get<T extends TableNames>(ctx: QueryCtx, id: Id<T>) {
  */
 async function canReadHistory(ctx: QueryCtx, actor: StaffActor, target: AdjustmentTarget) {
   switch (target.targetType) {
-    case 'settings': return actor.capabilities.settings;
+    case 'settings': return actor.capabilities.operations;
     case 'order': return canReadCheckoutOrder(actor, await get(ctx, target.targetId));
     case 'handover': {
       const handover = await get(ctx, target.targetId);

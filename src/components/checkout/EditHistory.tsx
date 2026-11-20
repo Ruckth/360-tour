@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { maskVoucherCodes } from "@/components/display/voucher-mask";
-import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type CommerceCopy, type FieldChange, type HistoryAudience, type HistoryBalance, type HistoryEntry, type PartValue, type StockReason } from "./backend";
+import { lastUsableAt } from "convex/shared/commerce/validity";
+import { guestFactText, useCommerce, type AdjustTarget, type ChangeValue, type CommerceCopy, type CustomerPage, type FieldChange, type HistoryAudience, type HistoryBalance, type HistoryEntry, type PartValue, type StockReason } from "./backend";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { formatResort } from "./checkout-ui";
 import { useCommerceCopy } from "./commerce-copy";
@@ -55,6 +56,8 @@ export function changeValueText(field: string, value: ChangeValue, copy: Commerc
     if (typeof item === "boolean") return copy.t(item ? "history.on" : "history.off");
     if (typeof item === "string") return maskVoucherCodes(item) || "—";
     if (MONEY_FIELDS.has(leaf(field))) return copy.money(item);
+    // A benefit's end is stored exclusive: show its last usable day, as the receipt and slips do.
+    if (/ExpiresAt$|^expiresAt$/.test(leaf(field))) return copy.date(lastUsableAt(item));
     return /At$/.test(leaf(field)) ? copy.date(item) : String(item);
   };
   if (value === undefined) return "—";
@@ -119,6 +122,16 @@ function staffText(staff: NonNullable<HistoryEntry["staff"]>, copy: CommerceCopy
 export function HistoryList({ target, audience }: { target: AdjustTarget; audience: HistoryAudience }) {
   const copy = useCommerceCopy();
   const page = useCommerce().useHistory(target, audience);
+  return <HistoryEntries page={page} copy={copy} audience={audience} />;
+}
+
+/**
+ * One page of history rows, for any reader of commerce/history: the sheet above, or Settings ›
+ * Checkout rules with its own copy. `describe` adds staff lines under a row (a changed rule).
+ */
+export function HistoryEntries({ page, copy, audience, describe }: {
+  page: CustomerPage<HistoryEntry>; copy: CommerceCopy; audience: HistoryAudience; describe?: (entry: HistoryEntry) => string[];
+}) {
   // A first page Convex splits arrives as "LoadingMore" with nothing yet: still loading, not empty.
   if (page.status === "LoadingFirstPage" || (!page.results.length && page.status === "LoadingMore")) return <Spinner label={copy.t("history.title")} />;
   if (!page.results.length && page.status === "Exhausted") return <p className="text-sm text-muted-foreground">{copy.t("history.empty")}</p>;
@@ -133,7 +146,8 @@ export function HistoryList({ target, audience }: { target: AdjustTarget; audien
               <time className="shrink-0 text-xs text-muted-foreground tabular-nums" dateTime={new Date(entry.at).toISOString()}>{formatResort(entry.at, guest ? "d MMM yyyy" : "d MMM yyyy, HH:mm")}</time>
             </div>
             {entry.balance ? <p className="text-sm text-muted-foreground tabular-nums">{balanceText(entry.balance, copy)}</p> : null}
-            {!guest && entry.fields ? <EntryChanges fields={entry.fields} copy={copy} /> : null}
+            {!guest && describe ? describe(entry).map((line) => <p key={line} className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{line}</p>) : null}
+            {!guest && !describe && entry.fields ? <EntryChanges fields={entry.fields} copy={copy} /> : null}
             {!guest && entry.staff ? <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid="history-staff">{staffText(entry.staff, copy)}</p> : null}
           </li>
         ))}

@@ -13,6 +13,7 @@ import { isOpenOrder } from './orderLinks';
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../shared/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../shared/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
+import { assertVisitReturnAvailable } from '../../services/model';
 import { resortLocalParts } from '../../shared/time';
 import { assertCashierDiscount, type StaffActor } from '../../auth/model';
 import { lineDiscountValidator } from '../../shared/staffTypes';
@@ -388,6 +389,7 @@ async function prepareAttach(ctx: MutationCtx, order: Order, source: OrderSource
 	} else {
 		appointment = (await ctx.db.get(source.appointmentId)) ?? undefined;
 		if (!appointment) throw new ConvexError('Appointment not found');
+		assertVisitReturnAvailable(appointment);
 		if (!appointmentAttachable(appointment)) throw new ConvexError('This appointment has nothing left to pay');
 		assertBaht(appointment.currency, 'This appointment');
 		line = await appointmentLine(ctx, appointment);

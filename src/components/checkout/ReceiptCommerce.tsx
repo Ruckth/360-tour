@@ -6,6 +6,7 @@ import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { lastUsableAt } from "convex/shared/commerce/validity";
 import { lineCouponDiscount, lineGross, lineStaffDiscount, roundMoney } from "convex/shared/orderMath";
 import { refusalText, useCommerce, type AdjustTarget, type CommerceCopy, type ExternalMethod, type LegState, type OrderId, type OrderLine } from "./backend";
 import { contentLabel, formatResort, voucherTenderLabel, type ReceiptCommerce, type ReceiptRowExtras, type VoucherTender } from "./checkout-ui";
@@ -33,7 +34,7 @@ export function CommerceReceiptRow({ line, extras, coupon, truncated }: { line: 
   const refunded = truncated ? 0 : line.refundedAmountSatang || extras.returned;
   // The latest end date of what the row issued; a benefit that never expires outlasts any date (D20).
   const ends = extras.benefits.map((benefit) => benefit.issuedExpiresAt);
-  const validity = !ends.length ? null : ends.includes(null) ? copy.t("vouchers.noExpiry") : copy.t("vouchers.validUntil", { date: copy.date(Math.max(...ends as number[])) });
+  const validity = !ends.length ? null : ends.includes(null) ? copy.t("vouchers.noExpiry") : copy.t("vouchers.validUntil", { date: copy.date(lastUsableAt(Math.max(...ends as number[]))) });
   return (
     <li data-receipt-kind={extras.kind}>
       <div className={row}>

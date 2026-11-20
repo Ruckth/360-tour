@@ -9,6 +9,7 @@ import { syncAffiliateCredit } from '../../marketing/model';
 import { appendRecordHistory } from '../../settings/model';
 import { readCommerceReceiptStatus, readOrderProjection } from './orderLifecycle';
 import { orderLines } from './orderLines';
+import { assertNoOpenReturn } from './returnGuards';
 import { activeLineLink } from './lineLinks';
 
 type ReadCtx = QueryCtx | MutationCtx;
@@ -73,6 +74,7 @@ function cleanInput(input: OrderRefundInput): OrderRefundInput {
 }
 
 async function walkInRefundLines(ctx: ReadCtx, order: Doc<'orders'>) {
+  await assertNoOpenReturn(ctx, order);
   const lines = await readOrderProjection(ctx, () => orderLines(ctx, order._id));
   if (await readCommerceReceiptStatus(ctx, order, lines)) {
     throw new ConvexError({ code: 'USE_RETURN_ITEMS', message: 'Use Return items for this receipt.', orderId: order._id });

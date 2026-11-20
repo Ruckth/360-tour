@@ -1,5 +1,6 @@
 import { maskVoucherCodes } from './voucherCodes';
 import { ConvexError, convexToJson, type Infer } from 'convex/values';
+import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { staffCapabilities, type StaffActor } from '../../auth/model';
@@ -45,7 +46,7 @@ type RequestedAdjustment = {
   expiresAt: number;
 };
 
-type Change = {
+export type AdjustmentChange = {
   before: Fields;
   after: Fields;
   paidLiabilityDelta?: number;
@@ -71,7 +72,7 @@ type Change = {
  */
 export type AdjustmentWriter = {
   assertScope: (ctx: MutationCtx, actor: StaffActor, command: AdjustmentCommand) => Promise<void>;
-  prepare: (ctx: MutationCtx, actor: StaffActor, command: AdjustmentCommand) => Promise<Change>;
+  prepare: (ctx: MutationCtx, actor: StaffActor, command: AdjustmentCommand) => Promise<AdjustmentChange>;
 };
 
 const MAX_AUDIT_BYTES = 8 * 1024;
@@ -123,7 +124,7 @@ function validateCommand(command: AdjustmentCommand) {
   const { target, clientKey, expectedRevision, relatedRevisions = [] } = command;
   const reasonCode = command.reasonCode?.trim();
   const reasonText = command.reasonText?.trim();
-  if (!clientKey.trim() || clientKey.length > 128 || clientKey.startsWith('approval:')) {
+  if (!clientKey.trim() || clientKey.length > 128 || clientKey.startsWith('approval:') || clientKey.startsWith('catalogue:')) {
     refuse('INVALID_ADJUSTMENT_KEY', 'Enter a valid edit request key.');
   }
   if ((command.reasonText?.length ?? 0) > 500 || (reasonCode?.length ?? 0) > 500) {
@@ -243,8 +244,8 @@ function requestResult(request: Approval): RequestedAdjustment {
 }
 
 async function applyChange(
-  ctx: MutationCtx, actor: StaffActor, command: AdjustmentCommand,
-  change: Change, requesterKey: string, fingerprint: string, ownership: Awaited<ReturnType<typeof assertRevisions>>,
+  ctx: MutationCtx, actor: Pick<StaffActor, 'tokenIdentifier' | 'email'>, command: AdjustmentCommand,
+  change: AdjustmentChange, requesterKey: string, fingerprint: string, ownership: Awaited<ReturnType<typeof assertRevisions>>,
   approvalId?: Approval['_id'],
 ): Promise<AppliedAdjustment> {
   const { target, kind } = command;
@@ -299,6 +300,60 @@ async function applyChange(
   // A stock movement is its own History row (its count before → after); only benefit ledgers keep the fields.
   if (primary && primary.kind !== 'stockMovement') await recordLedgerChanges(ctx, target, primary, adjustmentId, audit);
   return { status: 'applied', adjustmentId, revision: revisionAfter, effects };
+}
+
+type CatalogueTarget = Extract<AdjustmentTarget, { targetType: 'service' | 'property' }>;
+
+export function catalogueRevision(target: CatalogueTarget, record: { revision?: number }, expectedRevision?: number) {
+  const currentRevision = record.revision ?? 0;
+  if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
+    throw new ConvexError({
+      code: 'STALE_ADJUSTMENT_REVISION', message: 'This record changed. Review the edit again.',
+      ...target, expectedRevision, currentRevision,
+    });
+  }
+  return currentRevision;
+}
+
+/** Keep catalogue saves compatible with old callers and large pre-existing field values. */
+export async function catalogueFields<Patch extends { [K in keyof Patch]: Fields[string] | undefined }>(
+  record: { [K in keyof Patch]?: Fields[string] }, patch: Patch,
+): Promise<Pick<AdjustmentChange, 'before' | 'after'>> {
+  const before: Fields = {};
+  const after: Fields = {};
+  const sizes = [];
+  for (const field of Object.keys(patch) as (keyof Patch & string)[]) {
+    const previous = record[field] ?? null;
+    const next = patch[field] ?? null;
+    const oldJson = JSON.stringify(convexToJson(previous));
+    const newJson = JSON.stringify(convexToJson(next));
+    if (oldJson === newJson) continue;
+    before[field] = previous;
+    after[field] = next;
+    sizes.push({ field, oldJson, newJson, bytes: encoder.encode(oldJson + newJson).length });
+  }
+  // Leave room for audit metadata and reasons. Large values retain a fingerprint of each side.
+  const size = () => encoder.encode(JSON.stringify(convexToJson([maskFields(before), maskFields(after)]))).length;
+  for (const { field, oldJson, newJson } of sizes.sort((a, b) => b.bytes - a.bytes)) {
+    if (size() <= 5500) break;
+    before[field] = { sha256: await sha256(oldJson), bytes: encoder.encode(oldJson).length };
+    after[field] = { sha256: await sha256(newJson), bytes: encoder.encode(newJson).length };
+  }
+  return { before, after };
+}
+
+/** Old admin forms have no client key. A target revision uniquely identifies each accepted save. */
+export async function recordCatalogueEdit(
+  ctx: MutationCtx, actorLabel: string, target: CatalogueTarget, revision: number, change: AdjustmentChange,
+) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) refuse('ADJUSTMENT_FORBIDDEN', 'Staff access is required.');
+  const actor = { tokenIdentifier: identity.tokenIdentifier, email: actorLabel };
+  const clientKey = `catalogue:${target.targetId}:${revision + 1}`;
+  const fingerprint = await sha256(JSON.stringify(convexToJson([target, revision, change.before, change.after])));
+  await applyChange(ctx, actor, {
+    target, kind: 'editCatalogue', input: {}, expectedRevision: revision, clientKey,
+  }, change, actor.tokenIdentifier, fingerprint, { orderIds: new Set(), handoverIds: [] });
 }
 
 /**
@@ -379,6 +434,7 @@ export async function adjust(
       ...(command.reasonCode ? { reasonCode: command.reasonCode } : {}),
     },
   });
+  await ctx.scheduler.runAfter(APPROVAL_TTL_MS, internal.pos.staffApprovals.expire, { requestId });
   return { status: 'approvalRequired', requestId, expiresAt };
 }
 

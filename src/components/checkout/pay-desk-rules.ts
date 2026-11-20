@@ -20,11 +20,17 @@ export function reviewedCustomers(view: OrderView): ReviewedCustomer[] {
 }
 
 export const isUnchecked = (leg: PaymentLeg) => leg.state === "instructed" || leg.state === "unknown";
+/**
+ * A fresh instruction shows only on the screen whose own arm call sent it, and only while the server
+ * still allows it: after any handover (A → B → A included) the part is Check previous payment for good.
+ */
+export const showsInstruction = (leg: PaymentLeg, armedHere: ReadonlySet<string>) =>
+  leg.state === "instructed" && !leg.checkPrevious && armedHere.has(leg.key);
 export const collected = (legs: readonly PaymentLeg[]) => legs.filter((leg) => leg.direction === "collect");
 
 /**
  * The one thing the panel shows for an attempt. `armedHere` holds the parts this panel instance
- * armed itself: only those show a fresh instruction. Any other instructed part (after a reload,
+ * armed itself under the current owner revision: only those, unless the server says checkPrevious, show a fresh instruction. Any other instructed part (after a reload,
  * another device, a takeover) shows Check previous payment until staff record what happened.
  */
 export type DeskStep =
@@ -38,7 +44,7 @@ export type DeskStep =
 export function deskStep(attempt: PaymentAttemptView, armedHere: ReadonlySet<string>): DeskStep {
   if (!attempt.mine) return { kind: "elsewhere" };
   const unchecked = attempt.legs.find(isUnchecked);
-  if (unchecked) return unchecked.state === "instructed" && armedHere.has(unchecked.key) ? { kind: "instruct", leg: unchecked } : { kind: "checkPrevious", leg: unchecked };
+  if (unchecked) return showsInstruction(unchecked, armedHere) ? { kind: "instruct", leg: unchecked } : { kind: "checkPrevious", leg: unchecked };
   if (attempt.status === "refused") return { kind: "recovery" };
   const parts = collected(attempt.legs);
   if (attempt.status === "recovering") {

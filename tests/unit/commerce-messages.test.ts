@@ -71,7 +71,7 @@ function argumentNames(message: string): string[] {
 }
 
 /** A value for every argument any commerce message uses. */
-const sample = { amount: "฿600", rest: "฿600", n: 2, price: "฿1,290", count: 3, max: 2, cash: 15, card: 45, here: 0, there: 3, before: "3", after: "2", paid: 3, goodwill: 1, spent: "฿300", left: "฿200", min: "฿100", name: "Maya Lin", product: "Spa robe", service: "Thai massage 60", variant: "Blue / M", option: "Size", branch: "Beach spa", room: "12", guest: "Maya Lin", till: "Till 1", staff: "Ploy", method: "Card", time: "14:02", date: "30 Dec 2026", code: "GV-••••-Q9XD", kind: "Products", label: "Spa robe", reason: "Voucher used up", expected: 3, current: 4, what: "extend", target: "Massage 5", part: "Massage", change: "5 → 6 sessions" };
+const sample = { amount: "฿600", rest: "฿600", n: 2, price: "฿1,290", count: 3, max: 2, cash: 15, card: 45, here: 0, there: 3, before: "3", after: "2", paid: 3, goodwill: 1, spent: "฿300", left: "฿200", min: "฿100", name: "Maya Lin", product: "Spa robe", service: "Thai massage 60", variant: "Blue / M", option: "Size", branch: "Beach spa", room: "12", guest: "Maya Lin", till: "Till 1", staff: "Ploy", method: "Card", time: "14:02", date: "30 Dec 2026", code: "GV-••••-Q9XD", kind: "Products", label: "Spa robe", reason: "Voucher used up", expected: 3, current: 4, what: "extend", target: "Massage 5", value: "7 days", who: "loyalty members", state: "Everyone", help: "Everyone at checkout can sell these.", status: "refused", order: "R-1042", part: "Massage", change: "5 → 6 sessions", destinations: "฿700 to Card · ฿500 back to voucher GV-••••-Q9XD" };
 
 /** Loanwords these languages use as is at a till: Spa, Shop, Stock, Code, Name, PromptPay. */
 const LOANWORDS = /^Commerce\.(tabs\.(spa|shop)|vouchers\.giftSlipCode|edits\.name|admin\.stock|approvals\.targets\.stock|history\.stockBeforeAfter|pay\.promptPay)$/;
@@ -205,6 +205,7 @@ const facts: { [K in GuestFactKey]: Extract<GuestFact, { key: K }> } = {
   expired: { key: "expired" }, cancelled: { key: "cancelled" }, spent: { key: "spent", amount: 60000 }, refundCredit: { key: "refundCredit", amount: 50000 },
   serviceAdded: { key: "serviceAdded", service: "Hot stone 60" }, sold: { key: "sold" }, stockAdjusted: { key: "stockAdjusted" }, roomCharge: { key: "roomCharge", room: "12" },
   takenBack: { key: "takenBack" }, published: { key: "published" }, updated: { key: "updated" },
+  rulesChanged: { key: "rulesChanged" }, paymentsSwitched: { key: "paymentsSwitched" }, checkoutPaused: { key: "checkoutPaused" }, checkoutResumed: { key: "checkoutResumed" },
 };
 const copyFor = (locale: string): CommerceCopy => {
   const t = createTranslator({ locale, messages: read(locale), namespace: "Commerce", onError: (error) => { throw error; } });

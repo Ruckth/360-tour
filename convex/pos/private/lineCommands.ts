@@ -1,4 +1,6 @@
 import { assertNoActivePayment } from './paymentAttempt';
+import { assertHandoverEditable } from './handoverCustody';
+import { assertExistingMoneyFlow } from './returnGuards';
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { MutationCtx } from '../../_generated/server';
@@ -7,7 +9,6 @@ import { appendBookingHistory } from '../../bookings/model';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
-import { assertReceiptCorrectionSupported } from './orderLifecycle';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
 import { changeSchedule } from '../../shared/serviceSchedule';
@@ -68,6 +69,7 @@ export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachA
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof updateLineArgs>, admin: StaffActor) {
 		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
+		if (args.qtyChange !== undefined || args.discount !== undefined) await assertHandoverEditable(ctx, order, line);
 		if (line.fee && (args.qtyChange !== undefined || args.discount)) throw new ConvexError(FEE_FIXED);
 		const patch: Partial<Line> = {};
 		if (args.staffId !== undefined) {
@@ -111,6 +113,7 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typeof overrideLinePriceArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'customPrice');
 		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
+		await assertHandoverEditable(ctx, order, line);
 		if (line.kind === 'booking' && args.price !== null) throw new ConvexError(ATTACHED_PRICE);
 		if (line.fee && args.price !== null) throw new ConvexError(FEE_FIXED);
 		await assertCashierDiscount(ctx, admin, { ...line, priceOverride: args.price === null ? undefined : { price: roundMoney(args.price) } });
@@ -176,7 +179,7 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		assertNoActivePayment(order);
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
-		await assertReceiptCorrectionSupported(ctx, order);
+		await assertExistingMoneyFlow(ctx, order);
 		await assertNoPosRefunds(ctx, order._id);
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');

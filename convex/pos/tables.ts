@@ -96,6 +96,8 @@ export const posTables = {
 		activeAttemptId: v.optional(v.id('paymentAttempts')),
 		vatVersion: v.optional(v.number()),
 		returnedTotal: v.optional(v.number()),
+		/** Return items: Σ saleSnapshot.returnedAmount over this receipt's rows, written only from an exact sum. Absent: read the rows. */
+		rowReturnedTotal: v.optional(v.number()),
 
 
 		/** The reusable customer (payer) this order is for, if any. Not the booking's guest. */
@@ -285,6 +287,7 @@ export const posTables = {
 		.index('by_feeAppointmentId', ['feeAppointmentId'])
 		// The booking and appointment rows of an order, for the booking references the orders list shows.
 		.index('by_orderId_and_kind', ['orderId', 'kind'])
+		.index('by_orderId_and_saleSnapshot_returnedAmount', ['orderId', 'saleSnapshot.returnedAmount'])
 		.index('by_bookingId', ['bookingId'])
 		.index('by_appointmentId', ['appointmentId']),
 
@@ -313,6 +316,8 @@ export const posTables = {
     ownerToken: v.optional(v.string()), ownerTab: v.optional(v.string()),
     ownerDisplayName: v.optional(v.string()), tillLabel: v.optional(v.string()),
     parentAttemptId: v.optional(v.id('paymentAttempts')),
+    /** The cashier's booking payment confirmation email choice, kept across reloads and handovers. */
+    notifyGuest: v.optional(v.boolean()),
     refusal: v.optional(paymentAttemptRefusal),
     resolution: v.optional(v.object({
       settledAttemptId: v.optional(v.id('paymentAttempts')),
@@ -327,20 +332,28 @@ export const posTables = {
     orderId: v.id('orders'), key: v.string(), fingerprint: v.string(),
     parts: v.array(returnPart),
     effectsApplied: v.array(returnEffect),
+    visitReturns: v.optional(v.array(v.object({
+      appointmentId: v.id('appointments'), lineId: v.id('orderLines'),
+      expectedRevision: v.number(), amount: v.number(),
+      restore: v.optional(v.object({ useId: v.id('sessionUses'), grantId: v.id('sessionGrants'), grantRevision: v.number() })),
+    }))),
     claims: v.array(returnClaim),
     voucherCredits: v.array(returnVoucherCredit),
     status: orderReturnStatus,
     operator: v.string(), tillId: v.string(), operatorRevision: v.number(),
     approvalId: v.optional(v.id('staffApprovalRequests')),
     reason: v.string(), createdAt: v.number(), completedAt: v.optional(v.number()),
+    hasReplacementSlips: v.optional(v.boolean()),
   }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status'])
+    .index('by_orderId_and_hasReplacementSlips', ['orderId', 'hasReplacementSlips'])
     .index('by_status_and_createdAt', ['status', 'createdAt']),
 
   returnPayouts: defineTable({
-    returnId: v.id('orderReturns'), key: v.string(), destinationKey: v.string(),
+    returnId: v.id('orderReturns'), orderId: v.optional(v.id('orders')), key: v.string(), destinationKey: v.string(),
     amount: v.number(), method: tenderMethod, businessDate: v.string(),
     sourceOwner: returnSourceOwner, operator: v.string(), reference: v.optional(v.string()), createdAt: v.number(),
-  }).index('by_businessDate', ['businessDate']).index('by_key', ['key']),
+  }).index('by_businessDate', ['businessDate']).index('by_key', ['key'])
+    .index('by_orderId_and_businessDate', ['orderId', 'businessDate']),
 
 
 	/**
@@ -370,7 +383,11 @@ export const posTables = {
 		customerIdBefore: v.optional(v.union(v.null(), v.id('customers'))),
 		customerIdAfter: v.optional(v.union(v.null(), v.id('customers'))),
 		effectiveAtBefore: v.optional(v.number()),
-		effectiveAtAfter: v.optional(v.number())
+		effectiveAtAfter: v.optional(v.number()),
+    recollectionOrderId: v.optional(v.id('orders')),
+    voucherRestorations: v.optional(v.array(v.object({
+      voucherId: v.id('vouchers'), creditedVoucherId: v.id('vouchers'), paid: v.number(), goodwill: v.number(),
+    }))),
 	})
 		.index('by_orderId_and_sequence', ['orderId', 'sequence'])
 		.index('by_idempotencyKey', ['idempotencyKey']),

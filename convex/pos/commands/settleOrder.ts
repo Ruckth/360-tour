@@ -2,7 +2,7 @@ import { ConvexError, v } from 'convex/values';
 import { canReadCheckoutOrder, staffMutation, type StaffActor } from '../../auth/model';
 import { markBookingPaid } from '../../bookings/model';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
-import { recordAppointmentChange } from '../../services/model';
+import { assertVisitReturnAvailable, recordAppointmentChange } from '../../services/model';
 import { effectiveTime } from '../../shared/bookingMoney';
 import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../private/orderLifecycle';
@@ -92,9 +92,15 @@ export const settleOrder = staffMutation({
     if (order.customerId) {
       assertCustomerReviewed(customer, args.expectedCustomerRevision ?? (CUSTOMER_POS_INTEGRATION_ENABLED ? undefined : (customer?.revision ?? 0)));
     }
+    const appointments = new Map<Doc<'appointments'>['_id'], Promise<Doc<'appointments'> | null>>();
+    const appointment = (id: Doc<'appointments'>['_id']) => {
+      if (!appointments.has(id)) appointments.set(id, ctx.db.get(id));
+      return appointments.get(id)!;
+    };
+    for (const line of lines) if (line.appointmentId) assertVisitReturnAvailable(await appointment(line.appointmentId)); // W2B visit return guard (direct settlement).
     const now = Date.now();
     const effectiveAt = effectiveTime(args.effectiveAt, now);
-    const cart = { lines, totals, customer, appointment: (id: Doc<'appointments'>['_id']) => ctx.db.get(id) };
+    const cart = { lines, totals, customer, appointment };
     const result = await writeOrderPayment(ctx, order, cart, args.tenders, admin, { key, now, effectiveAt, notifyGuest: args.notifyGuest ?? panel.notifyGuest });
     await closeSettledDirectPanel(ctx, order._id, panel.owner, panel.till, args.panelKey);
     return result;
@@ -159,10 +165,14 @@ async function writeOrderPayment(
 		return { receiptNumber, replayed: false };
 }
 
-/** The verified legs, customer review and date all come from the durable attempt. */
+/**
+ * The verified legs, customer review and date all come from the durable attempt. `notifyGuest` is the
+ * cashier's booking confirmation choice at this payment, as on the direct panel (settleOrder); without
+ * it, the choice stored on the attempt (setPaymentEmailChoice) survives a reload or a handover.
+ */
 export const settlePaymentAttempt = staffMutation({
   capability: 'checkout',
-  args: { ...attemptOwnerArgs, stockInHand: v.optional(v.boolean()) },
+  args: { ...attemptOwnerArgs, stockInHand: v.optional(v.boolean()), notifyGuest: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     let prepared;
     try {
@@ -188,6 +198,7 @@ export const settlePaymentAttempt = staffMutation({
           paymentError('payment_incomplete', 'Finish recording the payment first.');
         }
         const checks = await preflightAttempt(ctx, order, attempt, settings, ctx.staff, tenders, now);
+        for (const line of checks.cart.lines) if (line.appointmentId) assertVisitReturnAvailable(await checks.cart.appointment(line.appointmentId)); // W2B visit return guard (attempt settlement).
         if (!tenders.length && !args.stockInHand && checks.sale.stockShortages.length) {
           return { status: 'confirm_stock' as const, shortages: checks.sale.stockShortages };
         }
@@ -207,7 +218,7 @@ export const settlePaymentAttempt = staffMutation({
 
     const { attempt, order, cart, sale, effectiveAt, now } = prepared;
     const result = await writeOrderPayment(ctx, order, cart, sale.payments, ctx.staff, {
-      key: attempt.key, now, effectiveAt, paidShares: sale.snapshots.map(snapshot => snapshot.paidShare),
+      key: attempt.key, now, effectiveAt, notifyGuest: args.notifyGuest ?? attempt.notifyGuest, paidShares: sale.snapshots.map(snapshot => snapshot.paidShare),
     });
     await writeCommercePayment(ctx, sale, ctx.staff.email, now);
     await syncAffiliateCredit(ctx, { orderId: order._id }, ctx.staff.email);

@@ -93,16 +93,42 @@ it('applies one settings adjustment, replays matching payloads and preserves the
   });
 });
 
+it('shows each settings change in the page History with its rules before and after, to owners and managers only', async () => {
+  const { owner, manager, cashier } = await fixture();
+  await owner.mutation(settings.updateRules, {
+    ...edit(0, 'terms', 'Adviser said so'), terms: { refundDueDays: { cashOrTransfer: 15, card: 30 }, allowSessionTransfer: false },
+  });
+  await manager.mutation(rollout.setPaused, { ...edit(1, 'pause'), paused: true });
+  const { settingsId } = await owner.query(settings.getRules, {});
+  expect(settingsId).not.toBeNull();
+  const target = { targetType: 'settings' as const, targetId: settingsId! };
+  const page = await manager.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor: null } });
+  expect(page.page.map(entry => entry.fact)).toEqual([{ key: 'checkoutPaused' }, { key: 'rulesChanged' }]);
+  expect(page.page[0].changes).toEqual([]);
+  expect(page.page[1]).toMatchObject({
+    staff: { actorName: 'owner@example.com', reasonText: 'Adviser said so' },
+    changes: [
+      { field: 'refundDueDays.card', before: 45, after: 30 },
+      { field: 'allowSessionTransfer', before: true, after: false },
+    ],
+  });
+  expect((await cashier.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor: null } })).page).toEqual([]);
+});
+
 it('authorizes the rollout and field groups before reading or replaying an edit', async () => {
   const { t, owner, manager, cashier, managerId } = await fixture();
   const terms = { ...edit(0, 'terms'), terms: { pointsVatTreatment: 'payment' as const } };
   const switches = { ...edit(0, 'switch'), switches: { products: 'managers' as const } };
+  // Managers read the rules and till status but can't change D20 rules or sale switches.
   for (const actor of [manager, cashier]) {
     await expect(actor.mutation(settings.updateRules, terms)).rejects.toThrow('Not authorized');
     await expect(actor.mutation(settings.updateRules, switches)).rejects.toThrow('Not authorized');
-    await expect(actor.query(settings.getRules, {})).rejects.toThrow('Not authorized');
-    await expect(actor.query(rollout.status, {})).rejects.toThrow('Not authorized');
   }
+  await expect(cashier.query(settings.getRules, {})).rejects.toThrow('Not authorized');
+  await expect(cashier.query(rollout.status, {})).rejects.toThrow('Not authorized');
+  expect(await manager.query(settings.getRules, {})).toMatchObject({ canEdit: false, settingsId: null, revision: 0 });
+  expect(await manager.query(rollout.status, {})).toMatchObject({ mode: 'direct', acknowledged: [], pending: [] });
+  expect(await owner.query(settings.getRules, {})).toMatchObject({ canEdit: true });
   await expect(owner.mutation(settings.updateRules, switches)).rejects.toMatchObject(refusal('PAYMENT_ROLLOUT_PENDING'));
   const pause = { ...edit(0, 'pause'), paused: true };
   const activate = edit(1, 'activate');

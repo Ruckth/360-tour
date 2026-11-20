@@ -1,4 +1,5 @@
 import { assertNoActivePayment } from '../private/paymentAttempt';
+import { assertHandoverEditable } from '../private/handoverCustody';
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { appendRecordHistory } from '../../settings/model';
@@ -11,6 +12,7 @@ export const removeLine = staffMutation({
 		const admin = ctx.staff;
 		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
 		if (isSourceRow(line)) assertNoActivePayment(order);
+		await assertHandoverEditable(ctx, order, line);
 		await ctx.db.delete(line._id);
 		await refreshOrder(ctx, order._id);
 		await logOrder(ctx, order._id, admin.email, 'line_removed', { before: lineSnapshot(line) });

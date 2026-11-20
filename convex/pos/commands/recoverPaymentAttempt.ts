@@ -125,6 +125,7 @@ export const startPaymentRecovery = staffMutation({
         status: 'recovering' as const, ownerRevision: attempt.ownerRevision,
         tillId: attempt.tillId, tillLabel: attempt.tillLabel, owner: attempt.owner, ownerTab: attempt.ownerTab,
         ownerToken: attempt.ownerToken, ownerDisplayName: attempt.ownerDisplayName, parentAttemptId: attempt._id, createdAt: now, updatedAt: now,
+        ...(attempt.notifyGuest === undefined ? {} : { notifyGuest: attempt.notifyGuest }),
       };
       reserveWrites(ctx, 3);
       const id = await ctx.db.insert('paymentAttempts', fields);

@@ -11,6 +11,7 @@ import { resolveCommerceSettings } from './commerce/model';
 import type { FunctionArgs } from 'convex/server';
 import { termsOf } from './pos/private/paymentCommerce';
 import { receiptVat } from './shared/commerce';
+import { normalizeVoucherCode, voucherCodeMask } from './shared/voucherCode';
 import { resortTodayIso } from './shared/time';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -135,18 +136,25 @@ it('refuses a stale direct panel after cutoff', async () => {
 
 it('keeps paid voucher value outside cash and freezes goodwill as a discount', async () => {
   const { t, owner, request } = await fixture();
-  const voucherId = await t.run(async ctx => {
+  const { voucherId, issuingOrderId } = await t.run(async ctx => {
     const branchId = await ctx.db.insert('branches', { key: 'default' });
     const settings = resolveCommerceSettings(null);
     const { revision } = settings;
     const terms = termsOf(settings);
-    const line = await ctx.db.query('orderLines').first();
-    if (!line) throw new Error('Missing fixture row');
-    return await ctx.db.insert('vouchers', {
+    const now = Date.now();
+    const issuingOrderId = await ctx.db.insert('orders', {
+      orderNumber: 2, receiptNumber: 1, currency: 'THB', status: 'paid', itemCount: 1, hasItems: true,
+      total: 20000, due: 0, revision: 1, paidAt: now, createdAt: now, updatedAt: now, createdBy: 'owner@example.com',
+    });
+    const lineId = await ctx.db.insert('orderLines', {
+      orderId: issuingOrderId, kind: 'voucher', name: 'Gift', qty: 1, unitPrice: 20000, catalogUnitPrice: 20000, currency: 'THB', createdAt: now,
+    });
+    const voucherId = await ctx.db.insert('vouchers', {
       branchId, revision, settingsRevision: revision, terms, faceValue: 20000, paidBalance: 20000, goodwillBalance: 10000,
-      source: { kind: 'sale', orderId: request.orderId, lineId: line._id },
+      source: { kind: 'sale', orderId: issuingOrderId, lineId },
       status: 'active', issuedExpiresAt: Date.now() + 600000, effectiveExpiresAt: Date.now() + 600000,
     });
+    return { voucherId, issuingOrderId };
   });
   const attempt = await claim(owner, { ...request, vouchers: [{ voucherId, paid: 20000, goodwill: 10000 }],
     legs: [{ key: 'cash-1', method: 'cash', amount: 30000 }] });
@@ -161,6 +169,8 @@ it('keeps paid voucher value outside cash and freezes goodwill as a discount', a
   expect(state.payments).toMatchObject([{ method: 'voucher', voucherId, amount: 20000 }, { method: 'cash', amount: 30000, received: 40000 }]);
   expect(state.voucher).toMatchObject({ paidBalance: 0, goodwillBalance: 0 });
   expect(state.line?.saleSnapshot).toMatchObject({ paidShare: 50000, vatBase: 50000, goodwillDiscounts: [{ voucherId, amount: 10000 }] });
+  expect(await t.run(ctx => ctx.db.get(issuingOrderId))).toMatchObject({ commerceRevision: 1 });
+  expect(await t.run(ctx => ctx.db.get(request.orderId))).toMatchObject({ commerceRevision: 1 });
 }, 30000);
 
 it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness receipt (%s)', async scenario => {
@@ -232,6 +242,10 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
   expect(await t.run(ctx => ctx.db.query('stockMovements').take(2))).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('sessionGrants').take(2))).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('voucherEntries').take(2))).toHaveLength(1);
+  // The package's voucher code is one every reader and the shared masker recognise (PR #93 round 2).
+  const [issued] = await t.run(ctx => ctx.db.query('voucherCodes').take(2));
+  expect(normalizeVoucherCode(issued.code)).toBe(issued.code);
+  expect(issued.mask).toBe(voucherCodeMask(issued.code));
 }, 30000);
 
 const resume = api.pos.commands.resumePaymentAttempt.resumePaymentAttempt;
@@ -849,4 +863,105 @@ it('stores the armed or updated cash tender and records it on Taken without inve
   await expect(owner.mutation(record, taken)).resolves.toMatchObject({ status: 'recorded', replayed: true });
   await expect(owner.mutation(settle, attempt)).resolves.toMatchObject({ status: 'settled' });
   expect(await t.run(ctx => ctx.db.query('orderPayments').take(2))).toMatchObject([{ method: 'cash', received: 70000, amount: 60000 }]);
+}, 30000);
+
+// W2B before payments go live (docs/commerce/deferred.md): the cashier's booking confirmation choice
+// reaches attempt settlement, as on the direct panel (it used to be dropped, leaving the stay's default).
+it.each([false, true])('settles a stay through an attempt and emails the booking confirmation only when chosen (%s)', async notifyGuest => {
+  const { t, owner, room, request, bookingId } = await stayFixture();
+  // A past stay: left to the default, nothing is emailed, so only the cashier's choice can send it.
+  await t.run(ctx => ctx.db.patch(bookingId, { guestEmail: 'guest@example.com' }));
+  const order = (await t.run(ctx => ctx.db.get(room._id)))!;
+  const attempt = await claim(owner, { ...request, expectedRevision: order.revision, expectedDue: order.due,
+    legs: [{ key: 'card-1', method: 'card' as const, amount: order.due }] });
+  await owner.mutation(arm, { ...attempt, load: request.load, legKey: 'card-1' });
+  await owner.mutation(record, { ...attempt, legKey: 'card-1', outcome: 'taken' });
+  await expect(owner.mutation(settle, { ...attempt, notifyGuest })).resolves.toMatchObject({ status: 'settled' });
+  const booking = (await t.run(ctx => ctx.db.get(bookingId)))!;
+  expect(booking.paymentStatus).toBe('paid');
+  expect(booking.confirmationEmailsQueuedAt !== undefined).toBe(notifyGuest);
+}, 30000);
+
+it('lists the other admitted tills for Hand over and refuses handing a payment to its own till', async () => {
+  const { t, owner, request, deskA, deskB } = await fixture();
+  const handover = api.pos.commands.handoverPaymentAttempt;
+  const tills = await owner.query(handover.handoverTills, { tillId: deskA });
+  expect(tills).toEqual({ thisTill: `Till ${deskA.slice(-6).toUpperCase()}`, tills: [{ tillId: deskB, label: `Till ${deskB.slice(-6).toUpperCase()}` }] });
+  // A till that hasn't acknowledged this cutover can't receive a payment, so it isn't offered.
+  await t.run(ctx => ctx.db.patch(deskB, { paymentRollout: undefined }));
+  expect((await owner.query(handover.handoverTills, { tillId: deskA })).tills).toEqual([]);
+  const attempt = await claim(owner, request);
+  await expect(owner.mutation(handover.releasePaymentAttempt, { ...attempt, nextTillId: deskA }))
+    .resolves.toMatchObject({ status: 'refused', code: 'invalid_till' });
+  expect(await t.run(ctx => ctx.db.get(attempt.attemptId))).toMatchObject({ ownerRevision: 0, tillId: deskA });
+}, 30000);
+
+// PR 93 round 3 · blocker 1: a sent part handed A → B → A must never instruct the original till again.
+it('keeps a sent part as Check previous payment on every till after it is handed back (A → B → A)', async () => {
+  const { t, owner, request, deskA, deskB } = await fixture();
+  const handover = api.pos.commands.handoverPaymentAttempt;
+  const attempt = await claim(owner, request);
+  const { orderId } = request;
+  await expect(owner.mutation(arm, { ...attempt, load: request.load, legKey: 'card-1' }))
+    .resolves.toMatchObject({ status: 'instruct', attempt: { legs: [{ key: 'card-1', checkPrevious: false }] } });
+  await expect(owner.mutation(handover.releasePaymentAttempt, { ...attempt, nextTillId: deskB })).resolves.toMatchObject({ status: 'released' });
+  const b = at(deskB, DEVICE_B, 0, TAB_B);
+  await expect(owner.mutation(takeOverPaymentAttempt, { ...b, orderId, expectedOwnerRevision: 1 }))
+    .resolves.toMatchObject({ status: 'taken_over', attempt: { ownerRevision: 2, legs: [{ checkPrevious: true }] } });
+  await expect(owner.query(resume, { orderId, tillId: deskB, tabKey: TAB_B }))
+    .resolves.toMatchObject({ status: 'resume', attempt: { legs: [{ state: 'instructed', checkPrevious: true }] } });
+  await expect(owner.mutation(handover.releasePaymentAttempt, { attemptId: attempt.attemptId, ownerRevision: 2, tillId: deskB, tabKey: TAB_B, nextTillId: deskA }))
+    .resolves.toMatchObject({ status: 'released' });
+  // The original till and tab accept it back: the server still says Check previous payment.
+  await expect(owner.mutation(takeOverPaymentAttempt, { ...at(deskA), orderId, expectedOwnerRevision: 3 }))
+    .resolves.toMatchObject({ status: 'taken_over', attempt: { ownerRevision: 4, legs: [{ checkPrevious: true }] } });
+  await expect(owner.query(resume, { orderId, tillId: deskA, tabKey: TAB_A }))
+    .resolves.toMatchObject({ status: 'resume', attempt: { legs: [{ state: 'instructed', checkPrevious: true }] } });
+  const back = { ...attempt, ownerRevision: 4 };
+  await expect(owner.mutation(arm, { ...back, load: request.load, legKey: 'card-1' })).resolves.toMatchObject({ status: 'check_previous' });
+  await expect(owner.mutation(record, { ...back, legKey: 'card-1', outcome: 'taken' })).resolves.toMatchObject({ status: 'recorded' });
+  await expect(owner.mutation(settle, back)).resolves.toMatchObject({ status: 'settled' });
+  expect(await t.run(ctx => ctx.db.query('orderPayments').take(2))).toHaveLength(1);
+}, 30000);
+
+it('treats an instructed part stored before owner revisions were recorded as Check previous payment', async () => {
+  const { t, owner, request } = await fixture();
+  const attempt = await claim(owner, request);
+  await owner.mutation(arm, { ...attempt, load: request.load, legKey: 'card-1' });
+  await t.run(async ctx => {
+    const row = (await ctx.db.get(attempt.attemptId))!;
+    await ctx.db.patch(row._id, { legs: row.legs.map(leg => ({ ...leg, instructedOwnerRevision: undefined })) });
+  });
+  await expect(owner.query(resume, { orderId: request.orderId, tillId: attempt.tillId, tabKey: attempt.tabKey }))
+    .resolves.toMatchObject({ attempt: { legs: [{ state: 'instructed', checkPrevious: true }] } });
+}, 30000);
+
+// PR 93 round 3 · blocker 2: the cashier's booking email choice survives a reload and a handover.
+it('keeps the booking email choice on the attempt across a reload and a handover, and settles with it', async () => {
+  const { t, owner, room, request, bookingId, deskB } = await stayFixture();
+  const choose = api.pos.commands.paymentEmailChoice.setPaymentEmailChoice;
+  const handover = api.pos.commands.handoverPaymentAttempt;
+  await t.run(ctx => ctx.db.patch(bookingId, { guestEmail: 'guest@example.com' }));
+  const order = (await t.run(ctx => ctx.db.get(room._id)))!;
+  const attempt = await claim(owner, { ...request, expectedRevision: order.revision, expectedDue: order.due,
+    legs: [{ key: 'card-1', method: 'card' as const, amount: order.due }] });
+  await owner.mutation(arm, { ...attempt, load: request.load, legKey: 'card-1' });
+  await expect(owner.query(resume, { orderId: room._id, tillId: attempt.tillId, tabKey: attempt.tabKey }))
+    .resolves.toMatchObject({ attempt: { notifyGuest: false } });
+  await expect(owner.mutation(choose, { ...attempt, notifyGuest: true })).resolves.toMatchObject({ status: 'saved', notifyGuest: true });
+  // A reload reads it back; another tab can't change it.
+  await expect(owner.query(resume, { orderId: room._id, tillId: attempt.tillId, tabKey: attempt.tabKey }))
+    .resolves.toMatchObject({ attempt: { notifyGuest: true } });
+  await expect(owner.mutation(choose, { ...attempt, tabKey: TAB_B, notifyGuest: false }))
+    .resolves.toMatchObject({ status: 'refused', code: 'in_progress_elsewhere' });
+  await owner.mutation(handover.releasePaymentAttempt, { ...attempt, nextTillId: deskB });
+  await expect(owner.mutation(takeOverPaymentAttempt, { ...at(deskB, DEVICE_B, 0, TAB_B), orderId: room._id, expectedOwnerRevision: 1 }))
+    .resolves.toMatchObject({ status: 'taken_over', attempt: { notifyGuest: true, legs: [{ checkPrevious: true }] } });
+  const onB = { attemptId: attempt.attemptId, ownerRevision: 2, tillId: deskB, tabKey: TAB_B };
+  await owner.mutation(record, { ...onB, legKey: 'card-1', outcome: 'taken' });
+  // Settled on B without restating the choice: the stored one is sent.
+  await expect(owner.mutation(settle, onB)).resolves.toMatchObject({ status: 'settled' });
+  const booking = (await t.run(ctx => ctx.db.get(bookingId)))!;
+  expect(booking.paymentStatus).toBe('paid');
+  expect(booking.confirmationEmailsQueuedAt).toBeDefined();
 }, 30000);

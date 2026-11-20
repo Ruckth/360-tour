@@ -99,11 +99,13 @@ it('opens a receipt or settings History only for staff who may see it', async ()
     as(who).query(api.commerce.history.staffPage, { target, paginationOpts: firstPage });
   const settings = { targetType: 'settings' as const, targetId: settingsId };
   expect((await history('cashier', settings)).page).toEqual([]);
-  expect((await history('manager', settings)).page).toEqual([]);
+  // Managers read Checkout rules and its History; only the owner changes them.
+  expect((await history('manager', settings)).page).toHaveLength(1);
   expect((await history('owner', settings)).page).toEqual([{
-    entryId: expect.any(String), at: now, fact: { key: 'updated' }, balance: null,
+    entryId: expect.any(String), at: now, fact: { key: 'rulesChanged' }, balance: null,
     before: { voucherValidityDays: 365 }, after: { voucherValidityDays: null },
     staff: { actorName: 'Owner', reason: 'priceChange', reasonText: 'New season' },
+    changes: [{ field: 'voucherValidityDays', before: 365, after: null }],
   }]);
   // A cashier opens today's receipts only, as today.
   expect((await history('cashier', { targetType: 'order', targetId: today })).page).toHaveLength(1);

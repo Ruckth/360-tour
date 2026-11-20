@@ -103,7 +103,10 @@ export const commerceTables = {
     movementIds: v.array(v.id('stockMovements')),
     clientKey: v.string(),
     revision: v.number(),
-  }).index('by_orderId_and_status', ['orderId', 'status']).index('by_bookingId_and_status', ['bookingId', 'status']),
+  }).index('by_orderId_and_status', ['orderId', 'status']).index('by_bookingId_and_status', ['bookingId', 'status'])
+    .index('by_orderId_and_lineId', ['orderId', 'lineId'])
+    .index('by_successorOrderId_and_status', ['successorOrderId', 'status'])
+    .index('by_successorOrderId_and_successorLineId', ['successorOrderId', 'successorLineId']),
 
   packages: defineTable({
     name: v.string(), currentVersionId: v.optional(v.id('packageVersions')),
@@ -161,6 +164,7 @@ export const commerceTables = {
     adjustmentId: v.optional(v.id('commerceAdjustments')),
     ...editChanges,
   }).index('by_grantId_and_createdAt', ['grantId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
+    .index('by_grantId_and_kind_and_createdAt', ['grantId', 'kind', 'createdAt'])
     .index('by_activeAppointmentId', ['activeAppointmentId']),
 
   grantServices: defineTable({
@@ -196,6 +200,7 @@ export const commerceTables = {
     ...reasonFields,
     adjustmentId: v.optional(v.id('commerceAdjustments')), ...editChanges, createdAt: v.number(),
   }).index('by_voucherId_and_createdAt', ['voucherId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
+    .index('by_voucherId_and_kind', ['voucherId', 'kind'])
     .index('by_createdAt', ['createdAt']),
 
   commerceAdjustments: defineTable(v.union(

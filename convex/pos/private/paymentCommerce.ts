@@ -1,7 +1,7 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { StaffActor } from '../../auth/model';
-import type { CommerceSettings } from '../../commerce/model';
+import { bumpOrderCommerceRevision, insertVoucherCode, type CommerceSettings } from '../../commerce/model';
 import { reserveWrites } from '../../lib/readBudget';
 import {
   allocateGoodwillDiscount, allocateSalePayments, assertCommerceCaps, assertStandaloneVoucherPrice,
@@ -13,6 +13,7 @@ import { sha256 } from '../../shared/displayTokens';
 import { lineNet, linePrice, type Tender } from '../../shared/orderMath';
 import { checkFundingVouchers, defaultPaymentBranch, paymentError, paymentGet, paymentRange, type FundingVoucher, type PaymentCtx } from './paymentAttempt';
 import { isCommerceLine } from './paymentReview';
+import { openHandoversForOrder, recollectionAmount } from './handoverCustody';
 
 type Line = Doc<'orderLines'>;
 type Snapshot = NonNullable<Line['saleSnapshot']>;
@@ -27,7 +28,6 @@ type DraftPart = Pick<Part, 'contentKey' | 'label' | 'units' | 'vatProfile'> & {
 
 const utf8 = new TextEncoder();
 const blankReturn = { returnedUnits: 0, returnedAmount: 0 };
-const openHandoverLimit = COMMERCE_LIMITS.sale.rows;
 
 export function termsOf(settings: CommerceSettings): Snapshot['terms'] {
   const terms = settings;
@@ -95,11 +95,12 @@ export async function prepareCommercePayment(
   };
   const hasGoods = lines.some(isCommerceLine);
   const branch = hasGoods || vouchers.length ? await defaultPaymentBranch(ctx) : null;
-  const handovers = hasGoods ? await paymentRange(ctx, () => ctx.db.query('handovers')
-    .withIndex('by_orderId_and_status', q => q.eq('orderId', order._id).eq('status', 'open')).take(openHandoverLimit + 1)) : [];
-  if (handovers.length > openHandoverLimit) paymentError('handover_limit', 'Split the handover collection into two orders.');
-  const handoverByLine = new Map(handovers.map(handover => [handover.lineId, handover]));
-  if (handoverByLine.size !== handovers.length || handovers.some(handover => !lines.some(line => line._id === handover.lineId))) {
+  const handovers = hasGoods ? await openHandoversForOrder(ctx, order) : [];
+  const handoverByLine = new Map(handovers.map(handover => [
+    // A recollection names its new row; a handover moved with its row (Pay the room first) keeps the line.
+    (handover.successorOrderId === order._id ? handover.successorLineId : undefined) ?? handover.lineId, handover,
+  ]));
+  if (handoverByLine.size !== handovers.length || [...handoverByLine.keys()].some(id => !lines.some(line => line._id === id))) {
     paymentError('handover_changed', 'Review the handed-over items before taking payment.');
   }
 
@@ -142,7 +143,27 @@ export async function prepareCommercePayment(
     if (handover && (handover.pendingReturnId || handover.bookingId !== undefined && handover.bookingId !== order.bookingId)) {
       paymentError('handover_changed', 'The handover changed before payment.');
     }
-    if (line.kind === 'product') {
+    if (handover?.kind === 'recollect' && handover.contents && line.saleSnapshot) {
+      const sold = new Map(line.saleSnapshot.contents.map(content => [content.contentKey, content]));
+      for (const content of handover.contents) {
+        if (!content.unpaid) continue;
+        const frozen = sold.get(content.contentKey);
+        const owed = recollectionAmount(content);
+        if (!frozen || content.unpaid !== frozen.units || owed !== frozen.paidShare) {
+          paymentError('handover_changed', 'Review the frozen charge before collecting payment.');
+        }
+        const variant = await variantFacts(content.variantId, true);
+        parts.push({
+          contentKey: content.contentKey, label: frozen.label, units: content.unpaid, variant,
+          paidShare: owed, vatProfile: frozen.vatProfile,
+          vatBase: frozen.vatProfile === 'exempt' ? 0 : owed,
+        });
+      }
+      if (!parts.length || parts.reduce((sum, part) => sum + part.paidShare, 0) !== net ||
+          (line.kind === 'product' && handover.unpaid !== line.qty)) {
+        paymentError('handover_changed', 'Review the handed-over items before collecting payment.');
+      }
+    } else if (line.kind === 'product') {
       if (!handover) assertSwitch(settings, actor, 'products');
       if (!line.variantId) paymentError('catalogue_changed', 'Choose a product variant.');
       const variant = await variantFacts(line.variantId, !!handover);
@@ -246,7 +267,7 @@ export async function prepareCommercePayment(
     return { variant, quantity, stock, before: stock?.onHand ?? 0 };
   }));
 
-  const funding = await Promise.all((await checkFundingVouchers(ctx, order, lines, vouchers, voucherIssuances > 0 || handovers.length > 0, now, branch))
+  const funding = await Promise.all((await checkFundingVouchers(ctx, order, lines, vouchers, voucherIssuances > 0 || handovers.some(handover => handover.kind === 'room_bill'), now, branch))
     .map(async (entry) => {
       const { voucher, funding: debit } = entry;
       const source = voucher.source;
@@ -304,6 +325,7 @@ export async function prepareCommercePayment(
     const contents = parts.map((part, item): Part => {
       const paidShare = part.paidShare - shares[index][item];
       return { contentKey: part.contentKey, label: part.label, units: part.units, vatProfile: part.vatProfile, paidShare,
+        ...(shares[index][item] ? { goodwillShare: shares[index][item] } : {}),
         vatBase: part.vatBase > 0 ? freezeRowVatBase({ kind: 'taxable', net: paidShare }).vatBase : 0,
         tenderCells: storedCells(allocated.contents![item], voucherTenders), ...blankReturn };
     });
@@ -341,6 +363,7 @@ type SalePlan = Awaited<ReturnType<typeof prepareCommercePayment>>;
 export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, actor: string, now: number) {
   const { rows, snapshots, usedGrants, restock, funding, branch, terms } = sale;
   const movementIds = new Map<Id<'productVariants'>, Id<'stockMovements'>>();
+  const changedOrders = new Set<Id<'orders'>>([rows[0].line.orderId]);
   const settingsRevision = snapshots[0].settingsRevision;
   const branchId = branch?._id;
   for (const { variant, quantity, stock, before } of restock) {
@@ -356,6 +379,7 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
     movementIds.set(variant.id, movementId);
   }
   for (const { funding: debit, voucher, packageUnusedPaid } of funding) {
+    changedOrders.add(voucher.source.orderId);
     const before = { paid: voucher.paidBalance, goodwill: voucher.goodwillBalance };
     const after = { paid: before.paid - debit.paid, goodwill: before.goodwill - debit.goodwill };
     reserveWrites(ctx, 2);
@@ -366,6 +390,7 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
   }
   const coverage = new Map<Id<'orderLines'>, Line['coverage']>();
   for (const { grant, paid, goodwill, uses } of usedGrants.values()) {
+    changedOrders.add(grant.orderId);
     reserveWrites(ctx, 1 + uses.length * 3 + (paid + goodwill === 0 ? grant.grantServiceIds.length : 0));
     await ctx.db.patch(grant._id, { paidUnits: paid, goodwillUnits: goodwill, used: grant.used + uses.length, revision: grant.revision + 1 });
     if (paid + goodwill === 0) {
@@ -421,8 +446,7 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
           source: packageVersionId ? { kind: 'package', ...source, packageVersionId } : { kind: 'sale', orderId: line.orderId, lineId: line._id },
           ...(packageVersionId ? { packageUnusedPaid: record.paidShare } : {}),
         });
-        const code = crypto.randomUUID().replaceAll('-', '').toUpperCase();
-        const activeCodeId = await ctx.db.insert('voucherCodes', { voucherId, code, mask: `••••${code.slice(-4)}`, status: 'active' });
+        const activeCodeId = await insertVoucherCode(ctx, voucherId);
         await ctx.db.patch(voucherId, { activeCodeId });
         await ctx.db.insert('voucherEntries', {
           voucherId, kind: 'issue', sourceKey: `issue:${voucherId}`, before: { paid: 0, goodwill: 0 },
@@ -435,8 +459,11 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
     const paidCoverage = coverage.get(line._id);
     await ctx.db.patch(line._id, { saleSnapshot: snapshot, ...(paidCoverage ? { coverage: paidCoverage } : {}) });
     if (handover) {
+      changedOrders.add(handover.orderId);
+      if (handover.successorOrderId) changedOrders.add(handover.successorOrderId);
       await ctx.db.patch(handover._id, { paid: handover.paid + handover.unpaid, unpaid: 0, revision: handover.revision + 1,
         ...(handover.contents ? { contents: handover.contents.map(part => ({ ...part, paid: part.paid + part.unpaid, unpaid: 0 })) } : {}) });
     }
   }
+  await bumpOrderCommerceRevision(ctx, changedOrders);
 }

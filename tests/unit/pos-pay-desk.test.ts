@@ -151,6 +151,9 @@ describe("pay desk rules", () => {
     const attempt = { attemptId: "a" as Id<"paymentAttempts">, orderId: "o" as OrderId, status: "collecting" as const, ownerRevision: 0, tillLabel: "", staffName: "", mine: true, due: 120000, legs: [leg], vouchers: [], refusal: null, recovery: null, startedAt: 0 };
     expect(deskStep(attempt, new Set(["k-1"]))).toEqual({ kind: "instruct", leg });
     expect(deskStep(attempt, new Set())).toEqual({ kind: "checkPrevious", leg });
+    // Sent before a handover: armed here once, but the server says check, so it never instructs again.
+    const handedBack = { ...leg, checkPrevious: true };
+    expect(deskStep({ ...attempt, ownerRevision: 4, legs: [handedBack] }, new Set(["k-1"]))).toEqual({ kind: "checkPrevious", leg: handedBack });
     expect(deskStep({ ...attempt, legs: [{ ...leg, state: "taken" }] }, new Set())).toEqual({ kind: "settle" });
     expect(deskStep({ ...attempt, legs: [{ ...leg, state: "declined" }] }, new Set())).toEqual({ kind: "plan" });
     expect(deskStep({ ...attempt, mine: false }, new Set())).toEqual({ kind: "elsewhere" });
@@ -729,5 +732,148 @@ describe("before the cutover", () => {
     await act(() => desk.refresh());
     await settle();
     expect(document.querySelector('[data-testid="till-reload"]')?.textContent).toContain("Reload this till to take payments again");
+  }, 30000);
+});
+
+// W2B before payments go live (docs/commerce/deferred.md): the owner's Hand over, accepted at the
+// chosen till, with two cashiers. The terminal instruction already shown stays locked over there.
+describe("Hand over to another till", () => {
+  it("cashier A hands a card payment to Till B mid-charge; cashier B accepts it, checks the terminal and finishes", async () => {
+    const desk = await createPayDeskBackend({ role: "manager", email: "mali@example.com" });
+    const tillB = await desk.otherAcknowledgedTill();
+    const labelB = `Till ${tillB.tillId.slice(-6).toUpperCase()}`;
+    const orderId = await desk.order([{ name: "Tea", price: 120000 }]);
+    await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
+    taps.push("Card");
+    await mount(desk, orderId, "card");
+    expect(text()).toContain("Charge ฿1,200 on the terminal");
+    const [armed] = await desk.attempts();
+    await tap("Hand over");
+    expect(text()).toMatch(/This till is Till [A-Z0-9]{6}\./);
+    await tap(`Hand over to ${labelB}`);
+    expect(text()).toContain(`Handed over to ${labelB}`);
+    expect(button("Accept the payment")).toBeUndefined();
+    expect(buttons().some((b) => b.textContent?.startsWith("Confirm"))).toBe(false);
+    expect(taps).toEqual(["Card", "Hand over", `Hand over to ${labelB}`]);
+    // Till A's next action is refused: the payment belongs to Till B now.
+    const stale = await desk.rawMutation(api.pos.commands.recordPaymentLeg.recordPaymentLeg, {
+      attemptId: armed._id, ownerRevision: 0, tillId: localStorage.getItem("checkout.tillId")!, tabKey: await claimTabKey(), legKey: "card-1", kind: "collection", outcome: "taken",
+    });
+    expect(stale).toMatchObject({ status: "refused", code: "payment_handed_over" });
+
+    // Cashier B on Till B (another browser): the payment waits for them.
+    await act(async () => root.unmount());
+    localStorage.setItem("checkout.deviceKey", tillB.load.deviceKey);
+    localStorage.setItem("checkout.tillId", tillB.tillId);
+    sessionStorage.clear();
+    resetLoadedPayMode();
+    resetPinnedAccess();
+    resetTabKey();
+    await desk.setStaff({ role: "cashier", email: "nok@example.com" });
+    desk.forget();
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    taps = [];
+    const { onPaid } = await mount(desk, orderId, "card", true);
+    expect(text()).toContain("Handed over to this till");
+    await tap("Accept the payment");
+    expect(text()).toContain("Check previous payment");
+    expect(text()).not.toContain("on the terminal");
+    await tap("Taken");
+    expect(taps).toEqual(["Accept the payment", "Taken"]);
+    expect(onPaid).toHaveBeenCalledOnce();
+    expect(count(desk, ARM)).toBe(1);
+    expect(await desk.payments()).toMatchObject([{ method: "card", amount: 120000 }]);
+    expect((await desk.attempts())[0]).toMatchObject({ status: "settled", ownerRevision: 2, tillId: tillB.tillId });
+  }, 30000);
+});
+
+// PR 93 round 3 (astra B1, B2): a payment handed back to its original till, and the booking email choice.
+describe("Hand back and the booking email choice", () => {
+  const takeOver = api.pos.commands.handoverPaymentAttempt.takeOverPaymentAttempt;
+  const release = api.pos.commands.handoverPaymentAttempt.releasePaymentAttempt;
+  const emailBox = () => [...document.querySelectorAll("label")].find((l) => l.textContent?.includes("Send booking payment confirmation email"))?.querySelector("input") ?? null;
+
+  /** Till B's cashier accepts the payment and sends it straight back to Till A without recording anything. */
+  async function handBack(desk: Desk, orderId: OrderId, tillB: Awaited<ReturnType<Desk["otherAcknowledgedTill"]>>, tillA: string) {
+    const [attempt] = await desk.attempts();
+    await desk.setStaff({ role: "cashier", email: "nok@example.com" });
+    const onB = { tillId: tillB.tillId, tabKey: tillB.tabKey };
+    expect(await desk.rawMutation(takeOver, { ...onB, load: tillB.load, orderId, expectedOwnerRevision: attempt.ownerRevision })).toMatchObject({ status: "taken_over" });
+    expect(await desk.rawMutation(release, { attemptId: attempt._id, ownerRevision: attempt.ownerRevision + 1, ...onB, nextTillId: tillA })).toMatchObject({ status: "released" });
+    await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
+    await settle();
+  }
+
+  async function stayOrder(desk: Desk) {
+    const orderId = await desk.order([{ name: "Tea", price: 65000 }]);
+    const bookingId = await desk.t.run(async (ctx) => {
+      const propertyId = await ctx.db.insert("properties", { slug: "villa", name: "Villa 12", tagline: "", description: "", pricePerNight: 30000, currency: "THB", maxGuests: 4, bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: "active" });
+      return ctx.db.insert("bookings", { propertyId, guestName: "Guest", guestPhone: "0812345678", guestPhoneDigits: "0812345678", guestEmail: "guest@example.com", checkIn: "2026-11-01", checkOut: "2026-11-03", guests: 2, nights: 2, subtotal: 60000, discountAmount: 0, total: 60000, amountPaid: 0, amountRefunded: 0, currency: "THB", paymentStatus: "pending", confirmationCode: "STAY", accessToken: "test-only", status: "confirmed", createdAt: Date.now() });
+    });
+    await desk.otherTill("ploy@example.com").mutation(api.pos.commands.attach.attach, { orderId, bookingId });
+    await desk.refresh();
+    return { orderId, bookingId };
+  }
+
+  it("A → B → A on the still-open original panel: Check previous payment, never a second Charge (astra r3 B1)", async () => {
+    const desk = await createPayDeskBackend({ role: "manager", email: "mali@example.com" });
+    const tillB = await desk.otherAcknowledgedTill();
+    const orderId = await desk.order([{ name: "Tea", price: 65000 }]);
+    await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
+    taps.push("Card");
+    const { onPaid } = await mount(desk, orderId, "card");
+    expect(text()).toContain("Charge ฿650 on the terminal");
+    await tap("Hand over");
+    await tap(`Hand over to Till ${tillB.tillId.slice(-6).toUpperCase()}`);
+    await handBack(desk, orderId, tillB, localStorage.getItem("checkout.tillId")!);
+    expect(text()).toContain("Handed over to this till");
+    await tap("Accept the payment");
+    expect(text()).toContain("Check previous payment");
+    expect(text()).toContain("Card ฿650");
+    expect(text()).not.toContain("on the terminal");
+    expect(buttons().some((b) => b.textContent?.startsWith("Confirm"))).toBe(false);
+    await tap("Taken");
+    expect(onPaid).toHaveBeenCalledOnce();
+    expect(count(desk, ARM)).toBe(1);
+    expect(await desk.payments()).toMatchObject([{ method: "card", amount: 65000 }]);
+  }, 30000);
+
+  it("keeps a checked booking email across a reload and settles with it (astra r3 B2)", async () => {
+    const desk = await createPayDeskBackend();
+    const { orderId, bookingId } = await stayOrder(desk);
+    await mount(desk, orderId, "card");
+    expect(text()).toContain("on the terminal");
+    expect(emailBox()?.checked).toBe(false);
+    await act(async () => emailBox()!.click());
+    await settle();
+    expect(emailBox()?.checked).toBe(true);
+    const { onPaid } = await reload(desk, orderId);
+    expect(text()).toContain("Check previous payment");
+    expect(emailBox()?.checked).toBe(true);
+    await tap("Taken");
+    expect(onPaid).toHaveBeenCalledOnce();
+    expect((await desk.t.run((ctx) => ctx.db.get(bookingId)))?.confirmationEmailsQueuedAt).toBeDefined();
+  }, 30000);
+
+  it("hands a checked booking email to the accepting till, which settles with it (astra r3 B2)", async () => {
+    const desk = await createPayDeskBackend();
+    const tillB = await desk.otherAcknowledgedTill();
+    const { orderId, bookingId } = await stayOrder(desk);
+    await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
+    await mount(desk, orderId, "card");
+    await act(async () => emailBox()!.click());
+    await settle();
+    await tap("Hand over");
+    await tap(`Hand over to Till ${tillB.tillId.slice(-6).toUpperCase()}`);
+    // Till B accepts it: the choice is on the attempt, so B sees it checked and settles with it.
+    const [attempt] = await desk.attempts();
+    expect(attempt).toMatchObject({ notifyGuest: true });
+    await desk.setStaff({ role: "cashier", email: "nok@example.com" });
+    const onB = { attemptId: attempt._id, tillId: tillB.tillId, tabKey: tillB.tabKey };
+    const accepted = await desk.rawMutation(takeOver, { tillId: tillB.tillId, tabKey: tillB.tabKey, load: tillB.load, orderId, expectedOwnerRevision: 1 });
+    expect(accepted).toMatchObject({ status: "taken_over", attempt: { notifyGuest: true } });
+    await desk.rawMutation(api.pos.commands.recordPaymentLeg.recordPaymentLeg, { ...onB, ownerRevision: 2, legKey: attempt.legs[0].key, kind: "collection", outcome: "taken" });
+    expect(await desk.rawMutation(api.pos.commands.settleOrder.settlePaymentAttempt, { ...onB, ownerRevision: 2 })).toMatchObject({ status: "settled" });
+    expect((await desk.t.run((ctx) => ctx.db.get(bookingId)))?.confirmationEmailsQueuedAt).toBeDefined();
   }, 30000);
 });

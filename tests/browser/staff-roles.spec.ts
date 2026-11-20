@@ -271,7 +271,7 @@ test.describe("Settings › Team", () => {
   test("managers don't see Team, get a read-only banner and read settings without saving", async ({ page }) => {
     await open(page, "?view=settings&role=manager&tab=team");
     const tabs = page.getByRole("tablist", { name: "Settings sections" });
-    await expect(tabs.getByRole("tab")).toHaveText(["Business", "Booking rules", "AI assistant", "Email", "Channels"]);
+    await expect(tabs.getByRole("tab")).toHaveText(["Business", "Booking rules", "Checkout rules", "AI assistant", "Email", "Channels"]);
     await expect(page.getByRole("region", { name: "People" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Save / })).toHaveCount(0);
     await expect(page.getByLabel(/^Business name/)).toBeDisabled();

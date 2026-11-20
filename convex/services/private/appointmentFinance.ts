@@ -2,11 +2,12 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { attemptKey, cleanReason, effectiveTime } from '../../shared/bookingMoney';
 import { MANUAL_PAYMENT_METHODS } from '../../shared/financeValidators';
-import { sourceLineLinks, assertNotOnOpenOrder } from '../../pos/model';
+import { sourceLineLinks, assertExistingMoneyFlow, assertNotOnOpenOrder } from '../../pos/model';
 import { lineNet, roundMoney } from '../../shared/orderMath';
 import { assertMoney } from '../../shared/money';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { assertFresh, recordAppointmentChange, type AppointmentPatch } from './appointmentChanges';
+import { assertVisitReturnAvailable } from './visitReturnGuard';
 
 type Appointment = Doc<'appointments'>;
 
@@ -28,8 +29,12 @@ async function rows(ctx: ReadCtx, a: Appointment) {
   ]);
   if ([payments, refunds, lines].some(r => r.length > LIMIT)) throw new Error('Too many financial entries to safely correct this appointment. Ask support to review it.');
   // Money an order took for it: a row charged at checkout, or a paid service row linked later (pos.linkPaidLine).
-  const charges: Array<{ orderId: Id<'orders'>; charged: number }> = lines.map(line => ({ orderId: line.orderId, charged: lineNet(line) }));
-  for (const link of await sourceLineLinks(ctx, { appointmentId: a._id }, 'active')) charges.push({ orderId: link.orderId, charged: link.amount });
+  const charges: Array<{ orderId: Id<'orders'>; charged: number }> = lines
+    .filter(line => !line.coverage?.useId || line.coverage.useId === a.coverage?.useId)
+    .map(line => ({ orderId: line.orderId, charged: lineNet(line) }));
+  for (const link of await sourceLineLinks(ctx, { appointmentId: a._id }, 'active')) {
+    if (link.amount !== 0 || a.coverage) charges.push({ orderId: link.orderId, charged: link.amount });
+  }
   const orders = [];
   for (const charge of charges) {
     const order = await ctx.db.get(charge.orderId);
@@ -59,6 +64,7 @@ export async function recordAppointmentPayment(ctx: MutationCtx, a: Appointment,
     if (replay.appointmentId !== a._id || replay.method !== (input.method ?? 'unrecorded') || (input.effectiveAt !== undefined && replay.effectiveAt !== input.effectiveAt)) throw new Error('Payment attempt key was already used for different details');
     return { paymentId: replay._id, replayed: true };
   }
+  assertVisitReturnAvailable(a);
   if (input.expectedRevision !== undefined) assertFresh(a, input.expectedRevision);
   if (a.status === 'cancelled') throw new Error('Cancelled appointment cannot be paid');
   if (a.paymentStatus !== 'unpaid' || appointmentMoney(a).refunded > 0) throw new Error('Only unpaid appointments can be marked paid; refunded payments require the payment correction workflow');
@@ -73,7 +79,7 @@ export async function recordAppointmentPayment(ctx: MutationCtx, a: Appointment,
 }
 
 export async function recordAppointmentRefund(ctx: MutationCtx, a: Appointment, input: {
-  expectedRevision?: number; amount?: number; currency?: string; method?: Doc<'appointmentRefunds'>['method']; reason?: string;
+  expectedRevision?: number; amount?: number; currency?: string; method?: Exclude<Doc<'appointmentRefunds'>['method'], 'voucher'>; reason?: string;
   effectiveAt?: number; idempotencyKey?: string; paymentId?: Id<'appointmentPayments'>; orderId?: Id<'orders'>;
 }, actor: string) {
   const modern = [input.amount, input.currency, input.method, input.reason, input.idempotencyKey, input.paymentId, input.orderId].some(value => value !== undefined);
@@ -85,6 +91,7 @@ export async function recordAppointmentRefund(ctx: MutationCtx, a: Appointment, 
     if (replay.appointmentId !== a._id || (modern && (replay.amount !== input.amount || replay.currency !== input.currency || replay.method !== input.method || replay.reason !== input.reason?.trim() || replay.paymentId !== input.paymentId || replay.orderId !== input.orderId || (input.effectiveAt !== undefined && replay.effectiveAt !== input.effectiveAt)))) throw new Error('Refund attempt key was already used for different details');
     return { refundId: replay._id, replayed: true };
   }
+  assertVisitReturnAvailable(a);
   if (input.expectedRevision !== undefined) assertFresh(a, input.expectedRevision);
   const money = appointmentMoney(a);
   const amount = input.amount ?? money.net;
@@ -104,6 +111,9 @@ export async function recordAppointmentRefund(ctx: MutationCtx, a: Appointment, 
   if (orderId) {
     const source = data.orders.find(o => o.orderId === orderId);
     if (!source || amount > source.refundable) throw new Error('Refund exceeds the actual money remaining on this receipt');
+    // A commerce receipt's money goes back only through Return items; an open return blocks any refund (v27 Returns).
+    const order = await ctx.db.get(orderId);
+    if (order) await assertExistingMoneyFlow(ctx, order);
   } else if (paymentId) {
     const p = data.payments.find(p => p._id === paymentId);
     if (!p || p.status !== 'recorded' || amount > roundMoney(p.amount - p.refunded)) throw new Error('Refund exceeds the actual money remaining on this payment');
@@ -133,6 +143,7 @@ export async function correctAppointmentPayment(ctx: MutationCtx, a: Appointment
     if (replay.actor !== actor || replay.requestFingerprint !== requestFingerprint) throw new Error('Correction attempt key was already used for different details');
     return { replayed: true };
   }
+  assertVisitReturnAvailable(a);
   assertFresh(a, input.expectedRevision);
   const data = await rows(ctx, a);
   if (data.orders.length) throw new Error('Correct the tender/date or void an unreceived payment from the original order receipt');

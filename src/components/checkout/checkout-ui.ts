@@ -62,6 +62,13 @@ export const TOUCH_TARGETS =
   "pointer-coarse:[&_button]:min-h-11 pointer-coarse:[&_button]:min-w-11 pointer-coarse:[&_input]:min-h-11 pointer-coarse:[&_textarea]:min-h-11 pointer-coarse:[&_select]:min-h-11 pointer-coarse:[&_a[href]]:min-h-11 pointer-coarse:[&_a[href]]:min-w-11 pointer-coarse:[&_[role=option]]:min-h-11";
 
 /**
+ * The same 44 × 44 minimum at every pointer, for surfaces that move money or rules (the returns
+ * sheet, Checkout rules confirmations): a fine-pointer desktop gets no smaller controls there.
+ */
+export const DESK_TARGETS =
+  "[&_button]:min-h-11 [&_button]:min-w-11 [&_input:not([type=checkbox])]:min-h-11 [&_textarea]:min-h-11 [&_[data-slot=sheet-close]]:size-11 [&_[data-slot=dialog-close]]:size-11";
+
+/**
  * A row of up to four equal buttons (tenders, cash shortcuts): four columns while each can be
  * 4rem wide, fewer and wider ones when enlarged text needs the room, so labels never overlap.
  */
@@ -243,6 +250,16 @@ type Satang = number;
 type CommerceLine = OrderView["lines"][number] & { goodwillDiscount?: Satang };
 /** A voucher spend on the receipt. It's never cash, and never counted as money received. */
 export type VoucherTender = { _id: string; amount: Satang; voucherId: Id<"vouchers">; codeMask?: string };
+/**
+ * The masked code of each voucher that paid this receipt ("GV-••••-Q9XD"), by voucher: how staff tell
+ * which original voucher each replacement stands in for (D8). `known` (a quote's masks) comes first.
+ */
+export function voucherMasks(view: { voucherPayments?: VoucherTender[] }, known?: ReadonlyMap<string, string>) {
+  const masks = new Map<string, string>();
+  for (const tender of view.voucherPayments ?? []) if (tender.codeMask) masks.set(tender.voucherId, maskVoucherCodes(tender.codeMask));
+  for (const [voucherId, mask] of known ?? []) if (mask) masks.set(voucherId, mask);
+  return masks;
+}
 /** A session grant or voucher issued by a row, with its own Edit · History target. null: it never expires (D20). */
 export type IssuedBenefit = { lineId: Id<"orderLines">; contentKey: string; issuedExpiresAt: number | null; codeMask?: string; editHistory: AdjustTarget };
 export type ReceiptCommerceFields = {

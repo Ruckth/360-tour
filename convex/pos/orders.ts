@@ -21,6 +21,9 @@ import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
 import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
 
+import { publicReturnClaim } from './private/returnModel';
+import { receiptVisitReturnParts } from './private/returnPlan';
+
 const RECEIPT_REFUNDS = 50;
 
 async function readPaymentAttempt(ctx: QueryCtx, order: Doc<'orders'>) {
@@ -36,8 +39,12 @@ async function readHandovers(ctx: QueryCtx, order: Doc<'orders'>, lines: readonl
 	if (!lines.some(line => line.kind === 'product' || line.kind === 'package')) return [];
 	const forOrder = (orderId: Id<'orders'>) => readOrderProjection(ctx, () => ctx.db.query('handovers')
 		.withIndex('by_orderId_and_status', q => q.eq('orderId', orderId)).take(COMMERCE_LIMITS.sale.rows));
-	const [current, parent] = await Promise.all([forOrder(order._id), order.parentOrderId ? forOrder(order.parentOrderId) : []]);
-	return [...current, ...parent.filter(row => row.successorOrderId === order._id)];
+	const [current, recollection] = await Promise.all([
+    forOrder(order._id),
+    order.parentOrderId ? readOrderProjection(ctx, () => ctx.db.query('handovers')
+      .withIndex('by_successorOrderId_and_status', q => q.eq('successorOrderId', order._id)).take(COMMERCE_LIMITS.sale.rows)) : [],
+  ]);
+  return [...new Map([...current, ...recollection].map(row => [row._id, row])).values()];
 }
 
 function handoverView(handover: Doc<'handovers'>) {
@@ -73,7 +80,7 @@ async function readIssuedBenefits(ctx: QueryCtx, lines: readonly Doc<'orderLines
 		...grants.map(async ({ lineId, contentKey, grantId }) => {
 			const grant = await readOrderProjection(ctx, () => ctx.db.get(grantId));
 			if (grant?.lineId !== lineId || grant.contentKey !== contentKey) return null;
-			return { lineId, contentKey, issuedExpiresAt: grant.issuedTerms.expiresAt,
+			return { lineId, contentKey, issuedExpiresAt: grant.issuedTerms.expiresAt, unusedPaidSessions: grant.paidUnits,
 				editHistory: { targetType: 'grant' as const, targetId: grant._id } };
 		}),
 		...vouchers.map(async ({ lineId, contentKey, voucherId }) => {
@@ -180,6 +187,9 @@ export const getOrder = staffQuery({
 		for (const refund of posRefunds) refundedByLine.set(refund.lineId, (refundedByLine.get(refund.lineId) ?? 0) + refund.amount);
 		const refundedAmountSatang = commerce ? order.returnedTotal ?? 0 : posRefunds.reduce((sum, row) => sum + row.amount, 0);
 		const returnedAmountSatang = lines.reduce((sum, line) => sum + (line.saleSnapshot?.returnedAmount ?? 0), 0);
+		// A completed return issued gift slips (a voucher-only return refunds no cash): the receipt reads them back.
+		const replacementSlips = commerce && order.status === 'paid' && returnedAmountSatang > 0 && await read(() => ctx.db.query('orderReturns')
+			.withIndex('by_orderId_and_hasReplacementSlips', q => q.eq('orderId', order._id).eq('hasReplacementSlips', true)).first()) !== null;
 		const reads = orderReads(ctx);
 		const sources = await orderSourceRefs(ctx, order, lines, reads);
 		const linkRows = [];
@@ -254,6 +264,8 @@ export const getOrder = staffQuery({
 			...(commerce ? {
 				commerce: {
 					returnedAmountSatang,
+					...(replacementSlips ? { hasReplacementSlips: true as const } : {}),
+          ...(order.status === 'paid' && !activeReturn ? { returnableVisitParts: await receiptVisitReturnParts(ctx, lines, activeLinks) } : {}),
 					issuedBenefits: issuedBenefits.flatMap(benefit => benefit.issuedExpiresAt === null ? [] : [{ ...benefit, issuedExpiresAt: benefit.issuedExpiresAt }]),
 					...(unlimitedIssuedBenefits.length ? { unlimitedIssuedBenefits } : {}),
 					handovers: handovers.map(handoverView),
@@ -261,7 +273,7 @@ export const getOrder = staffQuery({
 				},
 			} : {}),
 			...(activeReturn ? { activeReturn: {
-				_id: activeReturn._id, status: activeReturn.status, parts: activeReturn.parts, claims: activeReturn.claims,
+				_id: activeReturn._id, status: activeReturn.status, parts: activeReturn.parts, claims: activeReturn.claims.map(publicReturnClaim),
 				voucherCredits: returnVoucherCredits, operator: activeReturn.operator, tillId: activeReturn.tillId,
 				operatorRevision: activeReturn.operatorRevision, approvalId: activeReturn.approvalId, reason: activeReturn.reason,
 				createdAt: activeReturn.createdAt,
@@ -344,8 +356,12 @@ export const findOrderByNumber = staffQuery({
 	handler: async (ctx, args) => {
 		const actor = ctx.staff;
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
-		const order = await ctx.db.query('orders').withIndex('by_orderNumber', (q) => q.eq('orderNumber', args.orderNumber)).first();
-		return order && canReadCheckoutOrder(actor, order) ? order._id : null;
+		const order = await readOrderProjection(ctx, () => ctx.db.query('orders')
+      .withIndex('by_orderNumber', q => q.eq('orderNumber', args.orderNumber)).first());
+    if (!order) return null;
+    if (canReadCheckoutOrder(actor, order)) return order._id;
+    const active = order.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
+    return active?.operator === actor.tokenIdentifier ? order._id : null;
 	}
 });
 

@@ -13,7 +13,7 @@ import {
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 import { checkoutApprovalKind } from './validators';
-import { assertReceiptCorrectionSupported } from './private/orderLifecycle';
+import { assertReceiptCorrectionSupported, openOrderReturn, readOrderProjection } from './private/orderLifecycle';
 import { resortTodayIso } from '../shared/time';
 
 function cleanReason(reason: string) {
@@ -122,7 +122,15 @@ export const reject = staffMutation({
 export const forOrder = staffQuery({
   capability: 'checkout', args: { orderId: v.id('orders') }, handler: async (ctx, args) => {
   const actor = ctx.staff;
-  if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
+  if (actor.role === 'cashier') {
+    const order = await readOrderProjection(ctx, () => ctx.db.get(args.orderId));
+    if (!canReadCheckoutOrder(actor, order)) {
+      const active = order?.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
+      if (active?.operator !== actor.tokenIdentifier) throw new ConvexError('Order not found');
+      // This receipt subscription lists checkout approvals. Return recovery has its own approval state.
+      return [];
+    }
+  }
   const [recent, pending] = await Promise.all([
     ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_createdAt', q => q.eq('orderId', args.orderId)).order('desc').take(50),
     ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', args.orderId).eq('status', 'pending')).take(201),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { containsVoucherCode, maskVoucherCodes, normalizeVoucherCode, voucherCodeMask } from './voucherCode';
+import { containsVoucherCode, maskVoucherCodes, newVoucherCode, normalizeVoucherCode, voucherCodeMask } from './voucherCode';
 
 /** Audit r2 blocker 1: the spellings a cashier or guest can type, all of the same code. */
 const SPELLINGS = ['GV-7K2M-Q9XD', 'gv-7k2m-q9xd', 'GV7K2MQ9XD', 'gv7k2mq9xd', 'Gv-7k2M-Q9xd', 'GV 7K2M Q9XD', 'gv 7k2m q9xd', 'GV–7K2M–Q9XD', 'GV_7K2M_Q9XD', 'GV - 7K2M - Q9XD'];
@@ -45,5 +45,29 @@ describe('voucher codes', () => {
     expect(normalizeVoucherCode('GV-7K2M-Q9XD extra')).toBeNull();
     expect(normalizeVoucherCode('7K2M-Q9XD')).toBeNull();
     expect(voucherCodeMask('not a code')).toBe('••••');
+  });
+});
+
+// PR #93 round 2, blocker 3: a replacement voucher's 32-character hex code failed every reader.
+describe('issuing voucher codes', () => {
+  it('issues codes the shared readers and masker accept, in every spelling', () => {
+    const codes = new Set<string>();
+    for (let index = 0; index < 2000; index++) {
+      const code = newVoucherCode();
+      codes.add(code);
+      expect(code).toMatch(/^GV-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
+      expect(normalizeVoucherCode(code)).toBe(code);
+      expect(normalizeVoucherCode(code.toLowerCase().replaceAll('-', ''))).toBe(code);
+      expect(voucherCodeMask(code)).toBe(`GV-••••-${code.slice(-4)}`);
+      expect(maskVoucherCodes(`Gift slip ${code} · ฿500`)).toBe(`Gift slip GV-••••-${code.slice(-4)} · ฿500`);
+      expect(containsVoucherCode(maskVoucherCodes(code))).toBe(false);
+    }
+    expect(codes.size).toBe(2000);
+  });
+
+  it('skips bytes past the last whole alphabet so every character is equally likely', () => {
+    // 248 and up would bias the first characters; they are skipped, and 0..30 map in order.
+    const bytes = [255, 248, 0, 1, 2, 3, 30, 29, 28, 27, 249, 250, 251, 252, 253, 254];
+    expect(newVoucherCode(() => bytes)).toBe('GV-2345-ZYXW');
   });
 });

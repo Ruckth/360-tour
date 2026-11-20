@@ -14,6 +14,8 @@ import {
   REFUND_METHODS, answeredRefusal, checkoutErrorText, defaultRefundMethod, refundAmountSatang, refundButtonLabel, remainingFromError, satangInput, satangMoney, type RefundMethod,
 } from "./refunds";
 import { needsApproval } from "./staff-approvals";
+import { returnRefusal } from "./returnable-parts";
+import { MovedToReturns } from "./ReturnItemsEntry";
 
 /**
  * The inline refund form under one paid receipt line. It opens ready to send: the amount is what is
@@ -60,6 +62,8 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
   const attempt = useRef<{ amountSatang: number; method: RefundMethod; reason: string; ask: boolean } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const titleRef = useRef<HTMLParagraphElement>(null);
+  // The receipt became a commerce receipt, or has an open return: its money goes through Return items.
+  const [movedToReturns, setMovedToReturns] = useState<string | null>(null);
 
   const [initialMethod] = useState(method);
   const dirty = typed !== null || method !== initialMethod || Boolean(reason.trim());
@@ -77,7 +81,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
 
   const satang = refundAmountSatang(amount);
   const amountProblem = !amount.trim() ? null : satang === null ? "Enter an amount above ฿0." : satang > cap ? `Up to ${satangMoney(cap, line.currency)}.` : null;
-  const ready = satang !== null && satang <= cap && Boolean(reason.trim()) && (uncertain || !(ask && waiting));
+  const ready = satang !== null && satang <= cap && Boolean(reason.trim()) && (uncertain || !(ask && waiting)) && !movedToReturns;
   const chosen = satang === null ? null : satang === all ? "all" : satang === half ? "half" : null;
 
   async function submit(event?: FormEvent) {
@@ -111,6 +115,14 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
         // Nothing was written; the same form becomes a request.
         setRefused(true);
         setError("This needs a manager. Send it as a request.");
+        return;
+      }
+      const moved = returnRefusal(err);
+      if (moved && (moved.code === "USE_RETURN_ITEMS" || moved.code === "RETURN_IN_PROGRESS")) {
+        // Nothing was written; this receipt's refunds belong to Return items now.
+        attempt.current = null;
+        setUncertain(false);
+        setMovedToReturns(moved.code);
         return;
       }
       const remaining = remainingFromError(err);
@@ -202,6 +214,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       </div>
       {uncertain ? <p role="status" className="text-xs text-muted-foreground">Retry sends the same refund, so it is never recorded twice.</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : ask && waiting ? <p className="text-sm text-muted-foreground">A request is already waiting.</p> : null}
+      {movedToReturns ? <MovedToReturns view={view} line={line} code={movedToReturns} /> : null}
       <div className="grid grid-cols-[auto_1fr] gap-2">
         <Button type="button" variant="ghost" className="h-11" disabled={saving} onClick={onCancel}>Cancel</Button>
         <Button type="submit" variant="outline" className="h-auto min-h-12 w-full whitespace-normal text-[15px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive disabled:opacity-100 disabled:border-border disabled:text-muted-foreground" disabled={!ready || saving}>

@@ -33,7 +33,9 @@ type FnsAll = {
   startRecovery: typeof api.pos.commands.recoverPaymentAttempt.startPaymentRecovery;
   giveBack: typeof api.pos.commands.recoverPaymentAttempt.armPaymentGiveBack;
   swap: typeof api.pos.commands.recoverPaymentAttempt.beginPaymentSwap;
+  release: typeof api.pos.commands.handoverPaymentAttempt.releasePaymentAttempt;
   takeOver: typeof api.pos.commands.handoverPaymentAttempt.takeOverPaymentAttempt;
+  emailChoice: typeof api.pos.commands.paymentEmailChoice.setPaymentEmailChoice;
   split: typeof api.pos.commands.splitStayPayment.splitStayPayment;
   openPanel: typeof api.commerce.paymentCutover.openDirectPanel;
   instructPanel: typeof api.commerce.paymentCutover.instructDirectPanel;
@@ -46,7 +48,7 @@ export type AttemptCalls = { [K in keyof Fns]: Call<K> };
 /** Everything the attempt flow does; the direct panel's registration stays here. */
 type DirectPanelActions = "openDirectPanel" | "instructDirectPanel" | "answerDirectPanel" | "takeOverDirectPanel";
 export type AttemptActions = Omit<PayActions, DirectPanelActions>;
-const ATTEMPT_ACTIONS = ["startAttempt", "changePlan", "armLeg", "saveCashTendered", "recordLeg", "settleAttempt", "cancelAttempt", "previewRecovery", "recover", "takeOver", "payRoomFirst"] as const satisfies readonly (keyof AttemptActions)[];
+const ATTEMPT_ACTIONS = ["startAttempt", "changePlan", "armLeg", "saveCashTendered", "recordLeg", "settleAttempt", "cancelAttempt", "previewRecovery", "recover", "handOver", "takeOver", "payRoomFirst", "setEmailChoice"] as const satisfies readonly (keyof AttemptActions)[];
 
 type Attempts = typeof import("./pay-desk-attempts");
 let attempts: Attempts | null = null;
@@ -95,6 +97,16 @@ let acknowledging = false;
 // The cutover revision this page has acknowledged: its till is admitted, and acknowledging again
 // would only repeat it while the access reader catches up with the till it returned.
 let acknowledgedRevision: number | null = null;
+// Pinning the load and acknowledging the till change module state, not React state: every access
+// reader subscribes, so a panel opened before either happened re-reads at once (a fresh Settings tab).
+const accessListeners = new Set<() => void>();
+let accessVersion = 0;
+function accessChanged() {
+  accessVersion += 1;
+  for (const fn of accessListeners) fn();
+}
+const subscribeAccess = (fn: () => void) => { accessListeners.add(fn); return () => { accessListeners.delete(fn); }; };
+const readAccessVersion = () => accessVersion;
 /** Tests only: a new page load, optionally one that loaded with `next`. */
 export function resetPinnedAccess(next?: { mode: PaymentsMode; revision: number | null }) {
   delete pinned.mode;
@@ -139,8 +151,10 @@ export function tillLoad() {
 export function cutoverAccess(transport: PayDeskTransport): CommerceBackend["useAccess"] {
   return function useCutoverAccess() {
     // The acknowledgement answers after its query refresh: re-render when it names this device's till.
+    useSyncExternalStore(subscribeAccess, readAccessVersion, readAccessVersion);
     const till = useServerTillId();
-    const args = { deviceKey: deviceKey(), ...(till ? { tillId: till } : {}), ...(typeof pinned.revision === "number" ? { loadedRevision: pinned.revision } : {}) };
+    const askedRevision = typeof pinned.revision === "number" ? pinned.revision : undefined;
+    const args = { deviceKey: deviceKey(), ...(till ? { tillId: till } : {}), ...(askedRevision !== undefined ? { loadedRevision: askedRevision } : {}) };
     const fresh = transport.useQuery(api.commerce.settings.getAccess, args);
     // Learning this till's id or the pinned revision changes the arguments: keep the last answer
     // meanwhile, so an open panel doesn't flash to loading and remount.
@@ -151,6 +165,8 @@ export function cutoverAccess(transport: PayDeskTransport): CommerceBackend["use
     const [refused, setRefused] = useState(false);
     if (result) pinLoadedAccess(result.paymentsMode, result.cutoverRevision);
     const revision = pinned.revision;
+    // This answer pinned a revision the query didn't ask with: ask again with it.
+    useEffect(() => { if (typeof revision === "number" && revision !== askedRevision) accessChanged(); }, [revision, askedRevision]);
     const unready = Boolean(result && pinned.mode === "attempts" && result.paymentsMode === "attempts" && typeof revision === "number" &&
       result.cutoverRevision === revision && !result.tillReady && !refused);
     const needsAck = unready && acknowledgedRevision !== revision;
@@ -160,7 +176,7 @@ export function cutoverAccess(transport: PayDeskTransport): CommerceBackend["use
       if (!needsAck || acknowledging || typeof revision !== "number") return;
       acknowledging = true;
       acknowledge({ deviceKey: deviceKey(), ...(till ? { tillId: till } : {}), loadedMode: "attempts", loadedRevision: revision })
-        .then((ack) => { rememberTill(ack.tillId); acknowledgedRevision = revision; })
+        .then((ack) => { rememberTill(ack.tillId); acknowledgedRevision = revision; accessChanged(); })
         .catch(() => setRefused(true))
         .finally(() => { acknowledging = false; });
     }, [needsAck, acknowledge, till, revision]);
@@ -193,6 +209,9 @@ export function payDeskCommerce(transport: PayDeskTransport, useAccess: Commerce
         return flow.attemptReading(result, orderId, activeAttemptId);
       }, [result, orderId, activeAttemptId, tabKey, flow]);
     },
+    useHandoverTills(wanted) {
+      return transport.useQuery(api.pos.commands.handoverPaymentAttempt.handoverTills, wanted ? { tillId: tillId() } : "skip");
+    },
     useConnected() {
       const online = useOnline();
       const state = transport.useConnectionState?.();
@@ -212,7 +231,9 @@ export function payDeskCommerce(transport: PayDeskTransport, useAccess: Commerce
         startRecovery: transport.useMutation(api.pos.commands.recoverPaymentAttempt.startPaymentRecovery),
         giveBack: transport.useMutation(api.pos.commands.recoverPaymentAttempt.armPaymentGiveBack),
         swap: transport.useMutation(api.pos.commands.recoverPaymentAttempt.beginPaymentSwap),
+        release: transport.useMutation(api.pos.commands.handoverPaymentAttempt.releasePaymentAttempt),
         takeOver: transport.useMutation(api.pos.commands.handoverPaymentAttempt.takeOverPaymentAttempt),
+        emailChoice: transport.useMutation(api.pos.commands.paymentEmailChoice.setPaymentEmailChoice),
         split: transport.useMutation(api.pos.commands.splitStayPayment.splitStayPayment),
         openPanel: transport.useMutation(api.commerce.paymentCutover.openDirectPanel),
         instructPanel: transport.useMutation(api.commerce.paymentCutover.instructDirectPanel),
