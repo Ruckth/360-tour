@@ -15,10 +15,13 @@ const jsonOut = jsonIndex >= 0 ? args[jsonIndex + 1] : undefined;
 // Budgets use the CI integration build (isolated backend and test Clerk tenant), including the shared app shell.
 // Limits allow normal variation in this build
 // while catching a renderer-sized regression in the property editor entry.
+// Matched isolated integration build of 1d932256 from the PR #91 round-1 audit.
+const checkoutGzipBudget = { baseBytes: 536_206, maxDeltaBytes: 10 * 1024 };
 const routeBudgetsKiB = new Map([
   ["/[locale]/(home)", 285],
   ["/[locale]/rooms/[id]", 285],
   ["/admin/properties/[id]", 430],
+  ["/admin/checkout", 534],
 ]);
 const checkBudgets = args.includes("--check-budgets");
 const routesIndex = args.indexOf("--routes");
@@ -120,5 +123,11 @@ if (checkBudgets) {
       console.error(`${route}: expected 1 byte to ${limitKiB} KiB Brotli, measured ${measured ? kib(measured.brotli) + " KiB" : "no route"}`);
       process.exitCode = 1;
     }
+  }
+  const checkout = results.find(row => row.route === "/admin/checkout");
+  const { baseBytes, maxDeltaBytes } = checkoutGzipBudget;
+  if (checkout && (checkout.gzip <= 0 || checkout.gzip - baseBytes > maxDeltaBytes)) {
+    console.error(`/admin/checkout: measured ${checkout.gzip} gzip bytes, delta ${checkout.gzip - baseBytes} bytes from base ${baseBytes}; maximum delta ${maxDeltaBytes} bytes`);
+    process.exitCode = 1;
   }
 }

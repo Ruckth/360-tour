@@ -29,6 +29,7 @@ export const servicesTables = {
 		appointmentId: v.id('appointments'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
 		reason: v.string(), effectiveAt: v.number(), recordedAt: v.number(), recordedBy: v.string(), idempotencyKey: v.string(),
 		paymentId: v.optional(v.id('appointmentPayments')), orderId: v.optional(v.id('orders')),
+		returnId: v.optional(v.id('orderReturns')),
 		netBefore: v.number(), netAfter: v.number()
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
 		.index('by_orderId', ['orderId']).index('by_idempotencyKey', ['idempotencyKey'])
@@ -59,6 +60,7 @@ export const servicesTables = {
 
 
 	services: defineTable({
+		revision: v.optional(v.number()),
 		slug: publicServiceFields.slug,
 		name: publicServiceFields.name,
 		description: publicServiceFields.description,
@@ -146,6 +148,8 @@ export const servicesTables = {
 
 
 	appointments: defineTable({
+		attendeeId: v.optional(v.id('customers')),
+		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
 		serviceId: v.id('services'),
 		staffId: v.id('staff'),
 
@@ -204,6 +208,7 @@ export const servicesTables = {
 		/** The cancelled or no-show appointment this one was booked again from. */
 		rebookedFromId: v.optional(v.id('appointments'))
 	})
+		.index('by_attendeeId_and_start', ['attendeeId', 'start'])
 		.index('by_staff_start', ['staffId', 'start'])
 		.index('by_service_start', ['serviceId', 'start'])
 		.index('by_start', ['start'])

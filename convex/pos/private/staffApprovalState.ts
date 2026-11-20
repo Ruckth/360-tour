@@ -1,10 +1,15 @@
-import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../../_generated/dataModel';
+import { validate } from 'convex-helpers/validators';
+import { ConvexError, convexToJson, v, type Infer } from 'convex/values';
+import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { canReadCheckoutOrder, type StaffActor } from '../../auth/model';
+import { readBudget } from '../../lib/readBudget';
+import { sha256 } from '../../shared/displayTokens';
 import { resortTodayIso } from '../../shared/time';
 import { cashierRules } from '../../settings/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
+import { readOrderProjection } from './orderLifecycle';
 import { orderRefunds } from './orderRefunds';
 
 /** Stable serialization includes optional fields, revisions, coupons and source records. */
@@ -15,12 +20,24 @@ function canonical(value: unknown): string {
   return `{${Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`).join(',')}}`;
 }
 
-export const rulesFingerprint = (rules: Awaited<ReturnType<typeof cashierRules>>) => canonical(rules);
+export function rulesFingerprint(rules: Awaited<ReturnType<typeof cashierRules>>) {
+  const { revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund } = rules;
+  return canonical({ revision, discountLimitPercent, voidPaidSale, customPrice, paymentFix, refund });
+}
+
+export type ApprovalRequest = Doc<'staffApprovalRequests'>;
+export type CheckoutApprovalRequest = Exclude<ApprovalRequest, { kind: 'adjustment' | 'returnItems' }>;
+type AdjustmentRequest = Extract<ApprovalRequest, { kind: 'adjustment' }>;
+type ReturnRequest = Extract<ApprovalRequest, { kind: 'returnItems' }>;
+export function isCheckoutApproval(request: ApprovalRequest): request is CheckoutApprovalRequest {
+  return request.kind !== 'adjustment' && request.kind !== 'returnItems';
+}
 
 type ReadCtx = MutationCtx | QueryCtx;
 
 export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string) {
-  const grant = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique();
+  const grant = await readApprovalDocument(ctx, () =>
+    ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique());
   // This is a stored request freshness check, not authentication. The request
   // was created by a verified cashier; like authentication, bind by account,
   // since its verified primary email may have changed after accepting the invite.
@@ -29,10 +46,13 @@ export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string
 }
 
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
-export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payload: Doc<'staffApprovalRequests'>['payload']) {
-  const order = await ctx.db.get(orderId);
-  const lines = await orderLines(ctx, orderId);
-  const links = await orderLineLinks(ctx, orderId);
+export async function orderFingerprint(
+  ctx: ReadCtx, orderId: Id<'orders'>, payload: CheckoutApprovalRequest['payload'], currentOrder?: Doc<'orders'>,
+) {
+  const read = <T>(load: () => Promise<T>) => readOrderProjection(ctx, load);
+  const [order, lines, links] = await Promise.all([
+    currentOrder ?? read(() => ctx.db.get(orderId)), read(() => orderLines(ctx, orderId)), read(() => orderLineLinks(ctx, orderId)),
+  ]);
   const bookingIds = new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []));
   const appointmentIds = new Set(lines.flatMap(line => line.appointmentId ? [line.appointmentId] : []));
   for (const line of lines) if (line.feeAppointmentId) appointmentIds.add(line.feeAppointmentId);
@@ -45,32 +65,336 @@ export async function orderFingerprint(ctx: ReadCtx, orderId: Id<'orders'>, payl
     if (payload.appointmentId) appointmentIds.add(payload.appointmentId);
   }
   const customerId = payload.kind === 'paymentFix' && payload.action === 'amendOrderPayment' ? payload.customer?.customerId : order?.customerId;
-  const coupon = order?.promotion ? await ctx.db.get(order.promotion.couponId) : null;
-  const couponHistory = coupon ? await ctx.db.query('recordChanges')
-    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'coupon').eq('entityId', coupon._id)).order('desc').first() : null;
-  return canonical({ order, lines, links, refunds: await orderRefunds(ctx, orderId), coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
-    bookings: await Promise.all([...bookingIds].sort().map(id => ctx.db.get(id))),
-    appointments: await Promise.all([...appointmentIds].sort().map(id => ctx.db.get(id))),
-    customer: customerId ? await ctx.db.get(customerId) : null,
+  const couponId = order?.promotion?.couponId;
+  const coupon = couponId ? await read(() => ctx.db.get(couponId)) : null;
+  const couponHistory = coupon ? await read(() => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'coupon').eq('entityId', coupon._id)).order('desc').first()) : null;
+  return canonical({ order, lines, links, refunds: await read(() => orderRefunds(ctx, orderId)), coupon, couponHistoryId: couponHistory?._id, businessDate: resortTodayIso(),
+    bookings: await Promise.all([...bookingIds].sort().map(id => read(() => ctx.db.get(id)))),
+    appointments: await Promise.all([...appointmentIds].sort().map(id => read(() => ctx.db.get(id)))),
+    customer: customerId ? await read(() => ctx.db.get(customerId)) : null,
   });
 }
 
 /** Queries expose the effective terminal status immediately; mutations persist it when touched. */
-export async function effectiveRequestStatus(ctx: ReadCtx, request: Doc<'staffApprovalRequests'>): Promise<Doc<'staffApprovalRequests'>['status']> {
+export async function effectiveRequestStatus(
+  ctx: ReadCtx, request: CheckoutApprovalRequest, currentRules?: Awaited<ReturnType<typeof cashierRules>>,
+): Promise<CheckoutApprovalRequest['status']> {
   if (request.status !== 'pending') return request.status;
   if (Date.now() >= request.expiresAt) return 'expired';
-  const [rules, requester] = await Promise.all([
-    cashierRules(ctx), requesterFingerprint(ctx, request.requesterTokenIdentifier),
-  ]);
-  if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint || requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
-  if (await orderFingerprint(ctx, request.orderId, request.payload) !== request.orderFingerprint) return 'stale';
+  const rules = currentRules ?? await readApprovalDocument(ctx, () => cashierRules(ctx));
+  if (rules.revision !== request.rulesRevision || rulesFingerprint(rules) !== request.rulesFingerprint) return 'stale';
+  const requester = await requesterFingerprint(ctx, request.requesterTokenIdentifier);
+  if (requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint) return 'stale';
+  const order = await getApprovalTarget(ctx, request.orderId);
+  if (!order || order.revision !== request.orderRevision ||
+    await orderFingerprint(ctx, request.orderId, request.payload, order) !== request.orderFingerprint) return 'stale';
   return 'pending';
+}
+
+export function isOwnApproval(actor: StaffActor, request: ApprovalRequest) {
+  return request.requesterTokenIdentifier === actor.tokenIdentifier || request.requesterEmail === actor.email;
+}
+
+export function canReviewApproval(actor: StaffActor, request: ApprovalRequest) {
+  if (!actor.capabilities.approve || isOwnApproval(actor, request)) return false;
+  if (request.kind !== 'adjustment' || actor.role === 'owner') return true;
+  const { target, expectedRevisions, adjustmentKind } = request.payload;
+  return target.targetType !== 'settings' && expectedRevisions.every(ref => ref.target.targetType !== 'settings') &&
+    adjustmentKind !== 'updateSettings' && adjustmentKind !== 'shorten' && adjustmentKind !== 'narrowServices';
+}
+
+/** Convex cursors are bound to the index range, so keep its expiry cutoff across a page window. */
+export function approvalPageWindow(cursor: string | null, endCursor: string | null | undefined, now: number) {
+  const boundary = cursor ?? endCursor;
+  const cutoff = boundary == null ? now : Number(/^([0-9]+):/.exec(boundary)?.[1]);
+  if (!Number.isSafeInteger(cutoff) || cutoff > now) throw new ConvexError('InvalidCursor: Reopen the approvals queue.');
+  const prefix = `${cutoff}:`;
+  const unwrap = (value: string) => {
+    if (!value.startsWith(prefix)) throw new ConvexError('InvalidCursor: Reopen the approvals queue.');
+    return value.slice(prefix.length);
+  };
+  return {
+    cutoff, cursor: cursor === null ? null : unwrap(cursor), endCursor: endCursor == null ? endCursor : unwrap(endCursor),
+    wrap: (value: string) => prefix + value,
+  };
+}
+
+export async function readApprovalDocument<T>(ctx: ReadCtx, read: () => Promise<T>) {
+  const budget = readBudget(ctx);
+  budget.range();
+  budget.assert();
+  const row = await read();
+  if (row !== null) budget.document(row);
+  budget.assert();
+  return row;
+}
+
+function getApprovalTarget<Table extends TableNames>(ctx: ReadCtx, id: Id<Table>) {
+  return readApprovalDocument(ctx, () => ctx.db.get(id));
+}
+
+// The staff builder reads one bound grant for a manager/cashier and no grant for an owner.
+// Reserve room for that read in the selected-detail ceiling.
+const DETAIL_READS = 130;
+function availableDetailReads(ctx: ReadCtx, actor: StaffActor) {
+  return DETAIL_READS - readBudget(ctx).ranges - (actor.role === 'owner' ? 0 : 1);
+}
+
+function checkDetailReads(ctx: ReadCtx, actor: StaffActor) {
+  if (availableDetailReads(ctx, actor) < 0) throw new Error('Approval detail exceeded its read budget.');
+}
+
+async function adjustmentAccessIsCurrent(ctx: ReadCtx, request: AdjustmentRequest) {
+  const [rules, grant] = await Promise.all([
+    readApprovalDocument(ctx, () => cashierRules(ctx)),
+    readApprovalDocument(ctx, () => ctx.db.query('staffGrants')
+      .withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', request.requesterTokenIdentifier)).unique()),
+  ]);
+  return request.payload.requester === request.requesterTokenIdentifier &&
+    grant?.role === 'cashier' && await sha256(JSON.stringify(convexToJson(grant))) === request.requesterAccessFingerprint &&
+    rules.revision === request.rulesRevision && await sha256(JSON.stringify(convexToJson(rules))) === request.rulesFingerprint;
+}
+
+function pendingStatus(request: ApprovalRequest) {
+  return request.status === 'pending' && Date.now() >= request.expiresAt ? 'expired' : request.status;
+}
+
+type RevisionDoc = Doc<TableNames>;
+function revisionOf(row: RevisionDoc | null, correction = false) {
+  if (!row) return null;
+  if (correction && 'orderNumber' in row) return row.correctionRevision ?? 0;
+  return 'revision' in row ? row.revision ?? 0 : 0;
+}
+
+function lineView(line: Doc<'orderLines'>) {
+  return {
+    lineId: line._id, label: line.saleSnapshot?.label ?? line.name, kind: line.kind,
+    quantity: line.qty, unitPrice: line.unitPrice,
+  };
+}
+
+function orderView(order: Doc<'orders'>) {
+  return {
+    orderId: order._id, orderNumber: order.orderNumber, receiptNumber: order.receiptNumber,
+    status: order.status, total: order.total, currency: order.currency,
+  };
+}
+
+type AdjustmentTargetTable = AdjustmentRequest['payload']['target']['targetId']['__tableName'];
+
+async function adjustmentTargetView(ctx: ReadCtx, row: Doc<AdjustmentTargetTable> | null) {
+  if (!row) return null;
+  if ('effectiveExpiresAt' in row) {
+    const code = row.activeCodeId ? await getApprovalTarget(ctx, row.activeCodeId) : null;
+    // Derive a fixed-length mask, even if a stored mask is malformed.
+    const suffix = code?.voucherId === row._id ? code.code.slice(-4) : undefined;
+    const maskedCode = suffix && /^[a-z0-9]{4}$/i.test(suffix) ? `GV-••••-${suffix}` : undefined;
+    return {
+      label: row.name ?? maskedCode, maskedCode, status: row.status, paidBalance: row.paidBalance,
+      goodwillBalance: row.goodwillBalance, expiresAt: row.effectiveExpiresAt, pause: row.pause,
+    };
+  }
+  if ('grantServiceIds' in row) {
+    const version = await getApprovalTarget(ctx, row.packageVersionId);
+    return {
+      label: version?.name, ownerId: row.ownerId, total: row.total, used: row.used, paidUnits: row.paidUnits,
+      goodwillUnits: row.goodwillUnits, expiresAt: row.expiresAt, pause: row.pause,
+    };
+  }
+  if ('onHand' in row) {
+    const variant = await getApprovalTarget(ctx, row.variantId);
+    return { label: variant?.label, variantId: row.variantId, onHand: row.onHand, needsRecount: row.needsRecount };
+  }
+  if ('withGuest' in row) {
+    const line = await getApprovalTarget(ctx, row.lineId);
+    return {
+      label: line?.orderId === row.orderId ? line.saleSnapshot?.label ?? line.name : undefined,
+      orderId: row.orderId, lineId: row.lineId, status: row.status, withGuest: row.withGuest,
+      quantity: row.quantity, unitPrice: row.unitPrice,
+    };
+  }
+  if ('orderNumber' in row) return orderView(row);
+  if ('saleSwitches' in row) {
+    const {
+      revision, preserveExpiredPackageValue, unusedFullRefundDays, refundDueDays, packageValidityDays,
+      voucherValidityDays, allowSessionTransfer, packageSplit, packageVatTiming, pointsVatTreatment,
+      pointsExpiryMonths, saleSwitches, paymentsMode,
+    } = row;
+    return { settings: {
+      revision, preserveExpiredPackageValue, unusedFullRefundDays, refundDueDays, packageValidityDays,
+      voucherValidityDays, allowSessionTransfer, packageSplit, packageVatTiming, pointsVatTreatment,
+      pointsExpiryMonths, saleSwitches, paymentsMode,
+    } };
+  }
+  if ('optionValueIds' in row) return { label: row.label, productId: row.productId, price: row.price, status: row.status };
+  if ('pricePerNight' in row) return { label: row.name, price: row.pricePerNight, status: row.status };
+  if ('price' in row) return { label: row.name, price: row.price, status: row.status };
+  if ('faceValue' in row) return { label: row.name, faceValue: row.faceValue, validityDays: row.validityDays, status: row.status };
+  if ('minPrice' in row) return { label: row.name, minPrice: row.minPrice, maxPrice: row.maxPrice, status: row.status };
+  return { label: row.name, status: row.status };
+}
+
+export async function adjustmentApprovalDetail(ctx: ReadCtx, actor: StaffActor, request: AdjustmentRequest, includeTarget: boolean) {
+  const { target, expectedRevisions, adjustmentKind } = request.payload;
+  const baseStatus = pendingStatus(request);
+  const [primary] = expectedRevisions;
+  // The checkpoint writer accepts up to 24 distinct targets.
+  const valid = primary?.target.targetType === target.targetType && primary.target.targetId === target.targetId &&
+    expectedRevisions.length <= 24 && new Set(expectedRevisions.map(ref => ref.target.targetId)).size === expectedRevisions.length;
+  const targets = valid ? await Promise.all(expectedRevisions.map(async ref => {
+    const row = await getApprovalTarget(ctx, ref.target.targetId);
+    return {
+      row, revision: {
+        ...ref.target, expected: ref.revision, current: revisionOf(row, adjustmentKind === 'amendPayment'),
+        blockedByReturn: !!(row && 'pendingReturnId' in row && row.pendingReturnId),
+      },
+    };
+  })) : [];
+  const current = valid && targets.every(({ revision }) => revision.current === revision.expected && !revision.blockedByReturn);
+  const status = baseStatus === 'pending' && (!current || !await adjustmentAccessIsCurrent(ctx, request)) ? 'stale' : baseStatus;
+  const targetView = includeTarget ? await adjustmentTargetView(ctx, targets[0]?.row ?? null) : null;
+  checkDetailReads(ctx, actor);
+  return { status, target: targetView, revisions: targets.map(({ revision }) => revision) };
+}
+
+const returnRevision = v.union(
+  v.object({ table: v.literal('sessionGrants'), id: v.id('sessionGrants'), revision: v.number() }),
+  v.object({ table: v.literal('vouchers'), id: v.id('vouchers'), revision: v.number() }),
+  v.object({ table: v.literal('stockLevels'), id: v.id('stockLevels'), revision: v.number() }),
+  v.object({ table: v.literal('appointments'), id: v.id('appointments'), revision: v.number() }),
+  v.object({ table: v.literal('handovers'), id: v.id('handovers'), revision: v.number() }),
+);
+const returnReview = v.object({
+  version: v.literal(1),
+  correctionRevision: v.optional(v.number()),
+  revisions: v.array(returnRevision),
+  rows: v.array(v.object({ lineId: v.id('orderLines'), label: v.string() })),
+});
+const returnRevisionLimits = { sessionGrants: 20, vouchers: 22, stockLevels: 60, appointments: 5, handovers: 20 };
+const MAX_RETURN_PARTS = 20;
+
+/** Return writers store this compact review in the returnItems request's existing orderFingerprint field. */
+export function encodeReturnApprovalReview(review: Omit<Infer<typeof returnReview>, 'version'>) {
+  return JSON.stringify({ version: 1, ...review });
+}
+
+/** Capture from the same transaction and documents as the quote. Execution still checks every target. */
+export function returnApprovalCheckpoint(
+  order: Doc<'orders'>, review: Parameters<typeof encodeReturnApprovalReview>[0], handovers: readonly Doc<'handovers'>[],
+) {
+  const byId = new Map(handovers.map(row => [row._id, row]));
+  for (const ref of review.revisions) {
+    if (ref.table !== 'handovers') continue;
+    const row = byId.get(ref.id);
+    if (!row || row.revision !== ref.revision || (row.orderId !== order._id && row.successorOrderId !== order._id)) {
+      throw new ConvexError({ code: 'RETURN_STALE', message: 'Review the current return targets before requesting approval.' });
+    }
+  }
+  return {
+    orderRevision: order.revision, commerceRevision: order.commerceRevision ?? 0,
+    orderFingerprint: encodeReturnApprovalReview(review),
+  };
+}
+
+function parseReturnReview(ctx: ReadCtx, request: ReturnRequest) {
+  if (!request.orderFingerprint || request.orderFingerprint.length > 32 * 1024) return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(request.orderFingerprint);
+  } catch {
+    return null;
+  }
+  if (!validate(returnReview, value) || value.rows.length > MAX_RETURN_PARTS ||
+    (value.correctionRevision !== undefined && (!Number.isSafeInteger(value.correctionRevision) || value.correctionRevision < 0)) ||
+    value.rows.some(row => !ctx.db.normalizeId('orderLines', row.lineId))) return null;
+  const counts = { ...returnRevisionLimits };
+  const ids = new Set<string>();
+  for (const ref of value.revisions) {
+    if (--counts[ref.table] < 0 || ids.has(ref.id) || !ctx.db.normalizeId(ref.table, ref.id) ||
+      !Number.isSafeInteger(ref.revision) || ref.revision < 0) return null;
+    ids.add(ref.id);
+  }
+  return value;
+}
+
+export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, request: ReturnRequest, includeTarget: boolean) {
+  const baseStatus = pendingStatus(request);
+  let authorityCurrent = true;
+  if (baseStatus === 'pending') {
+    const [rules, requester] = await Promise.all([
+      readApprovalDocument(ctx, () => cashierRules(ctx)),
+      requesterFingerprint(ctx, request.requesterTokenIdentifier),
+    ]);
+    authorityCurrent = rules.revision === request.rulesRevision &&
+      (request.rulesFingerprint === undefined || rulesFingerprint(rules) === request.rulesFingerprint) &&
+      requester.role === 'cashier' && requester.fingerprint === request.requesterAccessFingerprint;
+  }
+  const order = await getApprovalTarget(ctx, request.orderId);
+  const review = parseReturnReview(ctx, request);
+  const lineIds = new Set(request.payload.parts.slice(0, MAX_RETURN_PARTS).map(part => part.lineId));
+  const validParts = request.payload.parts.length > 0 && request.payload.parts.length <= MAX_RETURN_PARTS;
+  // Rows in the saved review were resolved when the return parts were quoted. The checkpoint
+  // shape without a review can still display its order's selected rows.
+  const rows = !includeTarget ? [] : review
+    ? review.rows.filter(row => lineIds.has(row.lineId))
+    : (await Promise.all([...lineIds].map(id => getApprovalTarget(ctx, id))))
+      .flatMap(line => line?.orderId === request.orderId ? [lineView(line)] : []);
+  // A checkpoint covers all handovers owned by this order. Shared stock, vouchers,
+  // grants and appointments can change on other receipts and are compared directly.
+  const hasCheckpoint = request.commerceRevision !== undefined;
+  const directTargets = review?.revisions.filter(ref => !hasCheckpoint || ref.table !== 'handovers') ?? [];
+  const checked = review !== null && directTargets.length <= availableDetailReads(ctx, actor);
+  const targets = checked ? directTargets : [];
+  const revisions = await Promise.all(targets.map(async ref => ({
+    table: ref.table, id: ref.id, expected: ref.revision, current: revisionOf(await getApprovalTarget(ctx, ref.id)),
+  })));
+  const orderRevision = {
+    expected: request.orderRevision, current: revisionOf(order),
+    expectedCorrection: review?.correctionRevision, currentCorrection: order ? order.correctionRevision ?? 0 : null,
+    expectedCommerce: request.commerceRevision, currentCommerce: order ? order.commerceRevision ?? 0 : null,
+  };
+  const stale = !checked || !authorityCurrent || !validParts || !order || order.status !== 'paid' ||
+    orderRevision.current !== orderRevision.expected ||
+    (orderRevision.expectedCorrection !== undefined && orderRevision.expectedCorrection !== orderRevision.currentCorrection) ||
+    (hasCheckpoint && orderRevision.expectedCommerce !== orderRevision.currentCommerce) ||
+    revisions.some(ref => ref.current !== ref.expected);
+  const status = baseStatus === 'pending' && stale ? 'stale' : baseStatus;
+  const freshness = baseStatus !== 'pending' ? 'resolved' as const
+    : checked ? 'checked' as const : 'partial' as const;
+  checkDetailReads(ctx, actor);
+  return {
+    status, freshness, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,
+    target: order && orderView(order), orderRevision, rows, revisions,
+  };
+}
+
+export async function checkoutApprovalDetail(ctx: ReadCtx, request: CheckoutApprovalRequest) {
+  const [order, line, status] = await Promise.all([
+    getApprovalTarget(ctx, request.orderId),
+    request.lineId ? getApprovalTarget(ctx, request.lineId) : null,
+    effectiveRequestStatus(ctx, request),
+  ]);
+  return {
+    status, target: order && orderView(order),
+    orderRevision: { expected: request.orderRevision, current: revisionOf(order) },
+    rows: line?.orderId === request.orderId ? [lineView(line)] : [],
+  };
+}
+
+export async function ownApprovalStatus(ctx: ReadCtx, actor: StaffActor, request: ApprovalRequest) {
+  const baseStatus = pendingStatus(request);
+  if (baseStatus !== 'pending') return baseStatus;
+  if (request.kind === 'adjustment') return (await adjustmentApprovalDetail(ctx, actor, request, false)).status;
+  if (request.kind === 'returnItems') return (await returnApprovalDetail(ctx, actor, request, false)).status;
+  if (!canReadCheckoutOrder(actor, await getApprovalTarget(ctx, request.orderId))) return 'stale';
+  return await effectiveRequestStatus(ctx, request);
 }
 
 export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'orders'>) {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'pending')).take(201);
   if (requests.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   for (const request of requests) {
-    if (await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the manager request before taking payment.', requestId: request._id });
+    if (isCheckoutApproval(request) && await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the manager request before taking payment.', requestId: request._id });
   }
 }

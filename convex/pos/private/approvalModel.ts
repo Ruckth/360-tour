@@ -1,5 +1,6 @@
+import type { CheckoutApprovalRequest } from './staffApprovalState';
 import { ConvexError } from 'convex/values';
-import type { Doc, Id } from '../../_generated/dataModel';
+import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { orderLines } from './orderLines';
 import { isOpenOrder } from './orderLinks';
@@ -12,15 +13,16 @@ import { ATTACHED_PRICE, FEE_FIXED, Line, Order, ReadCtx, appointmentLine, asser
 import { linkableRow } from './paidLinkModel';
 import { executeLinkPaidLine, executeUnlinkPaidLine } from './paidLinks';
 import { executeAmendOrderPayment, executeVoidUnreceivedOrder } from './paymentCorrections';
+import { assertReceiptCorrectionSupported, readOrderProjection } from './orderLifecycle';
 
 /** Read-only proposal for the approval card. Execution still runs every original validation. */
 export async function previewStaffApproval(ctx: MutationCtx, order: Order, payload: ApprovalPayload) {
  if (payload.kind === 'refund') {
   const state = await refundState(ctx, { ...payload, amount: payload.amountSatang, orderId: order._id });
-  const totalBefore = roundMoney(orderTotals(await orderLines(ctx, order._id)).total - state.refunds.reduce((sum, row) => sum + row.amount, 0));
+  const totalBefore = roundMoney(orderTotals(state.lines).total - state.refunds.reduce((sum, row) => sum + row.amount, 0));
   return { totalBefore, totalAfter: roundMoney(totalBefore - payload.amountSatang), amount: payload.amountSatang };
  }
- const lines = await orderLines(ctx, order._id);
+ const lines = await readOrderProjection(ctx, () => orderLines(ctx, order._id));
  let proposed: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }> = lines.map(line => ({ ...line }));
  const totalBefore = orderTotals(lines).total;
  let amount = 0;
@@ -80,6 +82,7 @@ export async function previewStaffApproval(ctx: MutationCtx, order: Order, paylo
   return { totalBefore, totalAfter: totals.total, amount, ...(percent !== undefined ? { percent } : {}) };
  }
  if (order.status !== 'paid') throw new ConvexError('Only a paid order can be corrected');
+ await assertReceiptCorrectionSupported(ctx, order, lines);
  if (payload.kind === 'paymentFix') {
   if (payload.action === 'linkPaidLine') amount = linkableRow(order, await ctx.db.get(payload.lineId)).amount;
   if (payload.action === 'unlinkPaidLine') {
@@ -104,7 +107,7 @@ export async function requireAppointment(ctx: ReadCtx, id: Id<'appointments'>) {
 }
 
 /** Internal TypeScript helper, not a Convex endpoint; approval identity is server-derived. */
-export async function executeStaffApproval(ctx: MutationCtx, request: Doc<'staffApprovalRequests'>, actor: StaffActor) {
+export async function executeStaffApproval(ctx: MutationCtx, request: CheckoutApprovalRequest, actor: StaffActor) {
  const payload = request.payload;
  const order = await ctx.db.get(request.orderId);
  if (!order) throw new ConvexError('Order not found');

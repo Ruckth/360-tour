@@ -6,6 +6,7 @@ import { appendBookingHistory } from '../../bookings/model';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
+import { assertReceiptCorrectionSupported } from './orderLifecycle';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
 import { changeSchedule } from '../../shared/serviceSchedule';
@@ -172,6 +173,7 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		const order = await ctx.db.get(args.orderId);
 		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
+		await assertReceiptCorrectionSupported(ctx, order);
 		await assertNoPosRefunds(ctx, order._id);
 		const now = Date.now();
 		await syncOrderCouponRedemption(ctx, order._id, 'reversed');

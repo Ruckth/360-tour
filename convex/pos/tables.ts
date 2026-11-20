@@ -1,20 +1,83 @@
-import { storedApprovalPayload, approvalStatus } from '../shared/staffTypes';
+import { storedApprovalPayload, approvalStatus, storedApprovalStatus } from '../shared/staffTypes';
 import { affiliateSnapshot } from '../shared/affiliateTypes';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { correctedTender, receiptCustomer, storedRefundMethod } from '../shared/financeValidators';
+import { correctedTender, receiptCustomer, tenderMethod } from '../shared/financeValidators';
 import { posCouponProblemValidator } from '../shared/posCoupons';
+
+import {
+  adjustmentApprovalPayload, checkoutApprovalKind, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
+  orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, paymentAttemptReview,
+  paymentAttemptRefusal, paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
+  returnPart, returnSourceOwner, returnVoucherCredit,
+} from './validators';
+
+const approvalFields = {
+  reason: v.string(),
+  requesterEmail: v.string(),
+  requesterTokenIdentifier: v.string(),
+  requesterAccessFingerprint: v.string(),
+  rulesRevision: v.number(),
+  rulesFingerprint: v.optional(v.string()),
+  status: approvalStatus,
+  createdAt: v.number(),
+  expiresAt: v.number(),
+  resolvedAt: v.optional(v.number()),
+  approverEmail: v.optional(v.string()),
+  approverTokenIdentifier: v.optional(v.string()),
+  resolutionReason: v.optional(v.string()),
+};
+
+const orderApprovalFields = {
+  ...approvalFields,
+  orderId: v.id('orders'),
+  lineId: v.optional(v.id('orderLines')),
+  orderFingerprint: v.string(),
+  orderRevision: v.number(),
+  totalBefore: v.number(),
+  totalAfter: v.number(),
+  amount: v.number(),
+  percent: v.optional(v.number()),
+};
+
+const orderRefundFields = {
+  orderId: v.id('orders'), lineId: v.id('orderLines'), amount: v.number(), currency: v.string(),
+  returnId: v.optional(v.id('orderReturns')),
+  reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
+  createdAt: v.number(), businessDate: v.string(),
+};
+
+const orderPaymentFields = {
+  orderId: v.id('orders'),
+  amount: v.number(),
+  idempotencyKey: v.string(),
+  createdBy: v.string(),
+  createdAt: v.number(),
+  /** Business date the money was received. Absent means createdAt. */
+  effectiveAt: v.optional(v.number()),
+};
 
 // Owned by pos; assembled only by convex/schema.ts.
 export const posTables = {
- staffApprovalRequests: defineTable({
-  orderId: v.id('orders'), lineId: v.optional(v.id('orderLines')), kind: v.union(v.literal('discount'), v.literal('customPrice'), v.literal('voidPaidSale'), v.literal('paymentFix'), v.literal('refund')),
-  payload: storedApprovalPayload, reason: v.string(), requesterEmail: v.string(), requesterTokenIdentifier: v.string(),
-  requesterAccessFingerprint: v.string(), orderFingerprint: v.string(), orderRevision: v.number(), rulesRevision: v.number(), rulesFingerprint: v.optional(v.string()),
-  status: approvalStatus, createdAt: v.number(), expiresAt: v.number(), resolvedAt: v.optional(v.number()),
-  approverEmail: v.optional(v.string()), approverTokenIdentifier: v.optional(v.string()), resolutionReason: v.optional(v.string()),
-  totalBefore: v.number(), totalAfter: v.number(), amount: v.number(), percent: v.optional(v.number())
- }).index('by_orderId_and_status', ['orderId', 'status']).index('by_orderId_and_createdAt', ['orderId', 'createdAt']).index('by_status_and_createdAt', ['status', 'createdAt']),
+  staffApprovalRequests: defineTable(v.union(
+    v.object({
+      ...orderApprovalFields,
+      kind: checkoutApprovalKind,
+      payload: storedApprovalPayload,
+    }),
+    v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus,
+      commerceRevision: v.optional(v.number()) }),
+    v.object({
+      ...approvalFields,
+      kind: v.literal('adjustment'),
+      payload: adjustmentApprovalPayload,
+    }),
+  )).index('by_orderId_and_status', ['orderId', 'status'])
+    .index('by_orderId_and_createdAt', ['orderId', 'createdAt'])
+    .index('by_status_and_createdAt', ['status', 'createdAt'])
+    .index('by_status_and_expiresAt', ['status', 'expiresAt'])
+    .index('by_status_and_kind_and_expiresAt', ['status', 'kind', 'expiresAt'])
+    .index('by_kind_and_requesterTokenIdentifier_and_payload_clientKey', ['kind', 'requesterTokenIdentifier', 'payload.clientKey']),
 
 
 	/**
@@ -28,6 +91,9 @@ export const posTables = {
 		status: v.union(v.literal('draft'), v.literal('paid'), v.literal('void'), v.literal('discarded')),
 
 		orderNumber: v.number(),
+		activeAttemptId: v.optional(v.id('paymentAttempts')),
+		vatVersion: v.optional(v.number()),
+		returnedTotal: v.optional(v.number()),
 
 
 		/** The reusable customer (payer) this order is for, if any. Not the booking's guest. */
@@ -52,6 +118,8 @@ export const posTables = {
 		hasItems: v.boolean(),
 		/** Bumped on every change to the lines or customer; settleOrder refuses a payment reviewed on an older one. */
 		revision: v.number(),
+		/** Advances in the transaction that changes this order's commerce effects. */
+		commerceRevision: v.optional(v.number()),
 		/** Sequential, issued once when paid and never reused (also not after a void). */
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
@@ -159,7 +227,11 @@ export const posTables = {
 
 	orderLines: defineTable({
 		orderId: v.id('orders'),
-		kind: v.union(v.literal('service'), v.literal('room'), v.literal('extra'), v.literal('booking'), v.literal('appointment')),
+		kind: orderLineKind,
+		variantId: v.optional(v.id('productVariants')),
+		packageVersionId: v.optional(v.id('packageVersions')),
+		coverage: v.optional(orderLineCoverage),
+		saleSnapshot: v.optional(orderLineSaleSnapshot),
 		serviceId: v.optional(v.id('services')),
 		propertyId: v.optional(v.id('properties')),
 		bookingId: v.optional(v.id('bookings')),
@@ -186,7 +258,7 @@ export const posTables = {
 		priceOverride: v.optional(v.object({ price: v.number(), note: v.string(), by: v.string(), at: v.number() })),
 		/** Paid before checkout (an attached booking's online payment); deducted from what is due. */
 		deposit: v.optional(v.number()),
-		/** This row's share of the order's coupon (orders.promotion), in baht. Recomputed while unpaid, frozen once paid. */
+		/** This row's share of the order's coupon (orders.promotion), in satang. Recomputed while unpaid, frozen once paid. */
 		couponDiscount: v.optional(v.number()),
 		/**
 		 * A no-show or late-cancellation fee (pos.addAppointmentFee), on an `extra` row. It refers to the
@@ -211,29 +283,54 @@ export const posTables = {
 
 
 	/** Append-only POS returns, in integer satang. Recording moves no money. */
-	orderRefunds: defineTable({
-		orderId: v.id('orders'), lineId: v.id('orderLines'), amount: v.number(), currency: v.string(), method: storedRefundMethod,
-		reason: v.string(), idempotencyKey: v.string(), createdBy: v.string(), createdByEmail: v.string(),
-		createdAt: v.number(), businessDate: v.string()
-	}).index('by_orderId', ['orderId']).index('by_orderId_and_businessDate', ['orderId', 'businessDate']).index('by_lineId', ['lineId'])
-		.index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
+  orderRefunds: defineTable(v.union(
+    v.object({ ...orderRefundFields, ...orderRefundTenderFields[0] }),
+    v.object({ ...orderRefundFields, ...orderRefundTenderFields[1] }),
+  )).index('by_orderId', ['orderId']).index('by_orderId_and_businessDate', ['orderId', 'businessDate']).index('by_lineId', ['lineId'])
+    .index('by_idempotencyKey', ['idempotencyKey']).index('by_businessDate', ['businessDate']),
 
+  orderPayments: defineTable(v.union(
+    // Cash handed over. Change is received - amount.
+    v.object({ ...orderPaymentFields, ...orderPaymentTenderFields[0], received: v.optional(v.number()) }),
+    v.object({ ...orderPaymentFields, ...orderPaymentTenderFields[1] }),
+  )).index('by_orderId', ['orderId'])
+    .index('by_orderId_and_method', ['orderId', 'method'])
+    // Release 3b: tenders are written with createdAt = the order's paidAt.
+    .index('by_createdAt', ['createdAt']),
 
-	orderPayments: defineTable({
-		orderId: v.id('orders'),
-		method: v.union(v.literal('cash'), v.literal('promptpay'), v.literal('card'), v.literal('transfer')),
-		amount: v.number(),
-		/** Cash handed over; the change is received - amount. */
-		received: v.optional(v.number()),
-		idempotencyKey: v.string(),
-		createdBy: v.string(),
-		createdAt: v.number(),
-		/** Business date the money was received; `createdAt` is when it was recorded. Absent = createdAt. */
-		effectiveAt: v.optional(v.number())
-	})
-		.index('by_orderId', ['orderId'])
-		// Release 3b: tenders are written with createdAt = the order's paidAt, so the report reads a range of them at once.
-		.index('by_createdAt', ['createdAt']),
+  paymentAttempts: defineTable({
+    orderId: v.id('orders'), key: v.string(), fingerprint: v.string(),
+    reviewedRequest: paymentAttemptReview, legs: v.array(paymentExternalLeg),
+    status: paymentAttemptStatus,
+    owner: v.string(), tillId: v.string(), ownerRevision: v.number(),
+    parentAttemptId: v.optional(v.id('paymentAttempts')),
+    refusal: v.optional(paymentAttemptRefusal),
+    resolution: v.optional(v.object({
+      settledAttemptId: v.optional(v.id('paymentAttempts')),
+      giveBackLegs: v.array(paymentExternalLeg),
+      resolvedAt: v.number(),
+    })),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status']),
+
+  orderReturns: defineTable({
+    orderId: v.id('orders'), key: v.string(), fingerprint: v.string(),
+    parts: v.array(returnPart),
+    effectsApplied: v.array(returnEffect),
+    claims: v.array(returnClaim),
+    voucherCredits: v.array(returnVoucherCredit),
+    status: orderReturnStatus,
+    operator: v.string(), tillId: v.string(), operatorRevision: v.number(),
+    approvalId: v.optional(v.id('staffApprovalRequests')),
+    reason: v.string(), createdAt: v.number(), completedAt: v.optional(v.number()),
+  }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status'])
+    .index('by_status_and_createdAt', ['status', 'createdAt']),
+
+  returnPayouts: defineTable({
+    returnId: v.id('orderReturns'), key: v.string(), destinationKey: v.string(),
+    amount: v.number(), method: tenderMethod, businessDate: v.string(),
+    sourceOwner: returnSourceOwner, operator: v.string(), reference: v.optional(v.string()), createdAt: v.number(),
+  }).index('by_businessDate', ['businessDate']).index('by_key', ['key']),
 
 
 	/**

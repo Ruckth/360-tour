@@ -10,13 +10,22 @@ export const cashierRulesFields = {
   customPrice: actionPermission,
   paymentFix: actionPermission,
   refund: v.optional(actionPermission),
+  sessionWaive: v.optional(actionPermission),
+  benefitEdit: v.optional(actionPermission),
 };
 export const cashierRulesValidator = v.object(cashierRulesFields);
-export type CashierRules = Infer<typeof cashierRulesValidator> & { revision: number; refund: 'manager' | 'cashier' };
-export type CashierAction = 'voidPaidSale' | 'customPrice' | 'paymentFix' | 'refund';
+export const resolvedCashierRulesValidator = v.object({
+  ...cashierRulesFields,
+  refund: actionPermission,
+  sessionWaive: actionPermission,
+  benefitEdit: actionPermission,
+  revision: v.number(),
+});
+export type CashierRules = Infer<typeof resolvedCashierRulesValidator>;
+export type CashierAction = Exclude<keyof CashierRules, 'revision' | 'discountLimitPercent'>;
 export const DEFAULT_CASHIER_RULES: CashierRules = {
   revision: 0, discountLimitPercent: 1000,
-  voidPaidSale: 'manager', customPrice: 'manager', paymentFix: 'manager', refund: 'manager',
+  voidPaidSale: 'manager', customPrice: 'manager', paymentFix: 'manager', refund: 'manager', sessionWaive: 'manager', benefitEdit: 'manager',
 };
 export const STAFF_INVITATION_TTL_MS = 14 * 86_400_000;
 export const APPROVAL_TTL_MS = 5 * 60_000;
@@ -45,3 +54,5 @@ export type ApprovalPayload = Infer<typeof approvalPayload>;
 export const approvalStatus = v.union(v.literal('pending'), v.literal('applied'), v.literal('rejected'), v.literal('cancelled'), v.literal('expired'), v.literal('stale'));
 
 export const storedApprovalPayload = approvalPayload;
+
+export const storedApprovalStatus = v.union(approvalStatus, v.literal('authorized'));

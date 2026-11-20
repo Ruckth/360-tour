@@ -81,6 +81,26 @@ export function approvalAsk(request: Pick<ApprovalView, "payload" | "amount" | "
   }
 }
 
+/**
+ * What a compact queue row asks for, from the row alone (staffApprovals.pendingPage): "asks for a
+ * ฿180 discount (15%)". The full ask, reason and totals come from the one detail a manager opens.
+ */
+export function queueAsk(row: { kind: string; label: string; summary: { amount?: number; percent?: number } }) {
+  const { amount = 0, percent } = row.summary;
+  switch (row.kind) {
+    case "discount":
+      return `asks for a ${formatMoney(amount)} discount${percent !== undefined ? ` (${Math.round(basisPointsToPercent(percent) * 10) / 10}%)` : ""}`;
+    case "customPrice":
+      return row.label !== "customPrice" ? `asks to add “${row.label}”` : "asks for a custom price";
+    case "refund":
+      return "asks for a refund";
+    case "voidPaidSale":
+      return `asks to void a paid sale (${formatMoney(amount)})`;
+    default:
+      return "asks to fix a payment";
+  }
+}
+
 /** What a decision names: "15% discount" when the cashier typed a percent, else as approvalWhat. */
 export function approvalDecisionWhat(request: Pick<ApprovalView, "payload" | "amount">, lineName?: string) {
   const { payload } = request;

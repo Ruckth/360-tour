@@ -4,19 +4,32 @@ import type { QueryCtx } from '../_generated/server';
 import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, type ReportBasis, type ReportData, type ReportMoneyEvent, type ReportSale, type ReportTouch } from '../shared/marketingReport';
 import { orderPaymentRecord } from '../pos/model';
 import { isSettledOrder } from '../pos/model';
-import { orderTitle, roundMoney } from '../shared/orderMath';
+import { orderTitle } from '../shared/orderMath';
 import { ReadBudget, ReadBudgetExceeded } from '../lib/readBudget';
-import { resortLocalParts } from '../shared/time';
 import { stayMoney } from '../shared/stayMoney';
 import { ATTRIBUTION_MODEL, touchFromLink } from '../shared/marketingAttribution';
+import { addTenderDay, isExternalRefund, projectOrderSale, projectTender, projectVoucherMovement, tenderDay, type TenderDay, type VoucherDay } from '../shared/tenderProjection';
 
 export const reportSpend = (row: Doc<'marketingSpend'>) => ({ id: row._id, campaignId: row.campaignId, amount: row.amount, from: row.from, to: row.to, ...(row.note !== undefined ? { note: row.note } : {}) });
 
-const dayOf = (at: number) => resortLocalParts(at).date;
+const dayOf = tenderDay;
 
 const touch = ({ linkId, campaignId, slug, campaignName, source, medium, entry }: ReportTouch): ReportTouch => ({ linkId, campaignId, slug, campaignName, source, medium, entry });
 
-const sum = <T>(rows: T[], amount: (row: T) => number) => roundMoney(rows.reduce((total, row) => total + amount(row), 0));
+type ProjectedSale = ReportSale & Partial<ReturnType<typeof projectOrderSale>>;
+type GoodwillCommitment = {
+	day: string;
+	target: 'voucher' | 'grant';
+	reasonCode?: string;
+	units: number;
+	faceValue: number;
+};
+type ProjectedReport = ReportData & {
+	sales: ProjectedSale[];
+	tenderByDay: TenderDay[];
+	voucherByDay: VoucherDay[];
+	goodwillByDay: GoodwillCommitment[];
+};
 
 /**
  * Reads in this order so a busy range still answers: names, spend and sessions first; then the money
@@ -30,13 +43,14 @@ export async function readMarketingReport(
 	args: { from: string; to: string; basis: ReportBasis },
 	budget = new ReadBudget(),
 	reserve = new ReadBudget(2_000, 200, 2 * 1024 * 1024)
-): Promise<ReportData> {
+): Promise<ProjectedReport> {
 	const days = reportDayCount(args.from, args.to);
 	if (days === null || days > MAX_REPORT_DAYS) throw new ConvexError('Choose a valid range of at most 92 Bangkok days.');
 	const { from, to, basis } = args;
 	const { start, end } = reportRangeBounds(from, to);
 	const convertedSessions: NonNullable<ReportData['convertedSessions']> = [];
-	const data: ReportData = { asOf: Date.now(), ...args, timeZone: 'Asia/Bangkok', currency: 'THB', model: ATTRIBUTION_MODEL, sales: [], events: [], sessions: [], convertedSessions, campaigns: [], links: [], coupons: [], properties: [], spend: [], excluded: { nonThb: 0 }, truncated: false };
+	const data: ProjectedReport = { asOf: Date.now(), ...args, timeZone: 'Asia/Bangkok', currency: 'THB', model: ATTRIBUTION_MODEL, sales: [], events: [], sessions: [], convertedSessions, campaigns: [], links: [], coupons: [], properties: [], spend: [], excluded: { nonThb: 0 }, truncated: false, tenderByDay: [], voucherByDay: [], goodwillByDay: [] };
+	const tenderDays = new Map<string, TenderDay>();
 	const inRange = (day: string) => day >= from && day <= to;
 	const inWindow = (at: number | undefined) => at !== undefined && at >= start && at < end;
 	let active = budget;
@@ -135,6 +149,7 @@ export async function readMarketingReport(
 	let apptRefundsFromStart: Doc<'appointmentRefunds'>[] = [];
 	let receiptRefundsByBill = new Map<Id<'orders'>, Doc<'appointmentRefunds'>[]>();
 	let stayRefundsFromStart: Doc<'bookingRefunds'>[] = [];
+	const payoutsByBill = new Map<Id<'orders'>, Doc<'returnPayouts'>[]>();
 	/** A stay refund against a receipt with no stay payment row returns an old order's stay money. */
 	let oldOrderRefundsByBill = new Map<Id<'orders'>, Doc<'bookingRefunds'>[]>();
 	async function readMoneyByDate() {
@@ -148,17 +163,64 @@ export async function readMarketingReport(
 		receiptRefundsByBill = group(apptRefundsFromStart, r => r.orderId);
 		stayRefundsFromStart = await rows(ctx.db.query('bookingRefunds').withIndex('by_recordedAt', q => q.gte('recordedAt', recordedFrom)));
 		oldOrderRefundsByBill = group(stayRefundsFromStart.filter(r => !r.paymentId), r => r.orderId);
+		for await (const payout of scan(ctx.db.query('returnPayouts').withIndex('by_businessDate', q => q.gte('businessDate', from).lte('businessDate', to)))) {
+			const item = await get(payout.returnId);
+			if (!item) continue;
+			const payouts = payoutsByBill.get(item.orderId);
+			if (payouts) append(payouts, payout);
+			else payoutsByBill.set(item.orderId, [payout]);
+		}
+	}
+
+	async function readVoucherAndGoodwill() {
+		const vouchers = new Map<string, VoucherDay>();
+		for await (const entry of scan(ctx.db.query('voucherEntries').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end)))) {
+			const voucher = entry.kind === 'issue' ? await get(entry.voucherId) : null;
+			const movement = projectVoucherMovement(entry, voucher?.source.kind);
+			if (!movement || !inRange(movement.day)) continue;
+			const key = `${movement.day}:${movement.kind}`;
+			const prior = vouchers.get(key);
+			if (prior) {
+				prior.paid += movement.paid;
+				prior.goodwill += movement.goodwill;
+			} else {
+				append(data.voucherByDay, movement);
+				vouchers.set(key, movement);
+			}
+		}
+		const goodwill = new Map<string, GoodwillCommitment>();
+		for await (const row of scan(ctx.db.query('commerceAdjustments').withIndex('by_businessDate_and_kind', q => q.gte('businessDate', from).lte('businessDate', to)))) {
+			if (row.kind !== 'addGoodwill' && row.kind !== 'removeGoodwill') continue;
+			if (row.targetType !== 'grant' && row.targetType !== 'voucher') continue;
+			const day = row.businessDate;
+			const key = JSON.stringify([day, row.targetType, row.reasonCode]);
+			const commitment = goodwill.get(key);
+			if (commitment) {
+				commitment.units += row.quantityDelta;
+				commitment.faceValue += row.goodwillFaceValueDelta;
+			} else {
+				const item = { day, target: row.targetType, reasonCode: row.reasonCode, units: row.quantityDelta, faceValue: row.goodwillFaceValueDelta };
+				append(data.goodwillByDay, item);
+				goodwill.set(key, item);
+			}
+		}
 	}
 
 	// ------------------------------------------------------------ sales
 	const completed = new Map<string, ReportSale | null>();
-	function include(sale: ReportSale, events: ReportMoneyEvent[]) {
+	function include(sale: ProjectedSale, events: ReportMoneyEvent[], projection: ReturnType<typeof projectTender>) {
 		const selected = events.filter(e => inRange(e.day));
-		const settledDiscount = sale.kind === 'order' && sale.discount > 0 && sale.settlementDay !== undefined && inRange(sale.settlementDay);
-		if (basis === 'cash' ? selected.length > 0 || settledDiscount : inRange(sale.createdDay)) {
+		const saleActivity = sale.discount > 0 || (sale.saleValue ?? 0) > 0 || (sale.vatBase ?? 0) > 0;
+		const settledSale = sale.kind === 'order' && saleActivity && sale.settlementDay !== undefined && inRange(sale.settlementDay);
+		if (basis === 'cash' ? selected.length > 0 || settledSale : inRange(sale.createdDay)) {
 			if (data.sales.length >= 8000 || (basis === 'cash' && data.events.length + selected.length > 8000)) throw new ReadBudgetExceeded();
 			data.sales.push(sale);
 			if (basis === 'cash') data.events.push(...selected);
+			for (const movements of [projection.moneyIn, projection.moneyOut]) {
+				for (const movement of movements) {
+					if (inRange(movement.day)) addTenderDay(tenderDays, movement);
+				}
+			}
 		}
 		completed.set(sale.id, sale);
 		return sale;
@@ -205,6 +267,10 @@ export async function readMarketingReport(
 		const attribution = booking.marketingAttribution;
 		const tracked = (channel === 'web' || channel === 'web_chat') && attribution?.last;
 		const session = await staySession(booking);
+		const projection = projectTender({
+			payments: recorded.map(p => ({ ...p, date: p.effectiveAt })),
+			refunds: refunds.map(r => ({ ...r, date: r.effectiveAt })),
+		});
 		const sale: ReportSale = {
 			kind: 'stay', id, label: booking.guestName, ...(booking.confirmationCode ? { ref: booking.confirmationCode } : {}), propertyId: booking.propertyId,
 			channel, bucket: channel === 'admin' ? 'staff' : channel === 'messaging' ? 'messaging' : tracked ? 'tracked' : 'unknown',
@@ -212,12 +278,10 @@ export async function readMarketingReport(
 			...(session ? { session } : {}),
 			customPrice: !!booking.priceOverride,
 			coupon: await coupon(booking.promotion), createdDay: dayOf(booking.createdAt), paidDay, paid: true,
-			collected: sum(recorded, p => p.amount),
-			refunded: sum(refunds, r => r.amount), discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
+			collected: projection.collected,
+			refunded: projection.refunded, discount: booking.priceOverride ? 0 : booking.promotion?.discount ?? 0
 		};
-		const events: ReportMoneyEvent[] = recorded.map(p => ({ saleId: id, kind: 'payment', day: dayOf(p.effectiveAt), amount: p.amount }));
-		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
-		return include(sale, events);
+		return include(sale, reportEvents(id, projection), projection);
 	}
 	async function order(id: Id<'orders'>) {
 		if (completed.has(id)) return completed.get(id);
@@ -233,26 +297,35 @@ export async function readMarketingReport(
 		const receiptRefunds = batched ? (receiptRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('appointmentRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
 		// An old order that kept its stay money (no stay payment row) also takes the refunds of that money.
 		const stayRefunds = stayRows.length ? [] : batched ? (oldOrderRefundsByBill.get(id) ?? []) : (await rows(ctx.db.query('bookingRefunds').withIndex('by_orderId', q => q.eq('orderId', id)))).filter(r => !r.paymentId);
-		const refunds = [...receiptRefunds, ...stayRefunds];
 		const record = orderPaymentRecord(bill, tenders);
-		// The stay part of the order is on the stay (its POS payment row), so the order keeps only its own money.
-		const collected = roundMoney(sum(record.tenders, p => p.amount) - sum(stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos'), p => p.amount));
-
 		const posRefunds = batched ? (posRefundsByBill.get(id) ?? []) : await rows(ctx.db.query('orderRefunds').withIndex('by_orderId', q => q.eq('orderId', id)));
-		const refunded = roundMoney(sum(refunds, r => r.amount) + sum(posRefunds, r => r.amount));
+		const day = dayOf(at);
+		const projection = projectTender({
+			payments: (bill.amendedTenders ?? tenders).map(p => ({ ...p, date: day })),
+			stayPayments: stayRows.filter(p => p.status === 'recorded' && p.origin === 'pos').map(p => ({ ...p, date: day })),
+			refunds: [
+				...receiptRefunds.map(r => ({ ...r, date: r.effectiveAt })),
+				...stayRefunds.map(r => ({ ...r, date: r.effectiveAt })),
+				...posRefunds.map(r => ({ ...r, date: r.businessDate })),
+			],
+			payouts: payoutsByBill.get(id),
+			recordedPayoutTotal: bill.returnedTotal,
+		});
+		const { collected, refunded } = projection;
+		const saleAmounts = bill.vatVersion === 2
+			? projectOrderSale(await rows(ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', id))))
+			: undefined;
 		const discount = bill.promotion?.discount ?? 0;
-		if (collected === 0 && refunded === 0 && discount === 0) return null;
+		if (collected === 0 && refunded === 0 && discount === 0 && !saleAmounts?.saleValue && !saleAmounts?.vatBase) return null;
 		// The order's own stay, or the stay it charged when that stay already had another open order.
 		const bookingId = bill.bookingId ?? stayRows[0]?.bookingId;
 		const booking = bookingId ? await get(bookingId) : null;
 		const link = bill.promotion?.viaLinkId ? await get(bill.promotion.viaLinkId) : null;
 		const campaign = link ? await get(link.campaignId) : null;
-		const day = dayOf(at);
-		const sale: ReportSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, ...(collected > 0 ? { paidDay: day } : {}), settlementDay: day, paid: true, collected, refunded, discount };
+		const sale: ProjectedSale = { kind: 'order', id, label: record.customer?.name ?? 'Walk-in', ref: orderTitle(bill.orderNumber), ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'pos', bucket: link && campaign ? 'tracked' : 'staff', ...(link && campaign ? { evidence: 'scanned', last: touch(touchFromLink(link, campaign)) } : {}), coupon: await coupon(bill.promotion), createdDay: day, ...(collected > 0 ? { paidDay: day } : {}), settlementDay: day, paid: true, collected, refunded, discount, ...saleAmounts };
 		const events: ReportMoneyEvent[] = collected ? [{ saleId: id, kind: 'payment', day, amount: collected }] : [];
-		events.push(...refunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount })));
-		events.push(...posRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: r.businessDate, amount: r.amount })));
-		return include(sale, events);
+		events.push(...projection.moneyOut.map(({ kind, day, amount }) => ({ saleId: id, kind, day, amount })));
+		return include(sale, events, projection);
 	}
 	async function appointment(id: Id<'appointments'>) {
 		if (completed.has(id)) return completed.get(id);
@@ -261,20 +334,27 @@ export async function readMarketingReport(
 		if (!appt || nonThb(appt)) return null;
 
 		const allPayments = await rows(ctx.db.query('appointmentPayments').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
-		const payments: { amount: number; effectiveAt: number }[] = allPayments.filter(p => p.status === 'recorded');
+		const payments = allPayments.filter(p => p.status === 'recorded');
   const refunds = await rows(ctx.db.query('appointmentRefunds').withIndex('by_appointmentId_and_recordedAt', q => q.eq('appointmentId', id)));
 		if (!payments.length) return null;
 		const ownRefunds = [];
-		for (const refund of refunds) if (!refund.orderId || !await order(refund.orderId)) ownRefunds.push(refund);
+		for (const refund of refunds) if (isExternalRefund(refund) && (!refund.orderId || !await order(refund.orderId))) ownRefunds.push(refund);
 		const service = appt.serviceNameSnapshot ? null : await get(appt.serviceId);
 		// A stay's appointment paid at the desk is never part of the stay's money, so it is its own sale.
 		const booking = appt.bookingId ? await get(appt.bookingId) : null;
 		const day = dayOf(Math.min(...payments.map(p => p.effectiveAt)));
-		const sale: ReportSale = { kind: 'appointment', id, label: appt.guestName, ref: appt.serviceNameSnapshot ?? service?.name, ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'desk', bucket: 'staff', createdDay: day, paidDay: day, paid: true, collected: sum(payments, p => p.amount), refunded: sum(ownRefunds, r => r.amount), discount: 0 };
-		return include(sale, [...payments.map(p => ({ saleId: id, kind: 'payment' as const, day: dayOf(p.effectiveAt), amount: p.amount })), ...ownRefunds.map(r => ({ saleId: id, kind: 'refund' as const, day: dayOf(r.effectiveAt), amount: r.amount }))]);
+		const projection = projectTender({
+			payments: payments.map(p => ({ ...p, date: p.effectiveAt })),
+			refunds: ownRefunds.map(r => ({ ...r, date: r.effectiveAt })),
+		});
+		const sale: ReportSale = { kind: 'appointment', id, label: appt.guestName, ref: appt.serviceNameSnapshot ?? service?.name, ...(booking ? { propertyId: booking.propertyId } : {}), channel: 'desk', bucket: 'staff', createdDay: day, paidDay: day, paid: true, collected: projection.collected, refunded: projection.refunded, discount: 0 };
+		return include(sale, reportEvents(id, projection), projection);
 	}
 	async function readSales() {
-		if (basis === 'cash') for (const row of posRefundsFromStart) if (inRange(row.businessDate)) await order(row.orderId);
+		if (basis === 'cash') {
+			for (const row of posRefundsFromStart) if (isExternalRefund(row) && inRange(row.businessDate)) await order(row.orderId);
+			for (const id of payoutsByBill.keys()) await order(id);
+		}
 		if (basis === 'cohort') {
 			for await (const row of scan(ctx.db.query('bookings').withIndex('by_createdAt', q => q.gte('createdAt', start).lt('createdAt', end)))) { cache.set(row._id, row); await stay(row._id); }
 		} else {
@@ -294,7 +374,7 @@ export async function readMarketingReport(
 		for await (const row of scan(ctx.db.query('orders').withIndex('by_paymentEffectiveAt', q => q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end)))) { cache.set(row._id, row); await order(row._id); }
 		for await (const row of scan(ctx.db.query('appointmentPayments').withIndex('by_effectiveAt', q => q.gte('effectiveAt', start).lt('effectiveAt', end)))) if (row.status === 'recorded') await appointment(row.appointmentId);
 		if (basis === 'cash') for (const row of apptRefundsFromStart) {
-			if (!inWindow(row.effectiveAt)) continue;
+			if (!isExternalRefund(row) || !inWindow(row.effectiveAt)) continue;
 			if (!row.orderId || !await order(row.orderId)) await appointment(row.appointmentId);
 		}
 	}
@@ -318,6 +398,7 @@ export async function readMarketingReport(
 	try {
 		await readNames();
 		await readMoneyByDate();
+		await readVoucherAndGoodwill();
 		await readSales();
 		await readConversions();
 	} catch (error) {
@@ -337,5 +418,10 @@ export async function readMarketingReport(
 		if (!(error instanceof ReadBudgetExceeded)) throw error;
 		data.truncated = true;
 	}
+	data.tenderByDay = [...tenderDays.values()].filter(row => row.moneyIn || row.moneyOut);
 	return data;
+}
+
+function reportEvents(saleId: string, { moneyIn, moneyOut }: ReturnType<typeof projectTender>): ReportMoneyEvent[] {
+	return [...moneyIn, ...moneyOut].map(({ kind, day, amount }) => ({ saleId, kind, day, amount }));
 }

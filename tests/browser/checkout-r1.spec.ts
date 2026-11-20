@@ -56,7 +56,8 @@ test("an approval past its local expiry names its item and leaves the decision t
   await page.clock.install();
   await open(page, "?role=manager&scenario=pending");
   await page.getByTestId("approvals-button").click();
-  const request = page.getByTestId("approval-request").first();
+  // The request that expires first opens with its detail; the rest are compact rows.
+  const request = page.locator('[data-testid="approval-request"][data-approval-selected="true"]');
   await expect(request).toContainText("Thai massage 60");
   await page.clock.fastForward(5 * 60_000);
   // A fast device clock must not block a decision the server would still accept.

@@ -7,11 +7,13 @@ import { MAX_ORDER_REFUNDS, lineNet } from '../../shared/orderMath';
 import { readBudget } from '../../lib/readBudget';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { appendRecordHistory } from '../../settings/model';
+import { readCommerceReceiptStatus, readOrderProjection } from './orderLifecycle';
+import { orderLines } from './orderLines';
 import { activeLineLink } from './lineLinks';
 
 type ReadCtx = QueryCtx | MutationCtx;
 
-export type OrderRefundInput = Pick<Doc<'orderRefunds'>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
+export type OrderRefundInput = Pick<Exclude<Doc<'orderRefunds'>, { method: 'voucher' }>, 'orderId' | 'lineId' | 'amount' | 'currency' | 'method' | 'reason' | 'idempotencyKey'>;
 
 function fail(code: string, message: string): never { throw new ConvexError({ code, message }); }
 
@@ -70,13 +72,18 @@ function cleanInput(input: OrderRefundInput): OrderRefundInput {
   return { orderId: input.orderId, lineId: input.lineId, amount: input.amount, currency: input.currency, method: input.method, reason, idempotencyKey };
 }
 
-/** Preview and execution re-read the same cap. The mutation's index reads serialize competing returns. */
-export async function refundState(ctx: ReadCtx, input: OrderRefundInput) {
-  const args = cleanInput(input);
-  const order = await ctx.db.get(args.orderId);
+async function walkInRefundLines(ctx: ReadCtx, order: Doc<'orders'>) {
+  const lines = await readOrderProjection(ctx, () => orderLines(ctx, order._id));
+  if (await readCommerceReceiptStatus(ctx, order, lines)) {
+    throw new ConvexError({ code: 'USE_RETURN_ITEMS', message: 'Use Return items for this receipt.', orderId: order._id });
+  }
+  return lines;
+}
+
+async function calculateRefundState(ctx: ReadCtx, args: OrderRefundInput, order: Doc<'orders'> | null, lines: Doc<'orderLines'>[]) {
   if (!order || order.status !== 'paid' || order.paidAt === undefined || order.voidUnreceived)
     fail('ORDER_NOT_PAID', 'Only a paid, settled order can be refunded.');
-  const line = await ctx.db.get(args.lineId);
+  const line = lines.find(row => row._id === args.lineId);
   if (!line || line.orderId !== order._id || !isWalkInLine(line) || await activeLineLink(ctx, line._id))
     fail('LINE_NOT_REFUNDABLE', 'Use the stay or appointment refund flow for attached lines; choose a walk-in line on this order.');
   if (args.currency !== line.currency || args.currency !== order.currency) fail('REFUND_CURRENCY_MISMATCH', `Refund currency must be ${order.currency}.`);
@@ -85,7 +92,14 @@ export async function refundState(ctx: ReadCtx, input: OrderRefundInput) {
   const remaining = Math.max(0, lineNet(line) - refunded);
   if (args.amount > remaining) throw new ConvexError({ code: 'REFUND_EXCEEDS_REMAINING', message: `At most ${remaining} satang remains refundable.`, remaining });
   if (refunds.length >= MAX_ORDER_REFUNDS) fail('REFUND_HISTORY_LIMIT', 'Too many refunds on this order. Contact support.');
-  return { args, order, line, refunds, remaining };
+  return { args, order, line, lines, refunds, remaining };
+}
+
+/** Preview and execution re-read the same cap. The mutation's index reads serialize competing returns. */
+export async function refundState(ctx: ReadCtx, input: OrderRefundInput) {
+  const args = cleanInput(input);
+  const order = await ctx.db.get(args.orderId);
+  return await calculateRefundState(ctx, args, order, order ? await walkInRefundLines(ctx, order) : []);
 }
 
 /** Shared by direct checkout and manager approval; no payment provider is called. */
@@ -93,6 +107,7 @@ export async function executeOrderRefund(ctx: MutationCtx, input: OrderRefundInp
   const args = cleanInput(input);
   const order = await ctx.db.get(args.orderId);
   if (!order || !canReadCheckoutOrder(actor, order)) fail('ORDER_NOT_FOUND', 'Order not found.');
+  const lines = await walkInRefundLines(ctx, order);
   const existing = await ctx.db.query('orderRefunds').withIndex('by_idempotencyKey', q => q.eq('idempotencyKey', args.idempotencyKey)).unique();
   if (existing) {
     if (existing.orderId !== args.orderId || existing.lineId !== args.lineId || existing.amount !== args.amount || existing.currency !== args.currency || existing.method !== args.method || existing.reason !== args.reason)
@@ -100,7 +115,7 @@ export async function executeOrderRefund(ctx: MutationCtx, input: OrderRefundInp
     return { refund: orderRefundView(existing), replayed: true };
   }
   await requireCashierAction(ctx, actor, 'refund');
-  const state = await refundState(ctx, args);
+  const state = await calculateRefundState(ctx, args, order, lines);
   const now = Date.now();
   const refundId = await ctx.db.insert('orderRefunds', { ...args, createdBy: actor.tokenIdentifier, createdByEmail: actor.email, createdAt: now, businessDate: resortTodayIso(now) });
   await ctx.db.patch(order._id, { revision: order.revision + 1, correctionRevision: (order.correctionRevision ?? 0) + 1, updatedAt: now });

@@ -28,9 +28,11 @@ vi.mock('convex/react', () => ({
     if (args === 'skip') return undefined;
     const name = getFunctionName(ref);
     if (name === 'auth/staffAccess:myAccess') return state.access;
-    if (name === 'pos/staffApprovals:pending') return { count: state.pending, list: [] };
     return { businessName: 'Audit resort' };
-  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : async () => null), usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: () => undefined }) }));
+  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
+    const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
+    return { results: Array.from({ length: pending }, (_, i) => ({ _id: `appr${i}`, kind: 'discount', requesterEmail: 'mint@example.com', createdAt: 0, expiresAt: 0, status: 'pending', label: 'discount', summary: { amount: 100 } })), status: 'Exhausted', loadMore: () => undefined };
+  }, useQueries: () => ({}) }));
 vi.mock('next/navigation', () => ({
   usePathname: () => state.pathname,
   useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : ''),

@@ -9,6 +9,7 @@ import { assertNoLiveCheckout, cleanReason, effectiveTime } from '../../shared/b
 import { stayMoney } from '../../shared/stayMoney';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { resortTodayIso } from '../../shared/time';
+import { assertReceiptCorrectionSupported } from './orderLifecycle';
 import { orderLineLinks } from './lineLinks';
 import { assertTenders, lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
@@ -20,15 +21,17 @@ import { linkReversal } from './paidLinkModel';
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typeof amendOrderPaymentArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'paymentFix');
-		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
-		if (existing) return { sequence: existing.sequence, replayed: true };
 		const order = await ctx.db.get(args.orderId);
 		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
+		await assertReceiptCorrectionSupported(ctx, order);
+		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'amended');
+		if (existing) return { sequence: existing.sequence, replayed: true };
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s payment can be corrected.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the correction')!;
 		const payments = await ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).take(10);
-		const paidTotal = roundMoney(payments.reduce((sum, payment) => sum + payment.amount, 0));
+		const externalPayments = payments.filter(payment => payment.method !== 'voucher');
+		const paidTotal = roundMoney(externalPayments.reduce((sum, payment) => sum + payment.amount, 0));
 		const now = Date.now();
 		const patch: Partial<Order> = {};
 		const correction: Partial<Doc<'orderCorrections'>> = {};
@@ -36,7 +39,7 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 		if (args.tenders) {
 			if (paidTotal === 0) throw new ConvexError('Nothing was paid on this order, so there are no tenders to correct.');
 			assertTenders(args.tenders, paidTotal);
-			const before = order.amendedTenders ?? payments.map(cleanTender);
+			const before = order.amendedTenders ?? externalPayments.map(cleanTender);
 			const after = args.tenders.map(cleanTender);
 			if (JSON.stringify(before) !== JSON.stringify(after)) {
 				patch.amendedTenders = after;
@@ -119,10 +122,11 @@ export async function executeAmendOrderPayment(ctx: MutationCtx, args: Infer<typ
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<typeof voidUnreceivedOrderArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'paymentFix');
-		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
-		if (existing) return { replayed: true };
 		const order = await ctx.db.get(args.orderId);
 		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
+		await assertReceiptCorrectionSupported(ctx, order);
+		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
+		if (existing) return { replayed: true };
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);

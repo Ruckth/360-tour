@@ -24,9 +24,9 @@ export const TENDER_METHODS = ['cash', 'promptpay', 'card', 'transfer'] as const
 export type TenderMethod = (typeof TENDER_METHODS)[number];
 
 /** Services are one row per unit; rooms and extras merge into a quantity. */
-export const LINE_KINDS = ['service', 'room', 'extra', 'booking', 'appointment'] as const;
+export const LINE_KINDS = ['service', 'room', 'extra', 'booking', 'appointment', 'product', 'package', 'voucher'] as const;
 export type LineKind = (typeof LINE_KINDS)[number];
-export const MERGES_QTY: Record<LineKind, boolean> = { service: false, room: true, extra: true, booking: false, appointment: false };
+export const MERGES_QTY: Record<LineKind, boolean> = { service: false, room: true, extra: true, booking: false, appointment: false, product: false, package: false, voucher: false };
 
 export type LineDiscount = { type: 'amount' | 'percent'; value: number };
 export type PricedLine = {

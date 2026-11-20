@@ -6,6 +6,7 @@ import { recordStayPayment } from '../../bookings/model';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { STALE_APPOINTMENT, recordAppointmentChange } from '../../services/model';
 import { STALE_BOOKING, bookingRevision, cleanReason } from '../../shared/bookingMoney';
+import { assertReceiptCorrectionSupported } from './orderLifecycle';
 import { activeLineLink } from './lineLinks';
 import { formatReceiptNumber, orderTitle } from '../../shared/orderMath';
 import { assertLineHasNoPosRefunds } from './orderRefunds';
@@ -17,14 +18,15 @@ import { appointmentLinkProblem, bookingLinkProblem, linkReversal, linkableRow }
 export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof linkPaidLineArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'paymentFix');
 		const source = oneSource(args);
+		const order = await ctx.db.get(args.orderId);
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
+		await assertReceiptCorrectionSupported(ctx, order);
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'linked');
 		if (existing) {
 			const same = existing.lineId === args.lineId && ('bookingId' in source ? existing.bookingId === source.bookingId : existing.appointmentId === source.appointmentId);
 			if (!same) throw new ConvexError('This link attempt was already used for something else. Start again.');
 			return { sequence: existing.sequence, linkId: existing.linkId!, replayed: true };
 		}
-		const order = await ctx.db.get(args.orderId);
-		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s rows can be linked.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the link')!;
@@ -81,13 +83,14 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUnlinkPaidLine(ctx: MutationCtx, args: Infer<typeof unlinkPaidLineArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'paymentFix');
+		const order = await ctx.db.get(args.orderId);
+		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
+		await assertReceiptCorrectionSupported(ctx, order);
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'unlinked');
 		if (existing) {
 			if (existing.linkId !== args.linkId) throw new ConvexError('This unlink attempt was already used for something else. Start again.');
 			return { sequence: existing.sequence, replayed: true };
 		}
-		const order = await ctx.db.get(args.orderId);
-		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order’s links can be undone.');
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);
 		const reason = cleanReason(args.reason, 'Reason for the unlink')!;

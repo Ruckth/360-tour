@@ -205,6 +205,8 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
           <h1 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
             {adminNavItem(pathname)?.label ?? "Admin"}
           </h1>
+          {/* Page tools render here (checkout ?timing=1), so they never sit over the page. */}
+          <div data-admin-header-tools="" className="contents" />
           {access.capabilities.approve || checkoutFlow ? <CheckoutHeaderStaff backend={checkoutBackend} /> : null}
           {tillOnly ? (
             <>

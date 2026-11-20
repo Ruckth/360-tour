@@ -6,13 +6,31 @@ import { dirname, join, resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, expect, it } from 'vitest';
 import schema from '../../convex/schema';
-import { inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-schema.mjs';
+import { COMMERCE_TABLE_NAMES, inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-schema.mjs';
 
 const scratch: string[] = [];
 afterEach(() => { for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 const inspect = (files: Record<string, string>) => inspectSchema(path => files[path]);
 const server = "import { defineSchema as assemble, defineTable as table } from 'convex/server';";
 const table = "table({ label: v.string() }).index('by_label', ['label'])";
+
+it('matches the reviewed stock movement and voucher entry index inventories', () => {
+  // Read the same runtime export as scripts/schema-equivalence.mjs.
+  const runtimeSchema = schema as typeof schema & { export(): string };
+  const { tables } = JSON.parse(runtimeSchema.export()) as {
+    tables: { tableName: string; indexes: { indexDescriptor: string; fields: string[] }[] }[];
+  };
+  expect(tables.find(table => table.tableName === 'stockMovements')?.indexes).toEqual([
+    { indexDescriptor: 'by_variantId_and_createdAt', fields: ['variantId', 'createdAt'] },
+    { indexDescriptor: 'by_sourceKey', fields: ['sourceKey'] },
+    { indexDescriptor: 'by_variantId_and_branchId_and_createdAt', fields: ['variantId', 'branchId', 'createdAt'] },
+  ]);
+  expect(tables.find(table => table.tableName === 'voucherEntries')?.indexes).toEqual([
+    { indexDescriptor: 'by_voucherId_and_createdAt', fields: ['voucherId', 'createdAt'] },
+    { indexDescriptor: 'by_sourceKey', fields: ['sourceKey'] },
+    { indexDescriptor: 'by_createdAt', fields: ['createdAt'] },
+  ]);
+});
 
 it('follows reachable bindings and spreads, excluding unused and component definitions', () => {
   const result = inspect({
@@ -60,7 +78,7 @@ it('discovers historical 91/74-table monoliths and matches the assembled runtime
   const base = inspectSchema(schemaSourceReader('.', 'f2482a0237e28a82c71b0557ea9422f61233845a'));
   const current = inspectSchema(schemaSourceReader('.'));
   expect(base.tables).toHaveLength(74);
-  expect(current.tables.map(t => t.name).sort()).toEqual(base.tables.map(t => t.name).sort());
+  expect(current.tables.map(t => t.name).sort()).toEqual([...base.tables.map(t => t.name), ...COMMERCE_TABLE_NAMES].sort());
   expect(current.tables.map(t => t.name).sort()).toEqual(Object.keys(schema.tables).sort());
 }, 30_000);
 
@@ -68,7 +86,7 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
   const out = mkdtempSync(join(tmpdir(), 'schema-reset-')); scratch.push(out);
   const result = spawnSync(process.execPath, ['scripts/architecture-reset.mjs', '--old-ref', '72a657f', '--out', out], { encoding: 'utf8' });
   expect(result.stderr).toBe(''); expect(result.status).toBe(0);
-  for (const [name, count] of [['old', 91], ['new', 74]] as const) {
+  for (const [name, count] of [['old', 91], ['new', 96]] as const) {
     const tables = JSON.parse(readFileSync(join(out, `${name}-tables.json`), 'utf8')) as string[];
     expect(tables).toHaveLength(count);
     const zip = name === 'old' ? 'empty-root.zip' : 'empty-new-root.zip';
@@ -78,8 +96,9 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
     expect(snapshot.tables.map(t => t.name).sort()).toEqual(tables.sort());
   }
   const manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'));
-  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 74 });
+  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 96 });
   const current = inspectSchema(schemaSourceReader('.'));
+  expect(JSON.parse(readFileSync(join(out, 'new-tables.json'), 'utf8')).sort()).toEqual(current.tables.map(table => table.name).sort());
   expect(Object.keys(manifest.schemaSources.new).sort()).toEqual(Object.keys(current.sources).sort());
   for (const [path, source] of Object.entries(current.sources)) expect(manifest.schemaSources.new[path]).toBe(createHash('sha256').update(source).digest('hex'));
 }, 30_000);

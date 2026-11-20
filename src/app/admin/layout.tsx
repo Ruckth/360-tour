@@ -1,6 +1,10 @@
 import type { Viewport } from "next";
+import type { AbstractIntlMessages } from "next-intl";
+import { getLocale } from "next-intl/server";
 import { Suspense, type ReactNode } from "react";
 import { AdminShell } from "@/components/admin/AdminShell";
+import { CommerceMessages } from "@/components/checkout/commerce-messages";
+import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
 import { isClerkConfigured } from "@/lib/clerk-config";
 
 // Edge to edge on notched phones and iPads; the shell pads itself with the safe-area insets.
@@ -14,7 +18,28 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
+/**
+ * Commerce copy (messages/commerce/<locale>.json) for checkout, receipts and the header's Approvals,
+ * which every admin page carries. Read on the server, so it ships in the page payload, not in a chunk.
+ */
+const COMMERCE_MESSAGES: Record<Locale, () => Promise<{ default: AbstractIntlMessages }>> = {
+  en: () => import("../../../messages/commerce/en.json"),
+  th: () => import("../../../messages/commerce/th.json"),
+  "zh-CN": () => import("../../../messages/commerce/zh-CN.json"),
+  ja: () => import("../../../messages/commerce/ja.json"),
+  ko: () => import("../../../messages/commerce/ko.json"),
+  fr: () => import("../../../messages/commerce/fr.json"),
+  de: () => import("../../../messages/commerce/de.json"),
+  es: () => import("../../../messages/commerce/es.json"),
+  ru: () => import("../../../messages/commerce/ru.json"),
+  it: () => import("../../../messages/commerce/it.json"),
+  hi: () => import("../../../messages/commerce/hi.json"),
+};
+async function commerceMessages(locale: Locale) {
+  return (await COMMERCE_MESSAGES[locale]()).default;
+}
+
+export default async function AdminLayout({ children }: { children: ReactNode }) {
   if (!isClerkConfigured()) {
     return (
       <main className="grid min-h-dvh place-items-center bg-background px-5">
@@ -35,9 +60,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  const locale = await getLocale();
+  const commerce = await commerceMessages(isLocale(locale) ? locale : defaultLocale);
   return (
-    <Suspense fallback={null}>
-      <AdminShell>{children}</AdminShell>
-    </Suspense>
+    <CommerceMessages messages={commerce}>
+      <Suspense fallback={null}>
+        <AdminShell>{children}</AdminShell>
+      </Suspense>
+    </CommerceMessages>
   );
 }
