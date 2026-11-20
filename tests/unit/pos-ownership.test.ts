@@ -4,7 +4,9 @@ import ts from 'typescript';
 import { expect, it } from 'vitest';
 
 const tree = (file: string) => ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true);
-const resolve = (file: string, spec: string) => normalize(join(dirname(file), spec)) + '.ts';
+// Resolves like the bundler: `x.ts`, else a directory import's `x/index.ts`; anything else fails on read.
+const sourceFile = (path: string) => existsSync(`${path}.ts`) || !existsSync(join(path, 'index.ts')) ? `${path}.ts` : join(path, 'index.ts');
+const resolve = (file: string, spec: string) => sourceFile(normalize(join(dirname(file), spec)));
 const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry =>
   entry.isDirectory() ? entry.name === '_generated' ? [] : walk(join(dir, entry.name)) : [join(dir, entry.name)]);
 const owned = ['orderLines', 'orderRefunds', 'lineLinks', 'orderLinks', 'displayView', 'orderLifecycle', 'staffApprovalState'];
@@ -57,7 +59,7 @@ it('removes old ctx modules, enforces model consumers and keeps browser display 
     for (const node of tree(file).statements) {
       if ((!ts.isImportDeclaration(node) && !ts.isExportDeclaration(node)) || !node.moduleSpecifier || !ts.isStringLiteral(node.moduleSpecifier)) continue;
       const spec = node.moduleSpecifier.text;
-      const target = spec.startsWith('.') ? resolve(file, spec) : `${spec}.ts`;
+      const target = spec.startsWith('.') ? resolve(file, spec) : sourceFile(spec);
       expect(owned.map(name => `convex/lib/${name}.ts`)).not.toContain(target);
       if (file.startsWith('src/')) expect(target).not.toMatch(/^convex\/pos\/(?:model|private\/)/);
       else if (!file.startsWith('convex/pos/') && target.startsWith('convex/pos/') && file !== 'convex/schema.ts') expect(target).toBe('convex/pos/model.ts');

@@ -83,4 +83,3 @@ export function fieldChanges(before: StoredFields | undefined, after: StoredFiel
     return JSON.stringify(change.before) === JSON.stringify(change.after) ? [] : [change];
   });
 }
-

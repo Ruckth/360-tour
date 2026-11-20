@@ -180,7 +180,7 @@ export function CommerceReceiptStatus({ orderId }: { orderId: OrderId }) {
               </li>
             ))}
           </ul>
-          {attempt.refusal ? <p className="text-sm">{copy.t("pay.whatChanged", { reason: refusalText(attempt.refusal, copy) })}</p> : null}
+          {attempt.refusal ? <p className="text-sm">{copy.t("pay.whatChanged", { reason: attempt.refusal.code === "SERVER" ? attempt.refusal.message : refusalText(attempt.refusal, copy) })}</p> : null}
           {attempt.recovery ? (
             <p className="text-sm font-medium">{copy.t("pay.kept", { amount: copy.money(attempt.recovery.kept) })} · {copy.t("vouchers.stillDue", { amount: copy.money(attempt.recovery.stillDue) })}</p>
           ) : null}

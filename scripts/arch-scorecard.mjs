@@ -155,11 +155,11 @@ add('static-dir', 0, 'Duplicate static/ directory exists (1 = yes)', existsSync(
 add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify-out)', ['output', 'tmp', 'graphify-out'].filter((d) => !new RegExp(`^/?${d}/?$`, 'm').test(gitignore)).length, 0);
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
 
-add('tables', 1, 'Convex tables (74 existing + 22 commerce)', tableNames.length, 96, schema.tables.map(table => `${table.name} → ${table.source}`));
-const commercePosTables = new Set(['paymentAttempts', 'orderReturns', 'returnPayouts']);
+add('tables', 1, 'Convex tables (74 existing + 23 commerce)', tableNames.length, 97, schema.tables.map(table => `${table.name} → ${table.source}`));
+const commercePosTables = new Set(['directPaymentPanels', 'paymentAttempts', 'orderReturns', 'returnPayouts']);
 const commerceTables = schema.tables.filter(table => COMMERCE_TABLE_NAMES.includes(table.name)
 	&& table.source === (commercePosTables.has(table.name) ? 'convex/pos/tables.ts' : 'convex/commerce/tables.ts'));
-add('commerce-tables', 1, 'Release 1 commerce tables', commerceTables.length, 22, commerceTables.map(table => `${table.name} → ${table.source}`));
+add('commerce-tables', 1, 'Release 1 commerce tables', commerceTables.length, 23, commerceTables.map(table => `${table.name} → ${table.source}`));
 add('channel-events-table', 1, 'Unified channelEvents table exists (1 = yes)', tableNames.includes('channelEvents') ? 1 : 0, 1);
 add('retired-tables', 1, 'Retired tables still in the schema', RETIRED_TABLES.filter((t) => tableNames.includes(t)).length, 0, RETIRED_TABLES.filter((t) => tableNames.includes(t)));
 add('old-table-names', 1, 'Tables still using pre-rename names', OLD_NAMES.filter((t) => tableNames.includes(t)).length, 0, OLD_NAMES.filter((t) => tableNames.includes(t)));

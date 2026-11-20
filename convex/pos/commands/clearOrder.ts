@@ -1,3 +1,4 @@
+import { assertNoActivePayment } from '../private/paymentAttempt';
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { orderLines } from '../private/orderLines';
@@ -9,7 +10,8 @@ export const clearOrder = staffMutation({
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		const admin = ctx.staff;
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const order = await editableOrder(ctx, args.orderId, admin);
+		assertNoActivePayment(order);
 		const lines = await orderLines(ctx, order._id);
 		for (const line of lines) await ctx.db.delete(line._id);
 		await ctx.db.patch(order._id, { promotion: undefined });

@@ -122,6 +122,8 @@ function fixtureQuery(query: Parameters<typeof getFunctionName>[0], args: unknow
   return [];
 }
 export function useConvexAuth() { return { isLoading: false, isAuthenticated: true }; }
+/** Always connected: the fixture has no socket to drop. */
+export function useConvexConnectionState() { return { isWebSocketConnected: true, hasEverConnected: true }; }
 export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unknown) {
   useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
   const handler = args === "skip" ? undefined : queryHandlers.get(getFunctionName(query));

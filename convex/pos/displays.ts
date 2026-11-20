@@ -277,7 +277,7 @@ export const cleanPending = internalMutation({
 		const now = Date.now();
 		const cutoff = now - PAIRING_TTL_MS;
 		let deleted = 0;
-		for (const till of await ctx.db.query('tills').take(10)) {
+		for (const till of await ctx.db.query('tills').withIndex('by_key', q => q.eq('key', 'default')).take(10)) {
 			const stale = await ctx.db.query('displays').withIndex('by_tillId_and_status', (q) => q.eq('tillId', till._id).eq('status', 'pending').lt('_creationTime', cutoff)).take(CLEAN_BATCH - deleted);
 			for (const display of stale) await ctx.db.delete(display._id);
 			deleted += stale.length;

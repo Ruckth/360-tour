@@ -21,6 +21,7 @@ const REVALIDATE_SECONDS = 60;
 const TIMEOUT_MS = 3_000;
 const FAILURE_BACKOFF_MS = 30_000;
 const MAX_LAST_GOOD_DETAILS = 200;
+const VILLA_PAGE_SIZE = 100;
 const cacheOptions = { revalidate: REVALIDATE_SECONDS, tags: ["villas"] };
 
 function convexUrl() {
@@ -54,11 +55,23 @@ async function withReadTimeout<T>(pending: Promise<T>): Promise<T> {
 }
 
 function readSlugPage(client: ConvexHttpClient, cursor: string | null) {
-  return withReadTimeout(client.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: 100, cursor } }));
+  return withReadTimeout(client.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: VILLA_PAGE_SIZE, cursor } }));
+}
+
+// The production frontend builds before Convex publishes the new slug query.
+async function readCatalogSlugs(url: string) {
+  const { villas } = await withReadTimeout(cachedList(url));
+  return villas.map(({ slug }) => slug);
 }
 
 const cachedInitialSlugs = unstable_cache(
-  async (url: string) => (await readSlugPage(new ConvexHttpClient(url), null)).page,
+  async (url: string) => {
+    try {
+      return (await readSlugPage(new ConvexHttpClient(url), null)).page;
+    } catch {
+      return await readCatalogSlugs(url);
+    }
+  },
   ["public-villa-initial-slugs"],
   cacheOptions,
 );
@@ -152,6 +165,9 @@ export const getVillaSlugs = cache(async () => {
     return lastCompleteSlugs;
   } catch (error) {
     if (lastCompleteSlugs) return lastCompleteSlugs;
+    const catalogSlugs = await readCatalogSlugs(url).catch(() => undefined);
+    // The previous catalog endpoint caps its response at the villa page size.
+    if (catalogSlugs && catalogSlugs.length < VILLA_PAGE_SIZE) return catalogSlugs;
     throw error;
   }
 });

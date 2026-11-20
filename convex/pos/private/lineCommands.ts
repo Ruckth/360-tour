@@ -1,3 +1,4 @@
+import { assertNoActivePayment } from './paymentAttempt';
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { MutationCtx } from '../../_generated/server';
@@ -16,7 +17,7 @@ import { ATTACHED_PRICE, CURRENCY, FEE_FIXED, Line, LineFields, addItemArgs, app
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addItemArgs>, admin: StaffActor) {
  if (args.item.kind === 'extra') await requireCashierAction(ctx, admin, 'customPrice');
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const order = await editableOrder(ctx, args.orderId, admin, args.swapOwner);
 		const { item } = args;
 		let line: LineFields;
 		if (item.kind === 'service') {
@@ -59,14 +60,14 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 
 export async function executeAttach(ctx: MutationCtx, args: Infer<typeof attachArgs>, admin: StaffActor) {
  const source = oneSource(args);
- const order = await editableOrder(ctx, args.orderId, admin.email);
+ const order = await editableOrder(ctx, args.orderId, admin, args.swapOwner);
  await attachTo(ctx, order, source, admin);
  return { orderId: order._id };
 }
 
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof updateLineArgs>, admin: StaffActor) {
-		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
+		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
 		if (line.fee && (args.qtyChange !== undefined || args.discount)) throw new ConvexError(FEE_FIXED);
 		const patch: Partial<Line> = {};
 		if (args.staffId !== undefined) {
@@ -109,7 +110,7 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typeof overrideLinePriceArgs>, admin: StaffActor) {
  await requireCashierAction(ctx, admin, 'customPrice');
-		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
+		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
 		if (line.kind === 'booking' && args.price !== null) throw new ConvexError(ATTACHED_PRICE);
 		if (line.fee && args.price !== null) throw new ConvexError(FEE_FIXED);
 		await assertCashierDiscount(ctx, admin, { ...line, priceOverride: args.price === null ? undefined : { price: roundMoney(args.price) } });
@@ -132,7 +133,7 @@ export async function executeOverrideLinePrice(ctx: MutationCtx, args: Infer<typ
 
 /** Shared by the direct mutation and atomic manager approval. Actor is never client supplied. */
 export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<typeof updateSourceLineArgs>, admin: StaffActor) {
-		const { line, order } = await editableLine(ctx, args.lineId, admin.email);
+		const { line, order } = await editableLine(ctx, args.lineId, admin, args.swapOwner);
 		if (!isSourceRow(line)) throw new ConvexError('Only booking, appointment and fee rows follow their source');
 		const issue = await sourceIssue(ctx, line);
 		if (!issue) return { result: 'current' as const };
@@ -141,6 +142,7 @@ export async function executeUpdateSourceLine(ctx: MutationCtx, args: Infer<type
 		if (line.fee && issue.kind === 'changed') return { result: 'current' as const };
 		const at = Date.now();
 		if (issue.kind === 'settled' || issue.kind === 'gone') {
+			assertNoActivePayment(order);
 			await ctx.db.delete(line._id);
 			await ctx.db.insert('orderAudit', { orderId: order._id, lineId: line._id, at, actor: admin.email, kind: 'source_removed', fromPrice: line.unitPrice, note: `${line.name}: ${issue.message}` });
 			await refreshOrder(ctx, order._id);
@@ -172,6 +174,7 @@ export async function executeVoidOrder(ctx: MutationCtx, args: Infer<typeof void
 		if (!reason) throw new ConvexError('Give a reason for the void');
 		const order = await ctx.db.get(args.orderId);
 		if (!order || !canReadCheckoutOrder(admin, order)) throw new ConvexError('Order not found');
+		assertNoActivePayment(order);
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertReceiptCorrectionSupported(ctx, order);
 		await assertNoPosRefunds(ctx, order._id);

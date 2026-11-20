@@ -128,7 +128,7 @@ export async function ensureLinkedOrder(ctx: MutationCtx, source: OrderSource, a
 
 /** An order nobody has used: created with its booking, still empty, never paid or audited. */
 async function isPlaceholder(ctx: ReadCtx, order: Doc<'orders'>) {
-	if (order.status !== 'draft' || order.hasItems || order.customerId || order.receiptNumber !== undefined) return false;
+	if (order.status !== 'draft' || order.activeAttemptId || order.hasItems || order.customerId || order.receiptNumber !== undefined) return false;
 	const [line, payment, audit] = await Promise.all([
 		ctx.db.query('orderLines').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first(),
 		ctx.db.query('orderPayments').withIndex('by_orderId', (q) => q.eq('orderId', order._id)).first(),

@@ -4,6 +4,8 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { correctedTender, receiptCustomer, tenderMethod } from '../shared/financeValidators';
 import { posCouponProblemValidator } from '../shared/posCoupons';
+import { tillPaymentRollout } from './private/tillPayments';
+import { directPanelFields } from './private/directPanels';
 
 import {
   adjustmentApprovalPayload, checkoutApprovalKind, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
@@ -124,6 +126,11 @@ export const posTables = {
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
 		settleKey: v.optional(v.string()),
+		/**
+		 * The one direct pay panel registration this receipt accounts for during the payments rollout:
+		 * the panel that settled it, or the one a manager reconciled as Recorded with it.
+		 */
+		directPanel: v.optional(v.object({ tillId: v.id('tills'), panelKey: v.string(), by: v.union(v.literal('settlement'), v.literal('manager')) })),
 		paidAt: v.optional(v.number()),
 		paidBy: v.optional(v.string()),
 		voidedAt: v.optional(v.number()),
@@ -303,6 +310,8 @@ export const posTables = {
     reviewedRequest: paymentAttemptReview, legs: v.array(paymentExternalLeg),
     status: paymentAttemptStatus,
     owner: v.string(), tillId: v.string(), ownerRevision: v.number(),
+    ownerToken: v.optional(v.string()), ownerTab: v.optional(v.string()),
+    ownerDisplayName: v.optional(v.string()), tillLabel: v.optional(v.string()),
     parentAttemptId: v.optional(v.id('paymentAttempts')),
     refusal: v.optional(paymentAttemptRefusal),
     resolution: v.optional(v.object({
@@ -311,7 +320,8 @@ export const posTables = {
       resolvedAt: v.number(),
     })),
     createdAt: v.number(), updatedAt: v.number(),
-  }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status']),
+  }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status'])
+    .index('by_status', ['status']),
 
   orderReturns: defineTable({
     orderId: v.id('orders'), key: v.string(), fingerprint: v.string(),
@@ -444,13 +454,19 @@ export const posTables = {
 	 * (renewed in `displayDriverLeases`). Pairing links are valid only for `pairGeneration`.
 	 */
 	tills: defineTable({
-		key: v.literal('default'),
+		key: v.union(v.literal('default'), v.literal('payment')),
+		paymentDeviceHash: v.optional(v.string()),
 		orderId: v.optional(v.id('orders')),
 		driverId: v.optional(v.string()),
 		publishedAt: v.optional(v.number()),
 		leaseId: v.optional(v.string()),
-		pairGeneration: v.optional(v.number())
-	}).index('by_key', ['key']),
+		pairGeneration: v.optional(v.number()),
+		paymentRollout: v.optional(tillPaymentRollout),
+	}).index('by_key', ['key']).index('by_paymentDeviceHash', ['paymentDeviceHash'])
+		.index('by_key_and_acknowledgedRevision', ['key', 'paymentRollout.acknowledged.revision']),
+
+	/** A direct pay panel's registration during the payments rollout (pos/private/directPanels). */
+	directPaymentPanels: defineTable(directPanelFields).index('by_tillId_and_panelKey', ['tillId', 'panelKey']).index('by_orderId_and_actor', ['orderId', 'actor']),
 
 
 	/**

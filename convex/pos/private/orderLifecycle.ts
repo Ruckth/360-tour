@@ -64,13 +64,15 @@ export function assertFeeAmount(amount: number, appointment: Doc<'appointments'>
  * Other fee rows for this appointment that still count: on an open order (could be charged) or on
  * a settled one that retained its money. Plain void does not return money or release the fee.
  */
-export async function liveFees(ctx: ReadCtx, appointmentId: Id<'appointments'>, exceptOrderId?: Id<'orders'>) {
-	const rows = await ctx.db.query('orderLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', appointmentId)).take(FEE_SCAN + 1);
+export async function liveFees(ctx: ReadCtx, appointmentId: Id<'appointments'>, exceptOrderId?: Id<'orders'>, metered = false) {
+	const feeRows = () => ctx.db.query('orderLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', appointmentId)).take(FEE_SCAN + 1);
+	const rows = metered ? await readOrderProjection(ctx, feeRows) : await feeRows();
 	if (rows.length > FEE_SCAN) throw new ConvexError('This appointment has too many fee rows to check. Contact support.');
 	const live: Array<{ line: Doc<'orderLines'>; order: Doc<'orders'> }> = [];
 	for (const line of rows) {
 		if (line.orderId === exceptOrderId) continue;
-		const order = await ctx.db.get(line.orderId);
+		const readOrder = () => ctx.db.get(line.orderId);
+		const order = metered ? await readOrderProjection(ctx, readOrder) : await readOrder();
 		if (order && (isOpenOrder(order) || order.status === 'paid' || (order.status === 'void' && !order.voidUnreceived))) live.push({ line, order });
 	}
 	return live;

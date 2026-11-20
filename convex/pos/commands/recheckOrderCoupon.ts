@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { type PosCouponProblem } from '../../shared/posCoupons';
-import { editableOrder, refreshOrder } from '../private/orderModel';
+import { swapOwnerArgs, editableOrder, refreshOrder } from '../private/orderModel';
 
 /**
  * Checks the order's coupon again with its frozen version: after payment refused it, or once a
@@ -10,10 +10,10 @@ import { editableOrder, refreshOrder } from '../private/orderModel';
  */
 export const recheckOrderCoupon = staffMutation({
   capability: 'checkout',
-	args: { orderId: v.id('orders') },
+	args: { ...swapOwnerArgs, orderId: v.id('orders') },
 	handler: async (ctx, args): Promise<{ revision: number; discount: number; problem: PosCouponProblem | null }> => {
 		const admin = ctx.staff;
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const order = await editableOrder(ctx, args.orderId, admin, args.swapOwner);
 		if (!order.promotion) throw new ConvexError('This order has no coupon');
 		await refreshOrder(ctx, order._id);
 		const updated = (await ctx.db.get(order._id))!;

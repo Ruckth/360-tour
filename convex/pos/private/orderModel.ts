@@ -6,7 +6,7 @@ import { attemptKey } from '../../shared/bookingMoney';
 import { couponVersion } from '../../marketing/model';
 import { resortTodayIso } from '../../shared/time';
 import { correctedTender } from '../../shared/financeValidators';
-import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage } from './orderLifecycle';
+import { DISCARDED_ORDER, feeBlocker, feePriceBlocker, liveFees, otherFeeMessage, readOrderProjection } from './orderLifecycle';
 import { MAX_LINES, orderLines } from './orderLines';
 import { insertOrder, linkedOpenOrder, openOrderCharging, ordersForSource, type OrderSource } from './orderLinks';
 import { isOpenOrder } from './orderLinks';
@@ -16,6 +16,7 @@ import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/time';
 import { assertCashierDiscount, type StaffActor } from '../../auth/model';
 import { lineDiscountValidator } from '../../shared/staffTypes';
+import { ownsPaymentAttempt, paymentTabArgs } from './tillPayments';
 
 /**
  * Staff POS orders. An order is the persistent commercial record: a permanent order number,
@@ -108,21 +109,34 @@ export function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id
 	return args.bookingId ? { bookingId: args.bookingId } : { appointmentId: args.appointmentId! };
 }
 
+const swapOwner = v.object({ tillId: v.string(), ...paymentTabArgs });
+export const swapOwnerArgs = { swapOwner: v.optional(swapOwner) };
+type SwapOwner = Infer<typeof swapOwner>;
+type EditActor = Pick<StaffActor, 'email'> & Partial<Pick<StaffActor, 'tokenIdentifier'>>;
+
 /** The order to change, created on first use. Paid and void orders never change. */
-export async function editableOrder(ctx: MutationCtx, orderId: Id<'orders'> | undefined, actor: string): Promise<Order> {
-	if (!orderId) return await insertOrder(ctx, actor);
+export async function editableOrder(ctx: MutationCtx, orderId: Id<'orders'> | undefined, actor: EditActor, swap?: SwapOwner): Promise<Order> {
+	if (!orderId) return await insertOrder(ctx, actor.email);
 	const order = await ctx.db.get(orderId);
 	if (!order) throw new ConvexError('Order not found');
 	if (order.status === 'paid') throw new ConvexError('This order is already paid');
 	if (order.status === 'void') throw new ConvexError('This order was voided');
 	if (order.status === 'discarded') throw new ConvexError(DISCARDED_ORDER);
+  if (order.activeAttemptId) {
+    const { activeAttemptId } = order;
+    const attempt = swap ? await readOrderProjection(ctx, () => ctx.db.get(activeAttemptId)) : null;
+    if (!swap || !attempt || attempt.status !== 'refused' || attempt.refusal?.code !== 'swap_requested' ||
+        !await ownsPaymentAttempt(attempt, actor, swap)) {
+      throw new ConvexError({ code: 'payment_in_progress', message: 'Resolve the payment in progress before changing this order.' });
+    }
+  }
 	return order;
 }
 
-export async function editableLine(ctx: MutationCtx, lineId: Id<'orderLines'>, actor: string) {
+export async function editableLine(ctx: MutationCtx, lineId: Id<'orderLines'>, actor: EditActor, swap?: SwapOwner) {
 	const line = await ctx.db.get(lineId);
 	if (!line) throw new ConvexError('Item not found');
-	const order = await editableOrder(ctx, line.orderId, actor);
+	const order = await editableOrder(ctx, line.orderId, actor, swap);
 	return { line, order };
 }
 
@@ -135,14 +149,16 @@ export function orderCouponUnavailable(problem: PosCouponProblem, couponCode?: s
  * reserve nothing. The usage limit and budget always come from the current version: they are how
  * a marketer stops a promotion, so lowering them stops open orders too.
  */
-export async function quoteOrderCoupon(ctx: ReadCtx, lines: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }>, couponId: Id<'coupons'>, version: number): Promise<OrderCouponResult> {
+export async function quoteOrderCoupon(ctx: ReadCtx, lines: Array<Pick<Line, 'kind' | 'unitPrice' | 'qty' | 'discount' | 'priceOverride' | 'couponDiscount' | 'bookingId' | 'fee'> & { _id: string }>, couponId: Id<'coupons'>, version: number, extraBookingId?: Id<'bookings'>, booking: (id: Id<'bookings'>) => Promise<Doc<'bookings'> | null> = id => ctx.db.get(id)): Promise<OrderCouponResult> {
 	const coupon = await ctx.db.get(couponId);
 	if (!coupon) return { ok: false, problem: { code: 'not_found' } };
 	const rules = await couponVersion(ctx, couponId, version);
 	const limits = coupon.currentVersion === version ? rules : await couponVersion(ctx, couponId, coupon.currentVersion);
 	let usedOnAttachedStay = false;
-	for (const bookingId of new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []))) {
-		if ((await ctx.db.get(bookingId))?.promotion?.couponId === couponId) usedOnAttachedStay = true;
+	const attachedStays = new Set(lines.flatMap(line => line.bookingId ? [line.bookingId] : []));
+	if (extraBookingId) attachedStays.add(extraBookingId);
+	for (const bookingId of attachedStays) {
+		if ((await booking(bookingId))?.promotion?.couponId === couponId) usedOnAttachedStay = true;
 	}
 	return evaluateOrderCoupon({
 		lines: lines.map(line => ({ ...line, id: line._id })), today: resortTodayIso(), usedOnAttachedStay,
@@ -162,11 +178,11 @@ export async function writeCouponShares(ctx: MutationCtx, lines: Line[], result:
 }
 
 /** Keeps the order's item count, total and due in step with its lines, and marks it changed. */
-export async function refreshOrder(ctx: MutationCtx, orderId: Id<'orders'>) {
+export async function refreshOrder(ctx: MutationCtx, orderId: Id<'orders'>, couponBookingId?: Id<'bookings'>) {
 	const [order, lines] = await Promise.all([ctx.db.get(orderId), orderLines(ctx, orderId)]);
 	if (!order || !isOpenOrder(order)) throw new Error('Only an unpaid order can be refreshed');
 	if (order.promotion) {
-		const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion);
+		const result = await quoteOrderCoupon(ctx, lines, order.promotion.couponId, order.promotion.couponVersion, couponBookingId);
 		await writeCouponShares(ctx, lines, result);
 		// The code can be renamed before its first use; show the one the coupon has now.
 		const code = (await ctx.db.get(order.promotion.couponId))?.code ?? order.promotion.code;
@@ -191,7 +207,8 @@ export async function refreshOrder(ctx: MutationCtx, orderId: Id<'orders'>) {
 		itemCount: lines.reduce((n, line) => n + line.qty, 0),
 		total: totals.total,
 		due: totals.due,
-		hasItems: lines.length > 0,
+		// Keep an empty swap in the existing unpaid-order index until its money is resolved.
+		hasItems: lines.length > 0 || order?.activeAttemptId !== undefined,
 		revision: order!.revision + 1,
 		updatedAt: Date.now()
 	});
@@ -297,7 +314,7 @@ export async function appointmentLine(ctx: ReadCtx, appointment: Doc<'appointmen
  * they were added; payment is refused until a changed row is updated (or a settled one removed),
  * so a stay edited, paid online or cancelled meanwhile is never charged stale or twice.
  */
-export async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = directReads(ctx)): Promise<SourceIssue | null> {
+export async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = directReads(ctx), meterFees = false): Promise<SourceIssue | null> {
 	if (line.bookingId) {
 		const booking = await reads.booking(line.bookingId);
 		if (!booking) return { kind: 'gone', message: 'This booking no longer exists. Remove it from the order.' };
@@ -319,7 +336,7 @@ export async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = 
 		if (!appointment) return { kind: 'gone', message: 'This appointment no longer exists. Remove it from the order.' };
 		if (!appointmentAttachable(appointment)) return { kind: 'settled', message: 'This appointment was paid or cancelled since it was added. Remove it from the order.' };
 		if (
-			appointment.currency !== line.currency || appointment.price !== line.unitPrice || appointment.serviceId !== line.serviceId ||
+			appointment.currency !== line.currency || appointment.price !== (line.coverage?.priceBefore ?? line.unitPrice) || appointment.serviceId !== line.serviceId ||
 			appointment.staffId !== line.staffId || appointment.start !== line.startAt
 		) {
 			return { kind: 'changed', message: 'The appointment changed since it was added (service, therapist, time or price). Update the row and review the total.' };
@@ -328,7 +345,7 @@ export async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = 
 	if (line.feeAppointmentId && line.fee) {
 		const appointment = await reads.appointment(line.feeAppointmentId);
 		if (!appointment) return { kind: 'gone', message: 'The appointment this fee is for no longer exists. Remove the fee from the order.' };
-		const blocked = feeBlocker(appointment, line.fee.kind) ?? feePriceBlocker(line.unitPrice, appointment) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.orderId))[0]);
+		const blocked = feeBlocker(appointment, line.fee.kind) ?? feePriceBlocker(line.unitPrice, appointment) ?? otherFeeMessage((await liveFees(ctx, appointment._id, line.orderId, meterFees))[0]);
 		if (blocked) return { kind: 'settled', message: `${blocked} Remove the fee from the order.` };
 	}
 	return null;
@@ -546,12 +563,13 @@ export function discardedField(order: Order): { discarded?: DiscardedInfo | null
 		: {};
 }
 
-export const addItemArgs = v.object({ orderId: v.optional(v.id('orders')), item: itemValidator });
+export const addItemArgs = v.object({ ...swapOwnerArgs, orderId: v.optional(v.id('orders')), item: itemValidator });
 
 /** Adds a stay or appointment to the order (a new order if none is given). */
-export const attachArgs = v.object({ orderId: v.optional(v.id('orders')), ...sourceArgs });
+export const attachArgs = v.object({ ...swapOwnerArgs, orderId: v.optional(v.id('orders')), ...sourceArgs });
 
 export const updateLineArgs = v.object({
+  ...swapOwnerArgs,
 		lineId: v.id('orderLines'),
 		staffId: v.optional(v.union(v.id('staff'), v.null())),
 		serviceDate: v.optional(v.union(v.string(), v.null())),
@@ -561,7 +579,7 @@ export const updateLineArgs = v.object({
 	});
 
 /** One-off price for a row. Setting a price needs a note; every change is kept in orderAudit. */
-export const overrideLinePriceArgs = v.object({ lineId: v.id('orderLines'), price: v.union(v.number(), v.null()), note: v.string() });
+export const overrideLinePriceArgs = v.object({ ...swapOwnerArgs, lineId: v.id('orderLines'), price: v.union(v.number(), v.null()), note: v.string() });
 
 /**
  * Brings a booking or appointment row in line with its source after the stay or appointment
@@ -569,7 +587,7 @@ export const overrideLinePriceArgs = v.object({ lineId: v.id('orderLines'), pric
  * cancelled elsewhere meanwhile. The order's revision changes, so any payment begun on the old
  * row has to be reviewed again.
  */
-export const updateSourceLineArgs = v.object({ lineId: v.id('orderLines') });
+export const updateSourceLineArgs = v.object({ ...swapOwnerArgs, lineId: v.id('orderLines') });
 
 /**
  * Voids a paid order. The record, its order and receipt numbers, payments and audit trail stay;

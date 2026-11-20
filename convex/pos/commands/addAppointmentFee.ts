@@ -6,7 +6,7 @@ import { isOpenOrder } from '../private/orderLinks';
 import { assertPrice } from '../../shared/orderMath';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/time';
-import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder, refreshOrder } from '../private/orderModel';
+import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder, refreshOrder, swapOwnerArgs } from '../private/orderModel';
 
 // ---------------------------------------------------------------------------------------------
 // No-show and late-cancellation fees
@@ -27,7 +27,7 @@ import { CURRENCY, LineFields, assertRoom, editableOrder, lineSnapshot, logOrder
  * Repeating the same fee on the same order returns that row (`replayed: true`).
  */
 export const addAppointmentFee = adminMutation({
-	args: {
+	args: { ...swapOwnerArgs,
 		expectedRevision: v.optional(v.number()),
 		idempotencyKey: v.optional(v.string()),
 		orderId: v.optional(v.id('orders')),
@@ -65,7 +65,8 @@ export const addAppointmentFee = adminMutation({
 		const taken = otherFeeMessage(others[0]);
 		if (taken) throw new ConvexError(taken);
 
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const tokenIdentifier = args.swapOwner ? (await ctx.auth.getUserIdentity())?.tokenIdentifier : undefined;
+		const order = await editableOrder(ctx, args.orderId, { ...admin, tokenIdentifier }, args.swapOwner);
 		await assertRoom(ctx, order._id);
 		const serviceName = appointment.serviceNameSnapshot ?? (await ctx.db.get(appointment.serviceId))?.name ?? 'Appointment';
 		const { date, time } = resortLocalParts(appointment.start);

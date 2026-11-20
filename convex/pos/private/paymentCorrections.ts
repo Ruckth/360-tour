@@ -1,3 +1,4 @@
+import { assertNoActivePayment } from './paymentAttempt';
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
@@ -127,6 +128,7 @@ export async function executeVoidUnreceivedOrder(ctx: MutationCtx, args: Infer<t
 		await assertReceiptCorrectionSupported(ctx, order);
 		const { key, existing } = await correctionReplay(ctx, args.orderId, args.idempotencyKey, 'void_unreceived');
 		if (existing) return { replayed: true };
+		assertNoActivePayment(order);
 		if (order.status !== 'paid') throw new ConvexError('Only a paid order can be voided');
 		await assertNoPosRefunds(ctx, order._id);
 		assertCorrectionRevision(order, args.expectedCorrectionRevision);

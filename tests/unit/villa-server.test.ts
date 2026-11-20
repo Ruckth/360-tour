@@ -148,6 +148,30 @@ describe("server villa reads", () => {
     await expect(getVilla("extra-200", "en")).resolves.toMatchObject({ villa: { id: "extra-99" } });
   });
 
+  it("builds the sitemap and room paths against the previous backend contract", async () => {
+    const { default: sitemap } = await import("@/app/sitemap");
+    const { generateStaticParams } = await import("@/app/[locale]/rooms/[id]/page");
+    query.mockImplementation(async (ref) => {
+      if (getFunctionName(ref) === "catalog/publicProperties:list") {
+        return { hasProperties: true, villas: [detail.villa] };
+      }
+      throw new Error("Server Error");
+    });
+
+    expect(await generateStaticParams()).toEqual([{ id: "extra-99" }]);
+    expect((await sitemap()).filter(({ url }) => url.endsWith("/rooms/extra-99"))).toHaveLength(locales.length);
+  });
+
+  it("rejects a cold sitemap fallback when the catalog is at its limit", async () => {
+    query.mockRejectedValueOnce(new Error("Server Error")).mockResolvedValueOnce({
+      hasProperties: true,
+      villas: Array.from({ length: 100 }, (_, index) => ({ slug: `villa-${index}` })),
+    });
+
+    await expect(villas.getVillaSlugs()).rejects.toThrow("Server Error");
+    expect(query).toHaveBeenNthCalledWith(2, api.catalog.publicProperties.list, {});
+  });
+
   it("includes all active slugs in the sitemap and limits static params to the first page", async () => {
     const { default: sitemap } = await import("@/app/sitemap");
     const { generateStaticParams } = await import("@/app/[locale]/rooms/[id]/page");

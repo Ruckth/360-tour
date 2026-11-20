@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { staffMutation } from '../../auth/model';
 import { assertCustomerCanLink } from '../private/customerModel';
-import { editableOrder } from '../private/orderModel';
+import { swapOwnerArgs, editableOrder } from '../private/orderModel';
 
 /**
  * Links a customer to the order (a new order if none is given). The booking's guest is left as
@@ -10,12 +10,12 @@ import { editableOrder } from '../private/orderModel';
  */
 export const linkCustomer = staffMutation({
   capability: 'checkout',
-	args: { orderId: v.optional(v.id('orders')), customerId: v.id('customers') },
+	args: { ...swapOwnerArgs, orderId: v.optional(v.id('orders')), customerId: v.id('customers') },
 	handler: async (ctx, args) => {
 		const admin = ctx.staff;
 		// Refuses missing, archived and merged-away profiles (customers.ts contract); never redirects a merged id.
 		const customer = assertCustomerCanLink(await ctx.db.get(args.customerId));
-		const order = await editableOrder(ctx, args.orderId, admin.email);
+		const order = await editableOrder(ctx, args.orderId, admin, args.swapOwner);
 		if (order.customerId === customer._id) return { orderId: order._id };
 		const now = Date.now();
 		await ctx.db.patch(order._id, { customerId: customer._id, revision: order.revision + 1, updatedAt: now });

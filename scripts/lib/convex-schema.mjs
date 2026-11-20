@@ -10,7 +10,7 @@ export const COMMERCE_TABLE_NAMES = [
   'branches', 'productCategories', 'products', 'productVariants', 'stockLevels', 'stockMovements',
   'handovers', 'packages', 'packageVersions', 'sessionGrants', 'sessionUses', 'grantServices',
   'voucherTemplates', 'vouchers', 'voucherCodes', 'voucherEntries', 'commerceAdjustments', 'commerceSettings',
-  'frequentPins', 'paymentAttempts', 'orderReturns', 'returnPayouts',
+  'frequentPins', 'paymentAttempts', 'directPaymentPanels', 'orderReturns', 'returnPayouts',
 ];
 
 /** A reader works on a checkout, a historical git tree, or an in-memory test repository.

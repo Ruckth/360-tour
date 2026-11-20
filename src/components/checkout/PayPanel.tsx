@@ -4,7 +4,7 @@ import { satangToBaht } from "convex/shared/money";
 
 
 import { ArrowLeft, Check, Plus, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { Suspense, lazy, useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { couponRefusalDetails } from "@/lib/booking/coupon-refusals";
 import { errorText } from "@/lib/staff-bookings";
 import { paymentDateInput, paymentDateValue } from "./payment-time";
+import { deviceKey, newPanelKey, payMode, serverTillId } from "./pay-desk";
 import { cn } from "@/lib/utils";
 import {
   MAX_TENDERS,
@@ -24,10 +25,15 @@ import {
   type TenderMethod,
 } from "convex/shared/orderMath";
 import {
+  COMMERCE_OFF,
   newAttemptKey,
   useCheckoutBackend,
+  useCommerce,
   useOrderCouponRefusal,
   type CheckoutActions,
+  type DirectInstruction,
+  type DirectPanelPrevious,
+  type DirectPanelRegistration,
   type OrderId,
   type OrderView,
 } from "./backend";
@@ -42,25 +48,261 @@ import {
 } from "./checkout-ui";
 
 type PayMode = TenderMethod | "split";
-
-/**
- * Takes the payment. Another tender switches modes; the active tender keeps its attempt.
- * Each mode is its own attempt (PayAttempt, keyed by mode). Back and Escape return to the order.
- */
-export function PayPanel({
-  mode: opened,
-  view,
-  onBack,
-  onPaid,
-  onSubmittingChange,
-}: {
+type PayPanelProps = {
   mode: PayMode | "none";
   view: OrderView;
   onBack: () => void;
   onPaid: (orderId: OrderId) => void;
   onSubmittingChange?: (submitting: boolean) => void;
-}) {
-  const [mode, setMode] = useState(opened);
+  /** Opens another order (the stay's Shop & spa bill after Pay the room first). */
+  onOpenOrder?: (orderId: OrderId) => void;
+};
+
+// The attempt flow and its words load only once a till is on the new payments.
+const PayDeskPanel = lazy(() => import("./PayDeskPanel"));
+
+const TillReload = lazy(() => import("./PayRecovery").then((module) => ({ default: module.TillReload })));
+
+/**
+ * Takes the payment. Until the owner's cutover (paymentsMode "direct") this is the direct panel,
+ * exactly as before; afterwards every payment goes through a server attempt (PayDeskPanel). An
+ * open direct panel finishes during the checkout pause; a till that loaded before the cutover
+ * reloads first.
+ */
+export function PayPanel(props: PayPanelProps) {
+  const commerce = useCommerce();
+  const access = commerce.useAccess();
+  const mode = payMode(access, commerce);
+  if (mode === "direct" || mode === "paused") return commerce === COMMERCE_OFF ? <DirectPayPanel {...props} /> : <RegisteredDirectPanel key={props.view.order._id} paused={mode === "paused"} started={mode === "paused" || Boolean(access?.cutoverStarted)} {...props} />;
+  const fallback = <div className="grid flex-1 place-items-center"><Spinner /></div>;
+  if (mode === "loading") return fallback;
+  return (
+    <Suspense fallback={fallback}>
+      {mode === "attempts" ? <PayDeskPanel {...props} /> : <div className="px-4 py-3"><TillReload /></div>}
+    </Suspense>
+  );
+}
+
+// Shown only when the registration fails or continues an earlier panel: loads on demand.
+const PanelProblem = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectPanelProblem })));
+const PanelPrevious = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectCheckPrevious })));
+const RecordPrevious = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectRecordPrevious })));
+const InstructionSaving = lazy(() => import("./PayRecovery").then((module) => ({ default: module.InstructionSaving })));
+
+type Registered = { registration: DirectPanelRegistration; previous?: DirectPanelPrevious };
+type Checked = "taken" | "notTaken" | "answering" | "manager" | null;
+
+/** What a panel opened on `mode` shows first: one tender for the whole amount (a split's parts come later). */
+function openingInstruction(mode: PayMode | "none", view: OrderView): DirectInstruction | undefined {
+  const { revision } = view.order;
+  const { due } = view.totals;
+  if (mode === "split") return undefined;
+  return { revision, due, tenders: mode === "none" ? [] : [{ method: mode, amount: due }] };
+}
+const instructionKey = (i?: DirectInstruction) => i ? `${i.revision}|${i.due}|${i.tenders.map(({ method, amount }) => `${method}:${amount}`).join(",")}` : "";
+const sameInstruction = (a?: DirectInstruction, b?: DirectInstruction) => instructionKey(a) === instructionKey(b);
+/** From the cutover's first pause on, the panel shows an instruction only once its registration saved it. */
+type InstructionGuard = { saved: (instruction: DirectInstruction) => boolean; failed: unknown; retry: () => void };
+
+/**
+ * Register with the instruction before showing it; the registration belongs to this till and tab.
+ * Before the cutover starts the panel is today's at once and its registration runs alongside: a
+ * slow, lost or refused registration never holds up or refuses the payment. Reopening an order
+ * whose earlier panel this tab left unrecorded continues that registration; from the cutover's
+ * first pause on, Check previous payment comes first and Taken records exactly what it
+ * instructed. A different answer, or an order changed since, goes to a manager. From then on too,
+ * each instruction the panel shows (another tender, a split's parts, a fresh one after Not taken)
+ * is saved on the registration before it is shown, so a later check names exactly it.
+ */
+function RegisteredDirectPanel({ paused, started, ...props }: PayPanelProps & { paused: boolean; started: boolean }) {
+  const actions = useCommerce().useActions();
+  const orderId = props.view.order._id;
+  // Settled once per panel: the pause starting meanwhile doesn't take today's panel away.
+  const [dormant] = useState(!started);
+  const [state, setState] = useState<"opening" | Registered | { error: unknown }>("opening");
+  const [checked, setChecked] = useState<Checked>(null);
+  const latest = useRef(actions);
+  useEffect(() => { latest.current = actions; });
+  const [tries, setTries] = useState(0);
+  // One key per panel, kept for its retries.
+  const [panelKey] = useState(newPanelKey);
+  const [opening] = useState(() => openingInstruction(props.mode, props.view));
+  // The registration as sent (before its answer).
+  const sent = useRef<DirectPanelRegistration | null>(null);
+  // The instruction the panel shows now, and what its registration is known to hold (null: unknown).
+  const [shown, setShown] = useState(opening);
+  const [saved, setSaved] = useState<{ instruction?: DirectInstruction } | null>(null);
+  const [saveFailed, setSaveFailed] = useState<unknown>(null);
+  const [saveTries, setSaveTries] = useState(0);
+  const current = () => (typeof state === "object" && "registration" in state ? state.registration : sent.current);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const { claimTabKey } = await import("./pay-desk-tab");
+      const tabKey = await claimTabKey();
+      if (!live) return;
+      sent.current = { panelKey, tabKey };
+      const opened = await latest.current.openDirectPanel({ orderId, panelKey, tabKey, ...(opening ? { instruction: opening } : {}) });
+      if (!live) return;
+      const previous = opened?.previous;
+      const registration = previous ? { panelKey: previous.panelKey, tillId: previous.tillId, tabKey } : { panelKey, tabKey };
+      setState(previous?.check ? { registration, previous } : { registration });
+      // The server saved the opening instruction on the registration (a continued one too), or keeps the one to check.
+      setSaved({ instruction: previous?.check ? previous.instruction : opening });
+    })().catch((error) => {
+      if (!live) return;
+      // Today's panel stays; it settles as today (the server can't refuse it before the cutover).
+      if (dormant) setState({ registration: sent.current ?? { panelKey } });
+      else setState({ error });
+    });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per panel and retry
+  }, [orderId, panelKey, tries]);
+  const previous = typeof state === "object" && "registration" in state ? state.previous : undefined;
+  // Between the check and Taken nothing new is shown; recording shows only the instruction already saved.
+  const instructing = typeof state === "object" && "registration" in state && (!previous || checked === "notTaken");
+  // Saves what the panel shows (best effort before the cutover starts, debounced for a split's typing).
+  useEffect(() => {
+    const reg = current();
+    if (!instructing || !reg || (saved ? sameInstruction(saved.instruction, shown) : !shown)) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      setSaveFailed(null);
+      latest.current.instructDirectPanel({ orderId, ...reg, instruction: shown ?? null }).then(
+        () => { if (live) setSaved({ instruction: shown }); },
+        (error) => { if (live) setSaveFailed(error); },
+      );
+    }, started ? 0 : 300);
+    return () => { live = false; clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- current() follows state
+  }, [instructing, shown, saved, started, saveTries]);
+  // Back and Escape leave Check previous payment as they leave the panel.
+  const checkRoot = useRef<HTMLDivElement>(null);
+  const leaveCheck = () => backToTender(checkRoot.current, props.mode, props.onBack);
+  useEscapeBack(checkRoot, leaveCheck, true);
+  const spinner = <div className="grid flex-1 place-items-center"><Spinner /></div>;
+  const retry = () => { setState("opening"); setChecked(null); setTries(tries + 1); };
+  if (state === "opening" && !dormant) return spinner;
+  if (typeof state === "object" && "error" in state) return <Suspense fallback={<Spinner />}><PanelProblem error={state.error} orderId={orderId} onRetry={retry} onBack={props.onBack} /></Suspense>;
+  // Settle names this registration on this device and tab, so a panel open when checkout pauses can still finish.
+  const registration = () => {
+    const reg = current();
+    if (!reg) return undefined;
+    const tillId = reg.tillId ?? serverTillId();
+    return { ...reg, ...(tillId ? { tillId } : {}), deviceKey: deviceKey() };
+  };
+  async function answer(outcome: "taken" | "notTaken" | "manager") {
+    // During the pause Not taken leaves the panel to a manager.
+    if (outcome !== "notTaken" || paused) return setChecked(outcome === "notTaken" ? "manager" : outcome);
+    setChecked("answering");
+    try {
+      await latest.current.answerDirectPanel({ orderId, ...current()! });
+      // Not taken cleared the earlier instruction: the next one is saved before it is shown.
+      setSaved({});
+      setChecked("notTaken");
+    } catch (error) {
+      setState({ error });
+    }
+  }
+  if (previous && checked !== "taken" && checked !== "notTaken") {
+    return (
+      <div ref={checkRoot} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <Suspense fallback={spinner}>
+          <PanelPrevious previous={previous} paused={paused} manager={checked === "manager"} busy={checked === "answering"} onChecked={(outcome) => void answer(outcome)} onBack={leaveCheck} />
+        </Suspense>
+      </div>
+    );
+  }
+  const recording = checked === "taken" ? previous?.instruction : undefined;
+  const onInstruct = recording ? undefined : (instruction?: DirectInstruction) => {
+    setShown((last) => (sameInstruction(last, instruction) ? last : instruction));
+  };
+  const guard: InstructionGuard | undefined = started && !recording ? {
+    saved: (instruction) => saved !== null && sameInstruction(saved.instruction, instruction),
+    failed: saveFailed,
+    retry: () => setSaveTries((n) => n + 1),
+  } : undefined;
+  // The booking email choice goes with the registration, so a panel reopened after the cutover started keeps it.
+  const onNotifyGuest = (notifyGuest: boolean) => {
+    const reg = current();
+    if (reg) latest.current.instructDirectPanel({ orderId, ...reg, notifyGuest }).catch(() => undefined);
+  };
+  return <DirectPayPanel {...props} registration={registration} recording={recording} onInstruct={onInstruct} guard={guard} notifyGuest={previous?.notifyGuest} onNotifyGuest={onNotifyGuest} notice={recording ? <Suspense fallback={null}><RecordPrevious /></Suspense> : null} />;
+}
+
+/**
+ * Leaves the panel, putting focus back on the order's tender it was opened from; while checkout is
+ * paused the tenders are replaced, so on the control that opened it (Check previous payment).
+ */
+function backToTender(panel: HTMLElement | null, mode: PayMode | "none", onBack: () => void) {
+  const host = panel?.parentElement;
+  const label = mode === "none" ? null : mode === "split" ? "Split payment" : TENDER_LABELS[mode].short;
+  onBack();
+  if (!host) return;
+  setTimeout(() => {
+    const usable = (el: HTMLButtonElement) => !el.disabled && getComputedStyle(el).display !== "none";
+    const tender = label ? [...host.querySelectorAll("button")].find((el) => usable(el) && ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === label || (label === "Cash" && el.textContent?.trim().startsWith("Cash ฿")))) : undefined;
+    const opener = (scope: ParentNode) => [...scope.querySelectorAll<HTMLButtonElement>("[data-pay-return]")].find(usable);
+    (tender ?? opener(host) ?? opener(document))?.focus();
+  });
+}
+
+/**
+ * Escape leaves the panel first, not the phone order sheet around it: this runs before the
+ * sheet's own (document) listener, which skips a handled event. An open ⓘ tip closes first.
+ */
+function useEscapeBack(root: RefObject<HTMLElement | null>, back: () => void, enabled: boolean) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || !enabled) return;
+      if (!root.current?.contains(document.activeElement)) return;
+      if (document.querySelector('[data-info-tip][data-state$="open"]')) return;
+      event.preventDefault();
+      back();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+}
+
+type DirectPanelOptions = {
+  /** The rollout registration this panel settles under (RegisteredDirectPanel). */
+  registration?: () => (DirectPanelRegistration & { deviceKey: string }) | undefined;
+  /** Recording money an earlier panel's instruction already took: exactly this, no instruction shown. */
+  recording?: DirectInstruction;
+  /** The instruction the panel shows now (none: a split whose parts don't cover the bill), for its registration. */
+  onInstruct?: (instruction?: DirectInstruction) => void;
+  /** From the cutover's first pause on: an instruction shows only once saved. */
+  guard?: InstructionGuard;
+  /** The registration's booking email choice (a continued panel), and each change to it. */
+  notifyGuest?: boolean;
+  onNotifyGuest?: (notifyGuest: boolean) => void;
+  notice?: ReactNode;
+};
+
+/** The mode that records `instruction`: its one tender, or its parts. */
+const recordingMode = (instruction: DirectInstruction): PayMode | "none" =>
+  instruction.tenders.length === 0 ? "none" : instruction.tenders.length === 1 ? instruction.tenders[0].method : "split";
+
+/**
+ * The direct pay panel. Another tender switches modes; the active tender keeps its attempt.
+ * Each mode is its own attempt (PayAttempt, keyed by mode). Back and Escape return to the order.
+ */
+function DirectPayPanel({
+  mode: opened,
+  view,
+  onBack,
+  onPaid,
+  onSubmittingChange,
+  registration,
+  recording,
+  onInstruct,
+  guard,
+  notifyGuest,
+  onNotifyGuest,
+  notice,
+}: PayPanelProps & DirectPanelOptions) {
+  const [mode, setMode] = useState(recording ? recordingMode(recording) : opened);
   const root = useRef<HTMLDivElement>(null);
   // While a payment is in flight the panel can't be left (as Back was disabled).
   const [submitting, setSubmitting] = useState(false);
@@ -72,36 +314,27 @@ export function PayPanel({
   /** Leaves the panel, putting focus back on the order's tender it was opened from. */
   function back() {
     if (submitting) return;
-    const host = root.current?.parentElement;
-    const label = mode === "none" ? null : mode === "split" ? "Split payment" : TENDER_LABELS[mode].short;
-    onBack();
-    if (host && label) setTimeout(() => [...host.querySelectorAll("button")].find((el) => getComputedStyle(el).display !== "none" && ((el.getAttribute("aria-label") ?? el.textContent?.trim()) === label || (label === "Cash" && el.textContent?.trim().startsWith("Cash ฿"))))?.focus());
+    backToTender(root.current, mode, onBack);
   }
-
-  // Escape leaves the panel first, not the phone order sheet around it: this runs before the
-  // sheet's own (document) listener, which skips a handled event. An open ⓘ tip closes first.
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || submitting) return;
-      if (!root.current?.contains(document.activeElement)) return;
-      if (document.querySelector('[data-info-tip][data-state$="open"]')) return;
-      event.preventDefault();
-      back();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  });
+  useEscapeBack(root, back, !submitting);
 
   return (
     <div ref={root} className={cn("flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3 @container", mode === "split" && "gap-2 py-2")} data-testid="pay-panel">
+      {notice}
       <PayAttempt
         key={mode}
         mode={mode}
+        recording={recording}
         view={view}
         onSubmitting={setSubmitting}
         onPick={(next) => { if (next !== mode) setMode(next); }}
         onBack={back}
         onPaid={onPaid}
+        registration={registration}
+        onInstruct={onInstruct}
+        guard={guard}
+        initialNotifyGuest={notifyGuest}
+        onNotifyGuest={onNotifyGuest}
       />
     </div>
   );
@@ -118,7 +351,14 @@ function PayAttempt({
   onPick,
   onBack,
   onPaid,
-}: {
+  registration,
+  recording,
+  onInstruct,
+  guard,
+  initialNotifyGuest,
+  onNotifyGuest,
+}: Omit<DirectPanelOptions, "notice" | "notifyGuest"> & {
+  initialNotifyGuest?: boolean;
   mode: PayMode | "none";
   view: OrderView;
   onSubmitting: (submitting: boolean) => void;
@@ -128,11 +368,23 @@ function PayAttempt({
 }) {
   const actions = useCheckoutBackend().useActions();
   const reportRefusal = useOrderCouponRefusal(view.order._id);
-  const [due] = useState(view.totals.due);
+  // Recording an earlier instruction: exactly the order and amount it was shown for.
+  const [due] = useState(recording?.due ?? view.totals.due);
   const [attemptKey] = useState(newAttemptKey);
   // The order as it was when this panel opened; a change made since (even at the same total, or only
   // its customer) is refused, and so is a booking row whose source changed meanwhile.
-  const [revision] = useState(view.order.revision);
+  const [revision] = useState(recording?.revision ?? view.order.revision);
+  // Each instruction shown, for the panel's registration (a split's parts once they cover the bill).
+  const instruction = (tenders: Tender[]): DirectInstruction => ({ revision, due, tenders: tenders.map(({ method, amount }) => ({ method, amount })) });
+  const instruct = (tenders?: Tender[]) => onInstruct?.(tenders && instruction(tenders));
+  // An instruction not yet saved on the registration (from the cutover's first pause on) isn't shown or confirmed.
+  const unsaved = (tenders: Tender[]) => Boolean(guard && !guard.saved(instruction(tenders)));
+  const shownTenders: Tender[] | undefined = mode === "split" ? undefined : mode === "none" ? [] : [{ method: mode, amount: due }];
+  const saving = guard ? <Suspense fallback={<Spinner />}><InstructionSaving failed={guard.failed} onRetry={guard.retry} /></Suspense> : null;
+  useEffect(() => {
+    if (mode !== "split") instruct(mode === "none" ? [] : [{ method: mode, amount: due }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mode (this attempt)
+  }, []);
   const [customerId] = useState(view.order.customerId);
   const [customerRevision] = useState(
     view.customer && "revision" in view.customer
@@ -144,7 +396,7 @@ function PayAttempt({
   );
   const [timeOpen, setTimeOpen] = useState(false);
   const [timeEdited, setTimeEdited] = useState(false);
-  const [notifyGuest, setNotifyGuest] = useState(false);
+  const [notifyGuest, setNotifyGuest] = useState(initialNotifyGuest ?? false);
   const attempt = useRef<Parameters<CheckoutActions["settleOrder"]>[0] | null>(
     null,
   );
@@ -185,7 +437,7 @@ function PayAttempt({
   }, []);
 
   async function pay(tenders: Tender[]) {
-    if (lock.current || (!attempt.current && orderChanged)) return;
+    if (lock.current || (!attempt.current && (orderChanged || unsaved(tenders)))) return;
     if (!attempt.current) {
       const effectiveAt = paymentDateValue(effectiveInput);
       if (effectiveAt === null || effectiveAt > Date.now()) {
@@ -204,6 +456,7 @@ function PayAttempt({
         tenders,
         effectiveAt,
         notifyGuest,
+        ...registration?.(),
       };
       setAttempted(true);
     }
@@ -255,7 +508,7 @@ function PayAttempt({
 
   return (
     <>
-      {mode === "none" ? (
+      {mode === "none" || recording ? (
         <button
           ref={backButton}
           type="button"
@@ -287,24 +540,30 @@ function PayAttempt({
             <input
               type="checkbox"
               checked={notifyGuest}
-              onChange={(e) => setNotifyGuest(e.target.checked)}
+              onChange={(e) => { setNotifyGuest(e.target.checked); onNotifyGuest?.(e.target.checked); }}
             />
             Send booking payment confirmation email
           </label>
         ) : null}
-        {mode === "cash" ? (
+        {shownTenders && unsaved(shownTenders) && !attempted ? saving : mode === "cash" ? (
           <CashForm due={due} submitting={submitting} onPay={pay} />
+        ) : mode === "split" && recording ? (
+          <PayButton submitting={submitting} onClick={() => pay(recording.tenders)}>
+            {`Confirm ${tendersText(recording.tenders)}`}
+          </PayButton>
         ) : mode === "split" ? (
-          <SplitForm due={due} submitting={submitting} onPay={pay} />
+          <SplitForm due={due} submitting={submitting} onPay={pay} onTenders={instruct} unsaved={guard ? unsaved : undefined} saving={saving} />
         ) : mode === "none" ? (
           <PayButton submitting={submitting} onClick={() => pay([])}>
             Close order · nothing due
           </PayButton>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">
-              {TENDER_LABELS[mode].hint}
-            </p>
+            {recording ? null : (
+              <p className="text-sm text-muted-foreground">
+                {TENDER_LABELS[mode].hint}
+              </p>
+            )}
             <PayButton
               submitting={submitting}
               onClick={() => pay([{ method: mode, amount: due }])}
@@ -617,10 +876,18 @@ function SplitForm({
   due,
   submitting,
   onPay,
+  onTenders,
+  unsaved,
+  saving,
 }: {
   due: number;
   submitting: boolean;
   onPay: (tenders: Tender[]) => void;
+  /** The parts as they stand once they cover the bill (the panel's instruction), else none. */
+  onTenders?: (tenders?: Tender[]) => void;
+  /** Covering parts not yet saved on the registration can't be confirmed; `saving` says so. */
+  unsaved?: (tenders: Tender[]) => boolean;
+  saving?: ReactNode;
 }) {
   const validationId = useId();
   const [rows, setRows] = useState<SplitRow[]>([
@@ -636,6 +903,11 @@ function SplitForm({
   ];
   const remaining = roundMoney(due - tenders.reduce((total, tender) => total + tender.amount, 0));
   const ready = tenders.every((tender) => tender.amount > 0);
+  const parts = ready && remaining === 0 ? JSON.stringify(tenders) : "";
+  useEffect(() => {
+    onTenders?.(parts ? JSON.parse(parts) as Tender[] : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- each covering set of parts once
+  }, [parts]);
   const emptyPayment = typed.findIndex((row) => !(parseMoneyInput(row.amount) > 0));
   const validation = emptyPayment >= 0
     ? `Enter an amount for payment ${emptyPayment + 1}.`
@@ -692,9 +964,10 @@ function SplitForm({
       ) : null}
       </div>
       <p id={validationId} aria-live="polite" className="text-xs text-amber-800 empty:hidden dark:text-amber-300">{validation}</p>
+      {parts && unsaved?.(tenders) ? saving : null}
       <PayButton
         submitting={submitting}
-        disabled={!ready}
+        disabled={!ready || Boolean(parts && unsaved?.(tenders))}
         onClick={() => onPay(tenders)}
       >
         {ready ? `Confirm ${tendersText(tenders)}` : "Confirm split"}

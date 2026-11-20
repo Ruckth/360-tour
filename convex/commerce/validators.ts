@@ -151,7 +151,10 @@ export const commerceSettingsFields = {
     pausedAt: v.number(),
     activatedAt: v.optional(v.number()),
     actor: v.string(),
+    revision: v.optional(v.number()),
   })),
+  /** When the owner first paused checkout for the payments cutover. Kept after an unpause. */
+  cutoverStartedAt: v.optional(v.number()),
 };
 
 export const commerceSettingsValidator = v.object(commerceSettingsFields);
