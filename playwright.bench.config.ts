@@ -1,12 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/**
- * Local benchmarks (not part of `pnpm test:e2e`). Point BENCH_BASE_URL at an already running
- * demo production server, e.g. `E2E_PORT=3300 node scripts/e2e-server.mjs` for this checkout or
- * `next start` in a clean baseline checkout built with placeholder settings. Nothing here starts,
- * syncs or deploys Convex. Results are written to BENCH_OUT (JSON).
- */
-// Inside scripts/local-integration.mjs the harness's own server (E2E_BASE_URL) is the default.
+// The local integration harness supplies its seeded production build via E2E_BASE_URL.
+// BENCH_BASE_URL selects an already-running benchmark target.
 const baseURL = process.env.BENCH_BASE_URL ?? process.env.E2E_BASE_URL;
 
 // Fix Chromium onto software WebGL (ANGLE SwiftShader) so macOS/Linux runs do not silently
