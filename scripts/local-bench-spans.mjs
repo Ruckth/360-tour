@@ -40,13 +40,16 @@ function publicConvexSpan(entry) {
   };
 }
 
-/** @param {string} log */
-function publicSsrSpans(log) {
+/** @param {string} log @param {string} prefix */
+function timingLines(log, prefix) {
   const completeLines = log.split("\n");
   completeLines.pop();
-  return completeLines.flatMap((line) => {
-    if (!line.startsWith("BENCH_VILLA_SSR ")) return [];
-    const span = JSON.parse(line.slice("BENCH_VILLA_SSR ".length));
+  return completeLines.filter((line) => line.startsWith(prefix)).map((line) => JSON.parse(line.slice(prefix.length)));
+}
+
+/** @param {string} log */
+function publicSsrSpans(log) {
+  return timingLines(log, "BENCH_VILLA_SSR ").flatMap((span) => {
     if (!["hit", "miss", "stale", "bypass"].includes(span.cache) ||
         nonnegative(span.durationMs) === null) return [];
     return [{
@@ -56,6 +59,17 @@ function publicSsrSpans(log) {
       durationMs: span.durationMs,
       transportMs: nonnegative(span.transportMs),
     }];
+  });
+}
+
+/** @param {string} log */
+function publicHttpSpans(log) {
+  return timingLines(log, "BENCH_ROOM_HTTP ").flatMap((span) => {
+    const headersMs = nonnegative(span.headersMs);
+    const finishMs = nonnegative(span.finishMs);
+    if (!Number.isInteger(span.status) || span.status < 200 || span.status >= 600 ||
+        headersMs === null || finishMs === null || finishMs < headersMs) return [];
+    return [{ operation: "room-document", status: span.status, headersMs, finishMs }];
   });
 }
 
@@ -76,7 +90,7 @@ async function checkpoint({ backendUrl, adminKey, nextLog }) {
     const span = publicConvexSpan(entry);
     if (span) convex.set(`${entry.requestId}:${entry.executionId}`, span);
   }
-  return { convex, ssr: publicSsrSpans(log) };
+  return { convex, ssr: publicSsrSpans(log), http: publicHttpSpans(log) };
 }
 
 /** Keep raw Convex logs and credentials inside the harness. The child gets an allowlisted snapshot per run.
@@ -84,7 +98,7 @@ async function checkpoint({ backendUrl, adminKey, nextLog }) {
  */
 export async function startBenchSpans(options) {
   /** @typedef {Awaited<ReturnType<typeof checkpoint>>} Checkpoint */
-  /** @type {{runId: string, ssr: Checkpoint["ssr"], convex: NonNullable<ReturnType<typeof publicConvexSpan>>[]}[]} */
+  /** @type {{runId: string, ssr: Checkpoint["ssr"], http: Checkpoint["http"], convex: NonNullable<ReturnType<typeof publicConvexSpan>>[]}[]} */
   const runs = [];
   const artifact = { version: 1, runs };
   await writeFile(options.out, JSON.stringify(artifact) + "\n", { flag: "wx", mode: 0o600 });
@@ -141,6 +155,7 @@ export async function startBenchSpans(options) {
     const run = {
       runId,
       ssr: after.ssr.slice(before.ssr.length),
+      http: after.http.slice(before.http.length),
       convex: Array.from(after.convex)
         .filter(([id]) => !before.convex.has(id))
         .map(([, span]) => span),

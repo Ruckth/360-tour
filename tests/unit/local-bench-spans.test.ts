@@ -38,7 +38,8 @@ it("exports only allowlisted timings from the current run and records windows wi
   try {
     const address = backend.address();
     if (!address || typeof address === "string") throw new Error("Expected a TCP address");
-    const priorSsr = 'BENCH_VILLA_SSR {"cache":"hit","durationMs":1}\n';
+    const priorSsr = 'BENCH_VILLA_SSR {"cache":"hit","durationMs":1}\n' +
+      'BENCH_ROOM_HTTP {"status":200,"headersMs":1,"finishMs":2}\n';
     await writeFile(nextLog, priorSsr);
     collector = await startBenchSpans({
       backendUrl: `http://127.0.0.1:${address.port}`,
@@ -63,13 +64,16 @@ it("exports only allowlisted timings from the current run and records windows wi
       { ...cold, kind: "Progress", requestId: "progress" },
     );
     await writeFile(nextLog, priorSsr +
-      'unrelated private-output\nBENCH_VILLA_SSR {"cache":"miss","durationMs":9,"transportMs":8,"slug":"private-slug"}\n');
+      'unrelated private-output\nBENCH_VILLA_SSR {"cache":"miss","durationMs":9,"transportMs":8,"slug":"private-slug"}\n' +
+      'BENCH_ROOM_HTTP {"status":200,"headersMs":10,"finishMs":15,"url":"private-url"}\n' +
+      'BENCH_ROOM_HTTP {"status":200,"headersMs":15,"finishMs":10}\n');
     const finish = await mark("finish", "direct-1");
     expect(finish.status).toBe(200);
     const run = await finish.json();
     expect(run).toEqual({
       runId: "direct-1",
       ssr: [{ operation: "getVilla", cache: "miss", recovery: null, durationMs: 9, transportMs: 8 }],
+      http: [{ operation: "room-document", status: 200, headersMs: 10, finishMs: 15 }],
       convex: [
         { function: cold.identifier, cached: false, outcome: "success", executionMs: 7,
           handlerMs: 5, databaseReadDocuments: 4, databaseReadBytes: 500, databaseIoReadBytes: 600, returnBytes: 200 },
@@ -79,7 +83,7 @@ it("exports only allowlisted timings from the current run and records windows wi
     });
     expect((await mark("start", "direct-2")).status).toBe(204);
     const idleRun = await (await mark("finish", "direct-2")).json();
-    expect(idleRun).toEqual({ runId: "direct-2", ssr: [], convex: [] });
+    expect(idleRun).toEqual({ runId: "direct-2", ssr: [], http: [], convex: [] });
     const artifact = await readFile(out, "utf8");
     expect(JSON.parse(artifact)).toEqual({ version: 1, runs: [run, idleRun] });
     expect(artifact).not.toMatch(/private|prior-run|progress|unrelated/);

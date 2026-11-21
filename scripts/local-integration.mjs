@@ -316,13 +316,14 @@ try {
   );
   const verify = process.argv.includes("--verify");
   await run("pnpm", [verify ? "verify" : "build"]);
-  await launch(
-    "pnpm",
-    ["exec", "next", "start", "-p", String(app)],
-    root,
-    { ...env, BENCH_LOCAL_SSR: supplied.BENCH_SPANS_OUT ? "1" : "" },
-    "next.log",
-  );
+  if (supplied.BENCH_SPANS_OUT) {
+    await launch(process.execPath, [
+      "--import", "./scripts/local-bench-next-timing.mjs",
+      "./node_modules/next/dist/bin/next", "start", "-p", String(app),
+    ], root, { ...env, BENCH_LOCAL_SSR: "1", BENCH_NEXT_PORT: String(app) }, "next.log");
+  } else {
+    await launch("pnpm", ["exec", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
+  }
   await until(async () => {
     try {
       return (await fetch(baseURL + "/admin/chats")).ok;
