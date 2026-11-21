@@ -1,4 +1,5 @@
 import { api } from "convex/_generated/api";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ConvexHttpClient } from "convex/browser";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
@@ -35,8 +36,39 @@ const cachedList = unstable_cache(
   ["public-villas"],
   cacheOptions,
 );
+
+// Enabled only for the isolated integration server. Track the cache's actual
+// callback, keeping run IDs and timing state out of the cache key.
+type VillaReadTiming = {
+  cache: "hit" | "miss" | "stale" | "bypass";
+  recovery?: "backoff" | "read-error";
+  transportStarted: boolean;
+  transportMs?: number;
+};
+const villaReadTiming =
+  process.env.BENCH_LOCAL_SSR === "1" &&
+  /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.NEXT_PUBLIC_CONVEX_URL ?? "")
+    ? new AsyncLocalStorage<VillaReadTiming>()
+    : undefined;
+
+async function timeVillaTransport<T>(timing: VillaReadTiming, read: () => Promise<T>) {
+  timing.transportStarted = true;
+  const start = performance.now();
+  try {
+    return await read();
+  } finally {
+    timing.transportMs = performance.now() - start;
+  }
+}
+
 const cachedDetail = unstable_cache(
-  (url: string, slug: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.getBySlug, { slug }),
+  (url: string, slug: string) => {
+    const client = new ConvexHttpClient(url);
+    const timing = villaReadTiming?.getStore();
+    return timing
+      ? timeVillaTransport(timing, () => client.query(api.catalog.publicProperties.getBySlug, { slug }))
+      : client.query(api.catalog.publicProperties.getBySlug, { slug });
+  },
   ["public-villa"],
   cacheOptions,
 );
@@ -115,7 +147,11 @@ async function readConvex<T>(
   fallback = lastGood,
 ): Promise<T | undefined> {
   const url = convexUrl();
-  if (Date.now() < retryAfter) return fallback.get(key) as T | undefined;
+  const timing = fallback === lastGoodDetails ? villaReadTiming?.getStore() : undefined;
+  if (Date.now() < retryAfter) {
+    if (timing) timing.recovery = "backoff";
+    return fallback.get(key) as T | undefined;
+  }
   try {
     const value = await withReadTimeout(read(url));
     fallback.delete(key);
@@ -129,9 +165,35 @@ async function readConvex<T>(
     }
     return value;
   } catch (error) {
+    if (timing) timing.recovery = "read-error";
     retryAfter = Date.now() + FAILURE_BACKOFF_MS;
     console.warn(`[villas] ${key} failed; serving the last good result for ${FAILURE_BACKOFF_MS / 1000}s`, error);
     return fallback.get(key) as T | undefined;
+  }
+}
+
+function readDetail(slug: string) {
+  return readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug), lastGoodDetails);
+}
+
+async function readTimedDetail(slug: string, storage: AsyncLocalStorage<VillaReadTiming>) {
+  const start = performance.now();
+  const timing: VillaReadTiming = { cache: "bypass", transportStarted: false };
+  try {
+    const detail = await storage.run(timing, () => readDetail(slug));
+    if (timing.transportStarted) {
+      timing.cache = timing.transportMs !== undefined || timing.recovery ? "miss" : "stale";
+    } else if (!timing.recovery) {
+      timing.cache = "hit";
+    }
+    return detail;
+  } finally {
+    console.log("BENCH_VILLA_SSR", JSON.stringify({
+      cache: timing.cache,
+      recovery: timing.recovery,
+      durationMs: performance.now() - start,
+      transportMs: timing.transportMs,
+    }));
   }
 }
 
@@ -177,7 +239,7 @@ export const getVilla = cache(async (
   slug: string,
   locale: string,
 ): Promise<{ villa: PublicVilla; reviews: Review[] } | null> => {
-  const detail = await readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug), lastGoodDetails);
+  const detail = await (villaReadTiming ? readTimedDetail(slug, villaReadTiming) : readDetail(slug));
   if (!detail) {
     const catalog = lastGood.get("list") as DbVillaList | undefined;
     const listed = catalog?.villas.find((row) => row.slug === slug);
