@@ -103,3 +103,25 @@ it("shows stock disposition and stopped-session count in the manager return deci
   ]);
   await act(async () => root.unmount());
 });
+
+it("shows the quantity of a single product that stays with the guest (round 2 Minor 3)", async () => {
+  seen.previewResult = {
+    amount: 100000,
+    external: { method: "card", amount: 100000 },
+    voucherCredits: [],
+    rows: [{
+      lineId: "oil", label: "Massage oil", amount: 100000,
+      parts: [{ kind: "product", contentKey: "oil", label: "Massage oil", amount: 100000, units: 2 }],
+    }],
+  };
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  await act(async () => root.render(createElement(ApprovalsList, {
+    rows: rows.slice(0, 1) as never, selectedId: "request0" as never, count: 1, more: false, searching: false, loadingMore: false, onMore: () => {}, onSelect: () => {}, onDecided: () => {},
+  })));
+  for (let n = 0; n < 200 && !document.querySelector("[data-return-approval-quote]"); n++) {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  }
+  const parts = [...document.querySelectorAll("[data-return-approval-parts] > li")].map((li) => li.firstElementChild?.textContent);
+  expect(parts).toEqual(["Massage oil · 2 × Stays with guest"]);
+  await act(async () => root.unmount());
+});

@@ -43,6 +43,11 @@ export const directPanelFields = {
   checking: v.optional(v.boolean()),
   /** The booking payment confirmation email choice the panel last showed, kept for a reopened panel. */
   notifyGuest: v.optional(v.boolean()),
+  /**
+   * Bumped by every change to the instruction, the checked state or the owner, so a manager's
+   * review of this registration is refused once the till changes it (absent: 0).
+   */
+  revision: v.optional(v.number()),
 };
 
 type ListedPanel = NonNullable<NonNullable<Doc<'tills'>['paymentRollout']>['panels']>[number];
@@ -71,6 +76,9 @@ export async function directPanelTill(ctx: QueryCtx, { deviceKey, tillId }: { de
 export async function panelOwner(actor: string, till: Doc<'tills'> | undefined, tabKey: string | undefined): Promise<PanelOwner> {
   return { actor, tillId: till?._id, ...(validPaymentDeviceKey(tabKey) ? { tab: await sha256(tabKey) } : {}) };
 }
+
+/** The registration's review revision: a pre-ledger or older row is 0. */
+export const panelRevision = (panel: DirectPanel) => ('revision' in panel ? panel.revision : undefined) ?? 0;
 
 export function ownsPanel(panel: DirectPanel, owner: PanelOwner) {
   return panel.actor === owner.actor && panel.tillId === owner.tillId &&

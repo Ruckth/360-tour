@@ -185,3 +185,55 @@ it("keeps all four loaded History pages, in order, when a live insert shifts pag
   expect(page.results.map((r) => r.entryId)).toEqual(ids(32, 3));
   expect(new Set(page.results.map((r) => r.entryId)).size).toBe(page.results.length);
 });
+
+it("rebuilds all 30 loaded History pages, in order, when a live insert moves page 0's cursor into the cached suffix (round 2 Major 3)", async () => {
+  const PAGES = 30;
+  const entry = (n: number) => ({
+    entryId: `e${n}`, at: n, fact: { key: "published" as const }, balance: null,
+    staff: { actorName: "Ploy", reason: "other", reasonText: "Update" },
+  });
+  const ids = (from: number, to: number) => Array.from({ length: from - to + 1 }, (_, i) => `e${from - i}`);
+  const total = PAGES * 6 + 4;
+  let stream = Array.from({ length: total }, (_, i) => entry(total - i));
+  let prefix = "cut:";
+  const requested: (string | null)[][] = [];
+  // Every cursor resolves at once, as a cached subscription does.
+  useQueries.mockImplementation((requests: Record<string, { args: { paginationOpts: { cursor: string | null } } }>) => {
+    requested.push(Object.values(requests).map((req) => req.args.paginationOpts.cursor));
+    const out: Record<string, unknown> = {};
+    for (const [key, req] of Object.entries(requests)) {
+      const cursor = req.args.paginationOpts.cursor;
+      const start = cursor === null ? 0 : Number(cursor.split(":").pop());
+      const slice = stream.slice(start, start + 6);
+      const next = start + slice.length;
+      out[key] = { page: slice, isDone: next >= stream.length, continueCursor: next >= stream.length ? "" : `${prefix}${next}` };
+    }
+    return out;
+  });
+  useQuery.mockReturnValue(null);
+  const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  await act(async () => root.render(createElement(Probe)));
+  for (let i = 0; i < 50 && page.status === "LoadingFirstPage"; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  for (let loaded = 1; loaded < PAGES; loaded++) await act(async () => page.loadMore(20));
+  expect(page.results.map((r) => r.entryId)).toEqual(ids(total, total - PAGES * 6 + 1));
+  expect(page.status).toBe("CanLoadMore");
+
+  // Two live inserts land on page 0: every boundary after it moves, onto cursors already resolved.
+  stream = [entry(total + 2), entry(total + 1), ...stream];
+  prefix = "cut:shift:";
+  requested.length = 0;
+  await act(async () => root.render(createElement(Probe)));
+  for (let i = 0; i < 50 && page.status !== "CanLoadMore"; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+  const rebuilt = page.results.map((r) => r.entryId);
+  expect(rebuilt).toEqual(ids(total + 2, total + 2 - PAGES * 6 + 1));
+  expect(new Set(rebuilt).size).toBe(PAGES * 6);
+  expect(page.status).toBe("CanLoadMore");
+  expect(requested.at(-1)).toEqual([null, ...Array.from({ length: PAGES - 1 }, (_, i) => `cut:shift:${(i + 1) * 6}`)]);
+  // Load more continues from the rebuilt chain to the end, nothing missing or repeated.
+  await act(async () => page.loadMore(20));
+  expect(page.results.map((r) => r.entryId)).toEqual(ids(total + 2, 1));
+  expect(page.status).toBe("Exhausted");
+  expect(errors.mock.calls.flat().join(" ")).not.toMatch(/Too many re-renders|Maximum update depth/);
+  errors.mockRestore();
+});

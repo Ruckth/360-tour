@@ -105,14 +105,17 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
             className={`${quoteBox} grid content-start gap-2 bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
             <ul className="grid gap-1">
               {preview.rows.map((row) => {
-                const showParts = row.parts.length > 1 || row.parts.some((part) => part.kind === "restore" || part.disposition || (part.kind === "session" && part.units));
+                const showParts = row.parts.length > 1 || row.parts.some((part) => part.kind === "restore" || part.kind === "product" || (part.kind === "session" && part.units));
                 return (
                 <li key={row.lineId} className="grid gap-0.5">
                   <span className="flex justify-between gap-3"><span className="min-w-0 [overflow-wrap:anywhere]">{row.label}</span><span className="font-sans tabular-nums">{money(row.amount)}</span></span>
                   {showParts ? (
                     <ul className="grid gap-0.5 pl-3 text-xs text-muted-foreground" data-return-approval-parts="">
                       {row.parts.map((part, index) => {
-                        const disposition = part.disposition ? t(part.disposition === "sellable" ? "returns.sellable" : "returns.damaged") : null;
+                        // A product with no disposition stays with the guest; its quantity still shows.
+                        const disposition = part.disposition
+                          ? t(part.disposition === "sellable" ? "returns.sellable" : "returns.damaged")
+                          : part.kind === "product" ? t("returns.staysWithGuest") : null;
                         const detail = disposition
                           ? part.units ? `${part.units} × ${disposition}` : disposition
                           : part.kind === "session" && part.units

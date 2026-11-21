@@ -77,6 +77,7 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
   const sameStream = state.key === streamKey;
   const chain = sameStream ? state : INITIAL_HISTORY_CHAIN;
   const slots = chain.slots;
+  // A new target or audience starts its own chain: at most one render-phase update per prop change.
   if (!sameStream) {
     setState({ key: streamKey, ...INITIAL_HISTORY_CHAIN });
   }
@@ -97,11 +98,19 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
   const raw = useQueries(requests as Parameters<typeof useQueries>[0]) as Record<string, PaginationResult<StaffHistoryRow> | Error | undefined>;
 
   // Re-align continuation cursors whenever an earlier page's boundary moves under live inserts and
-  // rebuild the chain to the loaded depth, or reset on stale cursor.
+  // rebuild the chain to the loaded depth, or reset on stale cursor. Each step lands after commit,
+  // never during render: a rebuild through many cached pages advances one slot per commit instead
+  // of nesting render-phase updates past React's limit. A step computed from a chain that has since
+  // changed (Load more, another stream) is dropped and recomputed from the new one.
   const adjusted = active && sameStream ? nextHistoryChain(chain, raw) : null;
-  if (adjusted) {
-    setState({ key: streamKey, ...adjusted });
-  }
+  useEffect(() => {
+    if (!adjusted) return;
+    let live = true;
+    queueMicrotask(() => {
+      if (live) setState((prev) => (prev === chain ? { key: streamKey, ...adjusted } : prev));
+    });
+    return () => { live = false; };
+  }, [adjusted, chain, streamKey]);
 
   const lastSlot = raw[String(slots.length - 1)];
   const loadMore = useCallback(() => {
