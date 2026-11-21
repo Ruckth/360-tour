@@ -659,7 +659,7 @@ export function renderMarkdown(r) {
     ``,
     `## Server timing: native request vs data layer`,
     ``,
-    `Native: browser Navigation Timing from document request start to response headers (\`serverHeaderMs\`, whole Next.js response). ` +
+    `The document's Server-Timing header reports elapsed time on the server from receipt of the request to response headers (\`serverHeaderMs\`). ` +
       `Data layer: the SSR villa read (getVilla) inside that response; its Convex round trip splits into connection/transport ` +
       `(round trip − server completion) and server completion, whose uncached handler time covers query and database work.`,
     ``,
