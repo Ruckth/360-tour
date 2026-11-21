@@ -7,8 +7,8 @@ import {
   DIRECT_PANEL_STALE_MS, assertInstruction, deleteDirectPanel, directInstructionArgs, directPanelPage, directPanelSettled,
   directPanelTill, ensurePaymentTill, findDevicePaymentTill, findDirectPanel, findPaymentTill, isOpenOrder, matchesInstruction,
   openPaymentAttempts, orderDirectPanels, ownsPanel, panelOwner, patchDirectPanel, patchPaymentTill, paymentTillLabel,
-  paymentTillsAtRevision, readDirectPanels, readPaymentOrder, receiptRecordsPanel, receiptUsed, registerDirectPanel, linkReceipt,
-  validPaymentDeviceKey, type DirectPanel, type DirectInstruction as DirectPanelInstruction,
+  paymentTillsAtRevision, readDirectPanels, readPaymentOrder, receiptRecordsPanel, receiptUsed, registerDirectPanel, retirePaymentTill,
+  linkReceipt, tillHasDirectPanels, validPaymentDeviceKey, type DirectPanel, type DirectInstruction as DirectPanelInstruction,
 } from '../pos/model';
 import { sha256 } from '../shared/displayTokens';
 import { appendRecordHistory } from '../settings/model';
@@ -296,7 +296,9 @@ export const closeDirectPanel = staffMutation({
 const panelRow = v.object({
   tillId: v.id('tills'), tillKey: v.string(), panelKey: v.string(), orderId: v.id('orders'),
   orderNumber: v.union(v.number(), v.null()), orderStatus: v.union(v.literal('draft'), v.literal('paid'), v.literal('void'), v.literal('discarded'), v.null()),
-  actor: v.string(), openedAt: v.number(), settled: v.boolean(), stale: v.boolean(),
+  receiptNumber: v.union(v.number(), v.null()), receiptUsed: v.boolean(),
+  actor: v.string(), actorEmail: v.optional(v.string()), openedAt: v.number(),
+  instruction: v.optional(instruction), settled: v.boolean(), stale: v.boolean(),
 });
 
 /** First page of open admissions. Reconciliation removes rows and makes the next ones visible. */
@@ -321,26 +323,41 @@ export const directPanels = staffQuery({
 });
 
 function projectPanel(
-  { panelKey, orderId, actor, openedAt }: { panelKey: string; orderId: Id<'orders'>; actor: string; openedAt: number },
+  panel: { panelKey: string; orderId: Id<'orders'>; actor: string; actorEmail?: string; openedAt: number; instruction?: DirectPanelInstruction },
   order: Awaited<ReturnType<typeof readPaymentOrder>>, tillId: Id<'tills'>, tillKey: string, now: number,
 ) {
   return {
-    tillId, tillKey, panelKey, orderId,
-    orderNumber: order?.orderNumber ?? null, orderStatus: order?.status ?? null, actor,
-    openedAt, settled: directPanelSettled(order), stale: now - openedAt > DIRECT_PANEL_STALE_MS,
+    tillId, tillKey, panelKey: panel.panelKey, orderId: panel.orderId,
+    orderNumber: order?.orderNumber ?? null, orderStatus: order?.status ?? null,
+    receiptNumber: order?.receiptNumber ?? null, receiptUsed: Boolean(order && receiptUsed(order)),
+    actor: panel.actor, ...(panel.actorEmail ? { actorEmail: panel.actorEmail } : {}),
+    openedAt: panel.openedAt, ...(panel.instruction ? { instruction: panel.instruction } : {}),
+    settled: directPanelSettled(order), stale: now - panel.openedAt > DIRECT_PANEL_STALE_MS,
   };
 }
 
 /**
  * A manager resolves an open registration after checking the terminal and drawer. Recorded needs
  * the receipt that records exactly this registration's instruction, issued by its cashier; a
- * receipt from another panel never resolves it.
+ * receipt from another panel never resolves it. Collected without receipt records an audited note
+ * for externally collected money that no receipt accounts for (e.g. a duplicate collection).
  */
 export const reconcileDirectPanel = staffMutation({
   capability: 'approve',
-  args: { tillId: v.id('tills'), panelKey: v.string(), outcome: v.union(v.literal('recorded'), v.literal('nothing_taken')) },
+  args: {
+    tillId: v.id('tills'), panelKey: v.string(),
+    outcome: v.union(v.literal('recorded'), v.literal('nothing_taken'), v.literal('collected_unrecorded')),
+    note: v.optional(v.string()),
+  },
   returns: v.null(),
-  handler: async (ctx, { tillId, panelKey, outcome }) => {
+  handler: async (ctx, { tillId, panelKey, outcome, note }) => {
+    const cleanNote = note?.trim();
+    if (outcome === 'collected_unrecorded' && (!cleanNote || cleanNote.length > 500)) {
+      throw new ConvexError({
+        code: 'RECONCILE_NOTE_REQUIRED',
+        message: 'Describe what the terminal or drawer showed and how it was resolved (1–500 characters).',
+      });
+    }
     const till = await findPaymentTill(ctx, tillId);
     const panel = till && await findDirectPanel(ctx, till, panelKey);
     if (!panel) return null;
@@ -365,9 +382,49 @@ export const reconcileDirectPanel = staffMutation({
       entityType: 'till', entityId: till._id, actor: ctx.staff.email, kind: 'direct_panel_reconciled',
       after: {
         panelKey, orderId: panel.orderId, panelActor: panel.actor, openedAt: panel.openedAt, outcome,
+        ...(cleanNote ? { note: cleanNote } : {}),
         instruction: ('instruction' in panel ? panel.instruction : undefined) ?? null,
         ...(order ? { receiptNumber: order.receiptNumber, settleKey: order.settleKey } : {}),
       },
+    });
+    return null;
+  },
+});
+
+/**
+ * Retires a replaced payment till once all of its direct panels and payment attempts are resolved,
+ * so it no longer blocks sale switches after the payments cutover.
+ */
+export const retireTill = staffMutation({
+  capability: 'approve',
+  args: { tillId: v.id('tills'), reason: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { tillId, reason }) => {
+    const clean = reason.trim();
+    if (!clean || clean.length > 500) {
+      throw new ConvexError({ code: 'INVALID_ADJUSTMENT_REASON', message: 'Enter a reason (1–500 characters).' });
+    }
+    const settings = await readCommerceSettings(ctx);
+    if (settings.paymentsMode !== 'attempts') {
+      throw new ConvexError({ code: 'PAYMENT_ATTEMPTS_DISABLED', message: 'Switch to new payments before retiring a till.' });
+    }
+    const till = await findPaymentTill(ctx, tillId);
+    if (!till || till.key === 'default') {
+      throw new ConvexError({ code: 'TILL_NOT_RETIREABLE', message: 'This till cannot be retired.' });
+    }
+    if (till.key === 'retired') return null;
+    const [hasPanels, { attempts, moreAttempts }] = await Promise.all([
+      tillHasDirectPanels(ctx, till), openPaymentAttempts(ctx),
+    ]);
+    if (hasPanels || moreAttempts || attempts.some(attempt => attempt.tillId === till._id)) {
+      throw new ConvexError({ code: 'PAYMENTS_STILL_OPEN', message: 'Finish or reconcile this till’s open payments before retiring it.' });
+    }
+    const at = Date.now();
+    await retirePaymentTill(ctx, till, { at, actor: ctx.staff.email, reason: clean });
+    reserveWrites(ctx, 1);
+    await appendRecordHistory(ctx, {
+      entityType: 'till', entityId: till._id, actor: ctx.staff.email, kind: 'till_retired',
+      after: { tillKey: paymentTillLabel(till), reason: clean, retiredAt: at },
     });
     return null;
   },
@@ -382,7 +439,7 @@ export const acknowledge = staffMutation({
     const revision = cutoverRevision(settings);
     if (revision === null || loadedMode !== 'attempts' || loadedRevision !== revision || !validPaymentDeviceKey(deviceKey)) refuseReload();
     const till = await findPaymentTill(ctx, await ensurePaymentTill(ctx, deviceKey));
-    if (!till) refuseReload();
+    if (!till || till.key === 'retired') refuseReload();
     const existing = till.paymentRollout?.acknowledged;
     if (existing?.mode === 'attempts' && existing.revision === revision) {
       return { tillId: till._id, revision, acknowledgedAt: existing.at };

@@ -228,7 +228,15 @@
       "previousPanel": "Ouvert à {time} · non enregistré",
       "previousPanelHint": "Vérifiez le terminal, le QR ou le tiroir-caisse. N'encaissez pas à nouveau avant d'avoir vérifié.",
       "recordPrevious": "Enregistrez le paiement déjà encaissé. N'encaissez pas à nouveau.",
-      "askManagerReconcile": "Demandez à un responsable de rapprocher ce panneau de paiement."
+      "askManagerReconcile": "Demandez à un responsable de rapprocher ce panneau de paiement.",
+      "differentOrUnsure": "Différent ou incertain",
+      "orderChangedSinceShown": "La commande a changé depuis l'affichage de ce paiement.",
+      "instructionNotSaved": "L'instruction demandée par ce panneau n'a pas été enregistrée.",
+      "savingPayment": "Enregistrement de ce paiement…",
+      "paymentNotSavedYet": "Ce paiement n'a pas été enregistré et n'est donc pas encore affiché.",
+      "tryAgain": "Réessayer",
+      "panelDidNotOpen": "Le panneau de paiement ne s'est pas ouvert. Vérifiez la connexion et réessayez.",
+      "receivedNow": "Reçu maintenant"
     },
     "returns": {
       "title": "Retourner des articles",
@@ -338,7 +346,9 @@
       "returnTotal": "Total du retour",
       "whoGivesBack": "{name} rend l’argent à sa caisse.",
       "givenAt": "Heure du remboursement",
-      "approveRestore": "Approuver · rétablir la séance"
+      "approveRestore": "Approuver · rétablir la séance",
+      "sessionsStopped": "{count, plural, one {# séance arrêtée} other {# séances arrêtées}}",
+      "completedNotice": "Retour terminé · remboursement enregistré."
     },
     "roomBill": {
       "postToRoomPrice": "Imputer à la chambre {room} · {price}",
@@ -768,7 +778,26 @@
       "mainTill": "Caisse principale",
       "paused": "Caisse suspendue",
       "resumed": "Caisse reprise",
-      "switched": "Les nouveaux paiements sont actifs"
+      "switched": "Les nouveaux paiements sont actifs",
+      "openPanelsTitle": "Panneaux de paiement ouverts à rapprocher",
+      "openPanelsHint": "Vérifiez le terminal, le QR et le tiroir avant de clôturer chaque panneau.",
+      "panelCashier": "{till} · {staff} · ouvert {time}",
+      "panelStale": "Ouvert depuis plus de 12 heures",
+      "panelNoInstruction": "Instruction non enregistrée",
+      "panelReceipt": "Reçu #{order}",
+      "panelReceiptUsed": "Ce reçu correspond déjà à un autre panneau",
+      "reconcileRecorded": "Enregistré",
+      "reconcileNothingTaken": "Rien encaissé",
+      "reconcileUnrecorded": "Encaissé · sans reçu",
+      "reconcileUnrecordedTitle": "Consigner un encaissement sans reçu ?",
+      "reconcileUnrecordedHint": "Utilisez cette option lorsque le terminal ou le tiroir a encaissé une somme qu'aucun reçu ne couvre (par exemple un double encaissement). Indiquez ce qui s'est passé et comment cela a été résolu.",
+      "reconcileUnrecordedPlaceholder": "Ce qu'indiquait le terminal ou le tiroir et la résolution",
+      "reconcileDone": "Panneau de paiement rapproché",
+      "retireTill": "Retirer la caisse",
+      "retireTillTitle": "Retirer {till} ?",
+      "retireTillHint": "Retirez un navigateur ou appareil remplacé une fois ses panneaux ouverts rapprochés afin de débloquer les ventes.",
+      "retireTillReason": "Navigateur ou appareil remplacé",
+      "tillRetired": "Caisse retirée"
     }
   }
 }

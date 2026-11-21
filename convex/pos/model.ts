@@ -5,7 +5,7 @@ export { orderPaymentRecord } from './private/orderLifecycle';
 export { assertExistingMoneyFlow } from './private/returnGuards';
 export {
   ensurePaymentTill, findDevicePaymentTill, findPaymentTill, openPaymentAttempts, patchPaymentTill,
-  paymentTillLabel, paymentTillsAtRevision, readPaymentOrder, validPaymentDeviceKey,
+  paymentTillLabel, paymentTillsAtRevision, readPaymentOrder, retirePaymentTill, tillHasDirectPanels, validPaymentDeviceKey,
 } from './private/tillPayments';
 export {
   DIRECT_PANEL_STALE_MS, assertInstruction, closeSettledDirectPanel, deleteDirectPanel, directInstructionArgs, directPanelPage,

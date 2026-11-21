@@ -114,6 +114,6 @@ export async function assertAttemptPaymentAdmission(
   const revision = cutoverRevision(current);
   if (!validPaymentDeviceKey(load?.deviceKey) || load?.loadedMode !== 'attempts' || load.loadedRevision !== revision) refuseReload();
   const till = await findDevicePaymentTill(ctx, load.deviceKey);
-  if (!till || till._id !== load.tillId || !tillAcknowledged(till, revision)) refuseReload();
+  if (!till || till.key !== 'payment' || till._id !== load.tillId || !tillAcknowledged(till, revision)) refuseReload();
   return till;
 }

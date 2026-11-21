@@ -9,11 +9,16 @@ import ApprovalsList from "@/components/checkout/ApprovalsList";
  * PR 93 round 3 (sol major 2): Approvals with many return requests reads only the open one. The
  * rest render from pendingPage's compact stored summary: no order, detail or quote per row.
  */
-const seen = vi.hoisted(() => ({ orders: [] as string[], details: [] as string[], previews: [] as string[] }));
+const seen = vi.hoisted(() => ({ orders: [] as string[], details: [] as string[], previews: [] as string[], previewResult: null as unknown }));
 vi.mock("@/components/admin/staff-access", () => ({ useStaffAccess: () => ({ role: "manager", capabilities: { approve: true } }) }));
 vi.mock("@/components/checkout/backend", () => ({
   useCommerce: () => ({ useAccess: () => ({ paymentsMode: "attempts" }) }),
-  useReturnsDesk: () => ({ useActions: () => ({ preview: (args: { clientKey: string }) => { seen.previews.push(args.clientKey); return new Promise(() => {}); } }) }),
+  useReturnsDesk: () => ({ useActions: () => ({
+    preview: (args: { clientKey: string }) => {
+      seen.previews.push(args.clientKey);
+      return seen.previewResult ? Promise.resolve(seen.previewResult) : new Promise(() => {});
+    },
+  }) }),
   useCheckoutBackend: () => ({
     useOrder: (id: string) => { seen.orders.push(id); return { order: { _id: id, title: `#${id}`, revision: 1 }, paymentRecord: { correctionRevision: 0 }, lines: [] }; },
     useApprovalDetail: (id: string) => { seen.details.push(id); return { kind: "returnItems", request: { reason: "Changed mind", parts: [] } }; },
@@ -25,7 +30,7 @@ const rows = Array.from({ length: 20 }, (_, i) => ({
   createdAt: 0, expiresAt: Date.now() + 600_000, status: "pending", actionable: true, summary: { amount: 25000 * (i + 1), partCount: 1 + (i % 3) },
 }));
 
-beforeEach(() => { seen.orders.length = 0; seen.details.length = 0; seen.previews.length = 0; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
+beforeEach(() => { seen.orders.length = 0; seen.details.length = 0; seen.previews.length = 0; seen.previewResult = null; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
 afterEach(() => { vi.unstubAllGlobals(); document.body.innerHTML = ""; });
 
 it("opens 20 return requests with one order, one detail and one quote: the selected request's", async () => {
@@ -53,5 +58,35 @@ it("opens 20 return requests with one order, one detail and one quote: the selec
   expect(new Set(seen.orders)).toEqual(new Set(["order0", "order1"]));
   expect(new Set(seen.details)).toEqual(new Set(["request0", "request1"]));
   expect(document.querySelectorAll("[data-return-request]")).toHaveLength(1);
+  await act(async () => root.unmount());
+});
+
+it("shows stock disposition and stopped-session count in the manager return decision card", async () => {
+  seen.previewResult = {
+    amount: 479300,
+    external: { method: "card", amount: 479300 },
+    voucherCredits: [],
+    rows: [
+      {
+        lineId: "gold", label: "Gold Wellness", amount: 479300,
+        parts: [
+          { kind: "session", contentKey: "sessions", label: "Thai massage 60", amount: 300000, units: 3 },
+          { kind: "product", contentKey: "robe", label: "Spa robe · Sand / M", amount: 129300, units: 1, disposition: "sellable" },
+          { kind: "product", contentKey: "slippers", label: "Slippers", amount: 50000, units: 1, disposition: "damaged" },
+        ],
+      },
+    ],
+  };
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  await act(async () => root.render(createElement(ApprovalsList, {
+    rows: rows.slice(0, 1) as never, selectedId: "request0" as never, count: 1, more: false, searching: false, loadingMore: false, onMore: () => {}, onSelect: () => {}, onDecided: () => {},
+  })));
+  for (let n = 0; n < 200 && !document.querySelector("[data-return-approval-quote]"); n++) {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  }
+  const partsText = document.querySelector("[data-return-approval-parts]")?.textContent ?? "";
+  expect(partsText).toContain("Thai massage 60 · 3 sessions stopped");
+  expect(partsText).toContain("Spa robe · Sand / M · Sellable · back to stock");
+  expect(partsText).toContain("Slippers · Damaged · written off");
   await act(async () => root.unmount());
 });

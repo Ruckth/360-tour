@@ -326,7 +326,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
         <Recovery attempt={attempt} view={view} busy={busy} run={run} nextKey={nextKey} arm={arm} onLeave={onBack} />
       ) : null}
 
-      {roomFirst ? <Notice title={t("pay.payRoomFirst")}><p>{t("pay.payRoomFirstHint")}</p></Notice> : <ProblemNotice problem={problem} />}
+      {roomFirst ? <Notice title={t("pay.payRoomFirst")}><p>{t("pay.payRoomFirstHint")}</p></Notice> : elsewhere && attempt && refusal?.code === "SERVER" && refusal.reason === "in_progress_elsewhere" ? null : <ProblemNotice problem={problem} />}
 
       {ownInstruction ? (
         <Instruction key={step.leg.key} leg={step.leg} busy={busy} onTendered={saveCashTendered} onRecord={(outcome, extra) => void record(step.leg, outcome, extra)} />
@@ -339,7 +339,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
 
       {booking && !elsewhere ? (
         <label className="flex min-h-11 items-center gap-2 text-sm">
-          <input type="checkbox" className="size-5" checked={notifyGuest} disabled={step?.kind === "settle"} onChange={(e) => setEmailChoice({ value: e.target.checked, revision: attempt?.ownerRevision ?? 0 })} />
+          <input type="checkbox" className="size-5" checked={notifyGuest} disabled={step?.kind === "settle" || !connected} onChange={(e) => setEmailChoice({ value: e.target.checked, revision: attempt?.ownerRevision ?? 0 })} />
           {t("pay.notifyGuest")}
         </label>
       ) : null}

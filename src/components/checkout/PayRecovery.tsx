@@ -259,11 +259,11 @@ export function DirectPanelProblem({ error, orderId, onRetry, onBack }: { error:
     <div className="grid gap-3 px-4 py-3">
       {elsewhere ? <DirectPanelElsewhere {...elsewhere} orderId={orderId} onTakenOver={onRetry} /> : "lost" in problem ? (
         <>
-          <p role="alert" className="text-sm text-destructive">The pay panel didn&apos;t open. Check the connection and try again.</p>
-          <Button className="h-12" onClick={onRetry}>Retry</Button>
+          <p role="alert" className="text-sm text-destructive">{t("pay.panelDidNotOpen")}</p>
+          <Button className="h-12" onClick={onRetry}>{t("pay.retry")}</Button>
         </>
       ) : <ProblemNotice problem={problem} />}
-      <Button variant="outline" className="h-12 bg-transparent" onClick={onBack}>Back to order</Button>
+      <Button variant="outline" className="h-12 bg-transparent" onClick={onBack}>{t("pay.backToOrder")}</Button>
     </div>
   );
 }
@@ -347,12 +347,12 @@ export function DirectCheckPrevious({ previous, paused, manager, busy, onChecked
           <p key={index} className="pl-6 text-[15px] font-medium tabular-nums">{t("pay.previousLeg", { method: methodName(tender.method), amount: money(tender.amount), time })}</p>
         )) : <p className="pl-6 text-[15px] font-medium tabular-nums">{t("pay.previousPanel", { time })}</p>}
         <p className="pl-6 text-sm">{t("pay.previousPanelHint")}</p>
-        {!matches ? <p data-testid="previous-unmatched" className="pl-6 text-sm">{instruction ? "The order changed since this payment was shown." : "What this panel asked for wasn't saved."} {t("pay.askManagerReconcile")}</p> : null}
+        {!matches ? <p data-testid="previous-unmatched" className="pl-6 text-sm">{t(instruction ? "pay.orderChangedSinceShown" : "pay.instructionNotSaved")} {t("pay.askManagerReconcile")}</p> : null}
       </div>
       {matches ? <DeskButton busy={busy} data-testid="previous-taken" onClick={() => onChecked("taken")}>{t("pay.legTaken")}</DeskButton> : null}
       <div className="grid grid-cols-2 gap-2">
         <Button variant="outline" className="h-12 bg-transparent" disabled={busy} onClick={() => onChecked("notTaken")}>{t("pay.notTaken")}</Button>
-        <Button variant="outline" className="h-12 bg-transparent" disabled={busy} data-testid="previous-other" onClick={() => onChecked("manager")}>{matches ? t("pay.legUnknown") : t("pay.legTaken")}</Button>
+        <Button variant="outline" className="h-12 bg-transparent" disabled={busy} data-testid="previous-other" onClick={() => onChecked("manager")}>{t(matches ? "pay.differentOrUnsure" : "buttons.askManager")}</Button>
       </div>
     </section>
   );
@@ -402,14 +402,14 @@ export function InstructionSaving({ failed, onRetry }: { failed: unknown; onRetr
   if (!failed) {
     return (
       <p role="status" data-testid="instruction-saving" className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner className="size-4" label="Saving" /> Saving this payment…
+        <Spinner className="size-4" label="Saving" /> {t("pay.savingPayment")}
       </p>
     );
   }
   return (
     <div role="alert" data-testid="instruction-unsaved" className="grid gap-3 text-sm">
-      <p className="text-destructive [overflow-wrap:anywhere]">{errorText(failed, "This payment wasn't saved, so it isn't shown yet.")}</p>
-      <Button variant="outline" className="h-12" onClick={onRetry}>Try again</Button>
+      <p className="text-destructive [overflow-wrap:anywhere]">{errorText(failed, t("pay.paymentNotSavedYet"))}</p>
+      <Button variant="outline" className="h-12" onClick={onRetry}>{t("pay.tryAgain")}</Button>
     </div>
   );
 }

@@ -477,3 +477,94 @@ it('continues a reopened direct panel without a check before any pause, then che
   await cashier.mutation(settle, { ...pay, tillId, panelKey: 'first-open' });
   expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
 });
+
+it('supports collected_unrecorded reconciliation with required note and returns rich directPanels metadata', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, pay, instruction } = await payable(manager, 'Duplicate terminal');
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey: 'dup-panel', instruction });
+  const listed = await manager.query(rollout.directPanels, {});
+  expect(listed).toMatchObject([{
+    tillId, panelKey: 'dup-panel', orderId, actor: 'cashier', actorEmail: 'cashier@example.com',
+    receiptNumber: null, receiptUsed: false, settled: false,
+    instruction: { revision: instruction.revision, due: 50000, tenders: [{ method: 'card', amount: 50000 }] },
+  }]);
+  await expect(manager.mutation(rollout.reconcileDirectPanel, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded',
+  })).rejects.toMatchObject(refusal('RECONCILE_NOTE_REQUIRED'));
+  await expect(manager.mutation(rollout.reconcileDirectPanel, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded', note: '   ',
+  })).rejects.toMatchObject(refusal('RECONCILE_NOTE_REQUIRED'));
+  await manager.mutation(rollout.reconcileDirectPanel, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded', note: 'Duplicate card slip voided at terminal',
+  });
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+  const order = await t.run(ctx => ctx.db.get('orders', orderId));
+  expect(order?.directPanel).toBeUndefined();
+  expect(await t.run(ctx => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'till').eq('entityId', tillId)).order('desc').take(1))).toMatchObject([{
+    kind: 'direct_panel_reconciled', actor: 'manager@example.com',
+    after: {
+      panelKey: 'dup-panel', orderId, outcome: 'collected_unrecorded',
+      note: 'Duplicate card slip voided at terminal',
+    },
+  }]);
+  // Order itself can still settle normally afterward.
+  await cashier.mutation(settle, pay);
+  expect(await t.run(ctx => ctx.db.query('orderPayments').collect())).toHaveLength(1);
+});
+
+it('retires a replaced payment till after cutover, unblocks sale switches, and blocks retired till admission', async () => {
+  const { t, owner, manager, cashier } = await fixture();
+  const devices = ['retire-device-active-0001', 'retire-device-broken-0002'];
+  const orders = await Promise.all(devices.map((_, i) => payable(manager, `Retire ${i}`)));
+  const tills = await Promise.all(orders.map(async ({ orderId }, i) => {
+    const panelKey = `retire-panel-${i}`;
+    const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, deviceKey: devices[i], panelKey });
+    await manager.mutation(rollout.reconcileDirectPanel, { tillId, panelKey, outcome: 'nothing_taken' });
+    return tillId;
+  }));
+  // Cannot retire before cutover.
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' }))
+    .rejects.toMatchObject(refusal('PAYMENT_ATTEMPTS_DISABLED'));
+
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  await manager.mutation(rollout.activate, edit(1, 'activate'));
+  const loadActive = { tillId: tills[0], deviceKey: devices[0], loadedMode: 'attempts' as const, loadedRevision: 2 };
+  await cashier.mutation(rollout.acknowledge, loadActive);
+
+  // Sale switch is blocked while broken till is pending.
+  const enable = { ...edit(2, 'enable'), switches: { products: 'managers' as const } };
+  await expect(owner.mutation(settings.updateRules, enable)).rejects.toMatchObject(refusal('PAYMENT_ROLLOUT_PENDING'));
+
+  // Refuses retiring with empty reason or when an active payment attempt exists on that till.
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: '  ' }))
+    .rejects.toMatchObject(refusal('INVALID_ADJUSTMENT_REASON'));
+  const blockingAttempt = await t.run(ctx => ctx.db.insert('paymentAttempts', {
+    orderId: orders[1].orderId, key: 'blocking', fingerprint: 'blocking', status: 'collecting',
+    legs: [], reviewedRequest: { revision: 1, due: 50000, customers: [], vouchers: [], businessDate: '2026-11-19', settingsRevision: 2 },
+    owner: 'cashier', tillId: tills[1], ownerRevision: 1, createdAt: 1, updatedAt: 1,
+  }));
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' }))
+    .rejects.toMatchObject(refusal('PAYMENTS_STILL_OPEN'));
+  await t.run(ctx => ctx.db.patch('paymentAttempts', blockingAttempt, { status: 'resolved' }));
+
+  // Retire the broken till.
+  await manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' });
+  expect(await owner.query(rollout.status, {})).toMatchObject({
+    acknowledged: [{ tillId: tills[0] }], pending: [],
+  });
+  // Sale switch now succeeds!
+  await expect(owner.mutation(settings.updateRules, enable)).resolves.toMatchObject({ status: 'applied', revision: 3 });
+
+  // Retired till cannot acknowledge, cannot pass getAccess tillReady, and cannot pass attempt admission.
+  const loadBroken = { tillId: tills[1], deviceKey: devices[1], loadedMode: 'attempts' as const, loadedRevision: 2 };
+  await expect(cashier.mutation(rollout.acknowledge, loadBroken)).rejects.toMatchObject(refusal('TILL_NEEDS_RELOAD'));
+  await expect(t.run(ctx => assertAttemptPaymentAdmission(ctx, loadBroken))).rejects.toMatchObject(refusal('TILL_NEEDS_RELOAD'));
+  expect(await cashier.query(settings.getAccess, { tillId: tills[1], loadedRevision: 2, deviceKey: devices[1] })).toMatchObject({
+    tillReady: false,
+  });
+  expect(await t.run(ctx => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'till').eq('entityId', tills[1])).order('desc').take(1))).toMatchObject([{
+    kind: 'till_retired', actor: 'manager@example.com', after: { reason: 'Broken iPad' },
+  }]);
+});

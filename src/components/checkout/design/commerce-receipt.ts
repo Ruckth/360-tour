@@ -16,7 +16,7 @@ import paid from "./coupon-paid.json";
  */
 
 const fx = <T extends TableNames>(key: string) => `fx${key}` as Id<T>;
-const PAID_AT = Date.UTC(2026, 10, 19, 7, 41);
+const PAID_AT = Date.UTC(2026, 9, 30, 7, 0);
 const DAY = 86_400_000;
 const ORDER = fx<"orders">("bill000046");
 const REDEMPTION = fx<"orders">("bill000047");

@@ -34,6 +34,7 @@ type ReturnPartAmount = {
   amount: number;
   contentKey?: string;
   disposition?: 'sellable' | 'damaged';
+  units?: number;
 };
 export type ReturnRow = { line: Line; snapshot: Snapshot; amount: number; parts: ReturnPartAmount[]; visit?: VisitReturn };
 export type ReturnProduct = {
@@ -297,7 +298,7 @@ export async function planReturnParts(
           content.returnedAmount = quote.total;
           grants.push({ grant, paid: units, goodwill: giftUnits });
           parts.push({ kind: 'session', contentKey: content.contentKey, label: content.label,
-            amount: content.returnedAmount - prior.returnedAmount });
+            amount: content.returnedAmount - prior.returnedAmount, units: units + giftUnits });
         }
       } else if (content.voucherId) {
         if (existing && !existing.effectsApplied.some(effect => effect.kind === 'voucher' && effect.voucherId === content.voucherId)) continue;
@@ -337,7 +338,7 @@ export async function planReturnParts(
           const previous = content.returnedAmount;
           Object.assign(content, progressFor(content, prior.units, units));
           parts.push({ kind: 'product', contentKey: content.contentKey, label: content.label,
-            amount: content.returnedAmount - previous, ...(disposition ? { disposition } : {}) });
+            amount: content.returnedAmount - previous, units, ...(disposition ? { disposition } : {}) });
         }
         const physicalUnits = physical.reduce((sum, item) => sum + item.units, 0);
         if (physicalUnits) {

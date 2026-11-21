@@ -108,6 +108,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [storedPaper, setStoredPaper] = useStoredState(RECEIPT_PAPER_KEY, "80");
   const paper: Paper = storedPaper === "58" ? "58" : "80";
   const [notice, setNotice] = useState("");
+  const [completedReturn, setCompletedReturn] = useState<string | null>(null);
   const canShare = useCanShare();
   const noticeRef = useRef<HTMLParagraphElement>(null);
   // The line whose refund form is open; one at a time.
@@ -180,12 +181,22 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [shownOrderId, setShownOrderId] = useState(orderId);
   if (shownOrderId !== orderId) {
     setShownOrderId(orderId);
-    setTask(null); setTaskDirty(false); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice("");
+    setTask(null); setTaskDirty(false); setRefunding(null); setRefundDirty(false); setRefundBusy(false); setLineNotes({}); setNotice(""); setCompletedReturn(null);
   }
 
   if (view === undefined) return <div className="grid flex-1 place-items-center p-10"><Spinner label="Loading receipt" className="size-6" /></div>;
-  // Cashiers open today's receipts only; older ones come back as missing.
-  if (view === null) return <p className="p-10 text-center text-sm text-muted-foreground">{cashier ? "Not available." : "Receipt not found."}</p>;
+  // Cashiers open today's receipts only; older ones come back as missing once a prior-day return finishes.
+  if (view === null) {
+    if (completedReturn) {
+      return (
+        <div role="status" data-testid="receipt-return-completed" className="grid flex-1 place-items-center gap-3 p-10 text-center">
+          <p className="text-base font-semibold text-emerald-800 dark:text-emerald-300">{completedReturn}</p>
+          <Button onClick={onNewSale}><Plus aria-hidden className="size-4" /> New sale</Button>
+        </div>
+      );
+    }
+    return <p className="p-10 text-center text-sm text-muted-foreground">{cashier ? "Not available." : "Receipt not found."}</p>;
+  }
   if (view.order.state === "unpaid" || view.order.state === "discarded") {
     return (
       <div className="grid flex-1 place-items-center gap-3 p-10 text-center">
@@ -456,7 +467,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         <OrderApprovalStatus requests={approvals} lines={lines} decide />
         {commerce ? <ShareCopyBridge copyRef={shareCopy} /> : null}
         {commerceReaders ? <CommerceReceiptStatus orderId={order._id} /> : null}
-        <ReturnInProgressNotice view={view} />
+        <ReturnInProgressNotice view={view} onCompleted={setCompletedReturn} />
         <ReplacementVouchers view={view} />
         {shownTask === "correct" ? <CorrectPayment key={`${order._id}:correct`} view={view} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
         {shownTask === "void" ? <VoidPanel key={`${order._id}:void`} view={view} waiting={waiting} onDone={closeTask} onBusyChange={setTaskBusy} onDraftChange={setTaskDirty} /> : null}
@@ -507,7 +518,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
                     ) : null}
                   </div>
                 ) : null}
-                {paid ? <ReturnItemsAction view={view} line={line} /> : null}
+                {paid ? <ReturnItemsAction view={view} line={line} onCompleted={setCompletedReturn} /> : null}
               </li>;
             })}
           </ul>

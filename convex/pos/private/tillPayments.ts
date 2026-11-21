@@ -21,6 +21,11 @@ export const tillPaymentRollout = v.object({
     at: v.number(),
   })),
   panels: v.optional(v.array(directPanel)),
+  retired: v.optional(v.object({
+    at: v.number(),
+    actor: v.string(),
+    reason: v.string(),
+  })),
 });
 
 export async function readPaymentRows<T>(ctx: QueryCtx, read: () => Promise<readonly T[]>) {
@@ -92,6 +97,23 @@ export async function patchPaymentTill(
 ) {
   reserveWrites(ctx, 1);
   await ctx.db.patch('tills', till._id, { paymentRollout: { ...till.paymentRollout, ...patch } });
+}
+
+export async function retirePaymentTill(
+  ctx: MutationCtx, till: Doc<'tills'>, info: { at: number; actor: string; reason: string },
+) {
+  reserveWrites(ctx, 1);
+  await ctx.db.patch('tills', till._id, {
+    key: 'retired',
+    paymentRollout: { ...till.paymentRollout, retired: info },
+  });
+}
+
+export async function tillHasDirectPanels(ctx: QueryCtx, till: Doc<'tills'>) {
+  if (till.paymentRollout?.panels?.length) return true;
+  const rows = await readPaymentRows(ctx, () => ctx.db.query('directPaymentPanels')
+    .withIndex('by_tillId_and_panelKey', q => q.eq('tillId', till._id)).take(1));
+  return rows.length > 0;
 }
 
 export async function paymentTillsAtRevision(ctx: QueryCtx, revision: number, limit = TILL_STATUS_PAGE_SIZE + 1) {

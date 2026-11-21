@@ -170,7 +170,7 @@ export default function EditHistory({ target, title, onClose, audience: initial 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       {/* Shown to the guest, the whole screen behind the sheet is covered: no staff names, notes or codes show through (D19). */}
-      <CheckoutDialogContent panel className="gap-4" data-testid="edit-history" overlayClassName={guest ? GUEST_SCRIM : undefined} data-guest-screen={guest ? "" : undefined}>
+      <CheckoutDialogContent panel className="gap-4 max-md:h-[85dvh] max-md:content-start" data-testid="edit-history" overlayClassName={guest ? GUEST_SCRIM : undefined} data-guest-screen={guest ? "" : undefined}>
         <DialogHeader>
           <DialogTitle className="[overflow-wrap:anywhere]">{guest ? copy.t("history.guestTitle") : title}</DialogTitle>
           <DialogDescription>{guest ? title : copy.t("buttons.editHistory")}</DialogDescription>

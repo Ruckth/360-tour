@@ -204,7 +204,7 @@ describe("Settings › Checkout rules, owner", () => {
     expect(dialog()).toBeNull();
   });
 
-  it("shows tills reloaded and waiting after the switch", async () => {
+  it("shows tills reloaded and waiting after the switch, and lets a manager retire a replaced till", async () => {
     serve({ mode: "attempts", acknowledged: ready, pending: [{ tillId: "till2", key: "bar" }] });
     await render();
     const tills = document.querySelector('[data-testid="tills"]')!;
@@ -212,6 +212,55 @@ describe("Settings › Checkout rules, owner", () => {
     expect(tills.textContent).toContain("Reloaded");
     expect(tills.textContent).toContain("barWaiting to reload");
     expect(byText("Switch to new payments")).toBeUndefined();
+    const retire = mutation("commerce/paymentCutover:retireTill");
+    await click(byText("Retire till", tills));
+    expect(dialog()!.textContent).toContain("Retire bar?");
+    await click(byText("Retire till", dialog()!));
+    expect(retire).toHaveBeenCalledWith({ tillId: "till2", reason: "Browser or device replaced" });
+    expect(dialog()).toBeNull();
+  });
+
+  it("reconciles open direct panels with Recorded, Nothing taken, and Collected · no receipt", async () => {
+    serve({ paused: true });
+    state.queries["commerce/paymentCutover:directPanels"] = [
+      {
+        tillId: "till1", tillKey: "default", panelKey: "p-settled", orderId: "order1",
+        orderNumber: 12, orderStatus: "paid", receiptNumber: 12, receiptUsed: false,
+        actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
+        instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
+        settled: true, stale: false,
+      },
+      {
+        tillId: "till2", tillKey: "Till 000002", panelKey: "p-open", orderId: "order2",
+        orderNumber: 13, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
+        actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_500_000_000,
+        settled: false, stale: true,
+      },
+    ];
+    await render();
+    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="direct-panel-row"]')];
+    expect(rows).toHaveLength(2);
+    expect(rows[0].textContent).toContain("Card ฿1,200");
+    expect(rows[0].textContent).toContain("Receipt #12");
+    expect(byText("Recorded", rows[0])!.disabled).toBe(false);
+    expect(rows[1].textContent).toContain("Instruction not saved");
+    expect(rows[1].textContent).toContain("Open over 12 hours");
+    expect(byText("Recorded", rows[1])!.disabled).toBe(true);
+
+    const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
+    await click(byText("Recorded", rows[0]));
+    expect(reconcile).toHaveBeenLastCalledWith({ tillId: "till1", panelKey: "p-settled", outcome: "recorded" });
+
+    await click(byText("Nothing taken", rows[1]));
+    expect(reconcile).toHaveBeenLastCalledWith({ tillId: "till2", panelKey: "p-open", outcome: "nothing_taken" });
+
+    await click(byText("Collected · no receipt", rows[1]));
+    expect(dialog()!.textContent).toContain("Record payment taken without a receipt?");
+    await type(dialog()!.querySelector<HTMLInputElement>("input")!, "Terminal batch showed voided duplicate");
+    await click(byText("Collected · no receipt", dialog()!));
+    expect(reconcile).toHaveBeenLastCalledWith({
+      tillId: "till2", panelKey: "p-open", outcome: "collected_unrecorded", note: "Terminal batch showed voided duplicate",
+    });
   });
 });
 
@@ -254,7 +303,7 @@ describe("Settings › Checkout rules, other roles", () => {
     serve({ revision: 6, sale: switches({ products: "managers" }), settingsId: "settings1" });
     await render();
     const read = state.calls.filter((call) => call.args !== "skip").map((call) => call.name);
-    expect(new Set(read)).toEqual(new Set(["commerce/settings:getRules", "commerce/paymentCutover:status", "commerce/history:staffPage"]));
+    expect(new Set(read)).toEqual(new Set(["commerce/settings:getRules", "commerce/paymentCutover:status", "commerce/paymentCutover:directPanels", "commerce/history:staffPage"]));
     expect(row("products").querySelectorAll("button")).toHaveLength(0);
     expect(row("products").textContent).toContain("Managers only");
     // The rules show read-only, with no way to save.

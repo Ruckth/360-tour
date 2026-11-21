@@ -124,9 +124,10 @@ export function OrderPanel({
   // Part of a split already taken: the header shows what is still to collect.
   const attemptTaken = view?.paymentAttempt?.status === "collecting"
     ? view.paymentAttempt.legs.reduce((sum, leg) => sum + (leg.state === "taken" ? leg.amount : 0), 0) : 0;
-  // While a payment holds the order its rows can't change; a swap after a refusal reopens them.
+  // While a payment holds the order its rows can't change; a swap after a refusal reopens them for its owning tab only.
   const swapping = view?.paymentAttempt?.status === "refused" && view.paymentAttempt.refusal?.code === "swap_requested";
-  const rowsLocked = attemptActive && !swapping;
+  const swapAttempt = useCommerce().usePaymentAttempt(swapping && view?.paymentAttempt ? view.order._id : null, view?.paymentAttempt?._id);
+  const rowsLocked = attemptActive && !(swapping && swapAttempt?.mine);
   // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
   const payLocked = cannotPay || busy;
   const payLockedRef = useRef(payLocked);

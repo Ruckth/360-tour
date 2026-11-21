@@ -228,7 +228,15 @@
       "previousPanel": "{time} 打开 · 未记录",
       "previousPanelHint": "请检查终端、二维码或钱箱。核实之前不要再次收款。",
       "recordPrevious": "记录已收取的款项。不要再次收款。",
-      "askManagerReconcile": "请经理核对此收款面板。"
+      "askManagerReconcile": "请经理核对此收款面板。",
+      "differentOrUnsure": "金额或方式不同 / 不确定",
+      "orderChangedSinceShown": "显示此付款后，订单已发生变更。",
+      "instructionNotSaved": "此面板请求的付款指令未保存。",
+      "savingPayment": "正在保存此付款…",
+      "paymentNotSavedYet": "此付款尚未保存，因此暂不显示。",
+      "tryAgain": "重试",
+      "panelDidNotOpen": "未能打开付款面板。请检查网络连接后重试。",
+      "receivedNow": "刚刚收到"
     },
     "returns": {
       "title": "退货",
@@ -338,7 +346,9 @@
       "returnTotal": "退货合计",
       "whoGivesBack": "{name} 在自己的收银台退款。",
       "givenAt": "实际退款时间",
-      "approveRestore": "批准 · 恢复次数"
+      "approveRestore": "批准 · 恢复次数",
+      "sessionsStopped": "{count, plural, other {已停止 # 次疗程}}",
+      "completedNotice": "退货完成 · 退款已记录。"
     },
     "roomBill": {
       "postToRoomPrice": "挂账至 {room} 号房 · {price}",
@@ -768,7 +778,26 @@
       "mainTill": "主收银台",
       "paused": "结账已暂停",
       "resumed": "结账已恢复",
-      "switched": "新支付方式已开启"
+      "switched": "新支付方式已开启",
+      "openPanelsTitle": "待核对的未关闭付款面板",
+      "openPanelsHint": "在清理每个面板前，请先核对刷卡机、二维码和现金抽屉。",
+      "panelCashier": "{till} · {staff} · 打开于 {time}",
+      "panelStale": "已打开超过 12 小时",
+      "panelNoInstruction": "未保存付款指令",
+      "panelReceipt": "收据 #{order}",
+      "panelReceiptUsed": "此收据已对应另一个付款面板",
+      "reconcileRecorded": "已记录",
+      "reconcileNothingTaken": "未收款",
+      "reconcileUnrecorded": "已收款 · 无收据",
+      "reconcileUnrecordedTitle": "记录无收据的收款？",
+      "reconcileUnrecordedHint": "当刷卡机或现金抽屉收了款但没有对应收据（例如重复扣款）时使用。请说明情况及处理方式。",
+      "reconcileUnrecordedPlaceholder": "刷卡机或抽屉显示的记录及处理方式",
+      "reconcileDone": "已核对付款面板",
+      "retireTill": "停用收银台",
+      "retireTillTitle": "停用 {till}？",
+      "retireTillHint": "核对完所有未关闭付款面板后，停用已更换的浏览器或设备，使其不再阻止开启销售开关。",
+      "retireTillReason": "已更换浏览器或设备",
+      "tillRetired": "已停用收银台"
     }
   }
 }

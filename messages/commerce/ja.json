@@ -228,7 +228,15 @@
       "previousPanel": "{time} に開始 · 未記録",
       "previousPanelHint": "端末、QR、ドロアーを確認してください。確認するまで再度請求しないでください。",
       "recordPrevious": "受け取った支払いを記録してください。再度請求しないでください。",
-      "askManagerReconcile": "マネージャーにこの支払い画面の照合を依頼してください。"
+      "askManagerReconcile": "マネージャーにこの支払い画面の照合を依頼してください。",
+      "differentOrUnsure": "内容が異なる・不明",
+      "orderChangedSinceShown": "この支払いが表示された後、注文内容が変更されました。",
+      "instructionNotSaved": "このパネルの支払い指示が保存されていません。",
+      "savingPayment": "この支払いを保存しています…",
+      "paymentNotSavedYet": "この支払いは保存されていないため、まだ表示されません。",
+      "tryAgain": "もう一度試す",
+      "panelDidNotOpen": "支払いパネルを開けませんでした。接続を確認してもう一度お試しください。",
+      "receivedNow": "今受け取り"
     },
     "returns": {
       "title": "返品",
@@ -338,7 +346,9 @@
       "returnTotal": "返品合計",
       "whoGivesBack": "返金は {name} が自分のレジで行います。",
       "givenAt": "実際に返金した日時",
-      "approveRestore": "承認 · 回数を戻す"
+      "approveRestore": "承認 · 回数を戻す",
+      "sessionsStopped": "{count, plural, other {#回分を停止}}",
+      "completedNotice": "返品完了・返金を記録しました。"
     },
     "roomBill": {
       "postToRoomPrice": "{room}号室にルームチャージ · {price}",
@@ -768,7 +778,26 @@
       "mainTill": "メインレジ",
       "paused": "会計を一時停止しました",
       "resumed": "会計を再開しました",
-      "switched": "新しい支払い方式がオンになりました"
+      "switched": "新しい支払い方式がオンになりました",
+      "openPanelsTitle": "未精算の支払いパネル",
+      "openPanelsHint": "各パネルを完了する前に端末・QR・レジを確認してください。",
+      "panelCashier": "{till} · {staff} · {time} に開始",
+      "panelStale": "12時間以上経過",
+      "panelNoInstruction": "指示が未保存",
+      "panelReceipt": "レシート #{order}",
+      "panelReceiptUsed": "このレシートは別のパネルに紐付け済みです",
+      "reconcileRecorded": "記録済み",
+      "reconcileNothingTaken": "受領なし",
+      "reconcileUnrecorded": "受領済み・レシートなし",
+      "reconcileUnrecordedTitle": "レシートなしの受領を記録しますか？",
+      "reconcileUnrecordedHint": "端末やレジで受け取った金額に対応するレシートがない場合（二重決済など）に使用します。状況と対処内容を入力してください。",
+      "reconcileUnrecordedPlaceholder": "端末やレジの表示内容と対処方法",
+      "reconcileDone": "支払いパネルを照合しました",
+      "retireTill": "レジを廃止",
+      "retireTillTitle": "{till} を廃止しますか？",
+      "retireTillHint": "未精算パネルを照合した後、交換済みのブラウザや端末を廃止して販売スイッチのロックを解除します。",
+      "retireTillReason": "ブラウザまたは端末を交換",
+      "tillRetired": "レジを廃止しました"
     }
   }
 }

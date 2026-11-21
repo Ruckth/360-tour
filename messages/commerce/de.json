@@ -228,7 +228,15 @@
       "previousPanel": "Geöffnet um {time} · nicht erfasst",
       "previousPanelHint": "Prüfen Sie Terminal, QR-Zahlung oder Kasse. Erst danach erneut kassieren.",
       "recordPrevious": "Erfassen Sie die bereits erhaltene Zahlung. Nicht erneut kassieren.",
-      "askManagerReconcile": "Bitten Sie eine Führungskraft, dieses Zahlungsfenster abzugleichen."
+      "askManagerReconcile": "Bitten Sie eine Führungskraft, dieses Zahlungsfenster abzugleichen.",
+      "differentOrUnsure": "Anders oder unsicher",
+      "orderChangedSinceShown": "Die Bestellung hat sich geändert, seit diese Zahlung angezeigt wurde.",
+      "instructionNotSaved": "Die Anweisung dieses Felds wurde nicht gespeichert.",
+      "savingPayment": "Zahlung wird gespeichert…",
+      "paymentNotSavedYet": "Diese Zahlung wurde nicht gespeichert und wird daher noch nicht angezeigt.",
+      "tryAgain": "Erneut versuchen",
+      "panelDidNotOpen": "Das Zahlungsfeld konnte nicht geöffnet werden. Verbindung prüfen und erneut versuchen.",
+      "receivedNow": "Jetzt erhalten"
     },
     "returns": {
       "title": "Artikel zurücknehmen",
@@ -338,7 +346,9 @@
       "returnTotal": "Rückgabe gesamt",
       "whoGivesBack": "{name} zahlt das Geld an der eigenen Kasse zurück.",
       "givenAt": "Wann zurückgezahlt wurde",
-      "approveRestore": "Genehmigen · Anwendung zurückgeben"
+      "approveRestore": "Genehmigen · Anwendung zurückgeben",
+      "sessionsStopped": "{count, plural, one {# Sitzung gestoppt} other {# Sitzungen gestoppt}}",
+      "completedNotice": "Rückgabe abgeschlossen · Erstattung gespeichert."
     },
     "roomBill": {
       "postToRoomPrice": "Auf Zimmer {room} buchen · {price}",
@@ -768,7 +778,26 @@
       "mainTill": "Hauptkasse",
       "paused": "Kasse pausiert",
       "resumed": "Kasse wieder geöffnet",
-      "switched": "Neue Zahlungen sind aktiv"
+      "switched": "Neue Zahlungen sind aktiv",
+      "openPanelsTitle": "Offene Zahlungsfelder abgleichen",
+      "openPanelsHint": "Terminal, QR und Kasse prüfen, bevor ein Feld abgeschlossen wird.",
+      "panelCashier": "{till} · {staff} · geöffnet {time}",
+      "panelStale": "Über 12 Stunden offen",
+      "panelNoInstruction": "Anweisung nicht gespeichert",
+      "panelReceipt": "Beleg #{order}",
+      "panelReceiptUsed": "Beleg ist bereits einem anderen Feld zugeordnet",
+      "reconcileRecorded": "Verbucht",
+      "reconcileNothingTaken": "Nichts erhalten",
+      "reconcileUnrecorded": "Erhalten · ohne Beleg",
+      "reconcileUnrecordedTitle": "Zahlung ohne Beleg festhalten?",
+      "reconcileUnrecordedHint": "Verwenden, wenn Terminal oder Kasse Geld angenommen haben, dem kein Beleg zugeordnet ist (z. B. Doppelbuchung). Beschreiben Sie den Befund und die Lösung.",
+      "reconcileUnrecordedPlaceholder": "Was Terminal oder Kasse zeigten und wie es gelöst wurde",
+      "reconcileDone": "Zahlungsfeld abgeglichen",
+      "retireTill": "Kasse abmelden",
+      "retireTillTitle": "{till} abmelden?",
+      "retireTillHint": "Melden Sie ein ersetztes Gerät ab, sobald alle offenen Zahlungsfelder abgeglichen sind, damit die Verkaufsschalter freigegeben werden.",
+      "retireTillReason": "Browser oder Gerät ersetzt",
+      "tillRetired": "Kasse abgemeldet"
     }
   }
 }

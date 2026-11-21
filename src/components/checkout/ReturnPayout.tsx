@@ -55,7 +55,7 @@ function partLabel(view: OrderView, part: ReturnRecord["parts"][number]) {
  * the first authorize answer); any other instructed or unknown destination is Check previous refund,
  * which records what really happened and never invites a second payout.
  */
-export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, codes, onBusyChange }: {
+export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, codes, onBusyChange, onCompleted }: {
   view: OrderView;
   record: ReturnRecord;
   tillId: string;
@@ -65,6 +65,7 @@ export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, co
   autoArm: boolean;
   codes: Map<string, string>;
   onBusyChange: (busy: boolean) => void;
+  onCompleted?: (message: string) => void;
 }) {
   const id = useId();
   const now = useNow(30_000);
@@ -106,6 +107,7 @@ export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, co
   });
   const record_ = (claim: ReturnClaim, outcome: "given" | "failed" | "unknown", at?: number) => run(outcome, async () => {
     const clean = reference.trim();
+    const isFinal = outcome === "given" && record.claims.every((item) => item.key === claim.key || item.state === "given" || item.state === "cancelled");
     await actions.recordPayout({
       ...control, destinationKey: claim.key, outcome,
       ...(outcome === "given" && clean ? { reference: clean } : {}), ...(outcome === "given" && at !== undefined ? { givenAt: at } : {}),
@@ -113,6 +115,7 @@ export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, co
     setReference("");
     setGivenAt("");
     onFresh(null);
+    if (isFinal) onCompleted?.(t("returns.completedNotice"));
   });
   const retry = (claim: ReturnClaim) => run("retry", async () => {
     await actions.retry({ ...control, destinationKey: claim.key, reason: t("returns.retryReason"), ...(method && method !== claim.method ? { method } : {}) });

@@ -32,7 +32,7 @@ const { t, money, date } = returnsCopy;
 const REASONS = ["packageCancelled", "changedMind", "faulty"] as const;
 
 /** The sheet: what comes back, then the payout. Kept open while anything is being sent. */
-export default function ReturnItemsSheet({ view, lineId, onClose }: { view: OrderView; lineId: Id<"orderLines"> | null; onClose: () => void }) {
+export default function ReturnItemsSheet({ view, lineId, onClose, onCompleted }: { view: OrderView; lineId: Id<"orderLines"> | null; onClose: () => void; onCompleted?: (message: string) => void }) {
   const desk = useReturnsDesk()!;
   const access = useStaffAccess();
   // Returns follow the Team Refund rule (D14): managers authorize, and so does a cashier granted Refund.
@@ -62,7 +62,7 @@ export default function ReturnItemsSheet({ view, lineId, onClose }: { view: Orde
 
   let body: ReactNode;
   if (record) {
-    body = <ReturnPayout view={view} record={record} tillId={tillId} fresh={fresh} onFresh={setFresh} autoArm={watched} codes={codes} onBusyChange={setBusy} />;
+    body = <ReturnPayout view={view} record={record} tillId={tillId} fresh={fresh} onFresh={setFresh} autoArm={watched} codes={codes} onBusyChange={setBusy} onCompleted={onCompleted} />;
   } else if (record === undefined || (requestId && request === undefined)) {
     body = <div className="grid flex-1 place-items-center p-6"><Spinner label="Loading" /></div>;
   } else if (waiting) {

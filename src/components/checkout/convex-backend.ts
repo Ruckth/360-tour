@@ -1,16 +1,142 @@
 "use client";
 
-import { useConvex, useConvexConnectionState, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useConvex, useConvexConnectionState, useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import { useEffect, useMemo, useState } from "react";
+import type { PaginationResult } from "convex/server";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import { returnArgs, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryEntry, type ReturnsDesk } from "./backend";
+import { returnArgs, type AdjustTarget, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryAudience, type HistoryEntry, type ReturnsDesk } from "./backend";
 import { cutoverAccess, payDeskCommerce, type PayDeskTransport, withSwapOwner } from "./pay-desk-backend";
 
 const SKIP = "skip" as const;
 const NOTHING_TO_LOAD = { results: [], status: "Exhausted" as const, loadMore: () => {} };
 /** Cashiers may only search active customers by at least two characters (customers.browseCustomers). */
 const cashierCannotBrowse = (query: string, archived: boolean) => archived || query.trim().length < 2;
+
+type HistoryCursorSlot = { cursor: string | null; endCursor?: string };
+type StaffHistoryRow = PaginationResult<unknown>["page"][number];
+const INITIAL_HISTORY_SLOTS: HistoryCursorSlot[] = [{ cursor: null }];
+
+function isStaleHistoryCursor(err: Error) {
+  if (err.message.includes("InvalidCursor")) return true;
+  const data = "data" in err ? (err as { data?: Record<string, unknown> }).data : undefined;
+  return data?.code === "STALE_HISTORY_CURSOR" || (data?.isConvexSystemError === true && data?.paginationError === "InvalidCursor");
+}
+
+function nextHistorySlots(
+  slots: HistoryCursorSlot[],
+  raw: Record<string, PaginationResult<StaffHistoryRow> | Error | undefined>,
+): HistoryCursorSlot[] | null {
+  for (let i = 0; i < slots.length; i++) {
+    const res = raw[String(i)];
+    if (!res) break;
+    if (res instanceof Error) {
+      if (isStaleHistoryCursor(res) && (slots.length > 1 || slots[0].cursor !== null || slots[0].endCursor !== undefined)) {
+        return INITIAL_HISTORY_SLOTS;
+      }
+      return null;
+    }
+    if (res.pageStatus === "SplitRequired" && res.splitCursor && res.splitCursor !== slots[i].endCursor) {
+      const next = [...slots];
+      next.splice(i, 1, { cursor: slots[i].cursor, endCursor: res.splitCursor }, { cursor: res.splitCursor, endCursor: res.continueCursor });
+      return next;
+    }
+    if (i + 1 < slots.length) {
+      if (res.isDone) return slots.slice(0, i + 1);
+      if (res.continueCursor !== slots[i + 1].cursor) {
+        return [...slots.slice(0, i + 1), { cursor: res.continueCursor }];
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Reactive cursor-chained History pagination. Unlike usePaginatedQuery, when a live insert shifts
+ * page i's continueCursor (including a `cut:` boundary), page i+1 automatically re-subscribes to the
+ * new continueCursor so no entry is ever dropped between loaded pages or lost to a stale cursor.
+ */
+function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudience) {
+  const targetType = target?.targetType;
+  const targetId = target?.targetId;
+  const isBenefit = targetType === "voucher" || targetType === "grant";
+  const active = Boolean(targetType && targetId && (audience === "staff" || isBenefit));
+  const streamKey = active ? `${audience}:${targetType}:${targetId}` : "";
+  const [state, setState] = useState<{ key: string; slots: HistoryCursorSlot[] }>(() => ({
+    key: streamKey,
+    slots: INITIAL_HISTORY_SLOTS,
+  }));
+  const sameStream = state.key === streamKey;
+  const slots = sameStream ? state.slots : INITIAL_HISTORY_SLOTS;
+  if (!sameStream) {
+    setState({ key: streamKey, slots: INITIAL_HISTORY_SLOTS });
+  }
+
+  const requests = useMemo(() => {
+    if (!active || !targetType || !targetId) return {};
+    const targetArg = { targetType, targetId } as AdjustTarget;
+    const out: Record<string, { query: typeof api.commerce.history.staffPage | typeof api.commerce.history.guestPage; args: Record<string, unknown> }> = {};
+    slots.forEach((slot, index) => {
+      const paginationOpts = { numItems: 20, cursor: slot.cursor, ...(slot.endCursor ? { endCursor: slot.endCursor } : {}) };
+      out[String(index)] = audience === "guest" && isBenefit
+        ? { query: api.commerce.history.guestPage, args: { target: targetArg, paginationOpts } }
+        : { query: api.commerce.history.staffPage, args: { target: targetArg, paginationOpts } };
+    });
+    return out;
+  }, [active, audience, isBenefit, slots, targetId, targetType]);
+
+  const raw = useQueries(requests as Parameters<typeof useQueries>[0]) as Record<string, PaginationResult<StaffHistoryRow> | Error | undefined>;
+
+  // Re-align continuation cursors whenever an earlier page's boundary moves under live inserts, or reset on stale cursor.
+  const adjusted = active && sameStream ? nextHistorySlots(slots, raw) : null;
+  if (adjusted) {
+    setState({ key: streamKey, slots: adjusted });
+  }
+
+  const lastSlot = raw[String(slots.length - 1)];
+  const loadMore = useCallback(() => {
+    if (!lastSlot || lastSlot instanceof Error || lastSlot.isDone) return;
+    setState((prev) => {
+      if (prev.key !== streamKey) return prev;
+      if (prev.slots[prev.slots.length - 1]?.cursor === lastSlot.continueCursor) return prev;
+      return { key: streamKey, slots: [...prev.slots, { cursor: lastSlot.continueCursor }] };
+    });
+  }, [lastSlot, streamKey]);
+
+  if (!active) return { rows: [] as StaffHistoryRow[], status: "Exhausted" as const, loadMore };
+
+  const rows: StaffHistoryRow[] = [];
+  const seen = new Set<string>();
+  let loading = false;
+  let last: PaginationResult<StaffHistoryRow> | undefined;
+  for (let i = 0; i < slots.length; i++) {
+    const res = raw[String(i)];
+    if (res === undefined) { loading = true; break; }
+    if (res instanceof Error) {
+      if (isStaleHistoryCursor(res) && (slots.length > 1 || slots[0].cursor !== null || slots[0].endCursor !== undefined)) {
+        loading = true;
+        break;
+      }
+      throw res;
+    }
+    if (res.pageStatus === "SplitRequired" && res.splitCursor) { loading = true; break; }
+    last = res;
+    for (const item of res.page) {
+      const id = (item as { entryId?: string }).entryId;
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      rows.push(item);
+    }
+    if (i + 1 < slots.length && (res.isDone || res.continueCursor !== slots[i + 1].cursor)) {
+      loading = true;
+      break;
+    }
+  }
+  const status: CustomerPage<HistoryEntry>["status"] = loading
+    ? (rows.length || slots.length > 1 ? "LoadingMore" : "LoadingFirstPage")
+    : !last ? "LoadingFirstPage" : last.isDone ? "Exhausted" : "CanLoadMore";
+  return { rows, status, loadMore };
+}
 
 type Readers = typeof import("./commerce-readers");
 let readers: Readers | null = null;
@@ -78,13 +204,15 @@ const returnsDesk: ReturnsDesk = {
 const convexCommerce: CommerceBackend = {
   ...payDesk,
   useHistory: (target, audience) => {
-    const benefit = target?.targetType === "voucher" || target?.targetType === "grant" ? target : null;
-    const staff = usePaginatedQuery(api.commerce.history.staffPage, target && audience === "staff" ? { target } : SKIP, { initialNumItems: 20 });
-    const guest = usePaginatedQuery(api.commerce.history.guestPage, benefit && audience === "guest" ? { target: benefit } : SKIP, { initialNumItems: 20 });
-    const page = audience === "guest" ? guest : staff;
+    const page = useChainedHistory(target, audience);
     const mappers = useReaders();
-    const results = useMemo(() => (mappers ? page.results.map(mappers.historyEntry) : []), [mappers, page.results]);
-    if (!target || (audience === "guest" && !benefit)) return NOTHING_TO_LOAD as CustomerPage<HistoryEntry>;
+    const results = useMemo(
+      () => (mappers ? page.rows.map((row) => mappers.historyEntry(row as Parameters<typeof mappers.historyEntry>[0])) : []),
+      [mappers, page.rows],
+    );
+    if (!target || (audience === "guest" && target.targetType !== "voucher" && target.targetType !== "grant")) {
+      return NOTHING_TO_LOAD as CustomerPage<HistoryEntry>;
+    }
     if (!mappers) return { results, status: "LoadingFirstPage", loadMore: () => {} };
     return { results, status: page.status, loadMore: page.loadMore };
   },

@@ -228,7 +228,15 @@
       "previousPanel": "Aperto alle {time} · non registrato",
       "previousPanelHint": "Controlla il terminale, il QR o il cassetto. Non addebitare di nuovo prima di aver controllato.",
       "recordPrevious": "Registra il pagamento già incassato. Non addebitare di nuovo.",
-      "askManagerReconcile": "Chiedi a un responsabile di riconciliare questo pannello di pagamento."
+      "askManagerReconcile": "Chiedi a un responsabile di riconciliare questo pannello di pagamento.",
+      "differentOrUnsure": "Diverso o non sicuro",
+      "orderChangedSinceShown": "L'ordine è cambiato da quando è stato mostrato questo pagamento.",
+      "instructionNotSaved": "L'istruzione richiesta da questo pannello non è stata salvata.",
+      "savingPayment": "Salvataggio del pagamento…",
+      "paymentNotSavedYet": "Questo pagamento non è stato salvato, quindi non è ancora mostrato.",
+      "tryAgain": "Riprova",
+      "panelDidNotOpen": "Il pannello di pagamento non si è aperto. Controlla la connessione e riprova.",
+      "receivedNow": "Ricevuto ora"
     },
     "returns": {
       "title": "Reso articoli",
@@ -338,7 +346,9 @@
       "returnTotal": "Totale del reso",
       "whoGivesBack": "{name} restituisce il denaro alla propria cassa.",
       "givenAt": "Quando è stato restituito",
-      "approveRestore": "Approva · ripristina la seduta"
+      "approveRestore": "Approva · ripristina la seduta",
+      "sessionsStopped": "{count, plural, one {# sessione interrotta} other {# sessioni interrotte}}",
+      "completedNotice": "Reso completato · rimborso registrato."
     },
     "roomBill": {
       "postToRoomPrice": "Addebita in camera {room} · {price}",
@@ -768,7 +778,26 @@
       "mainTill": "Cassa principale",
       "paused": "Cassa sospesa",
       "resumed": "Cassa ripresa",
-      "switched": "I nuovi pagamenti sono attivi"
+      "switched": "I nuovi pagamenti sono attivi",
+      "openPanelsTitle": "Pannelli di pagamento aperti da riconciliare",
+      "openPanelsHint": "Controlla terminale, QR e cassa prima di chiudere ogni pannello.",
+      "panelCashier": "{till} · {staff} · aperto {time}",
+      "panelStale": "Aperto da oltre 12 ore",
+      "panelNoInstruction": "Istruzione non salvata",
+      "panelReceipt": "Ricevuta #{order}",
+      "panelReceiptUsed": "La ricevuta copre già un altro pannello",
+      "reconcileRecorded": "Registrato",
+      "reconcileNothingTaken": "Nulla incassato",
+      "reconcileUnrecorded": "Incassato · senza ricevuta",
+      "reconcileUnrecordedTitle": "Registrare un incasso senza ricevuta?",
+      "reconcileUnrecordedHint": "Usa questa opzione quando terminale o cassa hanno incassato denaro senza ricevuta (ad esempio un doppio incasso). Descrivi cosa è successo e come è stato risolto.",
+      "reconcileUnrecordedPlaceholder": "Cosa mostrava il terminale o la cassa e come è stato risolto",
+      "reconcileDone": "Pannello di pagamento riconciliato",
+      "retireTill": "Ritira cassa",
+      "retireTillTitle": "Ritirare {till}?",
+      "retireTillHint": "Ritira un browser o dispositivo sostituito dopo aver riconciliato i suoi pannelli aperti per sbloccare gli interruttori di vendita.",
+      "retireTillReason": "Browser o dispositivo sostituito",
+      "tillRetired": "Cassa ritirata"
     }
   }
 }

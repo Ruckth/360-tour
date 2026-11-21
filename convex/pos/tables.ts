@@ -471,7 +471,7 @@ export const posTables = {
 	 * (renewed in `displayDriverLeases`). Pairing links are valid only for `pairGeneration`.
 	 */
 	tills: defineTable({
-		key: v.union(v.literal('default'), v.literal('payment')),
+		key: v.union(v.literal('default'), v.literal('payment'), v.literal('retired')),
 		paymentDeviceHash: v.optional(v.string()),
 		orderId: v.optional(v.id('orders')),
 		driverId: v.optional(v.string()),

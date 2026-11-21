@@ -540,6 +540,7 @@ function PayAttempt({
             <input
               type="checkbox"
               checked={notifyGuest}
+              disabled={Boolean(recording)}
               onChange={(e) => { setNotifyGuest(e.target.checked); onNotifyGuest?.(e.target.checked); }}
             />
             Send booking payment confirmation email
@@ -572,7 +573,9 @@ function PayAttempt({
             </PayButton>
           </>
         )}
-        {mode === "none" ? null : (
+        {mode === "none" ? null : recording ? (
+          <p className="flex min-h-11 items-center justify-center text-center text-[13px] text-muted-foreground">Received now</p>
+        ) : (
           <ReceivedAt
             value={effectiveInput}
             edited={timeEdited}

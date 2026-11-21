@@ -101,21 +101,32 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
         {preview ? (
           <section aria-label={t("returns.whereItGoes")} data-return-approval-quote="" className="grid gap-2 rounded-lg bg-muted/50 p-3 text-sm">
             <ul className="grid gap-1">
-              {preview.rows.map((row) => (
+              {preview.rows.map((row) => {
+                const showParts = row.parts.length > 1 || row.parts.some((part) => part.kind === "restore" || part.disposition || (part.kind === "session" && part.units));
+                return (
                 <li key={row.lineId} className="grid gap-0.5">
                   <span className="flex justify-between gap-3"><span className="min-w-0 [overflow-wrap:anywhere]">{row.label}</span><span className="font-sans tabular-nums">{money(row.amount)}</span></span>
-                  {row.parts.length > 1 || row.parts.some((part) => part.kind === "restore") ? (
-                    <ul className="grid gap-0.5 pl-3 text-xs text-muted-foreground">
-                      {row.parts.map((part, index) => (
+                  {showParts ? (
+                    <ul className="grid gap-0.5 pl-3 text-xs text-muted-foreground" data-return-approval-parts="">
+                      {row.parts.map((part, index) => {
+                        const detail = part.disposition
+                          ? t(part.disposition === "sellable" ? "returns.sellable" : "returns.damaged")
+                          : part.kind === "session" && part.units
+                            ? t("returns.sessionsStopped", { count: part.units })
+                            : null;
+                        const label = part.kind === "restore" ? t("returns.restoreSession") : detail ? `${part.label} · ${detail}` : part.label;
+                        return (
                         <li key={`${part.contentKey ?? part.kind}:${index}`} className="flex justify-between gap-3">
-                          <span className="min-w-0 [overflow-wrap:anywhere]">{part.kind === "restore" ? t("returns.restoreSession") : part.label}</span>
+                          <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
                           <span className="font-sans tabular-nums">{money(part.amount)}</span>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
             <p className="border-t border-border pt-2 text-xs font-medium text-muted-foreground">{t("returns.whereItGoes")}</p>
             <ul className="grid gap-1" data-return-destinations="">
@@ -126,7 +137,7 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
           </section>
         ) : quote && "error" in quote ? (
           <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">{quote.error}</p>
-        ) : <Spinner label="Loading request" />}
+        ) : <div className="grid min-h-48 place-items-center rounded-lg bg-muted/50 p-3"><Spinner label="Loading request" /></div>}
         {asked ? <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{asked.reason}”</blockquote> : null}
         {list.some((item) => item.kind === "external") ? <p className="text-sm" data-return-payer="">{t("returns.whoGivesBack", { name: cashier })}</p> : null}
         <p className="text-xs text-muted-foreground">{now >= request.expiresAt ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}</p>

@@ -415,3 +415,51 @@ for (const [label, sizes] of [
     expect(first.ranges).toBe(1);
   });
 }
+
+it('prioritizes same-key identity substitutions ahead of count-only parts within the 20-name page cap', async () => {
+  const f = await fixture();
+  const ids = await Promise.all(Array.from({ length: 22 }, (_, i) => service(f.t, `Service ${i}`)));
+  const countOnlyBefore = Array.from({ length: 10 }, (_, i) => ({
+    kind: 'session', contentKey: `count-${i}`, units: 5, serviceIds: [ids[i * 2], ids[i * 2 + 1]],
+  }));
+  const countOnlyAfter = Array.from({ length: 10 }, (_, i) => ({
+    kind: 'session', contentKey: `count-${i}`, units: 6, serviceIds: [ids[i * 2], ids[i * 2 + 1]],
+  }));
+  const swapBefore = { kind: 'session', contentKey: 'swap-part', units: 5, serviceIds: [ids[20]] };
+  const swapAfter = { kind: 'session', contentKey: 'swap-part', units: 5, serviceIds: [ids[21]] };
+  const target = await publish(f, 'wide-with-swap', 0, {
+    assertScope: async () => {},
+    prepare: async (ctx, _actor, { target: t }) => {
+      if (t.targetType !== 'package') throw new Error('Invalid');
+      return {
+        before: { contents: [...countOnlyBefore, swapBefore] as never },
+        after: { contents: [...countOnlyAfter, swapAfter] as never },
+        apply: async ({ revisionAfter }) => {
+          reserveWrites(ctx, 1);
+          await ctx.db.patch(t.targetId, { revision: revisionAfter });
+          return [];
+        },
+      };
+    },
+  });
+  const result = await f.manager.query(api.commerce.history.staffPage, { target, paginationOpts: { numItems: 20, cursor: null } });
+  expect(result.page).toHaveLength(1);
+  const beforeSwap = ((result.page[0].before as { contents: { contentKey: string; label?: string }[] }).contents).find(c => c.contentKey === 'swap-part');
+  const afterSwap = ((result.page[0].after as { contents: { contentKey: string; label?: string }[] }).contents).find(c => c.contentKey === 'swap-part');
+  expect(beforeSwap?.label).toBe('Service 20');
+  expect(afterSwap?.label).toBe('Service 21');
+});
+
+it('rejects a stale cut cursor with a structured InvalidCursor error so clients reset cleanly', async () => {
+  const { cashier, voucherId } = await fixture();
+  await expect(cashier.query(api.commerce.history.staffPage, {
+    target: { targetType: 'voucher', targetId: voucherId },
+    paginationOpts: { numItems: 20, cursor: 'cut:not-valid-base64' },
+  })).rejects.toMatchObject({
+    data: expect.objectContaining({
+      code: 'STALE_HISTORY_CURSOR',
+      isConvexSystemError: true,
+      paginationError: 'InvalidCursor',
+    }),
+  });
+});
