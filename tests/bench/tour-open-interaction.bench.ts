@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { test, expect, type Browser, type CDPSession, type Page } from "@playwright/test";
-import { newMobilePage, PANORAMA } from "./tour-mobile-profile";
+import { MOBILE_PROFILE, newMobilePage, PANORAMA, verifySoftwareWebGLRenderer } from "./tour-mobile-profile";
 
-type Frame = { at: number; yaw: number; roomId: string };
+type Frame = { seq: number; at: number; yaw: number; roomId: string };
 type InstrumentedWindow = Window & {
   __tourBench: {
     mark: (name: string) => void;
@@ -14,6 +14,7 @@ type InstrumentedWindow = Window & {
   };
   __tourSample: {
     stages: Record<string, number>;
+    frameSeq: number;
     last: Frame | null;
     origin: Frame | null;
     moved: Frame | null;
@@ -22,11 +23,39 @@ type InstrumentedWindow = Window & {
   };
 };
 
+type Cohort = "direct" | "click" | "reopen";
+
+const COHORTS: readonly Cohort[] = ["direct", "click", "reopen"];
+const VILLA_PATH = "/rooms/pool-villa";
+const EXPECTED_FIRST_ROOM = "pv-living";
+const EXPECTED_FIRST_PANORAMA = "/tour/panoramas/v1/pool-villa-living-2048.webp";
+const EXPECTED_NEIGHBOR_PREFETCH_PANORAMA = "/tour/panoramas/v1/pool-villa-pool-2048.webp";
+const ALLOWED_PANORAMAS_BEFORE_GESTURE = new Set([EXPECTED_FIRST_PANORAMA, EXPECTED_NEIGHBOR_PREFETCH_PANORAMA]);
+const APP_CHUNK = /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
+
+const CHROME_TRACE_CATEGORIES = [
+  "-*",
+  "devtools.timeline",
+  "disabled-by-default-devtools.timeline",
+  "disabled-by-default-devtools.timeline.frame",
+  "blink.user_timing",
+  "loading",
+  "toplevel",
+  "v8.execute",
+  "blink",
+  "cc",
+  "skia",
+  "gpu",
+  "gpu.service",
+  "disabled-by-default-gpu.service",
+];
+
 function instrument() {
   performance.setResourceTimingBufferSize(2000);
   const w = window as unknown as InstrumentedWindow;
   const sample = (w.__tourSample = {
     stages: {} as Record<string, number>,
+    frameSeq: 0,
     last: null as Frame | null,
     origin: null as Frame | null,
     moved: null as Frame | null,
@@ -34,15 +63,32 @@ function instrument() {
     opened: null as number | null,
   });
   w.__tourBench = {
+    // Production reports `texture_available` (image loaded/available before GPU upload), plus lifecycle stages.
     mark(name) {
-      sample.stages[name] ??= performance.now();
+      if (sample.stages[name] === undefined) {
+        sample.stages[name] = performance.now();
+        performance.mark(`tour_bench:${name}`);
+      }
     },
     frame(yaw, roomId) {
-      const frame = { yaw, roomId, at: performance.now() };
+      sample.frameSeq += 1;
+      const frame: Frame = { seq: sample.frameSeq, yaw, roomId, at: performance.now() };
       sample.last = frame;
-      sample.stages.first_scene_drawn ??= frame.at;
-      if (sample.origin?.roomId === roomId && sample.gesture !== null && Math.abs(yaw - sample.origin.yaw) > 0.001)
-        sample.moved ??= frame;
+      if (sample.stages.first_scene_drawn === undefined) {
+        sample.stages.first_scene_drawn = frame.at;
+        performance.mark("tour_bench:first_scene_drawn");
+      }
+      if (
+        sample.origin !== null &&
+        sample.gesture !== null &&
+        sample.origin.roomId === roomId &&
+        frame.seq > sample.origin.seq &&
+        Math.abs(yaw - sample.origin.yaw) > 0.001 &&
+        sample.moved === null
+      ) {
+        sample.moved = frame;
+        performance.mark("tour_bench:drag_changed_frame");
+      }
     },
   };
   addEventListener(
@@ -50,10 +96,12 @@ function instrument() {
     (e) => {
       if (
         e.isTrusted &&
+        sample.opened === null &&
         e.target instanceof Element &&
         /Explore (in )?360/i.test(e.target.closest("button")?.textContent ?? "")
       ) {
         sample.opened = performance.now();
+        performance.mark("tour_bench:explore_clicked");
       }
     },
     true,
@@ -61,18 +109,15 @@ function instrument() {
   addEventListener(
     "touchstart",
     (e) => {
-      if (e.isTrusted && e.target instanceof HTMLCanvasElement) {
+      if (e.isTrusted && e.target instanceof HTMLCanvasElement && sample.gesture === null) {
         sample.origin = sample.last;
         sample.gesture = performance.now();
+        performance.mark("tour_bench:drag_started");
       }
     },
     { capture: true, passive: true },
   );
 }
-
-type Cohort = "direct" | "click" | "reopen";
-
-const APP_CHUNK = /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
 
 function preloadViewerChunks(paths: string[]) {
   if (!paths.length || window !== window.top) return;
@@ -109,20 +154,21 @@ async function drag(cdp: CDPSession) {
   }
 }
 
-async function waitForScene(page: Page) {
+async function waitForScene(page: Page, expectedRoom: string) {
   await page.waitForFunction(
-    () => {
+    (targetRoom) => {
       const viewer = document.querySelector('[data-testid="tour-viewer"]');
-      const room = viewer?.getAttribute("data-shown-room");
+      const requested = viewer?.getAttribute("data-requested-room");
+      const shown = viewer?.getAttribute("data-shown-room");
       return (
-        room &&
-        room === viewer?.getAttribute("data-requested-room") &&
+        requested === targetRoom &&
+        shown === targetRoom &&
         viewer?.getAttribute("data-scene-status") === "ready" &&
-        room === (window as unknown as InstrumentedWindow).__tourSample.last?.roomId &&
+        (window as unknown as InstrumentedWindow).__tourSample.last?.roomId === targetRoom &&
         document.elementFromPoint(190, 390) instanceof HTMLCanvasElement
       );
     },
-    undefined,
+    expectedRoom,
     { timeout: 60_000, polling: "raf" },
   );
 }
@@ -171,13 +217,14 @@ type MeasureOptions = {
   runId: string;
   withheldMs?: number;
   traceFile?: string;
+  chromeTraceFile?: string;
   preloadPaths?: string[];
 };
 
 async function measure(
   browser: Browser,
   kind: Cohort,
-  { runId, withheldMs = 0, traceFile, preloadPaths }: MeasureOptions,
+  { runId, withheldMs = 0, traceFile, chromeTraceFile, preloadPaths }: MeasureOptions,
 ) {
   const { context, page, cdp } = await newMobilePage(browser, kind !== "reopen", instrument);
   const requests: { path: string; wallMs: number }[] = [];
@@ -217,6 +264,14 @@ async function measure(
     spanOpen = false;
     await spanBoundary("finish", runId);
   }
+  let chromeTracing = false;
+  async function stopChromeTrace() {
+    if (!chromeTracing || !chromeTraceFile) return;
+    chromeTracing = false;
+    const buffer = await browser.stopTracing();
+    mkdirSync(path.dirname(chromeTraceFile), { recursive: true, mode: 0o700 });
+    writeFileSync(chromeTraceFile, buffer, { mode: 0o600 });
+  }
   let delayed = false;
   try {
     if (preloadPaths) await page.addInitScript(preloadViewerChunks, preloadPaths);
@@ -226,32 +281,41 @@ async function measure(
         snapshots: false,
         sources: false,
       });
-    // Enable the same interception in both arms of the cold direct-entry experiment.
+    if (chromeTraceFile) {
+      await browser.startTracing(page, {
+        screenshots: false,
+        categories: CHROME_TRACE_CATEGORIES,
+      });
+      chromeTracing = true;
+    }
+    // Enable the same interception in both arms of the cold direct-entry experiment,
+    // scoped strictly to the seeded mobile first-scene panorama.
     if (kind === "direct")
       await page.route(PANORAMA, async (route) => {
-        if (!delayed) {
+        const pathname = new URL(route.request().url()).pathname;
+        if (!delayed && pathname === EXPECTED_FIRST_PANORAMA) {
           delayed = true;
           if (withheldMs > 0) await delay(withheldMs);
         }
         await route.continue();
       });
-    const villaPath = "/rooms/pool-villa";
     const direct = kind === "direct";
     if (direct) await openSpan();
-    const documentResponse = await page.goto(villaPath + (direct ? "?tour=1" : ""), {
+    const documentResponse = await page.goto(VILLA_PATH + (direct ? "?tour=1" : ""), {
       waitUntil: direct ? "commit" : "load",
     });
     const routeCache = (await documentResponse?.headerValue("x-nextjs-cache")) ?? null;
     const explore = page.getByRole("button", { name: /Explore (in )?360/i }).first();
     if (kind === "reopen") {
       await explore.tap();
-      await waitForScene(page);
+      await waitForScene(page, EXPECTED_FIRST_ROOM);
       await page.getByTestId("tour-viewer").getByRole("button", { name: "Close" }).first().click();
       await page.getByTestId("tour-viewer").waitFor({ state: "detached" });
       await page.evaluate(() => {
         const s = (window as unknown as InstrumentedWindow).__tourSample;
         s.last = s.origin = s.moved = null;
         s.gesture = s.opened = null;
+        s.frameSeq = 0;
         s.stages = {};
         performance.clearResourceTimings();
       });
@@ -261,7 +325,7 @@ async function measure(
       await openSpan();
       await explore.tap();
     }
-    await waitForScene(page);
+    await waitForScene(page, EXPECTED_FIRST_ROOM);
     await drag(cdp);
     await page.waitForFunction(() => Boolean((window as unknown as InstrumentedWindow).__tourSample.moved), undefined, {
       timeout: 10_000,
@@ -272,6 +336,12 @@ async function measure(
         const start = direct ? 0 : s.opened;
         if (start === null || !s.moved || s.gesture === null || !s.origin)
           throw Error("Missing trusted input or render observation");
+        if (!(s.moved.seq > s.origin.seq)) {
+          throw Error(`Frame sequence did not increment during gesture (origin=${s.origin.seq}, moved=${s.moved.seq})`);
+        }
+        const viewer = document.querySelector('[data-testid="tour-viewer"]');
+        const requestedRoom = viewer?.getAttribute("data-requested-room") ?? null;
+        const shownRoom = viewer?.getAttribute("data-shown-room") ?? null;
         const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
         const images = performance
           .getEntriesByType("resource")
@@ -311,12 +381,18 @@ async function measure(
           origin: location.origin,
           timeOrigin: performance.timeOrigin,
           ttfb: navigation.responseStart,
+          serverHeaderMs: direct ? (navigation.serverTiming.find((entry) => entry.name === "ssr")?.duration ?? null) : null,
           scripts,
           responseMs: s.moved.at - start,
           dragToFrameMs: s.moved.at - s.gesture,
           gestureAt: s.gesture,
           changedFrameAt: s.moved.at,
+          originFrameSeq: s.origin.seq,
+          changedFrameSeq: s.moved.seq,
+          drawnFrames: s.frameSeq,
           room: s.moved.roomId,
+          requestedRoom,
+          shownRoom,
           stages: s.stages,
           images,
         };
@@ -324,10 +400,36 @@ async function measure(
       { direct, pattern: PANORAMA.source },
     );
     await closeSpan();
+    await stopChromeTrace();
     await verifyPanorama(page, cdp);
     const startedImages = requests
       .map((r) => ({ path: r.path, start: r.wallMs - data.timeOrigin }))
       .filter((r) => r.start >= data.start && r.start <= data.changedFrameAt);
+    expect(data.requestedRoom, "requested room must equal seeded first scene").toBe(EXPECTED_FIRST_ROOM);
+    expect(data.shownRoom, "shown room must equal seeded first scene").toBe(EXPECTED_FIRST_ROOM);
+    expect(data.room, "drawn frame room must equal seeded first scene").toBe(EXPECTED_FIRST_ROOM);
+    expect(data.originFrameSeq, "at least one frame must be drawn before gesture").toBeGreaterThan(0);
+    expect(data.changedFrameSeq, "frame sequence must increment during gesture").toBeGreaterThan(data.originFrameSeq);
+    const startedBeforeGesture = startedImages.filter((r) => r.start <= data.gestureAt);
+    expect(
+      startedBeforeGesture.filter((r) => !ALLOWED_PANORAMAS_BEFORE_GESTURE.has(r.path)),
+      "no alternate rendition or foreign panorama may be fetched before gesture",
+    ).toEqual([]);
+    expect(
+      data.images
+        .filter((r) => r.start >= data.start && r.start <= data.gestureAt)
+        .filter((r) => !ALLOWED_PANORAMAS_BEFORE_GESTURE.has(r.path)),
+      "no alternate rendition or foreign panorama resource may load before gesture",
+    ).toEqual([]);
+    if (kind !== "reopen") {
+      expect(startedBeforeGesture[0]?.path, "first fetched panorama must be seeded mobile 2048 first scene").toBe(
+        EXPECTED_FIRST_PANORAMA,
+      );
+      expect(
+        data.images.some((r) => r.path === EXPECTED_FIRST_PANORAMA),
+        "seeded mobile 2048 first-scene panorama resource must complete",
+      ).toBe(true);
+    }
     if (direct) expect(delayed).toBe(true);
     const { origin, ...timings } = data;
     const startedScripts = Array.from(scriptRequests)
@@ -340,15 +442,30 @@ async function measure(
         servedFromCache: cachedScripts.has(id),
       }))
       .filter((r) => r.start >= timings.start && r.start <= timings.changedFrameAt);
-    return { kind, withheldMs, routeCache, ...timings, startedImages, startedScripts };
+    return {
+      kind,
+      withheldMs,
+      routeCache,
+      ...timings,
+      startedImages,
+      startedScripts,
+    };
   } finally {
     try {
       await closeSpan();
     } finally {
       try {
-        if (traceFile) await context.tracing.stop({ path: traceFile });
+        await stopChromeTrace();
       } finally {
-        await context.close();
+        try {
+          if (traceFile) {
+            mkdirSync(path.dirname(traceFile), { recursive: true, mode: 0o700 });
+            await context.tracing.stop({ path: traceFile });
+            chmodSync(traceFile, 0o600);
+          }
+        } finally {
+          await context.close();
+        }
       }
     }
   }
@@ -365,22 +482,29 @@ async function spanBoundary(action: "start" | "finish", runId: string) {
   if (!res.ok) throw Error("Cannot " + action + " benchmark span window: " + res.status);
 }
 
-function benchmarkMetadata(browser: Browser) {
+async function benchmarkMetadata(browser: Browser) {
+  const renderer = await verifySoftwareWebGLRenderer(browser);
   const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
   return {
     revision: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim(),
     browser: browser.version(),
+    renderer,
     node: process.version,
     platform: process.platform,
     arch: process.arch,
-    width: 390,
-    height: 844,
-    dpr: 2,
-    cpuFactor: 4,
-    rttMs: 150,
-    downMbps: 1.6,
+    width: MOBILE_PROFILE.width,
+    height: MOBILE_PROFILE.height,
+    dpr: MOBILE_PROFILE.dpr,
+    cpuFactor: MOBILE_PROFILE.cpuFactor,
+    rttMs: MOBILE_PROFILE.rttMs,
+    downMbps: MOBILE_PROFILE.downMbps,
+    upKbps: MOBILE_PROFILE.upKbps,
+    downloadBytesPerSec: MOBILE_PROFILE.downloadThroughput,
+    uploadBytesPerSec: MOBILE_PROFILE.uploadThroughput,
+    expectedFirstRoom: EXPECTED_FIRST_ROOM,
+    expectedFirstPanorama: EXPECTED_FIRST_PANORAMA,
     lockSha256: digest("pnpm-lock.yaml"),
     assetSha256: digest("public/tour/panoramas/v1/pool-villa-living-2048.webp"),
     seed: "demo-resort",
@@ -393,35 +517,43 @@ test("tour entry to first responsive frame", async ({ browser }) => {
   const extra = Number(process.env.BENCH_IMAGE_DELAY_MS ?? 0);
   expect(Number.isInteger(count) && count > 0).toBe(true);
   expect(Number.isFinite(extra) && extra >= 0).toBe(true);
-  const kinds: Cohort[] = process.env.BENCH_DIRECT_ONLY === "1" ? ["direct"] : ["direct", "click", "reopen"];
-  test.setTimeout(count * kinds.length * 240_000 + 60_000);
+  test.setTimeout(count * COHORTS.length * 240_000 + 60_000);
   const samples: (Awaited<ReturnType<typeof measure>> & { runId: string })[] = [];
   const failures: { kind: Cohort; run: number; error: string }[] = [];
-  const metadata = benchmarkMetadata(browser);
+  const metadata = await benchmarkMetadata(browser);
   const out = process.env.BENCH_OUT;
+  const save = () => {
+    if (!out) return;
+    mkdirSync(path.dirname(out), { recursive: true, mode: 0o700 });
+    writeFileSync(out, JSON.stringify({ metadata, count, samples, failures }, null, 2) + "\n", { mode: 0o600 });
+  };
   for (let run = 1; run <= count; run++) {
-    for (const kind of kinds) {
+    for (const kind of COHORTS) {
       const runId = [process.env.BENCH_BATCH ?? "baseline", run, kind].join("-");
       try {
         const trace = run === 1 && kind === "direct" && process.env.BENCH_TRACE_PATH;
+        const chromeTrace = run === 1 && kind === "direct" && process.env.BENCH_CHROME_TRACE_PATH;
         const sample = await measure(browser, kind, {
           runId,
           withheldMs: kind === "direct" ? extra : 0,
           traceFile: trace ? path.resolve(trace) : undefined,
+          chromeTraceFile: chromeTrace ? path.resolve(chromeTrace) : undefined,
         });
         samples.push({ runId, ...sample });
       } catch (e) {
-        failures.push({
-          kind,
-          run,
-          error: e instanceof Error ? e.message : String(e),
-        });
-        throw e;
+        const message = e instanceof Error ? e.message : String(e);
+        failures.push({ kind, run, error: message });
+        console.error(`bench-sample-failed ${runId}:`, message);
       } finally {
-        if (out)
-          writeFileSync(out, JSON.stringify({ metadata, count, samples, failures }, null, 2) + "\n", { mode: 0o600 });
+        save();
       }
     }
+  }
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} of ${count * COHORTS.length} benchmark sample(s) failed: ` +
+        failures.map((f) => `run ${f.run} ${f.kind}: ${f.error}`).join("; "),
+    );
   }
 });
 
@@ -433,21 +565,22 @@ test("tour viewer chunk preload experiment", async ({ browser }) => {
   if (!out) throw Error("Set BENCH_VIEWER_OUT to a new private JSON path");
   test.setTimeout((2 * count + 2) * 240_000 + 60_000);
 
-  const metadata = benchmarkMetadata(browser);
+  const metadata = await benchmarkMetadata(browser);
   type Arm = "discovery" | "control" | "preload" | "restored-control";
   type Sample = Awaited<ReturnType<typeof measure>>;
   const samples: { runId: string; pair: number | null; arm: Arm; timing: Sample }[] = [];
   const failures: { runId: string; error: string }[] = [];
   let chunkPaths: string[] = [];
   const save = (initial = false) => {
+    mkdirSync(path.dirname(out), { recursive: true, mode: 0o700 });
     const observed = samples.map((sample) => ({
       ...sample,
-      viewerChunks: chunkPaths.map((path) => {
-        const requests = sample.timing.startedScripts.filter((request) => request.path === path);
-        const resources = sample.timing.scripts.filter((resource) => resource.path === path);
+      viewerChunks: chunkPaths.map((chunkPath) => {
+        const requests = sample.timing.startedScripts.filter((request) => request.path === chunkPath);
+        const resources = sample.timing.scripts.filter((resource) => resource.path === chunkPath);
         const transferred = requests.filter((request) => (request.transferBytes ?? 0) > 0);
         return {
-          path,
+          path: chunkPath,
           requests,
           resources,
           duplicateRequests: Math.max(0, requests.length - 1),
@@ -461,7 +594,7 @@ test("tour viewer chunk preload experiment", async ({ browser }) => {
     });
   };
   save(true);
-  const run = async (arm: Arm, pair: number | null) => {
+  const run = async (arm: Arm, pair: number | null): Promise<Sample | null> => {
     const runId = [process.env.BENCH_BATCH ?? "viewer", pair, arm].filter((part) => part !== null).join("-");
     try {
       const timing = await measure(browser, "direct", {
@@ -471,13 +604,18 @@ test("tour viewer chunk preload experiment", async ({ browser }) => {
       samples.push({ runId, pair, arm, timing });
       return timing;
     } catch (error) {
-      failures.push({ runId, error: error instanceof Error ? error.message : String(error) });
-      throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push({ runId, error: message });
+      console.error(`bench-viewer-sample-failed ${runId}:`, message);
+      return null;
     } finally {
       save();
     }
   };
   const discovery = await run("discovery", null);
+  if (!discovery) {
+    throw new Error(`Viewer chunk discovery failed: ${failures.map((f) => `${f.runId}: ${f.error}`).join("; ")}`);
+  }
   const start = discovery.stages.viewer_module_start;
   const ready = discovery.stages.viewer_module_ready;
   expect(ready).toBeGreaterThan(start);
@@ -495,4 +633,10 @@ test("tour viewer chunk preload experiment", async ({ browser }) => {
     for (const arm of arms) await run(arm, pair);
   }
   await run("restored-control", null);
+  if (failures.length > 0) {
+    throw new Error(
+      `${failures.length} viewer preload sample(s) failed: ` +
+        failures.map((f) => `${f.runId}: ${f.error}`).join("; "),
+    );
+  }
 });
