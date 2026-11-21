@@ -26,7 +26,7 @@ type SpanRun = { runId: string; ssr: Record<string, unknown>[]; convex: Record<s
 const metadata = {
   revision: "abc123", browser: "140.0", node: "v22.0.0", platform: "darwin", arch: "arm64", width: 390, height: 844,
   dpr: 2, cpuFactor: 4, rttMs: 150, downMbps: 1.6, lockSha256: "lock", assetSha256: "asset", seed: "demo-resort",
-  sceneSeedSha256: "scene", renderer: "ANGLE (Apple, Metal)",
+  sceneSeedSha256: "scene", renderer: "ANGLE (Google, SwiftShader)",
 };
 
 function sample(label: string, run: number, kind: Kind, delay: number, origin: number, jitter: number) {
@@ -128,7 +128,7 @@ describe("tour entry report statistics", () => {
     expect(control.serverHeaderMs.median).toBe(120);
     expect(control.convex["catalog/properties:getTourRooms"]).toMatchObject({ completions: 20, cached: 0 });
     expect(control.convex["catalog/properties:getTourRooms"].handlerMs.median).toBe(3);
-    expect(report.profile.renderer).toBe("ANGLE (Apple, Metal)");
+    expect(report.profile.renderer).toBe("ANGLE (Google, SwiftShader)");
     // The first panorama response end is a critical-path milestone ahead of texture availability.
     expect(control.criticalPath.map((c) => c.stage)).toEqual(expect.arrayContaining(["first_panorama_response_end", "texture_available"]));
     expect(control).toMatchObject({ warmPanoramaTransfers: 0 });

@@ -452,9 +452,10 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   /** @type {Issue[]} */
   const issues = [];
   const issue = (/** @type {Issue["level"]} */ level, /** @type {string} */ code, /** @type {string} */ message) => issues.push({ level, code, message });
-  if (profile.renderer === null) issue("warning", "renderer-unrecorded", "run files carry no renderer metadata; a fixed GPU/renderer cannot be confirmed");
+  if (typeof profile.renderer !== "string" || !/swiftshader/i.test(profile.renderer))
+    issue("inconclusive", "unverified-renderer", "the measured renderer must identify SwiftShader for the fixed mobile profile");
   if (samples.some((s) => s.cohort === "direct" && s.serverHeaderMs === null))
-    issue("warning", "server-header-unrecorded", "some direct samples lack serverHeaderMs (navigation request start → response headers)");
+    issue("inconclusive", "server-header-unrecorded", "some direct samples lack native server request-to-response-headers duration");
   for (const f of files) {
     const missing = COHORTS.filter((c) => !f.cohorts.includes(c));
     if (missing.length) issue("invalid", "missing-cohort", `${f.label} has no ${missing.join(" or ")} runs; every file needs the full ${COHORTS.join("/")} matrix, whose undelayed cohorts are the negative controls`);
