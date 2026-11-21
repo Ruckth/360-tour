@@ -190,7 +190,7 @@ export function useTourTextures({
         return;
       }
       if (!result.texture) return;
-      if (!activeDetailRequest) markTourBench("texture_decoded");
+      if (!activeDetailRequest) markTourBench("texture_available");
 
       const next: TaggedTexture = { roomId: currentRoomId, path, texture: result.texture };
       const previous = shownRef.current;

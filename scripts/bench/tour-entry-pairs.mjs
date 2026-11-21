@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Run inside the seeded integration harness, against its already-built server.
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
@@ -30,20 +30,22 @@ for (let batch = 1; batch <= 2; batch++) {
     for (const withheld of delays) {
       const name = `batch${batch}-pair${pair}-delay${withheld}`;
       console.log(name);
-      const result = spawnSync("pnpm", ["bench:browser", "tour-open-interaction"], {
+      const runFile = path.join(out, name + ".json");
+      const result = spawnSync("pnpm", ["bench:browser", "tour-open-interaction", "--grep", "tour entry to first responsive frame"], {
         stdio: "inherit",
         env: {
           ...process.env,
           BENCH_RUNS: "1",
           BENCH_BATCH: name,
-          BENCH_DIRECT_ONLY: withheld ? "1" : "0",
           BENCH_IMAGE_DELAY_MS: String(withheld),
           BENCH_TRACE_PATH: "",
-          BENCH_OUT: path.join(out, name + ".json"),
+          BENCH_CHROME_TRACE_PATH: "",
+          BENCH_OUT: runFile,
         },
       });
       if (result.error) throw result.error;
-      if (result.status !== 0) process.exit(result.status ?? 1);
+      if (result.signal || !existsSync(runFile)) throw Error(`Benchmark process did not finish writing ${name}`);
+      if (result.status !== 0) process.exitCode = 1;
     }
   }
 }
