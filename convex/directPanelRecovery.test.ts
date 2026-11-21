@@ -46,11 +46,11 @@ async function fixture() {
 type Fx = Awaited<ReturnType<typeof fixture>>;
 
 type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
-/** What a manager reviewed on the panel's row: its current revision, after confirming its till stopped. */
+/** What a manager reviewed on the panel's row: which registration and its current revision, after confirming its till stopped. */
 async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outcome: Outcome; note?: string }>(t: Fx['t'], args: A) {
   const panel = await t.run(ctx => ctx.db.query('directPaymentPanels')
     .withIndex('by_tillId_and_panelKey', q => q.eq('tillId', args.tillId).eq('panelKey', args.panelKey)).first());
-  return { ...args, expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
+  return { ...args, expectedInstanceId: String(panel?._id), expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
 }
 
 /** An open order of `price`, and what a panel reviewing it now would send. */

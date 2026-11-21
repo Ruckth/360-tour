@@ -30,11 +30,15 @@ function instructionSummary(panel: DirectPanelRow) {
   return tenders.map((tender) => `${t(METHOD_KEY[tender.method])} ${formatMoney(tender.amount)}`).join(" + ");
 }
 
-/** The registration a manager reviewed on this row: any change on the till (instruction, check, takeover) clears the confirmation. */
-const reviewKey = (panel: DirectPanelRow) => `${panel.tillId}:${panel.panelKey}:${panel.revision}`;
-/** What the server checks the manager reviewed (the row's revision) and confirmed (its till stopped). */
+/**
+ * The registration a manager reviewed on this row: a replacement under the same key, or any change
+ * on the till (instruction, check, takeover), clears the confirmation.
+ */
+const reviewKey = (panel: DirectPanelRow) => `${panel.tillId}:${panel.panelKey}:${panel.instanceId}:${panel.revision}`;
+/** What the server checks the manager reviewed (the row's registration and revision) and confirmed (its till stopped). */
 const reviewed = (panel: DirectPanelRow) => ({
-  tillId: panel.tillId, panelKey: panel.panelKey, expectedRevision: panel.revision, stoppedPreviousOperator: true,
+  tillId: panel.tillId, panelKey: panel.panelKey, expectedInstanceId: panel.instanceId, expectedRevision: panel.revision,
+  stoppedPreviousOperator: true,
 });
 
 /**

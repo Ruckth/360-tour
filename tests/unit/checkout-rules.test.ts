@@ -227,7 +227,7 @@ describe("Settings › Checkout rules, owner", () => {
       orderNumber: 12, orderStatus: "paid", receiptNumber: 12, receiptUsed: false,
       actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
       instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
-      settled: true, stale: false, canRecord: true, revision: 3,
+      settled: true, stale: false, canRecord: true, instanceId: "row-settled", revision: 3,
     };
     state.queries["commerce/paymentCutover:directPanels"] = [
       settled,
@@ -235,10 +235,10 @@ describe("Settings › Checkout rules, owner", () => {
         tillId: "till2", tillKey: "Till 000002", panelKey: "p-open", orderId: "order2",
         orderNumber: 13, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
         actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_500_000_000,
-        settled: false, stale: true, canRecord: false, revision: 0,
+        settled: false, stale: true, canRecord: false, instanceId: "row-open", revision: 0,
       },
       // Another cashier's receipt, or another tender: settled, but the server would refuse Recorded.
-      { ...settled, tillId: "till3", panelKey: "p-other-receipt", orderId: "order3", receiptNumber: 14, canRecord: false },
+      { ...settled, tillId: "till3", panelKey: "p-other-receipt", orderId: "order3", receiptNumber: 14, canRecord: false, instanceId: "row-other" },
     ];
     await render();
     const rows = () => [...document.querySelectorAll<HTMLElement>('[data-testid="direct-panel-row"]')];
@@ -262,12 +262,12 @@ describe("Settings › Checkout rules, owner", () => {
     const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
     await click(byText("Recorded", rows()[0]));
     expect(reconcile).toHaveBeenLastCalledWith({
-      tillId: "till1", panelKey: "p-settled", outcome: "recorded", expectedRevision: 3, stoppedPreviousOperator: true,
+      tillId: "till1", panelKey: "p-settled", outcome: "recorded", expectedInstanceId: "row-settled", expectedRevision: 3, stoppedPreviousOperator: true,
     });
 
     await click(byText("Nothing taken", rows()[1]));
     expect(reconcile).toHaveBeenLastCalledWith({
-      tillId: "till2", panelKey: "p-open", outcome: "nothing_taken", expectedRevision: 0, stoppedPreviousOperator: true,
+      tillId: "till2", panelKey: "p-open", outcome: "nothing_taken", expectedInstanceId: "row-open", expectedRevision: 0, stoppedPreviousOperator: true,
     });
 
     await click(byText("Collected · no receipt", rows()[1]));
@@ -276,7 +276,7 @@ describe("Settings › Checkout rules, owner", () => {
     await click(byText("Collected · no receipt", dialog()!));
     expect(reconcile).toHaveBeenLastCalledWith({
       tillId: "till2", panelKey: "p-open", outcome: "collected_unrecorded", note: "Terminal batch showed voided duplicate",
-      expectedRevision: 0, stoppedPreviousOperator: true,
+      expectedInstanceId: "row-open", expectedRevision: 0, stoppedPreviousOperator: true,
     });
   });
 
@@ -287,7 +287,7 @@ describe("Settings › Checkout rules, owner", () => {
       orderNumber: 12, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
       actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
       instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
-      settled: false, stale: false, canRecord: false, revision: 1,
+      settled: false, stale: false, canRecord: false, instanceId: "row-a", revision: 1,
     };
     state.queries["commerce/paymentCutover:directPanels"] = [panel];
     const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
@@ -297,7 +297,7 @@ describe("Settings › Checkout rules, owner", () => {
     const row = () => document.querySelector<HTMLElement>('[data-testid="direct-panel-row"]')!;
     await click(row().querySelector('input[type="checkbox"]'));
     await click(byText("Nothing taken", row()));
-    expect(reconcile).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 1, stoppedPreviousOperator: true }));
+    expect(reconcile).toHaveBeenLastCalledWith(expect.objectContaining({ expectedInstanceId: "row-a", expectedRevision: 1, stoppedPreviousOperator: true }));
     expect(document.querySelector('[role="alert"]')!.textContent).toBe("This pay panel changed on the till. Review the current instruction first.");
     await click(byText("Nothing taken", row()));
     expect(document.querySelector('[role="alert"]')!.textContent).toBe("Confirm the other till has stopped first.");
@@ -310,7 +310,7 @@ describe("Settings › Checkout rules, owner", () => {
     await click(row().querySelector('input[type="checkbox"]'));
     await click(byText("Nothing taken", row()));
     expect(reconcile).toHaveBeenLastCalledWith({
-      tillId: "till1", panelKey: "p-card", outcome: "nothing_taken", expectedRevision: 2, stoppedPreviousOperator: true,
+      tillId: "till1", panelKey: "p-card", outcome: "nothing_taken", expectedInstanceId: "row-a", expectedRevision: 2, stoppedPreviousOperator: true,
     });
     // Another manager takes it over on the same till: the same instruction (and its time), a new operator.
     state.queries["commerce/paymentCutover:directPanels"] = [{ ...cash, revision: 3, actor: "manager2", actorEmail: "nok@example.com" }];
@@ -321,7 +321,35 @@ describe("Settings › Checkout rules, owner", () => {
     await click(row().querySelector('input[type="checkbox"]'));
     await click(byText("Nothing taken", row()));
     expect(reconcile).toHaveBeenLastCalledWith({
-      tillId: "till1", panelKey: "p-card", outcome: "nothing_taken", expectedRevision: 3, stoppedPreviousOperator: true,
+      tillId: "till1", panelKey: "p-card", outcome: "nothing_taken", expectedInstanceId: "row-a", expectedRevision: 3, stoppedPreviousOperator: true,
+    });
+  });
+
+  it("clears the stop confirmation when the row is replaced under the same key at the same revision", async () => {
+    serve({ paused: true });
+    const rowA = {
+      tillId: "till1", tillKey: "default", panelKey: "k", orderId: "order1",
+      orderNumber: 12, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
+      actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
+      settled: false, stale: false, canRecord: false, instanceId: "row-a", revision: 0,
+    };
+    state.queries["commerce/paymentCutover:directPanels"] = [rowA];
+    const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
+    await render();
+    const row = () => document.querySelector<HTMLElement>('[data-testid="direct-panel-row"]')!;
+    const stopped = () => row().querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    await click(stopped());
+    expect(stopped().checked).toBe(true);
+    expect(byText("Nothing taken", row())!.disabled).toBe(false);
+    // Row A was reconciled elsewhere, and a retried open registered row B under the same key and revision.
+    state.queries["commerce/paymentCutover:directPanels"] = [{ ...rowA, instanceId: "row-b" }];
+    await render();
+    expect(stopped().checked).toBe(false);
+    expect(byText("Nothing taken", row())!.disabled).toBe(true);
+    await click(stopped());
+    await click(byText("Nothing taken", row()));
+    expect(reconcile).toHaveBeenLastCalledWith({
+      tillId: "till1", panelKey: "k", outcome: "nothing_taken", expectedInstanceId: "row-b", expectedRevision: 0, stoppedPreviousOperator: true,
     });
   });
 });

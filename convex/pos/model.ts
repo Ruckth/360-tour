@@ -9,6 +9,6 @@ export {
 } from './private/tillPayments';
 export {
   DIRECT_PANEL_STALE_MS, assertInstruction, closeSettledDirectPanel, deleteDirectPanel, directInstructionArgs, directPanelPage,
-  directPanelSettled, directPanelTill, findDirectPanel, matchesInstruction, orderDirectPanels, ownsPanel, panelOwner, panelRevision,
+  directPanelSettled, directPanelTill, findDirectPanel, matchesInstruction, orderDirectPanels, ownsPanel, panelInstanceId, panelOwner, panelRevision,
   linkReceipt, patchDirectPanel, readDirectPanels, receiptRecordsPanel, receiptUsed, registerDirectPanel, settlingPanel, type DirectInstruction, type DirectPanel,
 } from './private/directPanels';

@@ -80,6 +80,13 @@ export async function panelOwner(actor: string, till: Doc<'tills'> | undefined, 
 /** The registration's review revision: a pre-ledger or older row is 0. */
 export const panelRevision = (panel: DirectPanel) => ('revision' in panel ? panel.revision : undefined) ?? 0;
 
+/**
+ * Which registration this is: a ledger row's id (unique even if its key is deleted and reused in
+ * the same millisecond), or a pre-ledger entry's opening. A manager's review names it, so a stale
+ * review never resolves a replacement registered under the same key at the same revision.
+ */
+export const panelInstanceId = (panel: DirectPanel) => 'listed' in panel ? `listed:${panel.openedAt}:${panel.panelKey}` : String(panel._id);
+
 export function ownsPanel(panel: DirectPanel, owner: PanelOwner) {
   return panel.actor === owner.actor && panel.tillId === owner.tillId &&
     ('ownerTab' in panel ? panel.ownerTab : undefined) === owner.tab;

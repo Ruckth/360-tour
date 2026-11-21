@@ -22,11 +22,11 @@ const edit = (expectedRevision: number, clientKey: string, reason = 'Announced d
 afterEach(() => vi.unstubAllEnvs());
 
 type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
-/** What a manager reviewed on the panel's row: its current revision, after confirming its till stopped. */
+/** What a manager reviewed on the panel's row: which registration and its current revision, after confirming its till stopped. */
 async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outcome: Outcome; note?: string }>(t: Awaited<ReturnType<typeof fixture>>['t'], args: A) {
   const panel = await t.run(ctx => ctx.db.query('directPaymentPanels')
     .withIndex('by_tillId_and_panelKey', q => q.eq('tillId', args.tillId).eq('panelKey', args.panelKey)).first());
-  return { ...args, expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
+  return { ...args, expectedInstanceId: String(panel?._id), expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
 }
 
 async function fixture() {
@@ -587,7 +587,7 @@ it('refuses a reconciliation reviewed on an instruction the till has since repla
   // The manager reviews the Card instruction…
   const [row] = await manager.query(rollout.directPanels, {});
   expect(row).toMatchObject({ panelKey, instruction: { tenders: [{ method: 'card' }] }, canRecord: false });
-  const stale = { tillId, panelKey, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
   // …while the cashier switches the panel to Cash.
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(Date.now() + 60_000);
@@ -616,7 +616,7 @@ it('refuses a stop confirmation reviewed before a same-till takeover, which keep
   // The manager confirms the cashier stopped…
   const [row] = await manager.query(rollout.directPanels, {});
   expect(row).toMatchObject({ panelKey, actor: 'cashier', revision: 0 });
-  const stale = { tillId, panelKey, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
   // …while another manager takes the panel over on the same till: same instruction, new operator.
   await second.mutation(rollout.takeOverDirectPanel, { orderId, tillId, panelKey, deviceKey: device, tabKey: 'shared-till-tab-second', stoppedPreviousOperator: true });
   const [moved] = await manager.query(rollout.directPanels, {});
@@ -641,7 +641,7 @@ it('refuses a stop confirmation reviewed before the till issued and then cleared
   const [row] = await manager.query(rollout.directPanels, {});
   expect(row).toMatchObject({ panelKey, revision: 0 });
   expect(row.instruction).toBeUndefined();
-  const stale = { tillId, panelKey, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
   // …while the till shows Card, then clears it again (a split whose parts no longer cover the bill).
   await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey, instruction });
   expect(await manager.query(rollout.directPanels, {})).toMatchObject([{ panelKey, revision: 1, instruction: { tenders: [{ method: 'card' }] } }]);
@@ -657,6 +657,40 @@ it('refuses a stop confirmation reviewed before the till issued and then cleared
   expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toHaveLength(1);
   await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
   expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+});
+
+it('refuses a stop confirmation reviewed on a deleted registration once a retry reuses its key at the same revision (round 3 Major)', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Retried open');
+  const panelKey = 'k';
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(1_763_600_000_000);
+    // The cashier opens row A; the manager reviews it and ticks the stop confirmation…
+    const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, instruction });
+    const [rowA] = await manager.query(rollout.directPanels, {});
+    expect(rowA).toMatchObject({ tillId, panelKey, revision: 0 });
+    const stale = { tillId, panelKey, expectedInstanceId: rowA.instanceId, expectedRevision: rowA.revision, stoppedPreviousOperator: true };
+    // …row A is reconciled before the cashier sees the open response…
+    await manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'nothing_taken' });
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+    // …and the cashier's retry registers row B under the same key, at the same revision and time.
+    await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, instruction });
+    const [rowB] = await manager.query(rollout.directPanels, {});
+    expect(rowB).toMatchObject({ tillId, panelKey, revision: 0, openedAt: rowA.openedAt });
+    expect(rowB.instanceId).not.toBe(rowA.instanceId);
+    for (const outcome of ['nothing_taken', 'recorded'] as const) {
+      await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome })).rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+    }
+    await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'collected_unrecorded', note: 'Slip voided' }))
+      .rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toMatchObject([{ _id: rowB.instanceId, panelKey }]);
+    // Reviewing row B resolves it.
+    await manager.mutation(rollout.reconcileDirectPanel, { ...stale, expectedInstanceId: rowB.instanceId, outcome: 'nothing_taken' });
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it("never links a receipt settled at a later order revision to a panel opened at an earlier one (audit Major 2)", async () => {
