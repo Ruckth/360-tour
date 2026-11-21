@@ -8,6 +8,7 @@ import {
   median,
   nearestRankP95,
   renderMarkdown,
+  matchPanoramaRequests,
   ReportInputError,
   signTestP,
   unionMs,
@@ -25,7 +26,7 @@ type SpanRun = { runId: string; ssr: Record<string, unknown>[]; convex: Record<s
 const metadata = {
   revision: "abc123", browser: "140.0", node: "v22.0.0", platform: "darwin", arch: "arm64", width: 390, height: 844,
   dpr: 2, cpuFactor: 4, rttMs: 150, downMbps: 1.6, lockSha256: "lock", assetSha256: "asset", seed: "demo-resort",
-  sceneSeedSha256: "scene",
+  sceneSeedSha256: "scene", renderer: "ANGLE (Apple, Metal)",
 };
 
 function sample(label: string, run: number, kind: Kind, delay: number, origin: number, jitter: number) {
@@ -34,16 +35,18 @@ function sample(label: string, run: number, kind: Kind, delay: number, origin: n
   const at = (offset: number) => start + offset;
   const stages: Record<string, number> = {
     tour_open_requested: at(10), viewer_module_start: at(300), viewer_module_ready: at(900), viewer_mounted: at(1000),
-    texture_request_start: at(1100), rooms_resolved: at(1300), texture_decoded: at(1100 + texture),
+    texture_request_start: at(1100), rooms_resolved: at(1300), texture_available: at(1100 + texture),
     first_scene_drawn: at(1200 + texture),
   };
   if (kind === "click") stages.room_hydrated = 1200;
   const gestureAt = at(1350 + texture), changedFrameAt = gestureAt + 40;
   return {
     runId: `${label}-${run}-${kind}`, kind, withheldMs: kind === "direct" ? delay : 0, routeCache: null, start,
+    serverHeaderMs: kind === "direct" ? 120 : null,
     timeOrigin: origin, ttfb: 400, responseMs: changedFrameAt - start, dragToFrameMs: 40, gestureAt, changedFrameAt,
     room: "living", stages,
-    images: [{ path: "/tour/a-2048.webp", start: at(1100), end: at(1050 + texture), encodedBytes: 1, transferBytes: 1 }],
+    images: [{ path: "/tour/a-2048.webp", start: at(1100), end: at(1050 + texture), encodedBytes: 1, transferBytes: 1 }] as
+      { path: string; start: number; end: number; encodedBytes: number; transferBytes: number }[],
     scripts: [{ path: "/_next/static/chunks/viewer.js", start: at(300), end: at(800), transferBytes: 1, encodedBytes: 1 },
       { path: "/_next/static/chunks/three.js", start: at(500), end: at(900), transferBytes: 1, encodedBytes: 1 }],
     startedImages: [{ path: "/tour/a-2048.webp", start: at(1100) }],
@@ -66,7 +69,7 @@ function fixture(edit?: (files: Map<string, RunFileData>, spans: SpanRun[]) => v
             spans.push({
               runId: `${label}-${run}-${kind}`,
               ssr: [{ operation: "getVilla", cache: "hit", recovery: null, durationMs: 3, transportMs: null }],
-              convex: [{ function: "catalog/properties:getTourRooms", cached: false, outcome: "success", executionMs: 4 }],
+              convex: [{ function: "catalog/properties:getTourRooms", cached: false, outcome: "success", executionMs: 4, handlerMs: 3 }],
             });
           }
         files.set(label, { metadata: { ...metadata }, count: 5, samples, failures: [] });
@@ -119,7 +122,18 @@ describe("tour entry report statistics", () => {
     expect(control.cache).toEqual({ "ssr-hit": 20 });
     expect(delayed.responseMs.median! - control.responseMs.median!).toBe(1000);
     const [effect] = report.intervention;
-    expect(effect.direct).toMatchObject({ matched: 20, medianDeltaMs: 1000, medianSpanDeltaMs: 1000, transmission: 1, spanTransmission: 1, positive: 20, coupled: true });
+    expect(effect.direct).toMatchObject({ matched: 20, medianDeltaMs: 1000, medianAcquisitionDeltaMs: 1000, imposedDelayMs: 1000,
+      toleranceMs: 200, transmission: 1, acquisitionTransmission: 1, positive: 20, coupled: true });
+    expect(Object.values(effect.direct.checks).every(Boolean)).toBe(true);
+    expect(control.serverHeaderMs.median).toBe(120);
+    expect(control.convex["catalog/properties:getTourRooms"]).toMatchObject({ completions: 20, cached: 0 });
+    expect(control.convex["catalog/properties:getTourRooms"].handlerMs.median).toBe(3);
+    expect(report.profile.renderer).toBe("ANGLE (Apple, Metal)");
+    // The first panorama response end is a critical-path milestone ahead of texture availability.
+    expect(control.criticalPath.map((c) => c.stage)).toEqual(expect.arrayContaining(["first_panorama_response_end", "texture_available"]));
+    expect(control).toMatchObject({ warmPanoramaTransfers: 0 });
+    expect(control.panoramaCompletedBeforeInput.median).toBe(1);
+    expect(control.panoramaInFlightAtInput.median).toBe(0);
     expect(effect.pairs.map((p) => p.order)).toEqual(["control-first", "candidate-first", "control-first", "candidate-first"]);
     expect(effect.negativeControls.map((n) => n.medianDeltaMs)).toEqual([0, 0]);
     expect(report.noise.every((n) => n.spreadFraction! <= 0.05)).toBe(true);
@@ -134,7 +148,9 @@ describe("tour entry report statistics", () => {
     const markdown = renderMarkdown(report);
     expect(markdown).toContain("**Status: valid.**");
     expect(markdown).toContain(input.command);
-    expect(markdown).toContain("Span and end-to-end time moved together.");
+    expect(markdown).toContain("Texture acquisition and end-to-end time moved with the imposed delay.");
+    expect(markdown).toContain("Server timing: native request vs data layer");
+    expect(markdown).not.toContain("texture_decoded");
   });
 
   it("rejects mismatched builds, wrong delays, missing or foreign spans and missing cache data", () => {
@@ -152,6 +168,8 @@ describe("tour entry report statistics", () => {
     expect(inputProblems({ ...wrongFile, runs: [...wrongFile.runs, { file: "spans.json", text: wrongFile.spans[0].text }] }))
       .toMatch(/not a tour-open-interaction run file/);
     expect(inputProblems({ ...fixture(), spans: [] })).toMatch(/cache state cannot be established/);
+    expect(inputProblems(fixture((files) => { files.get("batch2-pair1-delay0")!.metadata.renderer = "SwiftShader"; })))
+      .toMatch(/renderer differ/);
   });
 
   it("reports failures, missing controls, single batches, noise and unalternated order instead of crediting a gain", () => {
@@ -214,5 +232,97 @@ describe("tour entry report statistics", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("does not credit coupling when movement is negative, off the imposed delay, or computed from empty samples", () => {
+    // Both end-to-end and acquisition significantly *faster* by about the delay: the old |Δtotal − Δspan| rule passed this.
+    const shift = (files: Map<string, RunFileData>, by: (s: ReturnType<typeof sample>) => number) => {
+      for (const [label, file] of files) if (label.endsWith("delay1000"))
+        for (const s of file.samples) if (s.kind === "direct") {
+          const d = by(s);
+          s.stages.texture_available += d; s.stages.first_scene_drawn += d;
+          s.gestureAt += d; s.changedFrameAt += d; s.responseMs += d;
+          s.images[0].end += d;
+        }
+    };
+    const negative = buildReport(fixture((files) => shift(files, () => -2000)));
+    expect(negative.intervention[0].direct.checks).toMatchObject({ endToEndSlower: false, acquisitionSlower: false });
+    expect(negative.intervention[0].direct.coupled).toBe(false);
+    expect(codes(negative)).toContain("inconclusive:not-coupled");
+
+    // Acquisition and end-to-end move together and significantly, but by 1.5× the imposed delay.
+    const offDelay = buildReport(fixture((files) => shift(files, () => 500)));
+    expect(offDelay.intervention[0].direct.checks).toEqual({
+      endToEndSlower: true, acquisitionSlower: true, acquisitionMatchesImposedDelay: false, endToEndMatchesAcquisition: true,
+    });
+    expect(offDelay.intervention[0].direct.coupled).toBe(false);
+
+    // No texture_available stage anywhere: no acquisition samples, so nothing is credited and nothing throws.
+    const empty = buildReport(fixture((files) => {
+      for (const file of files.values()) for (const s of file.samples) delete s.stages.texture_available;
+    }));
+    expect(empty.intervention[0].direct).toMatchObject({ acquisitionMatched: 0, medianAcquisitionDeltaMs: null, acquisitionTransmission: null, coupled: false });
+    expect(empty.variants[0].textureAcquisitionMs).toMatchObject({ n: 0, median: null });
+    expect(() => renderMarkdown(empty)).not.toThrow();
+  });
+
+  it("invalidates direct-only files and missing negative-control cohorts", () => {
+    const directOnly = buildReport(fixture((files, spans) => {
+      for (const [label, file] of files) if (label.endsWith("delay1000")) {
+        file.samples = file.samples.filter((s) => s.kind === "direct");
+        spans.splice(0, spans.length, ...spans.filter((s) => !s.runId.startsWith(label) || s.runId.endsWith("-direct")));
+      }
+    }));
+    expect(directOnly.status).toBe("invalid");
+    expect(codes(directOnly)).toEqual(expect.arrayContaining(["invalid:missing-cohort", "invalid:missing-negative-control"]));
+    expect(directOnly.issues.find((x) => x.code === "missing-cohort")!.message).toMatch(/delay1000 click: no observations|no click or reopen runs/);
+    expect(directOnly.intervention[0].negativeControls.map((n) => [n.cohort, n.matched])).toEqual([["click", 0], ["reopen", 0]]);
+  });
+
+  it("splits panorama requests into completed and in flight at input, keeping same-path repeats apart", () => {
+    const images = [
+      { path: "/a.webp", start: 100, end: 400, transferBytes: 10, encodedBytes: 10 },
+      { path: "/a.webp", start: 500, end: 900, transferBytes: 0, encodedBytes: 10 },
+    ];
+    const started = [{ path: "/a.webp", start: 101 }, { path: "/a.webp", start: 499 }, { path: "/a.webp", start: 950 }, { path: "/b.webp", start: 200 }];
+    expect(matchPanoramaRequests(images, started)).toEqual([
+      { start: 100, end: 400, warm: false },
+      { start: 200, end: null, warm: false },
+      { start: 500, end: 900, warm: true },
+      { start: 950, end: null, warm: false },
+    ]);
+
+    const report = buildReport(fixture((files) => {
+      for (const file of files.values()) for (const s of file.samples) {
+        const first = s.images[0];
+        // A repeat of the same path starts before input and ends after it, plus one that never completes.
+        s.images.push({ ...first, start: s.gestureAt - 50, end: s.gestureAt + 20 });
+        s.startedImages.push({ path: first.path, start: s.gestureAt - 50 }, { path: first.path, start: s.gestureAt - 10 });
+      }
+    }));
+    const control = report.variants.find((v) => v.variant === "control" && v.cohort === "direct")!;
+    expect(control.panoramaCompletedBeforeInput.median).toBe(1);
+    expect(control.panoramaInFlightAtInput.median).toBe(2);
+    expect(control.panoramaRequestsBeforeInput.median).toBe(3);
+    const warm = buildReport(fixture((files) => {
+      for (const file of files.values()) for (const s of file.samples) s.images[0].transferBytes = 0;
+    }));
+    const warmControl = warm.variants.find((v) => v.variant === "control" && v.cohort === "direct")!;
+    expect(warmControl.warmPanoramaTransfers).toBe(20);
+    expect(warmControl.criticalPath.map((c) => c.stage)).not.toContain("first_panorama_response_end");
+  });
+
+  it("separates SSR connection/transport from Convex completion and handler time", () => {
+    const report = buildReport(fixture((_, spans) => {
+      for (const s of spans) {
+        s.ssr = [{ operation: "getVilla", cache: "miss", recovery: null, durationMs: 90, transportMs: 70 }];
+        s.convex.push({ function: "catalog/publicProperties:getBySlug", cached: false, outcome: "success", executionMs: 25, handlerMs: 20 });
+      }
+    }));
+    const control = report.variants.find((v) => v.variant === "control" && v.cohort === "direct")!;
+    expect(control.ssrConnectionMs.median).toBe(45);
+    expect(control.convex["catalog/publicProperties:getBySlug"]).toMatchObject({ completions: 20, cached: 0 });
+    expect(control.convex["catalog/publicProperties:getBySlug"].completionMs.median).toBe(25);
+    expect(control.convex["catalog/publicProperties:getBySlug"].handlerMs.median).toBe(20);
   });
 });

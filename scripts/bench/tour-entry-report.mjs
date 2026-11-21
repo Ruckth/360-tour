@@ -28,11 +28,13 @@ import { parseArgs } from "node:util";
  * @typedef {{
  *   runId: string, label: string, batch: number, pair: number, delayMs: number, cohort: Cohort, run: number,
  *   withheldMs: number, startedAt: number, cache: string, ssrRecovery: boolean, convexErrors: number,
- *   responseMs: number, dragToFrameMs: number, ttfbMs: number | null, textureSpanMs: number | null,
+ *   responseMs: number, dragToFrameMs: number, ttfbMs: number | null, serverHeaderMs: number | null,
+ *   textureAcquisitionMs: number | null,
  *   segments: {stage: string, atMs: number, ms: number}[], beforeStart: string[], fallbacks: string[],
  *   panoramaNetworkMs: number, scriptNetworkMs: number, panoramaRequestsBeforeInput: number,
- *   ssrDurationMs: number | null, ssrTransportMs: number | null,
- *   convex: {function: string, cached: boolean, executionMs: number | null}[]
+ *   panoramaCompletedBeforeInput: number, panoramaInFlightAtInput: number, warmPanoramaTransfers: number,
+ *   ssrDurationMs: number | null, ssrTransportMs: number | null, ssrConnectionMs: number | null,
+ *   convex: {function: string, cached: boolean, executionMs: number | null, handlerMs: number | null}[]
  * }} Sample
  * @typedef {{
  *   file: string, sha256: string, label: string, batch: number, pair: number, delayMs: number,
@@ -48,13 +50,20 @@ export const CRITERIA = {
   minBatches: 2,
   significance: 0.05,
   couplingToleranceFraction: 0.2,
-  predictedSpan: "texture_request_start → texture_decoded",
+  // texture_available fires when the panorama texture can be bound (fetched and handed to the renderer), not on GPU decode.
+  predictedSpan: "texture_request_start → texture_available (texture acquisition)",
+  coupling: "Both end-to-end and texture-acquisition paired median deltas are positive with sign test p < significance; " +
+    "the acquisition delta is within couplingToleranceFraction of the delay actually imposed; " +
+    "and the end-to-end delta is within the same tolerance of the acquisition delta.",
 };
 const LABEL = /^batch(\d+)-pair(\d+)-delay(\d+)$/;
 const RUN_ID = /^(.+)-(\d+)-(direct|click|reopen)$/;
 const STAGE = /^[a-z][a-z0-9_]{0,63}$/;
 const PROFILE_KEYS = ["revision", "browser", "node", "platform", "arch", "width", "height", "dpr", "cpuFactor",
   "rttMs", "downMbps", "lockSha256", "assetSha256", "seed", "sceneSeedSha256"];
+/** Compared across files like PROFILE_KEYS, but older run files may predate it. */
+const OPTIONAL_PROFILE_KEYS = ["renderer"];
+const NEGATIVE_CONTROLS = /** @type {const} */ (["click", "reopen"]);
 const FALLBACK_STAGES = ["rooms_timeout", "texture_load_failed"];
 const SSR_CACHE = ["hit", "miss", "stale", "bypass"];
 const LEVELS = ["warning", "inconclusive", "invalid"];
@@ -169,6 +178,8 @@ function parseRunFile({ file, text }, problems) {
   if (!Number.isInteger(data.count) || data.count < 1) return fail("count must be a positive integer");
   for (const key of PROFILE_KEYS)
     if (!(typeof data.metadata[key] === "string" || num(data.metadata[key]))) return fail(`metadata.${key} is missing`);
+  for (const key of OPTIONAL_PROFILE_KEYS)
+    if (data.metadata[key] != null && typeof data.metadata[key] !== "string") return fail(`metadata.${key} must be a string`);
 
   const fromName = LABEL.exec(path.basename(file, ".json"))?.[0];
   const fromSamples = new Set(data.samples.map((/** @type {any} */ s) => RUN_ID.exec(String(s?.runId))?.[1]));
@@ -199,6 +210,7 @@ function parseRunFile({ file, text }, problems) {
         !s.startedImages.every((/** @type {any} */ r) => obj(r) && num(r.start)))
       return fail(`${at} has malformed resource timings`);
     if (s.routeCache !== null && typeof s.routeCache !== "string") return fail(`${at}.routeCache is malformed`);
+    if (s.serverHeaderMs != null && !nonneg(s.serverHeaderMs)) return fail(`${at}.serverHeaderMs must be a non-negative number`);
     samples.push(s);
   }
   const failures = [];
@@ -253,9 +265,11 @@ function parseSpanFile({ file, text }, spans, problems) {
  */
 function deriveSample(s, f, span) {
   const end = s.changedFrameAt;
+  const network = panoramaRequests(s);
   /** @type {[string, number][]} */
   const marks = [...Object.entries(/** @type {Record<string, number>} */ (s.stages)),
-    ["document_first_byte", s.ttfb], ["drag_started", s.gestureAt]];
+    ["document_first_byte", s.ttfb], ["drag_started", s.gestureAt],
+    ...(network.firstResponseEnd === null ? [] : [/** @type {[string, number]} */ (["first_panorama_response_end", network.firstResponseEnd])])];
   const inside = marks.filter(([, at]) => at > s.start && at <= end).sort((a, b) => a[1] - b[1]);
   // Partition [start, changed frame] at each observed milestone, so concurrent work is attributed once.
   const segments = [];
@@ -271,6 +285,15 @@ function deriveSample(s, f, span) {
   const stage = /** @type {Record<string, number>} */ (s.stages);
   const ssrDurations = span.ssr.map((/** @type {any} */ x) => x.durationMs);
   const ssrTransport = span.ssr.map((/** @type {any} */ x) => x.transportMs).filter(nonneg);
+  const convex = span.convex.map((/** @type {any} */ c) => ({
+    function: String(c.function), cached: c.cached, executionMs: nonneg(c.executionMs) ? c.executionMs : null,
+    handlerMs: !c.cached && nonneg(c.handlerMs) ? c.handlerMs : null,
+  }));
+  // The SSR round trip minus the server-side completion it waited for is connection and transport, not database work.
+  // Only attributable when the run has exactly one transport and exactly one getBySlug completion.
+  const slugReads = convex.filter((/** @type {any} */ c) => c.function === "catalog/publicProperties:getBySlug");
+  const ssrConnectionMs = ssrTransport.length === 1 && slugReads.length === 1 && slugReads[0].executionMs !== null
+    ? Math.max(0, ssrTransport[0] - slugReads[0].executionMs) : null;
   return {
     runId: s.runId, label: f.label, batch: f.batch, pair: f.pair, delayMs: f.delayMs, cohort: s.kind,
     run: Number(RUN_ID.exec(s.runId)?.[2]), withheldMs: s.withheldMs, startedAt: s.timeOrigin, cache,
@@ -278,17 +301,56 @@ function deriveSample(s, f, span) {
     convexErrors: span.convex.filter((/** @type {any} */ c) => c.outcome === "error").length,
     responseMs: s.responseMs, dragToFrameMs: s.dragToFrameMs,
     ttfbMs: s.ttfb > s.start ? s.ttfb - s.start : null,
-    textureSpanMs: nonneg(stage.texture_request_start) && nonneg(stage.texture_decoded)
-      ? stage.texture_decoded - stage.texture_request_start : null,
+    serverHeaderMs: nonneg(s.serverHeaderMs) ? s.serverHeaderMs : null,
+    textureAcquisitionMs: nonneg(stage.texture_request_start) && nonneg(stage.texture_available)
+      ? stage.texture_available - stage.texture_request_start : null,
     segments, beforeStart: marks.filter(([, at]) => at <= s.start).map(([name]) => name).sort(),
     fallbacks: FALLBACK_STAGES.filter((name) => name in stage),
     panoramaNetworkMs: unionMs(s.images.map((/** @type {any} */ r) => [r.start, r.end]), s.start, end),
     scriptNetworkMs: unionMs(s.scripts.map((/** @type {any} */ r) => [r.start, r.end]), s.start, end),
-    panoramaRequestsBeforeInput: s.startedImages.filter((/** @type {any} */ r) => r.start <= s.gestureAt).length,
-    ssrDurationMs: median(ssrDurations), ssrTransportMs: median(ssrTransport),
-    convex: span.convex.map((/** @type {any} */ c) => ({
-      function: String(c.function), cached: c.cached, executionMs: nonneg(c.executionMs) ? c.executionMs : null,
-    })),
+    panoramaRequestsBeforeInput: network.completedBeforeInput + network.inFlightAtInput,
+    panoramaCompletedBeforeInput: network.completedBeforeInput, panoramaInFlightAtInput: network.inFlightAtInput,
+    warmPanoramaTransfers: network.warm,
+    ssrDurationMs: median(ssrDurations), ssrTransportMs: median(ssrTransport), ssrConnectionMs, convex,
+  };
+}
+
+/**
+ * Pair CDP request starts with Resource Timing entries (which exist only once a response ended) per path, in start
+ * order, so repeated requests for one path stay separate. A started request with no entry is still in flight.
+ * @param {{path: unknown, start: number, end: number, transferBytes?: unknown, encodedBytes?: unknown}[]} images
+ * @param {{path: unknown, start: number}[]} started
+ * @returns {{start: number, end: number | null, warm: boolean}[]}
+ */
+export function matchPanoramaRequests(images, started) {
+  const requests = [];
+  for (const p of new Set([...images, ...started].map((r) => String(r.path)))) {
+    const begun = started.filter((r) => String(r.path) === p).map((r) => r.start).sort((a, b) => a - b);
+    const done = images.filter((r) => String(r.path) === p).sort((a, b) => a.start - b.start || a.end - b.end);
+    for (const r of done) {
+      // The earliest unmatched start that precedes this response's end is the same request.
+      const i = begun.findIndex((at) => at <= r.end);
+      if (i >= 0) begun.splice(i, 1);
+      requests.push({ start: r.start, end: r.end, warm: r.transferBytes === 0 && num(r.encodedBytes) && r.encodedBytes > 0 });
+    }
+    for (const at of begun) requests.push({ start: at, end: null, warm: false });
+  }
+  return requests.sort((a, b) => a.start - b.start || (a.end ?? Infinity) - (b.end ?? Infinity));
+}
+
+/** @param {any} s raw sample */
+function panoramaRequests(s) {
+  const requests = matchPanoramaRequests(s.images, s.startedImages);
+  // Requests live during [start, input]; ones that finished before the measured interval began are excluded.
+  const live = requests.filter((r) => r.start <= s.gestureAt && (r.end === null || r.end > s.start));
+  const completedBeforeInput = live.filter((r) => r.end !== null && r.end <= s.gestureAt).length;
+  const inWindow = requests.filter((r) => r.end !== null && r.end > s.start && r.end <= s.changedFrameAt);
+  const warm = inWindow.filter((r) => r.warm).length;
+  // A cache-served completion is not a network milestone, so the milestone is reported only without warm transfers.
+  const ends = inWindow.map((r) => /** @type {number} */ (r.end));
+  return {
+    completedBeforeInput, inFlightAtInput: live.length - completedBeforeInput, warm,
+    firstResponseEnd: !warm && ends.length ? Math.min(...ends) : null,
   };
 }
 
@@ -313,20 +375,29 @@ function summarize(samples) {
     responseMs: dist(samples.map((s) => s.responseMs)),
     dragToFrameMs: dist(samples.map((s) => s.dragToFrameMs)),
     ttfbMs: dist(samples.flatMap((s) => (s.ttfbMs === null ? [] : [s.ttfbMs]))),
-    textureSpanMs: dist(samples.flatMap((s) => (s.textureSpanMs === null ? [] : [s.textureSpanMs]))),
+    serverHeaderMs: dist(samples.flatMap((s) => (s.serverHeaderMs === null ? [] : [s.serverHeaderMs]))),
+    textureAcquisitionMs: dist(samples.flatMap((s) => (s.textureAcquisitionMs === null ? [] : [s.textureAcquisitionMs]))),
     cache: Object.fromEntries([...caches].sort().map(([k, xs]) => [k, xs.length])),
     responseMsByCache: Object.fromEntries([...caches].sort().map(([k, xs]) => [k, dist(xs.map((s) => s.responseMs))])),
     criticalPath: criticalPath(samples),
     panoramaNetworkMs: dist(samples.map((s) => s.panoramaNetworkMs)),
     scriptNetworkMs: dist(samples.map((s) => s.scriptNetworkMs)),
     panoramaRequestsBeforeInput: dist(samples.map((s) => s.panoramaRequestsBeforeInput)),
+    panoramaCompletedBeforeInput: dist(samples.map((s) => s.panoramaCompletedBeforeInput)),
+    panoramaInFlightAtInput: dist(samples.map((s) => s.panoramaInFlightAtInput)),
+    warmPanoramaTransfers: samples.reduce((n, s) => n + s.warmPanoramaTransfers, 0),
     ssrDurationMs: dist(samples.flatMap((s) => (s.ssrDurationMs === null ? [] : [s.ssrDurationMs]))),
     ssrTransportMs: dist(samples.flatMap((s) => (s.ssrTransportMs === null ? [] : [s.ssrTransportMs]))),
-    convex: Object.fromEntries([...convex].sort().map(([fn, xs]) => [fn, {
-      executions: xs.length,
-      cached: xs.filter((c) => c.cached).length,
-      executionMs: dist(xs.flatMap((c) => (c.executionMs === null ? [] : [c.executionMs]))),
-    }])),
+    ssrConnectionMs: dist(samples.flatMap((s) => (s.ssrConnectionMs === null ? [] : [s.ssrConnectionMs]))),
+    convex: Object.fromEntries([...convex].sort().map(([fn, xs]) => {
+      const ms = (/** @type {typeof xs} */ ys, /** @type {"executionMs" | "handlerMs"} */ k) =>
+        dist(ys.flatMap((c) => (c[k] === null ? [] : [/** @type {number} */ (c[k])])));
+      const fresh = xs.filter((c) => !c.cached), cached = xs.filter((c) => c.cached);
+      return [fn, {
+        completions: xs.length, cached: cached.length,
+        completionMs: ms(fresh, "executionMs"), cachedCompletionMs: ms(cached, "executionMs"), handlerMs: ms(fresh, "handlerMs"),
+      }];
+    })),
   };
 }
 
@@ -352,9 +423,10 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   if (problems.length) throw new ReportInputError(problems);
 
   for (const [label, xs] of groupBy(files, (f) => f.label)) if (xs.length > 1) problems.push(`${label} appears in ${xs.map((f) => f.file).join(", ")}`);
-  const profile = Object.fromEntries(PROFILE_KEYS.map((k) => [k, files[0].metadata[k]]));
+  const profileKeys = [...PROFILE_KEYS, ...OPTIONAL_PROFILE_KEYS];
+  const profile = Object.fromEntries(profileKeys.map((k) => [k, files[0].metadata[k] ?? null]));
   for (const f of files) {
-    const differing = PROFILE_KEYS.filter((k) => f.metadata[k] !== profile[k]);
+    const differing = profileKeys.filter((k) => (f.metadata[k] ?? null) !== profile[k]);
     if (differing.length) problems.push(`${f.file}: ${differing.join(", ")} differ from ${files[0].file}; compare runs from one build, fixture and profile`);
   }
   const expectedSpanIds = new Set(files.flatMap((f) => [
@@ -380,7 +452,12 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   /** @type {Issue[]} */
   const issues = [];
   const issue = (/** @type {Issue["level"]} */ level, /** @type {string} */ code, /** @type {string} */ message) => issues.push({ level, code, message });
+  if (profile.renderer === null) issue("warning", "renderer-unrecorded", "run files carry no renderer metadata; a fixed GPU/renderer cannot be confirmed");
+  if (samples.some((s) => s.cohort === "direct" && s.serverHeaderMs === null))
+    issue("warning", "server-header-unrecorded", "some direct samples lack serverHeaderMs (navigation request start → response headers)");
   for (const f of files) {
+    const missing = COHORTS.filter((c) => !f.cohorts.includes(c));
+    if (missing.length) issue("invalid", "missing-cohort", `${f.label} has no ${missing.join(" or ")} runs; every file needs the full ${COHORTS.join("/")} matrix, whose undelayed cohorts are the negative controls`);
     const expected = f.count * f.cohorts.length;
     if (f.failures.length) issue("invalid", "failed-open", `${f.label}: ${f.failures.length} failed open(s): ${f.failures.map((x) => `run ${x.run} ${x.cohort}: ${x.error}`).join("; ")}`);
     if (f.samples.length !== expected) issue("invalid", "incomplete", `${f.label}: ${f.samples.length} of ${expected} samples`);
@@ -400,6 +477,10 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
     failures: files.filter((f) => f.delayMs === xs[0].delayMs).flatMap((f) => f.failures).filter((x) => x.cohort === xs[0].cohort).length,
     ...summarize(xs),
   })).sort((a, b) => a.delayMs - b.delayMs || COHORTS.indexOf(a.cohort) - COHORTS.indexOf(b.cohort));
+  for (const delayMs of new Set(files.map((f) => f.delayMs)))
+    for (const cohort of COHORTS)
+      if (!variants.some((v) => v.delayMs === delayMs && v.cohort === cohort))
+        issue("invalid", "missing-cohort", `${delayMs === 0 ? "control" : `delay${delayMs}`} ${cohort}: no observations`);
   for (const v of variants) {
     if (v.n < CRITERIA.minObservationsPerVariantCohort || v.batches.length < CRITERIA.minBatches)
       issue("inconclusive", "underpowered", `${v.variant} ${v.cohort}: ${v.n} observations in ${v.batches.length} batch(es); need ${CRITERIA.minObservationsPerVariantCohort} across ${CRITERIA.minBatches}`);
@@ -444,7 +525,7 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
     if (xs.length > 2) issue("invalid", "unbalanced-pair", `${label} has ${xs.length} run files; use one control and one candidate per pair`);
   }
   const intervention = [...new Set(files.map((f) => f.delayMs).filter((d) => d > 0))].sort((a, b) => a - b).map((delayMs) => {
-    /** @type {{batch: number, pair: number, order: string, cohort: Cohort, total: number, span: number | null}[]} */
+    /** @type {{batch: number, pair: number, order: string, cohort: Cohort, total: number, imposed: number, acquisition: number | null}[]} */
     const diffs = [];
     const pairRows = [];
     for (const [, xs] of pairs) {
@@ -458,25 +539,35 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
         for (const r of right) {
           const l = left.find((s) => s.run === r.run);
           if (l) diffs.push({ batch: r.batch, pair: r.pair, order: pairOrder, cohort, total: r.responseMs - l.responseMs,
-            span: r.textureSpanMs !== null && l.textureSpanMs !== null ? r.textureSpanMs - l.textureSpanMs : null });
+            imposed: r.withheldMs - l.withheldMs,
+            acquisition: r.textureAcquisitionMs !== null && l.textureAcquisitionMs !== null ? r.textureAcquisitionMs - l.textureAcquisitionMs : null });
         }
         const direct = diffs.filter((d) => d.cohort === "direct" && d.batch === control.batch && d.pair === control.pair);
         if (cohort === "direct") pairRows.push({ batch: control.batch, pair: control.pair, order: pairOrder, matched: direct.length,
           medianDeltaMs: round(median(direct.map((d) => d.total))),
-          medianSpanDeltaMs: round(median(direct.flatMap((d) => (d.span === null ? [] : [d.span])))) });
+          medianAcquisitionDeltaMs: round(median(direct.flatMap((d) => (d.acquisition === null ? [] : [d.acquisition])))) });
       }
     }
     const direct = diffs.filter((d) => d.cohort === "direct");
-    const totals = direct.map((d) => d.total), spanDiffs = direct.flatMap((d) => (d.span === null ? [] : [d.span]));
-    const dTotal = median(totals), dSpan = median(spanDiffs);
-    const pTotal = signTestP(totals), pSpan = signTestP(spanDiffs);
-    const coupled = dTotal !== null && dSpan !== null && pTotal !== null && pSpan !== null &&
-      pTotal < CRITERIA.significance && pSpan < CRITERIA.significance &&
-      Math.abs(dTotal - dSpan) <= CRITERIA.couplingToleranceFraction * delayMs;
-    const negativeControls = COHORTS.filter((c) => c !== "direct" && diffs.some((d) => d.cohort === c)).map((cohort) => {
+    const totals = direct.map((d) => d.total), acquisitions = direct.flatMap((d) => (d.acquisition === null ? [] : [d.acquisition]));
+    const dTotal = median(totals), dAcq = median(acquisitions), imposed = median(direct.map((d) => d.imposed));
+    const pTotal = signTestP(totals), pAcq = signTestP(acquisitions);
+    const tolerance = imposed === null ? null : CRITERIA.couplingToleranceFraction * imposed;
+    const slower = (/** @type {number | null} */ d, /** @type {number | null} */ p) => d !== null && d > 0 && p !== null && p < CRITERIA.significance;
+    const near = (/** @type {number | null} */ a, /** @type {number | null} */ b) => a !== null && b !== null && tolerance !== null && Math.abs(a - b) <= tolerance;
+    const checks = {
+      endToEndSlower: slower(dTotal, pTotal),
+      acquisitionSlower: slower(dAcq, pAcq),
+      acquisitionMatchesImposedDelay: imposed !== null && imposed > 0 && near(dAcq, imposed),
+      endToEndMatchesAcquisition: near(dTotal, dAcq),
+    };
+    const coupled = Object.values(checks).every(Boolean);
+    const negativeControls = NEGATIVE_CONTROLS.map((cohort) => {
       const xs = diffs.filter((d) => d.cohort === cohort).map((d) => d.total);
-      const base = median(controls.filter((s) => s.cohort === cohort).map((s) => s.responseMs)) ?? 0;
-      const drift = base ? (median(xs) ?? 0) / base : null;
+      if (!xs.length) issue("invalid", "missing-negative-control", `delay${delayMs}: no matched undelayed ${cohort} runs, so a run-wide shift cannot be ruled out`);
+      const base = median(controls.filter((s) => s.cohort === cohort).map((s) => s.responseMs));
+      const dx = median(xs);
+      const drift = base && dx !== null ? dx / base : null;
       if (drift !== null && Math.abs(drift) > CRITERIA.noiseFraction) issue("inconclusive", "negative-control-drift", `delay${delayMs} files moved undelayed ${cohort} by ${(drift * 100).toFixed(1)}% of its control median`);
       return { cohort, matched: xs.length, medianDeltaMs: round(median(xs)), driftFraction: drift === null ? null : Math.round(drift * 1000) / 1000, signTestP: pValue(signTestP(xs)) };
     });
@@ -498,21 +589,23 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
       direct: {
         matched: totals.length, medianDeltaMs: round(dTotal), minDeltaMs: round(totals.length ? Math.min(...totals) : null),
         maxDeltaMs: round(totals.length ? Math.max(...totals) : null), positive: totals.filter((d) => d > 0).length,
-        signTestP: pValue(pTotal), transmission: dTotal === null ? null : round4(dTotal / delayMs),
-        spanMatched: spanDiffs.length, medianSpanDeltaMs: round(dSpan), spanSignTestP: pValue(pSpan),
-        spanTransmission: dSpan === null ? null : round4(dSpan / delayMs), coupled,
+        signTestP: pValue(pTotal), imposedDelayMs: round(imposed), toleranceMs: round(tolerance),
+        transmission: dTotal === null || !imposed ? null : round4(dTotal / imposed),
+        acquisitionMatched: acquisitions.length, medianAcquisitionDeltaMs: round(dAcq), acquisitionSignTestP: pValue(pAcq),
+        acquisitionTransmission: dAcq === null || !imposed ? null : round4(dAcq / imposed), checks, coupled,
       },
       negativeControls, byBatch,
     };
   });
   if (!intervention.length) issue("inconclusive", "no-intervention", "no delayed candidate run files; causal attribution is untested");
-  for (const i of intervention) if (!i.direct.coupled) issue("inconclusive", "not-coupled", `delay${i.delayMs}: predicted span and end-to-end time did not move together at the stated criteria`);
+  for (const i of intervention) if (!i.direct.coupled)
+    issue("inconclusive", "not-coupled", `delay${i.delayMs}: texture acquisition and end-to-end time not shown to move with the imposed delay (failed: ${Object.entries(i.direct.checks).filter(([, ok]) => !ok).map(([k]) => k).join(", ")})`);
 
   const unique = [...new Map(issues.map((x) => [`${x.level}|${x.code}|${x.message}`, x])).values()]
     .sort((a, b) => LEVELS.indexOf(b.level) - LEVELS.indexOf(a.level) || a.code.localeCompare(b.code) || a.message.localeCompare(b.message));
   const worst = unique.reduce((w, x) => Math.max(w, LEVELS.indexOf(x.level)), 0);
   return {
-    schema: "tour-entry-report/v1",
+    schema: "tour-entry-report/v2",
     status: unique.some((x) => x.level !== "warning") ? LEVELS[worst] : "valid",
     command, generatorSha256, criteria: CRITERIA, profile,
     inputs: {
@@ -522,8 +615,10 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
     issues: unique, variants, batches, intervention, noise,
     samples: samples.sort((a, b) => a.runId.localeCompare(b.runId, "en", { numeric: true })).map((s) => ({
       runId: s.runId, cohort: s.cohort, withheldMs: s.withheldMs, cache: s.cache, responseMs: round1(s.responseMs),
-      dragToFrameMs: round1(s.dragToFrameMs), ttfbMs: round(s.ttfbMs), textureSpanMs: round(s.textureSpanMs),
-      panoramaRequestsBeforeInput: s.panoramaRequestsBeforeInput, beforeStart: s.beforeStart,
+      dragToFrameMs: round1(s.dragToFrameMs), ttfbMs: round(s.ttfbMs), serverHeaderMs: round(s.serverHeaderMs),
+      textureAcquisitionMs: round(s.textureAcquisitionMs), ssrConnectionMs: round(s.ssrConnectionMs),
+      panoramaRequestsBeforeInput: s.panoramaRequestsBeforeInput, panoramaCompletedBeforeInput: s.panoramaCompletedBeforeInput,
+      panoramaInFlightAtInput: s.panoramaInFlightAtInput, warmPanoramaTransfers: s.warmPanoramaTransfers, beforeStart: s.beforeStart,
       segments: s.segments.map((x) => ({ stage: x.stage, atMs: round1(x.atMs), ms: round1(x.ms) })),
     })),
   };
@@ -545,7 +640,7 @@ export function renderMarkdown(r) {
     ``,
     `**Status: ${r.status}.** Generated by \`${r.command}\` (generator sha256 \`${r.generatorSha256.slice(0, 12)}\`).`,
     ``,
-    `Revision \`${r.profile.revision}\`, ${r.profile.browser}, Node ${r.profile.node}, ${r.profile.platform}/${r.profile.arch}. ` +
+    `Revision \`${r.profile.revision}\`, ${r.profile.browser}, renderer ${r.profile.renderer ?? "unrecorded"}, Node ${r.profile.node}, ${r.profile.platform}/${r.profile.arch}. ` +
       `${r.profile.width}×${r.profile.height} DPR ${r.profile.dpr}, CPU ${r.profile.cpuFactor}×, ${r.profile.downMbps} Mbps down, ${r.profile.rttMs} ms RTT. ` +
       `Seed ${r.profile.seed}; lock \`${String(r.profile.lockSha256).slice(0, 12)}\`, asset \`${String(r.profile.assetSha256).slice(0, 12)}\`, scene seed \`${String(r.profile.sceneSeedSha256).slice(0, 12)}\`.`,
     ``,
@@ -557,9 +652,20 @@ export function renderMarkdown(r) {
     ``,
     `Navigation or trusted click to the first rendered frame with a changed camera after a trusted drag. Median; nearest-rank p95.`,
     ``,
-    table(["Variant", "Cohort", "n", "Failures", "Median ms", "p95 ms", "Drag→frame median", "Drag→frame p95", "Server cache"],
+    table(["Variant", "Cohort", "n", "Failures", "Median ms", "p95 ms", "Drag→frame median", "Drag→frame p95", "Texture acquisition median", "Server cache"],
       r.variants.map((v) => [v.variant, v.cohort, v.n, v.failures, f(v.responseMs.median), f(v.responseMs.p95),
-        f(v.dragToFrameMs.median), f(v.dragToFrameMs.p95), cache(v.cache)])),
+        f(v.dragToFrameMs.median), f(v.dragToFrameMs.p95), f(v.textureAcquisitionMs.median), cache(v.cache)])),
+    ``,
+    `## Server timing: native request vs data layer`,
+    ``,
+    `Native: browser Navigation Timing from document request start to response headers (\`serverHeaderMs\`, whole Next.js response). ` +
+      `Data layer: the SSR villa read (getVilla) inside that response; its Convex round trip splits into connection/transport ` +
+      `(round trip − server completion) and server completion, whose uncached handler time covers query and database work.`,
+    ``,
+    table(["Variant", "Cohort", "Native req→headers median", "SSR read median", "SSR round trip median", "Connection/transport median", "Convex completions"],
+      r.variants.map((v) => [v.variant, v.cohort, f(v.serverHeaderMs.median), f(v.ssrDurationMs.median), f(v.ssrTransportMs.median),
+        f(v.ssrConnectionMs.median), Object.entries(v.convex).map(([fn, c]) =>
+          `${fn}: ${c.completions - c.cached} fresh ${f(c.completionMs.median)} ms (handler ${f(c.handlerMs.median)} ms), ${c.cached} cached ${f(c.cachedCompletionMs.median)} ms`).join("; ") || "–"])),
     ``,
     `## Server cache: miss vs hit`,
     ``,
@@ -570,14 +676,16 @@ export function renderMarkdown(r) {
     ``,
     r.intervention.length ? r.intervention.map((i) => [
       `**${i.delayMs} ms withheld from the first panorama request (direct entry).** Predicted span: ${i.predictedSpan}. ` +
-        `Paired by batch, pair and run index (${i.direct.matched} pairs). End-to-end Δ median ${f(i.direct.medianDeltaMs)} ms ` +
+        `Paired by batch, pair and run index (${i.direct.matched} pairs, imposed Δ median ${f(i.direct.imposedDelayMs)} ms, tolerance ±${f(i.direct.toleranceMs)} ms). ` +
+        `End-to-end Δ median ${f(i.direct.medianDeltaMs)} ms ` +
         `(range ${f(i.direct.minDeltaMs)} to ${f(i.direct.maxDeltaMs)}, ${i.direct.positive}/${i.direct.matched} slower, sign test p=${i.direct.signTestP ?? "–"}), ` +
-        `transmission ${i.direct.transmission ?? "–"} of the imposed delay. Predicted span Δ median ${f(i.direct.medianSpanDeltaMs)} ms ` +
-        `(${i.direct.spanMatched} pairs, p=${i.direct.spanSignTestP ?? "–"}, transmission ${i.direct.spanTransmission ?? "–"}). ` +
-        `**${i.direct.coupled ? "Span and end-to-end time moved together." : "Not shown to move together."}**`,
+        `transmission ${i.direct.transmission ?? "–"} of the imposed delay. Texture acquisition Δ median ${f(i.direct.medianAcquisitionDeltaMs)} ms ` +
+        `(${i.direct.acquisitionMatched} pairs, p=${i.direct.acquisitionSignTestP ?? "–"}, transmission ${i.direct.acquisitionTransmission ?? "–"}). ` +
+        `Checks: ${Object.entries(i.direct.checks).map(([k, ok]) => `${k} ${ok ? "✓" : "✗"}`).join(", ")}. ` +
+        `**${i.direct.coupled ? "Texture acquisition and end-to-end time moved with the imposed delay." : "Not shown to move with the imposed delay."}**`,
       ``,
-      table(["Pair", "Order", "Matched", "Δ end-to-end median", "Δ span median"],
-        i.pairs.map((p) => [`batch${p.batch}-pair${p.pair}`, p.order, p.matched, f(p.medianDeltaMs), f(p.medianSpanDeltaMs)])),
+      table(["Pair", "Order", "Matched", "Δ end-to-end median", "Δ acquisition median"],
+        i.pairs.map((p) => [`batch${p.batch}-pair${p.pair}`, p.order, p.matched, f(p.medianDeltaMs), f(p.medianAcquisitionDeltaMs)])),
       ``,
       table(["Batch", "Control median", "Candidate median", "Median verdict", "Control p95", "Candidate p95", "p95 verdict"],
         i.byBatch.map((b) => [b.batch, f(b.controlMedianMs), f(b.candidateMedianMs), b.medianVerdict, f(b.controlP95Ms), f(b.candidateP95Ms), b.p95Verdict])),
@@ -601,12 +709,14 @@ export function renderMarkdown(r) {
     `## Critical path`,
     ``,
     `Each run's interval is partitioned at its observed milestones, so overlapping work is attributed once to the milestone that ended the wait. ` +
-      `Medians of segments need not sum to the median total. \`drag_started\` includes harness wait between scene readiness and the automated drag.`,
+      `Medians of segments need not sum to the median total. \`drag_started\` includes harness wait between scene readiness and the automated drag. ` +
+      `\`first_panorama_response_end\` is the first panorama response end in the interval, omitted from a run with any cache-served (warm) panorama transfer. ` +
+      `\`texture_available\` marks texture acquisition (fetched and handed to the renderer), not GPU decode.`,
     ``,
     ...r.variants.flatMap((v) => [
-      `**${v.variant} · ${v.cohort}** (panorama network busy ${f(v.panoramaNetworkMs.median)} ms, script network ${f(v.scriptNetworkMs.median)} ms, ` +
-        `${f(v.panoramaRequestsBeforeInput.median)} panorama request(s) before input; SSR ${f(v.ssrDurationMs.median)} ms; ` +
-        Object.entries(v.convex).map(([fn, c]) => `${fn} ${c.executions} runs, ${c.cached} cached, ${f(c.executionMs.median)} ms`).join("; ") + ")",
+      `**${v.variant} · ${v.cohort}** (panorama network busy ${f(v.panoramaNetworkMs.median)} ms, script network ${f(v.scriptNetworkMs.median)} ms; ` +
+        `panorama requests before input: ${f(v.panoramaRequestsBeforeInput.median)} total, ${f(v.panoramaCompletedBeforeInput.median)} completed, ` +
+        `${f(v.panoramaInFlightAtInput.median)} still in flight; ${v.warmPanoramaTransfers} warm panorama transfer(s))`,
       ``,
       table(["Ended by", "Present", "Median at ms", "Median segment ms", "p95 segment ms"],
         v.criticalPath.map((c) => [c.stage, `${c.present}/${v.n}`, f(c.medianAtMs), f(c.medianSegmentMs), f(c.p95SegmentMs)])),
@@ -619,7 +729,7 @@ export function renderMarkdown(r) {
     ``,
     `Criteria: noise > ${r.criteria.noiseFraction * 100}% between repeated control medians is inconclusive; ` +
       `≥ ${r.criteria.minObservationsPerVariantCohort} observations per variant and cohort across ≥ ${r.criteria.minBatches} batches; ` +
-      `coupling requires both sign tests p < ${r.criteria.significance} and |Δ end-to-end − Δ span| ≤ ${r.criteria.couplingToleranceFraction * 100}% of the imposed delay. ` +
+      `missing click or reopen negative controls are invalid; coupling (tolerance ${r.criteria.couplingToleranceFraction * 100}% of the imposed delay): ${r.criteria.coupling} ` +
       `Raw per-run samples are in the JSON report.`,
     ``,
   ];
