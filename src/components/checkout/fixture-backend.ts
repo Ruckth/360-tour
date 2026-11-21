@@ -22,6 +22,7 @@ import {
   type VoucherCard,
   type VoucherCheck,
 } from "./backend";
+import { GOLD_EXPIRES_AT } from "./design/commerce-receipt";
 import empty from "./design/empty.json";
 import spa from "./design/spa.json";
 import couponApplied from "./design/coupon-applied.json";
@@ -262,9 +263,9 @@ const openReturn: ReturnView = {
   voucherCredits: [],
   total: baht(4793),
 };
-/** A package's sessions (a grant): units before and after, paid and goodwill apart. */
-const grantHistory = (packageName: string): HistoryEntry[] => [
-  { entryId: "h4", at: NOW - DAY, fact: { key: "extended", date: NOW + 41 * DAY }, balance: null, staff: { actorName: "Ploy", reason: "healthPause", reasonText: null } },
+/** A package's sessions (a grant): units before and after, paid and goodwill apart, and an extension past `expiresAt`. */
+const grantHistory = (packageName: string, extendedTo: number): HistoryEntry[] => [
+  { entryId: "h4", at: NOW - DAY, fact: { key: "extended", date: extendedTo }, balance: null, staff: { actorName: "Ploy", reason: "healthPause", reasonText: null } },
   { entryId: "h3", at: NOW - 2 * DAY, fact: { key: "goodwillAdded" }, balance: { unit: "sessions", before: { paid: 3, goodwill: 0 }, after: { paid: 3, goodwill: 1 } }, staff: { actorName: "Ploy", reason: "serviceRecovery", reasonText: null } },
   { entryId: "h2", at: NOW - 3 * DAY, fact: { key: "used", service: "Thai massage 60" }, balance: { unit: "sessions", before: { paid: 4, goodwill: 0 }, after: { paid: 3, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
   { entryId: "h1", at: NOW - 20 * DAY, fact: { key: "purchased", name: packageName }, balance: { unit: "sessions", before: { paid: 0, goodwill: 0 }, after: { paid: 5, goodwill: 0 } }, staff: { actorName: "Nok", reason: null, reasonText: null } },
@@ -281,7 +282,11 @@ const voucherHistory = (face: number, standalone: boolean): HistoryEntry[] => [
 ];
 /** Each History target has its own stream: a package's grant reads sessions, a voucher reads money. */
 const historyFor = (target: AdjustTarget): HistoryEntry[] => {
-  if (target.targetType === "grant") return grantHistory(target.targetId === fx<"sessionGrants">("grantgold") ? "Gold Wellness" : "Massage 5");
+  // Gold Wellness (sold 30 Oct 2026, valid through 28 Apr 2027) is extended a month, to 28 May 2027;
+  // Maya's Massage 5 to the date its card shows.
+  if (target.targetType === "grant") {
+    return target.targetId === fx<"sessionGrants">("grantgold") ? grantHistory("Gold Wellness", GOLD_EXPIRES_AT + 30 * DAY) : grantHistory("Massage 5", NOW + 41 * DAY);
+  }
   // Gold Wellness's ฿500 voucher value; Maya's ฿2,000 gift voucher; the gift voucher sold on the receipt.
   if (target.targetType === "voucher") {
     if (target.targetId === fx<"vouchers">("vchgold")) return voucherHistory(baht(500), false);

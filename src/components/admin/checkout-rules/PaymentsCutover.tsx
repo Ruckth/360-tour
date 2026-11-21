@@ -2,13 +2,14 @@
 
 import { CircleCheck, CircleDashed, ExternalLink } from "lucide-react";
 import { useState } from "react";
+import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { cn } from "@/lib/utils";
-import { refusal, t, when } from "./checkout-rules-copy";
+import { refusal, refusalText, t, when } from "./checkout-rules-copy";
 import { ReasonDialog } from "./ReasonDialog";
-import { useRulesCommands, type RulesView } from "./use-checkout-rules";
+import { useRulesCommands, type DirectPanelRow, type RulesView } from "./use-checkout-rules";
 
 type Open = "pause" | "resume" | "activate" | null;
 type StillOpen = {
@@ -18,9 +19,125 @@ type StillOpen = {
 };
 
 const tillName = (key: string) => (key === "default" ? t("payments.mainTill") : key);
+const METHOD_KEY = { cash: "pay.cash", promptpay: "pay.promptPay", card: "pay.card", transfer: "pay.transfer" } as const;
 const ATTEMPT_STATUS: Record<string, string> = {
   collecting: "payments.attemptCollecting", refused: "payments.attemptRefused", recovering: "payments.attemptRecovering",
 };
+
+function instructionSummary(panel: DirectPanelRow) {
+  const tenders = panel.instruction?.tenders;
+  if (!tenders?.length) return t("payments.panelNoInstruction");
+  return tenders.map((tender) => `${t(METHOD_KEY[tender.method])} ${formatMoney(tender.amount)}`).join(" + ");
+}
+
+/**
+ * The registration a manager reviewed on this row: a replacement under the same key, or any change
+ * on the till (instruction, check, takeover), clears the confirmation.
+ */
+const reviewKey = (panel: DirectPanelRow) => `${panel.tillId}:${panel.panelKey}:${panel.instanceId}:${panel.revision}`;
+/** What the server checks the manager reviewed (the row's registration and revision) and confirmed (its till stopped). */
+const reviewed = (panel: DirectPanelRow) => ({
+  tillId: panel.tillId, panelKey: panel.panelKey, expectedInstanceId: panel.instanceId, expectedRevision: panel.revision,
+  stoppedPreviousOperator: true,
+});
+
+/**
+ * Manager direct-panel reconciliation during the cutover (recorded, nothing taken, or collected
+ * without receipt), each only after confirming that till's cashier has stopped.
+ */
+function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSaved: (message: string) => void }) {
+  const commands = useRulesCommands();
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [unrecorded, setUnrecorded] = useState<DirectPanelRow | null>(null);
+  const [stopped, setStopped] = useState<ReadonlySet<string>>(() => new Set());
+  if (!panels.length) return null;
+
+  function confirmStopped(panel: DirectPanelRow, checked: boolean) {
+    setStopped((current) => {
+      const next = new Set(current);
+      if (checked) next.add(reviewKey(panel)); else next.delete(reviewKey(panel));
+      return next;
+    });
+  }
+
+  async function reconcile(panel: DirectPanelRow, outcome: "recorded" | "nothing_taken") {
+    const key = `${panel.tillId}:${panel.panelKey}:${outcome}`;
+    setBusyKey(key);
+    setError("");
+    try {
+      await commands.reconcileDirectPanel({ ...reviewed(panel), outcome });
+      onSaved(t("payments.reconcileDone"));
+    } catch (err) {
+      setError(refusalText(err));
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <div className="grid gap-2" data-testid="direct-panels-reconcile">
+      <div className="grid gap-0.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("payments.openPanelsTitle")}</p>
+        <p className="text-xs text-muted-foreground">{t("payments.openPanelsHint")}</p>
+      </div>
+      {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      <ul className="grid divide-y divide-border rounded-lg border border-border">
+        {panels.map((panel) => {
+          const staff = panel.actorEmail ? panel.actorEmail.split("@")[0] : panel.actor;
+          const confirmed = stopped.has(reviewKey(panel));
+          const idle = busyKey === null && confirmed;
+          const checkbox = `stopped-${panel.tillId}-${panel.panelKey}`;
+          return (
+            <li key={`${panel.tillId}:${panel.panelKey}`} data-testid="direct-panel-row" className="grid gap-2 px-3 py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="grid gap-0.5">
+                  <p className="font-medium">{t("payments.panelCashier", { till: tillName(panel.tillKey), staff, time: when(panel.openedAt) })}</p>
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {instructionSummary(panel)}
+                    {panel.receiptNumber !== null ? ` · ${t("payments.panelReceipt", { order: String(panel.receiptNumber) })}` : ""}
+                  </p>
+                  {panel.stale ? <p className="text-xs text-amber-800 dark:text-amber-300">{t("payments.panelStale")}</p> : null}
+                  {panel.receiptUsed ? <p className="text-xs text-amber-800 dark:text-amber-300">{t("payments.panelReceiptUsed")}</p> : null}
+                </div>
+                <a href={`/admin/checkout?order=${panel.orderId}`} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 rounded-md px-1 text-sm font-medium underline underline-offset-4">
+                  {t("payments.openOrder")}<ExternalLink aria-hidden className="size-3.5" />
+                </a>
+              </div>
+              <label htmlFor={checkbox} className="flex min-h-11 items-center gap-3">
+                <input id={checkbox} type="checkbox" className="size-5" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
+                {t("pay.operatorStopped", { staff })}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" className="h-11" disabled={!panel.canRecord || !idle} onClick={() => void reconcile(panel, "recorded")}>
+                  {t("payments.reconcileRecorded")}
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-11" disabled={!idle} onClick={() => void reconcile(panel, "nothing_taken")}>
+                  {t("payments.reconcileNothingTaken")}
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="h-11" disabled={!idle} onClick={() => setUnrecorded(panel)}>
+                  {t("payments.reconcileUnrecorded")}
+                </Button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {unrecorded ? (
+        <ReasonDialog
+          title={t("payments.reconcileUnrecordedTitle")}
+          description={t("payments.reconcileUnrecordedHint")}
+          chips={[]}
+          confirmLabel={t("payments.reconcileUnrecorded")}
+          signature={`reconcile:${reviewKey(unrecorded)}`}
+          onSubmit={({ reason }) => commands.reconcileDirectPanel({ ...reviewed(unrecorded), outcome: "collected_unrecorded", note: reason })}
+          onDone={() => { setUnrecorded(null); onSaved(t("payments.reconcileDone")); }}
+          onClose={() => setUnrecorded(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
 
 /** What is still open when Switch to new payments is refused, each with a way to it. */
 function StillOpenList({ open, tills }: { open: StillOpen; tills: RulesView["tills"] }) {
@@ -50,7 +167,9 @@ function StillOpenList({ open, tills }: { open: StillOpen; tills: RulesView["til
   );
 }
 
-function Tills({ tills }: { tills: RulesView["tills"] }) {
+function Tills({ tills, onSaved }: { tills: RulesView["tills"]; onSaved: (message: string) => void }) {
+  const commands = useRulesCommands();
+  const [retiring, setRetiring] = useState<{ tillId: RulesView["tills"]["pending"][number]["tillId"]; key: string } | null>(null);
   const rows = [
     ...tills.acknowledged.map((till) => ({ id: till.tillId, key: till.key, at: till.at as number | null })),
     ...tills.pending.map((till) => ({ id: till.tillId, key: till.key, at: null })),
@@ -64,10 +183,28 @@ function Tills({ tills }: { tills: RulesView["tills"] }) {
             {till.at ? <CircleCheck aria-hidden className="size-4 shrink-0 text-emerald-700 dark:text-emerald-300" /> : <CircleDashed aria-hidden className="size-4 shrink-0 text-amber-700 dark:text-amber-300" />}
             <span className="min-w-0 flex-1 font-medium">{tillName(till.key)}</span>
             <span className="text-muted-foreground">{till.at ? t("payments.tillReady", { time: when(till.at) }) : t("payments.tillPending")}</span>
+            {!till.at && till.key !== "default" ? (
+              <Button type="button" variant="outline" size="sm" className="h-11" onClick={() => setRetiring({ tillId: till.id, key: till.key })}>
+                {t("payments.retireTill")}
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>
       {!tills.pending.length ? <p className="text-sm text-muted-foreground">{t("payments.allReady")}</p> : null}
+      {retiring ? (
+        <ReasonDialog
+          title={t("payments.retireTillTitle", { till: tillName(retiring.key) })}
+          description={t("payments.retireTillHint")}
+          chips={[t("payments.retireTillReason")]}
+          initialReason={t("payments.retireTillReason")}
+          confirmLabel={t("payments.retireTill")}
+          signature={`retire:${retiring.tillId}`}
+          onSubmit={({ reason }) => commands.retireTill({ tillId: retiring.tillId, reason })}
+          onDone={() => { setRetiring(null); onSaved(t("payments.tillRetired")); }}
+          onClose={() => setRetiring(null)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -113,17 +250,20 @@ export function PaymentsCutover({ view, onSaved }: { view: RulesView; onSaved: (
         </ol>
       ) : null}
 
-      {on ? <Tills tills={view.tills} /> : (
-        <div className="flex flex-wrap gap-2">
-          {view.paused ? (
-            <>
-              <Button type="button" className="h-11" onClick={() => setOpen("activate")}>{t("cutover.activate")}</Button>
-              <Button type="button" variant="outline" className="h-11" onClick={() => setOpen("resume")}>{t("cutover.resume")}</Button>
-            </>
-          ) : (
-            <Button type="button" variant="outline" className="h-11" onClick={() => setOpen("pause")}>{t("cutover.pause")}</Button>
-          )}
-        </div>
+      {on ? <Tills tills={view.tills} onSaved={onSaved} /> : (
+        <>
+          <OpenDirectPanels panels={view.directPanels} onSaved={onSaved} />
+          <div className="flex flex-wrap gap-2">
+            {view.paused ? (
+              <>
+                <Button type="button" className="h-11" onClick={() => setOpen("activate")}>{t("cutover.activate")}</Button>
+                <Button type="button" variant="outline" className="h-11" onClick={() => setOpen("resume")}>{t("cutover.resume")}</Button>
+              </>
+            ) : (
+              <Button type="button" variant="outline" className="h-11" onClick={() => setOpen("pause")}>{t("cutover.pause")}</Button>
+            )}
+          </div>
+        </>
       )}
 
       {open === "pause" || open === "resume" ? (

@@ -135,7 +135,7 @@ function ApprovalsButton() {
         </DialogTrigger>
         <CheckoutDialogContent
           panel
-          className={cn("gap-3", PANEL_TARGETS)}
+          className={cn("gap-3 max-md:h-[85dvh] max-md:content-start", PANEL_TARGETS)}
           {...{ [APPROVALS_AREA]: "" }}
           // Focus the title, not the first control: that would open an ⓘ tip or arm Decline.
           onCloseAutoFocus={() => {

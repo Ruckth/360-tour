@@ -43,6 +43,11 @@ export const directPanelFields = {
   checking: v.optional(v.boolean()),
   /** The booking payment confirmation email choice the panel last showed, kept for a reopened panel. */
   notifyGuest: v.optional(v.boolean()),
+  /**
+   * Bumped by every change to the instruction, the checked state or the owner, so a manager's
+   * review of this registration is refused once the till changes it (absent: 0).
+   */
+  revision: v.optional(v.number()),
 };
 
 type ListedPanel = NonNullable<NonNullable<Doc<'tills'>['paymentRollout']>['panels']>[number];
@@ -71,6 +76,16 @@ export async function directPanelTill(ctx: QueryCtx, { deviceKey, tillId }: { de
 export async function panelOwner(actor: string, till: Doc<'tills'> | undefined, tabKey: string | undefined): Promise<PanelOwner> {
   return { actor, tillId: till?._id, ...(validPaymentDeviceKey(tabKey) ? { tab: await sha256(tabKey) } : {}) };
 }
+
+/** The registration's review revision: a pre-ledger or older row is 0. */
+export const panelRevision = (panel: DirectPanel) => ('revision' in panel ? panel.revision : undefined) ?? 0;
+
+/**
+ * Which registration this is: a ledger row's id (unique even if its key is deleted and reused in
+ * the same millisecond), or a pre-ledger entry's opening. A manager's review names it, so a stale
+ * review never resolves a replacement registered under the same key at the same revision.
+ */
+export const panelInstanceId = (panel: DirectPanel) => 'listed' in panel ? `listed:${panel.openedAt}:${panel.panelKey}` : String(panel._id);
 
 export function ownsPanel(panel: DirectPanel, owner: PanelOwner) {
   return panel.actor === owner.actor && panel.tillId === owner.tillId &&
@@ -162,12 +177,15 @@ export function directPanelSettled(order: Doc<'orders'> | undefined) {
 
 /**
  * Evidence that the order's receipt records this registration's instruction: its cashier issued
- * it, for exactly the instructed tenders. Another panel's receipt never resolves this one, and
- * neither does one that already accounts for a registration (receiptUsed).
+ * it, at the order revision the instruction reviewed, for exactly the instructed tenders (so the
+ * same due). Another panel's receipt never resolves this one, and neither does one that already
+ * accounts for a registration (receiptUsed). Cheap checks come first: only a candidate receipt
+ * reads its payments.
  */
 export async function receiptRecordsPanel(ctx: QueryCtx, panel: DirectPanel, order: Doc<'orders'> | undefined) {
   if (!order || !directPanelSettled(order) || !('instruction' in panel) || !panel.instruction || !panel.actorEmail) return false;
   if (order.paidBy !== panel.actorEmail || order.settleKey === undefined) return false;
+  if (order.settledRevision === undefined || order.settledRevision !== panel.instruction.revision) return false;
   const payments = await readPaymentRows(ctx, () => ctx.db.query('orderPayments')
     .withIndex('by_orderId', q => q.eq('orderId', order._id)).take(MAX_TENDERS + 1));
   const recorded = payments.filter(payment => payment.idempotencyKey === order.settleKey && payment.method !== 'voucher')

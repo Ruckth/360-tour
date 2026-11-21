@@ -61,7 +61,7 @@ export const getAccess = staffQuery({
       paymentsMode: settings.paymentsMode,
       paused: checkoutPaused(settings),
       cutoverStarted: cutoverStarted(settings),
-      tillReady: revision === null || (till?._id === tillId && tillAcknowledged(till, revision)),
+      tillReady: revision === null || (till !== undefined && till._id === tillId && till.key === 'payment' && tillAcknowledged(till, revision)),
       cutoverRevision: revision,
     };
   },

@@ -228,7 +228,15 @@
       "previousPanel": "{time}에 열림 · 기록 안 됨",
       "previousPanelHint": "단말기, QR 또는 금전함을 확인하세요. 확인하기 전에는 다시 결제하지 마세요.",
       "recordPrevious": "이미 받은 결제를 기록하세요. 다시 결제하지 마세요.",
-      "askManagerReconcile": "관리자에게 이 결제 화면의 대사를 요청하세요."
+      "askManagerReconcile": "관리자에게 이 결제 화면의 대사를 요청하세요.",
+      "differentOrUnsure": "다름 또는 불확실",
+      "orderChangedSinceShown": "이 결제가 표시된 이후 주문이 변경되었습니다.",
+      "instructionNotSaved": "이 패널에서 요청한 결제 안내가 저장되지 않았습니다.",
+      "savingPayment": "이 결제를 저장하는 중…",
+      "paymentNotSavedYet": "이 결제가 저장되지 않아 아직 표시되지 않습니다.",
+      "tryAgain": "다시 시도",
+      "panelDidNotOpen": "결제 패널이 열리지 않았습니다. 연결을 확인하고 다시 시도하세요.",
+      "receivedNow": "지금 수령"
     },
     "returns": {
       "title": "반품",
@@ -338,7 +346,9 @@
       "returnTotal": "반품 합계",
       "whoGivesBack": "{name} 님이 자신의 계산대에서 돈을 돌려드립니다.",
       "givenAt": "실제로 돌려준 시각",
-      "approveRestore": "승인 · 회차 복원"
+      "approveRestore": "승인 · 회차 복원",
+      "sessionsStopped": "{count, plural, other {#회 중지됨}}",
+      "completedNotice": "반품 완료 · 환불이 기록되었습니다."
     },
     "roomBill": {
       "postToRoomPrice": "{room}호 객실로 청구 · {price}",
@@ -768,7 +778,28 @@
       "mainTill": "메인 계산대",
       "paused": "결제 일시 중지됨",
       "resumed": "결제 재개됨",
-      "switched": "새 결제 방식이 켜졌습니다"
+      "switched": "새 결제 방식이 켜졌습니다",
+      "openPanelsTitle": "정산할 열린 결제 패널",
+      "openPanelsHint": "각 패널을 정리하기 전에 단말기, QR, 현금 서랍을 확인하세요.",
+      "panelCashier": "{till} · {staff} · {time} 열림",
+      "panelStale": "12시간 이상 열림",
+      "panelNoInstruction": "안내가 저장되지 않음",
+      "panelReceipt": "영수증 #{order}",
+      "panelReceiptUsed": "이미 다른 패널에 연결된 영수증입니다",
+      "reconcileRecorded": "기록됨",
+      "reconcileNothingTaken": "결제 없음",
+      "reconcileUnrecorded": "결제됨 · 영수증 없음",
+      "reconcileUnrecordedTitle": "영수증 없이 받은 결제를 기록할까요?",
+      "reconcileUnrecordedHint": "단말기나 서랍에서 돈을 받았지만 해당하는 영수증이 없을 때(예: 중복 결제) 사용합니다. 상황과 처리 내용을 입력하세요.",
+      "reconcileUnrecordedPlaceholder": "단말기나 서랍에 표시된 내용과 처리 결과",
+      "reconcileDone": "결제 패널을 정산했습니다",
+      "panelChanged": "이 결제 패널이 계산대에서 변경되었습니다. 먼저 현재 안내를 확인하세요.",
+      "operatorNotStopped": "먼저 다른 계산대가 작업을 멈췄는지 확인하세요.",
+      "retireTill": "단말기 사용 중지",
+      "retireTillTitle": "{till} 사용을 중지할까요?",
+      "retireTillHint": "열린 결제 패널을 모두 정산한 뒤 교체된 브라우저나 기기를 중지하면 판매 스위치를 켤 수 있습니다.",
+      "retireTillReason": "브라우저 또는 기기 교체",
+      "tillRetired": "단말기 사용이 중지되었습니다"
     }
   }
 }

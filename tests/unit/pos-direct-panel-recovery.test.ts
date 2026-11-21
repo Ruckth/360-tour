@@ -161,9 +161,18 @@ describe("from the first pause on", () => {
     expect(text()).toContain("Record the payment that was taken");
     // No tender picker: only the instruction that was approved can be recorded.
     expect(document.querySelector('[aria-label="Take payment by"]')).toBeNull();
+    expect(text()).toContain("Received now");
+    // The panel stays open across Bangkok midnight (14:00 → 01:00 next day) before Confirm.
+    vi.setSystemTime(new Date("2026-11-19T18:00:00Z"));
     await tap(/^Confirm ฿5,000/);
     expect(onPaid).toHaveBeenCalledOnce();
-    expect(await desk.payments()).toMatchObject([{ method: "promptpay", amount: 500000 }]);
+    // Received now is the server's settlement time, never the time the panel opened.
+    const sent = desk.calls.filter((call) => call.name === SETTLE).map((call) => call.args as Record<string, unknown>);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("effectiveAt");
+    const [payment] = await desk.payments();
+    expect(payment).toMatchObject({ method: "promptpay", amount: 500000 });
+    expect((payment as { effectiveAt: number }).effectiveAt).toBeGreaterThanOrEqual(Date.parse("2026-11-19T18:00:00Z"));
     expect(await panels(desk)).toEqual([]);
   }, 30000);
 
@@ -178,7 +187,9 @@ describe("from the first pause on", () => {
     expect(document.querySelector('[data-testid="check-previous"]')?.textContent).toMatch(/Card ฿5,000/);
     expect(document.querySelector('[data-testid="previous-unmatched"]')?.textContent).toContain("The order changed since this payment was shown.");
     expect(document.querySelector('[data-testid="previous-taken"]')).toBeNull();
-    await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="previous-other"]')!.click());
+    const askButton = document.querySelector<HTMLButtonElement>('[data-testid="previous-other"]')!;
+    expect(askButton.textContent?.trim()).toBe("Ask a manager");
+    await act(async () => askButton.click());
     await settle();
     expect(text()).toContain("Ask a manager to reconcile this pay panel.");
     expect(text()).not.toMatch(/Confirm ฿5,[05]00/);
@@ -237,8 +248,12 @@ describe("from the first pause on", () => {
     desk.forget();
     resetPinnedAccess();
     const { onPaid } = await mount(desk, orderId, "card");
+    expect(document.querySelector('[data-testid="previous-other"]')?.textContent?.trim()).toBe("Different or not sure");
     await tap("Taken");
     expect(emailBox()?.checked).toBe(true);
+    expect(emailBox()?.disabled).toBe(true);
+    expect(text()).toContain("Received now");
+    expect(button("Edit time")).toBeUndefined();
     await tap(/^Confirm ฿/);
     expect(onPaid).toHaveBeenCalledOnce();
     const sent = desk.calls.filter((call) => call.name === SETTLE).map((call) => call.args as { notifyGuest?: boolean });

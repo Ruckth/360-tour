@@ -228,7 +228,15 @@
       "previousPanel": "Opened {time} · not recorded",
       "previousPanelHint": "Check the terminal, QR or drawer. Don't charge again until you've checked.",
       "recordPrevious": "Record the payment that was taken. Don't charge again.",
-      "askManagerReconcile": "Ask a manager to reconcile this pay panel."
+      "askManagerReconcile": "Ask a manager to reconcile this pay panel.",
+      "differentOrUnsure": "Different or not sure",
+      "orderChangedSinceShown": "The order changed since this payment was shown.",
+      "instructionNotSaved": "What this panel asked for wasn't saved.",
+      "savingPayment": "Saving this payment…",
+      "paymentNotSavedYet": "This payment wasn't saved, so it isn't shown yet.",
+      "tryAgain": "Try again",
+      "panelDidNotOpen": "The pay panel didn't open. Check the connection and try again.",
+      "receivedNow": "Received now"
     },
     "returns": {
       "title": "Return items",
@@ -338,7 +346,9 @@
       "returnTotal": "Return total",
       "whoGivesBack": "{name} gives the money back at their till.",
       "givenAt": "When it was given back",
-      "approveRestore": "Approve · restore session"
+      "approveRestore": "Approve · restore session",
+      "sessionsStopped": "{count, plural, one {# session stopped} other {# sessions stopped}}",
+      "completedNotice": "Return completed · refund recorded."
     },
     "roomBill": {
       "postToRoomPrice": "Post to room {room} · {price}",
@@ -768,7 +778,28 @@
       "mainTill": "Main till",
       "paused": "Checkout paused",
       "resumed": "Checkout resumed",
-      "switched": "New payments are on"
+      "switched": "New payments are on",
+      "openPanelsTitle": "Open pay panels to reconcile",
+      "openPanelsHint": "Check the terminal, QR and drawer before clearing each panel.",
+      "panelCashier": "{till} · {staff} · opened {time}",
+      "panelStale": "Open over 12 hours",
+      "panelNoInstruction": "Instruction not saved",
+      "panelReceipt": "Receipt #{order}",
+      "panelReceiptUsed": "Receipt already accounts for another panel",
+      "reconcileRecorded": "Recorded",
+      "reconcileNothingTaken": "Nothing taken",
+      "reconcileUnrecorded": "Collected · no receipt",
+      "reconcileUnrecordedTitle": "Record payment taken without a receipt?",
+      "reconcileUnrecordedHint": "Use this when the terminal or drawer took money that no receipt accounts for (for example, a second collection). Describe what happened and how it was resolved.",
+      "reconcileUnrecordedPlaceholder": "What the terminal or drawer showed and how it was resolved",
+      "reconcileDone": "Pay panel reconciled",
+      "panelChanged": "This pay panel changed on the till. Review the current instruction first.",
+      "operatorNotStopped": "Confirm the other till has stopped first.",
+      "retireTill": "Retire till",
+      "retireTillTitle": "Retire {till}?",
+      "retireTillHint": "Retire a replaced browser or device after its open pay panels are reconciled. It will stop blocking sale switches.",
+      "retireTillReason": "Browser or device replaced",
+      "tillRetired": "Till retired"
     }
   }
 }

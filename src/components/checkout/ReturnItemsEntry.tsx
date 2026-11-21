@@ -33,7 +33,7 @@ export function MovedToReturns({ view, line, code }: { view: OrderView; line: Or
 }
 
 /** The sheet, loaded on first open. */
-export function LazyReturnItemsSheet(props: { view: OrderView; lineId: Id<"orderLines"> | null; onClose: () => void }) {
+export function LazyReturnItemsSheet(props: { view: OrderView; lineId: Id<"orderLines"> | null; onClose: () => void; onCompleted?: (message: string) => void }) {
   return (
     <Suspense fallback={<span role="status" className="inline-flex items-center gap-2 text-sm text-muted-foreground"><Spinner label="Loading" /></span>}>
       <ReturnItemsSheet {...props} />
@@ -42,16 +42,16 @@ export function LazyReturnItemsSheet(props: { view: OrderView; lineId: Id<"order
 }
 
 /** Return items on one receipt row, as Refund sits on rows today. Nothing on pre-commerce receipts. */
-export function ReturnItemsAction({ view, line }: { view: OrderView; line: OrderLine }) {
+export function ReturnItemsAction({ view, line, onCompleted }: { view: OrderView; line: OrderLine; onCompleted?: (message: string) => void }) {
   const desk = useReturnsDesk();
   const eligible = useMemo(() => Boolean(desk) && rowReturnable(view, line._id), [desk, view, line._id]);
   const [open, setOpen] = useState(false);
   if (!eligible && !open) return null;
-  return <ReturnItemsButton view={view} line={line} eligible={eligible} open={open} onOpenChange={setOpen} />;
+  return <ReturnItemsButton view={view} line={line} eligible={eligible} open={open} onOpenChange={setOpen} onCompleted={onCompleted} />;
 }
 
 /** Only rows that can return read the Commerce copy (pre-commerce receipts render without it). */
-function ReturnItemsButton({ view, line, eligible, open, onOpenChange: setOpen }: { view: OrderView; line: OrderLine; eligible: boolean; open: boolean; onOpenChange: (open: boolean) => void }) {
+function ReturnItemsButton({ view, line, eligible, open, onOpenChange: setOpen, onCompleted }: { view: OrderView; line: OrderLine; eligible: boolean; open: boolean; onOpenChange: (open: boolean) => void; onCompleted?: (message: string) => void }) {
   const { t } = useCommerceCopy();
   return (
     <div data-screen-only="" className="mt-1 flex flex-wrap items-center gap-2 font-sans print:hidden">
@@ -61,7 +61,7 @@ function ReturnItemsButton({ view, line, eligible, open, onOpenChange: setOpen }
           {t("buttons.returnItems")}
         </Button>
       ) : null}
-      {open ? <LazyReturnItemsSheet view={view} lineId={line._id} onClose={() => setOpen(false)} /> : null}
+      {open ? <LazyReturnItemsSheet view={view} lineId={line._id} onClose={() => setOpen(false)} onCompleted={onCompleted} /> : null}
     </div>
   );
 }
@@ -116,20 +116,20 @@ export function ReplacementSlipList({ slips, view, codes, onReceipt = false }: {
 }
 
 /** "Return in progress · Open the return" on a receipt whose return is still open. */
-export function ReturnInProgressNotice({ view }: { view: OrderView }) {
+export function ReturnInProgressNotice({ view, onCompleted }: { view: OrderView; onCompleted?: (message: string) => void }) {
   const desk = useReturnsDesk();
   const [open, setOpen] = useState(false);
   if (!desk || (!view.activeReturn && !open)) return null;
-  return <OpenReturn view={view} open={open} onOpenChange={setOpen} />;
+  return <OpenReturn view={view} open={open} onOpenChange={setOpen} onCompleted={onCompleted} />;
 }
 
-function OpenReturn({ view, open, onOpenChange: setOpen }: { view: OrderView; open: boolean; onOpenChange: (open: boolean) => void }) {
+function OpenReturn({ view, open, onOpenChange: setOpen, onCompleted }: { view: OrderView; open: boolean; onOpenChange: (open: boolean) => void; onCompleted?: (message: string) => void }) {
   const { t } = useCommerceCopy();
   return (
     <div data-screen-only="" role="status" data-return-notice="" className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 font-sans text-sm text-amber-900 dark:bg-amber-400/10 dark:text-amber-200 print:hidden">
       {view.activeReturn ? <span className="font-semibold">{t("returns.inProgress")}</span> : <span />}
       <Button type="button" size="sm" variant="outline" className="h-11" onClick={() => setOpen(true)}>{t("returns.openReturn")}</Button>
-      {open ? <LazyReturnItemsSheet view={view} lineId={null} onClose={() => setOpen(false)} /> : null}
+      {open ? <LazyReturnItemsSheet view={view} lineId={null} onClose={() => setOpen(false)} onCompleted={onCompleted} /> : null}
     </div>
   );
 }

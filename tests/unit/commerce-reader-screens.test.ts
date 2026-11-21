@@ -82,7 +82,7 @@ describe("commerce receipt", () => {
     expect(gold.textContent).toContain("Spa robe · Sand / M฿1,132.51");
     expect(gold.textContent).toContain("฿500 voucher value฿500");
     expect(gold.textContent).toContain("GV-••••-H3LN");
-    expect(gold.textContent).toContain("Valid through 18 May 2027");
+    expect(gold.textContent).toContain("Valid through 28 Apr 2027");
   });
 
   it("prints products, the gift voucher, a session-covered visit and refunds, each as its own row kind", async () => {
@@ -92,7 +92,7 @@ describe("commerce receipt", () => {
     const voucher = rowOf("Gift voucher")!;
     expect(voucher.dataset.receiptKind).toBe("voucher");
     expect(voucher.textContent).toContain("GV-••••-Q9XD");
-    expect(voucher.textContent).toContain("Valid through 19 Nov 2027");
+    expect(voucher.textContent).toContain("Valid through 30 Oct 2027");
     const covered = rowOf("Thai massage 60")!;
     expect(covered.dataset.receiptKind).toBe("covered");
     expect(covered.textContent).toContain("Session used · was ฿1,200");
@@ -606,7 +606,8 @@ describe("Edit · History", () => {
     await act(async () => trigger.click());
     await until(() => document.querySelectorAll('[data-testid="history-entry"]').length > 0);
     const sheet = document.querySelector('[data-testid="edit-history"]')!;
-    expect(sheet.textContent).toContain("Extended through 30 Dec 2026");
+    // The extension runs past the receipt's "Valid through 28 Apr 2027", never before it.
+    expect(sheet.textContent).toContain("Extended through 28 May 2027");
     expect(sheet.textContent).toContain("3 → 4 sessions · 3 paid + 1 goodwill");
     expect(sheet.querySelectorAll('[data-testid="history-staff"]').length).toBe(4);
     expect(sheet.textContent).toContain("By Ploy · Health pause or extension");

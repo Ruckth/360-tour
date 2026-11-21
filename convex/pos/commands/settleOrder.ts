@@ -101,7 +101,9 @@ export const settleOrder = staffMutation({
     const now = Date.now();
     const effectiveAt = effectiveTime(args.effectiveAt, now);
     const cart = { lines, totals, customer, appointment };
-    const result = await writeOrderPayment(ctx, order, cart, args.tenders, admin, { key, now, effectiveAt, notifyGuest: args.notifyGuest ?? panel.notifyGuest });
+    const result = await writeOrderPayment(ctx, order, cart, args.tenders, admin, {
+      key, now, effectiveAt, notifyGuest: args.notifyGuest ?? panel.notifyGuest, settledRevision: args.expectedRevision,
+    });
     await closeSettledDirectPanel(ctx, order._id, panel.owner, panel.till, args.panelKey);
     return result;
   }
@@ -111,9 +113,9 @@ type SaleTender = Tender | { method: 'voucher'; voucherId: Doc<'vouchers'>['_id'
 
 async function writeOrderPayment(
   ctx: MutationCtx, order: Doc<'orders'>, cart: Awaited<ReturnType<typeof checkPaymentCart>>,
-  tenders: SaleTender[], admin: StaffActor, options: { key: string; now: number; effectiveAt: number; notifyGuest?: boolean; paidShares?: number[] },
+  tenders: SaleTender[], admin: StaffActor, options: { key: string; now: number; effectiveAt: number; notifyGuest?: boolean; paidShares?: number[]; settledRevision?: number },
 ) {
-    const { key, now, effectiveAt, notifyGuest, paidShares } = options;
+    const { key, now, effectiveAt, notifyGuest, paidShares, settledRevision } = options;
     const { lines, totals, customer } = cart;
 		if (order.promotion) await consumeOrderCoupon(ctx, order._id, order.promotion);
 		for (const [index, line] of lines.entries()) {
@@ -149,7 +151,7 @@ async function writeOrderPayment(
 			: undefined;
 		await ctx.db.patch(order._id, {
 			status: 'paid', affiliateSnapshot, receiptNumber, settleKey: key, total: collected + totals.deposit, due: 0, customerSnapshot, paidAt: now, paidBy: admin.email, updatedAt: now,
-			paymentEffectiveAt: effectiveAt, ...(paidShares ? { vatVersion: 2, activeAttemptId: undefined } : {}), ...(customer ? { customerRevisionAtPayment: customer.revision ?? 0 } : {})
+			paymentEffectiveAt: effectiveAt, ...(settledRevision !== undefined ? { settledRevision } : {}), ...(paidShares ? { vatVersion: 2, activeAttemptId: undefined } : {}), ...(customer ? { customerRevisionAtPayment: customer.revision ?? 0 } : {})
 		});
 		if (!paidShares) await syncAffiliateCredit(ctx, {orderId: order._id}, admin.email);
 		await ctx.db.insert('orderAudit', { orderId: order._id, at: now, actor: admin.email, kind: 'paid', toPrice: collected });

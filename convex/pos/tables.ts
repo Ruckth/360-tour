@@ -128,6 +128,8 @@ export const posTables = {
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
 		settleKey: v.optional(v.string()),
+		/** The order revision a direct settlement (settleOrder) reviewed and paid. Absent on older receipts and on attempt settlements. */
+		settledRevision: v.optional(v.number()),
 		/**
 		 * The one direct pay panel registration this receipt accounts for during the payments rollout:
 		 * the panel that settled it, or the one a manager reconciled as Recorded with it.
@@ -471,7 +473,7 @@ export const posTables = {
 	 * (renewed in `displayDriverLeases`). Pairing links are valid only for `pairGeneration`.
 	 */
 	tills: defineTable({
-		key: v.union(v.literal('default'), v.literal('payment')),
+		key: v.union(v.literal('default'), v.literal('payment'), v.literal('retired')),
 		paymentDeviceHash: v.optional(v.string()),
 		orderId: v.optional(v.id('orders')),
 		driverId: v.optional(v.string()),

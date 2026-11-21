@@ -2,6 +2,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
+import type { Id } from './_generated/dataModel';
 import { requireStaff } from './auth/model';
 import { readBudget } from './lib/readBudget';
 import schema from './schema';
@@ -19,6 +20,14 @@ const edit = (expectedRevision: number, clientKey: string, reason = 'Announced d
   ({ expectedRevision, clientKey, reason });
 
 afterEach(() => vi.unstubAllEnvs());
+
+type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
+/** What a manager reviewed on the panel's row: which registration and its current revision, after confirming its till stopped. */
+async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outcome: Outcome; note?: string }>(t: Awaited<ReturnType<typeof fixture>>['t'], args: A) {
+  const panel = await t.run(ctx => ctx.db.query('directPaymentPanels')
+    .withIndex('by_tillId_and_panelKey', q => q.eq('tillId', args.tillId).eq('panelKey', args.panelKey)).first());
+  return { ...args, expectedInstanceId: String(panel?._id), expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
+}
 
 async function fixture() {
   vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
@@ -237,7 +246,7 @@ it('blocks activation for open panels and attempts, then refuses the old panel a
   await expect(t.run(ctx => assertDirectPaymentAdmission(ctx, direct))).rejects.toMatchObject(refusal('PAY_PANEL_CHECK_MISMATCH'));
   await expect(t.run(ctx => assertDirectPaymentAdmission(ctx, { orderId, actor: 'cashier' }))).rejects.toMatchObject(refusal('CHECKOUT_PAUSED'));
   await expect(manager.mutation(rollout.closeDirectPanel, { tillId, panelKey: panel.panelKey })).rejects.toMatchObject(refusal('NEEDS_MANAGER'));
-  await manager.mutation(rollout.reconcileDirectPanel, { tillId, panelKey: panel.panelKey, outcome: 'nothing_taken' });
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey: panel.panelKey, outcome: 'nothing_taken' }));
   await t.run(ctx => ctx.db.patch('paymentAttempts', attemptId, { status: 'resolved' }));
   await manager.mutation(rollout.activate, command);
   await expect(cashier.mutation(rollout.openDirectPanel, panel)).rejects.toMatchObject(refusal('TILL_NEEDS_RELOAD'));
@@ -264,7 +273,7 @@ it('requires the stored till acknowledgement and a current loaded mode and revis
   const tills = await Promise.all(orders.map(async ({ orderId }, i) => {
     const panelKey = `panel-${i}`;
     const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, deviceKey: devices[i], panelKey });
-    await manager.mutation(rollout.reconcileDirectPanel, { tillId, panelKey, outcome: 'nothing_taken' });
+    await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
     return tillId;
   }));
   expect(tills[0]).not.toBe(tills[1]);
@@ -346,7 +355,7 @@ it('keeps the 13th admitted panel in the ledger and blocks cutover until it is r
   expect(await manager.query(rollout.directPanels, {})).toHaveLength(13);
   const last = rows[12];
   await expect(second.mutation(rollout.openDirectPanel, last)).rejects.toMatchObject(refusal('KEY_CONFLICT'));
-  for (const { tillId, panelKey } of rows.slice(0, 12)) await manager.mutation(rollout.reconcileDirectPanel, { tillId, panelKey, outcome: 'nothing_taken' });
+  for (const { tillId, panelKey } of rows.slice(0, 12)) await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
   await expect(cashier.mutation(rollout.openDirectPanel, last)).resolves.toEqual({ tillId: last.tillId });
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(Date.now() + 13 * 60 * 60 * 1000);
@@ -360,9 +369,9 @@ it('keeps the 13th admitted panel in the ledger and blocks cutover until it is r
   const { orderId, ...panel } = last;
   await expect(second.mutation(rollout.closeDirectPanel, panel)).rejects.toMatchObject(refusal('NEEDS_MANAGER'));
   await expect(cashier.query(rollout.directPanels, {})).rejects.toThrow();
-  await expect(cashier.mutation(rollout.reconcileDirectPanel, { ...panel, outcome: 'recorded' })).rejects.toThrow();
-  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...panel, outcome: 'recorded' })).rejects.toMatchObject(refusal('PAY_PANEL_NOT_PAID'));
-  await manager.mutation(rollout.reconcileDirectPanel, { ...panel, outcome: 'nothing_taken' });
+  await expect(cashier.mutation(rollout.reconcileDirectPanel, await reviewed(t, { ...panel, outcome: 'recorded' }))).rejects.toThrow();
+  await expect(manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { ...panel, outcome: 'recorded' }))).rejects.toMatchObject(refusal('PAY_PANEL_NOT_PAID'));
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { ...panel, outcome: 'nothing_taken' }));
   expect(await t.run(ctx => ctx.db.query('directPaymentPanels').first())).toBeNull();
   expect(await t.run(ctx => ctx.db.query('recordChanges')
     .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'till').eq('entityId', panel.tillId)).order('desc').take(1))).toMatchObject([{
@@ -381,10 +390,10 @@ it('keeps an unconfirmed direct instruction admitted after an older client close
   await expect(cashier.mutation(rollout.closeDirectPanel, registration)).rejects.toMatchObject(refusal('PAY_PANEL_UNVERIFIED'));
   await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
   await expect(manager.mutation(rollout.activate, edit(1, 'activate'))).rejects.toMatchObject(refusal('PAYMENTS_STILL_OPEN'));
-  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...registration, outcome: 'recorded' }))
+  await expect(manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { ...registration, outcome: 'recorded' })))
     .rejects.toMatchObject(refusal('PAY_PANEL_NOT_PAID'));
   expect(await t.run(ctx => ctx.db.query('orderPayments').first())).toBeNull();
-  await manager.mutation(rollout.reconcileDirectPanel, { ...registration, outcome: 'nothing_taken' });
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { ...registration, outcome: 'nothing_taken' }));
   await expect(t.run(ctx => assertDirectPaymentAdmission(ctx, { ...registration, orderId, actor: 'cashier' })))
     .rejects.toMatchObject(refusal('CHECKOUT_PAUSED'));
   await expect(manager.mutation(rollout.activate, edit(1, 'activate'))).resolves.toMatchObject({ status: 'applied' });
@@ -476,4 +485,235 @@ it('continues a reopened direct panel without a check before any pause, then che
   await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey: 'first-open', instruction });
   await cashier.mutation(settle, { ...pay, tillId, panelKey: 'first-open' });
   expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+});
+
+it('supports collected_unrecorded reconciliation with required note and returns rich directPanels metadata', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, pay, instruction } = await payable(manager, 'Duplicate terminal');
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey: 'dup-panel', instruction });
+  const listed = await manager.query(rollout.directPanels, {});
+  expect(listed).toMatchObject([{
+    tillId, panelKey: 'dup-panel', orderId, actor: 'cashier', actorEmail: 'cashier@example.com',
+    receiptNumber: null, receiptUsed: false, settled: false,
+    instruction: { revision: instruction.revision, due: 50000, tenders: [{ method: 'card', amount: 50000 }] },
+  }]);
+  await expect(manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded',
+  }))).rejects.toMatchObject(refusal('RECONCILE_NOTE_REQUIRED'));
+  await expect(manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded', note: '   ',
+  }))).rejects.toMatchObject(refusal('RECONCILE_NOTE_REQUIRED'));
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, {
+    tillId, panelKey: 'dup-panel', outcome: 'collected_unrecorded', note: 'Duplicate card slip voided at terminal',
+  }));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+  const order = await t.run(ctx => ctx.db.get('orders', orderId));
+  expect(order?.directPanel).toBeUndefined();
+  expect(await t.run(ctx => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'till').eq('entityId', tillId)).order('desc').take(1))).toMatchObject([{
+    kind: 'direct_panel_reconciled', actor: 'manager@example.com',
+    after: {
+      panelKey: 'dup-panel', orderId, outcome: 'collected_unrecorded',
+      note: 'Duplicate card slip voided at terminal',
+    },
+  }]);
+  // Order itself can still settle normally afterward.
+  await cashier.mutation(settle, pay);
+  expect(await t.run(ctx => ctx.db.query('orderPayments').collect())).toHaveLength(1);
+});
+
+it('retires a replaced payment till after cutover, unblocks sale switches, and blocks retired till admission', async () => {
+  const { t, owner, manager, cashier } = await fixture();
+  const devices = ['retire-device-active-0001', 'retire-device-broken-0002'];
+  const orders = await Promise.all(devices.map((_, i) => payable(manager, `Retire ${i}`)));
+  const tills = await Promise.all(orders.map(async ({ orderId }, i) => {
+    const panelKey = `retire-panel-${i}`;
+    const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, deviceKey: devices[i], panelKey });
+    await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
+    return tillId;
+  }));
+  // Cannot retire before cutover.
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' }))
+    .rejects.toMatchObject(refusal('PAYMENT_ATTEMPTS_DISABLED'));
+
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  await manager.mutation(rollout.activate, edit(1, 'activate'));
+  const loadActive = { tillId: tills[0], deviceKey: devices[0], loadedMode: 'attempts' as const, loadedRevision: 2 };
+  await cashier.mutation(rollout.acknowledge, loadActive);
+
+  // Sale switch is blocked while broken till is pending.
+  const enable = { ...edit(2, 'enable'), switches: { products: 'managers' as const } };
+  await expect(owner.mutation(settings.updateRules, enable)).rejects.toMatchObject(refusal('PAYMENT_ROLLOUT_PENDING'));
+
+  // Refuses retiring with empty reason or when an active payment attempt exists on that till.
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: '  ' }))
+    .rejects.toMatchObject(refusal('INVALID_ADJUSTMENT_REASON'));
+  const blockingAttempt = await t.run(ctx => ctx.db.insert('paymentAttempts', {
+    orderId: orders[1].orderId, key: 'blocking', fingerprint: 'blocking', status: 'collecting',
+    legs: [], reviewedRequest: { revision: 1, due: 50000, customers: [], vouchers: [], businessDate: '2026-11-19', settingsRevision: 2 },
+    owner: 'cashier', tillId: tills[1], ownerRevision: 1, createdAt: 1, updatedAt: 1,
+  }));
+  await expect(manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' }))
+    .rejects.toMatchObject(refusal('PAYMENTS_STILL_OPEN'));
+  await t.run(ctx => ctx.db.patch('paymentAttempts', blockingAttempt, { status: 'resolved' }));
+
+  // Retire the broken till.
+  await manager.mutation(rollout.retireTill, { tillId: tills[1], reason: 'Broken iPad' });
+  expect(await owner.query(rollout.status, {})).toMatchObject({
+    acknowledged: [{ tillId: tills[0] }], pending: [],
+  });
+  // Sale switch now succeeds!
+  await expect(owner.mutation(settings.updateRules, enable)).resolves.toMatchObject({ status: 'applied', revision: 3 });
+
+  // Retired till cannot acknowledge, cannot pass getAccess tillReady, and cannot pass attempt admission.
+  const loadBroken = { tillId: tills[1], deviceKey: devices[1], loadedMode: 'attempts' as const, loadedRevision: 2 };
+  await expect(cashier.mutation(rollout.acknowledge, loadBroken)).rejects.toMatchObject(refusal('TILL_NEEDS_RELOAD'));
+  await expect(t.run(ctx => assertAttemptPaymentAdmission(ctx, loadBroken))).rejects.toMatchObject(refusal('TILL_NEEDS_RELOAD'));
+  expect(await cashier.query(settings.getAccess, { tillId: tills[1], loadedRevision: 2, deviceKey: devices[1] })).toMatchObject({
+    tillReady: false,
+  });
+  expect(await t.run(ctx => ctx.db.query('recordChanges')
+    .withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'till').eq('entityId', tills[1])).order('desc').take(1))).toMatchObject([{
+    kind: 'till_retired', actor: 'manager@example.com', after: { reason: 'Broken iPad' },
+  }]);
+});
+
+it('refuses a reconciliation reviewed on an instruction the till has since replaced, or before its operator stopped (audit Major 1)', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Switched tender');
+  const panelKey = 'card-then-cash';
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, instruction });
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  // The manager reviews the Card instruction…
+  const [row] = await manager.query(rollout.directPanels, {});
+  expect(row).toMatchObject({ panelKey, instruction: { tenders: [{ method: 'card' }] }, canRecord: false });
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  // …while the cashier switches the panel to Cash.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.now() + 60_000);
+  await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey, instruction: { ...instruction, tenders: [{ method: 'cash', amount: 50000 }] } });
+  vi.useRealTimers();
+  for (const outcome of ['nothing_taken', 'recorded'] as const) {
+    await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome })).rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+  }
+  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'collected_unrecorded', note: 'Card slip voided' }))
+    .rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }), stoppedPreviousOperator: false }))
+    .rejects.toMatchObject(refusal('OPERATOR_NOT_STOPPED'));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toMatchObject([{ panelKey, instruction: { tenders: [{ method: 'cash' }] } }]);
+  // Reviewing the current (Cash) instruction resolves it.
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+});
+
+it('refuses a stop confirmation reviewed before a same-till takeover, which keeps the instruction (round 2 Major 1)', async () => {
+  const { t, manager, second, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Same till takeover');
+  const device = 'shared-till-device-0001';
+  const panelKey = 'card-on-shared-till';
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, deviceKey: device, tabKey: 'shared-till-tab-cashier', instruction });
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  // The manager confirms the cashier stopped…
+  const [row] = await manager.query(rollout.directPanels, {});
+  expect(row).toMatchObject({ panelKey, actor: 'cashier', revision: 0 });
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  // …while another manager takes the panel over on the same till: same instruction, new operator.
+  await second.mutation(rollout.takeOverDirectPanel, { orderId, tillId, panelKey, deviceKey: device, tabKey: 'shared-till-tab-second', stoppedPreviousOperator: true });
+  const [moved] = await manager.query(rollout.directPanels, {});
+  expect(moved).toMatchObject({ tillId, panelKey, actor: 'second', revision: 1, instruction: { at: row.instruction!.at } });
+  for (const outcome of ['nothing_taken', 'recorded'] as const) {
+    await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome })).rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+  }
+  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'collected_unrecorded', note: 'Slip voided' }))
+    .rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toMatchObject([{ panelKey, actor: 'second', revision: 1 }]);
+  // Confirming the new operator stopped resolves it.
+  await manager.mutation(rollout.reconcileDirectPanel, { ...stale, expectedRevision: moved.revision, outcome: 'nothing_taken' });
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+});
+
+it('refuses a stop confirmation reviewed before the till issued and then cleared an instruction (round 2 Major 1)', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Issued then cleared');
+  const panelKey = 'issued-then-cleared';
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey });
+  // The manager reviews the panel while it shows no instruction…
+  const [row] = await manager.query(rollout.directPanels, {});
+  expect(row).toMatchObject({ panelKey, revision: 0 });
+  expect(row.instruction).toBeUndefined();
+  const stale = { tillId, panelKey, expectedInstanceId: row.instanceId, expectedRevision: row.revision, stoppedPreviousOperator: true };
+  // …while the till shows Card, then clears it again (a split whose parts no longer cover the bill).
+  await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey, instruction });
+  expect(await manager.query(rollout.directPanels, {})).toMatchObject([{ panelKey, revision: 1, instruction: { tenders: [{ method: 'card' }] } }]);
+  await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey, instruction: null });
+  const [cleared] = await manager.query(rollout.directPanels, {});
+  expect(cleared).toMatchObject({ panelKey, revision: 2 });
+  expect(cleared.instruction).toBeUndefined();
+  // An unchanged instruction or email choice doesn't move the revision.
+  await cashier.mutation(rollout.instructDirectPanel, { orderId, tillId, panelKey, instruction: null, notifyGuest: true });
+  expect(await manager.query(rollout.directPanels, {})).toMatchObject([{ revision: 2 }]);
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'nothing_taken' })).rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toHaveLength(1);
+  await manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'nothing_taken' }));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+});
+
+it('refuses a stop confirmation reviewed on a deleted registration once a retry reuses its key at the same revision (round 3 Major)', async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Retried open');
+  const panelKey = 'k';
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(1_763_600_000_000);
+    // The cashier opens row A; the manager reviews it and ticks the stop confirmation…
+    const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, instruction });
+    const [rowA] = await manager.query(rollout.directPanels, {});
+    expect(rowA).toMatchObject({ tillId, panelKey, revision: 0 });
+    const stale = { tillId, panelKey, expectedInstanceId: rowA.instanceId, expectedRevision: rowA.revision, stoppedPreviousOperator: true };
+    // …row A is reconciled before the cashier sees the open response…
+    await manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'nothing_taken' });
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+    // …and the cashier's retry registers row B under the same key, at the same revision and time.
+    await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, instruction });
+    const [rowB] = await manager.query(rollout.directPanels, {});
+    expect(rowB).toMatchObject({ tillId, panelKey, revision: 0, openedAt: rowA.openedAt });
+    expect(rowB.instanceId).not.toBe(rowA.instanceId);
+    for (const outcome of ['nothing_taken', 'recorded'] as const) {
+      await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome })).rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+    }
+    await expect(manager.mutation(rollout.reconcileDirectPanel, { ...stale, outcome: 'collected_unrecorded', note: 'Slip voided' }))
+      .rejects.toMatchObject(refusal('PAY_PANEL_CHANGED'));
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toMatchObject([{ _id: rowB.instanceId, panelKey }]);
+    // Reviewing row B resolves it.
+    await manager.mutation(rollout.reconcileDirectPanel, { ...stale, expectedInstanceId: rowB.instanceId, outcome: 'nothing_taken' });
+    expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toEqual([]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("never links a receipt settled at a later order revision to a panel opened at an earlier one (audit Major 2)", async () => {
+  const { t, manager, cashier } = await fixture();
+  const { orderId, instruction } = await payable(manager, 'Revision N');
+  const here = { deviceKey: 'revision-device-key-0001', tabKey: 'revision-device-tab-0001' };
+  const panelKey = 'card-at-revision-n';
+  const { tillId } = await cashier.mutation(rollout.openDirectPanel, { orderId, panelKey, ...here, instruction });
+  // The order is edited to revision N+1 with the same due: an item added, then removed.
+  const added = await manager.mutation(api.pos.commands.addItem.addItem, { orderId, item: { kind: 'extra', name: 'Oil', price: 10000 } });
+  await manager.mutation(api.pos.commands.removeLine.removeLine, { lineId: added.lineId! });
+  const view = (await manager.query(api.pos.orders.getOrder, { orderId }))!;
+  expect(view.order.revision).toBeGreaterThan(instruction.revision);
+  expect(view.totals.due).toBe(instruction.due);
+  // The same cashier settles the same Card amount from an unregistered tab, at N+1.
+  await cashier.mutation(settle, {
+    orderId, idempotencyKey: 'unregistered-tab-n-plus-1', expectedDue: 50000, expectedRevision: view.order.revision, tenders: instruction.tenders,
+  });
+  expect(await t.run(ctx => ctx.db.get('orders', orderId))).toMatchObject({ status: 'paid', settledRevision: view.order.revision });
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  expect(await manager.query(rollout.directPanels, {})).toMatchObject([{ panelKey, settled: true, receiptUsed: false, canRecord: false }]);
+  await expect(manager.mutation(rollout.reconcileDirectPanel, await reviewed(t, { tillId, panelKey, outcome: 'recorded' })))
+    .rejects.toMatchObject(refusal('PAY_PANEL_OTHER_RECEIPT'));
+  expect(await t.run(ctx => ctx.db.query('directPaymentPanels').collect())).toMatchObject([{ panelKey }]);
+  expect((await t.run(ctx => ctx.db.get('orders', orderId)))?.directPanel).toBeUndefined();
 });

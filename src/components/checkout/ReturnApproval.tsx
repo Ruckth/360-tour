@@ -93,29 +93,47 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
   const preview = quote && "value" in quote ? quote.value : null;
   const list = preview ? destinations(preview, order ? voucherMasks(order) : undefined) : [];
   const due = preview && order ? quoteDueAt(order, preview) : null;
+  // Loading, refusal and quote take the same bounded height, so Approve stays put as the quote resolves.
+  const quoteBox = "h-48 overflow-y-auto overscroll-contain rounded-lg p-3 text-sm";
   return (
     <li data-testid="approval-request" data-approval-selected="true" data-return-request={request._id}>
       <div className="grid gap-2 rounded-xl border border-border bg-card p-4">
         <p className="text-xs text-muted-foreground">{t("returns.title")} · {title}</p>
         <p className="text-[15px] font-semibold text-balance [overflow-wrap:anywhere]">{cashier} {t("returns.approvalAsk", { count: request.summary.partCount, amount })}</p>
         {preview ? (
-          <section aria-label={t("returns.whereItGoes")} data-return-approval-quote="" className="grid gap-2 rounded-lg bg-muted/50 p-3 text-sm">
+          <section aria-label={t("returns.whereItGoes")} data-return-approval-quote="" tabIndex={0}
+            className={`${quoteBox} grid content-start gap-2 bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}>
             <ul className="grid gap-1">
-              {preview.rows.map((row) => (
+              {preview.rows.map((row) => {
+                const showParts = row.parts.length > 1 || row.parts.some((part) => part.kind === "restore" || part.kind === "product" || (part.kind === "session" && part.units));
+                return (
                 <li key={row.lineId} className="grid gap-0.5">
                   <span className="flex justify-between gap-3"><span className="min-w-0 [overflow-wrap:anywhere]">{row.label}</span><span className="font-sans tabular-nums">{money(row.amount)}</span></span>
-                  {row.parts.length > 1 || row.parts.some((part) => part.kind === "restore") ? (
-                    <ul className="grid gap-0.5 pl-3 text-xs text-muted-foreground">
-                      {row.parts.map((part, index) => (
+                  {showParts ? (
+                    <ul className="grid gap-0.5 pl-3 text-xs text-muted-foreground" data-return-approval-parts="">
+                      {row.parts.map((part, index) => {
+                        // A product with no disposition stays with the guest; its quantity still shows.
+                        const disposition = part.disposition
+                          ? t(part.disposition === "sellable" ? "returns.sellable" : "returns.damaged")
+                          : part.kind === "product" ? t("returns.staysWithGuest") : null;
+                        const detail = disposition
+                          ? part.units ? `${part.units} × ${disposition}` : disposition
+                          : part.kind === "session" && part.units
+                            ? t("returns.sessionsStopped", { count: part.units })
+                            : null;
+                        const label = part.kind === "restore" ? t("returns.restoreSession") : detail ? `${part.label} · ${detail}` : part.label;
+                        return (
                         <li key={`${part.contentKey ?? part.kind}:${index}`} className="flex justify-between gap-3">
-                          <span className="min-w-0 [overflow-wrap:anywhere]">{part.kind === "restore" ? t("returns.restoreSession") : part.label}</span>
+                          <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
                           <span className="font-sans tabular-nums">{money(part.amount)}</span>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
             <p className="border-t border-border pt-2 text-xs font-medium text-muted-foreground">{t("returns.whereItGoes")}</p>
             <ul className="grid gap-1" data-return-destinations="">
@@ -123,12 +141,12 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
               {!list.some((item) => item.kind !== "restore") ? <li>{t("returns.noPayout")}</li> : null}
             </ul>
             {due ? <p className="text-xs text-muted-foreground" data-return-due="">{t("returns.refundDueBy", { date: date(due) })}</p> : null}
+            {list.some((item) => item.kind === "external") ? <p className="font-medium" data-return-payer="">{t("returns.whoGivesBack", { name: cashier })}</p> : null}
           </section>
         ) : quote && "error" in quote ? (
-          <p role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">{quote.error}</p>
-        ) : <Spinner label="Loading request" />}
+          <p role="status" className={`${quoteBox} bg-amber-50 text-amber-900 dark:bg-amber-400/10 dark:text-amber-200`}>{quote.error}</p>
+        ) : <div className={`${quoteBox} grid place-items-center bg-muted/50`}><Spinner label="Loading request" /></div>}
         {asked ? <blockquote data-sentence-budget="ignore" className="border-l-2 border-gold/60 pl-3 text-sm text-muted-foreground italic [overflow-wrap:anywhere]">“{asked.reason}”</blockquote> : null}
-        {list.some((item) => item.kind === "external") ? <p className="text-sm" data-return-payer="">{t("returns.whoGivesBack", { name: cashier })}</p> : null}
         <p className="text-xs text-muted-foreground">{now >= request.expiresAt ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}</p>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <div className="flex flex-wrap justify-end gap-2">

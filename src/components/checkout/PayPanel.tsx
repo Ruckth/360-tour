@@ -87,6 +87,7 @@ export function PayPanel(props: PayPanelProps) {
 const PanelProblem = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectPanelProblem })));
 const PanelPrevious = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectCheckPrevious })));
 const RecordPrevious = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectRecordPrevious })));
+const ReceivedNow = lazy(() => import("./PayRecovery").then((module) => ({ default: module.DirectReceivedNow })));
 const InstructionSaving = lazy(() => import("./PayRecovery").then((module) => ({ default: module.InstructionSaving })));
 
 type Registered = { registration: DirectPanelRegistration; previous?: DirectPanelPrevious };
@@ -439,8 +440,9 @@ function PayAttempt({
   async function pay(tenders: Tender[]) {
     if (lock.current || (!attempt.current && (orderChanged || unsaved(tenders)))) return;
     if (!attempt.current) {
-      const effectiveAt = paymentDateValue(effectiveInput);
-      if (effectiveAt === null || effectiveAt > Date.now()) {
+      // A recovered payment is received now: the server dates it at settlement, never at mount.
+      const effectiveAt = recording ? undefined : paymentDateValue(effectiveInput);
+      if (effectiveAt === null || (effectiveAt !== undefined && effectiveAt > Date.now())) {
         setTimeOpen(true);
         setError(
           "Enter when the money was received, in Bangkok time, no later than now.",
@@ -454,7 +456,7 @@ function PayAttempt({
         expectedRevision: revision,
         expectedCustomerRevision: customerRevision,
         tenders,
-        effectiveAt,
+        ...(effectiveAt !== undefined ? { effectiveAt } : {}),
         notifyGuest,
         ...registration?.(),
       };
@@ -540,6 +542,7 @@ function PayAttempt({
             <input
               type="checkbox"
               checked={notifyGuest}
+              disabled={Boolean(recording)}
               onChange={(e) => { setNotifyGuest(e.target.checked); onNotifyGuest?.(e.target.checked); }}
             />
             Send booking payment confirmation email
@@ -572,7 +575,9 @@ function PayAttempt({
             </PayButton>
           </>
         )}
-        {mode === "none" ? null : (
+        {mode === "none" ? null : recording ? (
+          <p className="flex min-h-11 items-center justify-center text-center text-[13px] text-muted-foreground"><Suspense fallback={null}><ReceivedNow /></Suspense></p>
+        ) : (
           <ReceivedAt
             value={effectiveInput}
             edited={timeEdited}

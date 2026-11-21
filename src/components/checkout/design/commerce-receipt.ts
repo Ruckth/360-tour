@@ -16,8 +16,10 @@ import paid from "./coupon-paid.json";
  */
 
 const fx = <T extends TableNames>(key: string) => `fx${key}` as Id<T>;
-const PAID_AT = Date.UTC(2026, 10, 19, 7, 41);
+const PAID_AT = Date.UTC(2026, 9, 30, 7, 0);
 const DAY = 86_400_000;
+/** Gold Wellness's sessions and voucher value run 180 days from the sale (28 Apr 2027); History extends from here. */
+export const GOLD_EXPIRES_AT = PAID_AT + 180 * DAY;
 const ORDER = fx<"orders">("bill000046");
 const REDEMPTION = fx<"orders">("bill000047");
 type Snapshot = NonNullable<OrderLine["saleSnapshot"]>;
@@ -94,8 +96,8 @@ export const commerceReceipt = {
   commerce: {
     returnedAmountSatang: 129000,
     issuedBenefits: [
-      { lineId: gold._id, contentKey: "sessions", issuedExpiresAt: PAID_AT + 180 * DAY, editHistory: { targetType: "grant", targetId: fx<"sessionGrants">("grantgold") } },
-      { lineId: gold._id, contentKey: "credit", issuedExpiresAt: PAID_AT + 180 * DAY, codeMask: "GV-••••-H3LN", editHistory: { targetType: "voucher", targetId: fx<"vouchers">("vchgold") } },
+      { lineId: gold._id, contentKey: "sessions", issuedExpiresAt: GOLD_EXPIRES_AT, editHistory: { targetType: "grant", targetId: fx<"sessionGrants">("grantgold") } },
+      { lineId: gold._id, contentKey: "credit", issuedExpiresAt: GOLD_EXPIRES_AT, codeMask: "GV-••••-H3LN", editHistory: { targetType: "voucher", targetId: fx<"vouchers">("vchgold") } },
       { lineId: voucher._id, contentKey: "voucher", issuedExpiresAt: PAID_AT + 365 * DAY, codeMask: "GV-••••-Q9XD", editHistory: { targetType: "voucher", targetId: fx<"vouchers">("vchsold") } },
     ],
     handovers: [],

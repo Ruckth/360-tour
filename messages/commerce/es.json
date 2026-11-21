@@ -228,7 +228,15 @@
       "previousPanel": "Abierto a las {time} · sin registrar",
       "previousPanelHint": "Revise el terminal, el QR o la caja. No cobre de nuevo hasta comprobarlo.",
       "recordPrevious": "Registre el pago ya cobrado. No cobre de nuevo.",
-      "askManagerReconcile": "Pida a un gerente que concilie este panel de pago."
+      "askManagerReconcile": "Pida a un gerente que concilie este panel de pago.",
+      "differentOrUnsure": "Distinto o no seguro",
+      "orderChangedSinceShown": "El pedido cambió desde que se mostró este pago.",
+      "instructionNotSaved": "No se guardó lo que solicitó este panel.",
+      "savingPayment": "Guardando este pago…",
+      "paymentNotSavedYet": "Este pago no se guardó, por lo que aún no se muestra.",
+      "tryAgain": "Intentar de nuevo",
+      "panelDidNotOpen": "No se abrió el panel de pago. Comprueba la conexión e inténtalo de nuevo.",
+      "receivedNow": "Recibido ahora"
     },
     "returns": {
       "title": "Devolver artículos",
@@ -338,7 +346,9 @@
       "returnTotal": "Total de la devolución",
       "whoGivesBack": "{name} devuelve el dinero en su caja.",
       "givenAt": "Cuándo se devolvió",
-      "approveRestore": "Aprobar · restaurar la sesión"
+      "approveRestore": "Aprobar · restaurar la sesión",
+      "sessionsStopped": "{count, plural, one {# sesión detenida} other {# sesiones detenidas}}",
+      "completedNotice": "Devolución completada · reembolso registrado."
     },
     "roomBill": {
       "postToRoomPrice": "Cargar a la habitación {room} · {price}",
@@ -768,7 +778,28 @@
       "mainTill": "Caja principal",
       "paused": "Caja en pausa",
       "resumed": "Caja reanudada",
-      "switched": "Los nuevos pagos están activos"
+      "switched": "Los nuevos pagos están activos",
+      "openPanelsTitle": "Paneles de pago abiertos por conciliar",
+      "openPanelsHint": "Comprueba el terminal, el QR y la caja antes de cerrar cada panel.",
+      "panelCashier": "{till} · {staff} · abierto {time}",
+      "panelStale": "Abierto más de 12 horas",
+      "panelNoInstruction": "Instrucción no guardada",
+      "panelReceipt": "Recibo #{order}",
+      "panelReceiptUsed": "El recibo ya corresponde a otro panel",
+      "reconcileRecorded": "Registrado",
+      "reconcileNothingTaken": "Sin cobro",
+      "reconcileUnrecorded": "Cobrado · sin recibo",
+      "reconcileUnrecordedTitle": "¿Registrar un cobro sin recibo?",
+      "reconcileUnrecordedHint": "Úsalo cuando el terminal o la caja recibieron dinero que ningún recibo cubre (por ejemplo, un cobro duplicado). Describe lo ocurrido y cómo se resolvió.",
+      "reconcileUnrecordedPlaceholder": "Qué mostró el terminal o la caja y cómo se resolvió",
+      "reconcileDone": "Panel de pago conciliado",
+      "panelChanged": "Este panel de pago cambió en la caja. Revisa primero la instrucción actual.",
+      "operatorNotStopped": "Confirma primero que la otra caja se ha detenido.",
+      "retireTill": "Retirar caja",
+      "retireTillTitle": "¿Retirar {till}?",
+      "retireTillHint": "Retira un navegador o dispositivo reemplazado cuando sus paneles abiertos estén conciliados para desbloquear los interruptores de venta.",
+      "retireTillReason": "Navegador o dispositivo reemplazado",
+      "tillRetired": "Caja retirada"
     }
   }
 }

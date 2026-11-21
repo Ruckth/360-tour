@@ -5,10 +5,10 @@ export { orderPaymentRecord } from './private/orderLifecycle';
 export { assertExistingMoneyFlow } from './private/returnGuards';
 export {
   ensurePaymentTill, findDevicePaymentTill, findPaymentTill, openPaymentAttempts, patchPaymentTill,
-  paymentTillLabel, paymentTillsAtRevision, readPaymentOrder, validPaymentDeviceKey,
+  paymentTillLabel, paymentTillsAtRevision, readPaymentOrder, retirePaymentTill, tillHasDirectPanels, validPaymentDeviceKey,
 } from './private/tillPayments';
 export {
   DIRECT_PANEL_STALE_MS, assertInstruction, closeSettledDirectPanel, deleteDirectPanel, directInstructionArgs, directPanelPage,
-  directPanelSettled, directPanelTill, findDirectPanel, matchesInstruction, orderDirectPanels, ownsPanel, panelOwner,
+  directPanelSettled, directPanelTill, findDirectPanel, matchesInstruction, orderDirectPanels, ownsPanel, panelInstanceId, panelOwner, panelRevision,
   linkReceipt, patchDirectPanel, readDirectPanels, receiptRecordsPanel, receiptUsed, registerDirectPanel, settlingPanel, type DirectInstruction, type DirectPanel,
 } from './private/directPanels';

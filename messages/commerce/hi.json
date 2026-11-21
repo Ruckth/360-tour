@@ -228,7 +228,15 @@
       "previousPanel": "{time} पर खोला गया · दर्ज नहीं",
       "previousPanelHint": "टर्मिनल, QR या दराज़ जाँचें। जाँचने से पहले दोबारा चार्ज न करें।",
       "recordPrevious": "जो भुगतान लिया गया उसे दर्ज करें। दोबारा चार्ज न करें।",
-      "askManagerReconcile": "किसी मैनेजर से इस भुगतान पैनल का मिलान करने को कहें।"
+      "askManagerReconcile": "किसी मैनेजर से इस भुगतान पैनल का मिलान करने को कहें।",
+      "differentOrUnsure": "अलग या निश्चित नहीं",
+      "orderChangedSinceShown": "यह भुगतान दिखाए जाने के बाद ऑर्डर बदल गया।",
+      "instructionNotSaved": "इस पैनल ने जो भुगतान मांगा था वह सहेजा नहीं गया।",
+      "savingPayment": "यह भुगतान सहेजा जा रहा है…",
+      "paymentNotSavedYet": "यह भुगतान सहेजा नहीं गया, इसलिए अभी दिखाया नहीं गया है।",
+      "tryAgain": "फिर से कोशिश करें",
+      "panelDidNotOpen": "भुगतान पैनल नहीं खुला। कनेक्शन जांचें और फिर कोशिश करें।",
+      "receivedNow": "अभी प्राप्त"
     },
     "returns": {
       "title": "आइटम रिटर्न",
@@ -338,7 +346,9 @@
       "returnTotal": "कुल वापसी",
       "whoGivesBack": "{name} अपने काउंटर पर पैसे लौटाएँगे।",
       "givenAt": "पैसे कब लौटाए गए",
-      "approveRestore": "मंज़ूर करें · सेशन वापस करें"
+      "approveRestore": "मंज़ूर करें · सेशन वापस करें",
+      "sessionsStopped": "{count, plural, one {# सत्र रोका गया} other {# सत्र रोके गए}}",
+      "completedNotice": "वापसी पूर्ण · रिफंड दर्ज किया गया।"
     },
     "roomBill": {
       "postToRoomPrice": "रूम {room} में चार्ज करें · {price}",
@@ -768,7 +778,28 @@
       "mainTill": "मुख्य काउंटर",
       "paused": "चेकआउट रुका",
       "resumed": "चेकआउट फिर शुरू हुआ",
-      "switched": "नए पेमेंट चालू हैं"
+      "switched": "नए पेमेंट चालू हैं",
+      "openPanelsTitle": "मिलान के लिए खुले भुगतान पैनल",
+      "openPanelsHint": "प्रत्येक पैनल को बंद करने से पहले टर्मिनल, QR और दराज जांचें।",
+      "panelCashier": "{till} · {staff} · {time} पर खुला",
+      "panelStale": "12 घंटे से अधिक समय से खुला",
+      "panelNoInstruction": "निर्देश सहेजा नहीं गया",
+      "panelReceipt": "रसीद #{order}",
+      "panelReceiptUsed": "रसीद पहले से किसी अन्य पैनल के लिए दर्ज है",
+      "reconcileRecorded": "दर्ज किया गया",
+      "reconcileNothingTaken": "कुछ नहीं लिया गया",
+      "reconcileUnrecorded": "राशि ली गई · रसीद नहीं",
+      "reconcileUnrecordedTitle": "बिना रसीद के लिया गया भुगतान दर्ज करें?",
+      "reconcileUnrecordedHint": "इसका उपयोग तब करें जब टर्मिनल या दराज ने पैसे लिए हों और कोई रसीद न हो (जैसे दोहरा भुगतान)। बताएं क्या हुआ और कैसे सुलझाया गया।",
+      "reconcileUnrecordedPlaceholder": "टर्मिनल या दराज में क्या दिखा और कैसे सुलझाया गया",
+      "reconcileDone": "भुगतान पैनल का मिलान हो गया",
+      "panelChanged": "इस भुगतान पैनल में काउंटर पर बदलाव हुआ है। पहले मौजूदा निर्देश देखें।",
+      "operatorNotStopped": "पहले पुष्टि करें कि दूसरा काउंटर रुक गया है।",
+      "retireTill": "टिल बंद करें",
+      "retireTillTitle": "{till} को बंद करें?",
+      "retireTillHint": "खुले पैनल का मिलान होने के बाद बदले गए ब्राउज़र या डिवाइस को बंद करें ताकि बिक्री स्विच खुल सकें।",
+      "retireTillReason": "ब्राउज़र या डिवाइस बदला गया",
+      "tillRetired": "टिल बंद किया गया"
     }
   }
 }

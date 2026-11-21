@@ -144,7 +144,7 @@ export async function listGuestCommerceHistory(
   const cursorPrefix = `${target.targetId}:${transfer?._id ?? 'issued'}:`;
   const unwrapCursor = (cursor: string) => {
     if (!cursor.startsWith(cursorPrefix)) {
-      throw new ConvexError({ code: 'STALE_HISTORY_CURSOR', message: 'History has changed. Reopen the first page.' });
+      staleCursor();
     }
     return cursor.slice(cursorPrefix.length);
   };
@@ -193,18 +193,23 @@ const partIds = (part: Part): [string, NameTable][] => [
 const partKey = (part: Part) => typeof part.contentKey === 'string' ? part.contentKey : typeof part.key === 'string' ? part.key : null;
 
 /**
- * The names an entry's changed parts count, same-key substitutions first: without their names
- * "Thai massage → Hot stone" would read as "Massage changed".
+ * The names an entry's changed parts count, same-key identity substitutions first (before count-only
+ * edits): without their names "Thai massage → Hot stone" would read as "Massage changed".
  */
 function wantedNames(entry: HistoryEntryView): Map<string, NameTable> {
   const before = partsOf(entry.before);
   const after = partsOf(entry.after);
   const keyed = new Map(before.flatMap(part => partKey(part) === null ? [] : [[partKey(part), part] as const]));
-  const swapped = after.flatMap(part => {
-    const old = partKey(part) === null ? undefined : keyed.get(partKey(part));
-    return old && JSON.stringify(old) !== JSON.stringify(part) ? [old, part] : [];
-  });
-  return new Map([...swapped, ...before, ...after].flatMap(partIds));
+  const identitySwapped: Part[] = [];
+  const otherChanged: Part[] = [];
+  for (const part of after) {
+    const key = partKey(part);
+    const old = key === null ? undefined : keyed.get(key);
+    if (!old) continue;
+    if (JSON.stringify(partIds(old)) !== JSON.stringify(partIds(part))) identitySwapped.push(old, part);
+    else if (JSON.stringify(old) !== JSON.stringify(part)) otherChanged.push(old, part);
+  }
+  return new Map([...identitySwapped, ...otherChanged, ...before, ...after].flatMap(partIds));
 }
 
 /**
@@ -269,7 +274,12 @@ function partNamer(ctx: QueryCtx) {
 const CUT_PREFIX = 'cut:';
 const cutCursor = (cursor: string | null, after: string) => CUT_PREFIX + JSON.stringify([cursor, after]);
 function staleCursor(): never {
-  throw new ConvexError({ code: 'STALE_HISTORY_CURSOR', message: 'History has changed. Reopen the first page.' });
+  throw new ConvexError({
+    code: 'STALE_HISTORY_CURSOR',
+    message: 'InvalidCursor: History has changed. Reopen the first page.',
+    isConvexSystemError: true,
+    paginationError: 'InvalidCursor',
+  });
 }
 function parseCut(cursor: string | null): { cursor: string | null; after: string | null } {
   if (cursor === null || !cursor.startsWith(CUT_PREFIX)) return { cursor, after: null };

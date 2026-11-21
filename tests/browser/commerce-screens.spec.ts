@@ -70,7 +70,7 @@ for (const size of WIDTHS) {
       expect.soft(ring, "focus is visible").toBe(true);
       await trigger.press("Enter");
       const sheet = page.getByTestId("edit-history");
-      await expect(sheet.getByText("Extended through 30 Dec 2026")).toBeVisible();
+      await expect(sheet.getByText("Extended through 28 May 2027")).toBeVisible();
       await expect(sheet.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
       await expect(sheet.getByText("By Ploy · Health pause or extension")).toBeVisible();
       expect.soft(await overflowX(page), "history sideways scroll").toBeLessThanOrEqual(0);
