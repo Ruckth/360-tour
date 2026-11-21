@@ -72,6 +72,29 @@ function instrument() {
 
 type Cohort = "direct" | "click" | "reopen";
 
+const APP_CHUNK = /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
+
+function preloadViewerChunks(paths: string[]) {
+  if (!paths.length) return;
+  const addLinks = () => {
+    const head = document.head;
+    if (!head) return false;
+    for (const href of paths) {
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "script";
+      link.href = href;
+      head.append(link);
+    }
+    return true;
+  };
+  if (addLinks()) return;
+  const observer = new MutationObserver(() => {
+    if (addLinks()) observer.disconnect();
+  });
+  observer.observe(document, { childList: true, subtree: true });
+}
+
 async function drag(cdp: CDPSession) {
   for (const [type, x] of [
     ["touchStart", 190],
@@ -144,18 +167,49 @@ async function verifyPanorama(page: Page, cdp: CDPSession) {
     .toBeGreaterThan(0.05);
 }
 
-async function measure(browser: Browser, kind: Cohort, withheldMs: number, traceFile?: string) {
+type MeasureOptions = {
+  runId: string;
+  withheldMs?: number;
+  traceFile?: string;
+  preloadPaths?: string[];
+};
+
+async function measure(
+  browser: Browser,
+  kind: Cohort,
+  { runId, withheldMs = 0, traceFile, preloadPaths }: MeasureOptions,
+) {
   const { context, page, cdp } = await newMobilePage(browser, kind !== "reopen", instrument);
   const requests: { path: string; wallMs: number }[] = [];
+  const scriptRequests: { url: URL; wallMs: number; initiator: string; id: string }[] = [];
   cdp.on("Network.requestWillBeSent", (event) => {
-    if (PANORAMA.test(event.request.url))
+    if (PANORAMA.test(event.request.url)) {
       requests.push({
         path: new URL(event.request.url).pathname,
         wallMs: event.wallTime * 1000,
       });
+    } else if (preloadPaths && APP_CHUNK.test(new URL(event.request.url).pathname)) {
+      scriptRequests.push({
+        url: new URL(event.request.url),
+        wallMs: event.wallTime * 1000,
+        initiator: event.initiator.type,
+        id: event.requestId,
+      });
+    }
   });
+  let spanOpen = false;
+  async function openSpan() {
+    await spanBoundary("start", runId);
+    spanOpen = true;
+  }
+  async function closeSpan() {
+    if (!spanOpen) return;
+    spanOpen = false;
+    await spanBoundary("finish", runId);
+  }
   let delayed = false;
   try {
+    if (preloadPaths) await page.addInitScript(preloadViewerChunks, preloadPaths);
     if (traceFile)
       await context.tracing.start({
         screenshots: false,
@@ -173,6 +227,7 @@ async function measure(browser: Browser, kind: Cohort, withheldMs: number, trace
       });
     const villaPath = "/rooms/pool-villa";
     const direct = kind === "direct";
+    if (direct) await openSpan();
     const documentResponse = await page.goto(villaPath + (direct ? "?tour=1" : ""), {
       waitUntil: direct ? "commit" : "load",
     });
@@ -192,7 +247,10 @@ async function measure(browser: Browser, kind: Cohort, withheldMs: number, trace
       });
       requests.length = 0;
     }
-    if (!direct) await explore.tap();
+    if (!direct) {
+      await openSpan();
+      await explore.tap();
+    }
     await waitForScene(page);
     await drag(cdp);
     await page.waitForFunction(() => Boolean((window as unknown as InstrumentedWindow).__tourSample.moved), undefined, {
@@ -231,14 +289,16 @@ async function measure(browser: Browser, kind: Cohort, withheldMs: number, trace
             );
           })
           .map((r) => ({
-            path: new URL(r.name).pathname,
+            path: new URL(r.name).pathname + new URL(r.name).search,
             start: r.startTime,
             end: r.responseEnd,
+            initiator: r.initiatorType,
             transferBytes: r.transferSize,
             encodedBytes: r.encodedBodySize,
           }));
         return {
           start,
+          origin: location.origin,
           timeOrigin: performance.timeOrigin,
           ttfb: navigation.responseStart,
           scripts,
@@ -253,17 +313,32 @@ async function measure(browser: Browser, kind: Cohort, withheldMs: number, trace
       },
       { direct, pattern: PANORAMA.source },
     );
+    await closeSpan();
     await verifyPanorama(page, cdp);
     const startedImages = requests
       .map((r) => ({ path: r.path, start: r.wallMs - data.timeOrigin }))
       .filter((r) => r.start >= data.start && r.start <= data.changedFrameAt);
     if (direct) expect(delayed).toBe(true);
-    return { kind, withheldMs, routeCache, ...data, startedImages };
+    const { origin, ...timings } = data;
+    const startedScripts = Array.from(
+      new Map(scriptRequests.filter((r) => r.url.origin === origin).map((r) => [r.id + r.url.href, r])).values(),
+    )
+      .map((r) => ({
+        path: r.url.pathname + r.url.search,
+        start: r.wallMs - timings.timeOrigin,
+        initiator: r.initiator,
+      }))
+      .filter((r) => r.start >= timings.start && r.start <= timings.changedFrameAt);
+    return { kind, withheldMs, routeCache, ...timings, startedImages, startedScripts };
   } finally {
     try {
-      if (traceFile) await context.tracing.stop({ path: traceFile });
+      await closeSpan();
     } finally {
-      await context.close();
+      try {
+        if (traceFile) await context.tracing.stop({ path: traceFile });
+      } finally {
+        await context.close();
+      }
     }
   }
 }
@@ -279,17 +354,9 @@ async function spanBoundary(action: "start" | "finish", runId: string) {
   if (!res.ok) throw Error("Cannot " + action + " benchmark span window: " + res.status);
 }
 
-test("tour entry to first responsive frame", async ({ browser }) => {
-  const count = Number(process.env.BENCH_RUNS ?? 5);
-  const extra = Number(process.env.BENCH_IMAGE_DELAY_MS ?? 0);
-  expect(Number.isInteger(count) && count > 0).toBe(true);
-  expect(Number.isFinite(extra) && extra >= 0).toBe(true);
-  const kinds: Cohort[] = process.env.BENCH_DIRECT_ONLY === "1" ? ["direct"] : ["direct", "click", "reopen"];
-  test.setTimeout(count * kinds.length * 240_000 + 60_000);
-  const samples: (Awaited<ReturnType<typeof measure>> & { runId: string })[] = [];
-  const failures: { kind: Cohort; run: number; error: string }[] = [];
+function benchmarkMetadata(browser: Browser) {
   const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
-  const metadata = {
+  return {
     revision: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim(),
@@ -308,19 +375,29 @@ test("tour entry to first responsive frame", async ({ browser }) => {
     seed: "demo-resort",
     sceneSeedSha256: digest("convex/maintenance/seeds/rooms.ts"),
   };
+}
+
+test("tour entry to first responsive frame", async ({ browser }) => {
+  const count = Number(process.env.BENCH_RUNS ?? 5);
+  const extra = Number(process.env.BENCH_IMAGE_DELAY_MS ?? 0);
+  expect(Number.isInteger(count) && count > 0).toBe(true);
+  expect(Number.isFinite(extra) && extra >= 0).toBe(true);
+  const kinds: Cohort[] = process.env.BENCH_DIRECT_ONLY === "1" ? ["direct"] : ["direct", "click", "reopen"];
+  test.setTimeout(count * kinds.length * 240_000 + 60_000);
+  const samples: (Awaited<ReturnType<typeof measure>> & { runId: string })[] = [];
+  const failures: { kind: Cohort; run: number; error: string }[] = [];
+  const metadata = benchmarkMetadata(browser);
   const out = process.env.BENCH_OUT;
   for (let run = 1; run <= count; run++) {
     for (const kind of kinds) {
       const runId = [process.env.BENCH_BATCH ?? "baseline", run, kind].join("-");
-      await spanBoundary("start", runId);
       try {
         const trace = run === 1 && kind === "direct" && process.env.BENCH_TRACE_PATH;
-        const sample = await measure(
-          browser,
-          kind,
-          kind === "direct" ? extra : 0,
-          trace ? path.resolve(trace) : undefined,
-        );
+        const sample = await measure(browser, kind, {
+          runId,
+          withheldMs: kind === "direct" ? extra : 0,
+          traceFile: trace ? path.resolve(trace) : undefined,
+        });
         samples.push({ runId, ...sample });
       } catch (e) {
         failures.push({
@@ -330,10 +407,74 @@ test("tour entry to first responsive frame", async ({ browser }) => {
         });
         throw e;
       } finally {
-        await spanBoundary("finish", runId);
         if (out)
           writeFileSync(out, JSON.stringify({ metadata, count, samples, failures }, null, 2) + "\n", { mode: 0o600 });
       }
     }
   }
+});
+
+test("tour viewer chunk preload experiment", async ({ browser }) => {
+  test.skip(process.env.BENCH_VIEWER_PROBE !== "1", "Enable with BENCH_VIEWER_PROBE=1");
+  const count = Number(process.env.BENCH_RUNS ?? 5);
+  expect(Number.isInteger(count) && count > 0).toBe(true);
+  const out = process.env.BENCH_VIEWER_OUT ?? process.env.BENCH_OUT;
+  if (!out) throw Error("Set BENCH_VIEWER_OUT to a new private JSON path");
+  test.setTimeout((2 * count + 2) * 240_000 + 60_000);
+
+  const metadata = benchmarkMetadata(browser);
+  type Arm = "discovery" | "control" | "preload" | "restored-control";
+  type Sample = Awaited<ReturnType<typeof measure>>;
+  const samples: { runId: string; pair: number | null; arm: Arm; timing: Sample }[] = [];
+  const failures: { runId: string; error: string }[] = [];
+  let chunkPaths: string[] = [];
+  const save = (initial = false) => {
+    const observed = samples.map((sample) => ({
+      ...sample,
+      viewerChunks: chunkPaths.map((path) => {
+        const requests = sample.timing.startedScripts.filter((request) => request.path === path);
+        const resources = sample.timing.scripts.filter((resource) => resource.path === path);
+        return { path, requests, resources, duplicateRequests: Math.max(0, requests.length - 1) };
+      }),
+    }));
+    writeFileSync(out, JSON.stringify({ metadata, count, chunkPaths, samples: observed, failures }, null, 2) + "\n", {
+      flag: initial ? "wx" : "w",
+      mode: 0o600,
+    });
+  };
+  save(true);
+  const run = async (arm: Arm, pair: number | null) => {
+    const runId = [process.env.BENCH_BATCH ?? "viewer", pair, arm].filter((part) => part !== null).join("-");
+    try {
+      const timing = await measure(browser, "direct", {
+        runId,
+        preloadPaths: arm === "preload" ? chunkPaths : [],
+      });
+      samples.push({ runId, pair, arm, timing });
+      return timing;
+    } catch (error) {
+      failures.push({ runId, error: error instanceof Error ? error.message : String(error) });
+      throw error;
+    } finally {
+      save();
+    }
+  };
+  const discovery = await run("discovery", null);
+  const start = discovery.stages.viewer_module_start;
+  const ready = discovery.stages.viewer_module_ready;
+  expect(ready).toBeGreaterThan(start);
+  chunkPaths = [
+    ...new Set(
+      discovery.scripts
+        .filter((script) => APP_CHUNK.test(script.path) && script.start >= start && script.end <= ready)
+        .map((script) => script.path),
+    ),
+  ];
+  expect(chunkPaths.length, "control must observe late viewer chunk requests").toBeGreaterThan(0);
+  save();
+  for (let pair = 1; pair <= count; pair++) {
+    const arms: Arm[] = pair % 2 ? ["control", "preload"] : ["preload", "control"];
+    for (const arm of arms) await run(arm, pair);
+  }
+  await run("restored-control", null);
 });
