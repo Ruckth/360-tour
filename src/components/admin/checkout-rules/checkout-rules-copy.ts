@@ -26,6 +26,8 @@ export function refusalText(err: unknown): string {
     case "PAYMENTS_STILL_OPEN": return t("cutover.paymentsStillOpen");
     case "PAYMENTS_ALREADY_SWITCHED": return t("cutover.alreadySwitched");
     case "ADJUSTMENT_KEY_CONFLICT": return t("refusals.keyConflict");
+    case "PAY_PANEL_CHANGED": return t("payments.panelChanged");
+    case "OPERATOR_NOT_STOPPED": return t("payments.operatorNotStopped");
     case "PAYMENT_PAUSE_REQUIRED": case "INVALID_CHECKOUT_TERMS": case "INVALID_ADJUSTMENT_REASON": case "SETTINGS_UNCHANGED":
     case "RECONCILE_NOTE_REQUIRED": case "PAY_PANEL_NOT_PAID": case "PAY_PANEL_OTHER_RECEIPT": case "PAY_PANEL_RECEIPT_USED": case "TILL_NOT_RETIREABLE":
       return refusal(err)?.message ?? t("rules.couldNotSave");

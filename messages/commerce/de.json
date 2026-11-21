@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "Verwenden, wenn Terminal oder Kasse Geld angenommen haben, dem kein Beleg zugeordnet ist (z. B. Doppelbuchung). Beschreiben Sie den Befund und die Lösung.",
       "reconcileUnrecordedPlaceholder": "Was Terminal oder Kasse zeigten und wie es gelöst wurde",
       "reconcileDone": "Zahlungsfeld abgeglichen",
+      "panelChanged": "Dieses Zahlungsfeld wurde an der Kasse geändert. Prüfen Sie zuerst die aktuelle Anweisung.",
+      "operatorNotStopped": "Bestätigen Sie zuerst, dass die andere Kasse angehalten hat.",
       "retireTill": "Kasse abmelden",
       "retireTillTitle": "{till} abmelden?",
       "retireTillHint": "Melden Sie ein ersetztes Gerät ab, sobald alle offenen Zahlungsfelder abgeglichen sind, damit die Verkaufsschalter freigegeben werden.",

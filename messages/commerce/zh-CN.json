@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "当刷卡机或现金抽屉收了款但没有对应收据（例如重复扣款）时使用。请说明情况及处理方式。",
       "reconcileUnrecordedPlaceholder": "刷卡机或抽屉显示的记录及处理方式",
       "reconcileDone": "已核对付款面板",
+      "panelChanged": "此收款面板已在收银台上更改。请先查看当前指示。",
+      "operatorNotStopped": "请先确认另一台收银台已停止操作。",
       "retireTill": "停用收银台",
       "retireTillTitle": "停用 {till}？",
       "retireTillHint": "核对完所有未关闭付款面板后，停用已更换的浏览器或设备，使其不再阻止开启销售开关。",

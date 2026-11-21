@@ -162,12 +162,15 @@ export function directPanelSettled(order: Doc<'orders'> | undefined) {
 
 /**
  * Evidence that the order's receipt records this registration's instruction: its cashier issued
- * it, for exactly the instructed tenders. Another panel's receipt never resolves this one, and
- * neither does one that already accounts for a registration (receiptUsed).
+ * it, at the order revision the instruction reviewed, for exactly the instructed tenders (so the
+ * same due). Another panel's receipt never resolves this one, and neither does one that already
+ * accounts for a registration (receiptUsed). Cheap checks come first: only a candidate receipt
+ * reads its payments.
  */
 export async function receiptRecordsPanel(ctx: QueryCtx, panel: DirectPanel, order: Doc<'orders'> | undefined) {
   if (!order || !directPanelSettled(order) || !('instruction' in panel) || !panel.instruction || !panel.actorEmail) return false;
   if (order.paidBy !== panel.actorEmail || order.settleKey === undefined) return false;
+  if (order.settledRevision === undefined || order.settledRevision !== panel.instruction.revision) return false;
   const payments = await readPaymentRows(ctx, () => ctx.db.query('orderPayments')
     .withIndex('by_orderId', q => q.eq('orderId', order._id)).take(MAX_TENDERS + 1));
   const recorded = payments.filter(payment => payment.idempotencyKey === order.settleKey && payment.method !== 'voucher')

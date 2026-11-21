@@ -299,6 +299,8 @@ const panelRow = v.object({
   receiptNumber: v.union(v.number(), v.null()), receiptUsed: v.boolean(),
   actor: v.string(), actorEmail: v.optional(v.string()), openedAt: v.number(),
   instruction: v.optional(instruction), settled: v.boolean(), stale: v.boolean(),
+  /** Recorded would succeed: the receipt records exactly this instruction and accounts for no other panel. */
+  canRecord: v.boolean(),
 });
 
 /** First page of open admissions. Reconciliation removes rows and makes the next ones visible. */
@@ -311,36 +313,39 @@ export const directPanels = staffQuery({
     const [panels, displayTill] = await Promise.all([directPanelPage(ctx), findPaymentTill(ctx)]);
     const rows = await Promise.all(panels.map(async panel => {
       const [order, till] = await Promise.all([readPaymentOrder(ctx, panel.orderId), findPaymentTill(ctx, panel.tillId)]);
-      return projectPanel(panel, order, panel.tillId, till ? paymentTillLabel(till) : 'Till', now);
+      return projectPanel(ctx, panel, order, till ? paymentTillLabel(till) : 'Till', now);
     }));
     if (displayTill) {
       for (const { panel, order } of await readDirectPanels(ctx, displayTill)) {
-        rows.push(projectPanel(panel, order, displayTill._id, paymentTillLabel(displayTill), now));
+        rows.push(await projectPanel(ctx, { ...panel, tillId: displayTill._id, listed: true }, order, paymentTillLabel(displayTill), now));
       }
     }
     return rows;
   },
 });
 
-function projectPanel(
-  panel: { panelKey: string; orderId: Id<'orders'>; actor: string; actorEmail?: string; openedAt: number; instruction?: DirectPanelInstruction },
-  order: Awaited<ReturnType<typeof readPaymentOrder>>, tillId: Id<'tills'>, tillKey: string, now: number,
+async function projectPanel(
+  ctx: QueryCtx, panel: DirectPanel, order: Awaited<ReturnType<typeof readPaymentOrder>>, tillKey: string, now: number,
 ) {
+  const shown = 'instruction' in panel ? panel.instruction : undefined;
   return {
-    tillId, tillKey, panelKey: panel.panelKey, orderId: panel.orderId,
+    tillId: panel.tillId, tillKey, panelKey: panel.panelKey, orderId: panel.orderId,
     orderNumber: order?.orderNumber ?? null, orderStatus: order?.status ?? null,
     receiptNumber: order?.receiptNumber ?? null, receiptUsed: Boolean(order && receiptUsed(order)),
-    actor: panel.actor, ...(panel.actorEmail ? { actorEmail: panel.actorEmail } : {}),
-    openedAt: panel.openedAt, ...(panel.instruction ? { instruction: panel.instruction } : {}),
+    actor: panel.actor, ...('actorEmail' in panel && panel.actorEmail ? { actorEmail: panel.actorEmail } : {}),
+    openedAt: panel.openedAt, ...(shown ? { instruction: shown } : {}),
     settled: directPanelSettled(order), stale: now - panel.openedAt > DIRECT_PANEL_STALE_MS,
+    canRecord: Boolean(order && !receiptUsed(order) && await receiptRecordsPanel(ctx, panel, order)),
   };
 }
 
 /**
- * A manager resolves an open registration after checking the terminal and drawer. Recorded needs
- * the receipt that records exactly this registration's instruction, issued by its cashier; a
- * receipt from another panel never resolves it. Collected without receipt records an audited note
- * for externally collected money that no receipt accounts for (e.g. a duplicate collection).
+ * A manager resolves an open registration after checking the terminal and drawer and confirming
+ * its operator has stopped (`stoppedPreviousOperator`). `expectedInstructionAt` is the reviewed
+ * instruction's `at` (null: none); if the till changed it since, nothing is resolved. Recorded
+ * needs the receipt that records exactly this registration's instruction, issued by its cashier;
+ * a receipt from another panel never resolves it. Collected without receipt records an audited
+ * note for externally collected money that no receipt accounts for (e.g. a duplicate collection).
  */
 export const reconcileDirectPanel = staffMutation({
   capability: 'approve',
@@ -348,9 +353,12 @@ export const reconcileDirectPanel = staffMutation({
     tillId: v.id('tills'), panelKey: v.string(),
     outcome: v.union(v.literal('recorded'), v.literal('nothing_taken'), v.literal('collected_unrecorded')),
     note: v.optional(v.string()),
+    expectedInstructionAt: v.union(v.number(), v.null()),
+    stoppedPreviousOperator: v.boolean(),
   },
   returns: v.null(),
-  handler: async (ctx, { tillId, panelKey, outcome, note }) => {
+  handler: async (ctx, { tillId, panelKey, outcome, note, expectedInstructionAt, stoppedPreviousOperator }) => {
+    if (!stoppedPreviousOperator) throw new ConvexError({ code: 'OPERATOR_NOT_STOPPED', message: 'Confirm the other till has stopped first.' });
     const cleanNote = note?.trim();
     if (outcome === 'collected_unrecorded' && (!cleanNote || cleanNote.length > 500)) {
       throw new ConvexError({
@@ -361,6 +369,9 @@ export const reconcileDirectPanel = staffMutation({
     const till = await findPaymentTill(ctx, tillId);
     const panel = till && await findDirectPanel(ctx, till, panelKey);
     if (!panel) return null;
+    if ((('instruction' in panel ? panel.instruction?.at : undefined) ?? null) !== expectedInstructionAt) {
+      throw new ConvexError({ code: 'PAY_PANEL_CHANGED', message: 'This pay panel changed on the till. Review the current instruction first.' });
+    }
     const order = outcome === 'recorded' ? await readPaymentOrder(ctx, panel.orderId) : undefined;
     if (outcome === 'recorded') {
       if (!directPanelSettled(order)) throw new ConvexError({ code: 'PAY_PANEL_NOT_PAID', message: 'Record the payment before reconciling this panel.' });

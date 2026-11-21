@@ -45,6 +45,14 @@ async function fixture() {
 }
 type Fx = Awaited<ReturnType<typeof fixture>>;
 
+type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
+/** What a manager reviewed on the panel's row: its current instruction, after confirming its till stopped. */
+async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outcome: Outcome; note?: string }>(t: Fx['t'], args: A) {
+  const panel = await t.run(ctx => ctx.db.query('directPaymentPanels')
+    .withIndex('by_tillId_and_panelKey', q => q.eq('tillId', args.tillId).eq('panelKey', args.panelKey)).first());
+  return { ...args, expectedInstructionAt: panel?.instruction?.at ?? null, stoppedPreviousOperator: true };
+}
+
 /** An open order of `price`, and what a panel reviewing it now would send. */
 async function bill(fx: Fx, price: number) {
   const { orderId } = await fx.manager.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Massage', price } });
@@ -112,8 +120,8 @@ it('sends an order edited across the pause to a manager instead of recording the
   await expect(fx.ploy.mutation(settle, { ...pay(left.orderId, left, [{ method: 'card', amount: 500000 }]), ...left.registration })).rejects.toThrow();
   expect(await fx.payments()).toEqual([]);
   // The manager reconciles it; Recorded needs a receipt for it, which there isn't.
-  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: left.tillId, panelKey: 'shown-before-pause', outcome: 'recorded' })).rejects.toMatchObject(refusal('PAY_PANEL_NOT_PAID'));
-  await fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: left.tillId, panelKey: 'shown-before-pause', outcome: 'nothing_taken' });
+  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: left.tillId, panelKey: 'shown-before-pause', outcome: 'recorded' }))).rejects.toMatchObject(refusal('PAY_PANEL_NOT_PAID'));
+  await fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: left.tillId, panelKey: 'shown-before-pause', outcome: 'nothing_taken' }));
   expect(await fx.panels()).toEqual([]);
 });
 
@@ -198,20 +206,23 @@ it("refuses Recorded for one cashier's panel on another cashier's receipt; accep
   await fx.nok.mutation(settle, { ...pay(order.orderId, order, [{ method: 'transfer', amount: 120000 }]), panelKey: 'nok-transfer', ...nokTill });
   expect(await fx.panels()).toMatchObject([{ panelKey: 'ploy-card' }]);
   await fx.pause();
-  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: ploy.tillId!, panelKey: 'ploy-card', outcome: 'recorded' }))
+  // Another cashier's receipt (and another tender): Recorded is shown disabled.
+  expect(await fx.manager.query(rollout.directPanels, {})).toMatchObject([{ panelKey: 'ploy-card', settled: true, canRecord: false }]);
+  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: ploy.tillId!, panelKey: 'ploy-card', outcome: 'recorded' })))
     .rejects.toMatchObject(refusal('PAY_PANEL_OTHER_RECEIPT'));
-  await fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: ploy.tillId!, panelKey: 'ploy-card', outcome: 'nothing_taken' });
+  await fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: ploy.tillId!, panelKey: 'ploy-card', outcome: 'nothing_taken' }));
 
   // Ploy's own receipt for exactly her instruction, recorded without the registration (an older tab), resolves it.
   const second = await bill(fx, 80000);
   await fx.unpause();
   await fx.ploy.mutation(rollout.openDirectPanel, { orderId: second.orderId, panelKey: 'ploy-card-2', ...here, instruction: instruct(second, [{ method: 'card', amount: 80000 }]) });
   await fx.t.run(async ctx => {
-    await ctx.db.patch('orders', second.orderId, { status: 'paid', receiptNumber: 9, settleKey: 'ploy-old-tab', paidBy: 'ploy@example.com', due: 0 });
+    await ctx.db.patch('orders', second.orderId, { status: 'paid', receiptNumber: 9, settleKey: 'ploy-old-tab', settledRevision: second.revision, paidBy: 'ploy@example.com', due: 0 });
     await ctx.db.insert('orderPayments', { orderId: second.orderId, method: 'card', amount: 80000, idempotencyKey: 'ploy-old-tab', createdBy: 'ploy@example.com', createdAt: 1, effectiveAt: 1 });
   });
   const tillId = (await fx.panels())[0].tillId;
-  await fx.manager.mutation(rollout.reconcileDirectPanel, { tillId, panelKey: 'ploy-card-2', outcome: 'recorded' });
+  expect(await fx.manager.query(rollout.directPanels, {})).toMatchObject([{ panelKey: 'ploy-card-2', canRecord: true }]);
+  await fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId, panelKey: 'ploy-card-2', outcome: 'recorded' }));
   expect(await fx.panels()).toEqual([]);
 });
 
@@ -328,7 +339,7 @@ it("never lets one cashier's receipt clear two of her registrations, and keeps t
   expect(await fx.t.run(ctx => ctx.db.get('orders', order.orderId))).toMatchObject({ directPanel: { panelKey: 'till-b-card', by: 'settlement' } });
   expect(await fx.panels()).toMatchObject([{ panelKey: 'till-a-card' }]);
   // B's receipt can't also clear till A, so activation stays closed.
-  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: a.tillId, panelKey: 'till-a-card', outcome: 'recorded' }))
+  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: a.tillId, panelKey: 'till-a-card', outcome: 'recorded' })))
     .rejects.toMatchObject(refusal('PAY_PANEL_RECEIPT_USED'));
   await expect(fx.activate()).rejects.toMatchObject(refusal('PAYMENTS_STILL_OPEN'));
   expect(await fx.panels()).toHaveLength(1);
@@ -347,12 +358,12 @@ it('lets a receipt with no registration of its own clear exactly one matching re
   // An older tab with no registration settles it before the pause.
   await fx.ploy.mutation(settle, { ...pay(order.orderId, order, card.tenders) });
   await fx.pause();
-  await fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: opened[0].tillId, panelKey: 'panel-0', outcome: 'recorded' });
+  await fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: opened[0].tillId, panelKey: 'panel-0', outcome: 'recorded' }));
   expect(await fx.t.run(ctx => ctx.db.get('orders', order.orderId))).toMatchObject({ directPanel: { panelKey: 'panel-0', by: 'manager' } });
-  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: opened[1].tillId, panelKey: 'panel-1', outcome: 'recorded' }))
+  await expect(fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: opened[1].tillId, panelKey: 'panel-1', outcome: 'recorded' })))
     .rejects.toMatchObject(refusal('PAY_PANEL_RECEIPT_USED'));
   await expect(fx.activate()).rejects.toMatchObject(refusal('PAYMENTS_STILL_OPEN'));
   // Only an explicit, audited Nothing taken clears the other one.
-  await fx.manager.mutation(rollout.reconcileDirectPanel, { tillId: opened[1].tillId, panelKey: 'panel-1', outcome: 'nothing_taken' });
+  await fx.manager.mutation(rollout.reconcileDirectPanel, await reviewed(fx.t, { tillId: opened[1].tillId, panelKey: 'panel-1', outcome: 'nothing_taken' }));
   await expect(fx.activate()).resolves.toMatchObject({ status: 'applied' });
 });

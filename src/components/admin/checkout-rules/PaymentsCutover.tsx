@@ -30,20 +30,39 @@ function instructionSummary(panel: DirectPanelRow) {
   return tenders.map((tender) => `${t(METHOD_KEY[tender.method])} ${formatMoney(tender.amount)}`).join(" + ");
 }
 
-/** Manager direct-panel reconciliation during the cutover (recorded, nothing taken, or collected without receipt). */
+/** The instruction a manager reviewed on this row: a new one on the till clears the confirmation. */
+const reviewKey = (panel: DirectPanelRow) => `${panel.tillId}:${panel.panelKey}:${panel.instruction?.at ?? "none"}`;
+/** What the server checks the manager reviewed (the shown instruction) and confirmed (its till stopped). */
+const reviewed = (panel: DirectPanelRow) => ({
+  tillId: panel.tillId, panelKey: panel.panelKey, expectedInstructionAt: panel.instruction?.at ?? null, stoppedPreviousOperator: true,
+});
+
+/**
+ * Manager direct-panel reconciliation during the cutover (recorded, nothing taken, or collected
+ * without receipt), each only after confirming that till's cashier has stopped.
+ */
 function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSaved: (message: string) => void }) {
   const commands = useRulesCommands();
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [unrecorded, setUnrecorded] = useState<DirectPanelRow | null>(null);
+  const [stopped, setStopped] = useState<ReadonlySet<string>>(() => new Set());
   if (!panels.length) return null;
+
+  function confirmStopped(panel: DirectPanelRow, checked: boolean) {
+    setStopped((current) => {
+      const next = new Set(current);
+      if (checked) next.add(reviewKey(panel)); else next.delete(reviewKey(panel));
+      return next;
+    });
+  }
 
   async function reconcile(panel: DirectPanelRow, outcome: "recorded" | "nothing_taken") {
     const key = `${panel.tillId}:${panel.panelKey}:${outcome}`;
     setBusyKey(key);
     setError("");
     try {
-      await commands.reconcileDirectPanel({ tillId: panel.tillId, panelKey: panel.panelKey, outcome });
+      await commands.reconcileDirectPanel({ ...reviewed(panel), outcome });
       onSaved(t("payments.reconcileDone"));
     } catch (err) {
       setError(refusalText(err));
@@ -62,7 +81,9 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
       <ul className="grid divide-y divide-border rounded-lg border border-border">
         {panels.map((panel) => {
           const staff = panel.actorEmail ? panel.actorEmail.split("@")[0] : panel.actor;
-          const canRecord = panel.settled && !panel.receiptUsed && Boolean(panel.instruction) && Boolean(panel.actorEmail);
+          const confirmed = stopped.has(reviewKey(panel));
+          const idle = busyKey === null && confirmed;
+          const checkbox = `stopped-${panel.tillId}-${panel.panelKey}`;
           return (
             <li key={`${panel.tillId}:${panel.panelKey}`} data-testid="direct-panel-row" className="grid gap-2 px-3 py-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -79,14 +100,18 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
                   {t("payments.openOrder")}<ExternalLink aria-hidden className="size-3.5" />
                 </a>
               </div>
+              <label htmlFor={checkbox} className="flex min-h-11 items-center gap-3">
+                <input id={checkbox} type="checkbox" className="size-5" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
+                {t("pay.operatorStopped", { staff })}
+              </label>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" className="h-11" disabled={!canRecord || busyKey !== null} onClick={() => void reconcile(panel, "recorded")}>
+                <Button type="button" size="sm" className="h-11" disabled={!panel.canRecord || !idle} onClick={() => void reconcile(panel, "recorded")}>
                   {t("payments.reconcileRecorded")}
                 </Button>
-                <Button type="button" size="sm" variant="outline" className="h-11" disabled={busyKey !== null} onClick={() => void reconcile(panel, "nothing_taken")}>
+                <Button type="button" size="sm" variant="outline" className="h-11" disabled={!idle} onClick={() => void reconcile(panel, "nothing_taken")}>
                   {t("payments.reconcileNothingTaken")}
                 </Button>
-                <Button type="button" size="sm" variant="outline" className="h-11" disabled={busyKey !== null} onClick={() => setUnrecorded(panel)}>
+                <Button type="button" size="sm" variant="outline" className="h-11" disabled={!idle} onClick={() => setUnrecorded(panel)}>
                   {t("payments.reconcileUnrecorded")}
                 </Button>
               </div>
@@ -100,8 +125,8 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
           description={t("payments.reconcileUnrecordedHint")}
           chips={[]}
           confirmLabel={t("payments.reconcileUnrecorded")}
-          signature={`reconcile:${unrecorded.tillId}:${unrecorded.panelKey}`}
-          onSubmit={({ reason }) => commands.reconcileDirectPanel({ tillId: unrecorded.tillId, panelKey: unrecorded.panelKey, outcome: "collected_unrecorded", note: reason })}
+          signature={`reconcile:${reviewKey(unrecorded)}`}
+          onSubmit={({ reason }) => commands.reconcileDirectPanel({ ...reviewed(unrecorded), outcome: "collected_unrecorded", note: reason })}
           onDone={() => { setUnrecorded(null); onSaved(t("payments.reconcileDone")); }}
           onClose={() => setUnrecorded(null)}
         />

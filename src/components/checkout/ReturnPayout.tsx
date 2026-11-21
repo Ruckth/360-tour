@@ -107,15 +107,15 @@ export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, co
   });
   const record_ = (claim: ReturnClaim, outcome: "given" | "failed" | "unknown", at?: number) => run(outcome, async () => {
     const clean = reference.trim();
-    const isFinal = outcome === "given" && record.claims.every((item) => item.key === claim.key || item.state === "given" || item.state === "cancelled");
-    await actions.recordPayout({
+    const next = await actions.recordPayout({
       ...control, destinationKey: claim.key, outcome,
       ...(outcome === "given" && clean ? { reference: clean } : {}), ...(outcome === "given" && at !== undefined ? { givenAt: at } : {}),
     });
     setReference("");
     setGivenAt("");
     onFresh(null);
-    if (isFinal) onCompleted?.(t("returns.completedNotice"));
+    // The server's answer says whether this finished the return, not the claims shown before it.
+    if (next.status === "completed") onCompleted?.(t("returns.completedNotice"));
   });
   const retry = (claim: ReturnClaim) => run("retry", async () => {
     await actions.retry({ ...control, destinationKey: claim.key, reason: t("returns.retryReason"), ...(method && method !== claim.method ? { method } : {}) });

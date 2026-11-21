@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "Utilisez cette option lorsque le terminal ou le tiroir a encaissé une somme qu'aucun reçu ne couvre (par exemple un double encaissement). Indiquez ce qui s'est passé et comment cela a été résolu.",
       "reconcileUnrecordedPlaceholder": "Ce qu'indiquait le terminal ou le tiroir et la résolution",
       "reconcileDone": "Panneau de paiement rapproché",
+      "panelChanged": "Ce panneau de paiement a changé sur la caisse. Vérifiez d’abord l’instruction actuelle.",
+      "operatorNotStopped": "Confirmez d’abord que l’autre caisse s’est arrêtée.",
       "retireTill": "Retirer la caisse",
       "retireTillTitle": "Retirer {till} ?",
       "retireTillHint": "Retirez un navigateur ou appareil remplacé une fois ses panneaux ouverts rapprochés afin de débloquer les ventes.",

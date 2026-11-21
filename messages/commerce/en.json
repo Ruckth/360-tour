@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "Use this when the terminal or drawer took money that no receipt accounts for (for example, a second collection). Describe what happened and how it was resolved.",
       "reconcileUnrecordedPlaceholder": "What the terminal or drawer showed and how it was resolved",
       "reconcileDone": "Pay panel reconciled",
+      "panelChanged": "This pay panel changed on the till. Review the current instruction first.",
+      "operatorNotStopped": "Confirm the other till has stopped first.",
       "retireTill": "Retire till",
       "retireTillTitle": "Retire {till}?",
       "retireTillHint": "Retire a replaced browser or device after its open pay panels are reconciled. It will stop blocking sale switches.",

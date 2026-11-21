@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "Usa questa opzione quando terminale o cassa hanno incassato denaro senza ricevuta (ad esempio un doppio incasso). Descrivi cosa è successo e come è stato risolto.",
       "reconcileUnrecordedPlaceholder": "Cosa mostrava il terminale o la cassa e come è stato risolto",
       "reconcileDone": "Pannello di pagamento riconciliato",
+      "panelChanged": "Questo pannello di pagamento è cambiato sulla cassa. Controlla prima l’istruzione attuale.",
+      "operatorNotStopped": "Conferma prima che l’altra cassa si sia fermata.",
       "retireTill": "Ritira cassa",
       "retireTillTitle": "Ritirare {till}?",
       "retireTillHint": "Ritira un browser o dispositivo sostituito dopo aver riconciliato i suoi pannelli aperti per sbloccare gli interruttori di vendita.",

@@ -606,7 +606,8 @@ describe("Edit · History", () => {
     await act(async () => trigger.click());
     await until(() => document.querySelectorAll('[data-testid="history-entry"]').length > 0);
     const sheet = document.querySelector('[data-testid="edit-history"]')!;
-    expect(sheet.textContent).toContain("Extended through 30 Dec 2026");
+    // The extension runs past the receipt's "Valid through 28 Apr 2027", never before it.
+    expect(sheet.textContent).toContain("Extended through 28 May 2027");
     expect(sheet.textContent).toContain("3 → 4 sessions · 3 paid + 1 goodwill");
     expect(sheet.querySelectorAll('[data-testid="history-staff"]').length).toBe(4);
     expect(sheet.textContent).toContain("By Ploy · Health pause or extension");

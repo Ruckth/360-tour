@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "Úsalo cuando el terminal o la caja recibieron dinero que ningún recibo cubre (por ejemplo, un cobro duplicado). Describe lo ocurrido y cómo se resolvió.",
       "reconcileUnrecordedPlaceholder": "Qué mostró el terminal o la caja y cómo se resolvió",
       "reconcileDone": "Panel de pago conciliado",
+      "panelChanged": "Este panel de pago cambió en la caja. Revisa primero la instrucción actual.",
+      "operatorNotStopped": "Confirma primero que la otra caja se ha detenido.",
       "retireTill": "Retirar caja",
       "retireTillTitle": "¿Retirar {till}?",
       "retireTillHint": "Retira un navegador o dispositivo reemplazado cuando sus paneles abiertos estén conciliados para desbloquear los interruptores de venta.",

@@ -220,46 +220,96 @@ describe("Settings › Checkout rules, owner", () => {
     expect(dialog()).toBeNull();
   });
 
-  it("reconciles open direct panels with Recorded, Nothing taken, and Collected · no receipt", async () => {
+  it("reconciles open direct panels with Recorded, Nothing taken, and Collected · no receipt, each after the till has stopped", async () => {
     serve({ paused: true });
+    const settled = {
+      tillId: "till1", tillKey: "default", panelKey: "p-settled", orderId: "order1",
+      orderNumber: 12, orderStatus: "paid", receiptNumber: 12, receiptUsed: false,
+      actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
+      instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
+      settled: true, stale: false, canRecord: true,
+    };
     state.queries["commerce/paymentCutover:directPanels"] = [
-      {
-        tillId: "till1", tillKey: "default", panelKey: "p-settled", orderId: "order1",
-        orderNumber: 12, orderStatus: "paid", receiptNumber: 12, receiptUsed: false,
-        actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
-        instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
-        settled: true, stale: false,
-      },
+      settled,
       {
         tillId: "till2", tillKey: "Till 000002", panelKey: "p-open", orderId: "order2",
         orderNumber: 13, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
         actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_500_000_000,
-        settled: false, stale: true,
+        settled: false, stale: true, canRecord: false,
       },
+      // Another cashier's receipt, or another tender: settled, but the server would refuse Recorded.
+      { ...settled, tillId: "till3", panelKey: "p-other-receipt", orderId: "order3", receiptNumber: 14, canRecord: false },
     ];
     await render();
-    const rows = [...document.querySelectorAll<HTMLElement>('[data-testid="direct-panel-row"]')];
-    expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toContain("Card ฿1,200");
-    expect(rows[0].textContent).toContain("Receipt #12");
-    expect(byText("Recorded", rows[0])!.disabled).toBe(false);
-    expect(rows[1].textContent).toContain("Instruction not saved");
-    expect(rows[1].textContent).toContain("Open over 12 hours");
-    expect(byText("Recorded", rows[1])!.disabled).toBe(true);
+    const rows = () => [...document.querySelectorAll<HTMLElement>('[data-testid="direct-panel-row"]')];
+    const stopped = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(rows()).toHaveLength(3);
+    expect(rows()[0].textContent).toContain("Card ฿1,200");
+    expect(rows()[0].textContent).toContain("Receipt #12");
+    expect(rows()[0].textContent).toContain("mint has stopped, and I checked the terminal and drawer");
+    expect(rows()[1].textContent).toContain("Instruction not saved");
+    expect(rows()[1].textContent).toContain("Open over 12 hours");
+    // Nothing reconciles before the manager confirms that till's cashier has stopped.
+    for (const row of rows()) {
+      for (const label of ["Recorded", "Nothing taken", "Collected · no receipt"]) expect(byText(label, row)!.disabled).toBe(true);
+    }
+    for (const row of rows()) await click(stopped(row));
+    expect(byText("Recorded", rows()[0])!.disabled).toBe(false);
+    expect(byText("Recorded", rows()[1])!.disabled).toBe(true);
+    expect(byText("Recorded", rows()[2])!.disabled).toBe(true);
+    expect(byText("Nothing taken", rows()[2])!.disabled).toBe(false);
 
     const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
-    await click(byText("Recorded", rows[0]));
-    expect(reconcile).toHaveBeenLastCalledWith({ tillId: "till1", panelKey: "p-settled", outcome: "recorded" });
+    await click(byText("Recorded", rows()[0]));
+    expect(reconcile).toHaveBeenLastCalledWith({
+      tillId: "till1", panelKey: "p-settled", outcome: "recorded", expectedInstructionAt: 1_763_600_000_000, stoppedPreviousOperator: true,
+    });
 
-    await click(byText("Nothing taken", rows[1]));
-    expect(reconcile).toHaveBeenLastCalledWith({ tillId: "till2", panelKey: "p-open", outcome: "nothing_taken" });
+    await click(byText("Nothing taken", rows()[1]));
+    expect(reconcile).toHaveBeenLastCalledWith({
+      tillId: "till2", panelKey: "p-open", outcome: "nothing_taken", expectedInstructionAt: null, stoppedPreviousOperator: true,
+    });
 
-    await click(byText("Collected · no receipt", rows[1]));
+    await click(byText("Collected · no receipt", rows()[1]));
     expect(dialog()!.textContent).toContain("Record payment taken without a receipt?");
     await type(dialog()!.querySelector<HTMLInputElement>("input")!, "Terminal batch showed voided duplicate");
     await click(byText("Collected · no receipt", dialog()!));
     expect(reconcile).toHaveBeenLastCalledWith({
       tillId: "till2", panelKey: "p-open", outcome: "collected_unrecorded", note: "Terminal batch showed voided duplicate",
+      expectedInstructionAt: null, stoppedPreviousOperator: true,
+    });
+  });
+
+  it("refuses a reconciliation reviewed on an instruction the till has since changed, and asks again once it changes", async () => {
+    serve({ paused: true });
+    const panel = {
+      tillId: "till1", tillKey: "default", panelKey: "p-card", orderId: "order1",
+      orderNumber: 12, orderStatus: "draft", receiptNumber: null, receiptUsed: false,
+      actor: "cashier", actorEmail: "mint@example.com", openedAt: 1_763_600_000_000,
+      instruction: { revision: 1, due: 120000, tenders: [{ method: "card", amount: 120000 }], at: 1_763_600_000_000 },
+      settled: false, stale: false, canRecord: false,
+    };
+    state.queries["commerce/paymentCutover:directPanels"] = [panel];
+    const reconcile = mutation("commerce/paymentCutover:reconcileDirectPanel");
+    reconcile.mockRejectedValueOnce(new ConvexError({ code: "PAY_PANEL_CHANGED", message: "server text" }));
+    reconcile.mockRejectedValueOnce(new ConvexError({ code: "OPERATOR_NOT_STOPPED", message: "server text" }));
+    await render();
+    const row = () => document.querySelector<HTMLElement>('[data-testid="direct-panel-row"]')!;
+    await click(row().querySelector('input[type="checkbox"]'));
+    await click(byText("Nothing taken", row()));
+    expect(reconcile).toHaveBeenLastCalledWith(expect.objectContaining({ expectedInstructionAt: 1_763_600_000_000, stoppedPreviousOperator: true }));
+    expect(document.querySelector('[role="alert"]')!.textContent).toBe("This pay panel changed on the till. Review the current instruction first.");
+    await click(byText("Nothing taken", row()));
+    expect(document.querySelector('[role="alert"]')!.textContent).toBe("Confirm the other till has stopped first.");
+    // The till switched to Cash: the row shows it, and the manager confirms again for the new instruction.
+    state.queries["commerce/paymentCutover:directPanels"] = [{ ...panel, instruction: { ...panel.instruction, tenders: [{ method: "cash", amount: 120000 }], at: 1_763_600_060_000 } }];
+    await render();
+    expect(row().textContent).toContain("Cash ฿1,200");
+    expect(byText("Nothing taken", row())!.disabled).toBe(true);
+    await click(row().querySelector('input[type="checkbox"]'));
+    await click(byText("Nothing taken", row()));
+    expect(reconcile).toHaveBeenLastCalledWith({
+      tillId: "till1", panelKey: "p-card", outcome: "nothing_taken", expectedInstructionAt: 1_763_600_060_000, stoppedPreviousOperator: true,
     });
   });
 });

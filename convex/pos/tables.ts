@@ -128,6 +128,8 @@ export const posTables = {
 		receiptNumber: v.optional(v.number()),
 		/** Idempotency key of the payment attempt that settled the bill. */
 		settleKey: v.optional(v.string()),
+		/** The order revision a direct settlement (settleOrder) reviewed and paid. Absent on older receipts and on attempt settlements. */
+		settledRevision: v.optional(v.number()),
 		/**
 		 * The one direct pay panel registration this receipt accounts for during the payments rollout:
 		 * the panel that settled it, or the one a manager reconciled as Recorded with it.

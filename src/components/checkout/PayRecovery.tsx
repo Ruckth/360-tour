@@ -363,6 +363,11 @@ export function DirectRecordPrevious() {
   return <Notice tone="info" testId="record-previous" title={t("pay.recordPrevious")} />;
 }
 
+/** Recording a recovered direct payment: the server records it as received at settlement. */
+export function DirectReceivedNow() {
+  return <>{t("pay.receivedNow")}</>;
+}
+
 /** "Checkout paused for update": open panels finish; new payments wait for the switch. */
 export function CheckoutPaused() {
   return <Notice testId="checkout-paused" title={t("pay.pausedForUpdate")}><p>{t("pay.pausedBody")}</p></Notice>;

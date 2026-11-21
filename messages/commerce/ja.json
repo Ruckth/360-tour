@@ -793,6 +793,8 @@
       "reconcileUnrecordedHint": "端末やレジで受け取った金額に対応するレシートがない場合（二重決済など）に使用します。状況と対処内容を入力してください。",
       "reconcileUnrecordedPlaceholder": "端末やレジの表示内容と対処方法",
       "reconcileDone": "支払いパネルを照合しました",
+      "panelChanged": "この支払いパネルはレジ側で変更されました。先に現在の指示を確認してください。",
+      "operatorNotStopped": "先にもう一方のレジが操作を止めたことを確認してください。",
       "retireTill": "レジを廃止",
       "retireTillTitle": "{till} を廃止しますか？",
       "retireTillHint": "未精算パネルを照合した後、交換済みのブラウザや端末を廃止して販売スイッチのロックを解除します。",

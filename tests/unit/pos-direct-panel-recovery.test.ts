@@ -161,9 +161,18 @@ describe("from the first pause on", () => {
     expect(text()).toContain("Record the payment that was taken");
     // No tender picker: only the instruction that was approved can be recorded.
     expect(document.querySelector('[aria-label="Take payment by"]')).toBeNull();
+    expect(text()).toContain("Received now");
+    // The panel stays open across Bangkok midnight (14:00 → 01:00 next day) before Confirm.
+    vi.setSystemTime(new Date("2026-11-19T18:00:00Z"));
     await tap(/^Confirm ฿5,000/);
     expect(onPaid).toHaveBeenCalledOnce();
-    expect(await desk.payments()).toMatchObject([{ method: "promptpay", amount: 500000 }]);
+    // Received now is the server's settlement time, never the time the panel opened.
+    const sent = desk.calls.filter((call) => call.name === SETTLE).map((call) => call.args as Record<string, unknown>);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("effectiveAt");
+    const [payment] = await desk.payments();
+    expect(payment).toMatchObject({ method: "promptpay", amount: 500000 });
+    expect((payment as { effectiveAt: number }).effectiveAt).toBeGreaterThanOrEqual(Date.parse("2026-11-19T18:00:00Z"));
     expect(await panels(desk)).toEqual([]);
   }, 30000);
 

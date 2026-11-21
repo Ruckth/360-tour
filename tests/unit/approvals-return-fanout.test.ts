@@ -45,6 +45,8 @@ it("opens 20 return requests with one order, one detail and one quote: the selec
   expect(new Set(seen.orders)).toEqual(new Set(["order0"]));
   expect(new Set(seen.details)).toEqual(new Set(["request0"]));
   expect(seen.previews).toEqual(["approval:request0"]);
+  // Loading takes the quote's bounded height, so Approve doesn't move when the quote arrives (see the next case).
+  expect(document.querySelector("[data-return-request] > div > div")!.className).toContain("h-48");
   // The other 19 are compact rows from their stored summary, each opening on a tap.
   const queued = [...document.querySelectorAll<HTMLElement>("[data-return-queued]")];
   expect(queued).toHaveLength(19);
@@ -73,6 +75,9 @@ it("shows stock disposition and stopped-session count in the manager return deci
           { kind: "session", contentKey: "sessions", label: "Thai massage 60", amount: 300000, units: 3 },
           { kind: "product", contentKey: "robe", label: "Spa robe · Sand / M", amount: 129300, units: 1, disposition: "sellable" },
           { kind: "product", contentKey: "slippers", label: "Slippers", amount: 50000, units: 1, disposition: "damaged" },
+          // Product quantities: 2 robes back to stock and 1 written off from the same line.
+          { kind: "product", contentKey: "robe-sellable", label: "Spa robe · Sand / M", amount: 258600, units: 2, disposition: "sellable" },
+          { kind: "product", contentKey: "robe-damaged", label: "Spa robe · Sand / M", amount: 129300, units: 1, disposition: "damaged" },
         ],
       },
     ],
@@ -84,9 +89,17 @@ it("shows stock disposition and stopped-session count in the manager return deci
   for (let n = 0; n < 200 && !document.querySelector("[data-return-approval-quote]"); n++) {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   }
+  expect(document.querySelector("[data-return-approval-quote]")!.className).toMatch(/\bh-48\b.*\boverflow-y-auto\b/);
   const partsText = document.querySelector("[data-return-approval-parts]")?.textContent ?? "";
   expect(partsText).toContain("Thai massage 60 · 3 sessions stopped");
-  expect(partsText).toContain("Spa robe · Sand / M · Sellable · back to stock");
-  expect(partsText).toContain("Slippers · Damaged · written off");
+  expect(partsText).toContain("Slippers · 1 × Damaged · written off");
+  const parts = [...document.querySelectorAll("[data-return-approval-parts] > li")].map((li) => li.firstElementChild?.textContent);
+  expect(parts).toEqual([
+    "Thai massage 60 · 3 sessions stopped",
+    "Spa robe · Sand / M · 1 × Sellable · back to stock",
+    "Slippers · 1 × Damaged · written off",
+    "Spa robe · Sand / M · 2 × Sellable · back to stock",
+    "Spa robe · Sand / M · 1 × Damaged · written off",
+  ]);
   await act(async () => root.unmount());
 });

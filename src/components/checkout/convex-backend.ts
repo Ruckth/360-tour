@@ -15,7 +15,10 @@ const cashierCannotBrowse = (query: string, archived: boolean) => archived || qu
 
 type HistoryCursorSlot = { cursor: string | null; endCursor?: string };
 type StaffHistoryRow = PaginationResult<unknown>["page"][number];
+/** The page cursors subscribed now, and how many pages the user has asked for (Load more). */
+type HistoryChain = { slots: HistoryCursorSlot[]; depth: number };
 const INITIAL_HISTORY_SLOTS: HistoryCursorSlot[] = [{ cursor: null }];
+const INITIAL_HISTORY_CHAIN: HistoryChain = { slots: INITIAL_HISTORY_SLOTS, depth: 1 };
 
 function isStaleHistoryCursor(err: Error) {
   if (err.message.includes("InvalidCursor")) return true;
@@ -23,38 +26,46 @@ function isStaleHistoryCursor(err: Error) {
   return data?.code === "STALE_HISTORY_CURSOR" || (data?.isConvexSystemError === true && data?.paginationError === "InvalidCursor");
 }
 
-function nextHistorySlots(
-  slots: HistoryCursorSlot[],
+/**
+ * The chain's next state, or null when it is aligned. When page i's continueCursor moves (a live
+ * insert), page i+1 re-subscribes at the new cursor; once the resolved chain ends short of the
+ * pages the user loaded (`depth`), the next page is appended, so every loaded page comes back.
+ */
+function nextHistoryChain(
+  { slots, depth }: HistoryChain,
   raw: Record<string, PaginationResult<StaffHistoryRow> | Error | undefined>,
-): HistoryCursorSlot[] | null {
+): HistoryChain | null {
+  let last: PaginationResult<StaffHistoryRow> | undefined;
   for (let i = 0; i < slots.length; i++) {
     const res = raw[String(i)];
-    if (!res) break;
+    if (!res) return null;
     if (res instanceof Error) {
       if (isStaleHistoryCursor(res) && (slots.length > 1 || slots[0].cursor !== null || slots[0].endCursor !== undefined)) {
-        return INITIAL_HISTORY_SLOTS;
+        return INITIAL_HISTORY_CHAIN;
       }
       return null;
     }
     if (res.pageStatus === "SplitRequired" && res.splitCursor && res.splitCursor !== slots[i].endCursor) {
       const next = [...slots];
       next.splice(i, 1, { cursor: slots[i].cursor, endCursor: res.splitCursor }, { cursor: res.splitCursor, endCursor: res.continueCursor });
-      return next;
+      return { slots: next, depth: depth + 1 };
     }
     if (i + 1 < slots.length) {
-      if (res.isDone) return slots.slice(0, i + 1);
+      if (res.isDone) return { slots: slots.slice(0, i + 1), depth };
       if (res.continueCursor !== slots[i + 1].cursor) {
-        return [...slots.slice(0, i + 1), { cursor: res.continueCursor }];
+        return { slots: [...slots.slice(0, i + 1), { cursor: res.continueCursor }], depth };
       }
     }
+    last = res;
   }
-  return null;
+  return last && !last.isDone && slots.length < depth ? { slots: [...slots, { cursor: last.continueCursor }], depth } : null;
 }
 
 /**
  * Reactive cursor-chained History pagination. Unlike usePaginatedQuery, when a live insert shifts
  * page i's continueCursor (including a `cut:` boundary), page i+1 automatically re-subscribes to the
- * new continueCursor so no entry is ever dropped between loaded pages or lost to a stale cursor.
+ * new continueCursor so no entry is ever dropped between loaded pages or lost to a stale cursor, and
+ * the chain rebuilds to every page the user had loaded.
  */
 function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudience) {
   const targetType = target?.targetType;
@@ -62,14 +73,12 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
   const isBenefit = targetType === "voucher" || targetType === "grant";
   const active = Boolean(targetType && targetId && (audience === "staff" || isBenefit));
   const streamKey = active ? `${audience}:${targetType}:${targetId}` : "";
-  const [state, setState] = useState<{ key: string; slots: HistoryCursorSlot[] }>(() => ({
-    key: streamKey,
-    slots: INITIAL_HISTORY_SLOTS,
-  }));
+  const [state, setState] = useState<{ key: string } & HistoryChain>(() => ({ key: streamKey, ...INITIAL_HISTORY_CHAIN }));
   const sameStream = state.key === streamKey;
-  const slots = sameStream ? state.slots : INITIAL_HISTORY_SLOTS;
+  const chain = sameStream ? state : INITIAL_HISTORY_CHAIN;
+  const slots = chain.slots;
   if (!sameStream) {
-    setState({ key: streamKey, slots: INITIAL_HISTORY_SLOTS });
+    setState({ key: streamKey, ...INITIAL_HISTORY_CHAIN });
   }
 
   const requests = useMemo(() => {
@@ -87,10 +96,11 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
 
   const raw = useQueries(requests as Parameters<typeof useQueries>[0]) as Record<string, PaginationResult<StaffHistoryRow> | Error | undefined>;
 
-  // Re-align continuation cursors whenever an earlier page's boundary moves under live inserts, or reset on stale cursor.
-  const adjusted = active && sameStream ? nextHistorySlots(slots, raw) : null;
+  // Re-align continuation cursors whenever an earlier page's boundary moves under live inserts and
+  // rebuild the chain to the loaded depth, or reset on stale cursor.
+  const adjusted = active && sameStream ? nextHistoryChain(chain, raw) : null;
   if (adjusted) {
-    setState({ key: streamKey, slots: adjusted });
+    setState({ key: streamKey, ...adjusted });
   }
 
   const lastSlot = raw[String(slots.length - 1)];
@@ -99,7 +109,7 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
     setState((prev) => {
       if (prev.key !== streamKey) return prev;
       if (prev.slots[prev.slots.length - 1]?.cursor === lastSlot.continueCursor) return prev;
-      return { key: streamKey, slots: [...prev.slots, { cursor: lastSlot.continueCursor }] };
+      return { key: streamKey, slots: [...prev.slots, { cursor: lastSlot.continueCursor }], depth: prev.slots.length + 1 };
     });
   }, [lastSlot, streamKey]);
 
@@ -134,7 +144,7 @@ function useChainedHistory(target: AdjustTarget | null, audience: HistoryAudienc
   }
   const status: CustomerPage<HistoryEntry>["status"] = loading
     ? (rows.length || slots.length > 1 ? "LoadingMore" : "LoadingFirstPage")
-    : !last ? "LoadingFirstPage" : last.isDone ? "Exhausted" : "CanLoadMore";
+    : !last ? "LoadingFirstPage" : last.isDone ? "Exhausted" : slots.length < chain.depth ? "LoadingMore" : "CanLoadMore";
   return { rows, status, loadMore };
 }
 

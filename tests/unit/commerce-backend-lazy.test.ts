@@ -141,3 +141,47 @@ it("re-chains page 2's cursor when a live insert shifts page 1's cut boundary, a
   expect(page.results.map((r) => r.entryId)).toEqual(["e14", "e13", "e12", "e11", "e10", "e9"]);
   expect(page.status).toBe("CanLoadMore");
 });
+
+it("keeps all four loaded History pages, in order, when a live insert shifts page 1's cut boundary (audit Major 3)", async () => {
+  const entry = (id: string) => ({
+    entryId: id, at: Number(id.slice(1)), fact: { key: "published" as const }, balance: null,
+    staff: { actorName: "Ploy", reason: "other", reasonText: "Update" },
+  });
+  const ids = (from: number, to: number) => Array.from({ length: from - to + 1 }, (_, i) => `e${from - i}`);
+  let stream = ids(30, 1).map(entry);
+  let prefix = "cut:";
+  const requested: (string | null)[][] = [];
+  useQueries.mockImplementation((requests: Record<string, { args: { paginationOpts: { cursor: string | null } } }>) => {
+    requested.push(Object.values(requests).map((req) => req.args.paginationOpts.cursor));
+    const out: Record<string, unknown> = {};
+    for (const [key, req] of Object.entries(requests)) {
+      const cursor = req.args.paginationOpts.cursor;
+      const start = cursor === null ? 0 : Number(cursor.split(":").pop());
+      const slice = stream.slice(start, start + 6);
+      const next = start + slice.length;
+      out[key] = { page: slice, isDone: next >= stream.length, continueCursor: next >= stream.length ? "" : `${prefix}${next}` };
+    }
+    return out;
+  });
+  useQuery.mockReturnValue(null);
+
+  await act(async () => root.render(createElement(Probe)));
+  for (let i = 0; i < 50 && page.status === "LoadingFirstPage"; i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  for (let loaded = 1; loaded < 4; loaded++) await act(async () => page.loadMore(20));
+  expect(page.results.map((r) => r.entryId)).toEqual(ids(30, 7));
+  expect(page.status).toBe("CanLoadMore");
+
+  // Two live inserts land on page 1: its continueCursor moves from cut:6 to cut:shift:6.
+  stream = [entry("e32"), entry("e31"), ...stream];
+  prefix = "cut:shift:";
+  requested.length = 0;
+  await act(async () => root.render(createElement(Probe)));
+  // Every page the user loaded re-chains and stays visible: no page dropped, nothing missing or repeated.
+  expect(page.results.map((r) => r.entryId)).toEqual(ids(32, 9));
+  expect(page.status).toBe("CanLoadMore");
+  expect(requested.at(-1)).toEqual([null, "cut:shift:6", "cut:shift:12", "cut:shift:18"]);
+  // Load more continues from the rebuilt chain.
+  await act(async () => page.loadMore(20));
+  expect(page.results.map((r) => r.entryId)).toEqual(ids(32, 3));
+  expect(new Set(page.results.map((r) => r.entryId)).size).toBe(page.results.length);
+});
