@@ -75,7 +75,7 @@ type Cohort = "direct" | "click" | "reopen";
 const APP_CHUNK = /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
 
 function preloadViewerChunks(paths: string[]) {
-  if (!paths.length) return;
+  if (!paths.length || window !== window.top) return;
   const addLinks = () => {
     const head = document.head;
     if (!head) return false;
@@ -181,7 +181,18 @@ async function measure(
 ) {
   const { context, page, cdp } = await newMobilePage(browser, kind !== "reopen", instrument);
   const requests: { path: string; wallMs: number }[] = [];
-  const scriptRequests: { url: URL; wallMs: number; initiator: string; id: string }[] = [];
+  const scriptRequests = new Map<string, { url: URL; wallMs: number; initiator: string }>();
+  const scriptTransfers = new Map<string, number>();
+  const cachedScripts = new Set<string>();
+  if (preloadPaths) {
+    cdp.on("Network.loadingFinished", (event) => {
+      if (scriptRequests.has(event.requestId)) scriptTransfers.set(event.requestId, event.encodedDataLength);
+    });
+    cdp.on("Network.requestServedFromCache", (event) => cachedScripts.add(event.requestId));
+    cdp.on("Network.responseReceived", (event) => {
+      if (event.response.fromDiskCache) cachedScripts.add(event.requestId);
+    });
+  }
   cdp.on("Network.requestWillBeSent", (event) => {
     if (PANORAMA.test(event.request.url)) {
       requests.push({
@@ -189,11 +200,10 @@ async function measure(
         wallMs: event.wallTime * 1000,
       });
     } else if (preloadPaths && APP_CHUNK.test(new URL(event.request.url).pathname)) {
-      scriptRequests.push({
+      scriptRequests.set(event.requestId, {
         url: new URL(event.request.url),
         wallMs: event.wallTime * 1000,
         initiator: event.initiator.type,
-        id: event.requestId,
       });
     }
   });
@@ -320,13 +330,14 @@ async function measure(
       .filter((r) => r.start >= data.start && r.start <= data.changedFrameAt);
     if (direct) expect(delayed).toBe(true);
     const { origin, ...timings } = data;
-    const startedScripts = Array.from(
-      new Map(scriptRequests.filter((r) => r.url.origin === origin).map((r) => [r.id + r.url.href, r])).values(),
-    )
-      .map((r) => ({
+    const startedScripts = Array.from(scriptRequests)
+      .filter(([, request]) => request.url.origin === origin)
+      .map(([id, r]) => ({
         path: r.url.pathname + r.url.search,
         start: r.wallMs - timings.timeOrigin,
         initiator: r.initiator,
+        transferBytes: scriptTransfers.get(id) ?? null,
+        servedFromCache: cachedScripts.has(id),
       }))
       .filter((r) => r.start >= timings.start && r.start <= timings.changedFrameAt);
     return { kind, withheldMs, routeCache, ...timings, startedImages, startedScripts };
@@ -434,7 +445,14 @@ test("tour viewer chunk preload experiment", async ({ browser }) => {
       viewerChunks: chunkPaths.map((path) => {
         const requests = sample.timing.startedScripts.filter((request) => request.path === path);
         const resources = sample.timing.scripts.filter((resource) => resource.path === path);
-        return { path, requests, resources, duplicateRequests: Math.max(0, requests.length - 1) };
+        const transferred = requests.filter((request) => (request.transferBytes ?? 0) > 0);
+        return {
+          path,
+          requests,
+          resources,
+          duplicateRequests: Math.max(0, requests.length - 1),
+          duplicateTransfers: Math.max(0, transferred.length - 1),
+        };
       }),
     }));
     writeFileSync(out, JSON.stringify({ metadata, count, chunkPaths, samples: observed, failures }, null, 2) + "\n", {
