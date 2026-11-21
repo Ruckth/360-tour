@@ -19,6 +19,7 @@ import type { Review } from "@/lib/data/reviews";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import type { PublicVilla } from "@/lib/villas";
+import { markTourBench } from "@/lib/tour/bench";
 import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 
 const TourViewer = dynamic(
@@ -47,6 +48,10 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   const images = property.images.length ? property.images : [resort.heroImage];
 
   useEffect(() => {
+    markTourBench("room_hydrated");
+  }, []);
+
+  useEffect(() => {
     setChatContext?.({
       propertySlug: property.id,
       propertyName: property.name,
@@ -55,6 +60,7 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   }, [clearChatContext, property.id, property.name, setChatContext]);
 
   function openTour() {
+    markTourBench("tour_open_requested");
     setShowTour(true);
     router.replace(localizeHref(`/rooms/${property.id}?tour=1`, locale), { scroll: false });
   }

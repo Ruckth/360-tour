@@ -3,11 +3,12 @@
 import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { MeshBasicMaterial } from "three";
+import { Euler, type MeshBasicMaterial } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
 import { RoomSphere } from "@/components/tour/RoomSphere";
 import { useTourTextures, type PanoramaDetailRequest, type PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import type { Room } from "@/lib/data/rooms";
+import { tourBench } from "@/lib/tour/bench";
 import { choosePanoramaWidth } from "@/lib/tour/panoramas";
 
 /** The viewer at the sphere's center, looking around by dragging. */
@@ -177,6 +178,7 @@ function SphereScene({
     state.invalidate();
   });
 
+  const probe = tourBench();
   const currentRoom = rooms.find((room) => room.id === currentRoomId) ?? rooms[0];
   const showHotspots = !transitioning && currentReady && currentRoom;
 
@@ -195,6 +197,9 @@ function SphereScene({
           texture={shown.texture}
           opacity={crossfadeKey ? 0 : 1}
           materialRef={incomingMaterialRef}
+          onAfterRender={probe ? (_gl, _scene, camera, _geometry, material) => {
+            if (material.opacity > 0) probe.frame(new Euler().setFromQuaternion(camera.quaternion, "YXZ").y, shown.roomId);
+          } : undefined}
         />
       ) : null}
       {showHotspots

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SRGBColorSpace, Texture, TextureLoader } from "three";
 import type { Room } from "@/lib/data/rooms";
+import { markTourBench } from "@/lib/tour/bench";
 import { panoramaRendition, type PanoramaWidth } from "@/lib/tour/panoramas";
 import { nextRoomPrefetchOrder, TourTextureCache } from "@/lib/tour/texture-cache";
 
@@ -169,6 +170,7 @@ export function useTourTextures({
     const isCurrent = () => !cancelled && cache.currentGeneration === generation;
 
     async function loadRoom() {
+      if (!activeDetailRequest) markTourBench("texture_request_start");
       let result = await cache.acquire(path, REQUESTED_OWNER);
       if (!isCurrent()) return;
       // An unavailable rendition should feel like an ordinary first load. The original is only
@@ -182,11 +184,13 @@ export function useTourTextures({
         if (activeDetailRequest && shownRef.current?.roomId === currentRoomId) {
           setFailedDetailRequest(activeDetailRequest);
         } else {
+          markTourBench("texture_load_failed");
           setFailedRoomId(currentRoomId);
         }
         return;
       }
       if (!result.texture) return;
+      if (!activeDetailRequest) markTourBench("texture_decoded");
 
       const next: TaggedTexture = { roomId: currentRoomId, path, texture: result.texture };
       const previous = shownRef.current;

@@ -8,16 +8,18 @@ export function RoomSphere({
   opacity = 1,
   materialRef,
   meshRef,
+  onAfterRender,
   onClick,
 }: {
   texture: Texture;
   opacity?: number;
   materialRef?: Ref<MeshBasicMaterial>;
   meshRef?: Ref<Mesh>;
+  onAfterRender?: Mesh["onAfterRender"];
   onClick?: (event: ThreeEvent<MouseEvent>) => void;
 }) {
   return (
-    <mesh ref={meshRef} onClick={onClick} rotation={[0, SPHERE_ROTATION_Y, 0]}>
+    <mesh {...(onAfterRender && {onAfterRender})} ref={meshRef} onClick={onClick} rotation={[0, SPHERE_ROTATION_Y, 0]}>
       <sphereGeometry args={[SPHERE_RADIUS, ...SPHERE_SEGMENTS]} />
       <meshBasicMaterial
         ref={materialRef}

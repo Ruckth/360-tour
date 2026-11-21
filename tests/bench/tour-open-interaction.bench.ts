@@ -40,6 +40,7 @@ function instrument() {
     frame(yaw, roomId) {
       const frame = { yaw, roomId, at: performance.now() };
       sample.last = frame;
+      sample.stages.first_scene_drawn ??= frame.at;
       if (sample.origin?.roomId === roomId && sample.gesture !== null && Math.abs(yaw - sample.origin.yaw) > 0.001)
         sample.moved ??= frame;
     },
