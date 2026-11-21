@@ -1,5 +1,7 @@
 import { writeFileSync } from "node:fs";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+import { newMobilePage, PANORAMA } from "./tour-mobile-profile";
 
 /**
  * 360 tour opening benchmark on a fixed mobile profile (390x844, DPR 2, touch), with Chrome
@@ -19,7 +21,6 @@ import { expect, test, type Browser, type BrowserContext, type Page } from "@pla
 
 const RUNS = Number(process.env.BENCH_RUNS ?? 5);
 const VILLA_PATH = process.env.BENCH_VILLA_PATH ?? "/rooms/pool-villa";
-const PANORAMA = /\/(pool-villa-living|pool-villa-pool|garden-suite-interior|garden-dining360|garden-villa-360|penthouse-bedroom)(?:-(2048|4096))?\.(webp|jpe?g)(?:$|\?)/;
 const MOBILE_FIRST_ROOM: Record<string, string> = {
   "/rooms/pool-villa": "pool-villa-living",
   "/rooms/garden-suite": "garden-suite-interior",
@@ -50,39 +51,6 @@ const INSTRUMENT = () => {
     }
   }
 };
-
-async function throttle(context: BrowserContext, page: Page, disableCache: boolean) {
-  const cdp = await context.newCDPSession(page);
-  await cdp.send("Network.enable");
-  await cdp.send("Network.setCacheDisabled", { cacheDisabled: disableCache });
-  await cdp.send("Network.emulateNetworkConditions", {
-    offline: false,
-    latency: 150,
-    downloadThroughput: (1.6 * 1024 * 1024) / 8,
-    uploadThroughput: (750 * 1024) / 8,
-  });
-  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
-}
-
-async function newMobilePage(browser: Browser, disableCache: boolean) {
-  const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
-  });
-  await context.addInitScript(() => sessionStorage.setItem("seaview-demo-disclaimer-dismissed", "true"));
-  await context.addInitScript(INSTRUMENT);
-  const page = await context.newPage();
-  page.on("requestfailed", (request) => {
-    if (PANORAMA.test(request.url())) console.error("panorama-request-failed", new URL(request.url()).pathname, request.failure()?.errorText);
-  });
-  page.on("response", (response) => {
-    if (PANORAMA.test(response.url()) && response.status() >= 400) console.error("panorama-http-error", new URL(response.url()).pathname, response.status());
-  });
-  await throttle(context, page, disableCache);
-  return { context, page };
-}
 
 /** Clicks Explore 360 from inside the page and resolves when the tour controls render. */
 async function openTour(page: Page, kind: Sample["kind"]): Promise<Sample> {
@@ -157,14 +125,14 @@ test("tour open: cold and warm, mobile profile", async ({ browser }) => {
   test.setTimeout(RUNS * 120_000 + 60_000);
   const samples: Sample[] = [];
   for (let run = 0; run < RUNS; run++) {
-    const { context, page } = await newMobilePage(browser, true);
+    const { context, page } = await newMobilePage(browser, true, INSTRUMENT);
     await page.goto(VILLA_PATH, { waitUntil: "load" });
     samples.push(await openTour(page, "cold"));
     console.log("tour-sample", run + 1, samples.at(-1));
     await context.close();
   }
   {
-    const { context, page } = await newMobilePage(browser, false);
+    const { context, page } = await newMobilePage(browser, false, INSTRUMENT);
     await page.goto(VILLA_PATH, { waitUntil: "load" });
     await openTour(page, "cold"); // primes the cache; not recorded
     for (let run = 0; run < RUNS; run++) {

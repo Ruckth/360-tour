@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { api } from "convex/_generated/api";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas, type TourSceneStatus } from "@/components/tour/TourCanvas";
@@ -15,6 +15,7 @@ import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { useQuery } from "convex/react";
+import { markTourBench } from "@/lib/tour/bench";
 import { resolveTourRooms } from "@/lib/tour/rooms";
 import { cn } from "@/lib/utils";
 
@@ -56,8 +57,24 @@ export function TourViewer({
   const [shownRoomId, setShownRoomId] = useState<string | null>(null);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
+  const roomsResolvedRef = useRef(false);
 
   useBodyScrollLock(true);
+
+  useEffect(() => {
+    markTourBench("viewer_mounted");
+  }, []);
+
+  useEffect(() => {
+    if (liveRooms === undefined || roomsResolvedRef.current) return;
+    roomsResolvedRef.current = true;
+    markTourBench("rooms_resolved");
+  }, [liveRooms]);
+
+  useEffect(() => {
+    if (!timedOut || liveRooms !== undefined) return;
+    markTourBench("rooms_timeout");
+  }, [liveRooms, timedOut]);
 
   useEffect(() => {
     // Bound the loading state; the intro advances as soon as the current texture is ready.

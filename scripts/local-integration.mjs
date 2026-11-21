@@ -10,6 +10,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { testUsers } from "./e2e-clerk.mjs";
 import { localConvexCache } from './local-convex-cache.mjs';
+import { startBenchSpans } from "./local-bench-spans.mjs";
 import {
   disabledServices,
   requireLocalBackend,
@@ -117,9 +118,11 @@ const env = {
   E2E_CHAT_LOCAL: "1",
   E2E_SEED_FILE: path.join(work, "seed.json"),
   VITEST_MAX_WORKERS: supplied.VITEST_MAX_WORKERS ?? "4",
+  ...(supplied.HEAVY_HELD === "1" && { HEAVY_HELD: "1" }),
 };
 const children = [];
 let cleanupSessions = async () => {};
+let benchSpans;
 async function launch(command, args, cwd = root, childEnv = env, log) {
   const fd = log ? await fs.open(path.join(work, log), "w", 0o600) : null;
   const child = spawn(command, args, {
@@ -183,6 +186,7 @@ let cleanup;
 function finalize() {
   return (cleanup ??= (async () => {
     await stop();
+    await benchSpans?.close();
     await cleanupSessions().catch((error) => {
       throw privateError(error);
     });
@@ -312,13 +316,14 @@ try {
   );
   const verify = process.argv.includes("--verify");
   await run("pnpm", [verify ? "verify" : "build"]);
-  await launch(
-    "pnpm",
-    ["exec", "next", "start", "-p", String(app)],
-    root,
-    env,
-    "next.log",
-  );
+  if (supplied.BENCH_SPANS_OUT) {
+    await launch(process.execPath, [
+      "--import", "./scripts/local-bench-next-timing.mjs",
+      "./node_modules/next/dist/bin/next", "start", "-p", String(app),
+    ], root, { ...env, BENCH_LOCAL_SSR: "1", BENCH_NEXT_PORT: String(app) }, "next.log");
+  } else {
+    await launch("pnpm", ["exec", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
+  }
   await until(async () => {
     try {
       return (await fetch(baseURL + "/admin/chats")).ok;
@@ -332,7 +337,18 @@ try {
     separator < 0
       ? ["pnpm", "exec", "playwright", "test"]
       : process.argv.slice(separator + 1);
-  await run(command[0], command.slice(1));
+  if (supplied.BENCH_SPANS_OUT) {
+    benchSpans = await startBenchSpans({
+      out: path.resolve(root, supplied.BENCH_SPANS_OUT),
+      backendUrl: url,
+      adminKey: config.adminKey,
+      nextLog: path.join(work, "next.log"),
+    });
+  }
+  await run(command[0], command.slice(1), root, {
+    ...env,
+    ...(benchSpans && { BENCH_SPAN_ENDPOINT: benchSpans.endpoint }),
+  });
 } finally {
   await finalize();
 }

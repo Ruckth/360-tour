@@ -3,10 +3,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "convex/_generated/api";
 import { locales } from "@/i18n/routing";
 
-const { query } = vi.hoisted(() => ({ query: vi.fn() }));
+const { mockDetailCache, query } = vi.hoisted(() => ({
+  mockDetailCache: { enabled: false },
+  query: vi.fn(),
+}));
 vi.mock("convex/browser", () => ({ ConvexHttpClient: class { query = query; } }));
 // The loader's process-level outage fallback is exercised without Next's data cache.
-vi.mock("next/cache", () => ({ unstable_cache: (callback: unknown) => callback }));
+vi.mock("next/cache", () => ({
+  unstable_cache: (callback: (...args: string[]) => unknown, [key]: string[]) => {
+    if (!mockDetailCache.enabled || key !== "public-villa") return callback;
+    const entries = new Map<string, unknown>();
+    return (...args: string[]) => {
+      const invocation = JSON.stringify(args);
+      if (!entries.has(invocation)) entries.set(invocation, callback(...args));
+      return entries.get(invocation);
+    };
+  },
+}));
 vi.mock("next-intl/server", () => ({ getLocale: async () => "en", getTranslations: async () => (key: string) => key }));
 vi.mock("@/components/rooms/RoomDetailClient", () => ({ RoomDetailClient: () => null }));
 
@@ -24,6 +37,7 @@ let villas: typeof import("@/lib/server/villas");
 
 beforeEach(async () => {
   vi.resetModules();
+  mockDetailCache.enabled = false;
   query.mockReset();
   vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "https://villa.example.test");
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -44,6 +58,27 @@ describe("server villa reads", () => {
     expect(query.mock.calls.map(([fn]) => getFunctionName(fn))).toEqual([
       "catalog/publicProperties:getBySlug", "catalog/publicProperties:getBySlug",
     ]);
+  });
+
+  it("reports isolated SSR cache and transport timings without logging the slug", async () => {
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "http://127.0.0.1:3210");
+    vi.stubEnv("BENCH_LOCAL_SSR", "1");
+    mockDetailCache.enabled = true;
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { getVilla } = await import("@/lib/server/villas");
+    query.mockResolvedValue(detail);
+    await getVilla("extra-99", "en");
+    await getVilla("extra-99", "th");
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toHaveLength(2);
+    expect(log.mock.calls[0][0]).toBe("BENCH_VILLA_SSR");
+    expect(JSON.parse(String(log.mock.calls[0][1]))).toEqual({
+      cache: "miss", durationMs: expect.any(Number), transportMs: expect.any(Number),
+    });
+    expect(JSON.parse(String(log.mock.calls[1][1]))).toEqual({
+      cache: "hit", durationMs: expect.any(Number),
+    });
   });
 
   it("uses the same direct detail in room metadata and content", async () => {
