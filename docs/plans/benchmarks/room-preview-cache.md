@@ -43,7 +43,7 @@ The first guest after the 60-second freshness window can receive the previous vi
 | Change a scene's name, panorama or hotspots | Open tours subscribe directly to Convex. Those fields come from the live rooms query. The villa HTML cache contains the property's ordered room slugs and reviews. Adding, deleting or reordering a scene also updates those slugs through the catalog writer. |
 | Seed or import data directly | A bulk import bypasses the application writers. Start with a new cache namespace or expire the affected shared generations as part of the restore. Without invalidation, a populated namespace follows the freshness window above. |
 
-For push delivery, configure the exact Start origin in `START_VILLA_INVALIDATION_ORIGIN` on Convex and the matching server-only `START_VILLA_INVALIDATION_SECRET` in Convex and the Start deployment. Check acknowledgement on the staged origin before promotion. The delivery action retries transient failures. [Catalog edit policy](../../../convex/catalog/private/propertyEdits.ts) · [Delivery and retries](../../../convex/catalog/private/villaInvalidation.ts)
+For push delivery, configure the exact Start origin in `START_VILLA_INVALIDATION_ORIGIN` on Convex and the matching server-only `START_VILLA_INVALIDATION_SECRET` in Convex and the Start deployment. Check acknowledgement on the staged origin before promotion. The delivery action retries transient failures. [Catalog edit policy](../../../convex/catalog/private/propertyEdits.ts) · [Delivery and retries](../../../convex/catalog/private/villaInvalidation.ts) · [Dedicated Preview proof](room-preview-invalidation/README.md)
 
 ## Post-expiry SWR pilot
 

@@ -30,7 +30,7 @@ import { parseArgs } from "node:util";
  *   runId: string, label: string, batch: number, pair: number, delayMs: number, cohort: Cohort, run: number,
  *   withheldMs: number, startedAt: number, cache: string, ssrRecovery: boolean, convexErrors: number,
  *   responseMs: number, dragToFrameMs: number, ttfbMs: number | null, serverHeaderMs: number | null,
- *   textureAcquisitionMs: number | null,
+ *   textureAcquisitionMs: number | null, roomsToFirstPanoramaRequestMs: number | null,
  *   segments: {stage: string, atMs: number, ms: number}[], beforeStart: string[], fallbacks: string[],
  *   panoramaNetworkMs: number, scriptNetworkMs: number, panoramaRequestsBeforeInput: number,
  *   panoramaCompletedBeforeInput: number, panoramaInFlightAtInput: number, warmPanoramaTransfers: number,
@@ -284,6 +284,12 @@ function deriveSample(s, f, span) {
   const cache = ssrStates.size > 1 ? "mixed" : ssrStates.size === 1 ? `ssr-${[...ssrStates][0]}`
     : s.kind !== "direct" ? "no-ssr-call" : /^(hit|stale)$/.test(routeCache) ? `route-${routeCache}` : "unknown";
   const stage = /** @type {Record<string, number>} */ (s.stages);
+  // Independent clocks within the document: a delivery/verification callback and CDP requestWillBeSent.
+  // Keep negative gaps visible if a future implementation fetches before confirmation.
+  const confirmations = [stage.rooms_update, stage.rooms_verified].filter(nonneg);
+  const panoramaStarts = s.startedImages.map((/** @type {{start: number}} */ image) => image.start);
+  const roomsToFirstPanoramaRequestMs = confirmations.length && panoramaStarts.length
+    ? Math.min(...panoramaStarts) - Math.min(...confirmations) : null;
   const ssrDurations = span.ssr.map((/** @type {any} */ x) => x.durationMs);
   const ssrTransport = span.ssr.map((/** @type {any} */ x) => x.transportMs).filter(nonneg);
   const convex = span.convex.map((/** @type {any} */ c) => ({
@@ -303,6 +309,7 @@ function deriveSample(s, f, span) {
     responseMs: s.responseMs, dragToFrameMs: s.dragToFrameMs,
     ttfbMs: s.ttfb > s.start ? s.ttfb - s.start : null,
     serverHeaderMs: nonneg(s.serverHeaderMs) ? s.serverHeaderMs : null,
+    roomsToFirstPanoramaRequestMs,
     textureAcquisitionMs: nonneg(stage.texture_request_start) && nonneg(stage.texture_available)
       ? stage.texture_available - stage.texture_request_start : null,
     segments, beforeStart: marks.filter(([, at]) => at <= s.start).map(([name]) => name).sort(),
@@ -377,6 +384,7 @@ function summarize(samples) {
     dragToFrameMs: dist(samples.map((s) => s.dragToFrameMs)),
     ttfbMs: dist(samples.flatMap((s) => (s.ttfbMs === null ? [] : [s.ttfbMs]))),
     serverHeaderMs: dist(samples.flatMap((s) => (s.serverHeaderMs === null ? [] : [s.serverHeaderMs]))),
+    roomsToFirstPanoramaRequestMs: dist(samples.flatMap((s) => s.roomsToFirstPanoramaRequestMs === null ? [] : [s.roomsToFirstPanoramaRequestMs])),
     textureAcquisitionMs: dist(samples.flatMap((s) => (s.textureAcquisitionMs === null ? [] : [s.textureAcquisitionMs]))),
     cache: Object.fromEntries([...caches].sort().map(([k, xs]) => [k, xs.length])),
     responseMsByCache: Object.fromEntries([...caches].sort().map(([k, xs]) => [k, dist(xs.map((s) => s.responseMs))])),
@@ -621,6 +629,7 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
     samples: samples.sort((a, b) => a.runId.localeCompare(b.runId, "en", { numeric: true })).map((s) => ({
       runId: s.runId, cohort: s.cohort, withheldMs: s.withheldMs, cache: s.cache, responseMs: round1(s.responseMs),
       dragToFrameMs: round1(s.dragToFrameMs), ttfbMs: round(s.ttfbMs), serverHeaderMs: round(s.serverHeaderMs),
+      roomsToFirstPanoramaRequestMs: round(s.roomsToFirstPanoramaRequestMs),
       textureAcquisitionMs: round(s.textureAcquisitionMs), ssrConnectionMs: round(s.ssrConnectionMs),
       panoramaRequestsBeforeInput: s.panoramaRequestsBeforeInput, panoramaCompletedBeforeInput: s.panoramaCompletedBeforeInput,
       panoramaInFlightAtInput: s.panoramaInFlightAtInput, warmPanoramaTransfers: s.warmPanoramaTransfers, beforeStart: s.beforeStart,

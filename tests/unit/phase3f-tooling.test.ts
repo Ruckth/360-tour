@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { readDevConfig, refuseInheritedTarget, devEnvironment, requireAnonymousState } from '../../scripts/local-dev-config.mjs';
-import { buildSeededPreview, previewConfiguration, previewUrl, previewDashboardTarget, assertPreviewProvidersDisabled, previewFrontendEnvironment } from '../../scripts/preview-build.mjs';
+import { buildSeededPreview, previewConfiguration, previewUrl, previewDashboardTarget, assertPreviewProvidersDisabled, assertPreviewInvalidationOrigin, previewFrontendEnvironment } from '../../scripts/preview-build.mjs';
 import { seedEmpty } from '../../scripts/seed-empty.mjs';
 import { testProjects } from '../../scripts/vitest-projects.mjs';
 
@@ -58,6 +58,31 @@ describe('project-scoped Preview build', () => {
     }
     expect(() => assertPreviewProvidersDisabled('AI_API_KEY=\nRESEND_API_KEY=\nADMIN_EMAILS=fixture')).not.toThrow();
     expect(previewFrontendEnvironment({ NODE_ENV: 'production', AI_API_KEY: 'private', MESSAGING_IMAGE_SECRET: 'private', NEXT_PUBLIC_SENTRY_DSN: 'private', CLERK_SECRET_KEY: 'test-fixture', VERCEL_URL: 'branch.example.test' }, 'https://preview-example-123.convex.cloud')).toMatchObject({ AI_API_KEY: '', MESSAGING_IMAGE_SECRET: '', NEXT_PUBLIC_SENTRY_DSN: '', CONVEX_DEPLOY_KEY: '', CLERK_SECRET_KEY: 'test-fixture', NEXT_PUBLIC_SITE_URL: 'https://branch.example.test' });
+  });
+  it('allows push invalidation only toward this Preview, never production, without echoing the value', () => {
+    const env = { VERCEL_URL: '360-tour-abc123xyz-team.vercel.app', VERCEL_BRANCH_URL: '360-tour-git-perf-x-team.vercel.app', VERCEL_PROJECT_PRODUCTION_URL: 'tour.helpgueststay.com' };
+    const listing = (origin: string) => `AI_API_KEY=\nSTART_VILLA_INVALIDATION_ORIGIN=${origin}\nSTART_VILLA_INVALIDATION_SECRET=private-secret-fixture`;
+    for (const ok of ['', "''", 'https://360-tour-abc123xyz-team.vercel.app/', 'https://360-tour-git-perf-x-team.vercel.app', '"https://360-TOUR-git-perf-x-team.vercel.app/"']) {
+      expect(() => assertPreviewInvalidationOrigin(listing(ok), env)).not.toThrow();
+    }
+    expect(() => assertPreviewInvalidationOrigin('AI_API_KEY=', env)).not.toThrow();
+    const cases: [string, string, Record<string, string>?][] = [
+      ['https://tour.helpgueststay.com/', 'production site'],
+      ['https://www.helpgueststay.com', 'production site'],
+      ['https://helpgueststay.com.', 'production site'],
+      ['https://360-tour.vercel.app/', 'production site', { ...env, VERCEL_PROJECT_PRODUCTION_URL: '360-tour.vercel.app' }],
+      ['https://360-tour-rugby-projects.vercel.app/', "own deployment or branch host"],
+      ['https://360-tour-oldhash99-team.vercel.app/', "own deployment or branch host"],
+      ['http://360-tour-abc123xyz-team.vercel.app/', 'exact https origin'],
+      ['https://360-tour-abc123xyz-team.vercel.app/api/internal/villa-cache', 'exact https origin'],
+      ['https://user:private@360-tour-abc123xyz-team.vercel.app/', 'exact https origin'],
+      ['private-not-a-url', 'not a URL'],
+    ];
+    for (const [origin, why, overrides] of cases) {
+      expect(() => assertPreviewInvalidationOrigin(listing(origin), overrides ?? env)).toThrow(why);
+      try { assertPreviewInvalidationOrigin(listing(origin), overrides ?? env); } catch (error) { expect(String(error)).not.toMatch(/private|helpgueststay|vercel\.app/); }
+    }
+    expect(() => assertPreviewInvalidationOrigin(listing('https://360-tour-abc123xyz-team.vercel.app/'), {})).toThrow('own deployment');
   });
   it('passes the Preview key through the real installed CLI env-file selection before any network authorization', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'phase3f-cli-'));

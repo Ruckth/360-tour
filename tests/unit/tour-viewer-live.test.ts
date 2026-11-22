@@ -10,7 +10,7 @@ const env = vi.hoisted(() => ({
   userId: null as string | null,
   /** The separate server read: resolve or reject it from a test. */
   reads: [] as { slug: string; resolve: (value: unknown) => void; reject: (error: unknown) => void }[],
-  canvas: undefined as undefined | { inputLocked?: boolean; onNavigate: (roomId: string) => void },
+  canvas: undefined as undefined | { inputLocked?: boolean; initialTextureConfirmed: boolean; onNavigate: (roomId: string) => void },
 }));
 vi.mock("convex/browser", () => ({
   ConvexHttpClient: class {
@@ -31,7 +31,7 @@ vi.mock("@/components/tour/TourCanvas", async () => {
   const { useEffect } = await import("react");
   return {
     TourCanvas(props: {
-      currentRoomId: string; transitioning: boolean; onLoaded: () => void; inputLocked?: boolean;
+      currentRoomId: string; transitioning: boolean; onLoaded: () => void; inputLocked?: boolean; initialTextureConfirmed: boolean;
       onStatusChange: (status: string, roomId: string) => void; onTransitionComplete: () => void;
       onNavigate: (roomId: string) => void;
     }) {
@@ -227,15 +227,19 @@ describe("live tour freshness and selection", () => {
     await render();
     await deliver("a", scenes("x", "y"));
     expect(env.canvas?.inputLocked).toBe(false);
+    expect(env.canvas?.initialTextureConfirmed).toBe(true);
     await act(async () => convex.disconnect());
     expect(shown()).toBe("x");
     expect(env.canvas?.inputLocked).toBe(true);
+    expect(env.canvas?.initialTextureConfirmed).toBe(false);
     await act(async () => env.canvas!.onNavigate("y"));
     expect(shown()).toBe("x");
     await act(async () => convex.reconnect());
     expect(env.canvas?.inputLocked).toBe(true);
+    expect(env.canvas?.initialTextureConfirmed).toBe(false);
     await deliver("a", scenes("x", "y"));
     expect(env.canvas?.inputLocked).toBe(false);
+    expect(env.canvas?.initialTextureConfirmed).toBe(true);
     await act(async () => env.canvas!.onNavigate("y"));
     expect(shown()).toBe("y");
   });

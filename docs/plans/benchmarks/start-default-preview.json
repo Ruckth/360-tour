@@ -1,0 +1,70 @@
+{
+  "sha": "93c2c0d966ec177138d73ce2f221bc03b62e853a",
+  "target": "protected Preview",
+  "frameworkConfig": "Other (framework: null in the source config)",
+  "frontendOnlyBuildLogVerified": true,
+  "preloadAssets": [
+    {
+      "asset": "/assets/TourCanvas-TzVa8WUt.js",
+      "status": 200,
+      "mime": "application/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "contentLength": 872640
+    },
+    {
+      "asset": "/assets/TourViewer-D_Ihlu7y.js",
+      "status": 200,
+      "mime": "application/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "contentLength": 19450
+    },
+    {
+      "asset": "/assets/input-90H1sIDO.js",
+      "status": 200,
+      "mime": "application/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "contentLength": 595
+    },
+    {
+      "asset": "/assets/tour-geometry-C79NfLrp.js",
+      "status": 200,
+      "mime": "application/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "contentLength": 188
+    },
+    {
+      "asset": "/assets/use-body-scroll-lock-B8Wt0VBF.js",
+      "status": 200,
+      "mime": "application/javascript",
+      "cacheControl": "public, max-age=31536000, immutable",
+      "contentLength": 293
+    }
+  ],
+  "ordinaryStatus": 200,
+  "ordinaryPreloads": 20,
+  "directStatus": 200,
+  "directPreloads": 25,
+  "missingStatus": 404,
+  "missingPreloads": 20,
+  "runtime": "bun/1.4.4",
+  "routeParity": {
+    "control": {
+      "pass": 61,
+      "fail": 0,
+      "unavailable": 0
+    },
+    "candidate": {
+      "pass": 61,
+      "fail": 0,
+      "unavailable": 0
+    },
+    "parity": {
+      "match": 59,
+      "improved": 2,
+      "drift": 0,
+      "fail": 0,
+      "pending": 0
+    }
+  },
+  "routeReportSha256": "bc65aac04899c1cdacdeb9d84275eb7a1b31de054c8c9c0541ea21693668f638"
+}

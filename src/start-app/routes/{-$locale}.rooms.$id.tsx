@@ -50,6 +50,7 @@ export const loadStartRoomServerFn = createServerFn({ method: "GET" })
       getPublicMessages,
       siteUrl,
       getRequest,
+      getTourModulePreloads: async () => (await import("../guest/tour-preloads.server")).tourModulePreloads,
       setResponseHeader,
       setResponseStatus,
       env: process.env,
@@ -90,7 +91,7 @@ export const Route = createFileRoute("/{-$locale}/rooms/$id")({
     return result.data;
   },
   // A missing villa keeps the root's localized title and is never indexed.
-  head: ({ loaderData, match }) => (isRouteNotFound(match) ? { meta: [NOINDEX_META] } : buildRoomHead(loaderData)),
+  head: ({ loaderData, match }) => (isRouteNotFound(match) ? { meta: [NOINDEX_META] } : buildRoomHead(loaderData, match?.search)),
   headers: ({ loaderData }) => buildRoomHeaders(loaderData),
   component: StartRoomRouteComponent,
   notFoundComponent: StartRoomRouteNotFound,

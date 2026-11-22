@@ -28,3 +28,12 @@ export function panoramaRendition(original: string, width: PanoramaWidth) {
     originalWidth,
   };
 }
+
+export const TOUR_CANVAS_DPR: [number, number] = [1, 1.5];
+
+/** The fixed, full-screen canvas cannot exceed this viewport width or its DPR cap. */
+export function earlyMobilePanoramaPath(original: string, viewportWidth: number): string | undefined {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0 || choosePanoramaWidth(viewportWidth, TOUR_CANVAS_DPR[1], 4096) !== 2048) return;
+  const { path } = panoramaRendition(original, 2048);
+  return path === original ? undefined : path;
+}

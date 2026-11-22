@@ -2,13 +2,21 @@ import { stat } from "node:fs/promises";
 import sharp from "sharp";
 import { describe, expect, it } from "vitest";
 import { rooms } from "@/lib/data/rooms";
-import { choosePanoramaWidth, panoramaRendition } from "@/lib/tour/panoramas";
+import { choosePanoramaWidth, earlyMobilePanoramaPath, panoramaRendition } from "@/lib/tour/panoramas";
 
 describe("tour panorama renditions", () => {
   it("selects a small first view and accounts for the canvas pixel ratio and GPU limit", () => {
     expect(choosePanoramaWidth(390, 1.5, 8192)).toBe(2048);
     expect(choosePanoramaWidth(768, 1.5, 8192)).toBe(4096);
     expect(choosePanoramaWidth(1440, 1, 2048)).toBe(2048);
+  });
+
+  it("only starts a bundled rendition when full-screen width guarantees the GPU-independent path", () => {
+    expect(earlyMobilePanoramaPath("/pool-villa-living.webp", 390))
+      .toBe(panoramaRendition("/pool-villa-living.webp", 2048).path);
+    expect(earlyMobilePanoramaPath("/pool-villa-living.webp", 683)).toBeUndefined();
+    expect(earlyMobilePanoramaPath("/pool-villa-living.webp", 0)).toBeUndefined();
+    expect(earlyMobilePanoramaPath("https://resort.convex.cloud/api/storage/uploaded", 390)).toBeUndefined();
   });
 
   it.each([

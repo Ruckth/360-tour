@@ -4,6 +4,7 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { startRouteJsManifest } from "./scripts/bench/start-route-js-manifest.mjs";
+import { startTourModulePreloads } from "./scripts/start-tour-module-preloads";
 import { nitro } from "nitro/vite";
 import { vercelImages } from "./src/start-app/platform/image-config";
 
@@ -86,6 +87,7 @@ export default defineConfig(({ mode }) => {
       rejectNextImports(),
       tanstackStart({ srcDirectory: "src/start-app" }),
       startRouteJsManifest(),
+      startTourModulePreloads(),
       react(),
       nitro({
         preset: vercel ? "vercel" : "node-server",
@@ -94,7 +96,7 @@ export default defineConfig(({ mode }) => {
           compressPublicAssets: { gzip: true },
         }),
         vercel: {
-          functions: { runtime: process.env.START_SSR_RUNTIME === "bun" ? "bun1.4.x" : "nodejs22.x" },
+          functions: { runtime: (process.env.START_SSR_RUNTIME || "bun") === "bun" ? "bun1.4.x" : "nodejs22.x" },
           config: {
             version: 3,
             images: vercelImages,

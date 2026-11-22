@@ -5,7 +5,7 @@ import path from 'node:path';
 const guards = new Set([
   'eslint-guardrails', 'arch-scorecard-cli', 'convex-schema-tools', 'e2e-isolation',
   'preview-retention', 'shared-rules', 'architecture-guards', 'pos-ownership',
-  'services-ownership', 'phase3f-tooling', 'convex-access-inventory', 'locale-payloads',
+  'services-ownership', 'phase3f-tooling', 'cutover-rehearsal', 'convex-access-inventory', 'locale-payloads',
 ].map(name => `tests/unit/${name}.test.ts`));
 
 /** Keep every former default test in exactly one project, including pure backend leaves.

@@ -376,7 +376,7 @@ try {
     "Fresh local backend seeded; dedicated Clerk test identities ready.",
   );
   const verify = process.argv.includes("--verify");
-  if (verify || !start) await run("bun", ["run", verify ? "verify" : "build"]);
+  if (verify || !start) await run("bun", ["run", verify ? "verify" : "build:next"]);
   if (start) {
     await run("bun", ["run", "build:start"], root, {
       ...env,

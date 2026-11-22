@@ -4,7 +4,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
-import { readDevConfig, refuseInheritedTarget, devEnvironment, requireAnonymousState } from './local-dev-config.mjs';
+import { readDevConfig, refuseInheritedTarget, devEnvironment, requireAnonymousState, devFrontend, devFrontendCommand } from './local-dev-config.mjs';
 import { requireLocalBackend, createPrivateOutput } from './local-integration-config.mjs';
 import { localProcesses, waitFor } from './local-processes.mjs';
 import { seedEmpty } from './seed-empty.mjs';
@@ -26,7 +26,8 @@ const wait = (check, label) => waitFor(check, label, 180000, abort.signal);
 const localFetch = (resource, options = {}) => fetch(resource, { ...options, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(10000)]) });
 let secrets = [];
 try {
-  if (process.argv.length > 2) throw new Error('bun run dev accepts no reset or remote-target options; configure .env.dev.local');
+  const frontend = devFrontend(process.argv.slice(2));
+  const frontendLabel = frontend === 'start' ? 'TanStack Start' : 'Next';
   refuseInheritedTarget(process.env);
   const config = await readDevConfig(path.join(root, '.env.dev.local'));
   config.port = localDevPort(root, config.port);
@@ -115,9 +116,9 @@ try {
       catch (error) { if (/Could not find (?:public )?function|No functions found/.test(error.message)) return false; throw error; }
     }, 'backend deployment and empty-only seed');
     console.log(result === 'seeded' ? 'Local backend seeded from empty.' : 'Local backend data preserved; seed refused nonempty database.');
-    processes.launch(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'dev', '--webpack', '--hostname', 'localhost', '--port', String(config.port)], root, env);
-    await wait(async () => { try { const response = await localFetch(`http://localhost:${config.port}/admin/chats`); await response.body?.cancel(); return response.ok; } catch { return false; } }, 'Next development server');
-    console.log(`Local development ready at http://localhost:${config.port}; Ctrl-C stops both processes and retains data.`);
+    processes.launch(process.execPath, devFrontendCommand(frontend, root, config.port), root, env);
+    await wait(async () => { try { const response = await localFetch(`http://localhost:${config.port}/admin/chats`); await response.body?.cancel(); return response.ok; } catch { return false; } }, `${frontendLabel} development server`);
+    console.log(`Local development ready at http://localhost:${config.port} (${frontendLabel}); Ctrl-C stops both processes and retains data.`);
     await processes.failure;
   };
   await Promise.race([start(), processes.failure, signal]);

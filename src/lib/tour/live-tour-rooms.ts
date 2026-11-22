@@ -54,6 +54,7 @@ export function watchLiveTourRooms(
   let failed = false;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const vouch = (value: DbTourRooms, connection: number) => {
+    if (rooms === undefined) markTourBench("rooms_resolved");
     rooms = value;
     onChange({ rooms: value, connection });
   };

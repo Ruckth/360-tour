@@ -48,6 +48,7 @@ export type StartRoomLoaderData = {
   reviews: Review[];
   meta: StartRoomMetadata;
   loadingLabel: string;
+  tourModulePreloads?: readonly string[];
   /** Present only when Preview cache header diagnostics are enabled. */
   cacheHeader?: string;
   benchmarkHeaders?: Record<string, string>;
@@ -71,7 +72,7 @@ export type StartHeadMetaTag =
 
 export type StartRouteHead = {
   meta: StartHeadMetaTag[];
-  links?: { rel: string; href: string }[];
+  links?: ({ rel: "canonical"; href: string } | { rel: "modulepreload"; href: string; crossOrigin: "anonymous" })[];
 };
 
 export class StartRoomUnavailableError extends Error {
@@ -203,7 +204,7 @@ function resolveAbsoluteImageUrl(baseUrl: string, image: string | undefined): st
   }
 }
 
-export function buildRoomHead(loaderData: StartRoomLoaderData | undefined): StartRouteHead {
+export function buildRoomHead(loaderData: StartRoomLoaderData | undefined, search?: StartRoomSearch): StartRouteHead {
   if (!loaderData) {
     return { meta: [{ title: FALLBACK_RESORT_TITLE }] };
   }
@@ -235,7 +236,11 @@ export function buildRoomHead(loaderData: StartRoomLoaderData | undefined): Star
 
   return {
     meta,
-    links: [{ rel: "canonical", href: roomMeta.canonicalUrl }],
+    links: [
+      { rel: "canonical", href: roomMeta.canonicalUrl },
+      ...((search?.tour === "1" ? loaderData.tourModulePreloads : undefined) ?? [])
+        .map((href) => ({ rel: "modulepreload" as const, href, crossOrigin: "anonymous" as const })),
+    ],
   };
 }
 
@@ -262,6 +267,7 @@ export type StartRoomServerDeps = {
   getPublicMessages: (locale?: string) => Pick<PublicMessages, "Villa">;
   siteUrl: () => string;
   getRequest: () => Request;
+  getTourModulePreloads?: () => Promise<readonly string[]>;
   setResponseStatus: (status: number, statusText?: string) => void;
   setResponseHeader: (name: string, value: string) => void;
   env?: Record<string, string | undefined>;
@@ -344,6 +350,13 @@ export async function loadStartRoomData(
   const { villa, reviews } = read.page;
   const baseUrl = deps.siteUrl();
   const ogImage = resolveAbsoluteImageUrl(baseUrl, villa.images[0]);
+  const url = new URL(request.url);
+  const expectedPath = localizeHref(`/rooms/${encodeURIComponent(slug)}`, locale);
+  const [tour, ...duplicate] = url.searchParams.getAll("tour");
+  const directTour = request.method === "GET" && url.pathname === expectedPath && tour === "1" && duplicate.length === 0;
+  const tourModulePreloads = directTour && !read.recovery
+    ? await deps.getTourModulePreloads?.()
+    : undefined;
 
   return {
     status: "ok",
@@ -360,6 +373,7 @@ export async function loadStartRoomData(
         ...(ogImage ? { ogImage } : {}),
       },
       loadingLabel: villaCopy.loadingVilla,
+      ...(tourModulePreloads?.length ? { tourModulePreloads } : {}),
       ...(cacheHeader ? { cacheHeader } : {}),
       ...(benchmarkHeaders ? { benchmarkHeaders } : {}),
     },

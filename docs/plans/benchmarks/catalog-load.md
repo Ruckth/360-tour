@@ -208,3 +208,11 @@ The first full Next run on `ace4dfae` passed 81 cases, skipped the three Start-o
 A fresh protected Start deployment at `ace4dfae` passed all 61 HTTP parity rows against the saved Next control, with 59 matches and two improvements. A separate real Clerk workflow on the same seeded Preview passed owner/cashier/non-staff access, sign-out, read-only checkout, booking through payment handoff, restored chat and live tour changes. Fixture cleanup and removal of the temporary users and owner grant succeeded. No live customer account or payment was used.
 
 The final full Next rerun on the same `ace4dfae` completed at 15:33 ICT with 82 passing cases, three Start-only skips and zero failures. Both entry suites passed all six live-tour scenarios and the authenticated QR and clipboard check.
+
+### Phase 3 publication
+
+[PR 98](https://github.com/Ruckth/360-tour/pull/98) merged on 22 November 2026 as `c7e07a2256d08c0a7ebff201a1c625b711046692`. Its tree matches the audited head `4942af86e4909e08d5746018bba3b8220c31eb46`. The parallel CI workflow from PR 97 exposed a keyboard focus defect when the guest chat composer was disabled on open. The overlay now focuses its Close button in that case. The focused regression and six Next launcher checks passed. A desktop browser confirmed focus on Close on the exact hosted Start Preview. The tour entry benchmarks never activate the chat widget.
+
+Local verification passed 4,217 tests across 371 files and both production builds. The phase architecture checks passed 32/32. The exact hosted Preview passed 61/61 route comparisons, including 59 matches and two improvements. Its separate real Clerk test covered roles, checkout, booking handoff, chat and live tour changes, and teardown passed. After the initial parallel sign-ins reached Clerk's rate limit, each real-Clerk CI job used one worker. Both jobs, all eight booking UI shards and the aggregate check passed. [GitHub run](https://github.com/Ruckth/360-tour/actions/runs/45005742288)
+
+Both independent reviewers scored all seven Phase 3 categories 9/10 at the published head. The verified production restore with the same backend matched all 133 table digests and zero storage files. The two later application and CI commits kept the measured Convex and tour code unchanged. The cold-direct median target remains assigned to Stage E.

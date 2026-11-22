@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "@/platform/auth";
 import { useTranslations } from "@/platform/intl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas, type TourSceneStatus } from "@/components/tour/TourCanvas";
@@ -58,7 +58,6 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
   const [shownRoomId, setShownRoomId] = useState<string | null>(null);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
-  const roomsResolvedRef = useRef(false);
   // A removed choice falls back to the first room for good, even if that room returns later.
   if (selectedRoomId && liveRooms !== undefined && !activeRoomIds.has(selectedRoomId)) setSelectedRoomId(null);
 
@@ -67,12 +66,6 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
   useEffect(() => {
     markTourBench("viewer_mounted");
   }, []);
-
-  useEffect(() => {
-    if (liveRooms === undefined || roomsResolvedRef.current) return;
-    roomsResolvedRef.current = true;
-    markTourBench("rooms_resolved");
-  }, [liveRooms]);
 
   useEffect(() => {
     if (!timedOut || liveRooms !== undefined) return;
@@ -126,6 +119,8 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
 
   // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
   const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready" || !fresh;
+  // Neighbors may prefetch only after the intro clears and the confirmed scene accepts input.
+  const prefetchNeighborsAllowed = phase === "tour" && !navigationLocked && shownRoomId === currentRoomId;
 
   function navigateTo(roomId: string) {
     if (!activeRoomIds.has(roomId)) return;
@@ -208,6 +203,8 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
             detailRequest={detailRequest}
             onDetailStatusChange={setDetailStatus}
             inputLocked={!fresh}
+            initialTextureConfirmed={fresh}
+            prefetchAllowed={prefetchNeighborsAllowed}
           />
         ) : null}
       </div>

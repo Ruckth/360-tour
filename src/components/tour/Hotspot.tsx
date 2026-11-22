@@ -17,14 +17,14 @@ export function Hotspot({
   selected?: boolean;
 }) {
   return (
-    <Html position={position} center distanceFactor={18}>
+    <Html position={position} center>
       <button
         type="button"
         data-testid="tour-hotspot"
         onClick={onClick}
         onPointerDown={onPointerDown}
         className={cn(
-          "group flex items-center gap-2 rounded-full border border-white/20 bg-black/45 px-3 py-2 text-xs font-semibold text-white shadow-xl backdrop-blur-md transition hover:bg-white hover:text-black",
+          "group flex min-h-11 items-center gap-2 whitespace-nowrap rounded-full border border-white/20 bg-black/45 px-3 py-2 text-xs font-semibold text-white shadow-xl backdrop-blur-md transition hover:bg-white hover:text-black",
           selected && "ring-2 ring-gold",
         )}
       >

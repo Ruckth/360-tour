@@ -1,0 +1,144 @@
+{
+  "revision": "dbb2b2c789c1c52c724d879470a3dc329870faf4",
+  "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver)",
+  "idleFrames": 0,
+  "idleMs": 3003.699999988079,
+  "initialBrightness": 114.17862955729167,
+  "restoredBrightness": 114.17862955729167,
+  "cycles": [
+    {
+      "cycle": 0,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 1,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 2,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 3,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 4,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 5,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 6,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 7,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 8,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 9,
+      "openHandles": 5,
+      "afterClose": 0
+    },
+    {
+      "cycle": 10,
+      "openHandles": 5,
+      "afterClose": 0
+    }
+  ],
+  "contexts": [
+    {
+      "allocated": 10,
+      "deleted": 1,
+      "live": 0,
+      "losses": 2,
+      "restorations": 1
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    },
+    {
+      "allocated": 5,
+      "deleted": 1,
+      "live": 0,
+      "losses": 1,
+      "restorations": 0
+    }
+  ]
+}

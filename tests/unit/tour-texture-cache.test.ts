@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   nextRoomPrefetchOrder,
+  stageFirstTexture,
   TourTextureCache,
   type DisposableTexture,
 } from "@/lib/tour/texture-cache";
@@ -481,5 +482,172 @@ describe("TourTextureCache", () => {
       cache.disposeAll();
       for (const texture of textures) expect(texture.dispose).toHaveBeenCalledTimes(1);
     });
+
+    it("cancelPrefetches drops queued items, aborts unowned speculative loads, and preserves shared live acquire flights without draining", async () => {
+      // p1 and p2 occupy the 2 prefetch slots; p3 sits in the queue.
+      cache.prefetch(["p1", "p2", "p3"]);
+      await flush();
+      expect(loader.callOrder).toEqual(["p1", "p2"]);
+      expect(cache.prefetchesInFlight).toBe(2);
+
+      // An explicit acquire joins p2 while p1 remains purely speculative and p3 stays queued.
+      const sharedAcquire = cache.acquire("p2", "requested");
+      cache.cancelPrefetches();
+
+      // p1 (unowned speculative) is aborted; p2 (shared with live acquire) is preserved.
+      expect(loader.aborted).toEqual(["p1"]);
+      expect(cache.prefetchesInFlight).toBe(1);
+      expect(cache.loadsInFlight).toBe(1);
+
+      // Even if p1 ignores abort and resolves late, its texture is disposed once and never cached/failed.
+      const lateP1 = loader.settle("p1");
+      await flush();
+      expect(lateP1.dispose).toHaveBeenCalledOnce();
+      expect(cache.peek("p1")).toBeUndefined();
+      expect(cache.hasFailed("p1")).toBe(false);
+
+      // Finishing shared p2 satisfies the live acquire and does NOT drain queued p3.
+      const p2Tex = loader.settle("p2");
+      expect(await sharedAcquire).toEqual({ texture: p2Tex, failed: false });
+      await flush();
+      expect(cache.ownersOf("p2")).toEqual(["requested"]);
+      expect(loader.callOrder).toEqual(["p1", "p2"]);
+      expect(cache.prefetchesInFlight).toBe(0);
+    });
+
+    it("replacePrefetch drops removed queued targets and cancels removed unowned flights while keeping wanted ones", async () => {
+      cache.prefetch(["p1", "p2", "p3"]);
+      await flush();
+      expect(loader.callOrder).toEqual(["p1", "p2"]);
+
+      // Live edit removes p3 from the queue and replaces p2 with p4 while p1 remains wanted.
+      cache.replacePrefetch(["p1", "p4"]);
+      await flush();
+      expect(loader.aborted).toEqual(["p2"]);
+      expect(loader.callOrder).toEqual(["p1", "p2", "p4"]);
+      expect(cache.prefetchesInFlight).toBe(2);
+
+      // Completing p1 must NOT drain stale p3.
+      const p1Tex = loader.settle("p1");
+      const p4Tex = loader.settle("p4");
+      const lateP2 = loader.settle("p2");
+      await flush();
+      expect(lateP2.dispose).toHaveBeenCalledOnce();
+      expect(cache.peek("p1")).toBe(p1Tex);
+      expect(cache.peek("p4")).toBe(p4Tex);
+      expect(cache.peek("p2")).toBeUndefined();
+      expect(loader.callOrder).toEqual(["p1", "p2", "p4"]);
+    });
+  });
+});
+
+describe("staged first texture", () => {
+  it.each([false, true])("adopts one early load through the per-open cache (settled=%s)", async (settled) => {
+    const source = makeLoader();
+    const staged = stageFirstTexture(source.load);
+    const cache = new TourTextureCache({ load: staged.load });
+    expect(staged.start("entry")).toBe(true);
+    expect(staged.start("entry")).toBe(false);
+    const beforeRenderer = settled ? source.settle("entry") : undefined;
+    if (settled) await flush();
+
+    const requested = cache.acquire("entry", "requested");
+    const texture = beforeRenderer ?? source.settle("entry");
+    expect(await requested).toEqual({ texture, failed: false });
+    expect(source.callOrder).toEqual(["entry"]);
+    staged.cancel();
+    expect(texture.dispose).not.toHaveBeenCalled();
+    cache.disposeAll();
+    expect(texture.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("preserves an early failure until normal acquisition and permits a deliberate retry", async () => {
+    const source = makeLoader();
+    const staged = stageFirstTexture(source.load);
+    const cache = new TourTextureCache({ load: staged.load });
+    staged.start("entry");
+    source.fail("entry");
+    await flush();
+    expect(await cache.acquire("entry", "requested")).toEqual({ texture: null, failed: true });
+    expect(source.callOrder).toEqual(["entry"]);
+
+    const retry = cache.acquire("entry", "requested");
+    const texture = source.settle("entry");
+    expect(await retry).toEqual({ texture, failed: false });
+    expect(source.callOrder).toEqual(["entry", "entry"]);
+  });
+
+  it("aborts and disposes an unclaimed request if the viewer closes or selects a different rendition", async () => {
+    const source = makeLoader();
+    const staged = stageFirstTexture(source.load);
+    const cache = new TourTextureCache({ load: staged.load });
+    staged.start("mobile");
+    const requested = cache.acquire("desktop", "requested");
+    const stale = source.settle("mobile");
+    const desktop = source.settle("desktop");
+    expect(await requested).toEqual({ texture: desktop, failed: false });
+    expect(source.aborted).toEqual(["mobile"]);
+    expect(stale.dispose).toHaveBeenCalledOnce();
+    expect(staged.start("later")).toBe(false);
+
+    const closing = stageFirstTexture(source.load);
+    closing.start("another-room");
+    closing.cancel();
+    const closed = source.settle("another-room");
+    await flush();
+    expect(source.aborted).toEqual(["mobile", "another-room"]);
+    expect(closed.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the request when a released stage starts the same path in the same task", async () => {
+    const source = makeLoader();
+    const staged = stageFirstTexture(source.load);
+    staged.start("entry");
+    staged.release();
+    expect(staged.start("entry")).toBe(true);
+    await flush();
+    expect(source.callOrder).toEqual(["entry"]);
+    expect(source.aborted).toEqual([]);
+
+    const cache = new TourTextureCache({ load: staged.load });
+    const requested = cache.acquire("entry", "requested");
+    const texture = source.settle("entry");
+    expect(await requested).toEqual({ texture, failed: false });
+    expect(source.callOrder).toEqual(["entry"]);
+  });
+
+  it("cancels a released stage after the task, or at once when replay selects another path", async () => {
+    const source = makeLoader();
+    const closing = stageFirstTexture(source.load);
+    closing.start("entry");
+    closing.release();
+    expect(source.aborted).toEqual([]);
+    await flush();
+    expect(source.aborted).toEqual(["entry"]);
+    const late = source.settle("entry");
+    await flush();
+    expect(late.dispose).toHaveBeenCalledOnce();
+
+    const switching = stageFirstTexture(source.load);
+    switching.start("mobile");
+    switching.release();
+    expect(switching.start("other")).toBe(true);
+    expect(source.aborted).toEqual(["entry", "mobile"]);
+    await flush();
+    expect(source.aborted).toEqual(["entry", "mobile"]);
+    expect(source.callOrder).toEqual(["entry", "mobile", "other"]);
+  });
+
+  it("forwards cache teardown after takeover and disposes a late completion once", async () => {
+    const source = makeLoader();
+    const staged = stageFirstTexture(source.load);
+    const cache = new TourTextureCache({ load: staged.load });
+    staged.start("entry");
+    const requested = cache.acquire("entry", "requested");
+    cache.disposeAll();
+    const stale = source.settle("entry");
+    expect(await requested).toEqual({ texture: null, failed: false });
+    expect(source.aborted).toEqual(["entry"]);
+    expect(stale.dispose).toHaveBeenCalledOnce();
   });
 });

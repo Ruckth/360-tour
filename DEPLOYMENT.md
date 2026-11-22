@@ -16,12 +16,12 @@ Use these settings in the Vercel project:
 
 | Setting | Value |
 | --- | --- |
-| Framework preset | `Next.js` |
+| Framework preset | Overridden to Other by `vercel.json` (`"framework": null`); leave the project setting unchanged |
 | Install command | `npx --yes bun@1.4.5 install --frozen-lockfile` |
 | Build command | `npx --yes bun@1.4.5 run vercel-build` |
 | Output directory | Leave unset |
 
-The Vercel commands bootstrap the pinned Bun binary for install and build. The shipping Next runtime stays on Node 22. `bun run vercel-build` checks both frontend configurations and the tests before deployment. The Convex deploy command checks the functions with the pinned compiler before pushing them. [Phase 3f build workflow](docs/architecture/phase3f-operations.md) Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'bun run build'` path with an explicit production-key guard and never seeds.
+The Vercel commands bootstrap the pinned Bun binary for install and build. The shipping frontend uses TanStack Start and the Nitro Build Output API on Vercel-managed Bun 1.4.x. A build with `START_SSR_RUNTIME=node` runs on Node 22. `bun run vercel-build` checks both frontend configurations and the tests. When the build also deploys Convex, the CLI checks the functions before pushing them. Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds the selected frontend with that URL: Start by default, Next with `FRONTEND=next`. A populated Preview is retained on every push/rebuild. Production runs `convex deploy --cmd 'bun run build:start'` (or `build:next` with `FRONTEND=next`) with an explicit production-key guard and never seeds. For a staged rollout, `FRONTEND_ONLY_CONVEX_URL` builds only the frontend against the already deployed backend and skips `convex deploy`; production accepts only `https://wary-toad-189.convex.cloud`. A Next rebuild on Vercel also needs `vercel.json` `"framework": "nextjs"`; Instant Rollback to an earlier Next deployment needs no rebuild.
 
 Ordering matters: installed Convex 1.34.1 runs `--cmd` **before** its backend push, and `--preview-run` afterward. The previous combined command could cache an empty catalog on a fresh Preview; simply adding `--preview-run` does not fix that order. Root owns Preview key/default configuration and actual live acceptance.
 

@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { disabledServices } from './local-integration-config.mjs';
 
 export const clerkFields = ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY', 'CLERK_JWT_ISSUER_DOMAIN'];
@@ -58,4 +59,24 @@ export function devEnvironment(supplied, home, config) {
     ...Object.fromEntries(clerkFields.map(key => [key, String(config[key])])),
     CLERK_PUBLISHABLE_KEY: String(config.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
   };
+}
+
+/** `bun run dev` serves TanStack Start; `bun run dev -- --next` serves the Next comparison app.
+ * No reset or remote-target options exist.
+ * @param {string[]} args
+ * @returns {'start' | 'next'}
+ */
+export function devFrontend(args) {
+  if (args.length === 0) return 'start';
+  if (args.length === 1 && args[0] === '--next') return 'next';
+  throw new Error('bun run dev accepts only --next (the Next comparison app); configure .env.dev.local for everything else');
+}
+
+/** Node arguments for the frontend dev server on the checkout's own port.
+ * @param {'start' | 'next'} frontend @param {string} root @param {number} port
+ */
+export function devFrontendCommand(frontend, root, port) {
+  return frontend === 'start'
+    ? [path.join(root, 'node_modules/vite/bin/vite.js'), 'dev', '--config', 'vite.start.config.ts', '--host', 'localhost', '--port', String(port), '--strictPort']
+    : [path.join(root, 'node_modules/next/dist/bin/next'), 'dev', '--webpack', '--hostname', 'localhost', '--port', String(port)];
 }
