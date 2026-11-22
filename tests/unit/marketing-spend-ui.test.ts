@@ -13,8 +13,8 @@ import { SpendDialog, type SpendDialogProps } from "@/components/admin/marketing
 import { thb } from "@/components/admin/marketing/marketing-format";
 import type { CampaignRow } from "@/components/admin/marketing/types";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
-vi.mock("next/link", () => ({ default: ({ children, href, ...props }: { children: ReactNode; href: string }) => createElement("a", { href, ...props }, children) }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
+vi.mock("@/platform/link", () => ({ default: ({ children, href, ...props }: { children: ReactNode; href: string }) => createElement("a", { href, ...props }, children) }));
 
 // 8 Nov 2026, noon in Bangkok.
 const NOW = Date.parse("2026-11-08T05:00:00Z");

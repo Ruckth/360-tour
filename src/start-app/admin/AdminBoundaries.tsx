@@ -23,7 +23,7 @@ export function AdminClerkSetupRequired() {
 }
 
 /**
- * Pure presentation of `src/app/admin/error.tsx`: wraps each admin view inside
+ * Admin error boundary presentation: wraps each admin view inside
  * the layout so a failing view keeps the sidebar and can be retried.
  */
 export function AdminViewErrorCard({

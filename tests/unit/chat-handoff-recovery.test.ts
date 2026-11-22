@@ -9,7 +9,7 @@ import type { Id } from "convex/_generated/dataModel";
 
 const mocks = vi.hoisted(() => ({ mutation: vi.fn(), search: new URLSearchParams(), router: { replace: vi.fn() } }));
 vi.mock("convex/react", () => ({ useConvex: () => mocks }));
-vi.mock("next/navigation", () => ({ useRouter: () => mocks.router, useSearchParams: () => mocks.search }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => mocks.router, useSearchParams: () => mocks.search }));
 
 let root: Root;
 let node: HTMLDivElement;

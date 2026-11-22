@@ -1,18 +1,17 @@
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { startRouteJsManifest } from "./scripts/bench/start-route-js-manifest.mjs";
+import { startTourModulePreloads } from "./scripts/start-tour-module-preloads";
 import { nitro } from "nitro/vite";
-import { vercelImages } from "./src/start-app/platform/image-config";
+import { vercelImages } from "./src/platform/image-config";
 
 const here = (relative: string) => fileURLToPath(new URL(relative, import.meta.url));
 const publicKeys = [
   "CLERK_PUBLISHABLE_KEY", "CONVEX_SITE_URL", "CONVEX_URL",
   "POSTHOG_HOST", "POSTHOG_KEY", "SENTRY_DSN", "SITE_URL",
 ] as const;
-const platformModules = ["auth", "dynamic", "image", "intl", "link", "localized-navigation", "navigation"];
 
 function rejectNextImports(): Plugin {
   return {
@@ -56,7 +55,6 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: [
         { find: /^tailwindcss$/, replacement: here("./node_modules/tailwindcss/index.css") },
-        ...platformModules.map((name) => ({ find: `@/platform/${name}`, replacement: here(`./src/start-app/platform/${name}`) })),
         { find: /^convex\/(shared|_generated)\//, replacement: here("./convex/") + "$1/" },
         // Disposable Preview outage fixture only; see docs/plans/benchmarks/start-villa-cache-study.md.
         ...(process.env.START_VILLA_FAULT_FIXTURE === "1" && vercel
@@ -66,26 +64,10 @@ export default defineConfig(({ mode }) => {
       ],
     },
     plugins: [
-      {
-        name: "start-site-icons",
-        applyToEnvironment: (environment) => environment.name === "client",
-        generateBundle() {
-          for (const name of ["favicon.ico", "icon.png"]) {
-            this.emitFile({ type: "asset", fileName: name, source: readFileSync(here("./src/app/" + name)) });
-          }
-        },
-        configureServer(server) {
-          server.middlewares.use((request, response, next) => {
-            const name = request.url?.split("?")[0];
-            if (name !== "/favicon.ico" && name !== "/icon.png") return next();
-            response.setHeader("Content-Type", name.endsWith(".ico") ? "image/x-icon" : "image/png");
-            response.end(readFileSync(here("./src/app" + name)));
-          });
-        },
-      },
       rejectNextImports(),
       tanstackStart({ srcDirectory: "src/start-app" }),
       startRouteJsManifest(),
+      startTourModulePreloads(),
       react(),
       nitro({
         preset: vercel ? "vercel" : "node-server",
@@ -94,7 +76,7 @@ export default defineConfig(({ mode }) => {
           compressPublicAssets: { gzip: true },
         }),
         vercel: {
-          functions: { runtime: process.env.START_SSR_RUNTIME === "bun" ? "bun1.4.x" : "nodejs22.x" },
+          functions: { runtime: (process.env.START_SSR_RUNTIME || "bun") === "bun" ? "bun1.4.x" : "nodejs22.x" },
           config: {
             version: 3,
             images: vercelImages,

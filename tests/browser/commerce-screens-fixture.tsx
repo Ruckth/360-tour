@@ -1,4 +1,4 @@
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -148,11 +148,11 @@ const tree = params.get("queue") === "filtered" ? <FilteredQueue />
   : params.get("history") === "publish" ? <PublishHistory />
   : params.get("history")?.startsWith("cold") ? <ColdHistory empty={params.get("history") === "cold-empty"} />
   : params.get("display") === "order" ? (
-    <NextIntlClientProvider locale="en" messages={displayEn} timeZone="Asia/Bangkok"><Screen state={roomOrder as never} /></NextIntlClientProvider>
+    <IntlProvider locale="en" messages={displayEn} timeZone="Asia/Bangkok"><Screen state={roomOrder as never} /></IntlProvider>
   ) : <CheckoutPreview initial={{ commerce, receipt: params.get("receipt") === "redemption" ? "redemption" : params.get("receipt") === "1" }} />;
 
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Bangkok">
+  <IntlProvider locale="en" messages={en} timeZone="Asia/Bangkok">
     <div data-fixture-ready="">{tree}</div>
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

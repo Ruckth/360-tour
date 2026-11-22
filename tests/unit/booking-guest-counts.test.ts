@@ -9,9 +9,9 @@ const fixture = vi.hoisted(() => ({
   guestProps: null as null | { adults: number; childCount: number },
   months: { blockedDates: [], pendingMonths: [], failedMonths: [], retry: () => {} },
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
-vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => (key: string) => key }));
-vi.mock("next/dynamic", () => ({ default: () => () => null }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
+vi.mock("@/platform/intl", () => ({ useLocale: () => "en", useTranslations: () => (key: string) => key }));
+vi.mock("@/platform/dynamic", () => ({ default: () => () => null }));
 vi.mock('convex/react', () => ({
   useConvex: () => ({ query: async () => [], mutation: async () => null }),
   useMutation: () => async () => null,

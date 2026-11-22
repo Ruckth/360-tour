@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { BookingDatePicker } from "@/components/booking/BookingDatePicker";
@@ -52,8 +52,8 @@ const date = (day: number) => new Date(2026, 10, day);
 const render = (onChange = vi.fn(), checkOut = "") =>
   act(async () =>
     root.render(
-      // eslint-disable-next-line react/no-children-prop -- next-intl requires children in createElement props.
-      createElement(NextIntlClientProvider, {
+      // eslint-disable-next-line react/no-children-prop -- use-intl requires children in createElement props.
+      createElement(IntlProvider, {
         locale: "en",
         messages: en,
         children: createElement(BookingDatePicker, {

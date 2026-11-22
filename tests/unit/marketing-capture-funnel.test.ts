@@ -2,7 +2,9 @@
 import { act, createElement, useEffect, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import BookingPage from "@/app/[locale]/booking/page";
+import { BookingFunnel } from "@/components/booking/BookingFunnel";
+import { bookingFunnelProps } from "@/lib/booking/page-params";
+import { guestSearch } from "@/start-app/guest/guest-route";
 
 // The booking funnel in live mode with its panels stubbed: what reaches CouponField and bookings.create.
 const fixture = vi.hoisted(() => ({
@@ -19,11 +21,10 @@ const fixture = vi.hoisted(() => ({
   }),
   createBooking: null as unknown as Mock<(client: unknown, args: { marketing?: unknown }) => Promise<{ bookingId: string; accessToken: string }>>,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
-vi.mock("next-intl", () => ({ useLocale: () => "en", useTranslations: () => fixture.t }));
-vi.mock("next-intl/server", () => ({ getLocale: async () => "en" }));
-vi.mock("next/dynamic", () => ({ default: () => () => null }));
-vi.mock("next/link", () => ({ default: "a" }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ prefetch: () => {}, push: () => {} }) }));
+vi.mock("@/platform/intl", () => ({ useLocale: () => "en", useTranslations: () => fixture.t }));
+vi.mock("@/platform/dynamic", () => ({ default: () => () => null }));
+vi.mock("@/platform/link", () => ({ default: "a" }));
 
 vi.mock("@/lib/i18n/use-public-messages", async () => {
   const { getPublicMessages } = await import("@/lib/i18n/messages-loader");
@@ -73,9 +74,9 @@ let root: Root;
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement;
 
 async function openBookingLink(initialProperty: string, coupon = "") {
-  const booking = await BookingPage({
-    searchParams: Promise.resolve({ unit: initialProperty, checkin: "2030-01-10", checkout: "2030-01-12", guests: "2", coupon }),
-  });
+  // The Start /booking route: validated search, then the shared funnel.
+  const search = guestSearch({ unit: initialProperty, checkin: "2030-01-10", checkout: "2030-01-12", guests: "2", coupon });
+  const booking = createElement(BookingFunnel, bookingFunnelProps(search));
   await act(async () => root.render(booking));
 }
 

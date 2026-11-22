@@ -1,4 +1,3 @@
-import { createRequire } from "node:module";
 import { expect, type Page } from "@playwright/test";
 import { clerk } from "@clerk/testing/playwright";
 import { ConvexHttpClient } from "convex/browser";
@@ -77,10 +76,8 @@ export async function seedTranscript(
       if (clerkSessionId) {
         if (!process.env.CLERK_SECRET_KEY?.startsWith("sk_test_"))
           throw new Error("Only test-tenant session cleanup is permitted");
-        const { createClerkClient } = createRequire(import.meta.url)(
-          "@clerk/nextjs/server",
-        ) as typeof import("@clerk/nextjs/server");
-        await createClerkClient({
+        const { clerkClient } = await import("@clerk/tanstack-react-start/server");
+        await clerkClient({
           secretKey: process.env.CLERK_SECRET_KEY,
         }).sessions.revokeSession(clerkSessionId);
       }

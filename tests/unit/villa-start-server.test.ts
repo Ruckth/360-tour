@@ -1,6 +1,8 @@
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createBoundedMemoryCache, createRuntimeCacheSource, villaCacheNamespace, villaCacheTags } from "@/lib/server/villa-runtime-cache";
+import { locales } from "@/i18n/routing";
+import { sitemapEntries } from "@/lib/server/search-index";
 import { sdkCache } from "./villa-runtime-cache-fixtures";
 
 const { query, vercel } = vi.hoisted(() => ({
@@ -9,8 +11,7 @@ const { query, vercel } = vi.hoisted(() => ({
 }));
 vi.mock("convex/browser", () => ({ ConvexHttpClient: class { query = query; } }));
 vi.mock("@vercel/functions", () => vercel);
-// The Start entry must not reach Next or React server caches.
-vi.mock("next/cache", () => { throw new Error("next/cache imported by the Start entry"); });
+// The Start villa reads must not reach React server caches.
 vi.mock("react", () => { throw new Error("react imported by the Start entry"); });
 
 const villa = {
@@ -394,5 +395,162 @@ describe("villa runtime cache", () => {
       { v: detail, f: Date.now() + 60_000, o: Date.now() },
       { ttl: 3_660, tags: villaCacheTags(URL, "detail:extra-99", {}), name: "detail:extra-99" },
     );
+  });
+});
+
+// Shared read and recovery policy previously exercised through the retired Next adapter
+// (tests/unit/villa-server.test.ts at the dual-entry checkpoint). Entries are expired between reads that must
+// reach the origin, because Start answers repeats from its 60 s runtime cache.
+describe("Start villa recovery policy", () => {
+  const read = async (slug: string, locale = "en") => (await start.getStartVilla(slug, locale)).page;
+  const offline = new Error("offline");
+
+  it("loads detail by slug without querying the featured catalog and reports authoritative misses", async () => {
+    query.mockResolvedValueOnce(detail).mockResolvedValueOnce(null);
+    expect(await read("extra-99")).toMatchObject({ villa: { id: "extra-99", name: "Villa 101" } });
+    expect(await read("archived")).toBeNull();
+    // Only per-slug detail reads; the first 404 for a slug re-reads once under its rotated
+    // negative generation (polarity-aware cache), so "archived" may be read twice.
+    expect(new Set(query.mock.calls.map(([ref]) => getFunctionName(ref)))).toEqual(new Set(["catalog/publicProperties:getBySlug"]));
+    expect([...new Set(query.mock.calls.map(([, args]) => args.slug))]).toEqual(["extra-99", "archived"]);
+  });
+
+  it("reports isolated SSR cache and transport timings without logging the slug", async () => {
+    vi.resetModules();
+    vi.stubEnv("VERCEL", undefined);
+    vi.stubEnv("NEXT_PUBLIC_CONVEX_URL", "http://127.0.0.1:3210");
+    vi.stubEnv("VITE_CONVEX_URL", "http://127.0.0.1:3210");
+    vi.stubEnv("BENCH_LOCAL_SSR", "1");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const local = await import("@/start-app/villas.server");
+    query.mockResolvedValue(detail);
+    await local.getStartVilla("extra-99", "en");
+    await settle();
+    await local.getStartVilla("extra-99", "th");
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls.map(([label]) => label)).toEqual(["BENCH_VILLA_SSR", "BENCH_VILLA_SSR"]);
+    expect(log.mock.calls.flat().join(" ")).not.toContain("extra-99");
+    expect(JSON.parse(String(log.mock.calls[0][1]))).toEqual({
+      cache: "miss", durationMs: expect.any(Number), transportMs: expect.any(Number),
+    });
+    expect(JSON.parse(String(log.mock.calls[1][1]))).toEqual({ cache: "hit", durationMs: expect.any(Number) });
+  });
+
+  it("serves a warm villa through an outage after many misses and raises an error for cold slugs", async () => {
+    query.mockResolvedValueOnce(detail).mockResolvedValue(null);
+    await read("extra-99");
+    for (let i = 0; i < 225; i++) expect(await read(`missing-${i}`)).toBeNull();
+    expireTtl();
+    query.mockRejectedValue(offline);
+    await expect(read("cold")).rejects.toBeInstanceOf(start.VillaUnavailableError);
+    await expect(read("extra-99")).resolves.toMatchObject({ villa: { id: "extra-99" } });
+  });
+
+  it("uses a previously loaded catalog when the villa's first detail read fails", async () => {
+    query.mockResolvedValueOnce(catalog).mockRejectedValue(offline);
+    await start.getStartVillaCatalog("en");
+    await expect(read("extra-99")).resolves.toMatchObject({ villa: { id: "extra-99" }, reviews: [] });
+    await expect(read("unknown")).rejects.toBeInstanceOf(start.VillaUnavailableError);
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps an authoritative miss when a stale catalog still lists the villa during an outage", async () => {
+    // tests/unit/villa-server.test.ts:136 at the dual-entry checkpoint. Keyed by function rather than call
+    // order, because the polarity-aware cache re-reads a slug once after its first 404.
+    let outage = false;
+    query.mockImplementation(async (ref) => {
+      if (outage) throw offline;
+      return getFunctionName(ref) === "catalog/publicProperties:list" ? catalog : null;
+    });
+    await start.getStartVillaCatalog("en");
+    expect(await read("extra-99")).toBeNull();
+    outage = true;
+    expireTtl();
+    expect(await read("extra-99")).toBeNull();
+    expect(await read("extra-99")).toBeNull();
+  });
+
+  it("remembers a direct miss before a stale catalog is first read", async () => {
+    query.mockResolvedValueOnce(null).mockResolvedValueOnce(catalog).mockRejectedValue(offline);
+    expect(await read("extra-99")).toBeNull();
+    await start.getStartVillaCatalog("en");
+    expireTtl();
+    expect(await read("extra-99")).toBeNull();
+  });
+
+  it("evicts a warm detail when its slug is no longer active", async () => {
+    query.mockResolvedValueOnce(detail).mockResolvedValueOnce(null).mockRejectedValue(offline);
+    expect(await read("extra-99")).not.toBeNull();
+    expireTtl();
+    expect(await read("extra-99")).toBeNull();
+    expireTtl();
+    // A confirmed miss stays a 404 during the outage instead of becoming a temporary error.
+    expect(await read("extra-99")).toBeNull();
+  });
+
+  it("keeps an empty backend empty", async () => {
+    query.mockResolvedValueOnce(null).mockResolvedValueOnce({ hasProperties: false, villas: [] });
+    expect(await read("extra-99")).toBeNull();
+    expect(await start.getStartVillaCatalog("en")).toEqual({ source: "db", villas: [] });
+  });
+
+  it("keeps the warm sitemap inventory while the detail fallback rotates", async () => {
+    query.mockResolvedValueOnce({ page: ["extra-99"], continueCursor: "", isDone: true }).mockResolvedValue(detail);
+    expect(await start.getStartVillaSlugs()).toEqual(["extra-99"]);
+    for (let i = 0; i < 201; i++) await read(`extra-${i}`);
+    expireTtl();
+    query.mockRejectedValue(offline);
+    await expect(read("cold")).rejects.toBeInstanceOf(start.VillaUnavailableError);
+    // The last-good detail map keeps the 200 most recent villas.
+    await expect(read("extra-0")).rejects.toBeInstanceOf(start.VillaUnavailableError);
+    expect(await start.getStartVillaSlugs()).toEqual(["extra-99"]);
+    await expect(read("extra-200")).resolves.toMatchObject({ villa: { id: "extra-99" } });
+  });
+
+  it("gives each sitemap page its own deadline and retains only a complete sitemap", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    query.mockImplementation(async (_ref, { paginationOpts }: { paginationOpts: { cursor: string | null } }) => {
+      const index = Number(paginationOpts.cursor ?? 0);
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      return { page: [String(index)], continueCursor: String(index + 1), isDone: index === 3 };
+    });
+    const slugs = start.getStartVillaSlugs();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(await slugs).toEqual(["0", "1", "2", "3"]);
+    await settle();
+    expireTtl();
+    query.mockRejectedValueOnce(offline);
+    expect(await start.getStartVillaSlugs()).toEqual(["0", "1", "2", "3"]);
+  });
+
+  it("builds sitemap room paths for every locale against the previous backend contract", async () => {
+    query.mockImplementation(async (ref) => {
+      if (getFunctionName(ref) === "catalog/publicProperties:list") return catalog;
+      throw new Error("Server Error");
+    });
+    const slugs = await start.getStartVillaSlugs();
+    expect(slugs).toEqual(["extra-99"]);
+    expect(sitemapEntries(slugs).filter(({ url }) => url.endsWith("/rooms/extra-99"))).toHaveLength(locales.length);
+  });
+
+  it("rejects a cold sitemap fallback when the catalog is at its limit", async () => {
+    query.mockRejectedValueOnce(new Error("Server Error")).mockResolvedValueOnce({
+      hasProperties: true,
+      villas: Array.from({ length: 100 }, (_, index) => ({ ...villa, slug: `villa-${index}` })),
+    });
+    await expect(start.getStartVillaSlugs()).rejects.toThrow("Server Error");
+    expect(fn(1)).toBe("catalog/publicProperties:list");
+  });
+
+  it("includes all active slugs from every page in the sitemap", async () => {
+    const first = { page: Array.from({ length: 100 }, (_, i) => `villa-${i}`), continueCursor: "second", isDone: false };
+    query.mockResolvedValueOnce(first).mockResolvedValueOnce({ page: ["extra-99"], continueCursor: "", isDone: true });
+    const entries = sitemapEntries(await start.getStartVillaSlugs());
+    expect(entries.filter(({ url }) => url.endsWith("/rooms/extra-99"))).toHaveLength(locales.length);
+    expect(entries.filter(({ url }) => url.includes("/rooms/"))).toHaveLength(101 * locales.length);
+    expect(query.mock.calls.map(([, args]) => args)).toEqual([
+      { paginationOpts: { numItems: 100, cursor: null } },
+      { paginationOpts: { numItems: 100, cursor: "second" } },
+    ]);
   });
 });

@@ -7,7 +7,7 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { useAdminReplyComposer, type AdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 
 const auth = vi.hoisted(() => ({ token: "test-token" as string | null }));
-vi.mock("@clerk/nextjs", () => ({
+vi.mock("@/platform/auth", () => ({
   useAuth: () => ({ getToken: async () => auth.token }),
 }));
 

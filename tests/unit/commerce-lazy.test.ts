@@ -36,7 +36,7 @@ function staticGraph(entries: string[]) {
 }
 
 it("keeps commerce mappers, History field changes and approval details out of the checkout's initial JavaScript", () => {
-  const graph = staticGraph(["src/app/admin/checkout/page.tsx", "src/components/checkout/convex-backend.ts"]);
+  const graph = staticGraph(["src/components/checkout/AdminCheckoutPage.tsx", "src/components/checkout/convex-backend.ts"]);
   expect(graph).toContain("src/components/checkout/backend.tsx");
   expect(graph.filter((file) => LAZY_ONLY.some((name) => file.endsWith(`/checkout/${name}`)))).toEqual([]);
 });

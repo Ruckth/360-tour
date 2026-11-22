@@ -1,14 +1,11 @@
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
-
+import reactApp from "./scripts/eslint-react-app.mjs";
 import architecture from "./scripts/eslint-architecture.mjs";
 
 const config = [
-  ...nextVitals,
-  ...nextTs,
+  ...reactApp,
   {
     ignores: [
-      ".next/**", ".output/**", ".nitro/**", ".tanstack/**", "dist/**",
+      ".next/**", "out/**", ".output/**", ".nitro/**", ".tanstack/**", "dist/**", // .next/out: archived Next builds
       "src/start-app/routeTree.gen.ts",
       "node_modules/**",
       "opensrc/**",
@@ -50,7 +47,7 @@ const config = [
     },
   },
   {
-    // Same files eslint-config-next registers the react-hooks plugin for.
+    // Same files scripts/eslint-react-app.mjs registers the react-hooks plugin for.
     files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     rules: {
       "react-hooks/set-state-in-effect": "error",

@@ -48,7 +48,7 @@ jobs:
         run: bun run bench:messaging
 
   components:
-    # Booking component suites run against Vite with mocked Clerk and Next: no backend, no credentials.
+    # Booking component suites run against Vite with mocked Clerk and router: no backend, no credentials.
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -60,7 +60,8 @@ jobs:
       - uses: ./.github/actions/chromium
       - run: bun run test:booking-ui --shard=${{ matrix.shard }}/8
 
-  integration:
+  integration_start:
+    # TanStack Start build, E2E, route tree check and initial JS budgets.
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
     # No pull_request_target or authenticated artifact upload.
     runs-on: ubuntu-24.04
@@ -75,13 +76,6 @@ jobs:
         run: bash .github/scripts/require-clerk-test.sh
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - name: Cache Next build intermediates
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}-${{ hashFiles('src/**', 'convex/**', 'public/**', 'next.config.*', 'tsconfig*.json', 'package.json', 'scripts/**') }}
-          restore-keys: |
-            next-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}-
       - name: Cache downloadable Convex backend binaries
         uses: actions/cache@v4
         with:
@@ -90,40 +84,12 @@ jobs:
           key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}
           restore-keys: |
             convex-${{ runner.os }}-${{ runner.arch }}-
-      - name: Build and run Next E2E with fresh local Convex and real Clerk sign-in
+      - name: Build and run Start E2E with fresh local Convex and real Clerk sign-in
         run: bun run test:e2e
-      - name: Check initial JavaScript budgets on the integration build
-        run: bun run bench:routes --check-budgets
-      # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
-
-  integration_start:
-    # TanStack Start build, E2E, route tree check and initial JS budgets run in parallel with Next.
-    runs-on: ubuntu-24.04
-    env:
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
-      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
-      CLERK_JWT_ISSUER_DOMAIN: ${{ secrets.E2E_CLERK_JWT_ISSUER_DOMAIN }}
-      VITEST_MAX_WORKERS: '4'
-    steps:
-      - uses: actions/checkout@v4
-      - name: Require dedicated Clerk test tenant
-        run: bash .github/scripts/require-clerk-test.sh
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/chromium
-      - name: Restore downloadable Convex backend binaries
-        uses: actions/cache/restore@v4
-        with:
-          # Only binaries/dashboard; private deployment and auth state stay in output/.
-          path: ~/.cache/360-tour/convex
-          key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}
-          restore-keys: |
-            convex-${{ runner.os }}-${{ runner.arch }}-
-      - name: Build and run Start E2E against a fresh seeded backend
-        run: bun run test:e2e:start
       - name: Confirm the committed route tree matches the Start build
         run: git diff --exit-code -- src/start-app/routeTree.gen.ts
       - name: Check all four Start initial JavaScript budgets
-        run: bun run bench:routes:start
+        run: bun run bench:routes
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
 
   devcheck:
@@ -156,7 +122,7 @@ jobs:
 
   verify:
     name: verify
-    needs: [static, unit, guards, components, integration, integration_start, devcheck]
+    needs: [static, unit, guards, components, integration_start, devcheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:

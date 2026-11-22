@@ -3,11 +3,12 @@
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "@/platform/auth";
 import { useTranslations } from "@/platform/intl";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourCanvas, type TourSceneStatus } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
+import { TourIntro } from "@/components/tour/TourIntro";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import type { PanoramaDetailRequest, PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { cn } from "@/lib/utils";
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
 const ROOMS_TIMEOUT_MS = 3_000;
 
-type TourViewerProps = { property: Property; onClose: () => void };
+type TourViewerProps = { property: Property; onClose: () => void; onFirstSceneDrawn?: () => void };
 
 /** A different villa or signed-in identity starts a new viewer: no scene or selection carries over. */
 export function TourViewer(props: TourViewerProps) {
@@ -30,7 +31,7 @@ export function TourViewer(props: TourViewerProps) {
   return <LiveTourViewer key={`${props.property.id}\n${userId ?? ""}`} {...props} />;
 }
 
-function LiveTourViewer({ property, onClose }: TourViewerProps) {
+function LiveTourViewer({ property, onClose, onFirstSceneDrawn }: TourViewerProps) {
   const messages = usePublicMessages();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
@@ -58,7 +59,6 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
   const [shownRoomId, setShownRoomId] = useState<string | null>(null);
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
-  const roomsResolvedRef = useRef(false);
   // A removed choice falls back to the first room for good, even if that room returns later.
   if (selectedRoomId && liveRooms !== undefined && !activeRoomIds.has(selectedRoomId)) setSelectedRoomId(null);
 
@@ -67,12 +67,6 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
   useEffect(() => {
     markTourBench("viewer_mounted");
   }, []);
-
-  useEffect(() => {
-    if (liveRooms === undefined || roomsResolvedRef.current) return;
-    roomsResolvedRef.current = true;
-    markTourBench("rooms_resolved");
-  }, [liveRooms]);
 
   useEffect(() => {
     if (!timedOut || liveRooms !== undefined) return;
@@ -96,9 +90,7 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
     return () => window.removeEventListener("keydown", onKeydown);
   }, [onClose, phase]);
 
-  // Readiness-driven: enter the tour the moment the current room's texture is ready, with no
-  // fixed minimum intro and no artificial transition delay. The intro-overlay opacity transition
-  // (CSS, reduced-motion aware) is the only visual easing.
+  // The opaque intro covers the canvas through the first panorama draw.
   if (texturesLoaded && phase === "intro") setPhase("tour");
 
   // A room counts as explored once its panorama is actually on screen, not merely requested.
@@ -109,7 +101,8 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
   const handleLoaded = useCallback(() => {
     setTexturesLoaded(true);
     setLoadFailed(false);
-  }, []);
+    onFirstSceneDrawn?.();
+  }, [onFirstSceneDrawn]);
   const handleLoadError = useCallback((failed: boolean) => setLoadFailed(failed), []);
   const handleRetry = useCallback(() => {
     setLoadFailed(false);
@@ -126,6 +119,8 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
 
   // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
   const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready" || !fresh;
+  // Neighbors may prefetch only after the intro clears and the confirmed scene accepts input.
+  const prefetchNeighborsAllowed = phase === "tour" && !navigationLocked && shownRoomId === currentRoomId;
 
   function navigateTo(roomId: string) {
     if (!activeRoomIds.has(roomId)) return;
@@ -188,12 +183,12 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
       <h2 className="sr-only">{property.name}</h2>
       <div
         className={cn(
-          "absolute inset-0 transition-[filter,opacity] duration-700",
-          phase === "intro" && "pointer-events-none opacity-0",
+          "absolute inset-0 transition-[filter] duration-700",
+          phase === "intro" && "pointer-events-none",
           (phase === "conclusion" || phase === "leadCapture") && "blur-md",
         )}
       >
-        {activeRooms.length ? (
+        {!roomsReady || activeRooms.length ? (
           <TourCanvas
             rooms={activeRooms}
             currentRoomId={currentRoomId}
@@ -208,33 +203,20 @@ function LiveTourViewer({ property, onClose }: TourViewerProps) {
             detailRequest={detailRequest}
             onDetailStatusChange={setDetailStatus}
             inputLocked={!fresh}
+            initialTextureConfirmed={fresh}
+            prefetchAllowed={prefetchNeighborsAllowed}
           />
         ) : null}
       </div>
 
       {phase === "intro" ? (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-black px-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/60 transition hover:bg-white/20 hover:text-white"
-            aria-label={a11y("close")}
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <p className="font-serif text-3xl font-semibold text-white md:text-4xl">
-            {property.name}
-          </p>
-          <div className="mt-6 h-px w-32 overflow-hidden bg-white/10">
-            <div
-              className="h-full bg-gold transition-all duration-200"
-              style={{ width: texturesLoaded ? "100%" : "62%" }}
-            />
-          </div>
-          {!texturesLoaded && !loadFailed ? (
-            <p className="mt-3 text-xs text-white/30">{tourT("loading")}</p>
-          ) : null}
-        </div>
+        <TourIntro
+          name={property.name}
+          closeLabel={a11y("close")}
+          loadingLabel={!texturesLoaded && !loadFailed ? tourT("loading") : undefined}
+          loaded={texturesLoaded}
+          onClose={onClose}
+        />
       ) : null}
 
       {loadFailed ? (

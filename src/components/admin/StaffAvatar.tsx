@@ -23,7 +23,7 @@ export function StaffAvatar({
   className?: string;
 }) {
   return staff.avatarUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line react-app/no-raw-img
     <img src={staff.avatarUrl} alt="" className={cn("shrink-0 rounded-full object-cover", className)} />
   ) : (
     <span

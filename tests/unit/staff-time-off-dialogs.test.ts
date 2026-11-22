@@ -24,7 +24,7 @@ vi.mock("convex/react", () => ({
   usePaginatedQuery: (_ref: unknown, args: unknown) => pages.read(args),
   useConvex: () => ({}),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 /** A resort (Bangkok, UTC+7) wall-clock time, whatever zone the test machine runs in. */
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);

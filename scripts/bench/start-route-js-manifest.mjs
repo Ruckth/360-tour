@@ -7,6 +7,14 @@ export function clientGraphPath(project, entry) {
 
 const rendererModule = /\/(?:node_modules\/(?:three|@react-three\/(?:fiber|drei))|src\/components\/tour)\//;
 
+/** @param {string} moduleId */
+export function isRendererModule(moduleId) {
+  const file = moduleId.split("?", 1)[0].replaceAll("\\", "/");
+  // The room route server-renders this shared loading screen before WebGL is available.
+  // Its static dependencies are still classified individually in the generated chunk graph.
+  return rendererModule.test(file) && !file.endsWith("/src/components/tour/TourIntro.tsx");
+}
+
 /** @returns {import("vite").Plugin} */
 export function startRouteJsManifest() {
   return {
@@ -23,7 +31,7 @@ export function startRouteJsManifest() {
         {
           imports: chunk.imports,
           dynamicImports: chunk.dynamicImports,
-          renderer: chunk.moduleIds.some(moduleId => rendererModule.test(moduleId.replaceAll("\\", "/"))),
+          renderer: chunk.moduleIds.some(isRendererModule),
         },
       ]));
       const project = this.environment.config.root;

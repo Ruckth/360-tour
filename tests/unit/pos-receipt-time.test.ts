@@ -13,7 +13,7 @@ import { ReceiptView } from "@/components/checkout/ReceiptView";
 
 /** H1-08: receipts and the Orders list show resort (Bangkok) time on a device set to another zone. */
 
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
 const deviceZone = process.env.TZ;
 // A manager's laptop left on UTC. Bangkok is UTC+7 all year.

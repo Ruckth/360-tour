@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { act, createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import messages from "../../messages/en.json";
 import CouponScanDialog from "@/components/checkout/CouponScanDialog";
 
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
 let hidden = false;
 
@@ -49,7 +49,7 @@ it("closes on background and never silently restarts the camera when the tab ret
     const [open, setOpen] = useState(true);
     return open ? createElement(CouponScanDialog, { onDecode: () => {}, onClose: () => { onClose(); setOpen(false); } }) : null;
   }
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(Host))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(Host))));
   await vi.waitFor(async () => {
     await act(async () => {});
     expect(document.body.textContent).toContain(messages.PosCouponScan.scanning);

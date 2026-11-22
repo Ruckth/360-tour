@@ -1,4 +1,4 @@
-/** Prefixes that live outside `[locale]`, so the next-intl middleware must not localize them. */
+/** Prefixes that live outside the locale routes, so the locale middleware must not localize them. */
 const EXEMPT_PREFIXES = ["/api", "/admin", "/dev/", "/__clerk", "/sign-in", "/sign-up"];
 
 /** The customer display is its own route with its own (English-only for now) messages. */

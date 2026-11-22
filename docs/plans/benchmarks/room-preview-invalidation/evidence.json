@@ -1,0 +1,132 @@
+{
+  "source": "249e52d1a1907443a1ff6510e952b44662d96473",
+  "previewName": "perf-phase4-invalidation-validation",
+  "steps": [
+    {
+      "name": "deployment",
+      "readyState": "READY",
+      "target": "preview",
+      "commitMatches": true,
+      "aliases": 0,
+      "protected": true
+    },
+    {
+      "name": "isolation",
+      "anonymousProtected": 302,
+      "providerIsolation": "verified",
+      "freshSeed": true,
+      "convexProviderKeysEmpty": true,
+      "invalidationInitiallyUnset": true
+    },
+    {
+      "name": "bound",
+      "origin": "this Preview's exact origin",
+      "bypass": "existing automation bypass"
+    },
+    {
+      "name": "primed",
+      "first": "stale",
+      "second": "hit",
+      "status": 200
+    },
+    {
+      "name": "edit-visible",
+      "status": 200,
+      "cache": "miss",
+      "sinceCommitMs": 602,
+      "mutationMs": 714,
+      "sincePrimedHitMs": 1672,
+      "freshnessWindowMs": 60000,
+      "polls": [
+        "200:miss:edited:602"
+      ]
+    },
+    {
+      "name": "convex-action",
+      "executionsSinceEdit": 1,
+      "statuses": [
+        "Completion"
+      ],
+      "durationsMs": [
+        0.198975749
+      ],
+      "warnings": 0
+    },
+    {
+      "name": "start-request-log",
+      "invalidationRequests": 0,
+      "statuses": [],
+      "methods": []
+    },
+    {
+      "name": "direct-signed-probe",
+      "unsigned": 401,
+      "signed": 204,
+      "processScopeHeader": null,
+      "cacheControl": "no-store"
+    },
+    {
+      "name": "restored",
+      "cache": "miss",
+      "sinceCommitMs": 741
+    }
+  ],
+  "passed": true,
+  "failures": [],
+  "startRequestRecords": [
+    {
+      "label": "edit delivery (Convex action)",
+      "timestamp": "2026-11-22T07:22:57.349Z",
+      "method": "POST",
+      "path": "/api/internal/villa-cache",
+      "httpStatus": 204,
+      "edgeRegion": "iad1",
+      "clientUserAgent": "Convex/1.0"
+    },
+    {
+      "label": "direct probe, unsigned",
+      "timestamp": "2026-11-22T07:23:37.761Z",
+      "method": "POST",
+      "path": "/api/internal/villa-cache",
+      "httpStatus": 401,
+      "edgeRegion": "sin1",
+      "clientUserAgent": "node"
+    },
+    {
+      "label": "direct probe, signed",
+      "timestamp": "2026-11-22T07:23:39.346Z",
+      "method": "POST",
+      "path": "/api/internal/villa-cache",
+      "httpStatus": 204,
+      "edgeRegion": "sin1",
+      "clientUserAgent": "node"
+    },
+    {
+      "label": "restore delivery (Convex action)",
+      "timestamp": "2026-11-22T07:23:40.960Z",
+      "method": "POST",
+      "path": "/api/internal/villa-cache",
+      "httpStatus": 204,
+      "edgeRegion": "iad1",
+      "clientUserAgent": "Convex/1.0"
+    }
+  ],
+  "convexActionExecutions": [
+    {
+      "completedAt": "2026-11-22T07:22:57.513Z",
+      "identifier": "catalog/properties:deliverVillaInvalidation",
+      "udfType": "Action",
+      "status": "Completion",
+      "executionMs": 199.0,
+      "logLines": 0
+    }
+  ],
+  "teardown": {
+    "villa": "seeded name",
+    "invalidationConfig": "removed",
+    "ownerGrant": "restored",
+    "clerkUsers": "deleted",
+    "vercelDeployment": "removed by exact name",
+    "convexPreview": "left to normal preview expiry"
+  }
+}

@@ -2,16 +2,19 @@
  * Authoritative Phase 2 route parity manifest for 360-tour.
  *
  * Covers:
- * - All 32 tracked `src/app/**\/page.tsx` routes (10 localized public, 18 admin, 4 other)
- * - All 3 tracked `src/app/api/**\/route.ts` HTTP handlers (GET + HEAD read-only probes)
+ * - All 32 `src/app/**\/page.tsx` routes of the archived Next entry (10 localized public, 18 admin, 4 other)
+ * - All 3 archived `src/app/api/**\/route.ts` HTTP handlers (GET + HEAD read-only probes)
  * - Special routes: robots.txt, sitemap.xml, legacy redirect, static asset headers,
  *   image optimization (permitted local + disallowed remote host), admin redirects &
  *   unknown sections, unknown locales, localized room/404/service/pay routes, and
  *   unknown marketing slug fallthrough.
  * - Explicit ledger of state-changing HTTP contracts preserved via safe unit/E2E tests.
  * - Explicit ledger of separate room perf report fields (honestly unavailable here).
+ *
+ * The retired Next tree is read from git at the accepted dual-entry checkpoint (scripts/dual-entry-checkpoint.mjs).
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { archivedNextAppFiles } from "../dual-entry-checkpoint.mjs";
 import path from "node:path";
 
 export const LOCALES = /** @type {const} */ ([
@@ -154,7 +157,7 @@ export const SEPARATE_PERF_EVIDENCE = /** @type {const} */ ({
     status: "unavailable",
     reason: "Client bundle budgets and mobile 360 tour drag-to-frame latency are measured by browser/manifest benchmarks.",
     requiredProtocol: "Route JS size manifest reporter (Brotli + gzip budgets) and paired mobile 360 tour-entry runs.",
-    ownedBy: "docs/plans/benchmarks/tour-entry.md & scripts/bench/route-js-size.mjs",
+    ownedBy: "docs/plans/benchmarks/tour-entry.md & scripts/bench/start-route-js-size.mjs",
   },
 });
 
@@ -752,7 +755,7 @@ export function buildManifest({ targetKind = "next", scope = "full", rootDir }) 
       method: "GET",
       path: `${imageEndpoint}?url=%2Fgarden-image.webp&w=640&q=75`,
       canonicalPathKey: "image-optimizer:local:/garden-image.webp",
-      source: targetKind === "start" ? "src/start-app/platform/image-config.ts" : "next.config.ts",
+      source: targetKind === "start" ? "src/platform/image-config.ts" : "next.config.ts",
       inRoomSlice: true,
       note: "Permitted local image transform via /_next/image (Next) or /_vercel/image (Start).",
       contract: {
@@ -767,7 +770,7 @@ export function buildManifest({ targetKind = "next", scope = "full", rootDir }) 
       method: "GET",
       path: `${imageEndpoint}?url=https%3A%2F%2Fdisallowed.invalid%2Fphoto.jpg&w=640&q=75`,
       canonicalPathKey: "image-optimizer:disallowed-host",
-      source: targetKind === "start" ? "src/start-app/platform/image-config.ts" : "next.config.ts",
+      source: targetKind === "start" ? "src/platform/image-config.ts" : "next.config.ts",
       inRoomSlice: true,
       note: "Disallowed remote image host must be rejected with HTTP 400.",
       contract: {
@@ -1047,24 +1050,12 @@ export function buildManifest({ targetKind = "next", scope = "full", rootDir }) 
 }
 
 /**
- * Recursively list relative file paths under `src/app`.
+ * Page and handler files of the archived Next app tree (the parity control).
  * @param {string} rootDir
  * @returns {string[]}
  */
 function listAppFiles(rootDir) {
-  const appDir = path.join(rootDir, "src/app");
-  if (!existsSync(appDir)) {
-    throw new Error(`Missing src/app directory under ${rootDir}`);
-  }
-  /** @type {string[]} */
-  const files = [];
-  for (const entry of readdirSync(appDir, { recursive: true, encoding: "utf8" })) {
-    const normalized = `src/app/${entry.split(path.sep).join("/")}`;
-    if (normalized.endsWith("/page.tsx") || normalized.endsWith("/route.ts")) {
-      files.push(normalized);
-    }
-  }
-  return files.sort();
+  return archivedNextAppFiles(rootDir).filter((file) => file.endsWith("/page.tsx") || file.endsWith("/route.ts"));
 }
 
 /**

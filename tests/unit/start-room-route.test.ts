@@ -159,6 +159,47 @@ describe("start room metadata & head builder", () => {
 });
 
 describe("start room server orchestration (loadStartRoomData)", () => {
+  it.each([
+    ["/rooms/pool-villa?tour=1", "GET", "hit", false, "en", true, false],
+    ["/th/rooms/pool-villa?tour=1", "GET", "miss", false, "th", true, false],
+    ["/rooms/pool-villa", "GET", "hit", false, "en", false, false],
+    ["/rooms/pool-villa?tour=0", "GET", "hit", false, "en", false, false],
+    ["/rooms/pool-villa?tour=1&tour=1", "GET", "hit", false, "en", false, false],
+    ["/rooms/pool-villa?tour=1", "HEAD", "hit", false, "en", false, false],
+    ["/_serverFn/loadStartRoom?tour=1", "GET", "hit", false, "en", false, false],
+    ["/admin/properties/pool-villa?tour=1", "GET", "hit", false, "en", false, false],
+    ["/rooms/pool-villa?tour=1", "GET", "stale", false, "en", true, false],
+    ["/rooms/pool-villa?tour=1", "GET", "hit", true, "en", false, false],
+    ["/rooms/pool-villa?tour=1", "GET", "stale", false, "en", false, true],
+  ] as const)("gates modulepreload for %s %s with %s cache, missing=%s", async (
+    path, method, cache, missing, locale, shouldPreload, recovery,
+  ) => {
+    const href = "/assets/current-viewer-hash.js";
+    const getTourModulePreloads = vi.fn(async () => [href]);
+    const result = await loadStartRoomData({ slug: "pool-villa", locale }, {
+      getStartVilla: async () => ({
+        page: missing ? null : { villa: sampleVilla, reviews: [] },
+        cache,
+        ...(recovery ? { recovery: "backoff" as const } : {}),
+      }),
+      villaCacheHeader: mockVillaCacheHeader,
+      isVillaUnavailableError: (error): error is MockVillaUnavailableError => error instanceof MockVillaUnavailableError,
+      getLocalizedResort,
+      getPublicMessages,
+      siteUrl: () => "https://tour.helpgueststay.com",
+      getRequest: () => new Request(new URL(path, "https://tour.helpgueststay.com"), { method }),
+      getTourModulePreloads,
+      setResponseStatus: vi.fn(),
+      setResponseHeader: vi.fn(),
+    });
+
+    const data = result.status === "ok" ? result.data : undefined;
+    expect(getTourModulePreloads).toHaveBeenCalledTimes(shouldPreload ? 1 : 0);
+    expect(buildRoomHead(data, { tour: "1" }).links?.filter((link) => link.rel === "modulepreload") ?? [])
+      .toEqual(shouldPreload ? [{ rel: "modulepreload", href, crossOrigin: "anonymous" }] : []);
+    expect(buildRoomHead(data, {}).links?.some((link) => link.rel === "modulepreload") ?? false).toBe(false);
+  });
+
   it("reads getStartVilla once, falls back to resort description without og:image, and hides x-villa-cache in production", async () => {
     const getStartVilla = vi.fn().mockResolvedValue({
       page: { villa: { ...sampleVilla, description: "", images: [] }, reviews: [] },

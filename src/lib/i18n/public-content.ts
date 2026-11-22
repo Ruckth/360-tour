@@ -13,7 +13,7 @@ import { getConclusionForProperty, type TourConclusion } from "@/lib/data/tourfl
  * `messages/*.json` dictionary — the shape is pulled in as a TYPE only, which is
  * erased at runtime — so it is safe to import from client components. Each helper
  * takes the active locale's message object (`messages`); callers obtain it from
- * the server loader (`@/lib/i18n/server-content`) or the next-intl provider
+ * the server loader (`@/lib/i18n/server-content`) or the intl provider
  * (`useMessages()` on the client).
  */
 export type PublicMessages = typeof import("../../../messages/en.json");

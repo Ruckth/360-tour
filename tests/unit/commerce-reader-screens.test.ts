@@ -1,6 +1,6 @@
 import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,15 +29,15 @@ import displayEn from "../../messages/display/en.json";
  * a sealed guest view, and nothing new appears without the commerce readers.
  */
 
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 const searchParams = vi.hoisted(() => ({ get: (): string | null => null }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => searchParams }));
+vi.mock("@/platform/navigation", () => ({ useSearchParams: () => searchParams }));
 
 let root: Root;
 const messages = { ...en, ...commerceEn, ...displayEn };
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 const render = (backend: CheckoutBackend, node: ReactNode) => act(async () => root.render(
-  createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, node))),
+  createElement(IntlProvider, intl, createElement(ConfirmProvider, null, createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, node))),
 ));
 const receipt = (backend: CheckoutBackend, orderId = COMMERCE_RECEIPT_ID) => render(backend, createElement(ReceiptView, { orderId, onNewSale: vi.fn(), onOpenOrder: vi.fn() }));
 const article = () => document.querySelector<HTMLElement>("article.pos-receipt")!;
@@ -418,7 +418,7 @@ describe("shared receipt text", () => {
 
 describe("customer display", () => {
   const shared = { businessName: "Auralis Cove Retreat", customerFirstName: "Maya", orderNumber: 1046, currency: "THB" };
-  const show = (state: ComponentProps<typeof Screen>["state"]) => act(async () => root.render(createElement(NextIntlClientProvider, { ...intl, messages: displayEn } as ComponentProps<typeof NextIntlClientProvider>, createElement(Screen, { state }))));
+  const show = (state: ComponentProps<typeof Screen>["state"]) => act(async () => root.render(createElement(IntlProvider, { ...intl, messages: displayEn } as ComponentProps<typeof IntlProvider>, createElement(Screen, { state }))));
 
   it("names issued vouchers by their masks only, even when sent a full code", async () => {
     await show({ ...shared, state: "paid", total: 948000, vat: 52206, amountPaid: 748000, receiptNumber: 145, paidAt: Date.now(), coupon: null, voucherCodeMasks: ["GV-••••-Q9XD", "GV-7K2M-H3LN"] } as ComponentProps<typeof Screen>["state"]);

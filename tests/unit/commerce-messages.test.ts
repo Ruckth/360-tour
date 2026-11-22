@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createTranslator } from "next-intl";
+import { createTranslator } from "@/platform/intl";
 import { describe, expect, it } from "vitest";
 import type { Id } from "convex/_generated/dataModel";
 import {

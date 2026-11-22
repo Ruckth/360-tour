@@ -19,7 +19,7 @@ const state = vi.hoisted(() => ({
   fetchCommerce: vi.fn(async () => ({ Commerce: { ok: "OK" } })),
 }));
 
-vi.mock("next/link", () => ({
+vi.mock("@/platform/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children?: React.ReactNode; [key: string]: unknown }) =>
     React.createElement("a", { href, ...rest }, children),
 }));

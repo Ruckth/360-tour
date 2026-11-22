@@ -10,7 +10,7 @@ import type { StaffAccessView } from "@/components/admin/admin-access";
 import { DEFAULT_TERMS } from "@/components/admin/checkout-rules/TermsForm";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { enableLiveNavigation } from "./next-navigation-mock";
+import { enableLiveNavigation } from "./navigation-mock";
 import { notifyFixtureStore, registerFixtureFunctions } from "./convex-mock";
 import "@/app.css";
 

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act } from '../support/checkout-act';
 import type { Id } from "convex/_generated/dataModel";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { createElement, useState, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,7 +27,7 @@ vi.mock("qr-scanner", () => ({
 }));
 
 const text = messages.PosCouponScan;
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
 
 function fakeStream() {
@@ -52,7 +52,7 @@ function Page({ start }: { start: OrderId | null }) {
 }
 const show = (backend: CheckoutBackend, start: OrderId) =>
   act(async () =>
-    root.render(createElement(NextIntlClientProvider, intl, createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(Page, { start })))),
+    root.render(createElement(IntlProvider, intl, createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(Page, { start })))),
   );
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(400); });
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());

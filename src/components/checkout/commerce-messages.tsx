@@ -1,6 +1,6 @@
 "use client";
 
-import { NextIntlClientProvider, useLocale, useMessages, type AbstractIntlMessages } from "@/platform/intl";
+import { IntlProvider, useLocale, useMessages, type AbstractIntlMessages } from "@/platform/intl";
 import { useMemo, type ReactNode } from "react";
 
 /**
@@ -12,5 +12,5 @@ export function CommerceMessages({ messages, children }: { messages: AbstractInt
   const parent = useMessages();
   const locale = useLocale();
   const merged = useMemo(() => ({ ...parent, ...messages }), [parent, messages]);
-  return <NextIntlClientProvider locale={locale} messages={merged}>{children}</NextIntlClientProvider>;
+  return <IntlProvider locale={locale} messages={merged}>{children}</IntlProvider>;
 }

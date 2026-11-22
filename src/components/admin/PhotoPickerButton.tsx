@@ -141,7 +141,7 @@ export function PhotoPickerButton({
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
           {photoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+            // eslint-disable-next-line react-app/no-raw-img
             <img src={photoUrl} alt={`Photo of ${who}`} className="max-h-[min(55dvh,420px)] w-full rounded-lg bg-muted object-contain" />
           ) : null}
           {dialogError ? <p role="alert" className="text-sm text-destructive">{dialogError}</p> : null}

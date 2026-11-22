@@ -29,7 +29,7 @@ vi.mock("convex/react", () => ({
     return { results: getFunctionName(ref) === "settings/configurationHistory:records" ? state.records : state.history, status: state.status, loadMore: state.loadMore };
   },
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : "") }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : "") }));
 vi.mock("@/components/admin/SetupChecklist", () => ({ SetupChecklistCard: () => null }));
 vi.mock("@/components/ui/time-picker", () => ({
   TimePicker: ({

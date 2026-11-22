@@ -6,11 +6,11 @@ import { ExperiencesView } from "@/components/experiences/ExperiencesView";
 import { ServicesView, type ServiceResults } from "@/components/services/ServicesView";
 import { getPublicMessages } from "@/lib/i18n/server-content";
 
-vi.mock("next/link", () => ({
+vi.mock("@/platform/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children?: React.ReactNode }) =>
     React.createElement("a", { href, ...rest }, children),
 }));
-vi.mock("next/image", () => ({
+vi.mock("@/platform/image", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => React.createElement("img", { src, alt }),
 }));
 

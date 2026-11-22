@@ -6,6 +6,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { brotliCompressSync, gzipSync } from "node:zlib";
 import { expect, it } from "vitest";
+import { isRendererModule } from "../../scripts/bench/start-route-js-manifest.mjs";
+
+it("allows the server-rendered tour intro and keeps every renderer dependency in the budget check", () => {
+  const intro = "/repo/src/components/tour/TourIntro.tsx?client";
+  expect(isRendererModule(intro)).toBe(false);
+  for (const renderer of [
+    "/repo/src/components/tour/TourViewer.tsx",
+    "/repo/src/components/tour/TourCanvas.tsx",
+    "/repo/node_modules/three/build/three.module.js",
+    "/repo/node_modules/@react-three/fiber/dist/react-three-fiber.js",
+    "/repo/node_modules/@react-three/drei/core/Html.js",
+  ]) {
+    expect([intro, renderer].some(isRendererModule)).toBe(true);
+  }
+});
 
 const script = fileURLToPath(new URL("../../scripts/bench/start-route-js-size.mjs", import.meta.url));
 const routeIds = ["/{-$locale}/", "/{-$locale}/rooms/$id", "/admin/properties/$id", "/admin/checkout/"];

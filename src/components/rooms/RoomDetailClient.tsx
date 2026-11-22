@@ -1,14 +1,14 @@
 "use client";
 
-import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MobileStickyBar } from "@/components/booking/MobileStickyBar";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import { PropertyImage } from "@/components/property/PropertyImage";
+import { RoomTourViewer } from "@/components/rooms/RoomTourViewer";
 import { DirectBookingBenefits } from "@/components/pricing/DirectBookingBenefits";
 import { PriceComparison } from "@/components/pricing/PriceComparison";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
@@ -20,12 +20,7 @@ import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import type { PublicVilla } from "@/lib/villas";
 import { markTourBench } from "@/lib/tour/bench";
-import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
-
-const TourViewer = dynamic(
-  loadTourViewer,
-  { ssr: false },
-);
+import { preloadTourViewer } from "@/lib/tour/preload";
 
 export function RoomDetailClient({ property, reviews }: { property: PublicVilla; reviews: Review[] }) {
   const router = useRouter();
@@ -36,9 +31,16 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   const [galleryIndex, setGalleryIndex] = useState(0);
   // The tour follows ?tour=1 whenever the URL changes; openTour/closeTour also set it right away.
   const [showTour, setShowTour] = useState(() => searchParams.get("tour") === "1");
+  // Behind a direct tour, start the gallery photo after the current panorama draws or the guest closes.
+  // The ordinary room page still advertises the photo immediately.
+  const [galleryStart, setGalleryStart] = useState<"waiting" | "covered" | "visible">(showTour ? "waiting" : "visible");
+  const requestCoveredGallery = useCallback(() => {
+    setGalleryStart((current) => current === "waiting" ? "covered" : current);
+  }, []);
   const [tourParams, setTourParams] = useState(searchParams);
   if (tourParams !== searchParams) {
     setTourParams(searchParams);
+    if (galleryStart === "waiting" && searchParams.get("tour") !== "1") setGalleryStart("visible");
     setShowTour(searchParams.get("tour") === "1");
   }
   const chatContext = useChatPageContext();
@@ -66,6 +68,7 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
   }
 
   function closeTour() {
+    if (galleryStart === "waiting") setGalleryStart("visible");
     setShowTour(false);
     router.replace(localizeHref(`/rooms/${property.id}`, locale), { scroll: false });
   }
@@ -94,13 +97,16 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
         <div className="grid gap-6 md:gap-10 lg:grid-cols-[1fr_380px]">
           <div className="min-w-0">
             <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-muted">
-              <PropertyImage
-                src={images[galleryIndex]}
-                fallbackImages={images}
-                alt={`${property.name} photo ${galleryIndex + 1}`}
-                priority
-                sizes="(min-width: 1024px) 760px, 100vw"
-              />
+              {galleryStart !== "waiting" ? (
+                <PropertyImage
+                  src={images[galleryIndex]}
+                  fallbackImages={images}
+                  alt={`${property.name} photo ${galleryIndex + 1}`}
+                  priority
+                  occluded={galleryStart === "covered" && galleryIndex === 0}
+                  sizes="(min-width: 1024px) 760px, 100vw"
+                />
+              ) : null}
               <div className="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/65 to-transparent" />
               <button
                 type="button"
@@ -218,7 +224,14 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
       </div>
 
       <MobileStickyBar propertyId={property.id} />
-      {showTour ? <TourViewer property={property} onClose={closeTour} /> : null}
+      {showTour ? (
+        <RoomTourViewer
+          property={property}
+          onClose={closeTour}
+          onFirstSceneDrawn={galleryStart === "waiting" ? requestCoveredGallery : undefined}
+          closeHref={localizeHref(`/rooms/${property.id}`, locale)}
+        />
+      ) : null}
     </div>
   );
 }

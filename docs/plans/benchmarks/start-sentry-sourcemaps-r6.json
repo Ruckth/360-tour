@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "tooling": "@sentry/tanstackstart-react/vite 11.16.0 (bundled @sentry/bundler-plugins 11.16.0, sentry CLI SDK 0.50.0)",
+  "target": "loopback fake Sentry API; synthetic token, org and project",
+  "plainBuild": {
+    "requests": 0,
+    "publicMapFiles": 0,
+    "publicSourceMappingUrlReferences": 0,
+    "serverMapFiles": 0,
+    "filesContainingToken": 0
+  },
+  "credentialedBuild": {
+    "requestPaths": [
+      "GET /api/0/organizations/<org>/",
+      "GET /api/0/organizations/<org>/chunk-upload/",
+      "GET /api/0/organizations/<org>/releases/982ffe82bc133e013c9a6a39a83bccc5cb103585/previous-with-commits/",
+      "GET /api/0/organizations/<org>/repos/",
+      "POST /api/0/organizations/<org>/artifactbundle/assemble/",
+      "POST /api/0/organizations/<org>/chunk-upload/",
+      "POST /api/0/organizations/<org>/releases/",
+      "PUT /api/0/organizations/<org>/releases/982ffe82bc133e013c9a6a39a83bccc5cb103585/"
+    ],
+    "allRequestsAuthorized": true,
+    "artifactBundles": 2,
+    "uploadedDebugIds": 711,
+    "publishedWithDebugId": {
+      "client": 259,
+      "server": 482
+    },
+    "linkedToUploadedMaps": {
+      "client": 259,
+      "server": 480
+    },
+    "coverageFailures": [],
+    "negativeControls": [
+      {
+        "name": "drop one non-sampled uploaded server map",
+        "file": ".output/server/_-_locale_.booking.pay-CwkLm8EQ.mjs",
+        "failed": true,
+        "failures": [
+          ".output/server/_-_locale_.booking.pay-CwkLm8EQ.mjs: debug ID not uploaded (a map was emitted, so it must link)"
+        ]
+      },
+      {
+        "name": "pure re-export chunk gains an emitted map",
+        "file": ".output/server/_ssr/server-DnUo0sLl.mjs",
+        "failed": true,
+        "failures": [
+          ".output/server/_ssr/server-DnUo0sLl.mjs: debug ID not uploaded (a map was emitted, so it must link)"
+        ]
+      },
+      {
+        "name": "runtime helper chunk gains application code",
+        "file": ".output/server/_runtime.mjs",
+        "failed": true,
+        "failures": [
+          ".output/server/_runtime.mjs: debug ID not uploaded"
+        ]
+      }
+    ],
+    "serverMapsObservedBeforeDeletion": 480,
+    "unlinked": [
+      {
+        "file": ".output/server/_runtime.mjs",
+        "side": "server",
+        "debugId": "8b51fb44-369e-43e6-8ad7-4ba9276fab29",
+        "reason": "debug ID not uploaded",
+        "mapEmitted": false,
+        "generatedOnlyKind": "rolldown-runtime",
+        "inspectedContent": "Rolldown runtime helpers generated from a virtual module; no first-party source."
+      },
+      {
+        "file": ".output/server/_ssr/server-DnUo0sLl.mjs",
+        "side": "server",
+        "debugId": "7c1b2aca-4125-4499-b099-6e141e73780e",
+        "reason": "debug ID not uploaded",
+        "mapEmitted": false,
+        "generatedOnlyKind": "reexport-barrel",
+        "inspectedContent": "Server-entry re-exports and debug-ID registration; no first-party executable source."
+      }
+    ],
+    "serverEvent": {
+      "captured": true,
+      "exception": "TypeError: Cannot read properties of undefined (reading 'search')",
+      "mechanism": "auto.node.onunhandledrejection",
+      "debugMetaImages": 1,
+      "finalServerFrames": [
+        {
+          "generated": ".output/server/_ssr/routing-ByiabNMG.mjs:46:25",
+          "function": "Module.localizeHref",
+          "debugIdPresent": true,
+          "mapUploaded": true,
+          "original": {
+            "source": "src/i18n/routing.ts",
+            "line": 57,
+            "column": 25
+          },
+          "originalLine": "const separator = href.search(/[?#]/);"
+        }
+      ]
+    },
+    "resolvedFrames": [
+      {
+        "side": "client",
+        "needle": "Page temporarily unavailable",
+        "file": ".output/public/assets/index-O9WyIkrT.js",
+        "generated": {
+          "line": 93,
+          "column": 8442
+        },
+        "original": {
+          "source": "src/start-app/routes/__root.tsx",
+          "line": 58,
+          "column": 47
+        },
+        "sourceLineContainsNeedle": true
+      },
+      {
+        "side": "server",
+        "needle": "Invalid shell request",
+        "file": ".output/server/__root-C7jh0jBL.mjs",
+        "generated": {
+          "line": 18,
+          "column": 93
+        },
+        "original": {
+          "source": "src/start-app/routes/__root.tsx",
+          "line": 17,
+          "column": 95
+        },
+        "sourceLineContainsNeedle": true
+      }
+    ],
+    "publicMapFiles": 0,
+    "publicSourceMappingUrlReferences": 0,
+    "serverMapFiles": 0,
+    "filesContainingToken": 0
+  },
+  "checks": {
+    "noUploadWithoutCredentials": true,
+    "noPublishedMapsWithoutCredentials": true,
+    "uploadedWithSyntheticToken": true,
+    "everyClientDebugIdLinked": true,
+    "everyServerDebugIdLinkedOrCharacterized": true,
+    "noCoverageFailures": true,
+    "negativeControlsFail": true,
+    "serverEventTopFrameResolvesToSource": true,
+    "framesResolveToFirstPartySource": true,
+    "noPublishedMapsAfterUpload": true,
+    "noServerMapsLeftAfterUpload": true,
+    "tokenNotInOutput": true
+  },
+  "outcome": "pass"
+}

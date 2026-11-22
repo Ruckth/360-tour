@@ -64,7 +64,7 @@ export function adminMarketingPath(page: AdminMarketingPage): string {
   return `/admin/marketing/${page}`;
 }
 
-/** Sidebar sections, in order. Add a page under `src/app/admin/<section>` and list it here. */
+/** Sidebar sections, in order. Add a route `src/start-app/routes/admin.<section>.tsx` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
   { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "tourScenes"] },
@@ -124,7 +124,7 @@ export function adminStaffTabPath(tab: AdminStaffTab): string {
 const ADMIN_HOME = "/admin/chats";
 
 /**
- * Used by the proxy: where to send an `/admin` URL whose section doesn't exist
+ * Used by the request middleware (site-redirect.server.ts): where to send an `/admin` URL whose section doesn't exist
  * (`/admin`, the old `/admin/chat`, typos), or null to render the page.
  */
 export function adminRedirectPath(pathname: string): string | null {

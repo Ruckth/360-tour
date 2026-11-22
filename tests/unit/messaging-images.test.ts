@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GET } from '@/app/api/messaging/image/route';
+import { serveMessagingImage as GET } from '@/lib/server/http/messaging-image.server';
 import { withMessagingImages } from '@/lib/server/messaging-images';
 
 const source = 'https://test.convex.cloud/api/storage/photo-id';

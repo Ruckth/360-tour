@@ -11,7 +11,30 @@ export function assertPreviewProvidersDisabled(listing) {
   if (forbidden.length) throw new Error(`Disable Preview provider variables before pushing: ${forbidden.join(', ')}`);
 }
 
-/** Pin disabled values so Next cannot restore business credentials from dotenv.
+export const productionSiteDomain = 'helpgueststay.com';
+/** A seeded Preview may carry push invalidation only toward its own Vercel Preview host:
+ * this deployment (`VERCEL_URL`) or its branch alias (`VERCEL_BRANCH_URL`, stable across
+ * redeploys). Production (the site domain, its subdomains and Vercel's production URL) and
+ * every other host are refused. Unset or empty is the normal path. Never echo the value.
+ * @param {string} listing @param {Record<string, string | undefined>} env
+ */
+export function assertPreviewInvalidationOrigin(listing, env) {
+  const raw = /^START_VILLA_INVALIDATION_ORIGIN=(.*)$/m.exec(listing)?.[1].trim().replace(/^(['"])(.*)\1$/, '$2').trim();
+  if (!raw) return;
+  /** @param {string} why @returns {never} */
+  const fail = (why) => { throw new Error(`Preview refuses START_VILLA_INVALIDATION_ORIGIN: ${why}`); };
+  const url = URL.canParse(raw) ? new URL(raw) : fail('not a URL');
+  if (url.protocol !== 'https:' || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash) fail('must be an exact https origin');
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  /** @param {string | undefined} value */
+  const hostOf = (value) => (value || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/[/:].*$/, '').replace(/\.$/, '');
+  const production = [productionSiteDomain, hostOf(env.VERCEL_PROJECT_PRODUCTION_URL)].filter(Boolean);
+  if (production.some((name) => host === name || host.endsWith(`.${name}`))) fail('points at the production site');
+  const own = [hostOf(env.VERCEL_URL), hostOf(env.VERCEL_BRANCH_URL)].filter(Boolean);
+  if (!own.includes(host)) fail("must be this Preview's own deployment or branch host");
+}
+
+/** Pin disabled values so a dotenv loader cannot restore business credentials.
  * @param {NodeJS.ProcessEnv} env @param {string} url
  */
 export function previewFrontendEnvironment(env, url) {

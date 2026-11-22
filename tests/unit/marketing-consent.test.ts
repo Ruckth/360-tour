@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import messages from "../../messages/en.json";
 
@@ -44,8 +44,8 @@ const sdk = vi.hoisted(() => {
   };
   return { log, state, posthog };
 });
-vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
-vi.mock("next/link", async () => {
+vi.mock("@/platform/navigation", () => ({ usePathname: () => nav.pathname }));
+vi.mock("@/platform/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
@@ -55,7 +55,7 @@ const CONSENT = "analytics-consent-v2";
 const VISITOR = "marketing-visitor";
 const OLD = `mv_${"a".repeat(32)}`;
 const NEW = `mv_${"b".repeat(32)}`;
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 
 type Capture = typeof import("@/lib/marketing/capture");
 let capture: Capture;
@@ -97,7 +97,7 @@ async function mount(path: string, { choice = false } = {}) {
     import("@/components/legal/AnalyticsChoice"),
   ]);
   // Fresh elements on every render, so a navigation re-renders the components as Next's router would.
-  tree = () => createElement(NextIntlClientProvider, intl, createElement(Fragment, null, choice ? createElement(AnalyticsChoice) : null, createElement(AnalyticsConsent), createElement(MarketingCapture)));
+  tree = () => createElement(IntlProvider, intl, createElement(Fragment, null, choice ? createElement(AnalyticsChoice) : null, createElement(AnalyticsConsent), createElement(MarketingCapture)));
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => root!.render(tree()));
   await settle();

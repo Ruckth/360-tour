@@ -6,41 +6,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import enMessages from "../../messages/en.json";
 import type { Review } from "@/lib/data/reviews";
 import type { PublicVilla } from "@/lib/villas";
+import { localizeHref } from "@/i18n/routing";
 import { StartRoomError, StartRoomNotFound } from "@/start-app/guest/StartRoomBoundaries";
 import {
   StartRoomLoadError,
   StartRoomUnavailableError,
 } from "@/start-app/guest/room-route";
 
-const { mockSearch, mockReplace, mockTourViewerRender } = vi.hoisted(() => ({
+const { mockSearch, mockReplace, mockTourViewerRender, mockLoadTourViewer, mockPreloadTourViewer } = vi.hoisted(() => ({
   mockSearch: { current: new URLSearchParams() },
   mockReplace: vi.fn(),
   mockTourViewerRender: vi.fn(),
+  mockLoadTourViewer: vi.fn(),
+  mockPreloadTourViewer: vi.fn(),
 }));
 
-// Mirror the adapter contract Root provides in the Start runtime:
-// next/dynamic with ssr:false renders nothing during SSR and loads client-only WebGL after hydration.
-vi.mock("next/dynamic", () => ({
-  default: (loader: () => Promise<React.ComponentType<Record<string, unknown>>>) => {
-    return function DynamicAdapter(props: Record<string, unknown>) {
-      const [Loaded, setLoaded] = React.useState<React.ComponentType<Record<string, unknown>> | null>(
-        null,
-      );
-      React.useEffect(() => {
-        let active = true;
-        void loader().then((Component) => {
-          if (active) setLoaded(() => Component);
-        });
-        return () => {
-          active = false;
-        };
-      }, []);
-      return Loaded ? React.createElement(Loaded, props) : null;
-    };
-  },
-}));
-
-vi.mock("next/link", () => ({
+vi.mock("@/platform/link", () => ({
   default: ({
     href,
     children,
@@ -52,25 +33,44 @@ vi.mock("next/link", () => ({
   }) => React.createElement("a", { href, ...rest }, children),
 }));
 
-vi.mock("next/image", () => ({
+// Exposes the props that decide the request: priority (preload + high), quality (part of the optimizer URL),
+// loading and fetchPriority.
+vi.mock("@/platform/image", () => ({
   default: ({
     src,
     alt,
     className,
+    priority,
+    quality,
+    loading,
+    fetchPriority,
   }: {
     src: string;
     alt: string;
     className?: string;
-  }) => React.createElement("img", { src, alt, className }),
+    priority?: boolean;
+    quality?: number;
+    loading?: "eager" | "lazy";
+    fetchPriority?: "high" | "low" | "auto";
+  }) =>
+    React.createElement("img", {
+      src,
+      alt,
+      className,
+      loading,
+      fetchPriority,
+      "data-priority": String(Boolean(priority)),
+      "data-quality": quality,
+    }),
 }));
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/platform/navigation", () => ({
   useRouter: () => ({ replace: mockReplace }),
   usePathname: () => "/rooms/pool-villa",
   useSearchParams: () => mockSearch.current,
 }));
 
-vi.mock("next-intl", () => ({
+vi.mock("@/platform/intl", () => ({
   useLocale: () => "en",
   useMessages: () => enMessages,
   useTranslations: (namespace: keyof typeof enMessages) => {
@@ -91,15 +91,16 @@ vi.mock("convex/react", () => ({
   useQuery: () => undefined,
 }));
 
+// RoomDetailClient mounts the viewer through RoomTourViewer, which imports it only after the tour is requested.
 vi.mock("@/lib/tour/preload", () => ({
-  loadTourViewer: async () => {
-    return function MockTourViewer({ property }: { property: PublicVilla }) {
-      mockTourViewerRender(property.id);
-      return React.createElement("div", { "data-testid": "mock-webgl-tour" }, `360:${property.id}`);
-    };
-  },
-  preloadTourViewer: vi.fn(),
+  loadTourViewer: mockLoadTourViewer,
+  preloadTourViewer: mockPreloadTourViewer,
 }));
+
+function MockTourViewer({ property, onFirstSceneDrawn }: { property: PublicVilla; onFirstSceneDrawn?: () => void }) {
+  mockTourViewerRender(property.id);
+  return React.createElement("button", { "data-testid": "mock-webgl-tour", onClick: onFirstSceneDrawn }, `360:${property.id}`);
+}
 
 const sampleVilla: PublicVilla = {
   id: "pool-villa",
@@ -139,6 +140,11 @@ describe("RoomDetailClient SSR and client-only WebGL island", () => {
     mockSearch.current = new URLSearchParams();
     mockReplace.mockReset();
     mockTourViewerRender.mockReset();
+    // RoomTourViewer caches its import per module instance; each test starts without it.
+    vi.resetModules();
+    mockLoadTourViewer.mockReset();
+    mockLoadTourViewer.mockResolvedValue(MockTourViewer);
+    mockPreloadTourViewer.mockReset();
   });
 
   afterEach(() => {
@@ -167,6 +173,98 @@ describe("RoomDetailClient SSR and client-only WebGL island", () => {
     expect(html).toContain("Explore 360");
     expect(html).not.toContain("mock-webgl-tour");
     expect(mockTourViewerRender).not.toHaveBeenCalled();
+    // The server render never starts the client-only viewer import.
+    expect(mockLoadTourViewer).not.toHaveBeenCalled();
+    // The tour intro covers the room from the server render on, with a plain link back to the room.
+    expect(html).toContain('data-testid="tour-viewer-loading"');
+    expect(html).toContain(">Loading...</p>");
+    expect(html).toMatch(new RegExp(`<a href="${localizeHref("/rooms/pool-villa", "en")}"[^>]*aria-label="Close"`));
+    // The full-screen intro owns the transfer window until the panorama draws or the guest closes.
+    expect(html).not.toContain('alt="Pool Villa photo 1"');
+  });
+
+  it("keeps an ordinary room visit unchanged: no tour intro and a high-priority first photo", () => {
+    return import("@/components/rooms/RoomDetailClient").then(({ RoomDetailClient }) => {
+      const html = renderToStaticMarkup(React.createElement(RoomDetailClient, { property: sampleVilla, reviews: sampleReviews }));
+      expect(html).not.toContain("tour-viewer-loading");
+      expect(html).toMatch(/<img[^>]*alt="Pool Villa photo 1"[^>]*loading="eager"[^>]*data-priority="true"[^>]*data-quality="82"/);
+      expect(html).not.toContain('fetchpriority="low"');
+    });
+  });
+
+  it("never requests the viewer module on an ordinary room page", async () => {
+    const { RoomDetailClient } = await import("@/components/rooms/RoomDetailClient");
+
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(React.createElement(RoomDetailClient, { property: sampleVilla, reviews: sampleReviews }));
+      await Promise.resolve();
+    });
+
+    expect(container.textContent).toContain("Explore 360");
+    expect(container.querySelector('[data-testid="mock-webgl-tour"]')).toBeNull();
+    expect(mockLoadTourViewer).not.toHaveBeenCalled();
+    expect(mockPreloadTourViewer).not.toHaveBeenCalled();
+
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("closes from the loading intro, before the viewer module arrives, without refetching the photo", async () => {
+    mockSearch.current = new URLSearchParams("tour=1");
+    let resolveViewer!: (viewer: typeof MockTourViewer) => void;
+    mockLoadTourViewer.mockReturnValue(new Promise((resolve) => (resolveViewer = resolve)));
+    const { RoomDetailClient } = await import("@/components/rooms/RoomDetailClient");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(RoomDetailClient, { property: sampleVilla, reviews: sampleReviews }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('img[alt="Pool Villa photo 1"]')).toBeNull();
+
+    await act(async () => {
+      container.querySelector<HTMLAnchorElement>('a[aria-label="Close"]')!.click();
+    });
+    expect(mockReplace).toHaveBeenCalledWith(localizeHref("/rooms/pool-villa", "en"), { scroll: false });
+    expect(container.querySelector('[data-testid="tour-viewer-loading"]')).toBeNull();
+    const after = container.querySelector('img[alt="Pool Villa photo 1"]');
+    expect(after?.getAttribute("src")).toBe(sampleVilla.images[0]);
+    expect(after?.getAttribute("data-quality")).toBe("82");
+    expect(after?.getAttribute("data-priority")).toBe("true");
+    expect(after?.getAttribute("fetchpriority")).not.toBe("low");
+
+    await act(async () => {
+      resolveViewer(MockTourViewer);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mockTourViewerRender).not.toHaveBeenCalled();
+    expect(mockLoadTourViewer).toHaveBeenCalledTimes(1);
+
+    await act(async () => root.unmount());
+  });
+
+  it("closes the loading intro with Escape after hydration", async () => {
+    mockSearch.current = new URLSearchParams("tour=1");
+    mockLoadTourViewer.mockReturnValue(new Promise(() => {}));
+    const { RoomDetailClient } = await import("@/components/rooms/RoomDetailClient");
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(React.createElement(RoomDetailClient, { property: sampleVilla, reviews: sampleReviews }));
+    });
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(container.querySelector('[data-testid="tour-viewer-loading"]')).toBeNull();
+    expect(mockReplace).toHaveBeenCalledWith(localizeHref("/rooms/pool-villa", "en"), { scroll: false });
+    await act(async () => root.unmount());
   });
 
   it("mounts the client-only WebGL TourViewer after hydration when ?tour=1 is active", async () => {
@@ -185,13 +283,21 @@ describe("RoomDetailClient SSR and client-only WebGL island", () => {
           React.createElement(RoomDetailClient, { property: sampleVilla, reviews: sampleReviews }),
         ),
       );
-      await Promise.resolve();
+      // The import resolves through a short promise chain; one macrotask settles it.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
+    expect(mockLoadTourViewer).toHaveBeenCalledTimes(1);
     expect(container.querySelector('[data-testid="mock-webgl-tour"]')?.textContent).toBe(
       "360:pool-villa",
     );
     expect(mockTourViewerRender).toHaveBeenCalledWith("pool-villa");
+    expect(container.querySelector('img[alt="Pool Villa photo 1"]')).toBeNull();
+    await act(async () => container.querySelector<HTMLButtonElement>('[data-testid="mock-webgl-tour"]')!.click());
+    const photo = container.querySelector('img[alt="Pool Villa photo 1"]');
+    expect(photo?.getAttribute("src")).toBe(sampleVilla.images[0]);
+    expect(photo?.getAttribute("fetchpriority")).toBe("low");
+    expect(photo?.getAttribute("data-quality")).toBe("82");
 
     await act(async () => {
       root.unmount();

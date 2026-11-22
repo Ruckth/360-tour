@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { evaluateOffer, type CouponRules, type OfferResult } from "convex/shared/offers";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -30,7 +30,7 @@ vi.mock("convex/react", () => ({
   },
   useConvex: () => client,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/components/reui/phone-input", () => ({
   PhoneInput: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) =>
     createElement("input", { id, value, onChange: (event: { target: { value: string } }) => onChange(event.target.value) }),
@@ -50,8 +50,8 @@ const quote = (nights: number, pricePerNight = 450000): OfferResult =>
   });
 
 let root: Root;
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
+const render = (node: ReactNode) => act(async () => root.render(createElement(IntlProvider, intl, createElement(ConfirmProvider, null, node))));
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement | undefined;
 const text = () => document.body.textContent ?? "";
 const type = (id: string, value: string) => act(async () => {

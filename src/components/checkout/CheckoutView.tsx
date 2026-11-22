@@ -308,7 +308,7 @@ function Backdrop({ src }: { src?: string }) {
   return (
     <div aria-hidden data-checkout-backdrop="" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
       {photo.src ? (
-        // eslint-disable-next-line @next/next/no-img-element -- decorative, any host
+        // eslint-disable-next-line react-app/no-raw-img -- decorative, any host
         <img src={photo.src} alt="" decoding="async" onError={photo.onError} className="absolute inset-0 size-full scale-110 object-cover opacity-30 blur-3xl saturate-50 dark:opacity-40" />
       ) : null}
       <div className="absolute inset-0 bg-linear-to-b from-background via-background/80 via-40% to-background/70" />

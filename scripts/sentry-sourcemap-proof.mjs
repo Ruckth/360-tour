@@ -150,7 +150,7 @@ async function listFiles(dir) {
 
 function build(label, env) {
   return new Promise((resolve, reject) => {
-    const child = spawn('bun', ['run', 'build:start'], { cwd: root, env: { ...inherited, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('bun', ['run', 'build'], { cwd: root, env: { ...inherited, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
     let log = '';
     child.stdout.on('data', (chunk) => { log += chunk; });
     child.stderr.on('data', (chunk) => { log += chunk; });

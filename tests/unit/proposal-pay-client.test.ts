@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
 import { ProposalPayClient } from "@/components/booking/ProposalPayClient";
@@ -30,8 +30,8 @@ const summary = {
 function render(locale = "en") {
   return act(async () =>
     root.render(
-      // eslint-disable-next-line react/no-children-prop -- next-intl requires children in createElement props.
-      createElement(NextIntlClientProvider, {
+      // eslint-disable-next-line react/no-children-prop -- use-intl requires children in createElement props.
+      createElement(IntlProvider, {
         locale,
         messages: locale === "th" ? th : en,
         children: createElement(ProposalPayClient, {

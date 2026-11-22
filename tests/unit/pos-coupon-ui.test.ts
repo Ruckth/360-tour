@@ -5,7 +5,7 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { ComponentProps as ReceiptProps } from "react";
 import type { Id } from "convex/_generated/dataModel";
 import type { DisplayOrderState } from 'convex/shared/displayTypes';
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { createElement, useState, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -401,8 +401,8 @@ describe("order history", () => {
 
 describe("customer display", () => {
   const shared = { businessName: "Auralis Cove Retreat", customerFirstName: "Anna", orderNumber: 42, currency: "THB" };
-  const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
-  const display = (state: DisplayOrderState) => render(createElement(NextIntlClientProvider, intl, createElement(Screen, { state })));
+  const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
+  const display = (state: DisplayOrderState) => render(createElement(IntlProvider, intl, createElement(Screen, { state })));
   const line = (name: string, total: number, couponDiscount: number, discount = couponDiscount) => ({ name, detail: "", qty: 1, unitPrice: total + discount, price: total + discount, discount, couponDiscount, total, deposit: 0 });
 
   it("shows each row's coupon share and the coupon in the totals, apart from discounts", async () => {

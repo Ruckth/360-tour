@@ -2,13 +2,13 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AdminCheckoutPage from "@/app/admin/checkout/page";
+import AdminCheckoutPage from "@/components/checkout/AdminCheckoutPage";
 
 const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(), push: vi.fn(), notice: undefined as string | undefined, orderId: null as string | null, retry: undefined as (() => void) | undefined }));
 const openOrderFor = vi.hoisted(() => vi.fn());
 const showOnDisplay = vi.hoisted(() => vi.fn<(orderId: string | null | undefined) => { error: string | null; retry: () => void }>());
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/platform/navigation", () => ({
   useRouter: () => ({ replace: nav.replace, push: nav.push }),
   useSearchParams: () => nav.params,
 }));

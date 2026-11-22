@@ -14,7 +14,7 @@ import { AppointmentFeeControls } from '@/components/admin/AppointmentFeeAction'
 import { FinancialHistory } from '@/components/checkout/FinancialHistory';
 import type { Doc, Id } from 'convex/_generated/dataModel';
 
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
 let root: Root, current: OrderView, review: RestoreReview | undefined;
 const saved = 'fxbill000002' as OrderId;

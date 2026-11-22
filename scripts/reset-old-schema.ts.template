@@ -6,7 +6,9 @@ import { internalMutation } from '../_generated/server';
 export const cancelScheduledPage = internalMutation({
   args: { paginationOpts: paginationOptsValidator, deployment: v.string() },
   handler: async (ctx, args) => {
-    if (process.env.ARCH_RESET_PAUSED !== '1' || process.env.CONVEX_CLOUD_URL !== `https://${args.deployment}.convex.cloud`) throw new Error('Reset pause/deployment does not match');
+    // A cloud deployment name, or the exact origin of a run-owned self-hosted/local rehearsal backend.
+    const expected = args.deployment.includes('://') ? args.deployment : `https://${args.deployment}.convex.cloud`;
+    if (process.env.ARCH_RESET_PAUSED !== '1' || process.env.CONVEX_CLOUD_URL !== expected) throw new Error('Reset pause/deployment does not match');
     const page = await ctx.db.system.query('_scheduled_functions').paginate(args.paginationOpts);
     let cancelled = 0, inProgress = 0;
     for (const row of page.page) {

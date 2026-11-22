@@ -63,6 +63,8 @@ interface Flight {
   claims: Map<string, number>;
   /** True when this flight occupies a prefetch concurrency slot. */
   holdsPrefetchSlot: boolean;
+  /** True when a purely speculative prefetch flight was cancelled while still in flight. */
+  cancelled: boolean;
   /** Set by `completeFlight` when the load failed. */
   failed: boolean;
   /** Resolves after `completeFlight` has run (install/dispose decided). Never rejects. */
@@ -89,6 +91,8 @@ export class TourTextureCache<T extends DisposableTexture> {
   /** Prefetch requests waiting for a concurrency slot. */
   private prefetchQueue: Array<{ path: string; generation: number }> = [];
   private activePrefetches = 0;
+  private prefetchEnabled = true;
+  private canStartPrefetch?: () => boolean;
 
   private generation = 0;
   private epoch = 0;
@@ -198,6 +202,8 @@ export class TourTextureCache<T extends DisposableTexture> {
    */
   prefetch(paths: string[], generation = this.generation): void {
     if (this.disposed || generation !== this.generation) return;
+    this.prefetchEnabled = true;
+    this.canStartPrefetch = undefined;
     for (const path of paths) {
       if (this.cache.has(path)) continue;
       // Already loading (any generation): its completion installs it, so do not duplicate it.
@@ -210,6 +216,51 @@ export class TourTextureCache<T extends DisposableTexture> {
       this.prefetchQueue.push({ path, generation });
     }
     this.pumpPrefetch();
+  }
+
+  /**
+   * Replace the speculative prefetch queue for `generation`: drop stale queued entries, cancel
+   * purely speculative in-flight prefetches that are no longer targeted, re-enable draining, and
+   * pump the updated priority order. Resident textures and flights with live acquire claims stay intact.
+   */
+  replacePrefetch(paths: string[], generation = this.generation, canStart?: () => boolean): void {
+    if (this.disposed || generation !== this.generation || canStart?.() === false) return;
+    this.canStartPrefetch = canStart;
+    const wanted = new Set(paths);
+    for (const flight of [...this.inFlight.values()]) {
+      if (flight.holdsPrefetchSlot && !wanted.has(flight.path) && !this.hasLiveClaim(flight)) {
+        this.cancelSpeculativeFlight(flight);
+      }
+    }
+    this.prefetchEnabled = true;
+    this.prefetchQueue = [];
+    const queued = new Set<string>();
+    for (const path of paths) {
+      if (queued.has(path) || this.cache.has(path) || this.inFlight.has(path)) continue;
+      queued.add(path);
+      this.prefetchQueue.push({ path, generation });
+    }
+    this.pumpPrefetch();
+  }
+
+  /** Stop queue draining immediately, leaving any pending claims available to room navigation. */
+  pausePrefetches(): void {
+    this.prefetchEnabled = false;
+    this.canStartPrefetch = undefined;
+    this.prefetchQueue = [];
+  }
+
+  /**
+   * Pause prefetch draining, drop queued speculative entries, and cancel purely speculative
+   * in-flight prefetches while preserving resident entries and flights with a live acquire claim.
+   */
+  cancelPrefetches(): void {
+    this.pausePrefetches();
+    for (const flight of [...this.inFlight.values()]) {
+      if (flight.holdsPrefetchSlot && !this.hasLiveClaim(flight)) {
+        this.cancelSpeculativeFlight(flight);
+      }
+    }
   }
 
   /** Release `owner`'s hold on `path`. Disposal happens lazily via eviction, never here directly. */
@@ -233,7 +284,7 @@ export class TourTextureCache<T extends DisposableTexture> {
     this.disposed = true;
     for (const flight of this.inFlight.values()) flight.controller.abort();
     this.inFlight.clear();
-    this.prefetchQueue = [];
+    this.pausePrefetches();
     this.activePrefetches = 0;
     for (const entry of this.cache.values()) safeDispose(entry.texture);
     this.cache.clear();
@@ -243,10 +294,28 @@ export class TourTextureCache<T extends DisposableTexture> {
   /** Re-arm a disposed cache for a fresh tour. */
   reopen(): void {
     this.disposed = false;
+    this.prefetchEnabled = true;
     this.generation += 1;
   }
 
   // --- internals ---
+
+  private hasLiveClaim(flight: Flight): boolean {
+    for (const generation of flight.claims.values()) {
+      if (generation === this.generation) return true;
+    }
+    return false;
+  }
+
+  private cancelSpeculativeFlight(flight: Flight): void {
+    flight.cancelled = true;
+    if (this.inFlight.get(flight.path) === flight) this.inFlight.delete(flight.path);
+    if (flight.holdsPrefetchSlot) {
+      flight.holdsPrefetchSlot = false;
+      this.activePrefetches -= 1;
+    }
+    flight.controller.abort();
+  }
 
   private startFlight(path: string, holdsPrefetchSlot: boolean): Flight {
     const controller = new AbortController();
@@ -256,6 +325,7 @@ export class TourTextureCache<T extends DisposableTexture> {
       controller,
       claims: new Map(),
       holdsPrefetchSlot,
+      cancelled: false,
       failed: false,
       settled: Promise.resolve(),
     };
@@ -276,8 +346,8 @@ export class TourTextureCache<T extends DisposableTexture> {
 
   /** The ONLY place a loaded texture is installed or disposed. */
   private completeFlight(flight: Flight, texture: T | null): void {
-    if (flight.epoch !== this.epoch) {
-      // Torn down since this flight began: the new epoch's state is not ours to touch.
+    if (flight.epoch !== this.epoch || flight.cancelled) {
+      // Torn down or speculative prefetch cancelled: the live state is not ours to touch.
       if (texture) safeDispose(texture);
       return;
     }
@@ -330,9 +400,14 @@ export class TourTextureCache<T extends DisposableTexture> {
   private pumpPrefetch(): void {
     while (
       !this.disposed &&
+      this.prefetchEnabled &&
       this.activePrefetches < this.prefetchConcurrency &&
       this.prefetchQueue.length > 0
     ) {
+      if (this.canStartPrefetch?.() === false) {
+        this.pausePrefetches();
+        return;
+      }
       const next = this.prefetchQueue.shift()!;
       if (next.generation !== this.generation) continue;
       if (this.cache.has(next.path)) continue;
@@ -376,4 +451,59 @@ export function nextRoomPrefetchOrder(args: {
     ordered.push(id);
   }
   return ordered;
+}
+
+/** Hand one pre-WebGL acquisition to the regular cache loader on its first request. */
+export function stageFirstTexture<T extends DisposableTexture>(load: TextureLoaderFn<T>) {
+  let staged: { path: string; controller: AbortController; promise: Promise<T> } | undefined;
+  let requested = false;
+  let releasing: object | undefined;
+  function cancel() {
+    releasing = undefined;
+    if (!staged) return;
+    const { controller, promise } = staged;
+    staged = undefined;
+    controller.abort();
+    // A loader may already have completed or may ignore abort.
+    void promise.then(safeDispose, () => {});
+  }
+  return {
+    start(path: string) {
+      if (releasing) {
+        releasing = undefined;
+        // StrictMode replays an effect synchronously after its cleanup: keep the same request.
+        if (staged?.path === path) return true;
+        cancel();
+      }
+      if (staged || requested) return false;
+      const controller = new AbortController();
+      const promise = new Promise<T>((resolve) => resolve(load(path, controller.signal)));
+      staged = { path, controller, promise };
+      // Preserve an early failure for the normal fallback/retry path.
+      void promise.catch(() => {});
+      return true;
+    },
+    cancel,
+    /** Effect cleanup: cancel after the current commit unless the effect starts the same path again. */
+    release() {
+      if (!staged || releasing) return;
+      const token = (releasing = {});
+      queueMicrotask(() => {
+        if (releasing === token) cancel();
+      });
+    },
+    load(path: string, signal: AbortSignal) {
+      requested = true;
+      if (staged?.path !== path) {
+        cancel();
+        return load(path, signal);
+      }
+      const { controller, promise } = staged;
+      staged = undefined;
+      const abort = () => controller.abort();
+      if (signal.aborted) abort();
+      else signal.addEventListener("abort", abort, { once: true });
+      return promise.finally(() => signal.removeEventListener("abort", abort));
+    },
+  };
 }

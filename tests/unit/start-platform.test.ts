@@ -2,9 +2,9 @@ import { createElement } from "react";
 import { renderToString } from "react-dom/server";
 import { expect, it, vi } from "vitest";
 import { localizeHref } from "@/i18n/routing";
-import dynamic from "@/start-app/platform/dynamic";
-import { canOptimizeImage, imageSources, vercelImages } from "@/start-app/platform/image-config";
-import { parseUrlSearch, stringifyUrlSearch } from "@/start-app/platform/search";
+import dynamic from "@/platform/dynamic";
+import { canOptimizeImage, imageSources, vercelImages } from "@/platform/image-config";
+import { parseUrlSearch, stringifyUrlSearch } from "@/platform/search";
 
 it("keeps locale changes and Start search round trips compatible with URLSearchParams", () => {
   const href = "/rooms/pool-villa?tour=1&code=0003&tag=a&tag=b&empty=&note=a%3Fb#a%23b";

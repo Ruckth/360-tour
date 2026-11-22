@@ -6,7 +6,7 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AdminMessage, AdminSession, AdminSessionStatus } from "@/components/admin/admin-chat-types";
 import { registerFixtureFunctions } from "./convex-mock";
-import { enableLiveNavigation } from "./next-navigation-mock";
+import { enableLiveNavigation } from "./navigation-mock";
 import "@/app.css";
 
 /*

@@ -33,7 +33,7 @@ const browser = vi.hoisted(() => {
   return { state, router, url, reset(entries: string[]) { state.entries = entries; state.index = entries.length - 1; } };
 });
 
-vi.mock("next/navigation", () => ({
+vi.mock("@/platform/navigation", () => ({
   useRouter: () => browser.router,
   useSearchParams: () => new URLSearchParams(browser.url().split("?")[1] ?? ""),
 }));
@@ -43,9 +43,9 @@ vi.mock("@/components/checkout/convex-backend", async () => {
 });
 vi.mock("@/components/admin/useShowOrderOnDisplay", () => ({ useShowOrderOnDisplay: () => ({ error: null, retry: () => undefined }) }));
 vi.mock("@/components/admin/CustomerDisplayDialog", () => ({ CustomerDisplayControl: () => null }));
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
-const { default: AdminCheckoutPage } = await import("@/app/admin/checkout/page");
+const { default: AdminCheckoutPage } = await import("@/components/checkout/AdminCheckoutPage");
 const { convexCheckoutBackend: backend } = await import("@/components/checkout/convex-backend");
 
 /** Which page the browser shows; the checkout page remounts whenever its entry comes back. */

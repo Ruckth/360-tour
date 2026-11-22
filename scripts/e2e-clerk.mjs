@@ -1,8 +1,5 @@
-import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
-const { createClerkClient } = createRequire(import.meta.url)(
-  "@clerk/nextjs/server",
-);
+import { clerkClient as createClerkClient } from "@clerk/tanstack-react-start/server";
 
 /**
  * @typedef {{users: {createUser: (options: {emailAddress: string[], skipPasswordRequirement: boolean, skipLegalChecks: boolean, privateMetadata: {architectureE2E: boolean, runId: string}}) => Promise<{id: string}>, deleteUser: (id: string) => Promise<unknown>}, jwtTemplates: {list: () => Promise<{data: {name: string, claims: {aud?: unknown}}[]}>}}} TestClerkClient

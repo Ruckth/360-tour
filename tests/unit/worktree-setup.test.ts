@@ -129,20 +129,21 @@ it('requires exact opt-in before either cloud command can start', () => {
 });
 
 describe('inherited Clerk runtime install', () => {
-  const pinnedLock = '{ "packages": { "@clerk/shared": ["@clerk/shared@4.12.2"] } }\n';
-  const nestedLock = '{ "packages": { "@clerk/nextjs/@clerk/shared": ["@clerk/shared@4.12.2"], "@clerk/react/@clerk/shared": ["@clerk/shared@4.12.2"] } }\n';
+  const pinnedLock = '{ "packages": { "@clerk/shared": ["@clerk/shared@4.48.3"] } }\n';
+  const nestedLock = '{ "packages": { "@clerk/tanstack-react-start/@clerk/shared": ["@clerk/shared@4.48.3"], "@clerk/tanstack-react-start/@clerk/react/@clerk/shared": ["@clerk/shared@4.48.3"] } }\n';
   async function write(file: string, json: unknown) {
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(json));
   }
   async function install(root: string, layout: 'old' | 'clean') {
     const modules = path.join(root, 'node_modules');
-    for (const importer of ['@clerk/nextjs', '@clerk/react']) {
-      await write(path.join(modules, importer, 'package.json'), { name: importer, dependencies: { '@clerk/shared': '^4.12.2' } });
-      if (layout === 'old') await write(path.join(modules, importer, 'node_modules/@clerk/shared/package.json'), { name: '@clerk/shared', version: '4.12.2' });
+    // @clerk/react is hoisted; the Start SDK resolves it from the top level.
+    for (const importer of ['@clerk/tanstack-react-start', '@clerk/react']) {
+      await write(path.join(modules, importer, 'package.json'), { name: importer, dependencies: { '@clerk/shared': '^4.48.3' } });
+      if (layout === 'old') await write(path.join(modules, importer, 'node_modules/@clerk/shared/package.json'), { name: '@clerk/shared', version: '4.48.3' });
     }
     // The old layout's top-level slot belongs to another dependency's version.
-    await write(path.join(modules, '@clerk/shared/package.json'), { name: '@clerk/shared', version: layout === 'old' ? '4.44.0' : '4.12.2' });
+    await write(path.join(modules, '@clerk/shared/package.json'), { name: '@clerk/shared', version: layout === 'old' ? '4.44.0' : '4.48.3' });
   }
   async function checkout(lock: string, layout: 'old' | 'clean') {
     const root = await temp();
@@ -155,7 +156,7 @@ describe('inherited Clerk runtime install', () => {
     const root = await checkout(pinnedLock, 'old');
     const outside = await temp();
     await fs.writeFile(path.join(outside, 'keep'), 'untouched');
-    expect(staleSharedRuntimes(root)).toEqual([expect.stringContaining('Clerk: @clerk/nextjs resolves @clerk/shared 4.12.2')]);
+    expect(staleSharedRuntimes(root)).toEqual([expect.stringContaining('Clerk: @clerk/tanstack-react-start resolves @clerk/shared 4.48.3')]);
     const calls: string[][] = [];
     const recovered = await recoverStaleInstall(root, async (command, args, cwd) => {
       calls.push([command, ...args]);

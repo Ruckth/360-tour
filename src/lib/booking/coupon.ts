@@ -2,7 +2,7 @@ import { normalizeCouponCode, type CouponProblem, type OfferResult } from "conve
 
 // Pure coupon logic for the guest booking funnel: reading ?coupon=, sorting a preview into
 // what the guest sees, the message keys (Coupon.* in messages/*.json) and the price lines.
-// No React and no next-intl, so it's unit-tested; components translate the keys.
+// No React and no intl provider, so it's unit-tested; components translate the keys.
 
 /** Same shape saveCoupon accepts: 3 to 32 letters, numbers or hyphens. */
 const CODE_PATTERN = /^[A-Z0-9-]{3,32}$/;

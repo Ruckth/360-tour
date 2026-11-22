@@ -1,10 +1,13 @@
 import { readdirSync } from 'node:fs';
-import { registerHooks } from 'node:module';
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { locales } from '../../src/i18n/routing';
 import { marketingLocales } from '../../convex/shared/marketingSlugs';
 import { reservedMarketingSlugs, validateMarketingSlug } from '../../convex/shared/marketingSlugs';
+
+const locale = vi.hoisted(() => ({ cookie: undefined as string | undefined, setCookie: vi.fn() }));
+vi.mock('@tanstack/react-start/server', () => ({ getCookie: () => locale.cookie, setCookie: locale.setCookie, setResponseHeader: vi.fn() }));
+import { siteRedirect } from '../../src/start-app/site-redirect.server';
 
 describe('marketing slug rules', () => {
   it.each(['f', 'f1', 'a-2', 'r/anna', 'r/lamai-dive', 'x'.repeat(32)])('accepts %s', slug => {
@@ -21,12 +24,11 @@ describe('marketing slug rules', () => {
     expect([...marketingLocales]).toEqual([...locales]);
   });
   it('reserves all static top-level app routes, locales and system assets', () => {
-    for (const dir of ['src/app', 'src/app/[locale]']) {
-      for (const entry of readdirSync(resolve(dir), { withFileTypes: true })) {
-        if (entry.isDirectory() && !/^[[(]/.test(entry.name)) {
-          expect(reservedMarketingSlugs.has(entry.name), `${dir}/${entry.name} must be reserved`).toBe(true);
-        }
-      }
+    // Flat Start route files: `{-$locale}.booking.index.tsx` serves /booking, `robots[.]txt.ts` /robots.txt.
+    for (const file of readdirSync(resolve('src/start-app/routes'))) {
+      const segment = file.replace(/\.tsx?$/, '').replace(/^\{-\$locale\}\./, '').replaceAll('[.]', '\u0000').split('.')[0].replaceAll('\u0000', '.');
+      if (/^(__root|index|\$)/.test(segment)) continue;
+      expect(reservedMarketingSlugs.has(segment), `src/start-app/routes/${file} must be reserved`).toBe(true);
     }
     for (const slug of [...locales, 'r', 'offers', '_next', 'favicon.ico', 'robots.txt', 'sitemap.xml', 'icon.png']) {
       expect(validateMarketingSlug(slug).reason).toBe('reserved');
@@ -43,28 +45,19 @@ describe('localizeMarketingPath', () => {
     expect(localizeMarketingPath('/booking', undefined)).toBe('/booking');
   });
 
-  it('selects English through real next-intl middleware for a visitor with a Thai cookie', async () => {
-    // next-intl expects Next's bundler to resolve this extensionless import.
-    const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
-      return nextResolve(specifier === 'next/server' ? 'next/server.js' : specifier, context);
-    } });
-    const { default: createMiddleware } = await import('next-intl/middleware').finally(() => hooks.deregister());
-    const { NextRequest } = await import('next/server');
-    const { routing } = await import('../../src/i18n/routing');
+  it('selects English through the Start locale middleware for a visitor with a Thai cookie', async () => {
     const { localizeMarketingPath } = await import('../../convex/shared/marketingSlugs');
-    const middleware = createMiddleware(routing);
-    const headers = { cookie: 'NEXT_LOCALE=th', 'accept-language': 'th' };
+    const headers = { 'accept-language': 'th' };
+    locale.cookie = 'th';
     const path = localizeMarketingPath('/booking', 'en') + '?mk=english';
-    const first = middleware(new NextRequest('https://example.com' + path, { headers }));
+    const first = await siteRedirect(new Request('https://example.com' + path, { headers }));
     // as-needed removes /en but must first replace the visitor's Thai preference.
-    expect(first.headers.get('location')).toBe('https://example.com/booking?mk=english');
-    expect(first.cookies.get('NEXT_LOCALE')?.value).toBe('en');
-    const final = middleware(new NextRequest(first.headers.get('location')!, {
-      headers: { ...headers, cookie: 'NEXT_LOCALE=en' },
-    }));
-    expect(final.headers.get('location')).toBeNull();
-    expect(final.headers.get('x-middleware-rewrite')).toBe('https://example.com/en/booking?mk=english');
-    const guest = middleware(new NextRequest('https://example.com' + localizeMarketingPath('/booking', undefined), { headers }));
-    expect(guest.headers.get('location')).toBe('https://example.com/th/booking');
+    expect(first?.headers.get('location')).toBe('https://example.com/booking?mk=english');
+    expect(locale.setCookie).toHaveBeenCalledWith('NEXT_LOCALE', 'en', expect.objectContaining({ path: '/' }));
+    locale.cookie = 'en';
+    expect(await siteRedirect(new Request(first!.headers.get('location')!, { headers }))).toBeUndefined();
+    locale.cookie = 'th';
+    const guest = await siteRedirect(new Request('https://example.com' + localizeMarketingPath('/booking', undefined), { headers }));
+    expect(guest?.headers.get('location')).toBe('https://example.com/th/booking');
   });
 });

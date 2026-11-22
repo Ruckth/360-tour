@@ -1,15 +1,15 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { SESSION_IDLE_MS } from 'convex/shared/marketingAttribution';
 import messages from "../../messages/en.json";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
 const convex = vi.hoisted(() => ({ client: null as null | { mutation: ReturnType<typeof vi.fn> } }));
-vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
-vi.mock("next/link", async () => {
+vi.mock("@/platform/navigation", () => ({ usePathname: () => nav.pathname }));
+vi.mock("@/platform/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
@@ -287,12 +287,12 @@ describe("untracked paths", () => {
   });
 });
 
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
 async function mount(node: ReactNode) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   root = createRoot(document.body.appendChild(document.createElement("div")));
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, node)));
+  await act(async () => root.render(createElement(IntlProvider, intl, node)));
 }
 async function unmount() {
   await act(async () => root.unmount());

@@ -73,7 +73,7 @@ export function createAdminRedirect(target: AdminRedirectTarget) {
 }
 
 /**
- * Preserves the Next.js `src/app/admin/layout.tsx` viewport export:
+ * Admin viewport head (carried over from the retired Next admin layout):
  * edge-to-edge on notched phones/iPads with light & dark theme colors.
  */
 export function buildAdminHead() {

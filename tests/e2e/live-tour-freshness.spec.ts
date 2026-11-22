@@ -30,7 +30,7 @@ const properties = api.catalog.adminProperties;
 const results: Record<string, unknown> = {
   revision: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
   workingTreeClean: execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim() === "",
-  entry: process.env.E2E_START_ADMIN_IDENTITY === "1" ? "start" : "next",
+  entry: "start",
   fixture: { rooms: ROOMS.map(({ slug, imagePath }) => ({ slug, imagePath })), rttMs: ONE_WAY_MS * 2 },
   scenarios: {},
 };

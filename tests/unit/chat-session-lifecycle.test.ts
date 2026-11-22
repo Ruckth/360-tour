@@ -14,8 +14,8 @@ const mocks = vi.hoisted(() => ({
   rows: [] as Array<{ _id: string; role: 'user' | 'assistant'; content: string }>, listeners: new Set<() => void>(),
   session: { aiPaused: false },
 }));
-vi.mock('next-intl', () => { const translate = (key: string) => key; return { useLocale: () => 'en', useTranslations: () => translate }; });
-vi.mock('next/navigation', () => ({ usePathname: () => '/chat', useSearchParams: () => mocks.search, useRouter: () => mocks.router }));
+vi.mock('@/platform/intl', () => { const translate = (key: string) => key; return { useLocale: () => 'en', useTranslations: () => translate }; });
+vi.mock('@/platform/navigation', () => ({ usePathname: () => '/chat', useSearchParams: () => mocks.search, useRouter: () => mocks.router }));
 vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
   listener => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); },
   () => args === 'skip' ? undefined : getFunctionName(ref) === 'messaging/chat:getMessages' ? mocks.rows : mocks.session,

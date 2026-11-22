@@ -138,6 +138,6 @@ export async function panoramaWarning(file: File): Promise<string | null> {
 /** Small cover-cropped preview for arbitrary admin URLs (next/image only allows known hosts). */
 export function Thumb({ src, className }: { src?: string; className?: string }) {
   if (!src) return <span className={cn("block shrink-0 rounded-lg bg-muted", className)} />;
-  // eslint-disable-next-line @next/next/no-img-element -- admin thumbnail from arbitrary URLs
+  // eslint-disable-next-line react-app/no-raw-img -- admin thumbnail from arbitrary URLs
   return <img src={src} alt="" loading="lazy" className={cn("shrink-0 rounded-lg bg-muted object-cover", className)} />;
 }

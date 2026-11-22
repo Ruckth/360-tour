@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {} from "@/start-app/routeTree.gen";
+import { archivedNextAppFiles } from "../../scripts/dual-entry-checkpoint.mjs";
 import {
   isStartClerkConfigured,
   loadCommerceMessages,
@@ -64,11 +65,10 @@ const EXPECTED_LAYOUT_AND_FALLBACK_ROUTES: Array<{ file: string; routeId: string
 ];
 
 describe("start admin route parity and bundle boundaries", () => {
-  it("migrates every tracked src/app/admin page route and nested layout", () => {
-    const nextAdminPages = listFiles(resolve(root, "src/app/admin"))
-      .map((file) => relative(root, file).replaceAll("\\", "/"))
-      .filter((file) => file.endsWith("/page.tsx"))
-      .sort();
+  it("migrates every archived src/app/admin page route and nested layout", () => {
+    // The retired Next entry, read from git at the accepted dual-entry checkpoint.
+    const nextAdminPages = archivedNextAppFiles(root)
+      .filter((file) => file.startsWith("src/app/admin/") && file.endsWith("/page.tsx"));
 
     expect(nextAdminPages).toHaveLength(18);
     expect(nextAdminPages).toEqual(Object.keys(EXPECTED_PAGE_ROUTE_MAP).sort());
@@ -138,7 +138,7 @@ describe("start admin route parity and bundle boundaries", () => {
     expect(checkoutRouteSource).not.toContain("messages/commerce");
 
     const sharedCheckoutPageSource = readFileSync(
-      resolve(root, "src/app/admin/checkout/page.tsx"),
+      resolve(root, "src/components/checkout/AdminCheckoutPage.tsx"),
       "utf8",
     );
     expect(sharedCheckoutPageSource).toContain('from "@/platform/navigation"');

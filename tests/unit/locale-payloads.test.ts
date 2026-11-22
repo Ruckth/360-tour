@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
  *
  * This test statically walks every `'use client'` module and its transitive imports under src/,
  * and fails if any of them reaches a locale dictionary (`messages/*.json`) OR a module that
- * imports more than one locale dictionary. Client code must get localized strings from next-intl
+ * imports more than one locale dictionary. Client code must get localized strings from the intl provider
  * hooks (the active locale only) or from server-provided props instead.
  */
 

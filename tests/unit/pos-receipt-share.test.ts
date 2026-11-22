@@ -14,7 +14,7 @@ import { pickReceiptAction } from "./receipt-menu";
 
 /** P4: Share shares where the device can and copies everywhere else; paper width lives in ⋯. K5: one "Paid in advance" term. */
 
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
 let root: Root;
 let view: OrderView | null | undefined;

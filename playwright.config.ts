@@ -22,7 +22,7 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
   },
-  // Each CI entry has its own runner, but both sign into the same Clerk test tenant.
+  // CI E2E signs into the shared Clerk test tenant, which other runners also use.
   workers: ci ? 1 : 2,
   projects: [
     { name: "clerk-setup", testMatch: /auth.setup.ts/ },

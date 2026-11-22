@@ -13,6 +13,8 @@ import {
   signTestP,
   unionMs,
 } from "../../scripts/bench/tour-entry-report.mjs";
+import { checkUsableBoundary } from "../../scripts/bench/tour-release-gates.mjs";
+
 
 type Kind = "direct" | "click" | "reopen";
 type RunFileData = {
@@ -151,6 +153,18 @@ describe("tour entry report statistics", () => {
     expect(markdown).toContain("Texture acquisition and end-to-end time moved with the imposed delay.");
     expect(markdown).toContain("Server timing: native request vs data layer");
     expect(markdown).not.toContain("texture_decoded");
+  });
+
+  it("times live confirmation to the browser request independently of adjacent loader marks", () => {
+    const input = fixture((files) => {
+      for (const file of files.values()) for (const sample of file.samples) {
+        sample.stages.rooms_verified = sample.start + 1010;
+        sample.stages.rooms_update = sample.start + 1500;
+        sample.stages.rooms_resolved = sample.stages.texture_request_start = sample.start + 1101;
+      }
+    });
+    const direct = buildReport(input).variants.find((row) => row.cohort === "direct")!;
+    expect(direct.roomsToFirstPanoramaRequestMs.median).toBe(90);
   });
 
   it("accepts a converged control-only baseline while guarding delayed experiment inputs", () => {
@@ -336,5 +350,52 @@ describe("tour entry report statistics", () => {
     expect(control.convex["catalog/publicProperties:getBySlug"]).toMatchObject({ completions: 20, cached: 0 });
     expect(control.convex["catalog/publicProperties:getBySlug"].completionMs.median).toBe(25);
     expect(control.convex["catalog/publicProperties:getBySlug"].handlerMs.median).toBe(20);
+  });
+});
+
+describe("independent release usability boundary", () => {
+  const first = "/tour/panoramas/v1/pool-villa-living-2048.webp";
+  const pool = "/tour/panoramas/v1/pool-villa-pool-2048.webp";
+
+  function opened() {
+    return {
+      kind: "direct",
+      start: 0,
+      requestedRoom: "pv-living",
+      shownRoom: "pv-living",
+      room: "pv-living",
+      stages: { first_scene_drawn: 900, first_usable_frame: 1200 },
+      gestureAt: 1300,
+      changedFrameAt: 1340,
+      startedImages: [{ path: first, start: 400 }],
+      images: [{ path: first, start: 400, end: 800, transferBytes: 34312 }],
+    };
+  }
+
+  it("permits a neighbor strictly after the independently usable frame", () => {
+    const visit = opened();
+    visit.startedImages.push({ path: pool, start: 1201 });
+    expect(checkUsableBoundary(visit)).toEqual({ valid: true });
+  });
+
+  it("rejects a still-pending neighbor between sphere draw and the usable frame", () => {
+    const visit = opened();
+    visit.startedImages.push({ path: pool, start: 1000 });
+    expect(checkUsableBoundary(visit)).toMatchObject({
+      valid: false,
+      reason: "another panorama started through usable boundary",
+    });
+  });
+
+  it("rejects a neighbor at the cutoff and preserves the same-tab reopen cache path", () => {
+    const visit = opened();
+    visit.startedImages.push({ path: pool, start: 1200 });
+    expect(checkUsableBoundary(visit).valid).toBe(false);
+    expect(checkUsableBoundary({ ...opened(), kind: "reopen", images: [], startedImages: [] }).valid).toBe(true);
+    expect(checkUsableBoundary({ ...opened(), kind: "reopen" }).valid).toBe(false);
+    expect(checkUsableBoundary({
+      ...opened(), kind: "reopen", images: [], startedImages: [],
+      pendingImagesAtOpen: [{ path: pool, start: -5 }],
+    }).valid).toBe(false);
   });
 });

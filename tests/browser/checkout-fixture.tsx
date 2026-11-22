@@ -1,6 +1,6 @@
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import type { Id } from "convex/_generated/dataModel";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
@@ -130,8 +130,8 @@ function Harness({ initialOrder }: { initialOrder: OrderId | null }) {
 
 void seed().then((initialOrder) =>
   createRoot(document.getElementById("root")!).render(
-    <NextIntlClientProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
+    <IntlProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
       <ConfirmProvider><Harness initialOrder={initialOrder} /></ConfirmProvider>
-    </NextIntlClientProvider>,
+    </IntlProvider>,
   ),
 );

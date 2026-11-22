@@ -133,7 +133,7 @@ try {
   await new Promise((resolve) => capture.listen(capturePort, '127.0.0.1', resolve));
   if (!args.includes('--skip-build')) {
     if (process.env.SENTRY_AUTH_TOKEN) throw new Error('Unset SENTRY_AUTH_TOKEN: the smoke proves a credential-free build');
-    await run('bun', ['run', 'build:start']);
+    await run('bun', ['run', 'build']);
   }
 
   // Source maps: none in the public assets, and no public file references one.

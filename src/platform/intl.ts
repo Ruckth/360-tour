@@ -1,2 +1,2 @@
-export { NextIntlClientProvider, createTranslator, useLocale, useMessages, useTranslations } from "next-intl";
-export type { AbstractIntlMessages } from "next-intl";
+export { IntlProvider, createTranslator, useLocale, useMessages, useTranslations } from "use-intl";
+export type { AbstractIntlMessages } from "use-intl";

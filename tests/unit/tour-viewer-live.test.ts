@@ -10,7 +10,12 @@ const env = vi.hoisted(() => ({
   userId: null as string | null,
   /** The separate server read: resolve or reject it from a test. */
   reads: [] as { slug: string; resolve: (value: unknown) => void; reject: (error: unknown) => void }[],
-  canvas: undefined as undefined | { inputLocked?: boolean; onNavigate: (roomId: string) => void },
+  /** The canvas once it shows a room scene (the real TourCanvas mounts its scene only for a selected source). */
+  canvas: undefined as undefined | { inputLocked?: boolean; initialTextureConfirmed: boolean; onNavigate: (roomId: string) => void },
+  /** The canvas surface, which mounts early and stays empty while the room list is unconfirmed. */
+  surface: undefined as undefined | { rooms: { id: string }[]; currentRoomId: string },
+  /** Panorama paths a scene would request; only a scene with a selected source requests one. */
+  requested: [] as string[],
 }));
 vi.mock("convex/browser", () => ({
   ConvexHttpClient: class {
@@ -19,30 +24,39 @@ vi.mock("convex/browser", () => ({
     }
   },
 }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("@/platform/intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/platform/auth", () => ({ useAuth: () => ({ userId: env.userId }) }));
 vi.mock("convex/react", async (importOriginal) => ({
   ...await importOriginal<typeof import("convex/react")>(),
   useConvex: () => env.client,
 }));
 vi.mock("@/lib/i18n/use-public-messages", () => ({ usePublicMessages: () => ({ Rooms: {} }) }));
-// The canvas reports the requested room as painted at once, and finishes transitions immediately.
+// Like the real TourCanvas, the surface mounts as soon as the viewer opens, and its scene only for the
+// requested room's source. A scene reports that room as painted at once and finishes transitions immediately;
+// an empty surface reports nothing.
 vi.mock("@/components/tour/TourCanvas", async () => {
   const { useEffect } = await import("react");
+  type Props = {
+    rooms: { id: string; imagePath: string }[]; currentRoomId: string; transitioning: boolean; onLoaded: () => void;
+    inputLocked?: boolean; initialTextureConfirmed: boolean; onStatusChange: (status: string, roomId: string) => void;
+    onTransitionComplete: () => void; onNavigate: (roomId: string) => void;
+  };
+  function Scene(props: Props & { source: string }) {
+    env.canvas = props;
+    const { currentRoomId, source, transitioning, onLoaded, onStatusChange, onTransitionComplete } = props;
+    useEffect(() => {
+      env.requested.push(source);
+      onLoaded();
+      onStatusChange("ready", currentRoomId);
+      if (transitioning) onTransitionComplete();
+    }, [currentRoomId, source, transitioning, onLoaded, onStatusChange, onTransitionComplete]);
+    return null;
+  }
   return {
-    TourCanvas(props: {
-      currentRoomId: string; transitioning: boolean; onLoaded: () => void; inputLocked?: boolean;
-      onStatusChange: (status: string, roomId: string) => void; onTransitionComplete: () => void;
-      onNavigate: (roomId: string) => void;
-    }) {
-      env.canvas = props;
-      const { currentRoomId, transitioning, onLoaded, onStatusChange, onTransitionComplete } = props;
-      useEffect(() => {
-        onLoaded();
-        onStatusChange("ready", currentRoomId);
-        if (transitioning) onTransitionComplete();
-      }, [currentRoomId, transitioning, onLoaded, onStatusChange, onTransitionComplete]);
-      return null;
+    TourCanvas(props: Props) {
+      env.surface = props;
+      const source = props.rooms.find((room) => room.id === props.currentRoomId)?.imagePath;
+      return source ? createElement(Scene, { ...props, source }) : null;
     },
   };
 });
@@ -64,6 +78,8 @@ describe("live tour freshness and selection", () => {
     env.userId = null;
     env.reads = [];
     env.canvas = undefined;
+    env.surface = undefined;
+    env.requested = [];
     root = createRoot(document.body.appendChild(document.createElement("div")));
   });
   afterEach(async () => {
@@ -82,6 +98,14 @@ describe("live tour freshness and selection", () => {
   const button = (name: string) =>
     [...document.querySelectorAll("button")].filter((b) => b.textContent?.trim() === name).at(-1);
   const click = (name: string) => act(async () => button(name)!.click());
+  /** Before confirmation: an empty surface, no selected source or scene, no panorama request, input locked, intro up. */
+  const expectUnconfirmed = () => {
+    expect(env.surface).toMatchObject({ rooms: [], currentRoomId: "" });
+    expect(env.canvas).toBeUndefined();
+    expect(env.requested).toEqual([]);
+    expect(viewer()?.getAttribute("aria-busy")).toBe("true");
+    expect(document.body.textContent).toContain("loading");
+  };
   const neighbors = () => [...document.querySelectorAll("button")]
     .map((b) => b.textContent?.trim()).filter((text) => text?.startsWith("Room "));
 
@@ -188,11 +212,11 @@ describe("live tour freshness and selection", () => {
     convex.cache("a", scenes("x", "y"));
     await render();
     expect(shown()).toBe("");
-    expect(env.canvas).toBeUndefined();
+    expectUnconfirmed();
     // The server already reports the villa archived: the retained scenes are not shown.
     await act(async () => env.reads[0].resolve(null));
     expect(shown()).toBe("");
-    expect(env.canvas).toBeUndefined();
+    expectUnconfirmed();
     await deliver("a", null);
     expect(viewer()?.dataset.sceneStatus).toBe("empty");
   });
@@ -227,15 +251,19 @@ describe("live tour freshness and selection", () => {
     await render();
     await deliver("a", scenes("x", "y"));
     expect(env.canvas?.inputLocked).toBe(false);
+    expect(env.canvas?.initialTextureConfirmed).toBe(true);
     await act(async () => convex.disconnect());
     expect(shown()).toBe("x");
     expect(env.canvas?.inputLocked).toBe(true);
+    expect(env.canvas?.initialTextureConfirmed).toBe(false);
     await act(async () => env.canvas!.onNavigate("y"));
     expect(shown()).toBe("x");
     await act(async () => convex.reconnect());
     expect(env.canvas?.inputLocked).toBe(true);
+    expect(env.canvas?.initialTextureConfirmed).toBe(false);
     await deliver("a", scenes("x", "y"));
     expect(env.canvas?.inputLocked).toBe(false);
+    expect(env.canvas?.initialTextureConfirmed).toBe(true);
     await act(async () => env.canvas!.onNavigate("y"));
     expect(shown()).toBe("y");
   });
@@ -247,7 +275,7 @@ describe("live tour freshness and selection", () => {
     await act(async () => convex.reconnect());
     await act(async () => env.reads[0].resolve(scenes("x", "y")));
     expect(shown()).toBe("");
-    expect(env.canvas).toBeUndefined();
+    expectUnconfirmed();
     await deliver("a", null);
     expect(viewer()?.dataset.sceneStatus).toBe("empty");
   });
@@ -258,7 +286,7 @@ describe("live tour freshness and selection", () => {
     await render();
     expect(env.reads).toEqual([]);
     expect(shown()).toBe("");
-    expect(env.canvas).toBeUndefined();
+    expectUnconfirmed();
     await act(async () => convex.reconnect());
     expect(shown()).toBe("");
     await deliver("a", scenes("x", "y"));

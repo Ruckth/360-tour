@@ -28,7 +28,7 @@ type Messages = Record<string, unknown>;
 const messages = (locale: string) => JSON.parse(readFileSync(join(process.cwd(), "messages", `${locale}.json`), "utf8")) as Messages;
 const en = messages("en");
 
-/** Renders a Coupon.* message with plain {placeholder} substitution, like next-intl does for these keys. */
+/** Renders a Coupon.* message with plain {placeholder} substitution, like use-intl does for these keys. */
 function render(message: CouponMessage, catalog: Messages = en): string {
   const template = message.key.split(".").reduce<unknown>((value, part) => (value as Messages | undefined)?.[part], catalog.Coupon);
   if (typeof template !== "string") throw new Error(`Missing Coupon.${message.key}`);

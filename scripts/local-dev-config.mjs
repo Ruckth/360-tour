@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { disabledServices } from './local-integration-config.mjs';
 
 export const clerkFields = ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY', 'CLERK_JWT_ISSUER_DOMAIN'];
@@ -54,8 +55,36 @@ export function devEnvironment(supplied, home, config) {
     LANG: 'en_US.UTF-8',
     CONVEX_AGENT_MODE: 'anonymous',
     CONVEX_TELEMETRY_DISABLED: '1',
-    NEXT_TELEMETRY_DISABLED: '1',
     ...Object.fromEntries(clerkFields.map(key => [key, String(config[key])])),
     CLERK_PUBLISHABLE_KEY: String(config.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
   };
+}
+
+/** Public values the Start dev server substitutes for SSR and the browser, in both spellings. They are set
+ * explicitly because the Vite config prefers `VITE_*` over `NEXT_PUBLIC_*`: the disabled-service blanks and any
+ * checkout dotenv `VITE_*` key would otherwise win over this checkout's validated loopback and test-tenant values.
+ * @param {{ convexUrl: string, siteUrl: string, appUrl: string, publishableKey: string }} values
+ */
+export function devPublicEnvironment({ convexUrl, siteUrl, appUrl, publishableKey }) {
+  return {
+    NEXT_PUBLIC_CONVEX_URL: convexUrl, VITE_CONVEX_URL: convexUrl,
+    NEXT_PUBLIC_CONVEX_SITE_URL: siteUrl, VITE_CONVEX_SITE_URL: siteUrl,
+    SITE_URL: appUrl, NEXT_PUBLIC_SITE_URL: appUrl, VITE_SITE_URL: appUrl,
+    VITE_CLERK_PUBLISHABLE_KEY: publishableKey,
+  };
+}
+
+/** `bun run dev` serves TanStack Start. No reset, remote-target or framework options exist.
+ * @param {string[]} args
+ */
+export function checkDevArgs(args) {
+  if (args.includes('--next')) throw new Error('bun run dev -- --next was removed with the Next entry; run it from the dual-entry checkpoint checkout');
+  if (args.length) throw new Error('bun run dev takes no arguments; configure .env.dev.local instead');
+}
+
+/** Node arguments for the Start dev server on the checkout's own port.
+ * @param {string} root @param {number} port
+ */
+export function devFrontendCommand(root, port) {
+  return [path.join(root, 'node_modules/vite/bin/vite.js'), 'dev', '--config', 'vite.start.config.ts', '--host', 'localhost', '--port', String(port), '--strictPort'];
 }

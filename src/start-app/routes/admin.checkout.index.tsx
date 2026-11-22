@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import AdminCheckoutPage from "@/app/admin/checkout/page";
+import AdminCheckoutPage from "@/components/checkout/AdminCheckoutPage";
 import { StartAdminViewError } from "../admin/AdminBoundaries";
 
 export const Route = createFileRoute("/admin/checkout/")({

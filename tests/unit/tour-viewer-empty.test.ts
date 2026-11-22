@@ -7,7 +7,7 @@ import type { Property } from "@/lib/data/properties";
 import { fakeTourClient } from "./tour-live-client";
 
 const rooms = vi.hoisted(() => ({ loading: false, client: undefined as unknown }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("@/platform/intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/platform/auth", () => ({ useAuth: () => ({ userId: null }) }));
 vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => rooms.client }));
 vi.mock("@/lib/i18n/use-public-messages", () => ({ usePublicMessages: () => ({}) }));

@@ -27,8 +27,6 @@ export default defineConfig({
         environment: name === "dom" ? "happy-dom" : name === "convex" ? "edge-runtime" : "node",
         setupFiles: ["dom", "convex"].includes(name) ? ["./tests/unit/convex-components.ts"] : [],
         ...(name === "guards" ? { testTimeout: 60_000, fileParallelism: false, maxWorkers: 1 } : {}),
-        // Bundle next-intl for Next.js subpath imports in proxy integration tests.
-        server: { deps: { inline: ["next-intl"] } },
       },
     })),
   },

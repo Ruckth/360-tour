@@ -7,7 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { AdminBusinessFact, AdminFactProperty } from "@/components/admin/business-facts-form";
 import type { AdminUnknownGroup, AdminUnknownQuestion } from "@/components/admin/admin-knowledge-types";
 import { registerFixtureFunctions } from "./convex-mock";
-import { enableLiveNavigation } from "./next-navigation-mock";
+import { enableLiveNavigation } from "./navigation-mock";
 import "@/app.css";
 
 /*

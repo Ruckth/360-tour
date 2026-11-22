@@ -1,11 +1,17 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
-// Process-spawning and repository-wide source guards run serially with a larger deadline.
+// Process-spawning and repository-wide source guards run serially with a larger deadline. Tests that read the
+// archived dual-entry checkpoint through git (CHECKPOINT_HISTORY_READERS) also run here: only the guards CI job
+// checks out full history; unit shards are shallow.
+export const CHECKPOINT_HISTORY_READERS = /** @type {const} */ ([
+  'dual-entry-checkpoint', 'start-route-inventory', 'start-admin-routes', 'start-route-parity',
+]);
 const guards = new Set([
   'eslint-guardrails', 'arch-scorecard-cli', 'convex-schema-tools', 'e2e-isolation',
   'preview-retention', 'shared-rules', 'architecture-guards', 'pos-ownership',
-  'services-ownership', 'phase3f-tooling', 'convex-access-inventory', 'locale-payloads',
+  'services-ownership', 'phase3f-tooling', 'cutover-rehearsal', 'convex-access-inventory', 'locale-payloads',
+  ...CHECKPOINT_HISTORY_READERS,
 ].map(name => `tests/unit/${name}.test.ts`));
 
 /** Keep every former default test in exactly one project, including pure backend leaves.
