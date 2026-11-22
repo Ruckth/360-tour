@@ -110,8 +110,8 @@ jobs:
         run: bash .github/scripts/require-clerk-test.sh
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - name: Cache downloadable Convex backend binaries
-        uses: actions/cache@v4
+      - name: Restore downloadable Convex backend binaries
+        uses: actions/cache/restore@v4
         with:
           # Only binaries/dashboard; private deployment and auth state stay in output/.
           path: ~/.cache/360-tour/convex
@@ -142,8 +142,8 @@ jobs:
         run: bash .github/scripts/require-clerk-test.sh
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - name: Cache downloadable Convex backend binaries
-        uses: actions/cache@v4
+      - name: Restore downloadable Convex backend binaries
+        uses: actions/cache/restore@v4
         with:
           # Only binaries/dashboard; private deployment and auth state stay in output/.
           path: ~/.cache/360-tour/convex

@@ -5,7 +5,7 @@ import { Taps } from "./helpers/desk-taps";
  * W2A·L3 · Pay desk in a real browser on the fixture database, wired as the live checkout is.
  * Journeys count taps from the order (v27 "Thirteen desk journeys": a tap that opens or focuses
  * counts; the card terminal doesn't). Below 1024 px the order is a sheet, one more tap.
- * Screenshots land in test-results/pay-desk/ at 390, 820 (keyboard open), 1180 and 1440.
+ * CAPTURE_SCREENSHOTS=1 saves evidence in test-results/pay-desk/ at 390, 820 (keyboard open), 1180 and 1440.
  */
 
 const WIDTHS = {

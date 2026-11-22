@@ -5,7 +5,7 @@ const port = bookingUIPort(process.cwd());
 const baseURL = `http://127.0.0.1:${port}`;
 // Screenshot capture specs skip themselves unless a CAPTURE_* variable is set.
 // Leave them out of normal runs so they do not pile into one CI shard.
-const capturing = Object.keys(process.env).some((name) => name.startsWith("CAPTURE_"));
+const capturing = Object.keys(process.env).some((name) => name.startsWith("CAPTURE_") && name !== "CAPTURE_SCREENSHOTS");
 
 export default defineConfig({
   // Shard by test, not by file, so CI shards finish together.
