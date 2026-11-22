@@ -1,0 +1,38 @@
+{
+  "projectDir": "6e6a562c (main, pnpm) — CI integration harness",
+  "generatedAt": "2026-11-22T05:47:29.503Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 20,
+      "raw": 1018826,
+      "gzip": 301099,
+      "brotli": 263637,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 20,
+      "raw": 1015484,
+      "gzip": 299396,
+      "brotli": 262134,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 34,
+      "raw": 1810851,
+      "gzip": 540882,
+      "brotli": 472337,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 30,
+      "raw": 1502397,
+      "gzip": 453705,
+      "brotli": 396775,
+      "localeScripts": []
+    }
+  ]
+}

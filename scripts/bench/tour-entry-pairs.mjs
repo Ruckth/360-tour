@@ -10,6 +10,7 @@ const { values } = parseArgs({
     out: { type: "string" },
     pairs: { type: "string", default: "10" },
     "delay-ms": { type: "string", default: "1000" },
+    "control-only": { type: "boolean" },
   },
 });
 if (!values.out || !process.env.E2E_BASE_URL || !process.env.BENCH_SPAN_ENDPOINT) {
@@ -26,12 +27,12 @@ mkdirSync(out, { mode: 0o700 });
 for (let batch = 1; batch <= 2; batch++) {
   for (let pair = 1; pair <= pairs; pair++) {
     // Reverse the order across pairs and again across batches.
-    const delays = (batch + pair) % 2 === 0 ? [0, delayMs] : [delayMs, 0];
+    const delays = values["control-only"] ? [0] : (batch + pair) % 2 === 0 ? [0, delayMs] : [delayMs, 0];
     for (const withheld of delays) {
       const name = `batch${batch}-pair${pair}-delay${withheld}`;
       console.log(name);
       const runFile = path.join(out, name + ".json");
-      const result = spawnSync("pnpm", ["bench:browser", "tour-open-interaction", "--grep", "tour entry to first responsive frame"], {
+      const result = spawnSync("bun", ["run", "bench:browser", "tour-open-interaction", "--grep", "tour entry to first responsive frame"], {
         stdio: "inherit",
         env: {
           ...process.env,

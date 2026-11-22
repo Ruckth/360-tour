@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import { useQuery } from "convex/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { BusinessFactsPanel } from "@/components/admin/BusinessFactsPanel";
 import { MissingInformationPanel } from "@/components/admin/MissingInformationPanel";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";

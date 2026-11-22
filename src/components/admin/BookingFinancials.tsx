@@ -7,7 +7,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import { formatReceiptNumber } from "convex/shared/orderMath";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useRef, useState, type ReactNode } from "react";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { InfoTip } from "@/components/ui/info-tip";

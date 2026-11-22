@@ -11,7 +11,7 @@ vi.mock("convex/browser", () => ({ ConvexHttpClient: class { query = query; } })
 // The loader's process-level outage fallback is exercised without Next's data cache.
 vi.mock("next/cache", () => ({
   unstable_cache: (callback: (...args: string[]) => unknown, [key]: string[]) => {
-    if (!mockDetailCache.enabled || key !== "public-villa") return callback;
+    if (!mockDetailCache.enabled || !["public-villa", "public-villa-benchmark"].includes(key)) return callback;
     const entries = new Map<string, unknown>();
     return (...args: string[]) => {
       const invocation = JSON.stringify(args);
@@ -50,6 +50,17 @@ afterEach(() => {
 });
 
 describe("server villa reads", () => {
+  it("classifies both a failed Next origin read and a later saved reply as recovery", async () => {
+    query.mockResolvedValueOnce(detail).mockRejectedValueOnce(new Error("origin unavailable"));
+    const read = () => villas.getBenchmarkVilla("extra-99", "en", "rate-test");
+    expect((await read()).state).toBe("miss");
+    const failed = await read();
+    expect(failed.page?.villa.id).toBe("extra-99");
+    expect(failed.state).toBe("recovery");
+    expect((await read()).state).toBe("recovery");
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+
   it("loads detail by slug without querying the featured catalog and reports authoritative misses", async () => {
     const { getVilla } = villas;
     query.mockResolvedValueOnce(detail).mockResolvedValueOnce(null);
@@ -79,6 +90,18 @@ describe("server villa reads", () => {
     expect(JSON.parse(String(log.mock.calls[1][1]))).toEqual({
       cache: "hit", durationMs: expect.any(Number),
     });
+  });
+
+  it("distinguishes namespaced Next data-cache hits and misses from the ordinary detail", async () => {
+    vi.resetModules();
+    mockDetailCache.enabled = true;
+    const { getVilla, getBenchmarkVilla } = await import("@/lib/server/villas");
+    query.mockResolvedValue(detail);
+    await getVilla("extra-99", "en");
+    expect(await getBenchmarkVilla("extra-99", "en", "test-next-a")).toMatchObject({ state: "miss" });
+    expect(await getBenchmarkVilla("extra-99", "th", "test-next-a")).toMatchObject({ state: "hit" });
+    expect(await getBenchmarkVilla("extra-99", "en", "test-next-b")).toMatchObject({ state: "miss" });
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it("uses the same direct detail in room metadata and content", async () => {
@@ -154,7 +177,8 @@ describe("server villa reads", () => {
     query.mockResolvedValueOnce(detail).mockResolvedValueOnce(null).mockRejectedValue(new Error("offline"));
     expect(await getVilla("extra-99", "en")).not.toBeNull();
     expect(await getVilla("extra-99", "en")).toBeNull();
-    await expect(getVilla("extra-99", "en")).rejects.toThrow("temporarily unavailable");
+    // A confirmed miss stays a 404 during the outage instead of becoming a temporary error.
+    expect(await getVilla("extra-99", "en")).toBeNull();
   });
 
   it("requires a configured backend and keeps an empty backend empty", async () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { getLocalizedDirectBenefits } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 

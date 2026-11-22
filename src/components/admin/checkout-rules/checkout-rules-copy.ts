@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values";
-import { createTranslator } from "next-intl";
+import { createTranslator } from "@/platform/intl";
 import { staffDateTime } from "@/lib/staff-time";
 import commerceEn from "../../../../messages/commerce/en.json";
 

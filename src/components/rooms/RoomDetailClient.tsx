@@ -1,10 +1,10 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "@/platform/dynamic";
+import Link from "@/platform/link";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { MobileStickyBar } from "@/components/booking/MobileStickyBar";
 import { useChatPageContext } from "@/components/chat/ChatContext";

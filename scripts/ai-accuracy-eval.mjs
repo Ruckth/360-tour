@@ -12,7 +12,7 @@ if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5) throw 
 const outputDir = path.resolve('output/ai-refactor-2026-10-01');
 fs.mkdirSync(outputDir, { recursive: true });
 async function run(name, args) {
-	const { stdout } = await exec('npx', ['convex', 'run', name, JSON.stringify(args)], { timeout: 60000, maxBuffer: 2e6 });
+	const { stdout } = await exec('bun', ['run', 'convex', 'run', name, JSON.stringify(args)], { timeout: 60000, maxBuffer: 2e6 });
 	return JSON.parse(stdout);
 }
 const [properties, settings] = await Promise.all([run('catalog/properties:list', {}), run('settings/settings:effective', {})]);

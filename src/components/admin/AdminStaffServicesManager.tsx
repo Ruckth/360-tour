@@ -4,7 +4,7 @@ import { satangToBaht } from 'convex/shared/money';
 
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { parseMoneyInput } from "@/lib/money-input";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { Archive, ArchiveRestore, CalendarOff, Pencil, PlusIcon, Trash2 } from "lucide-react";

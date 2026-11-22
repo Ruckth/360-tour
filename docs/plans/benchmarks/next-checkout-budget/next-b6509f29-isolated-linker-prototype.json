@@ -1,0 +1,38 @@
+{
+  "projectDir": "b6509f29 + bunfig linker=isolated (uncommitted prototype; Start readiness failed)",
+  "generatedAt": "2026-11-22T06:27:48.933Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 20,
+      "raw": 1019552,
+      "gzip": 301356,
+      "brotli": 263781,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 20,
+      "raw": 1016222,
+      "gzip": 299725,
+      "brotli": 262307,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 34,
+      "raw": 1811535,
+      "gzip": 541140,
+      "brotli": 472556,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 30,
+      "raw": 1503080,
+      "gzip": 453962,
+      "brotli": 397009,
+      "localeScripts": []
+    }
+  ]
+}

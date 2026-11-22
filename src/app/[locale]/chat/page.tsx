@@ -1,17 +1,10 @@
 import { getPublicService } from "@/lib/server/services";
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
-import { AIChatPage } from "@/components/chat/AIChatWidget";
+import { GuestChatPage } from "@/components/chat/GuestChatPage";
+import { firstParam, type PageSearch } from "@/lib/page-search";
 import { getPublicMessages } from "@/lib/i18n/server-content";
 import { getVilla } from "@/lib/server/villas";
-import { resort } from "@/lib/data/resort-config";
-
-type ChatSearchParams = Record<string, string | string[] | undefined>;
-
-function getParam(params: ChatSearchParams, key: string) {
-  const value = params[key];
-  return Array.isArray(value) ? value[0] : value;
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
@@ -25,29 +18,22 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ChatPage({
   searchParams,
 }: {
-  searchParams: Promise<ChatSearchParams>;
+  searchParams: Promise<PageSearch>;
 }) {
   const locale = await getLocale();
   const params = await searchParams;
-  const propertyId = getParam(params, "property");
-  const serviceSlug = getParam(params, "service");
+  const propertyId = firstParam(params, "property");
+  const serviceSlug = firstParam(params, "service");
   const service = serviceSlug ? await getPublicService(serviceSlug) : null;
-  const draft = service ? getPublicMessages(locale).ServiceCatalog.draft.replace("{name}", service.name) : undefined;
   const property = propertyId
-    ? (await getVilla(propertyId, locale).catch(() => null))?.villa
-    : undefined;
+    ? (await getVilla(propertyId, locale).catch(() => null))?.villa ?? null
+    : null;
 
   return (
-    <AIChatPage
-      key={service?.slug ?? "default"}
-      initialDraft={draft}
-      propertySlug={property?.id}
-      propertyName={property?.name}
-      contactEmail={resort.contactEmail}
-      whatsappNumber={resort.whatsapp}
-      lineId={resort.lineId}
-      lineUrl={resort.lineUrl}
-      lineQrImage={resort.lineQrImage}
+    <GuestChatPage
+      service={service}
+      property={property}
+      draftTemplate={getPublicMessages(locale).ServiceCatalog.draft}
     />
   );
 }

@@ -11,6 +11,8 @@
   },
   "include": [
     "next-env.d.ts",
+    "src/start-app/env.d.ts",
+    "src/start-app/routeTree.gen.ts",
     "types/**/*.d.ts",
     "tests/**/*.ts",
     "tests/**/*.tsx",

@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { MessageCircle, RotateCcw, Sparkles, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ExpandableChat } from "@/components/ui/chat/expandable-chat";

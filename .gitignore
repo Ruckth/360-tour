@@ -5,6 +5,7 @@ node_modules
 build
 out
 tsconfig.tsbuildinfo
+tsconfig.start.tsbuildinfo
 test-results/
 playwright-report/
 blob-report/
@@ -61,3 +62,9 @@ output/ui-loop/
 /docs/screenshots/
 /docs/reviews/ux-audit/
 /docs/reviews/ux-main-sync/
+
+# TanStack Start and Nitro build output
+/.tanstack/
+/.output/
+/.nitro/
+/dist/

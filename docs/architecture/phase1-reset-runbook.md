@@ -11,7 +11,7 @@ From the implementation checkout:
 ```sh
 node scripts/architecture-reset.mjs --old-ref 72a657f --out output/phase1-reset
 cat output/phase1-reset/manifest.json
-pnpm exec vitest run convex/phase1Architecture.test.ts convex/moneyCutover.test.ts convex/staffRoles.test.ts convex/posRefunds.test.ts
+bun run vitest run convex/phase1Architecture.test.ts convex/moneyCutover.test.ts convex/staffRoles.test.ts convex/posRefunds.test.ts
 ```
 
 The program generates two empty snapshot ZIPs, an exact OLD schema/table manifest, and a temporary internal scheduler helper. It does not execute Convex or contact any backend. Review both ZIPs with `unzip -l`. The root ZIP has all 91 old table directories; the rollback ZIP `empty-new-root.zip` has all 74 new table directories, and `reset-new.ts` supplies the new-schema scheduler helper; the component ZIP has the migrations component's `migrations` table. Select a newer old revision if the reviewed dependency schema changed before cutover; regenerate and inspect the count and schema hash.
@@ -25,14 +25,14 @@ Record the old application commit, the new application commit, selected deployme
 ## 2. Quiesce the OLD deployment
 
 1. Before the FIRST action that blocks Stripe ingress (Vercel pause, backend maintenance, or provider delivery changes), record an epoch-millisecond timestamp and set `ARCH_MONEY_CUTOVER_AT` to that value on the selected backend. This cutoff must be no later than the first blocked delivery, never the later export/clear/deploy time. Events created throughout the blocked window must remain failed deliveries for reconciliation. Then block public traffic and stop staff writes. A Vercel project pause blocks builds: before building the fresh frontend, hold traffic with a temporary all-path firewall deny rule and keep the project unpaused. Retain the backend maintenance gate separately. Disable LINE/Meta/WhatsApp provider callbacks and record settings for restoration. Keep Stripe delivery enabled: the paused HTTP router returns 503 so deliveries remain visible for retries; expire every open Stripe Checkout session and record its ID. Pause iCal imports. A disabled Stripe endpoint is not assumed to queue new events; explicitly reconcile/resend any events from a disabled interval.
-2. Export the OLD application source into a disposable copy. Run `node scripts/architecture-maintenance.mjs --dir /absolute/disposable/old-source --old-ref 72a657f`, then install that copy's dependencies with `pnpm install --no-frozen-lockfile`. The script preserves the exact old schema, installs the shared public query/mutation/action/HTTP maintenance gate, pauses the eight crons without deleting their functions, and adds the protected scheduler helper. It refuses a working checkout or a mismatching schema.
+2. Export the OLD application source into a disposable copy. Run `node scripts/architecture-maintenance.mjs --dir /absolute/disposable/old-source --old-ref 72a657f`, then install that copy's dependencies with `bun install --no-frozen-lockfile`. The script preserves the exact old schema, installs the shared public query/mutation/action/HTTP maintenance gate, pauses the eight crons without deleting their functions, and adds the protected scheduler helper. It refuses a working checkout or a mismatching schema.
 3. Set `ARCH_RESET_PAUSED=1` on the explicitly selected Convex deployment and deploy this maintenance copy. All public Convex calls are blocked (HTTP returns 503); internal export/reset/seed functions remain available. The same environment gate is included in the NEW revision, so it remains paused after deployment. All new cron handlers, iCal bulk sync and pending-display cleanup also return without effects while that flag is set; registration of the new cron registry does not restart those writes during reseeding. Verify guest/staff writes and callbacks are blocked before proceeding. No schema reset is deployed here.
 4. Export the quiesced OLD deployment, including file storage:
 
 ```sh
 # Run in the operator's verified OLD-revision checkout, configured for the selected deployment.
 # Add --prod only for the separately approved production execution.
-pnpm exec convex export --include-file-storage --path /absolute/secure/path/before-phase1.zip
+bun run convex export --include-file-storage --path /absolute/secure/path/before-phase1.zip
 shasum -a 256 /absolute/secure/path/before-phase1.zip
 ```
 
@@ -43,7 +43,7 @@ Keep the export and old deployable revision until after acceptance. Set export p
 Call the temporary helper page by page (100 documents/page). Start with null cursor and pass each returned `continueCursor` until `isDone` is true:
 
 ```sh
-pnpm exec convex run maintenance/reset:cancelScheduledPage '{"deployment":"REPLACE_WITH_VERIFIED_DEPLOYMENT","paginationOpts":{"numItems":100,"cursor":null}}' --codegen disable
+bun run convex run maintenance/reset:cancelScheduledPage '{"deployment":"REPLACE_WITH_VERIFIED_DEPLOYMENT","paginationOpts":{"numItems":100,"cursor":null}}' --codegen disable
 ```
 
 Repeat the full scan once after cancellation. There must be zero pending cancellations and zero `inProgress` functions. If any function is running, keep ingress paused, let it finish and rescan; inspect its effects before clearing. Do not assume cancellation can interrupt already running external HTTP requests. Check the migrations component has no active runner; cancel it through the component's dashboard before clearing its state.
@@ -51,13 +51,13 @@ Repeat the full scan once after cancellation. There must be zero pending cancell
 Once quiescence and the export are verified, use the OLD configured checkout and reviewed ZIPs:
 
 ```sh
-pnpm exec convex import --component migrations --replace-all /absolute/path/output/phase1-reset/empty-migrations.zip
+bun run convex import --component migrations --replace-all /absolute/path/output/phase1-reset/empty-migrations.zip
 ```
 
 Observed in root's rehearsal/cutover: `--replace-all` applies to the whole component tree even with `--component migrations`. Inspect the CLI summary before confirming, then verify all 91 root tables and the component state. If the root is already empty, skip the redundant root clear. Only if the verified root still needs clearing, use the reviewed root ZIP:
 
 ```sh
-pnpm exec convex import --replace-all /absolute/path/output/phase1-reset/empty-root.zip
+bun run convex import --replace-all /absolute/path/output/phase1-reset/empty-root.zip
 ```
 
 The CLI prompts with the selected deployment and destructive replacement. Check that identity before confirming. For production add `--prod` to every selected command consistently. Do not use `--yes` on shared or production deployments. An automated isolated rehearsal may use it only after asserting its exact newly created preview identity. Confirm all OLD application tables and the component state are empty in the dashboard, and recheck scheduled work. The isolated rehearsal verified that an empty-root ZIP without `_storage` retains storage blobs; the exported storage is the rollback source. No old IDs should be reused in seeded data.
@@ -67,13 +67,13 @@ The CLI prompts with the selected deployment and destructive replacement. Check 
 Reuse the `ARCH_MONEY_CUTOVER_AT` recorded BEFORE the first ingress pause in step2.1. Verify it is unchanged and record it with the export; do not advance it to the export, clear, deploy or seed time. Deploy ONLY the reviewed Phase 1 backend from the exact approved commit to the verified deployment, retaining `ARCH_RESET_PAUSED=1`. This controlled backend deploy precedes the frontend merge: it allows seed and backend acceptance before Vercel prerenders public pages. The later merge/build runs `vercel-build`/`convex deploy` again with the same compatible schema. Keep public traffic blocked by the all-path firewall deny rule and provider ingress paused throughout. The Vercel project must be unpaused to build. The migrations component and temporary reset helper disappear in this deploy. Inspect Convex deployment logs and confirm 74 schema tables.
 
 ```sh
-pnpm exec convex run seed:seedAll '{"scenario":"demo-resort"}' --codegen disable
+bun run convex run seed:seedAll '{"scenario":"demo-resort"}' --codegen disable
 # Production execution uses --prod after the deployment mapping is checked again.
 ```
 
 The scenario refuses every nonempty database, preventing a partial repair or second seed. Its response includes per-table counts and test access tokens: treat that output as private. Expected key counts: properties 3, tourScenes 5, reviews 7, reviewStats 3, staff 5, services 6, appointments 4, bookings 2, bookingPayments 1, orders 3, orderLines 1, conversations 1, messages 1. `empty` creates no records; `busy-weekend` creates six stays and 12 blocked nights in addition to the demo catalog/inbox.
 
-Run `pnpm verify`, booking component tests and smoke tests. On the newly seeded backend, sign in through the configured owner allowlist and invite a cashier through Team (the reset clears role grants); verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
+Run `bun run verify`, booking component tests and smoke tests. On the newly seeded backend, sign in through the configured owner allowlist and invite a cashier through Team (the reset clears role grants); verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
 
 ## 5. Restore traffic and observe
 

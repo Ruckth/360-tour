@@ -3,8 +3,8 @@
  * it creates sessions and bookings). Checks which tools the model calls, with which args,
  * and the resulting bookings.
  *
- *   npx convex dev --configure existing --dev-deployment local   # once, then seed: pnpm seed
- *   pnpm eval:ai-booking [runs=1] [scenario-filter]               # VERBOSE=1 prints transcripts
+ *   Configure and seed an isolated Convex backend before running this write-capable eval.
+ *   bun run eval:ai-booking [runs=1] [scenario-filter]               # VERBOSE=1 prints transcripts
  */
 import { execFileSync } from "node:child_process";
 
@@ -54,7 +54,7 @@ type Scenario = {
 const BOOKING_TOOLS = ["prepare_booking", "confirm_booking", "prepare_service_booking", "confirm_service_booking", "cancel_booking"];
 
 function convex<T>(fn: string, args: unknown): T {
-  const out = execFileSync("npx", ["convex", "run", fn, JSON.stringify(args)], {
+  const out = execFileSync("bun", ["run", "convex", "run", fn, JSON.stringify(args)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 120_000,
@@ -63,7 +63,7 @@ function convex<T>(fn: string, args: unknown): T {
 }
 
 function allBookings(): Booking[] {
-  const out = execFileSync("npx", ["convex", "data", "bookings", "--limit", "500", "--format", "jsonLines"], {
+  const out = execFileSync("bun", ["run", "convex", "data", "bookings", "--limit", "500", "--format", "jsonLines"], {
     encoding: "utf8",
   });
   return out
@@ -73,7 +73,7 @@ function allBookings(): Booking[] {
 }
 
 function allServiceAppointments(): ServiceAppointment[] {
-  const out = execFileSync("npx", ["convex", "data", "appointments", "--limit", "500", "--format", "jsonLines"], {
+  const out = execFileSync("bun", ["run", "convex", "data", "appointments", "--limit", "500", "--format", "jsonLines"], {
     encoding: "utf8",
   });
   return out.split("\n").filter(Boolean).map((line) => JSON.parse(line) as ServiceAppointment);

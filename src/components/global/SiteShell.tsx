@@ -1,7 +1,7 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import Link from "next/link";
+import dynamic from "@/platform/dynamic";
+import Link from "@/platform/link";
 import { MessageCircle } from "lucide-react";
 import { ChatContextProvider, useChatPageContext } from "@/components/chat/ChatContext";
 import { SiteFooter } from "@/components/global/SiteFooter";
@@ -10,8 +10,8 @@ import { stripLocalePrefix } from "@/i18n/routing";
 import { buildChatHref } from "@/lib/chat/navigation";
 import { loadAIChatWidget, preloadAIChatWidget } from "@/lib/chat/preload";
 import { resort } from "@/lib/data/resort-config";
-import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "@/platform/intl";
+import { usePathname, useSearchParams } from "@/platform/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 const LazyAIChatWidget = dynamic(loadAIChatWidget, { ssr: false });

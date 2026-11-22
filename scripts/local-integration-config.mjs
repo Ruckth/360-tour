@@ -1,3 +1,6 @@
+import disabledProviderKeys from "../src/lib/server/disabled-provider-keys.json" with { type: "json" };
+export { disabledProviderKeys };
+
 /** Never let Next's dotenv loader restore external-provider or deployment credentials. */
 export const disabledServiceKeys = [
   "CONVEX_DEPLOYMENT",
@@ -7,33 +10,11 @@ export const disabledServiceKeys = [
   "CONVEX_SELF_HOSTED_ADMIN_KEY",
   "CONVEX_OVERRIDE_ACCESS_TOKEN",
   "CONVEX_OVERRIDE_DEPLOYMENT_URL",
+  "VITE_CONVEX_URL", "VITE_CONVEX_SITE_URL", "VITE_SITE_URL",
   "NEXT_PUBLIC_CONVEX_SITE_URL",
   "PUBLIC_CONVEX_URL",
   "PUBLIC_CLERK_PUBLISHABLE_KEY",
-  "SENTRY_DSN",
-  "NEXT_PUBLIC_SENTRY_DSN",
-  "SENTRY_AUTH_TOKEN",
-  "NEXT_PUBLIC_POSTHOG_KEY",
-  "NEXT_PUBLIC_POSTHOG_HOST",
-  "LINE_CHANNEL_SECRET",
-  "LINE_CHANNEL_ACCESS_TOKEN",
-  "FACEBOOK_ACCESS_TOKEN",
-  "FACEBOOK_APP_SECRET",
-  "FACEBOOK_VERIFY_TOKEN",
-  "INSTAGRAM_ACCESS_TOKEN",
-  "INSTAGRAM_APP_SECRET",
-  "INSTAGRAM_VERIFY_TOKEN",
-  "META_APP_SECRET",
-  "WHATSAPP_ACCESS_TOKEN",
-  "WHATSAPP_APP_SECRET",
-  "WHATSAPP_VERIFY_TOKEN",
-  "WHATSAPP_PHONE_NUMBER_ID",
-  "AI_API_KEY",
-  "RESEND_API_KEY",
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "OWNER_NOTIFICATION_EMAIL",
-  "MESSAGING_IMAGE_SECRET",
+  ...disabledProviderKeys,
   "NEXT_PUBLIC_SITE_URL",
 ];
 export const disabledServices = Object.fromEntries(

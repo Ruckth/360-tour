@@ -54,6 +54,7 @@ import type * as catalog_adminProperties from "../catalog/adminProperties.js";
 import type * as catalog_adminReviews from "../catalog/adminReviews.js";
 import type * as catalog_model from "../catalog/model.js";
 import type * as catalog_private_propertyEdits from "../catalog/private/propertyEdits.js";
+import type * as catalog_private_villaInvalidation from "../catalog/private/villaInvalidation.js";
 import type * as catalog_properties from "../catalog/properties.js";
 import type * as catalog_publicProperties from "../catalog/publicProperties.js";
 import type * as catalog_reviewMaintenance from "../catalog/reviewMaintenance.js";
@@ -426,6 +427,7 @@ declare const fullApi: ApiFromModules<{
   "catalog/adminReviews": typeof catalog_adminReviews;
   "catalog/model": typeof catalog_model;
   "catalog/private/propertyEdits": typeof catalog_private_propertyEdits;
+  "catalog/private/villaInvalidation": typeof catalog_private_villaInvalidation;
   "catalog/properties": typeof catalog_properties;
   "catalog/publicProperties": typeof catalog_publicProperties;
   "catalog/reviewMaintenance": typeof catalog_reviewMaintenance;

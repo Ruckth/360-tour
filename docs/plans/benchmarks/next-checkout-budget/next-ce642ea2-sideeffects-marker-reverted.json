@@ -1,0 +1,38 @@
+{
+  "projectDir": "ce642ea2 + src/platform sideEffects marker (reverted non-solution)",
+  "generatedAt": "2026-11-22T06:10:10.899Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 21,
+      "raw": 1060743,
+      "gzip": 314874,
+      "brotli": 276124,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 21,
+      "raw": 1057440,
+      "gzip": 313247,
+      "brotli": 274687,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 35,
+      "raw": 1898871,
+      "gzip": 566822,
+      "brotli": 495405,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 31,
+      "raw": 1567403,
+      "gzip": 475899,
+      "brotli": 416882,
+      "localeScripts": []
+    }
+  ]
+}

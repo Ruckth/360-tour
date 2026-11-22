@@ -66,8 +66,8 @@ After each LINE or environment change, run this test from the LINE app.
 Run before shipping LINE changes.
 
 ```sh
-pnpm check:fast
-pnpm verify
+bun run check:fast
+bun run verify
 ```
 
 The unit tests cover LINE signature verification, exact FAQ matching, postback quick replies, duplicate event idempotency, inbound transcript visibility when replies fail, and customer URL normalization.

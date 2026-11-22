@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { getLocale } from "next-intl/server";
 import { BookingSuccessClient } from "@/components/booking/BookingSuccessClient";
+import { bookingAccessParams } from "@/lib/booking/page-params";
+import type { PageSearch } from "@/lib/page-search";
 import { getPublicMessages } from "@/lib/i18n/server-content";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -13,11 +15,8 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function BookingSuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bookingId?: string; booking_id?: string; token?: string; bookingToken?: string }>;
+  searchParams: Promise<PageSearch>;
 }) {
-  const params = await searchParams;
-  const bookingId = params.bookingId ?? params.booking_id ?? "";
-  const accessToken = params.token ?? params.bookingToken ?? "";
-
+  const { bookingId, accessToken } = bookingAccessParams(await searchParams);
   return <BookingSuccessClient bookingId={bookingId} accessToken={accessToken} />;
 }

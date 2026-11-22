@@ -9,7 +9,7 @@ import { CheckoutBackendProvider, newAttemptKey, useCheckoutBackend, type Checko
 import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
 import { orderPath, receiptPath } from "@/components/checkout/checkout-source";
 import { InlineErrorBoundary } from "@/components/checkout/ErrorBoundary";
-import { Link } from "@/i18n/navigation";
+import { Link } from "@/platform/localized-navigation";
 import { errorText } from "@/lib/staff-bookings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

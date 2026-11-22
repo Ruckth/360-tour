@@ -1,6 +1,6 @@
 "use client";
 
-import { NextIntlClientProvider, useLocale, useMessages, type AbstractIntlMessages } from "next-intl";
+import { NextIntlClientProvider, useLocale, useMessages, type AbstractIntlMessages } from "@/platform/intl";
 import { useMemo, type ReactNode } from "react";
 
 /**

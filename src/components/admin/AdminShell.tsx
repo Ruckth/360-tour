@@ -1,11 +1,11 @@
 "use client";
 
 import { Menu } from "@base-ui/react/menu";
-import { SignInButton, SignOutButton, useUser } from "@clerk/nextjs";
+import { SignInButton, SignOutButton, useUser } from "@/platform/auth";
 import { useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "convex/_generated/api";
 import { LogOut, Shield } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";

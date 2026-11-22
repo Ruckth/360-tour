@@ -3,7 +3,8 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { copyEnvFiles, lockfilesMatch } from '../../scripts/worktree-setup.mjs';
+import { copyEnvFiles, lockfilesMatch, recoverStaleInstall } from '../../scripts/worktree-setup.mjs';
+import { staleSharedRuntimes } from '../../scripts/shared-runtimes.mjs';
 import { availablePort, bookingUIPort, derivePort, localDevPort, portsFilename, readWorktreePorts } from '../../scripts/worktree-ports.mjs';
 import { convexCachePath, localConvexCache } from '../../scripts/local-convex-cache.mjs';
 import { requireCloudDevOptIn } from '../../scripts/cloud-dev.mjs';
@@ -20,10 +21,10 @@ describe('worktree setup', () => {
   it('compares lockfile contents, including missing and changed lockfiles', async () => {
     const main = await temp(), worktree = await temp();
     expect(await lockfilesMatch(main, worktree)).toBe(false);
-    await fs.writeFile(path.join(main, 'pnpm-lock.yaml'), 'same');
-    await fs.writeFile(path.join(worktree, 'pnpm-lock.yaml'), 'same');
+    await fs.writeFile(path.join(main, 'bun.lock'), 'same');
+    await fs.writeFile(path.join(worktree, 'bun.lock'), 'same');
     expect(await lockfilesMatch(main, worktree)).toBe(true);
-    await fs.writeFile(path.join(worktree, 'pnpm-lock.yaml'), 'different');
+    await fs.writeFile(path.join(worktree, 'bun.lock'), 'different');
     expect(await lockfilesMatch(main, worktree)).toBe(false);
   });
 
@@ -123,6 +124,111 @@ describe('shared binary cache', () => {
 });
 
 it('requires exact opt-in before either cloud command can start', () => {
-  for (const env of [{}, { ALLOW_CLOUD_DEV: 'true' }, { CONVEX_DEPLOYMENT: 'dev:shared' }]) expect(() => requireCloudDevOptIn(env)).toThrow('pnpm dev runs a local backend');
+  for (const env of [{}, { ALLOW_CLOUD_DEV: 'true' }, { CONVEX_DEPLOYMENT: 'dev:shared' }]) expect(() => requireCloudDevOptIn(env)).toThrow('bun run dev runs a local backend');
   expect(() => requireCloudDevOptIn({ ALLOW_CLOUD_DEV: '1' })).not.toThrow();
+});
+
+describe('inherited Clerk runtime install', () => {
+  const pinnedLock = '{ "packages": { "@clerk/shared": ["@clerk/shared@4.12.2"] } }\n';
+  const nestedLock = '{ "packages": { "@clerk/nextjs/@clerk/shared": ["@clerk/shared@4.12.2"], "@clerk/react/@clerk/shared": ["@clerk/shared@4.12.2"] } }\n';
+  async function write(file: string, json: unknown) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(json));
+  }
+  async function install(root: string, layout: 'old' | 'clean') {
+    const modules = path.join(root, 'node_modules');
+    for (const importer of ['@clerk/nextjs', '@clerk/react']) {
+      await write(path.join(modules, importer, 'package.json'), { name: importer, dependencies: { '@clerk/shared': '^4.12.2' } });
+      if (layout === 'old') await write(path.join(modules, importer, 'node_modules/@clerk/shared/package.json'), { name: '@clerk/shared', version: '4.12.2' });
+    }
+    // The old layout's top-level slot belongs to another dependency's version.
+    await write(path.join(modules, '@clerk/shared/package.json'), { name: '@clerk/shared', version: layout === 'old' ? '4.44.0' : '4.12.2' });
+  }
+  async function checkout(lock: string, layout: 'old' | 'clean') {
+    const root = await temp();
+    await fs.writeFile(path.join(root, 'bun.lock'), lock);
+    await install(root, layout);
+    return root;
+  }
+
+  it('recovers an old inherited layout with one clean frozen install of this checkout only', async () => {
+    const root = await checkout(pinnedLock, 'old');
+    const outside = await temp();
+    await fs.writeFile(path.join(outside, 'keep'), 'untouched');
+    expect(staleSharedRuntimes(root)).toEqual([expect.stringContaining('Clerk: @clerk/nextjs resolves @clerk/shared 4.12.2')]);
+    const calls: string[][] = [];
+    const recovered = await recoverStaleInstall(root, async (command, args, cwd) => {
+      calls.push([command, ...args]);
+      expect(cwd).toBe(root);
+      await expect(fs.stat(path.join(root, 'node_modules'))).rejects.toThrow();
+      await install(root, 'clean');
+    });
+    expect(recovered).toBe(true);
+    expect(calls).toEqual([['bun', 'install', '--frozen-lockfile', '--prefer-offline']]);
+    expect(staleSharedRuntimes(root)).toEqual([]);
+    expect(await fs.readFile(path.join(outside, 'keep'), 'utf8')).toBe('untouched');
+  });
+
+  it('leaves a consistent install alone without reinstalling', async () => {
+    const root = await checkout(pinnedLock, 'clean');
+    let installs = 0;
+    expect(await recoverStaleInstall(root, async () => { installs++; })).toBe(false);
+    expect(installs).toBe(0);
+  });
+
+  it('does nothing on a lockfile that itself nests separate copies, or before anything is installed', async () => {
+    const boundary = await checkout(nestedLock, 'old');
+    expect(staleSharedRuntimes(boundary)).toEqual([]);
+    const fresh = await temp();
+    await fs.writeFile(path.join(fresh, 'bun.lock'), pinnedLock);
+    expect(staleSharedRuntimes(fresh)).toEqual([]);
+  });
+
+  it('fails loudly if a clean frozen install still resolves separate copies', async () => {
+    const root = await checkout(pinnedLock, 'old');
+    await expect(recoverStaleInstall(root, async () => install(root, 'old'))).rejects.toThrow('still resolves separate runtimes');
+  });
+});
+
+describe('inherited Floating UI install', () => {
+  // A checkout installed with only the Clerk pin keeps each Radix Popper's nested Floating UI tree
+  // after a frozen install of a lockfile that shares it (reproduced with real Bun).
+  const sharedLock = '{ "packages": { "@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8"] } }\n';
+  const nestedLock = '{ "packages": { "@radix-ui/react-popper/@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8"], "@radix-ui/react-tooltip/@radix-ui/react-popper/@floating-ui/react-dom": ["@floating-ui/react-dom@2.1.8"] } }\n';
+  async function write(file: string, json: unknown) {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify(json));
+  }
+  async function install(root: string, layout: 'old' | 'clean') {
+    const modules = path.join(root, 'node_modules');
+    const poppers = [path.join(modules, '@radix-ui/react-popper'), path.join(modules, '@radix-ui/react-tooltip/node_modules/@radix-ui/react-popper')];
+    await write(path.join(modules, '@radix-ui/react-tooltip/package.json'), { name: '@radix-ui/react-tooltip', dependencies: { '@radix-ui/react-popper': '1.3.7' } });
+    for (const [index, popper] of poppers.entries()) {
+      await write(path.join(popper, 'package.json'), { name: '@radix-ui/react-popper', version: index ? '1.3.7' : '1.2.8', dependencies: { '@floating-ui/react-dom': '^2.0.0' } });
+      if (layout === 'old') await write(path.join(popper, 'node_modules/@floating-ui/react-dom/package.json'), { name: '@floating-ui/react-dom', version: '2.1.8' });
+    }
+    if (layout === 'clean') await write(path.join(modules, '@floating-ui/react-dom/package.json'), { name: '@floating-ui/react-dom', version: '2.1.8' });
+  }
+  async function checkout(lock: string, layout: 'old' | 'clean') {
+    const root = await temp();
+    await fs.writeFile(path.join(root, 'bun.lock'), lock);
+    await install(root, layout);
+    return root;
+  }
+
+  it('recovers nested Floating UI copies left by a single-pin install', async () => {
+    const root = await checkout(sharedLock, 'old');
+    expect(staleSharedRuntimes(root)).toEqual([expect.stringContaining('Floating UI: @radix-ui/react-popper resolves @floating-ui/react-dom 2.1.8 and @radix-ui/react-tooltip > @radix-ui/react-popper resolves')]);
+    let installs = 0;
+    expect(await recoverStaleInstall(root, async () => { installs++; await install(root, 'clean'); })).toBe(true);
+    expect(installs).toBe(1);
+    expect(staleSharedRuntimes(root)).toEqual([]);
+  });
+
+  it('takes the fast path on a shared install and ignores a lockfile that nests Floating UI', async () => {
+    let installs = 0;
+    expect(await recoverStaleInstall(await checkout(sharedLock, 'clean'), async () => { installs++; })).toBe(false);
+    expect(staleSharedRuntimes(await checkout(nestedLock, 'old'))).toEqual([]);
+    expect(installs).toBe(0);
+  });
 });

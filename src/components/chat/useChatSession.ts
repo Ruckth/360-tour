@@ -2,8 +2,8 @@
 import { ConvexError } from 'convex/values';
 import type { Id } from 'convex/_generated/dataModel';
 import { getStoredGuestToken } from '@/components/chat/session/credentials';
-import { useLocale, useTranslations } from 'next-intl';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useLocale, useTranslations } from '@/platform/intl';
+import { usePathname, useRouter, useSearchParams } from '@/platform/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useConvex } from 'convex/react';
 import { captureForBooking } from '@/lib/marketing/capture';

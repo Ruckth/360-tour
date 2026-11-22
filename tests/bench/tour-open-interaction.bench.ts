@@ -31,7 +31,8 @@ const EXPECTED_FIRST_ROOM = "pv-living";
 const EXPECTED_FIRST_PANORAMA = "/tour/panoramas/v1/pool-villa-living-2048.webp";
 const EXPECTED_NEIGHBOR_PREFETCH_PANORAMA = "/tour/panoramas/v1/pool-villa-pool-2048.webp";
 const ALLOWED_PANORAMAS_BEFORE_GESTURE = new Set([EXPECTED_FIRST_PANORAMA, EXPECTED_NEIGHBOR_PREFETCH_PANORAMA]);
-const APP_CHUNK = /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
+const START = process.env.BENCH_FRONTEND === "start";
+const APP_CHUNK = START ? /^\/assets\/[^?#]+\.js(?:\?|$)/ : /^\/_next\/static\/chunks\/[^?#]+\.js(?:\?|$)/;
 
 const CHROME_TRACE_CATEGORIES = [
   "-*",
@@ -231,13 +232,20 @@ async function measure(
   const scriptRequests = new Map<string, { url: URL; wallMs: number; initiator: string }>();
   const scriptTransfers = new Map<string, number>();
   const cachedScripts = new Set<string>();
-  if (preloadPaths) {
+  const scriptEncoding = new Map<string, string>();
+  const observeScripts = START || Boolean(preloadPaths);
+  if (observeScripts) {
     cdp.on("Network.loadingFinished", (event) => {
       if (scriptRequests.has(event.requestId)) scriptTransfers.set(event.requestId, event.encodedDataLength);
     });
     cdp.on("Network.requestServedFromCache", (event) => cachedScripts.add(event.requestId));
     cdp.on("Network.responseReceived", (event) => {
       if (event.response.fromDiskCache) cachedScripts.add(event.requestId);
+      if (START && scriptRequests.has(event.requestId)) {
+        const encoding = Object.entries(event.response.headers)
+          .find(([name]) => name.toLowerCase() === "content-encoding")?.[1];
+        scriptEncoding.set(event.requestId, typeof encoding === "string" ? encoding : "identity");
+      }
     });
   }
   cdp.on("Network.requestWillBeSent", (event) => {
@@ -246,7 +254,7 @@ async function measure(
         path: new URL(event.request.url).pathname,
         wallMs: event.wallTime * 1000,
       });
-    } else if (preloadPaths && APP_CHUNK.test(new URL(event.request.url).pathname)) {
+    } else if (observeScripts && APP_CHUNK.test(new URL(event.request.url).pathname)) {
       scriptRequests.set(event.requestId, {
         url: new URL(event.request.url),
         wallMs: event.wallTime * 1000,
@@ -304,7 +312,9 @@ async function measure(
     const documentResponse = await page.goto(VILLA_PATH + (direct ? "?tour=1" : ""), {
       waitUntil: direct ? "commit" : "load",
     });
-    const routeCache = (await documentResponse?.headerValue("x-nextjs-cache")) ?? null;
+    const routeCache = START ? null : ((await documentResponse?.headerValue("x-nextjs-cache")) ?? null);
+    const documentEncoding = START
+      ? (await documentResponse?.headerValue("content-encoding")) ?? "identity" : undefined;
     const explore = page.getByRole("button", { name: /Explore (in )?360/i }).first();
     if (kind === "reopen") {
       await explore.tap();
@@ -331,7 +341,7 @@ async function measure(
       timeout: 10_000,
     });
     const data = await page.evaluate(
-      ({ direct, pattern }) => {
+      ({ direct, pattern, startFrontend }) => {
         const s = (window as unknown as InstrumentedWindow).__tourSample;
         const start = direct ? 0 : s.opened;
         if (start === null || !s.moved || s.gesture === null || !s.origin)
@@ -375,12 +385,17 @@ async function measure(
             initiator: r.initiatorType,
             transferBytes: r.transferSize,
             encodedBytes: r.encodedBodySize,
+            ...(startFrontend && { decodedBytes: r.decodedBodySize }),
           }));
         return {
           start,
           origin: location.origin,
           timeOrigin: performance.timeOrigin,
           ttfb: navigation.responseStart,
+          ...(startFrontend && {
+            documentEncodedBytes: navigation.encodedBodySize,
+            documentDecodedBytes: navigation.decodedBodySize,
+          }),
           serverHeaderMs: direct ? (navigation.serverTiming.find((entry) => entry.name === "ssr")?.duration ?? null) : null,
           scripts,
           responseMs: s.moved.at - start,
@@ -397,7 +412,7 @@ async function measure(
           images,
         };
       },
-      { direct, pattern: PANORAMA.source },
+      { direct, pattern: PANORAMA.source, startFrontend: START },
     );
     await closeSpan();
     await stopChromeTrace();
@@ -440,12 +455,14 @@ async function measure(
         initiator: r.initiator,
         transferBytes: scriptTransfers.get(id) ?? null,
         servedFromCache: cachedScripts.has(id),
+        ...(START && { contentEncoding: scriptEncoding.get(id) ?? null }),
       }))
       .filter((r) => r.start >= timings.start && r.start <= timings.changedFrameAt);
     return {
       kind,
       withheldMs,
       routeCache,
+      ...(START && { documentEncoding }),
       ...timings,
       startedImages,
       startedScripts,
@@ -489,6 +506,10 @@ async function benchmarkMetadata(browser: Browser) {
     revision: execFileSync("git", ["rev-parse", "HEAD"], {
       encoding: "utf8",
     }).trim(),
+    ...(START && {
+      frontend: "start",
+      assetEncoding: process.env.BENCH_START_WIRE_GZIP === "1" ? "gzip" : "identity",
+    }),
     browser: browser.version(),
     renderer,
     node: process.version,
@@ -505,7 +526,7 @@ async function benchmarkMetadata(browser: Browser) {
     uploadBytesPerSec: MOBILE_PROFILE.uploadThroughput,
     expectedFirstRoom: EXPECTED_FIRST_ROOM,
     expectedFirstPanorama: EXPECTED_FIRST_PANORAMA,
-    lockSha256: digest("pnpm-lock.yaml"),
+    lockSha256: digest("bun.lock"),
     assetSha256: digest("public/tour/panoramas/v1/pool-villa-living-2048.webp"),
     seed: "demo-resort",
     sceneSeedSha256: digest("convex/maintenance/seeds/rooms.ts"),

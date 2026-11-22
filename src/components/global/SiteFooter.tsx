@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useLocale, useTranslations } from "next-intl";
+import Link from "@/platform/link";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { localizeHref } from "@/i18n/routing";
 import { buildEmailHref } from "@/lib/contact-links";
 import { getLocalizedResort } from "@/lib/i18n/public-content";

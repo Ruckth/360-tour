@@ -1,7 +1,7 @@
 "use client";
 
 import { ReceiptText, TriangleAlert } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useId, useState } from "react";
 import { receiptPath } from "@/components/checkout/checkout-source";
 import { Button } from "@/components/ui/button";

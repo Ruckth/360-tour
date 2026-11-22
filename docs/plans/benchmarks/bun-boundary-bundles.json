@@ -1,0 +1,129 @@
+{
+  "toolchain": {
+    "bun": "1.4.5",
+    "node": "22.22.3",
+    "fixture": "demo-resort"
+  },
+  "builds": [
+    {
+      "label": "original Bun",
+      "source": "8feecce4ccbccc2a67f1247058ef971093e8f819",
+      "lockSha256": "61f886fa941f044168ac36058b2089d362854e49f0765acf6da7ffe7e815baa7",
+      "generatedAt": "2026-11-22T06:26:29.586Z",
+      "routes": [
+        {
+          "route": "/[locale]/(home)",
+          "chunks": 21,
+          "raw": 1060768,
+          "gzip": 314858,
+          "brotli": 276053,
+          "localeScripts": []
+        },
+        {
+          "route": "/[locale]/rooms/[id]",
+          "chunks": 21,
+          "raw": 1057427,
+          "gzip": 313153,
+          "brotli": 274593,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/checkout",
+          "chunks": 35,
+          "raw": 1898847,
+          "gzip": 566778,
+          "brotli": 495286,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/properties/[id]",
+          "chunks": 31,
+          "raw": 1567379,
+          "gzip": 475855,
+          "brotli": 416779,
+          "localeScripts": []
+        }
+      ]
+    },
+    {
+      "label": "Clerk pin",
+      "source": "455b13f7307f6386f1a4039c9f46c019c98087fc",
+      "lockSha256": "05ce9afec009a2350989dfde8925af00abe7602f2d0d20a15ea2e862b433a6a8",
+      "generatedAt": "2026-11-22T06:28:27.665Z",
+      "routes": [
+        {
+          "route": "/[locale]/(home)",
+          "chunks": 20,
+          "raw": 1016751,
+          "gzip": 300327,
+          "brotli": 262911,
+          "localeScripts": []
+        },
+        {
+          "route": "/[locale]/rooms/[id]",
+          "chunks": 20,
+          "raw": 1013410,
+          "gzip": 298622,
+          "brotli": 261451,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/checkout",
+          "chunks": 34,
+          "raw": 1854830,
+          "gzip": 552248,
+          "brotli": 482146,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/properties/[id]",
+          "chunks": 30,
+          "raw": 1523362,
+          "gzip": 461325,
+          "brotli": 403639,
+          "localeScripts": []
+        }
+      ]
+    },
+    {
+      "label": "Clerk and Floating UI pins",
+      "source": "99970e077904f561fb6623853913a1feb1f8303d",
+      "lockSha256": "38281a4ef35ff1a1b958a072d1b4df49dffe72213834d1c505b8f907f5a45faf",
+      "generatedAt": "2026-11-22T06:32:55.591Z",
+      "routes": [
+        {
+          "route": "/[locale]/(home)",
+          "chunks": 20,
+          "raw": 1020057,
+          "gzip": 301303,
+          "brotli": 263770,
+          "localeScripts": []
+        },
+        {
+          "route": "/[locale]/rooms/[id]",
+          "chunks": 20,
+          "raw": 1016716,
+          "gzip": 299598,
+          "brotli": 262310,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/checkout",
+          "chunks": 34,
+          "raw": 1836821,
+          "gzip": 545221,
+          "brotli": 476013,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/properties/[id]",
+          "chunks": 30,
+          "raw": 1505353,
+          "gzip": 454298,
+          "brotli": 397506,
+          "localeScripts": []
+        }
+      ]
+    }
+  ]
+}

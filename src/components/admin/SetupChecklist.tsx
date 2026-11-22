@@ -3,7 +3,7 @@
 import { useAction, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { CheckCircle2, Circle, Copy, X } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";

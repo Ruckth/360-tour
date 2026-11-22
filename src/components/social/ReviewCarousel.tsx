@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { useTranslations } from "next-intl";
+import Image from "@/platform/image";
+import { useTranslations } from "@/platform/intl";
 import { StarRating } from "@/components/social/StarRating";
 import { SwipeRail } from "@/components/ui/SwipeRail";
 import type { Review } from "@/lib/data/reviews";

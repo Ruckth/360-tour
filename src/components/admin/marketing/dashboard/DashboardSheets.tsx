@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, ExternalLink, Undo2 } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";

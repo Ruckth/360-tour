@@ -1,9 +1,9 @@
 "use client";
 import { api } from 'convex/_generated/api';
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/navigation";
 import { ChevronsRight, ExternalLink, Globe2, Users } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useMemo, useState } from "react";
 import {
   getChatVillaBackground,

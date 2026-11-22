@@ -8,3 +8,9 @@ output
 test-results
 .env.dev.local
 .env.e2e.local
+
+.env.local
+.nitro
+.output
+.tanstack
+dist

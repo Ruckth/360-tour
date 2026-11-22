@@ -5,7 +5,7 @@ import { satangToBaht } from 'convex/shared/money';
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ExternalLink } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { calculateDirectQuote } from "convex/shared/pricing";
 import { useQuery } from "convex/react";
 import { cn } from "@/lib/utils";

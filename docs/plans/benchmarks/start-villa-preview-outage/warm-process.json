@@ -1,0 +1,143 @@
+{
+  "fixture": "isolated QA Convex, anonymous pool-villa",
+  "commit": "369c9fdc2fbfd6637889a445e25bfd8439041112",
+  "clock": "runner-monotonic-ms",
+  "observations": [
+    {
+      "phase": "healthy",
+      "atMs": 1,
+      "status": 200,
+      "durationMs": 3233.6,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "upstream": 0,
+      "held": 0,
+      "title": "Tideglass Pool Residence — Auralis Cove Retreat"
+    },
+    {
+      "phase": "healthy-repeat",
+      "atMs": 3235,
+      "status": 200,
+      "durationMs": 794.4,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "upstream": 0,
+      "held": 0,
+      "title": "Tideglass Pool Residence — Auralis Cove Retreat"
+    },
+    {
+      "phase": "warm-outage",
+      "atMs": 27181,
+      "status": 200,
+      "durationMs": 3782.4,
+      "cache": "stale; read-error",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "upstream": 2,
+      "held": 2,
+      "title": "Tideglass Pool Residence — Auralis Cove Retreat",
+      "polls": 5,
+      "seen": [
+        "hit@P1",
+        "hit@P1",
+        "hit@P1",
+        "hit@P1",
+        "stale; read-error@P1"
+      ],
+      "sameTitleAsHealthy": true
+    },
+    {
+      "phase": "cold-outage-backoff",
+      "atMs": 30964,
+      "status": 503,
+      "durationMs": 606.8,
+      "cache": "unavailable",
+      "retryAfter": "30",
+      "process": "P1",
+      "faultActive": true,
+      "upstream": 2,
+      "held": 2,
+      "title": "Auralis Cove Retreat"
+    },
+    {
+      "phase": "recovered",
+      "atMs": 61870,
+      "status": 200,
+      "durationMs": 661.1,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "upstream": 4,
+      "held": 2,
+      "title": "Tideglass Pool Residence — Auralis Cove Retreat",
+      "polls": 13,
+      "seen": [
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "stale; backoff@P1",
+        "miss@P1"
+      ],
+      "elapsedMs": 30960,
+      "sameTitleAsHealthy": true
+    },
+    {
+      "phase": "authoritative-miss",
+      "atMs": 62532,
+      "status": 404,
+      "durationMs": 409.6,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "upstream": 5,
+      "held": 2,
+      "title": "Auralis Cove Retreat"
+    },
+    {
+      "phase": "authoritative-miss-repeat",
+      "atMs": 62942,
+      "status": 404,
+      "durationMs": 553.5,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "upstream": 5,
+      "held": 2,
+      "title": "Auralis Cove Retreat"
+    },
+    {
+      "phase": "cold-outage-held-read",
+      "atMs": 63496,
+      "status": 503,
+      "durationMs": 3548.1,
+      "cache": "unavailable",
+      "retryAfter": "30",
+      "process": "P1",
+      "faultActive": true,
+      "upstream": 6,
+      "held": 3,
+      "title": "Auralis Cove Retreat"
+    }
+  ],
+  "summary": {
+    "processes": 1,
+    "warmProcessVerified": true,
+    "passed": true
+  }
+}

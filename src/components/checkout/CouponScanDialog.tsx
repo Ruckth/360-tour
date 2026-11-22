@@ -1,7 +1,7 @@
 "use client";
 
 import { CameraOff } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useEffect, useEffectEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";

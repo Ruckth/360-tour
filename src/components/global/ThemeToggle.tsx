@@ -1,7 +1,7 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useEffect, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { resolveStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";

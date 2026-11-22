@@ -3,7 +3,7 @@ export default function requireLocalIntegration() {
     const value = process.env[key];
     if (!value || !["localhost", "127.0.0.1"].includes(new URL(value).hostname))
       throw new Error(
-        `Run pnpm test:e2e; ${key} must name the fresh isolated local server`,
+        `Run bun run test:e2e; ${key} must name the fresh isolated local server`,
       );
   }
 }

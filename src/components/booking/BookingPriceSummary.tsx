@@ -3,7 +3,7 @@
 import { satangToBaht } from 'convex/shared/money';
 
 import { Info, TicketPercent } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Card } from "@/components/ui/card";

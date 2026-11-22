@@ -1,0 +1,531 @@
+{
+  "previewName": "perf-phase2-swr-validation-3",
+  "commit": "aea4cc512fb037dbabd0221901d9aa88c76144dd",
+  "clock": "runner-monotonic-ms",
+  "mode": "swr",
+  "freshMs": 60000,
+  "backoffMs": 30000,
+  "immediateMs": 2000,
+  "causalMs": 3000,
+  "burstSize": 3,
+  "observations": [
+    {
+      "phase": "healthy",
+      "atMs": 15438,
+      "status": 200,
+      "durationMs": 634.4,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "seeded",
+      "upstream": 1,
+      "held": 0,
+      "detail": 1,
+      "detailHeld": 0
+    },
+    {
+      "phase": "edit-stale-while-revalidate",
+      "atMs": 18898,
+      "status": 200,
+      "durationMs": 580.3,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "seeded",
+      "upstream": 2,
+      "held": 0,
+      "detail": 2,
+      "detailHeld": 0,
+      "sinceWriteMs": 824,
+      "seen": [
+        "200:stale:seeded:580.3@P1"
+      ]
+    },
+    {
+      "phase": "edit-fresh",
+      "atMs": 24981,
+      "status": 200,
+      "durationMs": 401.7,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "edited",
+      "upstream": 4,
+      "held": 0,
+      "detail": 3,
+      "detailHeld": 0,
+      "sinceWriteMs": 7308,
+      "sinceRefreshMs": 6484,
+      "originDetailReads": 2
+    },
+    {
+      "phase": "held-stale-while-revalidate",
+      "atMs": 82288,
+      "status": 200,
+      "durationMs": 428.7,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "edited",
+      "upstream": 5,
+      "held": 1,
+      "detail": 4,
+      "detailHeld": 1,
+      "followUps": [
+        "200:stale:edited:561.9@P1",
+        "200:stale:edited:328.2@P1",
+        "200:stale:edited:532.7@P1"
+      ],
+      "followUpsInFlight": 3,
+      "seen": [
+        "200:hit:edited:535.3@P1",
+        "200:hit:edited:623.7@P1",
+        "200:hit:edited:654.2@P1",
+        "200:hit:edited:649@P1",
+        "200:hit:edited:696.1@P1",
+        "200:hit:edited:406@P1",
+        "200:hit:edited:679.3@P1",
+        "200:hit:edited:625.4@P1",
+        "200:hit:edited:687.7@P1",
+        "200:hit:edited:622.8@P1",
+        "200:stale:edited:428.7@P1"
+      ]
+    },
+    {
+      "phase": "warm-fallback-after-failed-refresh",
+      "atMs": 89141,
+      "status": 200,
+      "durationMs": 400.1,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "edited",
+      "upstream": 6,
+      "held": 2,
+      "detail": 4,
+      "detailHeld": 1,
+      "heldDetailReads": 1
+    },
+    {
+      "phase": "tokenless-in-backoff",
+      "atMs": 89541,
+      "status": 200,
+      "durationMs": 348.5,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "edited",
+      "upstream": 6,
+      "held": 2,
+      "detail": 4,
+      "detailHeld": 1,
+      "newDetailReads": 0,
+      "sinceHeldRefreshMs": 7602
+    },
+    {
+      "phase": "cold-unknown-in-backoff",
+      "atMs": 89891,
+      "status": 503,
+      "durationMs": 342.1,
+      "cache": "unavailable",
+      "retryAfter": "30",
+      "process": "P1",
+      "faultActive": false,
+      "content": "other",
+      "upstream": 6,
+      "held": 2,
+      "detail": 4,
+      "detailHeld": 1
+    },
+    {
+      "phase": "backoff-ended",
+      "atMs": 118222,
+      "status": 404,
+      "durationMs": 369.9,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 10,
+      "held": 2,
+      "detail": 7,
+      "detailHeld": 1,
+      "sinceHeldRefreshMs": 36642,
+      "seen": [
+        "503:unavailable:other:560@P1",
+        "200:stale:edited:410.9@P1",
+        "503:unavailable:other:327.8@P1",
+        "200:stale:edited:338.6@P1",
+        "503:unavailable:other:557.2@P1",
+        "200:stale:edited:329.9@P1",
+        "503:unavailable:other:340.2@P1",
+        "200:stale:edited:344.7@P1",
+        "503:unavailable:other:355.3@P1",
+        "200:stale:edited:550.5@P1",
+        "503:unavailable:other:308.6@P1",
+        "200:stale:edited:348.8@P1",
+        "503:unavailable:other:553.1@P1",
+        "200:stale:edited:353@P1",
+        "503:unavailable:other:344.2@P1",
+        "200:stale:edited:330.8@P1",
+        "503:unavailable:other:369.9@P1",
+        "200:stale:edited:336.1@P1",
+        "503:unavailable:other:340.2@P1",
+        "200:stale:edited:578@P1",
+        "404:miss:absent:369.9@P1",
+        "200:hit:recovered:338.1@P1"
+      ]
+    }
+  ],
+  "timings": [
+    {
+      "leg": "healthy",
+      "durationMs": 634.4,
+      "gapMs": null,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 580.3,
+      "gapMs": 2826,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 401.7,
+      "gapMs": 5503,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 535.3,
+      "gapMs": 716,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 623.7,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 654.2,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 649,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 696.1,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 406,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 679.3,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 625.4,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 687.7,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 622.8,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 428.7,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 561.9,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 328.2,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 532.7,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 400.1,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 348.5,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 342.1,
+      "gapMs": 2,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 560,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 410.9,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 327.8,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 338.6,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 557.2,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 329.9,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 340.2,
+      "gapMs": 2003,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 344.7,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 355.3,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 550.5,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 308.6,
+      "gapMs": 2001,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 348.8,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 553.1,
+      "gapMs": 2001,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 353,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 344.2,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 330.8,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 369.9,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 336.1,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 340.2,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 578,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 369.9,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "miss"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 338.1,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 327.3,
+      "gapMs": 1,
+      "faulted": false,
+      "cache": "hit"
+    }
+  ],
+  "originReads": [
+    {
+      "transition": "edit refresh",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 2,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "tokenless request in backoff",
+      "kind": "backoff",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "held refresh incl. in-flight follow-ups",
+      "kind": "failed",
+      "expected": 1,
+      "actual": 1,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "new unknown slug in backoff",
+      "kind": "backoff",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "room refresh after backoff (polls coalesce while in flight)",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 0
+    }
+  ],
+  "summary": {
+    "passed": false,
+    "stage": "global-backoff",
+    "processes": 1,
+    "error": "room refresh after backoff (polls coalesce while in flight): expected 2 origin detail reads (changed), saw 0\n\n0 !== 2\n"
+  },
+  "teardown": "passed"
+}

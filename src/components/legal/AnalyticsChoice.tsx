@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/platform/intl';
 import { useSyncExternalStore } from 'react';
 import { isConsentPageOnly, onConsentChange, readConsent, setConsent } from '@/lib/marketing/capture';
 

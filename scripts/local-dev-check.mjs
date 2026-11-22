@@ -12,6 +12,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { testUsers } from './e2e-clerk.mjs';
 import { clerkFields } from './local-dev-config.mjs';
+import { localDevPort } from './worktree-ports.mjs';
 import { disabledServices, createPrivateOutput } from './local-integration-config.mjs';
 import { waitFor } from './local-processes.mjs';
 
@@ -47,16 +48,17 @@ function finalize() {
 }
 for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(name, () => { void finalize().finally(() => process.exit(130)); });
 let activeLog = '';
-const port = await new Promise((resolve, reject) => {
+const fallbackPort = await new Promise((resolve, reject) => {
   const server = net.createServer(); server.on('error', reject);
   server.listen(0, '127.0.0.1', () => { const result = server.address().port; server.close(() => resolve(result)); });
 });
+const port = localDevPort(root, fallbackPort);
 const report = [];
 const app = `http://localhost:${port}`;
 const childEnv = { PATH: process.env.PATH, ...disabledServices };
 async function start() {
   activeLog = '';
-  child = spawn(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child);
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', value => { activeLog += value; output.write(value); });
   await waitFor(async () => {
@@ -96,7 +98,7 @@ try {
   report.push(activeLog.includes('Local backend seeded from empty.') ? 'Fresh anonymous backend seeded from empty before Next.' : 'Existing local data retained; empty-only seed refused.');
   const configStat = await fs.stat('.local-dev/backend/.convex/local/default/config.json');
   assert.equal(configStat.mode & 0o077, 0);
-  const duplicate = spawnSync(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, encoding: 'utf8' });
+  const duplicate = spawnSync('bun', ['run', 'dev'], { cwd: root, env: childEnv, encoding: 'utf8' });
   assert.equal(duplicate.status, 1);
   assert.match(duplicate.stderr, /Local dev lock exists/);
   report.push('Concurrent startup refused the lock without stopping its owner.');
@@ -141,7 +143,7 @@ try {
   blocker.on('connection', socket => { blockerSockets.add(socket); socket.on('close', () => blockerSockets.delete(socket)); });
   await new Promise(resolve => blocker.listen(port, 'localhost', resolve));
   activeLog = '';
-  child = spawn(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
+  child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', value => { activeLog += value; });
   await waitFor(async () => child.exitCode !== null, 'Next port failure cleanup', 180000);
   assert.equal(child.exitCode, 1);

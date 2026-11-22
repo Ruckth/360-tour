@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { bookingSteps, type BookingStep } from "@/lib/booking/booking";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";

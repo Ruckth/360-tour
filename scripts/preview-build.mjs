@@ -16,7 +16,13 @@ export function assertPreviewProvidersDisabled(listing) {
  */
 export function previewFrontendEnvironment(env, url) {
   const siteUrl = env.VERCEL_URL ? `https://${env.VERCEL_URL}` : '';
-  return { ...env, ...disabledServices, NEXT_PUBLIC_CONVEX_URL: previewUrl(url), NEXT_PUBLIC_CONVEX_SITE_URL: url.replace('.convex.cloud', '.convex.site'), SITE_URL: siteUrl, NEXT_PUBLIC_SITE_URL: siteUrl };
+  const cloud = previewUrl(url), site = cloud.replace('.convex.cloud', '.convex.site');
+  return {
+    ...env, ...disabledServices, NEXT_PUBLIC_CONVEX_URL: cloud, VITE_CONVEX_URL: cloud,
+    NEXT_PUBLIC_CONVEX_SITE_URL: site, VITE_CONVEX_SITE_URL: site,
+    SITE_URL: siteUrl, NEXT_PUBLIC_SITE_URL: siteUrl, VITE_SITE_URL: siteUrl,
+    VITE_CLERK_PUBLISHABLE_KEY: env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  };
 }
 
 export const protectedDeployments = ['wary-toad-189', 'optimistic-turtle-573'];

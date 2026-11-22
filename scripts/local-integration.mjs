@@ -11,6 +11,7 @@ import { makeFunctionReference } from "convex/server";
 import { testUsers } from "./e2e-clerk.mjs";
 import { localConvexCache } from './local-convex-cache.mjs';
 import { startBenchSpans } from "./local-bench-spans.mjs";
+import { startVillaCacheProxy } from "./bench/start-villa-cache-proxy.mjs";
 import {
   disabledServices,
   requireLocalBackend,
@@ -20,6 +21,11 @@ import {
 process.umask(0o077); // Local deployment credentials and authenticated test artifacts stay private.
 const root = process.cwd();
 const supplied = { ...process.env };
+const start = process.argv.slice(2, process.argv.includes("--") ? process.argv.indexOf("--") : undefined).includes("--start");
+const villaStudyEnabled = supplied.START_VILLA_CACHE_STUDY === "1";
+const villaSwrPilot = supplied.START_VILLA_CACHE_SWR_PILOT === "1";
+if (villaSwrPilot && !villaStudyEnabled) throw new Error("The local SWR pilot requires the disposable villa cache study");
+if (villaStudyEnabled && !start) throw new Error("The villa cache study requires --start");
 // Opt-in file contains only Clerk test values, never inherited Convex/provider credentials.
 try {
   const contents = await fs.readFile(path.join(root, ".env.e2e.local"), "utf8");
@@ -107,11 +113,16 @@ const env = {
   CONVEX_TELEMETRY_DISABLED: "1",
   NEXT_TELEMETRY_DISABLED: "1",
   NEXT_PUBLIC_CONVEX_URL: url,
+  VITE_CONVEX_URL: url,
+  VITE_CONVEX_SITE_URL: `http://127.0.0.1:${site}`,
+  VITE_CLERK_PUBLISHABLE_KEY: supplied.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  VITE_SITE_URL: baseURL,
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: supplied.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   CLERK_PUBLISHABLE_KEY: supplied.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
   CLERK_SECRET_KEY: supplied.CLERK_SECRET_KEY,
   CLERK_JWT_ISSUER_DOMAIN: supplied.CLERK_JWT_ISSUER_DOMAIN,
   E2E_BASE_URL: baseURL,
+  E2E_START_ADMIN_IDENTITY: start ? "1" : "",
   E2E_COMPONENT_PORT: String(component),
   BOOKING_UI_PORT: String(component),
   E2E_MODE: "integration",
@@ -123,6 +134,7 @@ const env = {
 const children = [];
 let cleanupSessions = async () => {};
 let benchSpans;
+let villaStudy;
 async function launch(command, args, cwd = root, childEnv = env, log) {
   const fd = log ? await fs.open(path.join(work, log), "w", 0o600) : null;
   const child = spawn(command, args, {
@@ -187,6 +199,7 @@ function finalize() {
   return (cleanup ??= (async () => {
     await stop();
     await benchSpans?.close();
+    await villaStudy?.close();
     await cleanupSessions().catch((error) => {
       throw privateError(error);
     });
@@ -237,6 +250,10 @@ try {
     }
   }, "local backend config");
   await fs.chmod(configPath, 0o600);
+  if (villaStudyEnabled) {
+    villaStudy = await startVillaCacheProxy(url);
+    env.VITE_CONVEX_URL = villaStudy.proxyUrl;
+  }
   await until(async () => {
     try {
       const response = await fetch(url + "/api/update_environment_variables", {
@@ -252,6 +269,10 @@ try {
               value: env.CLERK_JWT_ISSUER_DOMAIN,
             },
             { name: "ADMIN_EMAILS", value: users.owner.email },
+            ...(villaStudy ? [
+              { name: "START_VILLA_INVALIDATION_ORIGIN", value: `http://127.0.0.1:${app}` },
+              { name: "START_VILLA_INVALIDATION_SECRET", value: villaStudy.secret },
+            ] : []),
           ],
         }),
       });
@@ -315,39 +336,58 @@ try {
     "Fresh local backend seeded; dedicated Clerk test identities ready.",
   );
   const verify = process.argv.includes("--verify");
-  await run("pnpm", [verify ? "verify" : "build"]);
-  if (supplied.BENCH_SPANS_OUT) {
+  if (verify || !start) await run("bun", ["run", verify ? "verify" : "build"]);
+  if (start) {
+    await run("bun", ["run", "build:start"], root, {
+      ...env,
+      ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
+    });
+    const server = supplied.BENCH_SPANS_OUT
+      ? ["--import", "./scripts/local-bench-next-timing.mjs", ".output/server/index.mjs"]
+      : [".output/server/index.mjs"];
+    await launch(process.execPath, server, root, {
+      ...env, PORT: String(app), HOST: "127.0.0.1",
+      START_VILLA_INVALIDATION_SECRET: villaStudy?.secret ?? "",
+      ...(villaSwrPilot && { VERCEL_ENV: "preview", VILLA_BENCH_NAMESPACE: "1" }),
+      ...(supplied.BENCH_SPANS_OUT && { BENCH_LOCAL_SSR: "1", BENCH_START_PORT: String(app) }),
+    }, "start.log");
+  } else if (supplied.BENCH_SPANS_OUT) {
     await launch(process.execPath, [
       "--import", "./scripts/local-bench-next-timing.mjs",
       "./node_modules/next/dist/bin/next", "start", "-p", String(app),
     ], root, { ...env, BENCH_LOCAL_SSR: "1", BENCH_NEXT_PORT: String(app) }, "next.log");
   } else {
-    await launch("pnpm", ["exec", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
+    await launch("bun", ["run", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
   }
   await until(async () => {
     try {
-      return (await fetch(baseURL + "/admin/chats")).ok;
+      return (await fetch(baseURL + (start ? "/rooms/pool-villa" : "/admin/chats"))).ok;
     } catch {
       return false;
     }
-  }, "Next server");
-  if (verify) await run("pnpm", ["test:booking-ui"]);
+  }, start ? "TanStack Start server" : "Next server");
+  if (verify) await run("bun", ["run", "test:booking-ui"]);
   const separator = process.argv.indexOf("--");
   const command =
     separator < 0
-      ? ["pnpm", "exec", "playwright", "test"]
+      ? ["bun", "run", "playwright", "test"]
       : process.argv.slice(separator + 1);
   if (supplied.BENCH_SPANS_OUT) {
     benchSpans = await startBenchSpans({
       out: path.resolve(root, supplied.BENCH_SPANS_OUT),
       backendUrl: url,
       adminKey: config.adminKey,
-      nextLog: path.join(work, "next.log"),
+      nextLog: path.join(work, start ? "start.log" : "next.log"),
     });
   }
   await run(command[0], command.slice(1), root, {
     ...env,
     ...(benchSpans && { BENCH_SPAN_ENDPOINT: benchSpans.endpoint }),
+    ...(start && {
+      BENCH_FRONTEND: "start",
+      ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
+    }),
+    ...(villaStudy && { START_VILLA_CACHE_STUDY_CONTROL: villaStudy.controlUrl }),
   });
 } finally {
   await finalize();

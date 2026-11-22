@@ -6,15 +6,24 @@
   "playwright": { "config": ["playwright*.config.ts"] },
   // Convex exports functions by file path; maintenance and test module discovery are dynamic.
   "entry": [
+    "src/start-app/{start,server,router,client}.{ts,tsx}!",
+    "src/start-app/platform/*.{ts,tsx}!",
     "convex/*.ts!",
     "convex/maintenance/*.ts!",
     "tests/**/*.test.ts",
     "tests/**/*.spec.ts",
     "tests/e2e/auth.setup.ts",
+    "tests/e2e/preview-qa{,-provision}.ts",
+    "tests/bench/start-villa-preview{,-swr}-acceptance.ts",
     "tests/browser/*fixture*.tsx",
     "tests/browser/*-mock.{ts,tsx}",
+    "tests/browser/vite.config.ts",
     "scripts/**/*.{ts,mjs}",
     "*.config.{ts,mjs}"
   ],
-  "project": ["src/**/*.{ts,tsx,css}", "convex/**/*.ts", "tests/**/*.{ts,tsx}", "scripts/**/*.{ts,mjs}"]
+  "project": ["src/**/*.{ts,tsx,css}", "convex/**/*.ts", "tests/**/*.{ts,tsx}", "scripts/**/*.{ts,mjs}"],
+  // Install-layout pin, never imported: it keeps @clerk/nextjs and @clerk/react on one shared copy
+  // (tests/unit/clerk-shared-dedupe.test.ts explains and enforces it).
+  // The Floating UI pin shares the runtime already used by both installed Radix Popper versions.
+  "ignoreDependencies": ["@clerk/shared", "@floating-ui/react-dom"]
 }

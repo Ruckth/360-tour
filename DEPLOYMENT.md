@@ -17,11 +17,11 @@ Use these settings in the Vercel project:
 | Setting | Value |
 | --- | --- |
 | Framework preset | `Next.js` |
-| Install command | `pnpm install` |
-| Build command | `pnpm vercel-build` |
+| Install command | `npx --yes bun@1.4.5 install --frozen-lockfile` |
+| Build command | `npx --yes bun@1.4.5 run vercel-build` |
 | Output directory | Leave unset |
 
-`pnpm vercel-build` runs `pnpm typecheck` before the guarded [Phase 3f build workflow](docs/architecture/phase3f-operations.md). Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'pnpm build'` path with an explicit production-key guard and never seeds.
+The Vercel commands bootstrap the pinned Bun binary for install and build. The shipping Next runtime stays on Node 22. `bun run vercel-build` checks both frontend configurations and the tests before deployment. The Convex deploy command checks the functions with the pinned compiler before pushing them. [Phase 3f build workflow](docs/architecture/phase3f-operations.md) Preview claims/reuses the project-scoped branch backend, captures its URL without building, deploys Convex, verifies the authorized branch target, seeds only an empty database, then builds Next with that URL. A populated Preview is retained on every push/rebuild. Production retains the existing `convex deploy --cmd 'bun run build'` path with an explicit production-key guard and never seeds.
 
 Ordering matters: installed Convex 1.34.1 runs `--cmd` **before** its backend push, and `--preview-run` afterward. The previous combined command could cache an empty catalog on a fresh Preview; simply adding `--preview-run` does not fix that order. Root owns Preview key/default configuration and actual live acceptance.
 
@@ -35,7 +35,7 @@ Set these in Vercel Production and Preview. Social ingress signatures and verifi
 
 | Name | Required | Notes |
 | --- | --- | --- |
-| `CONVEX_DEPLOY_KEY` | Yes | Required by `pnpm vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
+| `CONVEX_DEPLOY_KEY` | Yes | Required by `bun run vercel-build`. Use the correct Convex deploy key for each Vercel environment. |
 | `MESSAGING_IMAGE_SECRET` | For social card images | Dedicated image-conversion signing key, shared with Convex. It does not authenticate webhook functions. |
 | `NEXT_PUBLIC_CONVEX_URL` | Yes | Injected by `convex deploy`; use an actual deployment URL. |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | Optional | Convex HTTP origin for the OTA export URL shown in admin. If omitted, the app derives it from `NEXT_PUBLIC_CONVEX_URL`. |
@@ -111,14 +111,14 @@ Seed scenarios are for a deliberately fresh, isolated deployment. They are **not
 After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default) or `busy-weekend`:
 
 ```sh
-pnpm exec convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
+bun run convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
 ```
 
-`pnpm seed` uses this same canonical internal function with the default scenario. There is no `seed:seedStaffServices` endpoint; do not try to add fixtures to an existing deployment. Preview initialization may use the following **only for a fresh empty Preview**; running it again against populated data refuses rather than upgrading it:
+`bun run seed` uses this same canonical internal function with the default scenario. There is no `seed:seedStaffServices` endpoint; do not try to add fixtures to an existing deployment. Preview initialization may use the following **only for a fresh empty Preview**; running it again against populated data refuses rather than upgrading it:
 
 ```sh
-pnpm typecheck
-npx convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'pnpm build' --preview-run maintenance/seed:seedAll
+bun run typecheck
+bun run convex deploy --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL --cmd 'bun run build' --preview-run maintenance/seed:seedAll
 ```
 
 Current local/CI integration and guarded per-PR Preview initialization use the unchanged atomic `maintenance/seed:seedAll` only on their explicitly isolated backend. Its all-table nonempty refusal must never turn into an automatic reset. Current eval/demo scripts use `maintenance/chatEval:*`; fixture administration uses `maintenance/aiEval:seed`, `maintenance/aiEval:cancelTestBookings` and `maintenance/aiEval:cleanup` (the last requires `{"confirm":"AI-EVAL"}`). These are operator-only internal functions, and evaluation tools can still perform business writes.
@@ -173,12 +173,12 @@ If Vercel fails with `Vercel build environment detected but no Convex deployment
 Run before shipping:
 
 ```sh
-pnpm verify:integration
-pnpm knip
-pnpm arch:score --phase "$(cat .arch-phase)"
+bun run verify:integration
+bun run knip
+bun run arch:score --phase "$(cat .arch-phase)"
 ```
 
-This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`pnpm typecheck`, `pnpm lint`, `pnpm knip`, `pnpm test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `pnpm verify` only with actual app configuration. Phase 3f local orchestration, test projects and guarded Preview/retention tooling are implemented; root-owned live Preview acceptance remains pending. See the [operations runbook](docs/architecture/phase3f-operations.md).
+This uses a fresh local Convex and real run-owned Clerk test users. Supply only the three dedicated test fields in ignored mode-600 `.env.e2e.local` or CI; see [ARCHITECTURE.md](ARCHITECTURE.md). Without configuration, offline checks (`bun run typecheck`, `bun run lint`, `bun run knip`, `bun run test:unit`, scorecard and explicit-base schema comparison) do not invent backend placeholders. Run `bun run verify` only with actual app configuration. Phase 3f local orchestration, test projects and guarded Preview/retention tooling are implemented; root-owned live Preview acceptance remains pending. See the [operations runbook](docs/architecture/phase3f-operations.md).
 
 After an authorized deployment, root owns live acceptance. Coordinate any external message, payment/refund, seed or reset separately; local integration disables those business providers. Review these flows against the explicitly selected environment:
 

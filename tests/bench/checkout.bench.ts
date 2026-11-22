@@ -8,7 +8,7 @@ import { expect, test, type Browser, type BrowserContextOptions } from "@playwri
  * from either:
  * - the e2e Clerk test identities: run it inside the local integration harness, which starts a
  *   fresh seeded local Convex, a production build and a cashier test user (E2E_CASHIER_EMAIL):
- *     node scripts/heavy.mjs node scripts/local-integration.mjs -- pnpm bench:browser checkout.bench.ts
+ *     node scripts/heavy.mjs node scripts/local-integration.mjs -- bun run bench:browser checkout.bench.ts
  *   The bench signs that cashier in once (clerkSetup + clerk.signIn, as tests/e2e do) in a context
  *   it doesn't measure, and reuses its storage state for every cold run.
  * - BENCH_CHECKOUT_STATE: a Playwright storage-state file for a cashier or manager on that server

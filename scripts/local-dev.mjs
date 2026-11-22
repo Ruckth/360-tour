@@ -26,7 +26,7 @@ const wait = (check, label) => waitFor(check, label, 180000, abort.signal);
 const localFetch = (resource, options = {}) => fetch(resource, { ...options, signal: AbortSignal.any([abort.signal, AbortSignal.timeout(10000)]) });
 let secrets = [];
 try {
-  if (process.argv.length > 2) throw new Error('pnpm dev accepts no reset or remote-target options; configure .env.dev.local');
+  if (process.argv.length > 2) throw new Error('bun run dev accepts no reset or remote-target options; configure .env.dev.local');
   refuseInheritedTarget(process.env);
   const config = await readDevConfig(path.join(root, '.env.dev.local'));
   config.port = localDevPort(root, config.port);

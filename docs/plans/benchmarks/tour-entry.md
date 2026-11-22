@@ -92,11 +92,11 @@ Run the diagnostic preload and traces in separate harness invocations so their s
 ```sh
 BENCH_SPANS_OUT="$out/viewer-spans.json" node scripts/heavy.mjs node scripts/local-integration.mjs -- \
   env BENCH_VIEWER_PROBE=1 BENCH_RUNS=5 BENCH_VIEWER_OUT="$out/viewer.json" \
-  pnpm bench:browser tour-open-interaction --grep 'tour viewer chunk preload experiment'
+  bun run bench:browser tour-open-interaction --grep 'tour viewer chunk preload experiment'
 BENCH_SPANS_OUT="$out/smoke-spans.json" node scripts/heavy.mjs node scripts/local-integration.mjs -- \
   env BENCH_RUNS=1 BENCH_BATCH=smoke BENCH_OUT="$out/smoke.json" \
   BENCH_TRACE_PATH="$out/playwright.zip" BENCH_CHROME_TRACE_PATH="$out/chrome.json" \
-  pnpm bench:browser tour-open-interaction --grep 'tour entry to first responsive frame'
+  bun run bench:browser tour-open-interaction --grep 'tour entry to first responsive frame'
 node scripts/bench/tour-trace.mjs "$out/chrome.json" "$out/trace.json.gz"
 ```
 

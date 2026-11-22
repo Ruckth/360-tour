@@ -1,11 +1,11 @@
 "use client";
 
-import { UserButton } from "@clerk/nextjs";
+import { UserButton } from "@/platform/auth";
 import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import { ChevronRight, Search, Shield } from "lucide-react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "@/platform/link";
+import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";

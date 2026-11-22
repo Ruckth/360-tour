@@ -2,7 +2,7 @@
 
 import { satangToBaht } from 'convex/shared/money';
 
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { SwipeRail } from "@/components/ui/SwipeRail";
 import type { BookingProperty } from "@/lib/booking/booking";

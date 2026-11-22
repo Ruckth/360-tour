@@ -1,0 +1,38 @@
+{
+  "projectDir": "b6509f29 (42ee62ee + @clerk/shared pin), hoisted",
+  "generatedAt": "2026-11-22T06:25:26.197Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 20,
+      "raw": 1017610,
+      "gzip": 300650,
+      "brotli": 263239,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 20,
+      "raw": 1014275,
+      "gzip": 299015,
+      "brotli": 261740,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 34,
+      "raw": 1855645,
+      "gzip": 552568,
+      "brotli": 482453,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 30,
+      "raw": 1524177,
+      "gzip": 461651,
+      "brotli": 403886,
+      "localeScripts": []
+    }
+  ]
+}

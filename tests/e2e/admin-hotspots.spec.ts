@@ -27,7 +27,7 @@ test("the visual editor opens from the keyboard, places and moves a hotspot, and
       .getByRole("button", { name: "Edit hotspots" });
     // The production chunk loader remembers a failed import for the life of this document.
     // Exercise that failure after the room UI is ready, then recover with a fresh document.
-    const chunks = "**/_next/static/chunks/*.js";
+    const chunks = /\/(?:_next\/static\/chunks|assets)\/[^/]+\.js(?:\?|$)/;
     await trigger.waitFor();
     await page.route(chunks, (route) => route.abort("failed"));
     await trigger.click();

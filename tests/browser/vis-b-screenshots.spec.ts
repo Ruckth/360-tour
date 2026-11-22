@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { openDesk } from "./helpers/desk-taps";
 
-// CAPTURE_VIS_B=1 BOOKING_UI_PORT=4372 pnpm exec playwright test -c playwright.booking.config.ts vis-b-screenshots --workers=1
+// CAPTURE_VIS_B=1 BOOKING_UI_PORT=4372 bun run playwright test -c playwright.booking.config.ts vis-b-screenshots --workers=1
 // Package B only. The original archives are never written by this spec.
 test.skip(
   process.env.CAPTURE_VIS_B !== "1",

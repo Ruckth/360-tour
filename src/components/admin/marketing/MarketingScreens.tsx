@@ -3,7 +3,7 @@
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/navigation";
 import { useMemo, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { useNow } from "@/lib/staff-bookings";
 import { adminMarketingPath } from "../admin-routes";

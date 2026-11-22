@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "convex/_generated/dataModel";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
 import { useShowOrderOnDisplay } from "@/components/admin/useShowOrderOnDisplay";

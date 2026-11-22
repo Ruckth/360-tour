@@ -2,9 +2,9 @@
 
 import { satangToBaht } from 'convex/shared/money';
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";

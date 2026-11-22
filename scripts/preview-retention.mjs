@@ -10,7 +10,7 @@ process.umask(0o077);
 const args = process.argv.slice(2);
 function value(flag) { const index = args.indexOf(flag); return index >= 0 ? args[index + 1] : undefined; }
 if (args.includes('--help') || !args.length) {
-  console.log('Offline dry-run: pnpm preview:retention --evidence <private-json> --project-id <id> --team <slug> --project <slug> --branch <exact-architecture-branch> [--backups <private-manifest-json>]\nNo deletion is performed. See docs/architecture/phase3f-operations.md for evidence/export/fresh recheck/deletion procedure.');
+  console.log('Offline dry-run: bun run preview:retention --evidence <private-json> --project-id <id> --team <slug> --project <slug> --branch <exact-architecture-branch> [--backups <private-manifest-json>]\nNo deletion is performed. See docs/architecture/phase3f-operations.md for evidence/export/fresh recheck/deletion procedure.');
 } else {
   const allowed = ['--evidence', '--project-id', '--team', '--project', '--branch', '--backups'];
   if (args.length % 2 || args.some((item, index) => index % 2 === 0 && !allowed.includes(item)) || new Set(args.filter((_, index) => index % 2 === 0)).size !== args.length / 2) throw new Error('Unknown, duplicate or missing retention arguments; no apply option exists');

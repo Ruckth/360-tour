@@ -2,9 +2,9 @@
 
 import { satangToBaht } from 'convex/shared/money';
 
-import dynamic from "next/dynamic";
+import dynamic from "@/platform/dynamic";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useState } from "react";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { StarRating } from "@/components/social/StarRating";

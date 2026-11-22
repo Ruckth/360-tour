@@ -1,47 +1,36 @@
-import { api } from "convex/_generated/api";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
+import { villaBenchmarkReaders, type VillaCacheObservation } from "@/lib/server/villa-cache-benchmark";
 import { ConvexHttpClient } from "convex/browser";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
-import type { Review } from "@/lib/data/reviews";
-import { getPublicMessages, normalizePublicLocale } from "@/lib/i18n/messages-loader";
 import {
-  catalogFrom,
-  reviewFromDb,
-  villaFromDb,
-  type DbVillaList,
-  type PublicVilla,
-  type VillaCatalog,
-} from "@/lib/villas";
+  createVillaReader,
+  queryDetail,
+  queryFeaturedReviews,
+  queryList,
+  readAllSlugs,
+  readSlugPage,
+  VILLA_REVALIDATE_SECONDS,
+  type VillaReadTrace,
+} from "@/lib/server/villa-reads";
 
-// Server-side villa reads for pages, metadata and the sitemap. Results are cached for a
+// Next server villa reads for pages, metadata and the sitemap. Results are cached for a
 // minute, so admin edits show up on the public site within ~60 s without a redeploy.
-// During temporary backend failures, serve only previously read backend data.
+// The shared recovery policy in villa-reads serves only previously read backend data.
 
-const REVALIDATE_SECONDS = 60;
-const TIMEOUT_MS = 3_000;
-const FAILURE_BACKOFF_MS = 30_000;
-const MAX_LAST_GOOD_DETAILS = 200;
-const VILLA_PAGE_SIZE = 100;
-const cacheOptions = { revalidate: REVALIDATE_SECONDS, tags: ["villas"] };
-
-function convexUrl() {
-  const url = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.PUBLIC_CONVEX_URL;
-  if (!url) throw new Error("NEXT_PUBLIC_CONVEX_URL is required");
-  return url;
-}
+const cacheOptions = { revalidate: VILLA_REVALIDATE_SECONDS, tags: ["villas"] };
 
 const cachedList = unstable_cache(
-  (url: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.list, {}),
+  (url: string) => queryList(new ConvexHttpClient(url)),
   ["public-villas"],
   cacheOptions,
 );
 
 // Enabled only for the isolated integration server. Track the cache's actual
 // callback, keeping run IDs and timing state out of the cache key.
-type VillaReadTiming = {
+type VillaReadTiming = Pick<VillaReadTrace, "recovery"> & {
   cache: "hit" | "miss" | "stale" | "bypass";
-  recovery?: "backoff" | "read-error";
   transportStarted: boolean;
   transportMs?: number;
 };
@@ -65,122 +54,18 @@ const cachedDetail = unstable_cache(
   (url: string, slug: string) => {
     const client = new ConvexHttpClient(url);
     const timing = villaReadTiming?.getStore();
-    return timing
-      ? timeVillaTransport(timing, () => client.query(api.catalog.publicProperties.getBySlug, { slug }))
-      : client.query(api.catalog.publicProperties.getBySlug, { slug });
+    return timing ? timeVillaTransport(timing, () => queryDetail(client, slug)) : queryDetail(client, slug);
   },
   ["public-villa"],
   cacheOptions,
 );
-async function withReadTimeout<T>(pending: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      pending,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("timed out")), TIMEOUT_MS);
-      }),
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
-function readSlugPage(client: ConvexHttpClient, cursor: string | null) {
-  return withReadTimeout(client.query(api.catalog.publicProperties.listSlugs, { paginationOpts: { numItems: VILLA_PAGE_SIZE, cursor } }));
-}
-
-// The production frontend builds before Convex publishes the new slug query.
-async function readCatalogSlugs(url: string) {
-  const { villas } = await withReadTimeout(cachedList(url));
-  return villas.map(({ slug }) => slug);
-}
-
-const cachedInitialSlugs = unstable_cache(
-  async (url: string) => {
-    try {
-      return (await readSlugPage(new ConvexHttpClient(url), null)).page;
-    } catch {
-      return await readCatalogSlugs(url);
-    }
-  },
-  ["public-villa-initial-slugs"],
-  cacheOptions,
-);
-const cachedSlugs = unstable_cache(
-  async (url: string) => {
-    const client = new ConvexHttpClient(url);
-    const slugs: string[] = [];
-    let cursor: string | null = null;
-    while (true) {
-      const result = await readSlugPage(client, cursor);
-      slugs.push(...result.page);
-      if (result.isDone) return slugs;
-      cursor = result.continueCursor;
-    }
-  },
-  ["public-villa-slugs"],
-  cacheOptions,
-);
-const cachedFeaturedReviews = unstable_cache(
-  (url: string) => new ConvexHttpClient(url).query(api.catalog.publicProperties.featuredReviews, { limit: 6 }),
-  ["public-featured-reviews"],
-  cacheOptions,
-);
-
-/** Shared catalog results stay available during an outage as detail entries rotate. */
-const lastGood = new Map<string, unknown>();
-const lastGoodDetails = new Map<string, unknown>();
-// Pin misses for the current catalog and retain a bounded window for a catalog arriving later.
-const recentMissingSlugs = new Set<string>();
-const inactiveListedSlugs = new Set<string>();
-/** After a failure Convex is not retried until this time, so an outage doesn't add a timeout to every request. */
-let retryAfter = 0;
-
-/**
- * Runs a configured Convex read. `undefined` means it is failing and nothing has been read
- * successfully yet. Missing configuration throws before entering the recovery path.
- */
-async function readConvex<T>(
-  key: string,
-  read: (url: string) => Promise<T>,
-  fallback = lastGood,
-): Promise<T | undefined> {
-  const url = convexUrl();
-  const timing = fallback === lastGoodDetails ? villaReadTiming?.getStore() : undefined;
-  if (Date.now() < retryAfter) {
-    if (timing) timing.recovery = "backoff";
-    return fallback.get(key) as T | undefined;
-  }
-  try {
-    const value = await withReadTimeout(read(url));
-    fallback.delete(key);
-    // Missing slugs use the 60-second framework cache. They never displace a known villa here.
-    if (value !== null) {
-      fallback.set(key, value);
-      if (fallback === lastGoodDetails && fallback.size > MAX_LAST_GOOD_DETAILS) {
-        const oldest = fallback.keys().next();
-        if (!oldest.done) fallback.delete(oldest.value);
-      }
-    }
-    return value;
-  } catch (error) {
-    if (timing) timing.recovery = "read-error";
-    retryAfter = Date.now() + FAILURE_BACKOFF_MS;
-    console.warn(`[villas] ${key} failed; serving the last good result for ${FAILURE_BACKOFF_MS / 1000}s`, error);
-    return fallback.get(key) as T | undefined;
-  }
-}
-
-function readDetail(slug: string) {
-  return readConvex(`detail:${slug}`, (url) => cachedDetail(url, slug), lastGoodDetails);
-}
-
-async function readTimedDetail(slug: string, storage: AsyncLocalStorage<VillaReadTiming>) {
+async function timeDetail<T>(read: (trace: VillaReadTrace) => Promise<T>) {
+  const storage = villaReadTiming!;
   const start = performance.now();
   const timing: VillaReadTiming = { cache: "bypass", transportStarted: false };
   try {
-    const detail = await storage.run(timing, () => readDetail(slug));
+    const detail = await storage.run(timing, () => read(timing));
     if (timing.transportStarted) {
       timing.cache = timing.transportMs !== undefined || timing.recovery ? "miss" : "stale";
     } else if (!timing.recovery) {
@@ -197,80 +82,78 @@ async function readTimedDetail(slug: string, storage: AsyncLocalStorage<VillaRea
   }
 }
 
-const loadList = cache(async () => {
-  const list = await readConvex("list", cachedList);
-  if (list && (recentMissingSlugs.size || inactiveListedSlugs.size)) {
-    const listedSlugs = new Set(list.villas.map((row) => row.slug));
-    for (const slug of listedSlugs) {
-      if (recentMissingSlugs.has(slug)) inactiveListedSlugs.add(slug);
+const reader = createVillaReader(
+  {
+    list: cachedList,
+    detail: (url, slug) => cachedDetail(url, slug),
+    slugs: unstable_cache((url: string) => readAllSlugs(new ConvexHttpClient(url)), ["public-villa-slugs"], cacheOptions),
+    featuredReviews: unstable_cache(
+      (url: string) => queryFeaturedReviews(new ConvexHttpClient(url)),
+      ["public-featured-reviews"],
+      cacheOptions,
+    ),
+  },
+  { perRequest: cache, timeDetail: villaReadTiming ? timeDetail : undefined },
+);
+
+// The production frontend builds before Convex publishes the new slug query.
+const cachedInitialSlugs = unstable_cache(
+  async (url: string) => {
+    try {
+      return (await readSlugPage(new ConvexHttpClient(url), null)).page;
+    } catch {
+      return await reader.readCatalogSlugs(url);
     }
-    for (const slug of inactiveListedSlugs) {
-      if (!listedSlugs.has(slug)) inactiveListedSlugs.delete(slug);
-    }
-  }
-  return list;
-});
-const loadFeaturedReviews = cache(() => readConvex("featured-reviews", cachedFeaturedReviews));
+  },
+  ["public-villa-initial-slugs"],
+  cacheOptions,
+);
 
-export async function getVillaCatalog(locale: string): Promise<VillaCatalog> {
-  return catalogFrom(await loadList(), getPublicMessages(locale), normalizePublicLocale(locale));
-}
-
-export const getPrerenderVillaSlugs = cache(async () => (await readConvex("initial-slugs", cachedInitialSlugs)) ?? []);
-
-// Each page has its own deadline. A sitemap failure must not put villa detail reads into backoff.
-let lastCompleteSlugs: string[] | undefined;
-export const getVillaSlugs = cache(async () => {
-  const url = convexUrl();
-  try {
-    lastCompleteSlugs = await cachedSlugs(url);
-    return lastCompleteSlugs;
-  } catch (error) {
-    if (lastCompleteSlugs) return lastCompleteSlugs;
-    const catalogSlugs = await readCatalogSlugs(url).catch(() => undefined);
-    // The previous catalog endpoint caps its response at the villa page size.
-    if (catalogSlugs && catalogSlugs.length < VILLA_PAGE_SIZE) return catalogSlugs;
-    throw error;
-  }
-});
-
+export const getVillaCatalog = reader.getCatalog;
+export const getPrerenderVillaSlugs = cache(async () => (await reader.read("initial-slugs", cachedInitialSlugs)) ?? []);
+/** Complete paged sitemap inventory; a failure retains only the last complete list. */
+export const getVillaSlugs = reader.getSlugs;
 /** Deduplicate the active villa lookup for metadata and content within the request. */
-export const getVilla = cache(async (
-  slug: string,
-  locale: string,
-): Promise<{ villa: PublicVilla; reviews: Review[] } | null> => {
-  const detail = await (villaReadTiming ? readTimedDetail(slug, villaReadTiming) : readDetail(slug));
-  if (!detail) {
-    const catalog = lastGood.get("list") as DbVillaList | undefined;
-    const listed = catalog?.villas.find((row) => row.slug === slug);
-    if (detail === null) {
-      recentMissingSlugs.delete(slug);
-      recentMissingSlugs.add(slug);
-      const oldest = recentMissingSlugs.values().next();
-      if (recentMissingSlugs.size > MAX_LAST_GOOD_DETAILS && !oldest.done) recentMissingSlugs.delete(oldest.value);
-      if (listed) inactiveListedSlugs.add(slug);
-    }
-    if (detail === null || inactiveListedSlugs.has(slug)) return null;
-    if (!listed) throw new Error("Villas are temporarily unavailable.");
-    return {
-      villa: villaFromDb(listed, getPublicMessages(locale), normalizePublicLocale(locale)),
-      reviews: [],
-    };
-  }
-  inactiveListedSlugs.delete(slug);
-  recentMissingSlugs.delete(slug);
-  return {
-    villa: villaFromDb(detail.villa, getPublicMessages(locale), normalizePublicLocale(locale)),
-    reviews: detail.reviews.map(reviewFromDb),
-  };
-});
-
-export async function getFeaturedReviews(): Promise<Review[]> {
-  const rows = await loadFeaturedReviews();
-  return (rows ?? []).map(reviewFromDb);
-}
-
+export const getVilla = (slug: string, locale: string) => reader.getVilla(slug, locale);
+export const getFeaturedReviews = reader.getFeaturedReviews;
 /** Whether the home page shows its reviews section (same source), so the header only links to it then. */
-export async function hasFeaturedReviews() {
-  return (await getFeaturedReviews()).length > 0;
-}
+export const hasFeaturedReviews = reader.hasFeaturedReviews;
+
+
+const benchmarkTransport = new AsyncLocalStorage<{ generation?: string }>();
+
+const cachedBenchmarkDetail = unstable_cache(
+  async (url: string, slug: string, namespace: string) => {
+    const generation = `${namespace}:${randomUUID()}`;
+    const context = benchmarkTransport.getStore();
+    if (context) context.generation = generation;
+    return { generation, detail: await queryDetail(new ConvexHttpClient(url), slug) };
+  },
+  ["public-villa-benchmark"],
+  cacheOptions,
+);
+
+type BenchmarkTrace = VillaReadTrace & { observation?: "hit" | "miss" | "stale" };
+
+const benchmarkReaders = villaBenchmarkReaders((namespace) => createVillaReader({
+  list: cachedList,
+  async detail(url, slug, trace?: BenchmarkTrace) {
+    const transport: { generation?: string } = {};
+    const result = await benchmarkTransport.run(transport, () => cachedBenchmarkDetail(url, slug, namespace));
+    if (trace) {
+      trace.observation = transport.generation === undefined
+        ? "hit"
+        : transport.generation === result.generation ? "miss" : "stale";
+    }
+    return result.detail;
+  },
+  slugs: (url) => readAllSlugs(new ConvexHttpClient(url)),
+  featuredReviews: (url) => queryFeaturedReviews(new ConvexHttpClient(url)),
+}));
+
+export const getBenchmarkVilla = cache(async (slug: string, locale: string, namespace: string) => {
+  const trace: BenchmarkTrace = {};
+  const page = await benchmarkReaders(namespace).getVilla(slug, locale, trace);
+  const state: VillaCacheObservation = trace.fallback || trace.recovery ? "recovery" : trace.observation ?? "bypass";
+  return { page, state };
+});

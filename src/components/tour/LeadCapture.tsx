@@ -2,7 +2,7 @@
 import { api } from 'convex/_generated/api';
 
 import { Mail, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

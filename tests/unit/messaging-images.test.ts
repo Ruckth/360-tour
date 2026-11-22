@@ -63,6 +63,7 @@ describe('messaging image conversion', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('Private upstream detail'); }));
     const response = await GET(new Request(imageUrl()));
     expect(response.status).toBe(422);
+    expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8');
     expect(await response.text()).toBe('Image unavailable');
   });
 });

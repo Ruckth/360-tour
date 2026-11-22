@@ -1,7 +1,9 @@
-import { adminQuery, adminMutation } from '../auth/model';
+import { adminQuery, adminMutation, type MutationCtx } from '../auth/model';
+import type { Id } from '../_generated/dataModel';
 import { v, type Infer } from 'convex/values';
 import { adjustReviewStats } from './reviewStats';
 import { amount, imageUrl, required } from '../shared/validation';
+import { scheduleVillaInvalidation, villaInvalidationEnabled } from './private/villaInvalidation';
 
 // Review changes and their exact aggregate commit in the same transaction.
 
@@ -41,6 +43,12 @@ function clean(args: Infer<typeof reviewInput>) {
 	};
 }
 
+async function invalidateReviewVilla(ctx: MutationCtx, propertyId: Id<'properties'>) {
+	if (!villaInvalidationEnabled()) return;
+	const property = await ctx.db.get(propertyId);
+	if (property?.status === 'active') await scheduleVillaInvalidation(ctx, property.slug);
+}
+
 export const list = adminQuery({
 	args: { propertyId: v.id('properties') },
 	handler: async (ctx, args) => {
@@ -62,10 +70,12 @@ export const list = adminQuery({
 export const create = adminMutation({
 	args: { propertyId: v.id('properties'), ...reviewInput.fields },
 	handler: async (ctx, { propertyId, ...fields }) => {
-		if (!(await ctx.db.get(propertyId))) throw new Error('Property not found');
+		const property = await ctx.db.get(propertyId);
+		if (!property) throw new Error('Property not found');
 		const fieldsToSave = clean(fields);
         await adjustReviewStats(ctx, propertyId, 1, fieldsToSave.rating);
         const reviewId = await ctx.db.insert('reviews', { propertyId, authorAvatarUrl: '', ...fieldsToSave });
+		if (property.status === 'active') await scheduleVillaInvalidation(ctx, property.slug);
 		return reviewId;
 	}
 });
@@ -78,6 +88,7 @@ export const update = adminMutation({
 		const next = clean(fields);
         await adjustReviewStats(ctx, review.propertyId, 0, next.rating - review.rating);
         await ctx.db.patch(reviewId, next);
+		await invalidateReviewVilla(ctx, review.propertyId);
 	}
 });
 
@@ -88,5 +99,6 @@ export const remove = adminMutation({
 		if (!review) return;
 		await adjustReviewStats(ctx, review.propertyId, -1, -review.rating);
         await ctx.db.delete(review._id);
+		await invalidateReviewVilla(ctx, review.propertyId);
 	}
 });

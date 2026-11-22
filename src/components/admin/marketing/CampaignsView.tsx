@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CircleStop, Megaphone, Pause, Pencil, Play, Plus, Send, Undo2 } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useId, useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
