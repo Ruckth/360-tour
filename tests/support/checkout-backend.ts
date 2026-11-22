@@ -40,12 +40,14 @@ type Options = {
   })[];
   staff?: FixtureStaff;
 };
+const CONVEX_MODULES = import.meta.glob("../../convex/**/*.ts");
+
 /** DOM interaction tests use the registered backend implementation, never a money/business simulator.
  * Alias translation preserves readable old fixture identities; only the real database generates IDs.
  * This in-process harness is separate from the signed-JWT local-server browser acceptance suite.
  */
 export async function createFixtureBackend(options: Options = {}) {
-  const t = convexTest(schema, import.meta.glob("../../convex/**/*.ts"));
+  const t = convexTest(schema, CONVEX_MODULES);
   const aliases = new Map<string, string>();
   const data = await t.run((ctx) => checkoutSeed(ctx, aliases));
   let staff: FixtureStaff = options.staff ?? {

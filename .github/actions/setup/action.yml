@@ -1,0 +1,23 @@
+name: Install CI dependencies
+description: Use the locked Bun toolchain and dependency graph
+runs:
+  using: composite
+  steps:
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: .bun-version
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - uses: actions/cache/restore@v4
+      id: packages
+      with:
+        path: ~/.bun/install/cache
+        key: bun-packages-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}
+    - shell: bash
+      run: bun install --frozen-lockfile
+    - uses: actions/cache/save@v4
+      if: github.job == 'static' && steps.packages.outputs.cache-hit != 'true'
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ steps.packages.outputs.cache-primary-key }}

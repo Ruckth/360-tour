@@ -23,14 +23,16 @@ it("keeps PR verification unprivileged and never uploads authenticated artifacts
   expect(workflow).not.toMatch(/^\s*pull_request_target:/m);
   expect(workflow).toMatch(/^permissions:\n  contents: read\n/m);
   expect(workflow).not.toMatch(/uses:.*upload-artifact/);
-  // Secrets belong only to the real-backend integration job.
-  const [independentJobs, integrationAndGate] = workflow.split(/^  integration:/m);
-  expect(independentJobs).not.toContain("secrets.");
-  expect(integrationAndGate).toContain("secrets.E2E_CLERK_SECRET_KEY");
+  const jobs = workflow.split(/^  (?=\w+:\n    )/m).slice(1);
+  const secretJobs = jobs.filter(job => job.includes("secrets."));
+  expect(secretJobs.map(job => job.split(":")[0]).sort()).toEqual(["devcheck", "integration", "integration_start"]);
+  for (const job of secretJobs) {
+    expect(job).toContain("run: bash .github/scripts/require-clerk-test.sh");
+  }
 });
 
 it("fails Clerk preflight for forks, missing fields and live tenant keys", () => {
-  const script = stepScript("Require dedicated Clerk test tenant");
+  const script = readFileSync(new URL("../../.github/scripts/require-clerk-test.sh", import.meta.url), "utf8");
   const env = {
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "pk_test_offline_fixture",
     CLERK_SECRET_KEY: "sk_test_offline_fixture",

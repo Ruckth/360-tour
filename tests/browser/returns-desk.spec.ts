@@ -9,7 +9,12 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
  */
 
 const SHOTS = "test-results/returns-desk";
+const CAPTURE_SHOTS = process.env.CAPTURE_SCREENSHOTS === "1";
 const IPAD_LANDSCAPE = { width: 1180, height: 820 };
+
+async function captureShot(page: Page, name: string) {
+  if (CAPTURE_SHOTS) await page.screenshot({ path: `${SHOTS}/${name}` });
+}
 
 async function open(page: Page, query = "") {
   await page.goto(`/tests/browser/returns-desk.html${query}`);
@@ -64,7 +69,7 @@ test.describe("Return items", () => {
     const payouts = await page.evaluate(() => window.returnsFixture.payouts()) as { amount: number; method: string; reference?: string }[];
     expect(payouts).toMatchObject([{ amount: 479300, method: "card", reference: "APPR 81723" }]);
     expect(await page.evaluate(() => window.returnsFixture.stock())).toBe(2);
-    await page.screenshot({ path: `${SHOTS}/manager-completed-1180.png` });
+    await captureShot(page, "manager-completed-1180.png");
   });
 
   test("a cashier asks a manager, the manager approves in Approvals, and the cashier gives the money back", async ({ page, browser }, info) => {
@@ -98,7 +103,7 @@ test.describe("Return items", () => {
     await expect(quote.locator("[data-return-due]")).toContainText("Refund due by");
     await expect(request).toContainText("“Package cancelled”");
     await expect(request.locator("[data-return-payer]")).toHaveText("Mint gives the money back at their till.");
-    await managerPage.screenshot({ path: `${SHOTS}/approval-detail-1180.png` });
+    await captureShot(managerPage, "approval-detail-1180.png");
     await manager.tap(request.getByRole("button", { name: "Approve · authorize ฿4,793 to Card" }));
     await expect(managerPage.getByText("Approved · ฿4,793 return on #1042")).toBeVisible();
     await managerContext.close();
@@ -152,7 +157,7 @@ test.describe("Return items", () => {
     await expect(panel.getByRole("button", { name: /Money given back/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: /^Refund ฿/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Cancel return" })).toHaveCount(0);
-    await page.screenshot({ path: `${SHOTS}/check-previous-1180.png` });
+    await captureShot(page, "check-previous-1180.png");
     await panel.getByRole("button", { name: "It was given back" }).click();
     await expect(panel.locator("[data-return-status]")).toHaveText("Return completed");
     expect(await page.evaluate(() => window.returnsFixture.payouts())).toHaveLength(1);
@@ -227,12 +232,12 @@ for (const [width, height, label] of [[390, 844, "phone"], [820, 700, "ipad-port
       await page.keyboard.press("Shift+Tab");
       await page.keyboard.press("Tab");
       expect(await authorize.evaluate((node) => getComputedStyle(node).boxShadow !== "none" || getComputedStyle(node).outlineStyle !== "none")).toBe(true);
-      await page.screenshot({ path: `${SHOTS}/picker-${width}.png` });
+      await captureShot(page, `picker-${width}.png`);
       await authorize.click();
       await expect(panel.getByRole("button", { name: "Money given back · Record" })).toBeInViewport({ ratio: 1 });
       await panel.getByRole("textbox", { name: "Reference (optional)" }).focus();
       await expect(panel.getByRole("button", { name: "Money given back · Record" })).toBeInViewport({ ratio: 1 });
-      await page.screenshot({ path: `${SHOTS}/payout-${width}.png` });
+      await captureShot(page, `payout-${width}.png`);
     });
   });
 }
@@ -258,7 +263,7 @@ for (const [width, height, shot] of WIDTHS) {
       await a.tap(panelA.getByRole("button", { name: "Package cancelled" }));
       await a.tap(panelA.getByRole("button", { name: "Authorize ฿4,793 to Card" }));
       await expect(panelA.locator("[data-return-instruction]")).toContainText("Refund ฿4,793 on the card terminal");
-      await page.screenshot({ path: `${SHOTS}/blocker1-original-instruction-${shot}.png` });
+      await captureShot(page, `blocker1-original-instruction-${shot}.png`);
 
       // Till B: the same manager on another device (its own till).
       const session = await page.evaluate(() => window.returnsFixture.session);
@@ -272,7 +277,7 @@ for (const [width, height, shot] of WIDTHS) {
       await a.tap(panelB.getByRole("button", { name: "Take over this return" }), "B · Take over this return");
       await expect(panelB.locator("[data-return-check]")).toContainText("Check previous refund");
       await expect(panelB.locator("[data-return-instruction]")).toHaveCount(0);
-      await b.screenshot({ path: `${SHOTS}/blocker1-takeover-check-${shot}.png` });
+      await captureShot(b, `blocker1-takeover-check-${shot}.png`);
       await a.tap(panelB.getByRole("button", { name: "Release to another till" }), "B · Release to another till");
       await expect(panelB.getByRole("button", { name: "Continue at this till" })).toBeVisible();
 
@@ -281,7 +286,7 @@ for (const [width, height, shot] of WIDTHS) {
       await expect(panelA.locator("[data-return-check]")).toContainText("Check previous refund");
       await expect(panelA.locator("[data-return-instruction]")).toHaveCount(0);
       await expect(panelA.getByRole("button", { name: /Money given back/ })).toHaveCount(0);
-      await page.screenshot({ path: `${SHOTS}/blocker1-original-reclaimed-check-${shot}.png` });
+      await captureShot(page, `blocker1-original-reclaimed-check-${shot}.png`);
       await other.close();
       a.save("handover → reclaim shows Check previous refund", width);
     });
@@ -299,11 +304,11 @@ for (const [width, height, shot] of WIDTHS) {
       const authorize = panel.getByRole("button", { name: "Authorize ฿700 to Card · ฿500 back to voucher GV-••••-Q9XD" });
       await expect(authorize).toBeInViewport({ ratio: 1 });
       await expect(panel.getByRole("button", { name: /Authorize ฿1,200/ })).toHaveCount(0);
-      await page.screenshot({ path: `${SHOTS}/blocker2-mixed-quote-${shot}.png` });
+      await captureShot(page, `blocker2-mixed-quote-${shot}.png`);
       await log.tap(authorize);
       await expect(panel.locator("[data-return-instruction]")).toContainText("Refund ฿700 on the card terminal");
       await expect(panel.locator("[data-return-claims]")).toContainText("฿500 back to voucher GV-••••-Q9XD");
-      await page.screenshot({ path: `${SHOTS}/blocker2-mixed-instruction-${shot}.png` });
+      await captureShot(page, `blocker2-mixed-instruction-${shot}.png`);
       await log.tap(panel.getByRole("button", { name: "Money given back · Record" }));
       await expect(panel.locator("[data-return-status]")).toHaveText("Return completed");
       expect(await page.evaluate(() => window.returnsFixture.payouts())).toMatchObject([{ amount: 70000, method: "card" }]);
@@ -323,7 +328,7 @@ for (const [width, height, shot] of WIDTHS) {
         await log.tap(panel.getByRole("button", { name: "Changed mind" }));
         const authorize = panel.getByRole("button", { name: "Authorize ฿700 to Card · ฿500 back to voucher GV-••••-Q9XD" });
         await expect(authorize).toBeVisible();
-        await page.screenshot({ path: `${SHOTS}/blocker3-${variant}-quote-${shot}.png` });
+        await captureShot(page, `blocker3-${variant}-quote-${shot}.png`);
         await log.tap(authorize);
         await expect(panel.locator("[data-return-instruction]")).toContainText("Refund ฿700 on the card terminal");
         await log.tap(panel.getByRole("button", { name: "Money given back · Record" }));
@@ -342,11 +347,11 @@ for (const [width, height, shot] of WIDTHS) {
       await log.tap(panel.getByRole("button", { name: "Changed mind" }));
       await expect(panel.locator("[data-return-parts]")).toContainText("Restore session฿0");
       await expect(panel.locator("[data-return-destinations]")).toContainText("No money to give back");
-      await page.screenshot({ path: `${SHOTS}/blocker3-covered-quote-${shot}.png` });
+      await captureShot(page, `blocker3-covered-quote-${shot}.png`);
       await log.tap(panel.getByRole("button", { name: "Restore session" }));
       await expect(panel.locator("[data-return-status]")).toHaveText("Return completed");
       expect(await page.evaluate(() => window.returnsFixture.payouts())).toHaveLength(0);
-      await page.screenshot({ path: `${SHOTS}/blocker3-covered-done-${shot}.png` });
+      await captureShot(page, `blocker3-covered-done-${shot}.png`);
       log.save("covered visit restore", width);
     });
   });
@@ -472,7 +477,7 @@ for (const [width, height] of ROUND2) {
       const request = settings.locator("[data-return-request]");
       const approve = request.getByRole("button", { name: "Approve · authorize ฿4,793 to Card" });
       await expect(approve).toBeEnabled();
-      await settings.screenshot({ path: `${SHOTS}/r2-settings-first-open-${width}.png` });
+      await captureShot(settings, `r2-settings-first-open-${width}.png`);
       await manager.tap(approve);
       await expect(settings.getByText("Approved · ฿4,793 return on #1042")).toBeVisible();
       expect(await settings.evaluate(() => (window as unknown as { sawNotYet?: boolean }).sawNotYet ?? false)).toBe(false);
@@ -497,7 +502,7 @@ for (const [width, height] of ROUND2) {
       await expect(panel.locator("[data-return-destinations]")).toHaveText("฿700 to Card฿500 on a new voucher replacing GV-••••-Q9XD (90 days)");
       const authorize = panel.getByRole("button", { name: "Authorize ฿700 to Card · ฿500 on a new voucher replacing GV-••••-Q9XD (90 days)" });
       await expect(authorize).toBeInViewport({ ratio: 1 });
-      await page.screenshot({ path: `${SHOTS}/r2-expired-quote-${width}.png` });
+      await captureShot(page, `r2-expired-quote-${width}.png`);
       await log.tap(authorize);
       await expect(panel.locator("[data-return-instruction]")).toContainText("Refund ฿700 on the card terminal");
       await expect(panel.locator("[data-return-claims]")).toContainText("฿500 on a new voucher replacing GV-••••-Q9XD (90 days)");
@@ -508,14 +513,14 @@ for (const [width, height] of ROUND2) {
       const slip = panel.locator("[data-gift-slip]");
       await expect(slip.locator("[data-gift-slip-voucher]")).toHaveText(new RegExp(`^New voucher GV-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4} · ฿500 · valid through ${lastUsableDay(90)}$`));
       await expect(slip.locator("[data-gift-slip-replaces]")).toHaveText("Replaces GV-••••-Q9XD");
-      await page.screenshot({ path: `${SHOTS}/r2-expired-completed-${width}.png` });
+      await captureShot(page, `r2-expired-completed-${width}.png`);
       expect(await page.evaluate(() => window.returnsFixture.payouts())).toMatchObject([{ amount: 70000, method: "card" }]);
       const code = (await slip.textContent())!.match(/GV-\S{4}-\S{4}/)![0];
 
       await page.reload();
       await page.locator("[data-fixture-ready]").waitFor();
       await expect(page.locator("[data-gift-slip]")).toContainText(code);
-      await page.screenshot({ path: `${SHOTS}/r2-expired-reload-${width}.png` });
+      await captureShot(page, `r2-expired-reload-${width}.png`);
       expect(log.taps).toHaveLength(4);
       log.save("expired-voucher return onto a new voucher", width);
     });
@@ -544,7 +549,7 @@ for (const [width, height] of ROUND2) {
       await expect(panel.locator("[data-return-destinations] li")).toHaveText(lines);
       const authorize = panel.getByRole("button", { name: `Authorize ${lines.join(" · ")}` });
       await expect(authorize).toBeInViewport({ ratio: 1 });
-      await page.screenshot({ path: `${SHOTS}/r3-two-expired-quote-${width}.png` });
+      await captureShot(page, `r3-two-expired-quote-${width}.png`);
       await log.tap(authorize);
       await expect(panel.locator("[data-return-instruction]")).toContainText("Refund ฿700 on the card terminal");
       await log.tap(panel.getByRole("button", { name: "Money given back · Record" }));
@@ -555,7 +560,7 @@ for (const [width, height] of ROUND2) {
       await expect(slips).toHaveCount(2);
       expect((await slips.locator("[data-gift-slip-replaces]").allTextContents()).sort()).toEqual(["Replaces GV-••••-Q9XD", "Replaces GV-••••-R8TB"]);
       for (const slip of await slips.all()) await expect(slip.locator("[data-gift-slip-voucher]")).toHaveText(new RegExp(`^New voucher GV-\\S{4}-\\S{4} · ฿250 · ${through}$`));
-      await page.screenshot({ path: `${SHOTS}/r3-two-expired-completed-${width}.png` });
+      await captureShot(page, `r3-two-expired-completed-${width}.png`);
       const paired = async (scope: Locator) => Object.fromEntries(await Promise.all((await scope.locator("[data-gift-slip]").all()).map(async (slip) =>
         [(await slip.locator("[data-gift-slip-replaces]").textContent())!, (await slip.locator("[data-gift-slip-voucher]").textContent())!.match(/GV-\S{4}-\S{4}/)![0]])));
       const before = await paired(panel);
@@ -569,7 +574,7 @@ for (const [width, height] of ROUND2) {
       // The same code stays with the same original after a reload.
       expect(await paired(receipt)).toEqual(before);
       await expect(receipt.locator("[data-gift-slip-voucher]").first()).toContainText(through);
-      await page.screenshot({ path: `${SHOTS}/r3-two-expired-reload-${width}.png` });
+      await captureShot(page, `r3-two-expired-reload-${width}.png`);
       expect(log.taps).toHaveLength(4);
       log.save("two expired vouchers onto two new ones, each paired with its original", width);
     });
@@ -620,7 +625,7 @@ for (const [width, height] of ROUND2) {
       });
       expect(fit).toMatchObject({ overflowX: 0, overflowY: 0, inCard: true, textInButton: true, pageOverflow: 0 });
       expect(fit.height).toBeGreaterThanOrEqual(44);
-      await settings.screenshot({ path: `${SHOTS}/r4-two-voucher-approval-${width}.png` });
+      await captureShot(settings, `r4-two-voucher-approval-${width}.png`);
       // An ordinary centred click (no force, no edge offset) reaches the button and approves once.
       await approve.click();
       await expect(settings.getByText(/^Approved · ฿1,200 return on #/)).toBeVisible();

@@ -55,7 +55,11 @@ const fallbackPort = await new Promise((resolve, reject) => {
 const port = localDevPort(root, fallbackPort);
 const report = [];
 const app = `http://localhost:${port}`;
-const childEnv = { PATH: process.env.PATH, ...disabledServices };
+const childEnv = {
+  PATH: process.env.PATH,
+  ...disabledServices,
+  ...(process.env.LOCAL_DEV_SKIP_TYPECHECK === '1' ? { LOCAL_DEV_SKIP_TYPECHECK: '1' } : {}),
+};
 async function start() {
   activeLog = '';
   child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });

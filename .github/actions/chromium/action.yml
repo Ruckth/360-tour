@@ -1,0 +1,25 @@
+name: Prepare Chromium
+description: Use the locked Playwright browser and verify it launches on this runner
+runs:
+  using: composite
+  steps:
+    - id: version
+      shell: bash
+      run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v4
+      id: browsers
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.version.outputs.version }}
+    - if: steps.browsers.outputs.cache-hit != 'true'
+      shell: bash
+      run: bun run playwright install chromium
+    - shell: bash
+      run: |
+        launch() {
+          node -e "require('@playwright/test').chromium.launch().then(browser => browser.close()).catch(error => { console.error(error.message); process.exitCode = 1 })"
+        }
+        if ! launch; then
+          bun run playwright install --with-deps chromium
+          launch
+        fi
