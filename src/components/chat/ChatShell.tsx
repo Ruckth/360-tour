@@ -3,7 +3,7 @@
 import Link from "@/platform/link";
 import { MessageCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { useTranslations } from "@/platform/intl";
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { ExpandableChat } from "@/components/ui/chat/expandable-chat";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,7 @@ export function ChatShell({
   hideFloatingTriggerOnMobileRoom,
   keyboardLayoutMode,
   chatPanelStyle,
+  inputRef,
   onOpen,
   onClose,
   onRestart,
@@ -32,12 +33,26 @@ export function ChatShell({
   hideFloatingTriggerOnMobileRoom: boolean;
   keyboardLayoutMode: string;
   chatPanelStyle?: CSSProperties;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
   onOpen: () => void;
   onClose: () => void;
   onRestart: () => void;
   children: ReactNode;
 }) {
   const t = useTranslations("Chat");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (mode !== "overlay" || !open || !hydrated || !mounted) return;
+    const panel = panelRef.current;
+    if (!panel || panel.contains(document.activeElement)) return;
+
+    const input = inputRef.current;
+    if (input && !input.disabled) input.focus({ preventScroll: true });
+    // Session startup can leave the composer disabled throughout the opening animation.
+    if (!panel.contains(document.activeElement)) closeRef.current?.focus({ preventScroll: true });
+  }, [mode, open, hydrated, mounted, inputRef]);
 
   useEffect(() => {
     if (mode !== "overlay") return;
@@ -47,6 +62,7 @@ export function ChatShell({
 
   const panel = (
     <div
+      ref={panelRef}
       data-testid="chat-panel"
       data-keyboard-layout={keyboardLayoutMode}
       className={cn(
@@ -79,6 +95,7 @@ export function ChatShell({
           type="button"
           variant="ghost"
           size="icon"
+          ref={closeRef}
           onClick={onClose}
           className="h-8 w-8 rounded-full text-white/70 hover:bg-white/10 hover:text-white"
           aria-label={t("close")}

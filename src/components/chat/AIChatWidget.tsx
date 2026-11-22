@@ -212,6 +212,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
       hideFloatingTriggerOnMobileRoom={hideFloatingTriggerOnMobileRoom}
       keyboardLayoutMode={keyboardLayoutMode}
       chatPanelStyle={chatPanelStyle}
+      inputRef={inputRef}
       onOpen={openChat}
       onClose={closeChat}
       onRestart={restartChat}

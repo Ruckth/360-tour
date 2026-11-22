@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 import { act, createElement, useEffect, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { jsx } from 'react/jsx-runtime';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { ChatComposer } from '@/components/chat/ChatComposer';
+import { ChatShell } from '@/components/chat/ChatShell';
 import { useChatSession } from '@/components/chat/useChatSession';
 import { getStoredGuestToken, getStoredSessionId } from '@/components/chat/session/credentials';
 const mocks = vi.hoisted(() => ({
@@ -21,13 +23,17 @@ vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typ
 vi.mock('@/components/chat/ChatContext', () => ({ useChatPageContext: () => null }));
 
 let root: Root | null, chat: ReturnType<typeof useChatSession>;
-function Harness({ initialDraft }: { initialDraft?: string }) {
-  const value = useChatSession({ mode: 'page', initialDraft, contactEmail: 'test@example.com', whatsappNumber: '123' });
-  useEffect(() => { chat = value; }, [value]); return createElement(ChatComposer, value);
+function Harness({ initialDraft, mode }: { initialDraft?: string; mode: 'page' | 'overlay' }) {
+  const value = useChatSession({ mode, initialOpen: mode === 'overlay', initialDraft, contactEmail: 'test@example.com', whatsappNumber: '123' });
+  useEffect(() => { chat = value; }, [value]);
+  const composer = createElement(ChatComposer, value);
+  return mode === 'page' ? composer : jsx(ChatShell, {
+    ...value, onOpen: value.openChat, onClose: value.closeChat, onRestart: value.restartChat, children: composer,
+  });
 }
-async function mount(initialDraft?: string) {
+async function mount(initialDraft?: string, mode: 'page' | 'overlay' = 'page') {
   const node = document.createElement('div'); document.body.append(node); root = createRoot(node);
-  await act(async () => root!.render(createElement(Harness, { initialDraft })));
+  await act(async () => root!.render(createElement(Harness, { initialDraft, mode })));
 }
 async function unmount() { await act(async () => { root?.unmount(); root = null; }); }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
@@ -121,4 +127,28 @@ it('clears a send error when starting a fresh conversation', async () => {
   mocks.mutation.mockResolvedValueOnce({ sessionId: 'session-two', guestToken: 'token-two' });
   await act(async () => chat.restartChat());
   expect(chat.sendError).toBeNull();
+});
+
+it('focuses the overlay while the composer waits and keeps the control the user chooses', async () => {
+  const session = deferred<{ sessionId: string; guestToken: string }>();
+  mocks.mutation.mockImplementationOnce(() => session.promise);
+  await mount(undefined, 'overlay');
+  await act(async () => { await vi.advanceTimersByTimeAsync(260); });
+
+  const panel = document.querySelector('[data-testid="chat-panel"]')!;
+  const input = panel.querySelector('textarea')!;
+  const close = panel.querySelector<HTMLButtonElement>('button[aria-label="close"]')!;
+  expect(input.disabled).toBe(true);
+  expect(document.activeElement).toBe(close);
+
+  const restart = panel.querySelector<HTMLButtonElement>('button[aria-label^="restartChat"]')!;
+  await act(async () => restart.focus());
+  await act(async () => session.resolve({ sessionId: 'session-one', guestToken: 'token-one' }));
+  expect(input.disabled).toBe(false);
+  expect(document.activeElement).toBe(restart);
+
+  await act(async () => chat.closeChat());
+  await act(async () => { await vi.advanceTimersByTimeAsync(220); });
+  await act(async () => chat.openChat());
+  expect(document.activeElement).toBe(document.querySelector('[data-testid="chat-panel"] textarea'));
 });
