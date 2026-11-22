@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useSelectedLayoutSegment } from "next/navigation";
+import Link from "@/platform/link";
+import { useSelectedLayoutSegment } from "@/platform/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
@@ -11,7 +11,7 @@ import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
  * so phones, where the sidebar is behind Menu, can switch between them.
  */
 export function MarketingSectionNav({ children }: { children: ReactNode }) {
-  const segment = useSelectedLayoutSegment();
+  const segment = useSelectedLayoutSegment("/admin/marketing");
   return (
     <>
       <nav aria-label="Marketing pages" className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">

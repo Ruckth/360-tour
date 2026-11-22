@@ -30,13 +30,18 @@ export function redactPairing(text: string) {
 type Crumb = { message?: string; data?: { [key: string]: unknown } };
 type ReportedEvent = { request?: { url?: string }; transaction?: string; breadcrumbs?: Crumb[] };
 
-/** Navigation `from`/`to`, fetch and XHR `url`, and the message: every place a breadcrumb carries a URL. */
+/**
+ * Navigation `from`/`to`, fetch and XHR `url`, the message, and console breadcrumbs' raw
+ * `arguments`: every place a breadcrumb carries a URL.
+ */
 export function scrubBreadcrumb<T extends Crumb>(crumb: T): T {
   if (crumb.message) crumb.message = redactPairing(crumb.message);
   for (const key of ["from", "to", "url"]) {
     const value = crumb.data?.[key];
     if (typeof value === "string") crumb.data![key] = redactPairing(value);
   }
+  const args = crumb.data?.arguments;
+  if (Array.isArray(args)) crumb.data!.arguments = args.map((value) => (typeof value === "string" ? redactPairing(value) : value));
   return crumb;
 }
 

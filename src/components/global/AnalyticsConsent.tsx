@@ -1,8 +1,8 @@
 "use client";
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import Link from '@/platform/link';
+import { usePathname } from '@/platform/navigation';
+import { useLocale, useTranslations } from '@/platform/intl';
 import { useEffect, useSyncExternalStore } from 'react';
 import { Button } from '@/components/ui/button';
 import { localizeHref } from '@/i18n/routing';

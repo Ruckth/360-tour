@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/platform/image";
 import { useMemo, useState } from "react";
 import { ImageOff } from "lucide-react";
 import { resort } from "@/lib/data/resort-config";

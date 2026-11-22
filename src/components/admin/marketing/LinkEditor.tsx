@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { BedDouble, CalendarDays, CircleCheck, Home, Link2, Lock, MessageCircle, QrCode, Sparkles } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { locales } from "@/i18n/routing";
 import { Button } from "@/components/ui/button";

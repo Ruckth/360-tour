@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { ChevronRight, Plus, TicketPercent } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";

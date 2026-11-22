@@ -25,11 +25,13 @@ async function run(command, args, env, visible = false) {
 let work;
 try {
   if (process.env.VERCEL_ENV === 'production') {
-    // Preserve the existing production path. No preview seed or production cutover here.
+    // Production switches entries only when the operator selects Start at cutover.
     if (process.env.VERCEL !== '1' || !/^prod:wary-toad-189\|[^\s|]+$/.test(process.env.CONVEX_DEPLOY_KEY || '')) throw new Error('Production requires its explicit deployment key; Preview keys cannot target production');
-    await run(process.execPath, [cli, 'deploy', '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'bun run build'], process.env, true);
+    const start = process.env.START_PRODUCTION === '1';
+    await run(process.execPath, [cli, 'deploy', '--typecheck', 'enable', '--cmd-url-env-var-name', start ? 'VITE_CONVEX_URL' : 'NEXT_PUBLIC_CONVEX_URL', '--cmd', start ? 'bun run build:start' : 'bun run build'], process.env, true);
   } else {
     const { branch } = previewConfiguration(process.env);
+    const start = process.env.START_PREVIEW === '1';
     work = await fs.mkdtemp(path.join(os.tmpdir(), '360-preview-build-'));
     const home = path.join(work, 'home');
     await fs.mkdir(home, { mode: 0o700 });
@@ -41,7 +43,7 @@ try {
     const convex = args => run(process.execPath, [cli, ...args, '--env-file', envFile], env);
     const result = await buildSeededPreview({
       deploy: async () => {
-        await convex(['deploy', '--preview-name', branch, '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'node scripts/preview-capture.mjs']);
+        await convex(['deploy', '--typecheck', 'enable', '--preview-name', branch, '--cmd-url-env-var-name', start ? 'VITE_CONVEX_URL' : 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'node scripts/preview-capture.mjs']);
         return await fs.readFile(targetFile, 'utf8');
       },
       resolve: async () => {
@@ -50,8 +52,8 @@ try {
       },
       seed: () => convex(['run', '--preview-name', branch, 'maintenance/seed:seedAll', '{"scenario":"demo-resort"}']),
       build: async url => {
-        console.log('Preview backend deployed; empty-only seed complete. Building Next.');
-        await run('bun', ['run', 'build'], previewFrontendEnvironment(env, url), true);
+        console.log(`Preview backend deployed; empty-only seed complete. Building ${start ? 'TanStack Start' : 'Next'}.`);
+        await run('bun', ['run', start ? 'build:start' : 'build'], previewFrontendEnvironment(env, url), true);
       },
     });
     console.log(`Preview initialization: ${result}.`);

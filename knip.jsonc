@@ -6,11 +6,15 @@
   "playwright": { "config": ["playwright*.config.ts"] },
   // Convex exports functions by file path; maintenance and test module discovery are dynamic.
   "entry": [
+    "src/start-app/{start,server,router,client}.{ts,tsx}!",
+    "src/start-app/platform/*.{ts,tsx}!",
     "convex/*.ts!",
     "convex/maintenance/*.ts!",
     "tests/**/*.test.ts",
     "tests/**/*.spec.ts",
     "tests/e2e/auth.setup.ts",
+    "tests/e2e/preview-qa{,-provision}.ts",
+    "tests/bench/start-villa-preview{,-swr}-acceptance.ts",
     "tests/browser/*fixture*.tsx",
     "tests/browser/*-mock.{ts,tsx}",
     "tests/browser/vite.config.ts",

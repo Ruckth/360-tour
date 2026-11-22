@@ -1,7 +1,7 @@
 "use client";
 
 import { api } from 'convex/_generated/api';
-import { usePathname } from 'next/navigation';
+import { usePathname } from '@/platform/navigation';
 import { useEffect } from 'react';
 import { CONSENT_EVENT, capturePageView, isUntrackedPath } from '@/lib/marketing/capture';
 import { useConvex } from 'convex/react';

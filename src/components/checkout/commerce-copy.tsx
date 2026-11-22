@@ -1,6 +1,6 @@
 "use client";
 
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useMemo } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import type { CommerceCopy } from "./backend";

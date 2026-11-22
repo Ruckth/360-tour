@@ -1,8 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useLocale, useTranslations } from "next-intl";
-import { useRouter } from "next/navigation";
+import dynamic from "@/platform/dynamic";
+import { useLocale, useTranslations } from "@/platform/intl";
+import { useRouter } from "@/platform/navigation";
 import { useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { dateToIso } from '@/lib/booking/dates';

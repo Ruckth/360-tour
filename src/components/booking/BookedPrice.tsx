@@ -3,7 +3,7 @@
 import { satangToBaht } from 'convex/shared/money';
 
 import { Sparkles } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { PriceLines } from "@/components/booking/BookingPriceSummary";
 import { bookedPriceView } from "@/lib/booking/coupon";
 import type { PublicBooking } from "@/lib/booking/backend-types";

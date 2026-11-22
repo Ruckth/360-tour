@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronRight, ScanQrCode, TicketPercent, TriangleAlert, X } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ComponentType, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { CouponChip } from "@/components/admin/marketing/MarketingBits";

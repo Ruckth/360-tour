@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { isChatSessionActive } from "convex/shared/chatPresence";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

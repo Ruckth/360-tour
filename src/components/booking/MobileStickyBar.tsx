@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { MessageCircle } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "@/platform/intl";
+import { usePathname, useSearchParams } from "@/platform/navigation";
 import { localizeHref } from "@/i18n/routing";
 import { buildChatHref } from "@/lib/chat/navigation";
 

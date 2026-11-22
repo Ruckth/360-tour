@@ -2,7 +2,7 @@
 
 import { api } from "convex/_generated/api";
 import { useConvex, useMutation, useQuery } from "convex/react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Message, PairingCode, Screen } from "./DisplayScreens";
 

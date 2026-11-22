@@ -1,0 +1,26 @@
+{
+  "source": "d7c965652fe2b981147660847732ca5f3173382a",
+  "environment": "protected Vercel Preview with a new demo-resort Convex seed",
+  "runtime": "Vercel managed Bun",
+  "frontend": "TanStack Start",
+  "result": {
+    "status": "passed",
+    "observations": {
+      "checkout-read-only": {
+        "target": "pass",
+        "setup": "pass",
+        "checkout-read-only": "pass"
+      },
+      "isolated-fixtures": {
+        "target": "pass",
+        "setup": "pass",
+        "auth": "pass",
+        "booking": "pass",
+        "chat": "pass",
+        "live-tour": "pass",
+        "cleanup": "pass"
+      },
+      "teardown": "passed"
+    }
+  }
+}

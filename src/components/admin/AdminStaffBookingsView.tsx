@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useRouter, useSelectedLayoutSegment } from "next/navigation";
+import { useRouter, useSelectedLayoutSegment } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
@@ -114,7 +114,7 @@ const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as
  */
 export function AdminStaffTabs({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const segment = useSelectedLayoutSegment();
+  const segment = useSelectedLayoutSegment("/admin/staff");
   const tab = segment && isAdminStaffTab(segment) ? segment : null;
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const confirm = useConfirm();

@@ -3,7 +3,7 @@
 import { satangToBaht } from 'convex/shared/money';
 
 import type { CouponProblem } from "convex/shared/offers";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useMemo } from "react";
 import { couponProblemMessage, type CouponFormatters, type CouponMessage } from "@/lib/booking/coupon";
 import { currencyPrefix } from "@/lib/villas";

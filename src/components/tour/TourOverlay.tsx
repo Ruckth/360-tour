@@ -1,4 +1,4 @@
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { Button } from "@/components/ui/button";
 
 export function TourOverlay({

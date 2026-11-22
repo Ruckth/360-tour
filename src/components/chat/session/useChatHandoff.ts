@@ -2,7 +2,7 @@
 import { getStoredGuestToken } from '@/components/chat/session/credentials';
 import { api } from 'convex/_generated/api';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from '@/platform/navigation';
 import { useConvex } from 'convex/react';
 
 import type { GuestCredentials } from './useGuestSession';

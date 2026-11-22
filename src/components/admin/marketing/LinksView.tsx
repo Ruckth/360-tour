@@ -2,8 +2,8 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, Pause, Pencil, Play, Plus, QrCode, Send, TriangleAlert } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/platform/link";
+import { useRouter } from "@/platform/navigation";
 import { adminMarketingPath } from "../admin-routes";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";

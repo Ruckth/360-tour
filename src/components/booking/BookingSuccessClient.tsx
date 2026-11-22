@@ -2,9 +2,9 @@
 import type { Id } from 'convex/_generated/dataModel';
 import { api } from 'convex/_generated/api';
 
-import Link from "next/link";
+import Link from "@/platform/link";
 import { CheckCircle2, CircleAlert } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";

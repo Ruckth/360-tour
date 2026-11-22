@@ -1,0 +1,38 @@
+{
+  "projectDir": "ce642ea2 (Bun) — CI integration harness, failing control",
+  "generatedAt": "2026-11-22T05:39:35.309Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 21,
+      "raw": 1061194,
+      "gzip": 315047,
+      "brotli": 276259,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 21,
+      "raw": 1057859,
+      "gzip": 313411,
+      "brotli": 274788,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 35,
+      "raw": 1899229,
+      "gzip": 566965,
+      "brotli": 495501,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 31,
+      "raw": 1567761,
+      "gzip": 476048,
+      "brotli": 416969,
+      "localeScripts": []
+    }
+  ]
+}

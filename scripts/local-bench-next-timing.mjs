@@ -62,9 +62,9 @@ export function measureRoomDocument(req, res) {
   };
 }
 
-// Preloaded only by next start in the isolated benchmark profile. Prepending the
-// listener keeps the ordinary Next server and socket intact, with no proxy hop.
-const port = Number(process.env.BENCH_NEXT_PORT);
+// Preloaded only by the Next or Start server in the isolated benchmark profile. Prepending the
+// listener keeps the ordinary server and socket intact, with no proxy hop.
+const port = Number(process.env.BENCH_START_PORT ?? process.env.BENCH_NEXT_PORT);
 if (process.env.BENCH_LOCAL_SSR === "1" && Number.isInteger(port) && port > 0 &&
     /^http:\/\/127\.0\.0\.1:\d+$/.test(process.env.NEXT_PUBLIC_CONVEX_URL ?? "")) {
   const listen = Server.prototype.listen;

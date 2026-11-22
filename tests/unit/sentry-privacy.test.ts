@@ -13,10 +13,12 @@ describe("pairing secrets in Sentry reports", () => {
   it("scrubs navigation, fetch and XHR breadcrumbs", () => {
     const navigation = scrubBreadcrumb({ category: "navigation", data: { from: `/display#pair=${SECRET}`, to: "/display" } });
     const fetch = scrubBreadcrumb({ category: "fetch", data: { url: `/x?pair=${SECRET}`, status_code: 200 } });
-    const console = scrubBreadcrumb({ category: "console", message: `opened /display#pair=${SECRET}` });
+    // The SDK's console breadcrumb repeats the raw console arguments in data.arguments.
+    const console = scrubBreadcrumb({ category: "console", message: `opened /display#pair=${SECRET}`, data: { arguments: [`opened /display#pair=${SECRET}`, 3], logger: "console" } });
     expect(JSON.stringify([navigation, fetch, console])).not.toContain(SECRET);
     expect(navigation.data).toEqual({ from: "/display#pair=[redacted]", to: "/display" });
     expect(fetch.data?.status_code).toBe(200);
+    expect(console.data).toEqual({ arguments: ["opened /display#pair=[redacted]", 3], logger: "console" });
   });
 
   it("scrubs the event URL, its name and its breadcrumbs", () => {

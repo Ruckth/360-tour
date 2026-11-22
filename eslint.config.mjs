@@ -8,7 +8,8 @@ const config = [
   ...nextTs,
   {
     ignores: [
-      ".next/**",
+      ".next/**", ".output/**", ".nitro/**", ".tanstack/**", "dist/**",
+      "src/start-app/routeTree.gen.ts",
       "node_modules/**",
       "opensrc/**",
       ".claude/**",

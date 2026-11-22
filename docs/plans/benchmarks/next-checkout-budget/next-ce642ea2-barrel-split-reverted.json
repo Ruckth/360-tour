@@ -1,0 +1,38 @@
+{
+  "projectDir": "ce642ea2 + auth/intl barrel split (reverted non-solution)",
+  "generatedAt": "2026-11-22T06:12:53.632Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 21,
+      "raw": 1067955,
+      "gzip": 317371,
+      "brotli": 278283,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 21,
+      "raw": 1064620,
+      "gzip": 315735,
+      "brotli": 276812,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 35,
+      "raw": 1905990,
+      "gzip": 569294,
+      "brotli": 497524,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 31,
+      "raw": 1574522,
+      "gzip": 478377,
+      "brotli": 418968,
+      "localeScripts": []
+    }
+  ]
+}

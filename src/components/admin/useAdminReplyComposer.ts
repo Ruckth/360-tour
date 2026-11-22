@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth } from "@/platform/auth";
 import type { Id } from "convex/_generated/dataModel";
 import { useRef, useState } from "react";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";

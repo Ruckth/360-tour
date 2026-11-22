@@ -6,6 +6,8 @@ Maintenance runs before every public trust check and every HTTP handler. `admin*
 
 Guest builders require a matching hashed token on a web conversation in the same transaction. Missing optional legacy credentials still fail with `INVALID_GUEST_TOKEN`. Device builders resolve the hashed display token; invalid/revoked devices receive the existing unpaired/no-op result. Pending devices can only read their own unexpired pairing code. Public capability endpoints keep booking access tokens, signed proposals, one-use handoffs and lease cleanup checks in their handlers.
 
+Committed catalog edits and review changes on active properties can schedule the internal `catalog/properties:deliverVillaInvalidation` action. It sends only the affected slugs to the configured Start origin with server-held credentials. The Start receiver checks the shared credential before parsing the body or expiring cache entries. The cache TTL remains the fallback for disabled configuration and failed delivery.
+
 The inventory test compares every source registration with this table and requires explicit public reasons and staff/marketing policies. The source gate also detects aliased raw imports, raw reexports and generated-server namespace imports. No Phase 3 completion is claimed.
 
 | Public function | Builder | Trust/rationale | Additional record checks |

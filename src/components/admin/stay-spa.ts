@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/navigation";
 import { useCallback } from "react";
 import { orderPath } from "@/components/checkout/checkout-source";
 

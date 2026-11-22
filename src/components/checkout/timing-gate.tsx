@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from "@/platform/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CheckoutBackend } from "./backend";
 

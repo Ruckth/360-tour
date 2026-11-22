@@ -1,5 +1,5 @@
-import Link from 'next/link';
-import { useLocale, useTranslations } from 'next-intl';
+import Link from '@/platform/link';
+import { useLocale, useTranslations } from '@/platform/intl';
 import type { ReactNode } from 'react';
 import { localizeHref } from '@/i18n/routing';
 import { resort } from '@/lib/data/resort-config';

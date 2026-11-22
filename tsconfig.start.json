@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "plugins": [],
+    "paths": {
+      "@/platform/*": ["./src/start-app/platform/*"],
+      "@/*": ["./src/*"],
+      "convex/*": ["./convex/*"]
+    }
+  },
+  "include": ["src/start-app/**/*.ts", "src/start-app/**/*.tsx"]
+}

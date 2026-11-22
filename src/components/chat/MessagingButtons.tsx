@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
+import Image from "@/platform/image";
 import { Mail } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import {
   Dialog,

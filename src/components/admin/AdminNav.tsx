@@ -1,8 +1,8 @@
 "use client";
 
 import { Menu, Search, type LucideIcon } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Link from "@/platform/link";
+import { usePathname } from "@/platform/navigation";
 import { adminTabBarFor } from "@/components/admin/admin-access";
 import { adminNavItem, type AdminNavItem } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";

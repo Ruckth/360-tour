@@ -153,6 +153,18 @@ describe("tour entry report statistics", () => {
     expect(markdown).not.toContain("texture_decoded");
   });
 
+  it("accepts a converged control-only baseline while guarding delayed experiment inputs", () => {
+    const controls = fixture((files, spans) => {
+      for (const label of files.keys()) if (label.endsWith("-delay1000")) drop(files, spans, label);
+    });
+    const report = buildReport({ ...controls, controlOnly: true });
+    expect(report.status).toBe("valid");
+    expect(report.intervention).toEqual([]);
+    expect(renderMarkdown(report)).toContain("Control-only baseline");
+    expect(codes(buildReport(controls))).toContain("inconclusive:no-intervention");
+    expect(inputProblems({ ...fixture(), controlOnly: true })).toMatch(/cannot include delayed candidate/);
+  });
+
   it("rejects mismatched builds, wrong delays, missing or foreign spans and missing cache data", () => {
     expect(inputProblems(fixture((files) => { files.get("batch2-pair1-delay0")!.metadata.lockSha256 = "other"; })))
       .toMatch(/lockSha256 differ/);

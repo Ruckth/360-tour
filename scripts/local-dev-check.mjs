@@ -12,6 +12,7 @@ import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 import { testUsers } from './e2e-clerk.mjs';
 import { clerkFields } from './local-dev-config.mjs';
+import { localDevPort } from './worktree-ports.mjs';
 import { disabledServices, createPrivateOutput } from './local-integration-config.mjs';
 import { waitFor } from './local-processes.mjs';
 
@@ -47,10 +48,11 @@ function finalize() {
 }
 for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(name, () => { void finalize().finally(() => process.exit(130)); });
 let activeLog = '';
-const port = await new Promise((resolve, reject) => {
+const fallbackPort = await new Promise((resolve, reject) => {
   const server = net.createServer(); server.on('error', reject);
   server.listen(0, '127.0.0.1', () => { const result = server.address().port; server.close(() => resolve(result)); });
 });
+const port = localDevPort(root, fallbackPort);
 const report = [];
 const app = `http://localhost:${port}`;
 const childEnv = { PATH: process.env.PATH, ...disabledServices };

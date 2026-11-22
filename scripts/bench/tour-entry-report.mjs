@@ -5,6 +5,7 @@
  * Inputs
  *   --runs <dir>     Run JSON files from tests/bench/tour-open-interaction.bench.ts (BENCH_OUT), one per
  *                    BENCH_BATCH named batch<B>-pair<P>-delay<ms>. Non-JSON files (private traces) are ignored.
+ *   --control-only  Check a baseline with no deliberate image-delay arm.
  *   --spans <file>   Span JSON from scripts/local-bench-spans.mjs (BENCH_SPANS_OUT). Repeat for several harness runs.
  * Outputs
  *   --json <file>    Machine-readable report. --md <file> Markdown report (stdout when omitted).
@@ -62,7 +63,7 @@ const STAGE = /^[a-z][a-z0-9_]{0,63}$/;
 const PROFILE_KEYS = ["revision", "browser", "node", "platform", "arch", "width", "height", "dpr", "cpuFactor",
   "rttMs", "downMbps", "lockSha256", "assetSha256", "seed", "sceneSeedSha256"];
 /** Compared across files like PROFILE_KEYS, but older run files may predate it. */
-const OPTIONAL_PROFILE_KEYS = ["renderer"];
+const OPTIONAL_PROFILE_KEYS = ["renderer", "frontend", "assetEncoding"];
 const NEGATIVE_CONTROLS = /** @type {const} */ (["click", "reopen"]);
 const FALLBACK_STAGES = ["rooms_timeout", "texture_load_failed"];
 const SSR_CACHE = ["hit", "miss", "stale", "bypass"];
@@ -409,9 +410,9 @@ function verdict(delta, base) {
 
 /**
  * Build the report from file contents. Throws ReportInputError when the inputs cannot be compared at all.
- * @param {{runs: {file: string, text: string}[], spans: {file: string, text: string}[], command?: string, generatorSha256?: string}} input
+ * @param {{runs: {file: string, text: string}[], spans: {file: string, text: string}[], command?: string, generatorSha256?: string, controlOnly?: boolean}} input
  */
-export function buildReport({ runs, spans: spanInputs, command = "", generatorSha256 = "" }) {
+export function buildReport({ runs, spans: spanInputs, command = "", generatorSha256 = "", controlOnly = false }) {
   /** @type {string[]} */
   const problems = [];
   if (!runs.length) problems.push("no run JSON files found");
@@ -420,6 +421,9 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   /** @type {Map<string, any>} */
   const spans = new Map();
   const spanSummary = spanInputs.map((s) => ({ file: s.file, sha256: sha256(s.text), runs: parseSpanFile(s, spans, problems) }));
+  if (controlOnly && files.some((file) => file.delayMs > 0)) {
+    problems.push("--control-only cannot include delayed candidate run files");
+  }
   if (problems.length) throw new ReportInputError(problems);
 
   for (const [label, xs] of groupBy(files, (f) => f.label)) if (xs.length > 1) problems.push(`${label} appears in ${xs.map((f) => f.file).join(", ")}`);
@@ -522,7 +526,7 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   for (const [, xs] of pairs) {
     const label = `batch${xs[0].batch}-pair${xs[0].pair}`;
     if (!xs.some((f) => f.delayMs === 0)) issue("invalid", "missing-control", `${label} has no delay0 control`);
-    if (!xs.some((f) => f.delayMs > 0)) issue("inconclusive", "missing-candidate", `${label} has no delayed candidate`);
+    if (!controlOnly && !xs.some((f) => f.delayMs > 0)) issue("inconclusive", "missing-candidate", `${label} has no delayed candidate`);
     if (xs.length > 2) issue("invalid", "unbalanced-pair", `${label} has ${xs.length} run files; use one control and one candidate per pair`);
   }
   const intervention = [...new Set(files.map((f) => f.delayMs).filter((d) => d > 0))].sort((a, b) => a - b).map((delayMs) => {
@@ -598,7 +602,7 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
       negativeControls, byBatch,
     };
   });
-  if (!intervention.length) issue("inconclusive", "no-intervention", "no delayed candidate run files; causal attribution is untested");
+  if (!controlOnly && !intervention.length) issue("inconclusive", "no-intervention", "no delayed candidate run files; causal attribution is untested");
   for (const i of intervention) if (!i.direct.coupled)
     issue("inconclusive", "not-coupled", `delay${i.delayMs}: texture acquisition and end-to-end time not shown to move with the imposed delay (failed: ${Object.entries(i.direct.checks).filter(([, ok]) => !ok).map(([k]) => k).join(", ")})`);
 
@@ -608,7 +612,7 @@ export function buildReport({ runs, spans: spanInputs, command = "", generatorSh
   return {
     schema: "tour-entry-report/v2",
     status: unique.some((x) => x.level !== "warning") ? LEVELS[worst] : "valid",
-    command, generatorSha256, criteria: CRITERIA, profile,
+    command, generatorSha256, controlOnly, criteria: CRITERIA, profile,
     inputs: {
       runs: order.map((f) => ({ file: f.file, sha256: f.sha256, label: f.label, order: order.indexOf(f) + 1, count: f.count, cohorts: f.cohorts, samples: f.samples.length, failures: f.failures.length })),
       spans: spanSummary,
@@ -693,7 +697,7 @@ export function renderMarkdown(r) {
       ``,
       i.negativeControls.length ? `Negative controls (undelayed cohorts in the same files): ` +
         i.negativeControls.map((n) => `${n.cohort} Δ median ${f(n.medianDeltaMs)} ms (${n.driftFraction === null ? "–" : (n.driftFraction * 100).toFixed(1) + "%"} of control, p=${n.signTestP ?? "–"})`).join("; ") + "." : "",
-    ].join("\n")).join("\n\n") : "No delayed candidate runs.",
+    ].join("\n")).join("\n\n") : r.controlOnly ? "Control-only baseline. No causal intervention was run." : "No delayed candidate runs.",
     ``,
     `## Control noise and convergence`,
     ``,
@@ -740,6 +744,7 @@ export function renderMarkdown(r) {
 /** @param {string[]} argv @param {string} cwd */
 export function main(argv, cwd = process.cwd()) {
   const { values } = parseArgs({ args: argv, options: {
+    "control-only": { type: "boolean" },
     runs: { type: "string" }, spans: { type: "string", multiple: true }, json: { type: "string" }, md: { type: "string" },
   } });
   if (!values.runs) throw new ReportInputError(["--runs <dir> is required"]);
@@ -750,9 +755,9 @@ export function main(argv, cwd = process.cwd()) {
     .map((name) => path.join(dir, name)).filter((p) => !spanPaths.includes(p))
     .map((p) => ({ file: rel(p), text: readFileSync(p, "utf8") }));
   const spans = spanPaths.map((p) => ({ file: rel(p), text: readFileSync(p, "utf8") }));
-  const command = ["node scripts/bench/tour-entry-report.mjs", `--runs ${rel(dir)}`, ...spanPaths.map((p) => `--spans ${rel(p)}`),
+  const command = ["node scripts/bench/tour-entry-report.mjs", ...(values["control-only"] ? ["--control-only"] : []), `--runs ${rel(dir)}`, ...spanPaths.map((p) => `--spans ${rel(p)}`),
     ...(values.json ? [`--json ${rel(values.json)}`] : []), ...(values.md ? [`--md ${rel(values.md)}`] : [])].join(" ");
-  const report = buildReport({ runs, spans, command, generatorSha256: sha256(readFileSync(fileURLToPath(import.meta.url), "utf8")) });
+  const report = buildReport({ runs, spans, command, controlOnly: values["control-only"], generatorSha256: sha256(readFileSync(fileURLToPath(import.meta.url), "utf8")) });
   const markdown = renderMarkdown(report);
   if (values.json) writeFileSync(path.resolve(cwd, values.json), JSON.stringify(report, null, 2) + "\n");
   if (values.md) writeFileSync(path.resolve(cwd, values.md), markdown);

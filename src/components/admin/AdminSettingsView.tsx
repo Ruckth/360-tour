@@ -13,7 +13,7 @@ import {
   type SettingsInput,
 } from "convex/shared/siteSettings";
 import { RotateCw } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";

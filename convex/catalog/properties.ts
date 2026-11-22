@@ -1,5 +1,5 @@
 import { propertiesListResult, propertiesGetTourRoomsResult, propertiesGetOtaComparisonResult } from './validators';
-import { publicQuery, adminQuery, adminMutation } from '../auth/model';
+import { publicQuery, adminQuery, adminMutation, internalAction } from '../auth/model';
 import { v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { configurationWriter } from '../settings/model';
@@ -7,9 +7,15 @@ import { appendRecordHistory } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 import { toPublicProperty, type PublicProperty } from './model';
 import { propertyNightlyPrice, savePropertyEdit } from './private/propertyEdits';
+import { deliverVillaCacheInvalidation } from './private/villaInvalidation';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
 const MAX_NIGHTLY_RATE = 1_000_000_000;
+
+export const deliverVillaInvalidation = internalAction({
+	args: { slugs: v.array(v.string()), attempt: v.number() },
+	handler: deliverVillaCacheInvalidation
+});
 
 export const list = publicQuery({
   returns: propertiesListResult,

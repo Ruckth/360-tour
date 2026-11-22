@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { previewConfiguration, previewUrl, previewDashboardTarget, assertPreviewProvidersDisabled } from './preview-build.mjs';
 const { branch } = previewConfiguration(process.env);
 if (!process.env.PHASE3F_TARGET_FILE || !process.env.PHASE3F_ENV_FILE) throw new Error('Missing private Preview configuration');
-const url = previewUrl(process.env.NEXT_PUBLIC_CONVEX_URL);
+const url = previewUrl(process.env.START_PREVIEW === '1' ? process.env.VITE_CONVEX_URL : process.env.NEXT_PUBLIC_CONVEX_URL);
 async function convex(args) {
   try {
     const result = await promisify(execFile)(process.execPath, [path.resolve('node_modules/convex/bin/main.js'), ...args, '--env-file', process.env.PHASE3F_ENV_FILE], { env: process.env, timeout: 60000, maxBuffer: 1024 * 1024 });

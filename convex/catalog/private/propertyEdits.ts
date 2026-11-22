@@ -4,6 +4,7 @@ import { catalogueFields, catalogueRevision, recordCatalogueEdit } from '../../c
 import { reserveWrites } from '../../lib/readBudget';
 import { logConfiguration } from '../../settings/model';
 import { amount } from '../../shared/validation';
+import { scheduleVillaInvalidation } from './villaInvalidation';
 
 type Property = Doc<'properties'>;
 type PropertyPatch = Partial<Pick<Property,
@@ -25,6 +26,9 @@ async function preparePropertyEdit(ctx: MutationCtx, before: Property, patch: Pr
       reserveWrites(ctx, 3);
       await ctx.db.patch(before._id, changes);
       await logConfiguration(ctx, actor, 'updated', before, { ...before, ...changes }, 'property');
+      if (before.status === 'active' || patch.status === 'active') {
+        await scheduleVillaInvalidation(ctx, before.slug, patch.slug ?? before.slug);
+      }
       return [];
     },
   };

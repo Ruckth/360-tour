@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useConvex } from 'convex/react';
 import { CalendarDays, X } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import type { DateRange, DayPickerProps } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";

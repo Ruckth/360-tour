@@ -5,7 +5,7 @@ import { useCouponPreview } from "@/components/booking/useCouponPreview";
 import { useCouponCopy } from "@/components/booking/coupon-copy";
 import { couponPhase } from "@/lib/booking/coupon";
 import { CalendarCheck, CheckCircle2, ChevronsRight } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useMemo, useState } from "react";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { PropertyImage } from "@/components/property/PropertyImage";

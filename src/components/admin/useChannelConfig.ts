@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth } from "@/platform/auth";
 import { useCallback, useEffect, useState } from "react";
 import type { ChannelConfigStatus } from "@/lib/admin/channel-config";
 import { errorText } from "@/lib/staff-bookings";

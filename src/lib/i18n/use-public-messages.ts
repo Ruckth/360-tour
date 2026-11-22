@@ -1,6 +1,6 @@
 "use client";
 
-import { useMessages } from "next-intl";
+import { useMessages } from "@/platform/intl";
 import type { PublicMessages } from "@/lib/i18n/public-content";
 
 /**

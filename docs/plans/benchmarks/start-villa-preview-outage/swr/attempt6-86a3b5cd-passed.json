@@ -1,0 +1,1449 @@
+{
+  "previewName": "perf-phase2-swr-validation-6",
+  "commit": "86a3b5cddc84a4d839356518ff6b28b00d3ee9ae",
+  "clock": "runner-monotonic-ms",
+  "mode": "swr",
+  "freshMs": 60000,
+  "backoffMs": 30000,
+  "immediateMs": 2000,
+  "causalMs": 3000,
+  "burstSize": 3,
+  "observations": [
+    {
+      "phase": "healthy",
+      "atMs": 14192,
+      "status": 200,
+      "durationMs": 739,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "seeded",
+      "upstream": 2,
+      "held": 0,
+      "detail": 2,
+      "detailHeld": 0
+    },
+    {
+      "phase": "edit-stale-while-revalidate",
+      "atMs": 17686,
+      "status": 200,
+      "durationMs": 380.4,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "seeded",
+      "upstream": 3,
+      "held": 0,
+      "detail": 3,
+      "detailHeld": 0,
+      "sinceWriteMs": 754,
+      "seen": [
+        "200:stale:seeded:380.4@P1"
+      ]
+    },
+    {
+      "phase": "edit-fresh",
+      "atMs": 23568,
+      "status": 200,
+      "durationMs": 434,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "edited",
+      "upstream": 5,
+      "held": 0,
+      "detail": 4,
+      "detailHeld": 0,
+      "sinceWriteMs": 7070,
+      "sinceRefreshMs": 6316,
+      "originDetailReads": 2
+    },
+    {
+      "phase": "held-stale-while-revalidate",
+      "atMs": 80915,
+      "status": 200,
+      "durationMs": 400,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "edited",
+      "upstream": 6,
+      "held": 1,
+      "detail": 5,
+      "detailHeld": 1,
+      "followUps": [
+        "200:stale:edited:560@P1",
+        "200:stale:edited:571.7@P1",
+        "200:stale:edited:550.7@P1"
+      ],
+      "followUpsInFlight": 3,
+      "seen": [
+        "200:hit:edited:351.5@P1",
+        "200:hit:edited:674.3@P1",
+        "200:hit:edited:644.1@P1",
+        "200:hit:edited:430.3@P1",
+        "200:hit:edited:713.6@P1",
+        "200:hit:edited:435.1@P1",
+        "200:hit:edited:419.6@P1",
+        "200:hit:edited:694.6@P1",
+        "200:hit:edited:686@P1",
+        "200:hit:edited:652.3@P1",
+        "200:stale:edited:400@P1"
+      ]
+    },
+    {
+      "phase": "warm-fallback-after-failed-refresh",
+      "atMs": 88001,
+      "status": 200,
+      "durationMs": 663.8,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "edited",
+      "upstream": 7,
+      "held": 2,
+      "detail": 5,
+      "detailHeld": 1,
+      "heldDetailReads": 1
+    },
+    {
+      "phase": "tokenless-in-backoff",
+      "atMs": 88665,
+      "status": 200,
+      "durationMs": 326.1,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "edited",
+      "upstream": 7,
+      "held": 2,
+      "detail": 5,
+      "detailHeld": 1,
+      "newDetailReads": 0,
+      "sinceHeldRefreshMs": 8076
+    },
+    {
+      "phase": "cold-unknown-in-backoff",
+      "atMs": 88992,
+      "status": 503,
+      "durationMs": 623.8,
+      "cache": "unavailable",
+      "retryAfter": "30",
+      "process": "P1",
+      "faultActive": false,
+      "content": "other",
+      "upstream": 7,
+      "held": 2,
+      "detail": 5,
+      "detailHeld": 1
+    },
+    {
+      "phase": "backoff-ended",
+      "atMs": 116408,
+      "status": 404,
+      "durationMs": 397.5,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 10,
+      "held": 2,
+      "detail": 7,
+      "detailHeld": 1,
+      "sinceHeldRefreshMs": 35493,
+      "seen": [
+        "503:unavailable:other:320.9@P1",
+        "503:unavailable:other:550.5@P1",
+        "503:unavailable:other:542.4@P1",
+        "503:unavailable:other:340@P1",
+        "503:unavailable:other:563.3@P1",
+        "503:unavailable:other:358.8@P1",
+        "503:unavailable:other:533.4@P1",
+        "503:unavailable:other:327@P1",
+        "503:unavailable:other:347.2@P1",
+        "503:unavailable:other:349.9@P1",
+        "503:unavailable:other:544.6@P1",
+        "404:miss:absent:397.5@P1"
+      ]
+    },
+    {
+      "phase": "recovered",
+      "atMs": 128254,
+      "status": 200,
+      "durationMs": 466.2,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "recovered",
+      "upstream": 12,
+      "held": 2,
+      "detail": 9,
+      "detailHeld": 1,
+      "refreshingResponse": "200:stale:edited:446.4@P1",
+      "sinceBackoffEndMs": 11846
+    },
+    {
+      "phase": "archived",
+      "atMs": 189104,
+      "status": 404,
+      "durationMs": 812.5,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 16,
+      "held": 2,
+      "detail": 11,
+      "detailHeld": 1,
+      "sinceWriteMs": 61195,
+      "seen": [
+        "200:hit:recovered:560.4@P1",
+        "200:hit:recovered:359@P1",
+        "200:hit:recovered:609.4@P1",
+        "200:hit:recovered:325.9@P1",
+        "200:hit:recovered:369.1@P1",
+        "200:hit:recovered:326.4@P1",
+        "200:hit:recovered:344.5@P1",
+        "200:hit:recovered:543.3@P1",
+        "200:hit:recovered:576.7@P1",
+        "200:hit:recovered:549.8@P1",
+        "200:hit:recovered:363.7@P1",
+        "200:hit:recovered:346.2@P1",
+        "200:hit:recovered:579.6@P1",
+        "200:hit:recovered:549.1@P1",
+        "200:hit:recovered:370.1@P1",
+        "200:hit:recovered:549.3@P1",
+        "200:stale:recovered:438@P1",
+        "404:hit:absent:812.5@P1"
+      ]
+    },
+    {
+      "phase": "archived-held-refresh",
+      "atMs": 273116,
+      "status": 404,
+      "durationMs": 415.1,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "absent",
+      "upstream": 18,
+      "held": 4,
+      "detail": 12,
+      "detailHeld": 2,
+      "followUps": [
+        "404:stale:absent:323.4@P1",
+        "404:stale:absent:338.5@P1",
+        "404:stale:absent:322.4@P1"
+      ],
+      "followUpsInFlight": 3,
+      "seen": [
+        "404:hit:absent:324.6@P1",
+        "404:hit:absent:632@P1",
+        "404:hit:absent:398.6@P1",
+        "404:hit:absent:388.9@P1",
+        "404:hit:absent:634.4@P1",
+        "404:hit:absent:617.7@P1",
+        "404:hit:absent:653.4@P1",
+        "404:hit:absent:625.8@P1",
+        "404:hit:absent:590.5@P1",
+        "404:hit:absent:422.4@P1",
+        "404:hit:absent:780.4@P1",
+        "404:stale:absent:639.6@P1",
+        "404:stale:absent:415.9@P1",
+        "404:stale:absent:629.8@P1",
+        "404:stale:absent:422.9@P1",
+        "404:stale:absent:415.1@P1"
+      ]
+    },
+    {
+      "phase": "archived-fallback",
+      "atMs": 279518,
+      "status": 404,
+      "durationMs": 618.1,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": true,
+      "content": "absent",
+      "upstream": 19,
+      "held": 5,
+      "detail": 12,
+      "detailHeld": 2
+    },
+    {
+      "phase": "archived-tokenless-in-backoff",
+      "atMs": 280137,
+      "status": 404,
+      "durationMs": 365.2,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 19,
+      "held": 5,
+      "detail": 12,
+      "detailHeld": 2,
+      "newDetailReads": 0
+    },
+    {
+      "phase": "archived-recovered",
+      "atMs": 312786,
+      "status": 404,
+      "durationMs": 411.5,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 21,
+      "held": 5,
+      "detail": 13,
+      "detailHeld": 2,
+      "sinceHeldRefreshMs": 40081,
+      "seen": [
+        "404:stale:absent:311.8@P1",
+        "404:stale:absent:336.6@P1",
+        "404:stale:absent:540.4@P1",
+        "404:stale:absent:327.9@P1",
+        "404:stale:absent:330.6@P1",
+        "404:stale:absent:334.3@P1",
+        "404:stale:absent:328.3@P1",
+        "404:stale:absent:535@P1",
+        "404:stale:absent:544.5@P1",
+        "404:stale:absent:324.6@P1",
+        "404:stale:absent:322.8@P1",
+        "404:stale:absent:527.6@P1"
+      ]
+    },
+    {
+      "phase": "reactivated",
+      "atMs": 374988,
+      "status": 200,
+      "durationMs": 654.4,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "recovered",
+      "upstream": 25,
+      "held": 5,
+      "detail": 15,
+      "detailHeld": 2,
+      "refreshingResponse": "404:stale:absent:334.4@P1",
+      "sinceWriteMs": 62445,
+      "seen": [
+        "404:hit:absent:544.9@P1",
+        "404:hit:absent:343.3@P1",
+        "404:hit:absent:546.7@P1",
+        "404:hit:absent:537.6@P1",
+        "404:hit:absent:337.9@P1",
+        "404:hit:absent:626.6@P1",
+        "404:hit:absent:531.9@P1",
+        "404:hit:absent:321@P1",
+        "404:hit:absent:530.9@P1",
+        "404:hit:absent:334.8@P1",
+        "404:hit:absent:344.7@P1",
+        "404:hit:absent:339.3@P1",
+        "404:hit:absent:344.5@P1",
+        "404:hit:absent:325.1@P1",
+        "404:hit:absent:561.6@P1",
+        "404:hit:absent:328.3@P1",
+        "404:stale:absent:334.4@P1"
+      ]
+    },
+    {
+      "phase": "cold-archive",
+      "atMs": 376397,
+      "status": 404,
+      "durationMs": 364.1,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 27,
+      "held": 5,
+      "detail": 17,
+      "detailHeld": 2,
+      "attempt": 1
+    },
+    {
+      "phase": "cold-archive-repeat",
+      "atMs": 382262,
+      "status": 404,
+      "durationMs": 621,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 27,
+      "held": 5,
+      "detail": 17,
+      "detailHeld": 2
+    },
+    {
+      "phase": "authoritative-miss",
+      "atMs": 382885,
+      "status": 404,
+      "durationMs": 587,
+      "cache": "miss",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 29,
+      "held": 5,
+      "detail": 19,
+      "detailHeld": 2,
+      "attempt": 1
+    },
+    {
+      "phase": "authoritative-miss-repeat",
+      "atMs": 388974,
+      "status": 404,
+      "durationMs": 617.8,
+      "cache": "hit",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "absent",
+      "upstream": 29,
+      "held": 5,
+      "detail": 19,
+      "detailHeld": 2
+    }
+  ],
+  "timings": [
+    {
+      "leg": "healthy",
+      "durationMs": 739,
+      "gapMs": null,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 380.4,
+      "gapMs": 2755,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 434,
+      "gapMs": 5502,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 351.5,
+      "gapMs": 1198,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 674.3,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 644.1,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 430.3,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 713.6,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 435.1,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 419.6,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 694.6,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 686,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 652.3,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 400,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 560,
+      "gapMs": 1,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 571.7,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 550.7,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 663.8,
+      "gapMs": 5003,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "held-refresh",
+      "durationMs": 326.1,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 623.8,
+      "gapMs": 1,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 320.9,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 550.5,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 542.4,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 340,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 563.3,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 358.8,
+      "gapMs": 2003,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 533.4,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 327,
+      "gapMs": 2003,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 347.2,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 349.9,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 544.6,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "unavailable"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 397.5,
+      "gapMs": 1999,
+      "faulted": false,
+      "cache": "miss"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 446.4,
+      "gapMs": 5501,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "global-backoff",
+      "durationMs": 466.2,
+      "gapMs": 5502,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 560.4,
+      "gapMs": 1593,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 359,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 609.4,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 325.9,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 369.1,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 326.4,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 344.5,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 543.3,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 576.7,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 549.8,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 363.7,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 346.2,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 579.6,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 549.1,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 370.1,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 549.3,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 438,
+      "gapMs": 3000,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 812.5,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 324.6,
+      "gapMs": 1,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 632,
+      "gapMs": 4999,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 398.6,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 388.9,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 634.4,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 617.7,
+      "gapMs": 5000,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 653.4,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 625.8,
+      "gapMs": 5003,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 590.5,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 422.4,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 780.4,
+      "gapMs": 5003,
+      "faulted": true,
+      "cache": "hit"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 639.6,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 415.9,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 629.8,
+      "gapMs": 5001,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 422.9,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 415.1,
+      "gapMs": 5002,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 323.4,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 338.5,
+      "gapMs": 0,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 322.4,
+      "gapMs": 1,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 618.1,
+      "gapMs": 5003,
+      "faulted": true,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 365.2,
+      "gapMs": 1,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 311.8,
+      "gapMs": 1,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 336.6,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 540.4,
+      "gapMs": 2003,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 327.9,
+      "gapMs": 2001,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 330.6,
+      "gapMs": 2001,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 334.3,
+      "gapMs": 2001,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 328.3,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 535,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 544.5,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 324.6,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 322.8,
+      "gapMs": 2000,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 527.6,
+      "gapMs": 2002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "archive",
+      "durationMs": 411.5,
+      "gapMs": 5502,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 544.9,
+      "gapMs": 1024,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 343.3,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 546.7,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 537.6,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 337.9,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 626.6,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 531.9,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 321,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 530.9,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 334.8,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 344.7,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 339.3,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 344.5,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 325.1,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 561.6,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 328.3,
+      "gapMs": 3001,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 334.4,
+      "gapMs": 3002,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "reactivate",
+      "durationMs": 654.4,
+      "gapMs": 5503,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "cold-archive",
+      "durationMs": 364.1,
+      "gapMs": 755,
+      "faulted": false,
+      "cache": "miss"
+    },
+    {
+      "leg": "cold-archive",
+      "durationMs": 621,
+      "gapMs": 5501,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "authoritative-miss",
+      "durationMs": 587,
+      "gapMs": 2,
+      "faulted": false,
+      "cache": "miss"
+    },
+    {
+      "leg": "authoritative-miss",
+      "durationMs": 617.8,
+      "gapMs": 5502,
+      "faulted": false,
+      "cache": "hit"
+    }
+  ],
+  "originReads": [
+    {
+      "transition": "edit refresh",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 2,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "tokenless request in backoff",
+      "kind": "backoff",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "held refresh incl. in-flight follow-ups",
+      "kind": "failed",
+      "expected": 1,
+      "actual": 1,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "new unknown slug in backoff",
+      "kind": "backoff",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "room refresh after backoff",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 2,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "archive refresh",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "transition": "tokenless archived request in backoff",
+      "kind": "backoff",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "held archived refresh incl. in-flight follow-ups",
+      "kind": "failed",
+      "expected": 1,
+      "actual": 1,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "archived refresh after backoff",
+      "kind": "unchanged",
+      "expected": 1,
+      "actual": 1,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "reactivation refresh",
+      "kind": "changed",
+      "expected": 2,
+      "actual": 2,
+      "startedByStarter": 1
+    },
+    {
+      "transition": "cold-archive, first 404",
+      "kind": "coldNegative",
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "transition": "cold-archive, repeat",
+      "kind": "cached",
+      "expected": 0,
+      "actual": 0
+    },
+    {
+      "transition": "authoritative-miss, first 404",
+      "kind": "coldNegative",
+      "expected": 2,
+      "actual": 2
+    },
+    {
+      "transition": "authoritative-miss, repeat",
+      "kind": "cached",
+      "expected": 0,
+      "actual": 0
+    }
+  ],
+  "summary": {
+    "processes": 1,
+    "sameWorker": true,
+    "passed": true,
+    "originReads": [
+      {
+        "transition": "edit refresh",
+        "kind": "changed",
+        "expected": 2,
+        "actual": 2,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "tokenless request in backoff",
+        "kind": "backoff",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "transition": "held refresh incl. in-flight follow-ups",
+        "kind": "failed",
+        "expected": 1,
+        "actual": 1,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "new unknown slug in backoff",
+        "kind": "backoff",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "transition": "room refresh after backoff",
+        "kind": "changed",
+        "expected": 2,
+        "actual": 2,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "archive refresh",
+        "kind": "changed",
+        "expected": 2,
+        "actual": 2
+      },
+      {
+        "transition": "tokenless archived request in backoff",
+        "kind": "backoff",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "transition": "held archived refresh incl. in-flight follow-ups",
+        "kind": "failed",
+        "expected": 1,
+        "actual": 1,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "archived refresh after backoff",
+        "kind": "unchanged",
+        "expected": 1,
+        "actual": 1,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "reactivation refresh",
+        "kind": "changed",
+        "expected": 2,
+        "actual": 2,
+        "startedByStarter": 1
+      },
+      {
+        "transition": "cold-archive, first 404",
+        "kind": "coldNegative",
+        "expected": 2,
+        "actual": 2
+      },
+      {
+        "transition": "cold-archive, repeat",
+        "kind": "cached",
+        "expected": 0,
+        "actual": 0
+      },
+      {
+        "transition": "authoritative-miss, first 404",
+        "kind": "coldNegative",
+        "expected": 2,
+        "actual": 2
+      },
+      {
+        "transition": "authoritative-miss, repeat",
+        "kind": "cached",
+        "expected": 0,
+        "actual": 0
+      }
+    ],
+    "budget": {
+      "limitMs": 2000,
+      "responses": 108,
+      "met": true,
+      "overBudget": 0,
+      "overBudgetAfterIdleOver20s": 0
+    },
+    "distribution": {
+      "healthy": {
+        "n": 1,
+        "minMs": 739,
+        "p50Ms": 739,
+        "p95Ms": 739,
+        "maxMs": 739,
+        "overBudget": []
+      },
+      "edit-swr": {
+        "n": 2,
+        "minMs": 380.4,
+        "p50Ms": 434,
+        "p95Ms": 434,
+        "maxMs": 434,
+        "overBudget": []
+      },
+      "held-refresh": {
+        "n": 16,
+        "minMs": 326.1,
+        "p50Ms": 571.7,
+        "p95Ms": 713.6,
+        "maxMs": 713.6,
+        "overBudget": []
+      },
+      "global-backoff": {
+        "n": 15,
+        "minMs": 320.9,
+        "p50Ms": 446.4,
+        "p95Ms": 623.8,
+        "maxMs": 623.8,
+        "overBudget": []
+      },
+      "archive": {
+        "n": 52,
+        "minMs": 311.8,
+        "p50Ms": 422.4,
+        "p95Ms": 653.4,
+        "maxMs": 812.5,
+        "overBudget": []
+      },
+      "reactivate": {
+        "n": 18,
+        "minMs": 321,
+        "p50Ms": 344.7,
+        "p95Ms": 654.4,
+        "maxMs": 654.4,
+        "overBudget": []
+      },
+      "cold-archive": {
+        "n": 2,
+        "minMs": 364.1,
+        "p50Ms": 621,
+        "p95Ms": 621,
+        "maxMs": 621,
+        "overBudget": []
+      },
+      "authoritative-miss": {
+        "n": 2,
+        "minMs": 587,
+        "p50Ms": 617.8,
+        "p95Ms": 617.8,
+        "maxMs": 617.8,
+        "overBudget": []
+      }
+    }
+  },
+  "teardown": "passed"
+}

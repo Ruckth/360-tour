@@ -4,7 +4,7 @@ import type { FunctionReturnType } from 'convex/server';
 import { getStoredGuestToken } from '@/components/chat/session/credentials';
 import { api } from 'convex/_generated/api';
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useTranslations } from '@/platform/intl';
 import { useConvex } from 'convex/react';
 
 import { selectChatSuggestions, type ChatSuggestionId } from '@/lib/chat/suggestions';

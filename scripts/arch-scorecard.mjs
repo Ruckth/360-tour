@@ -95,7 +95,7 @@ const ownershipDetails = rule => ownership.filter(issue => issue.rule === rule).
 const DOMAINS = SCHEMA_DOMAINS;
 
 const bigFiles = [...convexProd, ...srcFiles.filter((p) => !isTest(p))]
-	.filter((p) => !rel(p).endsWith('convex/schema.ts'))
+	.filter((p) => !['convex/schema.ts', 'src/start-app/routeTree.gen.ts'].includes(rel(p)))
 	.map((p) => [rel(p), read(p).split('\n').length])
 	.filter(([, n]) => n > 1000)
 	.map(([p, n]) => `${p} (${n})`);
@@ -184,7 +184,7 @@ add('domain-folders', 3, 'Domain folders owning assembled schema tables', DOMAIN
 add('demo-mode', 3, 'Files using demo mode (useOptionalConvex, dev:demo, bookingId=demo)', filesMatching([...srcFiles, ...testFiles], /useOptionalConvex|bookingId=demo/).length + (/"dev:demo"/.test(read(join(ROOT, 'package.json'))) ? 1 : 0), 0);
 add('ci-placeholder-backend', 3, 'CI steps using a placeholder Convex URL', (ciText.match(/example\.convex\.cloud|placeholder/g) ?? []).length, 0);
 add('architecture-doc', 3, 'ARCHITECTURE.md with a feature recipe (1 = yes)', existsSync(join(ROOT, 'ARCHITECTURE.md')) && /recipe/i.test(read(join(ROOT, 'ARCHITECTURE.md'))) ? 1 : 0, 1);
-add('files-over-1000', 3, 'Non-vendor source files over 1,000 lines (schema excluded)', bigFiles.length, 0, bigFiles);
+add('files-over-1000', 3, 'Handwritten source files over 1,000 lines (schema excluded)', bigFiles.length, 0, bigFiles);
 
 const missing = missingReturns();
 add('no-login-without-returns', 4, 'No-login public functions without a return validator', missing.length, 0, missing.slice(0, 20));

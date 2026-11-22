@@ -1,0 +1,38 @@
+{
+  "projectDir": "1c1938b2 (Clerk + Floating UI pins), clean frozen install",
+  "generatedAt": "2026-11-22T06:38:32.903Z",
+  "results": [
+    {
+      "route": "/[locale]/(home)",
+      "chunks": 20,
+      "raw": 1020916,
+      "gzip": 301621,
+      "brotli": 264058,
+      "localeScripts": []
+    },
+    {
+      "route": "/[locale]/rooms/[id]",
+      "chunks": 20,
+      "raw": 1017581,
+      "gzip": 299986,
+      "brotli": 262559,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/checkout",
+      "chunks": 34,
+      "raw": 1837636,
+      "gzip": 545536,
+      "brotli": 476280,
+      "localeScripts": []
+    },
+    {
+      "route": "/admin/properties/[id]",
+      "chunks": 30,
+      "raw": 1506168,
+      "gzip": 454619,
+      "brotli": 397725,
+      "localeScripts": []
+    }
+  ]
+}

@@ -4,10 +4,10 @@ import { api } from 'convex/_generated/api';
 
 import { satangToBaht } from 'convex/shared/money';
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/platform/link";
+import { useRouter } from "@/platform/navigation";
 import { CreditCard, ShieldCheck } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";

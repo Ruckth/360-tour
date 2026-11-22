@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
+import Image from "@/platform/image";
+import Link from "@/platform/link";
 import { ArrowDown, ArrowRight } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { getLocalizedResort } from "@/lib/i18n/public-content";

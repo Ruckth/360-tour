@@ -1,4 +1,4 @@
-import { createTranslator } from "next-intl";
+import { createTranslator } from "@/platform/intl";
 import { formatMoney } from "@/components/admin/labels";
 import { staffDate, staffTime } from "@/lib/staff-time";
 import commerceEn from "../../../messages/commerce/en.json";

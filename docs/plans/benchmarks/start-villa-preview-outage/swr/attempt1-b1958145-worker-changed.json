@@ -1,0 +1,72 @@
+{
+  "previewName": "perf-phase2-swr-validation",
+  "commit": "b19581452ac1ff03732ae1b816415b76da57d351",
+  "clock": "runner-monotonic-ms",
+  "mode": "swr",
+  "freshMs": 60000,
+  "backoffMs": 30000,
+  "immediateMs": 2000,
+  "causalMs": 3000,
+  "burstSize": 3,
+  "observations": [
+    {
+      "phase": "healthy",
+      "atMs": 15501,
+      "status": 200,
+      "durationMs": 680.2,
+      "cache": "stale",
+      "retryAfter": null,
+      "process": "P1",
+      "faultActive": false,
+      "content": "seeded",
+      "upstream": 3,
+      "held": 0,
+      "detail": 2,
+      "detailHeld": 0
+    }
+  ],
+  "timings": [
+    {
+      "leg": "healthy",
+      "durationMs": 680.2,
+      "gapMs": null,
+      "faulted": false,
+      "cache": "stale"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 558,
+      "gapMs": 3327,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 462.2,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 654,
+      "gapMs": 0,
+      "faulted": false,
+      "cache": "hit"
+    },
+    {
+      "leg": "edit-swr",
+      "durationMs": 2489.2,
+      "gapMs": 3003,
+      "faulted": false,
+      "cache": "hit"
+    }
+  ],
+  "summary": {
+    "passed": false,
+    "stage": "edit-swr",
+    "processes": 2,
+    "error": "worker changed (P1 -> P2); process-local legs are inconclusive\n\n'P2' !== 'P1'\n"
+  },
+  "teardown": "passed"
+}

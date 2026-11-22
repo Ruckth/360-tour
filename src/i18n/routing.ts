@@ -1,5 +1,3 @@
-import { defineRouting } from "next-intl/routing";
-
 export const locales = [
   "en",
   "th",
@@ -32,11 +30,11 @@ export const localeLabels: Record<Locale, string> = {
   hi: "हिन्दी",
 };
 
-export const routing = defineRouting({
+export const routing = {
   locales,
   defaultLocale,
   localePrefix: "as-needed",
-});
+} as const;
 
 export function isLocale(value: string): value is Locale {
   return (locales as readonly string[]).includes(value);
@@ -51,18 +49,19 @@ export function stripLocalePrefix(pathname: string) {
 }
 
 export function localizeHref(href: string, locale: string) {
-  if (href.startsWith("http") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+  if (/^(?:https?:\/\/|mailto:|tel:|\/\/)/i.test(href)) {
     return href;
   }
 
   const safeLocale = isLocale(locale) ? locale : defaultLocale;
-  const [pathAndQuery, hash = ""] = href.split("#");
-  const [path = "/", query = ""] = pathAndQuery.split("?");
+  const separator = href.search(/[?#]/);
+  const path = separator < 0 ? href : href.slice(0, separator);
+  const suffix = separator < 0 ? "" : href.slice(separator);
   const normalizedPath = stripLocalePrefix(path.startsWith("/") ? path : `/${path}`);
   const localizedPath =
     safeLocale === defaultLocale
       ? normalizedPath
       : `/${safeLocale}${normalizedPath === "/" ? "" : normalizedPath}`;
 
-  return `${localizedPath}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
+  return localizedPath + suffix;
 }

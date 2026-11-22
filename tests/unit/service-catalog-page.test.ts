@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ServicesPage from "@/app/[locale]/services/page";
@@ -27,6 +28,11 @@ async function render(params: Record<string, string> = {}) {
   document.body.innerHTML = renderToStaticMarkup(
     await ServicesPage({ searchParams: Promise.resolve(params) }),
   );
+}
+/** The chat page renders the shared `GuestChatPage`; unwrap it to the `AIChatPage` element. */
+async function chatElement(params: Record<string, string>) {
+  const page = await ChatPage({ searchParams: Promise.resolve(params) });
+  return (page.type as (props: typeof page.props) => ReactElement<{ initialDraft?: string }>)(page.props);
 }
 function link(label: string) {
   return [...document.querySelectorAll("a")].find(
@@ -115,9 +121,7 @@ describe("catalog to chat", () => {
   it("prefills only the verified active service in the guest language", async () => {
     state.locale = "th";
     vi.mocked(getPublicService).mockResolvedValue(service);
-    const element = await ChatPage({
-      searchParams: Promise.resolve({ service: service.slug }),
-    });
+    const element = await chatElement({ service: service.slug });
     expect(getPublicService).toHaveBeenCalledWith(service.slug);
     expect(element.props.initialDraft).toBe(
       getPublicMessages("th").ServiceCatalog.draft.replace(
@@ -130,9 +134,7 @@ describe("catalog to chat", () => {
 
   it("opens ordinary chat for a missing or archived service", async () => {
     vi.mocked(getPublicService).mockResolvedValue(null);
-    const element = await ChatPage({
-      searchParams: Promise.resolve({ service: "archived" }),
-    });
+    const element = await chatElement({ service: "archived" });
     expect(element.props.initialDraft).toBeUndefined();
   });
 });

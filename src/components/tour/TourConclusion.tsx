@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter } from "@/platform/navigation";
 import { Check, X } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";

@@ -33,6 +33,7 @@
   },
   "include": [
     "next-env.d.ts",
+    "vite.start.config.ts",
     "src/**/*.ts",
     "src/**/*.tsx",
     ".next/types/**/*.ts",

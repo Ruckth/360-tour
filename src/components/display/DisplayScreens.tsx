@@ -3,7 +3,7 @@
 import { formatOrderNumber, formatReceiptNumber } from "convex/shared/orderMath";
 import type { DisplayOrderState } from 'convex/shared/displayTypes';
 import { TicketPercent } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { cn } from "@/lib/utils";

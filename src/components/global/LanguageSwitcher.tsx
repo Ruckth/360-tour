@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
-import { usePathname, useSearchParams } from "next/navigation";
+import { useLocale, useTranslations } from "@/platform/intl";
+import { usePathname, useSearchParams } from "@/platform/navigation";
 import { useEffect, useSyncExternalStore } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -53,6 +53,7 @@ export function LanguageSwitcher({
 
   useEffect(() => {
     function onLocaleInteraction(event: PointerEvent | MouseEvent) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const target = event.target instanceof Element ? event.target : null;
       const link = target?.closest<HTMLAnchorElement>("[data-locale-href]");
       if (!link) return;

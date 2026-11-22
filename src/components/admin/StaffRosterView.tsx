@@ -5,7 +5,7 @@ import { addDays } from 'convex/shared/dates';
 import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import Link from "next/link";
+import Link from "@/platform/link";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import {

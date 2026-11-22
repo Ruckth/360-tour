@@ -1,7 +1,7 @@
 "use client";
 
 import { TicketPercent, TriangleAlert } from "lucide-react";
-import Link from "next/link";
+import Link from "@/platform/link";
 import type { BookingPromotion } from "@/lib/booking/coupon";
 import { adminMarketingPath } from "./admin-routes";
 import { formatMoney } from "./labels";

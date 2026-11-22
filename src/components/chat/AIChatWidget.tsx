@@ -4,7 +4,7 @@ import { Component, type ReactNode } from 'react';
 import { invalidGuest } from './session/useGuestSession';
 import { clearStoredSessionId } from './session/credentials';
 import { CheckCircle2, Copy, ExternalLink } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations } from "@/platform/intl";
 import { Button } from "@/components/ui/button";
 import { ChatMessages } from "@/components/chat/ChatMessages";
 import { ChatComposer } from "@/components/chat/ChatComposer";

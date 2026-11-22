@@ -1,10 +1,10 @@
 "use client";
 import { api } from 'convex/_generated/api';
 
-import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import dynamic from "@/platform/dynamic";
+import { useRouter } from "@/platform/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useMemo, useState } from "react";
 import { BookingPriceSummary, PriceLines } from "@/components/booking/BookingPriceSummary";
 import { CouponField, type CouponNotice, type CouponSource } from "@/components/booking/CouponField";

@@ -35,7 +35,7 @@ export function refuseInheritedTarget(supplied) {
   for (const key of ['CONVEX_DEPLOY_KEY', 'CONVEX_DEPLOYMENT', 'CONVEX_SELF_HOSTED_URL', 'CONVEX_SELF_HOSTED_ADMIN_KEY', 'CONVEX_OVERRIDE_ACCESS_TOKEN', 'CONVEX_OVERRIDE_DEPLOYMENT_URL']) {
     if (supplied[key]) throw new Error(`Unset inherited ${key} before bun run dev; this command owns only a checkout-local anonymous backend`);
   }
-  for (const key of ['NEXT_PUBLIC_CONVEX_URL', 'PUBLIC_CONVEX_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL']) {
+  for (const key of ['NEXT_PUBLIC_CONVEX_URL', 'PUBLIC_CONVEX_URL', 'NEXT_PUBLIC_CONVEX_SITE_URL', 'VITE_CONVEX_URL', 'VITE_CONVEX_SITE_URL']) {
     if (supplied[key]) throw new Error(`Unset inherited ${key}; bun run dev chooses its own local target`);
   }
 }
