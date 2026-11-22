@@ -2,8 +2,8 @@
 
 import { OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Euler, type MeshBasicMaterial } from "three";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Euler, type Mesh, type MeshBasicMaterial } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
 import { RoomSphere } from "@/components/tour/RoomSphere";
 import {
@@ -16,10 +16,28 @@ import {
 import type { Room } from "@/lib/data/rooms";
 import { markTourBench, tourBench } from "@/lib/tour/bench";
 import { choosePanoramaWidth, earlyMobilePanoramaPath, TOUR_CANVAS_DPR } from "@/lib/tour/panoramas";
+import { preparePanoramaFilter } from "@/lib/tour/panorama-filter";
+import { firstPanoramaLoader } from "@/lib/tour/first-panorama-cache";
 import { stageFirstTexture } from "@/lib/tour/texture-cache";
 
-/** The viewer at the sphere's center, looking around by dragging. */
+const TOUR_CAMERA = {
+  fov: 75,
+  near: 0.1,
+  far: 1100,
+  position: [0, 0, 0.1],
+} satisfies NonNullable<React.ComponentProps<typeof Canvas>["camera"]>;
+
+/** Standalone camera for the hotspot editor's independently configured canvas. */
 export function TourCamera({ enabled = true }: { enabled?: boolean }) {
+  return (
+    <>
+      <PerspectiveCamera makeDefault {...TOUR_CAMERA} />
+      <TourControls enabled={enabled} />
+    </>
+  );
+}
+
+function TourControls({ enabled }: { enabled: boolean }) {
   const invalidate = useThree((state) => state.invalidate);
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
 
@@ -35,18 +53,15 @@ export function TourCamera({ enabled = true }: { enabled?: boolean }) {
   }, [invalidate]);
 
   return (
-    <>
-      <PerspectiveCamera makeDefault fov={75} near={0.1} far={1100} position={[0, 0, 0.1]} />
-      <OrbitControls
-        ref={controlsRef}
-        enabled={enabled}
-        enableZoom={false}
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.12}
-        rotateSpeed={-0.45}
-      />
-    </>
+    <OrbitControls
+      ref={controlsRef}
+      enabled={enabled}
+      enableZoom={false}
+      enablePan={false}
+      enableDamping
+      dampingFactor={0.12}
+      rotateSpeed={-0.45}
+    />
   );
 }
 
@@ -148,15 +163,37 @@ function SphereScene({
   onDetailStatusChange,
   inputLocked = false,
   prefetchAllowed = false,
-}: SceneProps) {
+  canPrefetch,
+  isRequestedTexture,
+  isRequestedSource,
+}: SceneProps & {
+  canPrefetch: () => boolean;
+  isRequestedTexture: (item: TaggedTexture) => boolean;
+  isRequestedSource: (roomId: string, originalPath: string) => boolean;
+}) {
   useEffect(() => markTourBench("sphere_scene_mounted"), []);
   const invalidate = useThree((state) => state.invalidate);
   const canvas = useThree((state) => state.gl.domElement);
-  // Three restores its GL objects, but a settled demand-rendered scene needs a draw request.
-  useEffect(() => {
-    const onRestore = () => invalidate();
+  const drawnShownRef = useRef<TaggedTexture | null>(null);
+  const contextLost = useRef(false);
+  const contextVersion = useRef(0);
+  const [drawnContextVersion, setDrawnContextVersion] = useState(0);
+  useLayoutEffect(() => {
+    const onLost = () => {
+      contextLost.current = true;
+      contextVersion.current++;
+      drawnShownRef.current = null;
+    };
+    const onRestore = () => {
+      contextLost.current = false;
+      invalidate();
+    };
+    canvas.addEventListener("webglcontextlost", onLost);
     canvas.addEventListener("webglcontextrestored", onRestore);
-    return () => canvas.removeEventListener("webglcontextrestored", onRestore);
+    return () => {
+      canvas.removeEventListener("webglcontextlost", onLost);
+      canvas.removeEventListener("webglcontextrestored", onRestore);
+    };
   }, [canvas, invalidate]);
   const getState = useThree((state) => state.get);
   const maxTextureSize = useThree((state) => state.gl.capabilities.maxTextureSize);
@@ -165,9 +202,12 @@ function SphereScene({
     const { size, viewport } = getState();
     return choosePanoramaWidth(size.width, viewport.dpr, maxTextureSize);
   });
-  const [drawnShown, setDrawnShown] = useState<TaggedTexture | null>(null);
-  const drawnShownRef = useRef<TaggedTexture | null>(null);
-  const [presentedShown, setPresentedShown] = useState<TaggedTexture | null>(null);
+  const isDrawnAndInteractive = useCallback((item: TaggedTexture) =>
+    !contextLost.current && drawnShownRef.current === item && isCanvasVisibleForInput(canvas), [canvas]);
+  // Every queue drain asks this before starting a speculative download.
+  const canPrefetchDrawn = useCallback(() =>
+    !contextLost.current && contextVersion.current === drawnContextVersion && canPrefetch(),
+  [canPrefetch, drawnContextVersion]);
   const prefetchGate = prefetchAllowed && !inputLocked && !transitioning;
   const { shown, outgoing, currentReady, currentFailed, detailStatus } = useTourTextures({
     rooms,
@@ -176,7 +216,10 @@ function SphereScene({
     panoramaWidth,
     maxTextureSize,
     detailRequest,
-    prefetchFor: prefetchGate ? presentedShown : null,
+    isDrawnAndInteractive: prefetchGate ? isDrawnAndInteractive : undefined,
+    canPrefetch: canPrefetchDrawn,
+    contextEpoch: drawnContextVersion,
+    isCurrentSource: isRequestedSource,
     onInvalidate: invalidate,
     retrySignal,
     ...(loader ? { loader } : {}),
@@ -209,57 +252,20 @@ function SphereScene({
             ? "pending"
             : "ready";
   const shownRoomId = shown?.roomId ?? null;
-  const readyToPresentPrefetch =
-    prefetchGate && status === "ready" && currentReady && shown !== null && drawnShown === shown;
+  const probe = tourBench();
+  const recordDraw = useCallback<Mesh["onAfterRender"]>((_gl, _scene, camera, _geometry, material) => {
+    if (contextLost.current || !shown || material.opacity <= 0) return;
+    if (drawnShownRef.current !== shown && currentReady && isRequestedTexture(shown)) {
+      drawnShownRef.current = shown;
+      // A callback from the lost context cannot drain the new generation, even between
+      // this draw and the next two presented frames.
+      if (contextVersion.current !== drawnContextVersion) setDrawnContextVersion(contextVersion.current);
+      onLoaded();
+    }
+    if (probe) probe.frame(new Euler().setFromQuaternion(camera.quaternion, "YXZ").y, shown.roomId);
+  }, [currentReady, drawnContextVersion, isRequestedTexture, onLoaded, probe, shown]);
 
-  // Reset draw/presentation tracking on unmount (including StrictMode replay).
-  useEffect(() => {
-    return () => {
-      drawnShownRef.current = null;
-      setDrawnShown(null);
-      setPresentedShown(null);
-    };
-  }, []);
-
-  // Ensure a newly committed `shown` texture always schedules a WebGL draw so `onAfterRender` runs.
-  useEffect(() => {
-    if (shown && drawnShown !== shown) invalidate();
-  }, [drawnShown, invalidate, shown]);
-
-  // Wait until the drawn canvas is visibly painted (past intro fade) and one post-paint frame
-  // has passed before enabling speculative neighbor prefetch.
-  useEffect(() => {
-    if (!readyToPresentPrefetch || !shown || presentedShown === shown) return;
-    let cancelled = false;
-    let seenVisibleFrame = false;
-    let rafId = 0;
-
-    const step = () => {
-      if (cancelled) return;
-      if (!isCanvasVisibleForInput(canvas)) {
-        seenVisibleFrame = false;
-        rafId = window.requestAnimationFrame(step);
-        return;
-      }
-      if (!seenVisibleFrame) {
-        seenVisibleFrame = true;
-        rafId = window.requestAnimationFrame(step);
-        return;
-      }
-      setPresentedShown(shown);
-    };
-
-    rafId = window.requestAnimationFrame(step);
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [canvas, presentedShown, readyToPresentPrefetch, shown]);
-
-  // Report readiness/failure up to the viewer (drives the intro → tour progression).
-  useEffect(() => {
-    if (currentReady) onLoaded();
-  }, [currentReady, onLoaded]);
+  // Data and navigation status can update independently of the first visible draw.
   useEffect(() => {
     onLoadError?.(currentFailed);
   }, [currentFailed, onLoadError]);
@@ -275,6 +281,15 @@ function SphereScene({
   }, [onTransitionComplete, readyWithoutPrevious]);
 
   useFrame((state, delta) => {
+    if (shown && state.camera && state.gl?.domElement.height) {
+      const context = state.gl.getContext();
+      const canvas = state.gl.domElement;
+      // A constrained GPU may allocate a smaller surface. In that case retain full mip filtering.
+      const height = context.drawingBufferWidth === canvas.width && context.drawingBufferHeight === canvas.height
+        ? context.drawingBufferHeight : 0;
+      preparePanoramaFilter(shown.texture, shown.path, state.camera, height);
+      if (outgoing) preparePanoramaFilter(outgoing.texture, outgoing.path, state.camera, height);
+    }
     if (!crossfadeKey) return;
     let step = Math.min(delta, MAX_CROSSFADE_STEP_S);
     if (activeCrossfadeRef.current !== crossfadeKey) {
@@ -298,13 +313,12 @@ function SphereScene({
     state.invalidate();
   });
 
-  const probe = tourBench();
   const currentRoom = rooms.find((room) => room.id === currentRoomId) ?? rooms[0];
   const showHotspots = !transitioning && currentReady && currentRoom;
 
   return (
     <>
-      <TourCamera enabled={!inputLocked} />
+      <TourControls enabled={!inputLocked} />
       {crossfadeKey && outgoing ? (
         // Opaque and drawn first; the incoming sphere fades in over it (a true crossfade).
         <RoomSphere key={`outgoing:${outgoing.roomId}`} texture={outgoing.texture} opacity={1} />
@@ -317,16 +331,7 @@ function SphereScene({
           texture={shown.texture}
           opacity={crossfadeKey ? 0 : 1}
           materialRef={incomingMaterialRef}
-          onAfterRender={(_gl, _scene, camera, _geometry, material) => {
-            if (material.opacity <= 0) return;
-            if (drawnShownRef.current !== shown) {
-              drawnShownRef.current = shown;
-              setDrawnShown(shown);
-            }
-            if (probe) {
-              probe.frame(new Euler().setFromQuaternion(camera.quaternion, "YXZ").y, shown.roomId);
-            }
-          }}
+          onAfterRender={recordDraw}
         />
       ) : null}
       {showHotspots
@@ -349,27 +354,61 @@ export function TourCanvas({
   initialTextureConfirmed,
   ...props
 }: SceneProps & { initialTextureConfirmed: boolean }) {
-  const originalPath = props.rooms.find((room) => room.id === props.currentRoomId)?.imagePath;
-  const [initialSelection] = useState(() => ({ roomId: props.currentRoomId, originalPath }));
-  const [firstTexture] = useState(() => stageFirstTexture(props.loader ?? loadPanorama));
+  // R3F commits its scene in a separate React root. A draw or a free download slot
+  // must observe selection changes already committed in the DOM viewer.
+  const latest = useRef<SceneProps | null>(null);
   useLayoutEffect(() => {
-    if (!initialTextureConfirmed || !originalPath || initialSelection.roomId !== props.currentRoomId ||
-      initialSelection.originalPath !== originalPath) return;
+    latest.current = props;
+    return () => { latest.current = null; };
+  });
+  const { rooms, currentRoomId, retrySignal, detailRequest } = props;
+  const canPrefetch = useCallback(() => {
+    const current = latest.current;
+    return !!current && current.rooms === rooms && current.currentRoomId === currentRoomId &&
+      current.retrySignal === retrySignal && current.detailRequest === detailRequest &&
+      current.prefetchAllowed === true && !current.transitioning && !current.inputLocked;
+  }, [currentRoomId, detailRequest, retrySignal, rooms]);
+  const originalPath = rooms.find(room => room.id === currentRoomId)?.imagePath;
+  const isRequestedSource = useCallback((roomId: string, path: string) => {
+    const current = latest.current;
+    // The last confirmed scene can remain visible while reconnecting; navigation and
+    // speculation have separate freshness gates. A replaced room or source never qualifies.
+    return roomId === currentRoomId && path === originalPath && !!current && current.currentRoomId === roomId &&
+      current.rooms.find(room => room.id === roomId)?.imagePath === path;
+  }, [currentRoomId, originalPath]);
+  const isRequestedTexture = useCallback(
+    (item: TaggedTexture) => isRequestedSource(item.roomId, item.originalPath),
+    [isRequestedSource],
+  );
+  const initialSelection = useRef<{ roomId: string; originalPath: string } | null>(null);
+  // The first bundled 2048 panorama of an open may reuse the CPU copy kept from a previous open.
+  const [firstPanorama] = useState(() => firstPanoramaLoader(props.loader ?? loadPanorama));
+  useEffect(() => firstPanorama.open(), [firstPanorama]);
+  const [firstTexture] = useState(() => stageFirstTexture(firstPanorama.load));
+  useLayoutEffect(() => {
+    if (!originalPath) return;
+    initialSelection.current ??= { roomId: props.currentRoomId, originalPath };
+    if (!initialTextureConfirmed || initialSelection.current.roomId !== props.currentRoomId ||
+      initialSelection.current.originalPath !== originalPath) return;
     const path = earlyMobilePanoramaPath(originalPath, window.innerWidth);
     if (path) firstTexture.start(path);
     return firstTexture.release;
-  }, [firstTexture, initialSelection, originalPath, props.currentRoomId, initialTextureConfirmed]);
+  }, [firstTexture, originalPath, props.currentRoomId, initialTextureConfirmed]);
   useEffect(() => markTourBench("canvas_mounted"), []);
   return (
     <Canvas
       // Demand rendering: no continuous loop. Frames are drawn only when something invalidates —
       // texture ready, crossfade in motion, camera-damping "change" events, and R3F's own resize.
       onCreated={tourBench() ? () => markTourBench("webgl_created") : undefined}
+      // This surface is fixed to the viewport. Observe its first size and rotations
+      // immediately so renderer creation can overlap the live room lookup.
+      resize={{ scroll: false, debounce: 0 }}
       frameloop="demand"
+      camera={TOUR_CAMERA}
       dpr={TOUR_CANVAS_DPR}
       gl={{ antialias: false, powerPreference: "high-performance" }}
     >
-      <SphereScene {...props} loader={firstTexture.load} />
+      {originalPath ? <SphereScene {...props} loader={firstTexture.load} canPrefetch={canPrefetch} isRequestedTexture={isRequestedTexture} isRequestedSource={isRequestedSource} /> : null}
     </Canvas>
   );
 }

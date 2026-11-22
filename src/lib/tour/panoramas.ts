@@ -29,6 +29,14 @@ export function panoramaRendition(original: string, width: PanoramaWidth) {
   };
 }
 
+const bundledMobileRenditions = new Set(
+  Array.from(bundledPanoramaWidths.keys(), original => panoramaRendition(original, 2048).path),
+);
+
+export function isBundledMobileRendition(path: string) {
+  return bundledMobileRenditions.has(path);
+}
+
 export const TOUR_CANVAS_DPR: [number, number] = [1, 1.5];
 
 /** The fixed, full-screen canvas cannot exceed this viewport width or its DPR cap. */

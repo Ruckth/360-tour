@@ -14,6 +14,7 @@ export function PropertyImage({
   className,
   imgClassName,
   priority,
+  occluded,
   sizes = "100vw",
 }: {
   src?: string;
@@ -23,6 +24,9 @@ export function PropertyImage({
   className?: string;
   imgClassName?: string;
   priority?: boolean;
+  /** Covered by an overlay at first paint (a direct `?tour=1` open): keep the priority image's exact URL and
+   * quality, but drop its high-priority preload so the overlay's own assets go first. */
+  occluded?: boolean;
   sizes?: string;
 }) {
   const candidates = useMemo(
@@ -42,8 +46,10 @@ export function PropertyImage({
           src={currentSrc}
           alt={alt}
           fill
-          priority={priority}
+          priority={priority && !occluded}
           quality={priority ? 82 : 72}
+          loading={priority ? "eager" : undefined}
+          fetchPriority={priority && occluded ? "low" : undefined}
           sizes={sizes}
           className={cn(
             "object-cover",

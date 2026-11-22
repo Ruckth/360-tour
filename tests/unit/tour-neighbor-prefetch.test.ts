@@ -29,9 +29,11 @@ const env = vi.hoisted(() => ({
   reads: [] as { slug: string; resolve: (value: unknown) => void; reject: (error: unknown) => void }[],
   canvas: null as HTMLCanvasElement | null,
   canvasVisible: true,
+  holdScene: false,
   canvasRect: { width: 390, height: 844 },
   hitTarget: undefined as Element | null | undefined,
   invalidate: vi.fn(),
+  changedDrawCallback: vi.fn(),
   frames: new Set<(delta: number) => void>(),
   spheres: new Set<MockSphere>(),
 }));
@@ -45,7 +47,7 @@ vi.mock("convex/browser", () => ({
     }
   },
 }));
-vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
+vi.mock("@/platform/intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/platform/auth", () => ({ useAuth: () => ({ userId: env.userId }) }));
 vi.mock("convex/react", async (importOriginal) => ({
   ...await importOriginal<typeof import("convex/react")>(),
@@ -59,6 +61,9 @@ vi.mock("@react-three/drei", () => ({
 }));
 vi.mock("@react-three/fiber", () => ({
   Canvas({ children }: { children?: ReactNode }) {
+    // R3F can commit its children after the surrounding DOM root.
+    const [committedChildren, setCommittedChildren] = useState(children);
+    if (!env.holdScene && committedChildren !== children) setCommittedChildren(children);
     const [canvas] = useState(() => {
       const node = document.createElement("canvas");
       Object.defineProperty(node, "checkVisibility", {
@@ -89,7 +94,7 @@ vi.mock("@react-three/fiber", () => ({
         if (env.canvas === canvas) env.canvas = null;
       };
     }, [canvas]);
-    return createElement(CanvasContext.Provider, { value: canvas }, createElement("div", { ref: hostRef }, children));
+    return createElement(CanvasContext.Provider, { value: canvas }, createElement("div", { ref: hostRef }, committedChildren));
   },
   useFrame(callback: (state: { invalidate: () => void }, delta: number) => void) {
     const callbackRef = useRef(callback);
@@ -150,7 +155,8 @@ vi.mock("@/components/tour/RoomSphere", () => ({
     const renderRef = useRef(onAfterRender);
     useLayoutEffect(() => {
       renderRef.current = onAfterRender;
-    });
+      env.changedDrawCallback();
+    }, [onAfterRender]);
     useEffect(() => {
       if (!renderRef.current) return;
       const material = { opacity };
@@ -304,6 +310,7 @@ describe("deferred neighbor panorama prefetch lifecycle", () => {
     env.reads = [];
     env.canvas = null;
     env.canvasVisible = true;
+    env.holdScene = false;
     env.canvasRect = { width: 390, height: 844 };
     env.hitTarget = undefined;
     env.invalidate.mockClear();
@@ -408,8 +415,13 @@ describe("deferred neighbor panorama prefetch lifecycle", () => {
     expect(env.invalidate).toHaveBeenCalled();
     expect(requestedUrls).toEqual([LIVING_2048]);
 
-    // WebGL draws the first sphere while CSS opacity transition is still at 0.
+    expect(env.canvas?.closest(".pointer-events-none")).toBeTruthy();
+    env.changedDrawCallback.mockClear();
+    env.invalidate.mockClear();
+
+    // Texture availability alone cannot dismiss the intro.
     await drawScene();
+    expect(env.canvas?.closest(".pointer-events-none")).toBeNull();
     await stepRaf();
     expect(requestedUrls).toEqual([LIVING_2048]);
 
@@ -423,6 +435,65 @@ describe("deferred neighbor panorama prefetch lifecycle", () => {
     await stepRaf();
     expect(requestedUrls).toEqual([LIVING_2048, BEDROOM_2048, POOL_2048]);
     expect(requestedUrls.every((url) => url.endsWith("-2048.webp"))).toBe(true);
+    // Bookkeeping for speculative downloads must not update the Three mesh or request a draw.
+    expect(env.changedDrawCallback).not.toHaveBeenCalled();
+    expect(env.invalidate).not.toHaveBeenCalled();
+  });
+
+  it("reveals the drawn room while input is locked and resumes neighbors on confirmation", async () => {
+    const rooms: Room[] = [
+      { id: "living", name: "Living", imagePath: "/pool-villa-living.webp", hotspots: [] },
+      { id: "pool", name: "Pool", imagePath: "/pool-villa-pool.webp", hotspots: [] },
+    ];
+    const onLoaded = vi.fn();
+    const noop = () => {};
+    const render = (locked: boolean) => act(async () => root.render(createElement(TourCanvas, {
+      rooms, currentRoomId: "living", previousRoomId: null, transitioning: false,
+      initialTextureConfirmed: !locked, inputLocked: locked, prefetchAllowed: !locked,
+      onTransitionComplete: noop, onLoaded, onNavigate: noop,
+    })));
+    await render(true);
+    await resolveImage(LIVING_2048);
+    expect(onLoaded).not.toHaveBeenCalled();
+    await drawScene();
+    await stepRaf();
+    await stepRaf();
+    expect(onLoaded).toHaveBeenCalledTimes(1);
+    expect(requestedUrls).toEqual([LIVING_2048]);
+
+    await render(false);
+    await stepRaf();
+    await stepRaf();
+    expect(onLoaded).toHaveBeenCalledTimes(1);
+    expect(requestedUrls).toContain(POOL_2048);
+  });
+
+  it("revokes a pending neighbor start in the commit that locks input", async () => {
+    const rooms: Room[] = [
+      { id: "living", name: "Living", imagePath: "/pool-villa-living.webp", hotspots: [] },
+      { id: "pool", name: "Pool", imagePath: "/pool-villa-pool.webp", hotspots: [] },
+    ];
+    const noop = () => {};
+    function Screen({ locked, queuedFrame }: { locked: boolean; queuedFrame?: FrameRequestCallback }) {
+      useLayoutEffect(() => {
+        // A browser frame delivered after the new scene commits, before passive cleanup.
+        if (locked) queuedFrame?.(performance.now());
+      }, [locked, queuedFrame]);
+      return createElement(TourCanvas, {
+        rooms, currentRoomId: "living", previousRoomId: null, transitioning: false,
+        onTransitionComplete: noop, onLoaded: noop, onNavigate: noop,
+        initialTextureConfirmed: true, inputLocked: locked, prefetchAllowed: !locked,
+      });
+    }
+    await act(async () => root.render(createElement(Screen, { locked: false })));
+    await resolveImage(LIVING_2048);
+    await drawScene();
+    await stepRaf();
+    expect(rafQueue.size).toBe(1);
+    const [queuedFrame] = rafQueue.values();
+    env.holdScene = true;
+    await act(async () => root.render(createElement(Screen, { locked: true, queuedFrame })));
+    expect(requestedUrls).toEqual([LIVING_2048]);
   });
 
   it("does not prefetch after first draw while intro still intercepts input or canvas wrapper hides it", async () => {
@@ -836,6 +907,157 @@ describe("deferred neighbor panorama prefetch lifecycle", () => {
     expect(requestedUrls).toEqual([LIVING_2048]);
     await stepRaf();
     expect(requestedUrls).toEqual([LIVING_2048, BEDROOM_2048, POOL_2048]);
+  });
+
+  it("keeps the intro over a superseded texture when the scene root has not committed a source edit", async () => {
+    const original = fourRoomTour();
+    await renderViewer();
+    await deliver("pool-villa", original);
+    await resolveImage(LIVING_2048);
+    env.holdScene = true;
+    const edited = original.map(room => room.slug === "pv-living" ? { ...room, imagePath: "/garden-villa-360.webp" } : room);
+    await deliver("pool-villa", edited);
+    await drawScene();
+    expect(env.canvas?.closest(".pointer-events-none")).toBeTruthy();
+    expect(requestedUrls).toEqual([LIVING_2048]);
+
+    env.holdScene = false;
+    await deliver("pool-villa", [...edited]);
+    await resolveImage(GARDEN_2048);
+    await drawScene();
+    expect(env.canvas?.closest(".pointer-events-none")).toBeNull();
+  });
+
+  it("never falls back to the master of a source the viewer replaced while the scene root still holds it", async () => {
+    const original = fourRoomTour();
+    await renderViewer();
+    await deliver("pool-villa", original);
+    expect(requestedUrls).toEqual([LIVING_2048]);
+    // The DOM viewer commits an edited source; the scene root has not committed it yet.
+    env.holdScene = true;
+    const edited = original.map(room => room.slug === "pv-living" ? { ...room, imagePath: "/garden-villa-360.webp" } : room);
+    await deliver("pool-villa", edited);
+    await failImage(LIVING_2048);
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048]);
+    expect(requestedUrls).not.toContain("/pool-villa-living.webp");
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+
+    // Once the scene commits, the edited source loads normally.
+    env.holdScene = false;
+    await deliver("pool-villa", [...edited]);
+    expect(requestedUrls).toEqual([LIVING_2048, GARDEN_2048]);
+    await resolveImage(GARDEN_2048);
+    await drawScene();
+    expect(env.canvas?.closest(".pointer-events-none")).toBeNull();
+    expect(requestedUrls).not.toContain("/pool-villa-living.webp");
+  });
+
+  it("retries when the DOM selects the original source again before the scene commits its replacement", async () => {
+    const original = fourRoomTour();
+    await renderViewer();
+    await deliver("pool-villa", original);
+    env.holdScene = true;
+    const edited = original.map(room => room.slug === "pv-living" ? { ...room, imagePath: "/garden-villa-360.webp" } : room);
+    await deliver("pool-villa", edited);
+    await failImage(LIVING_2048);
+    expect(requestedUrls).toEqual([LIVING_2048]);
+    await deliver("pool-villa", original);
+    env.holdScene = false;
+    await deliver("pool-villa", [...original]);
+    expect(requestedUrls).toEqual([LIVING_2048, LIVING_2048]);
+    await resolveImage(LIVING_2048);
+    await drawScene();
+    expect(env.canvas?.closest(".pointer-events-none")).toBeNull();
+  });
+
+  it("still falls back to the master of the current source when its rendition fails", async () => {
+    await renderViewer();
+    await deliver("pool-villa", fourRoomTour());
+    env.holdScene = true;
+    // A delivery with the same scenes keeps the committed source current.
+    await deliver("pool-villa", fourRoomTour());
+    await failImage(LIVING_2048);
+    expect(requestedUrls).toEqual([LIVING_2048, "/pool-villa-living.webp"]);
+  });
+
+  const loseContext = () => act(async () => {
+    env.canvas!.dispatchEvent(new Event("webglcontextlost"));
+    await Promise.resolve();
+  });
+  const restoreContext = () => act(async () => {
+    env.canvas!.dispatchEvent(new Event("webglcontextrestored"));
+    await Promise.resolve();
+  });
+
+  it("revokes eligibility on context loss between the first and second visible frame, until the restored sphere draws", async () => {
+    await renderViewer();
+    await deliver("pool-villa", fourRoomTour());
+    await resolveImage(LIVING_2048);
+    await drawScene();
+    await stepRaf(); // first visible frame
+    await loseContext();
+    await stepRaf();
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048]);
+
+    // Restored but not yet drawn: still blank, still nothing speculative.
+    await restoreContext();
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048]);
+
+    // The requested sphere draws on the restored context; two visible frames then re-arm.
+    await drawScene();
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048]);
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048, BEDROOM_2048, POOL_2048]);
+    // The intro stayed dismissed and the scene stays the same texture: no extra request for it.
+    expect(env.canvas?.closest(".pointer-events-none")).toBeNull();
+    expect(requestedUrls.filter((url) => url === LIVING_2048)).toHaveLength(1);
+  });
+
+  it("drains no queued neighbor while the context is lost, even after an earlier presented frame", async () => {
+    await renderViewer();
+    await deliver("pool-villa", fourRoomTour());
+    await resolveImage(LIVING_2048);
+    await drawScene();
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048, BEDROOM_2048, POOL_2048]);
+
+    await loseContext();
+    // A finished neighbor frees a slot: the queued third must not start on a blank canvas.
+    await resolveImage(BEDROOM_2048);
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).not.toContain(SUITE_2048);
+
+    await restoreContext();
+    await resolveImage(POOL_2048);
+    await stepRaf();
+    expect(requestedUrls).not.toContain(SUITE_2048);
+
+    await drawScene();
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).toContain(SUITE_2048);
+  });
+
+  it("checks the committed room list before an old scene drains a queued third neighbor", async () => {
+    await renderViewer();
+    await deliver("pool-villa", fourRoomTour());
+    await resolveImage(LIVING_2048);
+    await drawScene();
+    await stepRaf();
+    await stepRaf();
+    expect(requestedUrls).toEqual([LIVING_2048, BEDROOM_2048, POOL_2048]);
+    env.holdScene = true;
+    await deliver("pool-villa", fourRoomTour().filter(room => room.slug !== "pv-suite"));
+    await resolveImage(BEDROOM_2048);
+    expect(requestedUrls).not.toContain(SUITE_2048);
   });
 
   it("waits for a live replacement image of the current room to draw before prefetching updated neighbors", async () => {

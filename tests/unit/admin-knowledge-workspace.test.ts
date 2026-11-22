@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   groups: [] as unknown[],
   facts: [] as unknown[],
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("@/platform/navigation", () => ({
   useSearchParams: () => mocks.search,
   useRouter: () => ({ replace: mocks.replace, push: vi.fn() }),
 }));

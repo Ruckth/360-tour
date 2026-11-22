@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { evaluateOffer, type CouponRules } from "convex/shared/offers";
 import messages from "../../messages/en.json";
@@ -21,7 +21,7 @@ const offer = (pricePerNight: number, checkIn: string, checkOut: string) => {
 };
 const ready = (result: ReturnType<typeof offer>) => couponPhase("DCNT-F1-20", { status: "ready", result });
 
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
 const handlers = () => ({
   onDraftChange: vi.fn(), onOpenChange: vi.fn(), onApply: vi.fn(), onRemove: vi.fn(), onUndo: vi.fn(), onRetry: vi.fn(), onAddNights: vi.fn(), onChangeStay: vi.fn(),
@@ -32,7 +32,7 @@ async function show(patch: Partial<Props>) {
     code: "DCNT-F1-20", source: "link", phase: { kind: "none" }, draft: "", open: false, entryError: null, notice: null, currency: "THB",
     ...handlers(), ...patch,
   };
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(CouponField, props))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(CouponField, props))));
   return props;
 }
 const text = () => document.body.textContent ?? "";

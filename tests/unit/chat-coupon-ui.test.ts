@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { NextIntlClientProvider } from 'next-intl';
+import { IntlProvider } from '@/platform/intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { evaluateOffer } from 'convex/shared/offers';
@@ -17,8 +17,8 @@ vi.mock('@/components/booking/BookingDatePicker', () => ({ BookingRangePicker: (
 vi.mock('@/components/property/PropertyImage', () => ({ PropertyImage: () => null }));
 const offer = evaluateOffer({ lines: [{ id: 'stay', kind: 'accommodation', propertySlug: 'pool-villa', checkIn: '2027-01-10', checkOut: '2027-01-12', nights: 2, amount: 2000000 }], directDiscountPercent: 1500, today: '2026-11-11', coupon: { code: 'GUEST20', version: 1, status: 'active', benefit: { kind: 'percent', percent: 2000 }, scope: 'accommodation', used: 0, discountGranted: 0 } });
 let root: Root;
-const intl: ComponentProps<typeof NextIntlClientProvider> = { locale: 'en', messages, timeZone: 'Asia/Bangkok', children: null };
-async function show(component: React.ReactElement) { await act(async () => root.render(createElement(NextIntlClientProvider, intl, component))); }
+const intl: ComponentProps<typeof IntlProvider> = { locale: 'en', messages, timeZone: 'Asia/Bangkok', children: null };
+async function show(component: React.ReactElement) { await act(async () => root.render(createElement(IntlProvider, intl, component))); }
 async function click(label: string) {
   const button = [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === label);
   if (!button) throw new Error(`Missing button ${label}`);

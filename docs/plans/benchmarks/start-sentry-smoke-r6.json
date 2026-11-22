@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "capture": "loopback HTTP transport (no Sentry account or credentials)",
+  "sourceMaps": {
+    "publicMapFiles": 0,
+    "publicSourceMappingUrlReferences": 0,
+    "serverMapFiles": 0,
+    "authTokenPresent": false
+  },
+  "server": {
+    "sdk": "sentry.javascript.tanstackstart-react",
+    "platform": "node",
+    "exception": "start-sentry-smoke-server",
+    "mechanism": "auto.node.onunhandledrejection",
+    "envelopeDsnMatches": true,
+    "pairingBreadcrumb": "sentry smoke navigation http://127.0.0.1/display#pair=[redacted]"
+  },
+  "browser": {
+    "sdk": "sentry.javascript.tanstackstart-react",
+    "platform": "javascript",
+    "exception": "start-sentry-smoke-client",
+    "mechanism": "auto.browser.browserapierrors.setTimeout",
+    "envelopeDsnMatches": true,
+    "requestUrl": "http://localhost:47912/display",
+    "blockedOutboundRequests": 1
+  },
+  "envelopesCaptured": 2,
+  "secretInAnyEnvelope": false,
+  "secretLocations": [],
+  "envelopeHeaderKeys": [
+    "event_id",
+    "sdk",
+    "sent_at",
+    "trace"
+  ],
+  "itemTypes": [
+    "event"
+  ],
+  "checks": {
+    "noPublicSourceMaps": true,
+    "serverEnvelope": true,
+    "browserEnvelope": true,
+    "serverBreadcrumbScrubbed": true,
+    "browserUrlScrubbed": true,
+    "secretNeverSent": true
+  },
+  "outcome": "pass"
+}

@@ -1,6 +1,6 @@
 import { validateMarketingSlug } from "../../../convex/shared/marketingSlugs";
 
-/** Only bare short links are resolved, before next-intl sees the request. */
+/** Only bare short links are resolved, before locale routing sees the request. */
 export function marketingSlugForPath(pathname: string): string | null {
   if (!/^\/(?:[a-z0-9-]+|r\/[a-z0-9-]+)\/?$/.test(pathname)) return null;
   const slug = pathname.slice(1).replace(/\/$/, "");

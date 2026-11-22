@@ -3,7 +3,7 @@ import { act, createElement, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { getFunctionName } from 'convex/server';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { NextIntlClientProvider } from 'next-intl';
+import { IntlProvider } from '@/platform/intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { NewAppointmentDialog } from '@/components/admin/NewAppointmentDialog';
@@ -15,7 +15,7 @@ vi.mock('convex/react', () => ({
 const now = Date.parse('2026-11-01T12:00:00+07:00');
 const staff = { _id: 'staff1', name: 'Mali', status: 'active', color: '#abc' } as Doc<'staff'>;
 const service = { _id: 'service1', name: 'Massage', category: 'Wellness', description: '', slug: 'massage', status: 'active', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staff._id] } as Doc<'services'>;
-const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -30,7 +30,7 @@ it.each([
   ['2026-11-01', now - 30 * 60000, 'In progress · Unpaid'],
 ])('submits the mounted %s entry at its actual time and displays its default service/payment state', async (date, start, label) => {
   const onCreated = vi.fn();
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date, start, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date, start, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated }))));
   expect(document.body.textContent).toContain(label);
   await act(async () => (document.querySelector('form') as HTMLFormElement).requestSubmit());
   expect(mocks.create).toHaveBeenCalledOnce();
@@ -44,7 +44,7 @@ it.each([
 
 it("shows a directly operable staff selector and preserves explicit calendar assignment", async () => {
   const start = now + 24 * 60 * 60000;
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-02', start, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-02', start, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   const trigger = document.getElementById('na-staff');
   expect(trigger?.getAttribute('role')).toBe('combobox');
   expect(trigger?.textContent).toContain('Mali');
@@ -57,7 +57,7 @@ it("shows a directly operable staff selector and preserves explicit calendar ass
 it("requires an actual person for historical work and keeps archived people marked", async () => {
   const archived = { ...staff, _id: 'staff2', name: 'Nok', status: 'archived' } as Doc<'staff'>;
   mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff, archived] : name.endsWith(':findOpenSlots') ? [] : { warnings: [], needsReason: false, problem: null });
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2020-01-02' }, services: [service], staff: [staff, archived], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2020-01-02' }, services: [service], staff: [staff, archived], onClose: vi.fn(), onCreated: vi.fn() }))));
   const trigger = document.getElementById('na-staff');
   expect(trigger?.textContent).toContain('Choose who did the work');
   await act(async () => trigger!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })));
@@ -82,7 +82,7 @@ const setTime = (value: string) => act(async () => {
 
 it("opens today as a normal booking: 24-hour chips, Auto staff, no time box and one sentence", async () => {
   withSlots('15:00', '16:30');
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01' }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01' }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('true');
   expect(timeButton('16:30')).toBeDefined();
   expect(timeButton('Other time…')).toBeDefined();
@@ -99,7 +99,7 @@ it("opens today as a normal booking: 24-hour chips, Auto staff, no time box and 
 
 it("never offers a time that has already started, and books the first later one", async () => {
   withSlots('09:00', '15:00');
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   expect(timeButton('09:00')).toBeUndefined();
   expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('true');
   expect((await staffOptions()).some(o => o.includes('Auto'))).toBe(true);
@@ -107,7 +107,7 @@ it("never offers a time that has already started, and books the first later one"
 
 it("Other time… swaps the chips for a time box; a service that has ended is past work, one that started minutes ago is a booking", async () => {
   withSlots('15:00');
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   await act(async () => timeButton('Other time…')!.click());
   expect(timeButton('15:00')).toBeUndefined();
   expect((document.getElementById('na-actual-time') as HTMLInputElement).value).toBe('15:00');
@@ -123,7 +123,7 @@ it("Other time… swaps the chips for a time box; a service that has ended is pa
 
 it("a calendar slot that started before now opens as past work with the time box", async () => {
   withSlots('15:00');
-  await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', start: now - 2 * 60 * 60000, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2026-11-01', start: now - 2 * 60 * 60000, staffId: staff._id }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn() }))));
   expect(document.body.textContent).toContain('Past work · Verify service and staff.');
   expect(document.querySelectorAll('input[type=time]')).toHaveLength(1);
   expect(timeButton('15:00')).toBeUndefined();

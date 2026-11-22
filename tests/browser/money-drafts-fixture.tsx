@@ -1,7 +1,7 @@
 // Real money dialogs on local records; no backend connection or writes.
 import { useState, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
@@ -44,11 +44,11 @@ const dialog: ComponentProps<typeof AppointmentMoneyDialog>["dialog"] = kind ===
   : kind === "amend" || kind === "cancel" ? { kind, payment: appointmentPayment }: { kind: "pay" };
 function Fixture() {
   const [open, setOpen] = useState(true);
-  return <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Bangkok">
+  return <IntlProvider locale="en" messages={en} timeZone="Asia/Bangkok">
     <TooltipProvider><ConfirmProvider><main data-fixture-ready className="mx-auto grid max-w-xl gap-4 p-6">
       <h1 className="text-xl">{scenario.startsWith("stay") ? "Stay" : "Appointment"} payment record</h1>
       {scenario.startsWith("stay") ? <BookingFinancials booking={booking} /> : open ? <AppointmentMoneyDialog appointment={appointment} revision={4} dialog={dialog} onClose={() => setOpen(false)} /> : <p role="status">Saved or closed</p>}
     </main></ConfirmProvider></TooltipProvider>
-  </NextIntlClientProvider>;
+  </IntlProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Fixture />);

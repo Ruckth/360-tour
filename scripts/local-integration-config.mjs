@@ -1,7 +1,7 @@
 import disabledProviderKeys from "../src/lib/server/disabled-provider-keys.json" with { type: "json" };
 export { disabledProviderKeys };
 
-/** Never let Next's dotenv loader restore external-provider or deployment credentials. */
+/** Never let a dotenv loader restore external-provider or deployment credentials. */
 export const disabledServiceKeys = [
   "CONVEX_DEPLOYMENT",
   "CONVEX_DEPLOY_KEY",

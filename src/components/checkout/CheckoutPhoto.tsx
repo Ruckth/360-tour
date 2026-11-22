@@ -37,7 +37,7 @@ export function CheckoutPhoto({ src, kind, className }: { src?: string; kind: Ph
   const photo = useLoadablePhoto(src);
   if (photo.src) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- any host (Convex storage, Unsplash, /public); thumbnails only
+      // eslint-disable-next-line react-app/no-raw-img -- any host (Convex storage, Unsplash, /public); thumbnails only
       <img
         src={photo.src}
         alt=""

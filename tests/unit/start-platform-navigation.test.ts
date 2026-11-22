@@ -3,8 +3,8 @@
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import Link from "@/start-app/platform/link";
-import { useRouter, useSearchParams } from "@/start-app/platform/navigation";
+import Link from "@/platform/link";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 
 const fixture = vi.hoisted(() => ({
   router: { navigate: vi.fn() },

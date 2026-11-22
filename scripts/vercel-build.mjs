@@ -26,7 +26,7 @@ async function run(command, args, env, visible = false) {
 let work;
 try {
   const target = frontendTarget(process.env);
-  const label = target.frontend === 'start' ? 'TanStack Start' : 'Next';
+  const label = 'TanStack Start';
   if (process.env.VERCEL_ENV === 'production') {
     if (process.env.VERCEL !== '1') throw new Error('Production builds run only on Vercel');
     if (target.frontendOnlyUrl) {

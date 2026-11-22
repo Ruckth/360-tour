@@ -32,10 +32,10 @@ const mocks = vi.hoisted(() => ({
   transcript: { results: [], status: "Exhausted", loadMore: () => {} },
   empty: [] as unknown[],
 }));
-vi.mock("@clerk/nextjs", () => ({
+vi.mock("@/platform/auth", () => ({
   useAuth: () => ({ getToken: async () => "test-token" }),
 }));
-vi.mock("next/navigation", () => ({
+vi.mock("@/platform/navigation", () => ({
   useSearchParams: () => mocks.search,
   useRouter: () => ({ replace: mocks.replace }),
 }));

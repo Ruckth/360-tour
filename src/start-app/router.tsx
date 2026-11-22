@@ -1,5 +1,5 @@
 import { createRouter } from "@tanstack/react-router";
-import { parseUrlSearch, stringifyUrlSearch } from "./platform/search";
+import { parseUrlSearch, stringifyUrlSearch } from "@/platform/search";
 import { routeTree } from "./routeTree.gen";
 
 export function getRouter() {

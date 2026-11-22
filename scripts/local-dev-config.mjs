@@ -55,28 +55,36 @@ export function devEnvironment(supplied, home, config) {
     LANG: 'en_US.UTF-8',
     CONVEX_AGENT_MODE: 'anonymous',
     CONVEX_TELEMETRY_DISABLED: '1',
-    NEXT_TELEMETRY_DISABLED: '1',
     ...Object.fromEntries(clerkFields.map(key => [key, String(config[key])])),
     CLERK_PUBLISHABLE_KEY: String(config.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY),
   };
 }
 
-/** `bun run dev` serves TanStack Start; `bun run dev -- --next` serves the Next comparison app.
- * No reset or remote-target options exist.
- * @param {string[]} args
- * @returns {'start' | 'next'}
+/** Public values the Start dev server substitutes for SSR and the browser, in both spellings. They are set
+ * explicitly because the Vite config prefers `VITE_*` over `NEXT_PUBLIC_*`: the disabled-service blanks and any
+ * checkout dotenv `VITE_*` key would otherwise win over this checkout's validated loopback and test-tenant values.
+ * @param {{ convexUrl: string, siteUrl: string, appUrl: string, publishableKey: string }} values
  */
-export function devFrontend(args) {
-  if (args.length === 0) return 'start';
-  if (args.length === 1 && args[0] === '--next') return 'next';
-  throw new Error('bun run dev accepts only --next (the Next comparison app); configure .env.dev.local for everything else');
+export function devPublicEnvironment({ convexUrl, siteUrl, appUrl, publishableKey }) {
+  return {
+    NEXT_PUBLIC_CONVEX_URL: convexUrl, VITE_CONVEX_URL: convexUrl,
+    NEXT_PUBLIC_CONVEX_SITE_URL: siteUrl, VITE_CONVEX_SITE_URL: siteUrl,
+    SITE_URL: appUrl, NEXT_PUBLIC_SITE_URL: appUrl, VITE_SITE_URL: appUrl,
+    VITE_CLERK_PUBLISHABLE_KEY: publishableKey,
+  };
 }
 
-/** Node arguments for the frontend dev server on the checkout's own port.
- * @param {'start' | 'next'} frontend @param {string} root @param {number} port
+/** `bun run dev` serves TanStack Start. No reset, remote-target or framework options exist.
+ * @param {string[]} args
  */
-export function devFrontendCommand(frontend, root, port) {
-  return frontend === 'start'
-    ? [path.join(root, 'node_modules/vite/bin/vite.js'), 'dev', '--config', 'vite.start.config.ts', '--host', 'localhost', '--port', String(port), '--strictPort']
-    : [path.join(root, 'node_modules/next/dist/bin/next'), 'dev', '--webpack', '--hostname', 'localhost', '--port', String(port)];
+export function checkDevArgs(args) {
+  if (args.includes('--next')) throw new Error('bun run dev -- --next was removed with the Next entry; run it from the dual-entry checkpoint checkout');
+  if (args.length) throw new Error('bun run dev takes no arguments; configure .env.dev.local instead');
+}
+
+/** Node arguments for the Start dev server on the checkout's own port.
+ * @param {string} root @param {number} port
+ */
+export function devFrontendCommand(root, port) {
+  return [path.join(root, 'node_modules/vite/bin/vite.js'), 'dev', '--config', 'vite.start.config.ts', '--host', 'localhost', '--port', String(port), '--strictPort'];
 }

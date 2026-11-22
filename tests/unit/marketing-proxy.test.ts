@@ -1,14 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NextRequest, NextResponse, type NextFetchEvent } from 'next/server';
 import { marketingSlugForPath, isInternalMarketingPath } from '../../src/lib/marketing/proxy';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn(), i18n: vi.fn() }));
+// Short links resolve in the Start request middleware (src/start-app/site-redirect.server.ts),
+// before locale routing. Ported from the retired Next proxy (src/proxy.ts at the dual-entry checkpoint).
+const mocks = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn(), waitUntil: vi.fn(), cookie: undefined as string | undefined, setCookie: vi.fn() }));
 vi.mock('convex/browser', () => ({ ConvexHttpClient: class { query = mocks.query; mutation = mocks.mutation; } }));
-vi.mock('../../src/lib/clerk-config', () => ({ requireClerkConfiguration: () => {} }));
-vi.mock('@clerk/nextjs/server', () => ({ clerkMiddleware: (handler: (auth: unknown, request: NextRequest, event: NextFetchEvent) => unknown) => (request: NextRequest, event: NextFetchEvent) => handler({}, request, event) }));
-vi.mock('next-intl/middleware', () => ({ default: () => mocks.i18n }));
-import proxy from '../../src/proxy';
-import { routing } from '../../src/i18n/routing';
+vi.mock('@vercel/functions', () => ({ waitUntil: mocks.waitUntil }));
+vi.mock('@tanstack/react-start/server', () => ({ getCookie: () => mocks.cookie, setCookie: mocks.setCookie, setResponseHeader: vi.fn() }));
+import { siteRedirect } from '../../src/start-app/site-redirect.server';
 
 describe('pure proxy decision', () => {
   it.each([['/f1', 'f1'], ['/f1/', 'f1'], ['/r/anna', 'r/anna'], ['/r/anna/', 'r/anna']])('resolves %s', (path, slug) => {
@@ -23,63 +22,61 @@ describe('pure proxy decision', () => {
 
 describe('proxy short link integration', () => {
   beforeEach(() => {
-    vi.stubEnv('NEXT_PUBLIC_CONVEX_URL', 'https://example.convex.cloud');
+    vi.stubEnv('VITE_CONVEX_URL', 'https://example.convex.cloud');
     vi.clearAllMocks();
-    mocks.i18n.mockImplementation(() => NextResponse.next());
+    mocks.cookie = undefined;
     mocks.mutation.mockResolvedValue(null);
   });
   afterEach(() => vi.unstubAllEnvs());
-  const call = (path: string, ua = 'Mozilla/5.0') => {
-    const waitUntil = vi.fn();
-    // Only waitUntil is consumed by the proxy in this test.
-    const event = { waitUntil } as unknown as NextFetchEvent;
-    return { response: proxy(new NextRequest('https://book.example' + path, { headers: { 'user-agent': ua } }), event), waitUntil };
-  };
+  const call = (path: string, ua = 'Mozilla/5.0', headers: Record<string, string> = {}) =>
+    siteRedirect(new Request('https://book.example' + path, { headers: { 'user-agent': ua, ...headers } }));
+  /** A request that continued to ordinary routing (no short-link redirect). */
+  const fellThrough = (response: Response | undefined) => expect(response?.status).not.toBe(302);
+
   it('returns 302 before localization and records bots without waiting', async () => {
     mocks.query.mockResolvedValue({ path: '/booking?mk=f1&coupon=DCNT-F1-20' });
     mocks.mutation.mockImplementation(() => new Promise(() => {}));
-    const { response, waitUntil } = call('/f1', 'Slackbot');
-    const result = await response;
+    mocks.cookie = 'th';
+    const result = await call('/f1', 'Slackbot');
     expect(result?.status).toBe(302);
     expect(result?.headers.get('cache-control')).toBe('no-store');
     expect(result?.headers.get('location')).toBe('https://book.example/booking?mk=f1&coupon=DCNT-F1-20');
     expect(mocks.mutation).toHaveBeenCalledWith(expect.anything(), { slug: 'f1', bot: true });
-    expect(waitUntil).toHaveBeenCalledOnce();
-    expect(mocks.i18n).not.toHaveBeenCalled();
+    expect(mocks.waitUntil).toHaveBeenCalledOnce();
+    expect(mocks.setCookie).not.toHaveBeenCalled();
   });
-  it.each<Record<string, string>>([{ cookie: 'NEXT_LOCALE=th' }, { 'accept-language': 'th,en;q=0.8' }])('keeps capture parameters through real as-needed locale routing (%j)', async headers => {
-    const { default: createMiddleware } = await vi.importActual<typeof import('next-intl/middleware')>('next-intl/middleware');
-    mocks.i18n.mockImplementation(createMiddleware(routing));
-    const event = { waitUntil: vi.fn() } as unknown as NextFetchEvent;
-    const response = await proxy(new NextRequest('https://book.example/booking?mk=f1&coupon=X', { headers }), event);
+  it.each<[string, string | undefined, Record<string, string>]>([
+    ['cookie', 'th', {}], ['accept-language', undefined, { 'accept-language': 'th,en;q=0.8' }],
+  ])('keeps capture parameters through as-needed locale routing (%s)', async (_label, cookie, headers) => {
+    mocks.cookie = cookie;
+    const response = await call('/booking?mk=f1&coupon=X', 'Mozilla/5.0', headers);
+    expect(response?.status).toBe(307);
     expect(response?.headers.get('location')).toBe('https://book.example/th/booking?mk=f1&coupon=X');
   });
   it('falls through on unknown slugs and resolver failure', async () => {
     mocks.query.mockResolvedValue(null);
-    await call('/unknown').response;
+    fellThrough(await call('/unknown'));
     mocks.query.mockRejectedValue(new Error('offline'));
-    await call('/f1').response;
-    expect(mocks.i18n).toHaveBeenCalledTimes(2);
+    fellThrough(await call('/f1'));
+    expect(mocks.query).toHaveBeenCalledTimes(2);
     expect(mocks.mutation).not.toHaveBeenCalled();
   });
   it('never looks up reserved or localized routes', async () => {
-    for (const path of ['/rooms', '/booking', '/en', '/th/chat', '/api/test']) await call(path).response;
+    for (const path of ['/rooms', '/booking', '/en', '/th/chat', '/api/test']) await call(path);
     expect(mocks.query).not.toHaveBeenCalled();
   });
   it('ignores unsafe resolver responses and catches event failures', async () => {
     mocks.query.mockResolvedValue({ path: '//evil.example' });
-    await call('/f1').response;
-    expect(mocks.i18n).toHaveBeenCalledOnce();
+    fellThrough(await call('/f1'));
+    expect(mocks.waitUntil).not.toHaveBeenCalled();
     mocks.query.mockResolvedValue({ path: '/chat?mk=r%2Fanna' });
     mocks.mutation.mockRejectedValue(new Error('offline'));
-    const { response, waitUntil } = call('/r/anna');
-    expect((await response)?.status).toBe(302);
-    await expect(waitUntil.mock.calls[0][0]).resolves.toBeUndefined();
+    expect((await call('/r/anna'))?.status).toBe(302);
+    await expect(mocks.waitUntil.mock.calls[0][0]).resolves.toBeUndefined();
   });
   it('falls through when deployment configuration is absent', async () => {
-    vi.stubEnv('NEXT_PUBLIC_CONVEX_URL', '');
-    await call('/f1').response;
+    vi.stubEnv('VITE_CONVEX_URL', '');
+    fellThrough(await call('/f1'));
     expect(mocks.query).not.toHaveBeenCalled();
-    expect(mocks.i18n).toHaveBeenCalledOnce();
   });
 });

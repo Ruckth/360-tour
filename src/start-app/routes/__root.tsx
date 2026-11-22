@@ -3,7 +3,7 @@ import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-r
 import { createServerFn } from "@tanstack/react-start";
 import type { ReactNode } from "react";
 import { IntlProvider } from "use-intl";
-import { Providers } from "@/app/providers";
+import { Providers } from "@/components/global/Providers";
 import { PublicSiteShell, SiteShell } from "@/components/global/SiteShell";
 import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
 import { bypassesI18n } from "@/lib/i18n-exempt";

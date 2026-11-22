@@ -3,7 +3,7 @@ import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
@@ -34,7 +34,7 @@ vi.mock("convex/react", () => ({
     }),
   ),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 // The real phone widget is a country combobox; a plain input keeps these tests about the booking rules.
 vi.mock("@/components/reui/phone-input", () => ({
   PhoneInput: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) =>
@@ -59,9 +59,9 @@ const NOW = Date.parse("2026-10-28T03:00:00Z");
 const villa: import("@/components/admin/admin-bookings-shared").AdminProperty = { _id: "p1" as import("convex/_generated/dataModel").Id<"properties">, slug: "pool-villa", name: "Pool Villa", maxGuests: 4, status: "active", pricePerNight: 1000000, directDiscountPercent: 0, currency: "THB" };
 const oldVilla: import("@/components/admin/admin-bookings-shared").AdminProperty = { ...villa, _id: "p2" as import("convex/_generated/dataModel").Id<"properties">, slug: "old-villa", name: "Old Villa", status: "archived" };
 
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
+const render = (node: ReactNode) => act(async () => root.render(createElement(IntlProvider, intl, createElement(ConfirmProvider, null, node))));
 const click = (el: Element | null | undefined) => act(async () => (el as HTMLElement).click());
 const button = (text: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === text) as HTMLButtonElement | undefined;
 const type = (id: string, value: string) => act(async () => {

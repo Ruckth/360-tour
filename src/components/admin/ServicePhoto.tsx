@@ -30,7 +30,7 @@ function tileTone(category: string) {
 export function ServiceThumb({ service, className }: { service: ServiceLike; className?: string }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   return service.imageUrl && failedUrl !== service.imageUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line react-app/no-raw-img
     <img src={service.imageUrl} alt="" onError={() => setFailedUrl(service.imageUrl)} className={cn("size-9 shrink-0 rounded-lg bg-muted object-cover", className)} />
   ) : (
     <span
@@ -67,7 +67,7 @@ export function ServicePhotoLightbox({
               <X aria-hidden className="size-4" />
               <span className="sr-only">Close</span>
             </DialogClose>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {/* eslint-disable-next-line react-app/no-raw-img */}
             <img
               src={service.imageUrl}
               alt={`Photo of ${service.name}`}

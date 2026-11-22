@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
@@ -25,9 +25,9 @@ it("stops a granted camera immediately when closing while the decoder is still l
   const getUserMedia = vi.fn(async () => stream);
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia } });
   const root = createRoot(document.body.appendChild(document.createElement("div")));
-  const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+  const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
   try {
-    await act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(CouponScanDialog, { onDecode: () => {}, onClose: () => {} }))));
+    await act(async () => root.render(createElement(IntlProvider, intl, createElement(CouponScanDialog, { onDecode: () => {}, onClose: () => {} }))));
     expect(getUserMedia).toHaveBeenCalledOnce();
     await act(async () => root.unmount());
     expect(track.stop).toHaveBeenCalled();

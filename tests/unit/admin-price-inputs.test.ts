@@ -9,7 +9,7 @@ import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const state = vi.hoisted(() => ({ save: vi.fn(async () => undefined) }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/platform/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/components/admin/RecordHistoryPanel', () => ({
   RecordHistoryPanel: () => null, ConfigurationHistoryRecords: () => null,
   HistoryDisclosure: ({ children }: { children: ReactNode }) => children,

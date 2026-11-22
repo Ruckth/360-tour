@@ -1,9 +1,9 @@
-// Mirrors src/i18n/routing.ts `locales` (that file imports next-intl, which must not enter the Convex bundle).
+// Mirrors src/i18n/routing.ts `locales`; the Convex bundle must not import frontend modules.
 // tests/unit/marketing-slugs.test.ts asserts the two stay equal.
 export const marketingLocales = ['en', 'th', 'zh-CN', 'ja', 'ko', 'fr', 'de', 'es', 'ru', 'it', 'hi'] as const;
 
-// Top-level route directories in src/app and src/app/[locale]. Keep this list
-// aligned with the filesystem; marketing-slugs.test.ts checks newly added routes.
+// Top-level path segments of the Start routes in src/start-app/routes (with and without the
+// locale prefix), plus framework and system paths. marketing-slugs.test.ts checks newly added routes.
 export const reservedMarketingSlugs = new Set([
 	'rooms', 'booking', 'chat', 'experiences', 'privacy', 'terms', 'services',
 	'admin', 'api', 'dev', 'display', 'sign-in', 'sign-up', 'offers', 'r',
@@ -25,7 +25,7 @@ export function isMarketingLocale(value: string): boolean {
 	return (marketingLocales as readonly string[]).includes(value);
 }
 
-/** Explicit locales use a prefix so next-intl updates the guest preference, including for English. */
+/** Explicit locales use a prefix so the locale middleware updates the guest preference, including for English. */
 export function localizeMarketingPath(path: string, locale: string | undefined): string {
 	if (locale === undefined) return path;
 	const safe = isMarketingLocale(locale) ? locale : 'en';

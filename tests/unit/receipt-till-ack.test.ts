@@ -3,7 +3,7 @@ import { act } from "../support/checkout-act";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { createElement, type ComponentProps, type ReactElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import commerceEn from "../../messages/commerce/en.json";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { COMMERCE_OFF, CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderView } from "@/components/checkout/backend";
@@ -16,7 +16,7 @@ import { createFixtureBackend } from "../support/checkout-backend";
  * checkout workspace does: the receipt reads commerce access (cutoverAccess acknowledges there).
  */
 
-vi.mock("@/i18n/navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
+vi.mock("@/platform/localized-navigation", () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement("a", props, children) }));
 
 let root: Root;
 let view: OrderView | null | undefined;
@@ -24,7 +24,7 @@ const tick = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
 async function run<T>(promise: Promise<T>) { await tick(); return await promise; }
 function Probe({ backend, orderId }: { backend: CheckoutBackend; orderId: OrderId }) { view = backend.useOrder(orderId); return null; }
 function Copy({ children }: { children: ReactNode }) {
-  return createElement(NextIntlClientProvider, { locale: "en", timeZone: "Asia/Bangkok", messages: commerceEn } as unknown as ComponentProps<typeof NextIntlClientProvider>, children);
+  return createElement(IntlProvider, { locale: "en", timeZone: "Asia/Bangkok", messages: commerceEn } as unknown as ComponentProps<typeof IntlProvider>, children);
 }
 const show = (backend: CheckoutBackend, child: ReactElement) => act(async () => root.render(createElement(CheckoutBackendProvider, { backend } as ComponentProps<typeof CheckoutBackendProvider>, createElement(Copy, null, createElement(ConfirmProvider, null, child)))));
 

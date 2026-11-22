@@ -21,11 +21,10 @@ import {
 process.umask(0o077); // Local deployment credentials and authenticated test artifacts stay private.
 const root = process.cwd();
 const supplied = { ...process.env };
-const start = process.argv.slice(2, process.argv.includes("--") ? process.argv.indexOf("--") : undefined).includes("--start");
+// TanStack Start is the only entry; a legacy `--start` flag before `--` is accepted and ignored.
 const villaStudyEnabled = supplied.START_VILLA_CACHE_STUDY === "1";
 const villaSwrPilot = supplied.START_VILLA_CACHE_SWR_PILOT === "1";
 if (villaSwrPilot && !villaStudyEnabled) throw new Error("The local SWR pilot requires the disposable villa cache study");
-if (villaStudyEnabled && !start) throw new Error("The villa cache study requires --start");
 // Opt-in file contains only Clerk test values, never inherited Convex/provider credentials.
 try {
   const contents = await fs.readFile(path.join(root, ".env.e2e.local"), "utf8");
@@ -145,7 +144,6 @@ const env = {
   CI: supplied.CI ?? "",
   CONVEX_AGENT_MODE: "anonymous",
   CONVEX_TELEMETRY_DISABLED: "1",
-  NEXT_TELEMETRY_DISABLED: "1",
   NEXT_PUBLIC_CONVEX_URL: url,
   VITE_CONVEX_URL: url,
   VITE_CONVEX_SITE_URL: `http://127.0.0.1:${site}`,
@@ -156,7 +154,7 @@ const env = {
   CLERK_SECRET_KEY: supplied.CLERK_SECRET_KEY,
   CLERK_JWT_ISSUER_DOMAIN: supplied.CLERK_JWT_ISSUER_DOMAIN,
   E2E_BASE_URL: baseURL,
-  E2E_START_ADMIN_IDENTITY: start ? "1" : "",
+  E2E_START_ADMIN_IDENTITY: "1",
   E2E_COMPONENT_PORT: String(component),
   BOOKING_UI_PORT: String(component),
   E2E_MODE: "integration",
@@ -376,36 +374,30 @@ try {
     "Fresh local backend seeded; dedicated Clerk test identities ready.",
   );
   const verify = process.argv.includes("--verify");
-  if (verify || !start) await run("bun", ["run", verify ? "verify" : "build:next"]);
-  if (start) {
-    await run("bun", ["run", "build:start"], root, {
+  // verify builds Start with the same local public configuration.
+  if (verify) await run("bun", ["run", "verify"]);
+  else {
+    await run("bun", ["run", "build"], root, {
       ...env,
       ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
     });
-    const server = supplied.BENCH_SPANS_OUT
-      ? ["--import", "./scripts/local-bench-next-timing.mjs", ".output/server/index.mjs"]
-      : [".output/server/index.mjs"];
-    await launch(process.execPath, server, root, {
-      ...env, PORT: String(app), HOST: "127.0.0.1",
-      START_VILLA_INVALIDATION_SECRET: villaStudy?.secret ?? "",
-      ...(villaSwrPilot && { VERCEL_ENV: "preview", VILLA_BENCH_NAMESPACE: "1" }),
-      ...(supplied.BENCH_SPANS_OUT && { BENCH_LOCAL_SSR: "1", BENCH_START_PORT: String(app) }),
-    }, "start.log");
-  } else if (supplied.BENCH_SPANS_OUT) {
-    await launch(process.execPath, [
-      "--import", "./scripts/local-bench-next-timing.mjs",
-      "./node_modules/next/dist/bin/next", "start", "-p", String(app),
-    ], root, { ...env, BENCH_LOCAL_SSR: "1", BENCH_NEXT_PORT: String(app) }, "next.log");
-  } else {
-    await launch("bun", ["run", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
   }
+  const server = supplied.BENCH_SPANS_OUT
+    ? ["--import", "./scripts/local-bench-next-timing.mjs", ".output/server/index.mjs"]
+    : [".output/server/index.mjs"];
+  await launch(process.execPath, server, root, {
+    ...env, PORT: String(app), HOST: "127.0.0.1",
+    START_VILLA_INVALIDATION_SECRET: villaStudy?.secret ?? "",
+    ...(villaSwrPilot && { VERCEL_ENV: "preview", VILLA_BENCH_NAMESPACE: "1" }),
+    ...(supplied.BENCH_SPANS_OUT && { BENCH_LOCAL_SSR: "1", BENCH_START_PORT: String(app) }),
+  }, "start.log");
   await until(async () => {
     try {
-      return (await fetch(baseURL + (start ? "/rooms/pool-villa" : "/admin/chats"))).ok;
+      return (await fetch(baseURL + "/rooms/pool-villa")).ok;
     } catch {
       return false;
     }
-  }, start ? "TanStack Start server" : "Next server");
+  }, "TanStack Start server");
   if (verify) await run("bun", ["run", "test:booking-ui"]);
   const separator = process.argv.indexOf("--");
   const command =
@@ -417,16 +409,14 @@ try {
       out: path.resolve(root, supplied.BENCH_SPANS_OUT),
       backendUrl: url,
       adminKey: config.adminKey,
-      nextLog: path.join(work, start ? "start.log" : "next.log"),
+      nextLog: path.join(work, "start.log"),
     });
   }
   await run(command[0], command.slice(1), root, {
     ...env,
     ...(benchSpans && { BENCH_SPAN_ENDPOINT: benchSpans.endpoint }),
-    ...(start && {
-      BENCH_FRONTEND: "start",
-      ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
-    }),
+    BENCH_FRONTEND: "start",
+    ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
     ...(villaStudy && { START_VILLA_CACHE_STUDY_CONTROL: villaStudy.controlUrl }),
   });
 } finally {

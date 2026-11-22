@@ -15,7 +15,7 @@ export const CHANNEL_WEBHOOK_PATH: Record<ChannelKey, string> = {
   whatsapp: "/whatsapp/webhook",
 };
 
-/** Vercel env vars each channel webhook needs (see src/app/<channel>/webhook/route.ts). "A|B" = either. */
+/** Vercel env vars each channel webhook needs (the channel webhooks are Convex HTTP routes). "A|B" = either. */
 const CHANNEL_ENV: Record<ChannelKey, string[]> = {
   line: ["LINE_CHANNEL_SECRET", "LINE_CHANNEL_ACCESS_TOKEN"],
   facebook: ["FACEBOOK_APP_SECRET|META_APP_SECRET", "FACEBOOK_VERIFY_TOKEN", "FACEBOOK_ACCESS_TOKEN"],

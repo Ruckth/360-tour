@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { SRGBColorSpace, Texture } from "three";
 import type { Room } from "@/lib/data/rooms";
 import { markTourBench } from "@/lib/tour/bench";
@@ -96,7 +96,10 @@ export function useTourTextures({
   panoramaWidth,
   maxTextureSize,
   detailRequest,
-  prefetchFor = null,
+  isDrawnAndInteractive,
+  canPrefetch,
+  isCurrentSource,
+  contextEpoch = 0,
   loader = loadPanorama,
   maxTextures = 5,
   prefetchConcurrency = 2,
@@ -111,10 +114,18 @@ export function useTourTextures({
   maxTextureSize: number;
   detailRequest?: PanoramaDetailRequest | null;
   /**
-   * The exact `shown` texture whose frame has drawn, cleared the intro, and become interactive.
-   * Speculative neighbor prefetch stays paused until this matches the current `shown` texture.
+   * Tests whether this exact texture has drawn and the canvas can receive guest input.
+   * Omitting the check pauses speculation while the viewer is locked.
    */
-  prefetchFor?: TaggedTexture | null;
+  isDrawnAndInteractive?: (item: TaggedTexture) => boolean;
+  canPrefetch?: () => boolean;
+  /**
+   * Tests whether the DOM viewer's committed selection still requests this room's source. The scene root can
+   * commit after the DOM, so its generation alone may still belong to a replaced source.
+   */
+  isCurrentSource?: (roomId: string, originalPath: string) => boolean;
+  /** Changes on every WebGL context loss: the drawn texture must be presented again before speculation. */
+  contextEpoch?: number;
   loader?: (path: string, signal: AbortSignal) => Promise<Texture>;
   maxTextures?: number;
   prefetchConcurrency?: number;
@@ -143,6 +154,8 @@ export function useTourTextures({
   const outgoingRef = useRef<TaggedTexture | null>(null);
   const transitionActiveRef = useRef(false);
   const mountedRef = useRef(false);
+  const presentedRef = useRef<TaggedTexture | null>(null);
+  const presentedEpochRef = useRef(0);
 
   const invalidate = useCallback(() => onInvalidate?.(), [onInvalidate]);
   const originalPath = roomById.get(currentRoomId)?.imagePath;
@@ -206,6 +219,8 @@ export function useTourTextures({
       // An unavailable rendition should feel like an ordinary first load. The original is only
       // tried when entering the room, so a failed speculative request never prefetches the master.
       if (result.failed && originalPath && path !== originalPath) {
+        // Never fetch the master of a source the viewer has already replaced.
+        if (isCurrentSource?.(currentRoomId, sourcePath) === false) return;
         path = originalPath;
         result = await cache.acquire(path, REQUESTED_OWNER);
         if (!isCurrent()) return;
@@ -248,54 +263,69 @@ export function useTourTextures({
       // The room on screen keeps its SHOWN owner, so releasing the request never blanks it.
       cache.release(path, REQUESTED_OWNER);
     };
-  }, [activeDetailRequest, cache, currentRoomId, entryPath, invalidate, originalPath, retrySignal]);
+  }, [activeDetailRequest, cache, currentRoomId, entryPath, invalidate, isCurrentSource, originalPath, retrySignal]);
 
   const currentFailed = failedRoomId !== null && failedRoomId === currentRoomId;
   const currentReady = shown !== null && shown.roomId === currentRoomId &&
     shown.originalPath === originalPath && !currentFailed;
 
-  // Prefetch likely-next rooms (hotspot targets first, then sequential neighbours) only after
-  // the confirmed current source texture has actually drawn, cleared intro, and accepted input.
-  // When eligibility drops (disconnect, overlay, navigation, pending detail) or targets change,
-  // drop stale queued entries and cancel unowned speculative downloads while preserving owned flights.
-  useEffect(() => {
-    const eligible =
-      Boolean(prefetchFor) &&
-      shownState !== null &&
-      prefetchFor === shownState.item &&
-      currentReady &&
-      (!activeDetailRequest || shownState.item.path === originalPath) &&
-      shownState.generation === cache.currentGeneration;
-    if (!eligible || !shownState) {
-      cache.cancelPrefetches();
-      return;
-    }
+  const prefetch = useMemo(() => {
+    if (!isDrawnAndInteractive || !currentReady || !shownState ||
+      (activeDetailRequest && shownState.item.path !== originalPath)) return null;
     const current = roomById.get(currentRoomId);
-    if (!current || current.imagePath !== shownState.item.originalPath) {
+    if (!current || current.imagePath !== shownState.item.originalPath) return null;
+    const hotspotTargetIds = current.hotspots.map((hotspot) => hotspot.targetRoomId);
+    const order = nextRoomPrefetchOrder({ currentRoomId, hotspotTargetIds, orderedRoomIds });
+    const paths = order.flatMap((id) => {
+      const image = roomById.get(id)?.imagePath;
+      return image ? [panoramaRendition(image, panoramaWidth).path] : [];
+    });
+    return { ...shownState, paths, isDrawnAndInteractive, contextEpoch };
+  }, [activeDetailRequest, contextEpoch, currentReady, currentRoomId, isDrawnAndInteractive, orderedRoomIds,
+    originalPath, panoramaWidth, roomById, shownState]);
+
+  const committedPrefetch = useRef<typeof prefetch>(null);
+  useLayoutEffect(() => {
+    committedPrefetch.current = prefetch;
+    return () => {
+      // Revoke old frame callbacks and queued starts as soon as the selection commits.
+      // Keep in-flight images available for the requested room's acquisition above.
+      committedPrefetch.current = null;
+      cache.pausePrefetches();
+    };
+  }, [cache, prefetch]);
+
+  useEffect(() => {
+    if (!prefetch || prefetch.generation !== cache.currentGeneration) {
+      presentedRef.current = null;
       cache.cancelPrefetches();
       return;
     }
-    const hotspotTargetIds = current.hotspots
-      .map((hotspot) => hotspot.targetRoomId)
-      .filter((id) => roomById.has(id));
-    const order = nextRoomPrefetchOrder({ currentRoomId, hotspotTargetIds, orderedRoomIds });
-    const prefetchPaths = order
-      .map((id) => roomById.get(id)?.imagePath)
-      .filter((p): p is string => Boolean(p))
-      .map((p) => panoramaRendition(p, panoramaWidth).path);
-    cache.replacePrefetch(prefetchPaths, shownState.generation);
-  }, [
-    activeDetailRequest,
-    cache,
-    currentReady,
-    currentRoomId,
-    orderedRoomIds,
-    originalPath,
-    panoramaWidth,
-    prefetchFor,
-    roomById,
-    shownState,
-  ]);
+    const { item, generation, paths } = prefetch;
+    // Presented before a context loss counts for nothing: the restored canvas must show it again.
+    if (presentedRef.current === item && presentedEpochRef.current === prefetch.contextEpoch) {
+      cache.replacePrefetch(paths, generation, canPrefetch);
+      return;
+    }
+    // Seeing the drawn texture at two consecutive animation frames leaves one paint
+    // for the guest. Recording it does not change the scene or invalidate the renderer.
+    let visibleLastFrame = false;
+    let frame: number;
+    const checkFrame = () => {
+      if (committedPrefetch.current !== prefetch || canPrefetch?.() === false) return;
+      const visible = prefetch.isDrawnAndInteractive(item);
+      if (visible && visibleLastFrame) {
+        presentedRef.current = item;
+        presentedEpochRef.current = prefetch.contextEpoch;
+        cache.replacePrefetch(paths, generation, canPrefetch);
+        return;
+      }
+      visibleLastFrame = visible;
+      frame = window.requestAnimationFrame(checkFrame);
+    };
+    frame = window.requestAnimationFrame(checkFrame);
+    return () => window.cancelAnimationFrame(frame);
+  }, [cache, canPrefetch, prefetch]);
   let detailStatus: PanoramaDetailStatus = null;
   if (currentReady && canLoadDetail) {
     if (activeDetailRequest) {

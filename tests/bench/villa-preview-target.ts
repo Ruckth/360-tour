@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
+import { clerkClient as createClerkClient } from "@clerk/tanstack-react-start/server";
 import { homedir } from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -18,7 +18,6 @@ import type { Id } from "../../convex/_generated/dataModel.js";
 import { testUsers } from "../../scripts/e2e-clerk.mjs";
 
 const run = promisify(execFile);
-const { createClerkClient } = createRequire(import.meta.url)("@clerk/nextjs/server") as typeof import("@clerk/nextjs/server");
 const workingRoot = path.resolve(import.meta.dirname, "../..");
 // Disposable, run-owned names only; `perf-phase2-start-validation` (admin acceptance) never matches.
 const previewNames = /^perf-phase2-(outage|swr)-validation(-[2-9])?$/;

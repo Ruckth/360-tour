@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { getFunctionName, type FunctionReference } from "convex/server";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { act, createElement, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -42,7 +42,7 @@ const storedToken = () => window.localStorage.getItem("display-token");
 const open = (hash: string) =>
   act(async () => {
     window.history.replaceState(null, "", `/display${hash}`);
-    root.render(createElement(NextIntlClientProvider, { locale: "en", messages } as unknown as ComponentProps<typeof NextIntlClientProvider>, createElement(CustomerDisplay)));
+    root.render(createElement(IntlProvider, { locale: "en", messages } as unknown as ComponentProps<typeof IntlProvider>, createElement(CustomerDisplay)));
   });
 const navigate = (hash: string) =>
   act(async () => {

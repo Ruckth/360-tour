@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   createPrivateOutput,
@@ -12,7 +13,6 @@ import {
 } from "../../scripts/local-integration-config.mjs";
 
 const require = createRequire(import.meta.url);
-const nextRequire = createRequire(require.resolve("next/package.json"));
 
 describe("local integration isolation", () => {
   it("redacts SDK credentials and identities even across output chunks without hiding failure evidence", () => {
@@ -50,7 +50,7 @@ describe("local integration isolation", () => {
       expect(log).not.toContain(value);
     expect(log).toContain("[redacted]");
   });
-  it("overrides inherited services and prevents Next from restoring dotenv credentials", () => {
+  it("overrides inherited services and prevents the Start build from restoring dotenv credentials", () => {
     const fixture = mkdtempSync(path.join(tmpdir(), "360-local-env-"));
     try {
       writeFileSync(
@@ -59,13 +59,15 @@ describe("local integration isolation", () => {
           .map((key) => `${key}=invented-test-value`)
           .join("\n"),
       );
-      const script = `const {loadEnvConfig}=require(process.argv[1]);loadEnvConfig(process.argv[2]);process.stdout.write(JSON.stringify(Object.fromEntries(JSON.parse(process.argv[3]).map(k=>[k,process.env[k]]))))`;
+      // The same dotenv merge vite.start.config.ts uses: public prefixes from files, process env wins.
+      const script = `const {loadEnv}=await import(process.argv[1]);const env={...loadEnv("production",process.argv[2],["VITE_","NEXT_PUBLIC_"]),...process.env};process.stdout.write(JSON.stringify(Object.fromEntries(JSON.parse(process.argv[3]).map(k=>[k,[env[k],process.env[k]]]))))`;
       const result = execFileSync(
         process.execPath,
         [
+          "--input-type=module",
           "-e",
           script,
-          nextRequire.resolve("@next/env"),
+          pathToFileURL(require.resolve("vite")).href,
           fixture,
           JSON.stringify(disabledServiceKeys),
         ],
@@ -79,7 +81,7 @@ describe("local integration isolation", () => {
         },
       );
       expect(JSON.parse(result)).toEqual(
-        Object.fromEntries(disabledServiceKeys.map((key) => [key, ""])),
+        Object.fromEntries(disabledServiceKeys.map((key) => [key, ["", ""]])),
       );
     } finally {
       rmSync(fixture, { recursive: true, force: true });

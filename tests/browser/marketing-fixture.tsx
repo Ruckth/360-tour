@@ -1,5 +1,5 @@
 import type { Id } from "convex/_generated/dataModel";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { createRoot } from "react-dom/client";
 import { BookingSheet } from "@/components/admin/BookingSheet";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -35,7 +35,7 @@ function GuestPage() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
+  <IntlProvider locale={locale} timeZone="Asia/Bangkok" messages={locale === "th" ? th : en}>
     {params.get("mode") === "source" ? (
       <ConfirmProvider>
         <BookingSheet bookingId={"booking-id" as Id<"bookings">} properties={[]} onClose={() => {}} />
@@ -51,5 +51,5 @@ createRoot(document.getElementById("root")!).render(
         <AnalyticsConsent />
       </div>
     )}
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

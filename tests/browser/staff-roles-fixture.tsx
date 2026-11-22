@@ -3,7 +3,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { mergeSiteSettings } from "convex/shared/siteSettings";
 import { DEFAULT_CASHIER_RULES, type CashierRules } from "convex/shared/staffTypes";
 import { ConvexError } from "convex/values";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
@@ -348,9 +348,9 @@ async function main() {
   }
   const initial = await seedCheckout();
   root.render(
-    <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
+    <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
       <ConfirmProvider><CheckoutHarness initial={initial} /></ConfirmProvider>
-    </NextIntlClientProvider>,
+    </IntlProvider>,
   );
 }
 void main();

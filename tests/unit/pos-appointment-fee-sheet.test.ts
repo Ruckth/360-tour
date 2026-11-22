@@ -7,7 +7,7 @@ import { expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { AppointmentSheet } from '@/components/admin/AppointmentSheet';
 const mocks = vi.hoisted(() => ({ fee: vi.fn() }));
-vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
+vi.mock('@/platform/localized-navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
 vi.mock('@/components/admin/AppointmentFinancials', () => ({ AppointmentFinancials: () => createElement('p', {}, 'Appointment financials retained'), AppointmentMoneyBlock: () => createElement('p', {}, 'Appointment money block') }));
 vi.mock('@/components/admin/AppointmentHistory', () => ({ AppointmentHistory: () => createElement('p', {}, 'Appointment history retained') }));
 vi.mock('convex/react', () => ({

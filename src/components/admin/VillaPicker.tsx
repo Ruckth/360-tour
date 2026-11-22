@@ -26,7 +26,7 @@ function VillaThumb({
 }) {
   const [failedUrl, setFailedUrl] = useState<string>();
   return property.imageUrl && failedUrl !== property.imageUrl ? (
-    // eslint-disable-next-line @next/next/no-img-element
+    // eslint-disable-next-line react-app/no-raw-img
     <img
       src={property.imageUrl}
       alt=""
@@ -128,7 +128,7 @@ export function VillaPicker({
             {viewing ? villaSummary(viewing) : ""}
           </DialogDescription>
           {viewing?.imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
+            // eslint-disable-next-line react-app/no-raw-img
             <img
               src={viewing.imageUrl}
               alt={`Photo of ${viewing.name}`}

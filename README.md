@@ -6,7 +6,7 @@ Production: https://tour.helpgueststay.com
 
 ## Stack
 
-- Next.js App Router
+- TanStack Start (React, Vite, Nitro)
 - Convex backend functions and data
 - Vercel deployment
 - Clerk-powered admin access

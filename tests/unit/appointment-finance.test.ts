@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { getFunctionName } from 'convex/server';
 import type { Doc } from 'convex/_generated/dataModel';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { NextIntlClientProvider } from 'next-intl';
+import { IntlProvider } from '@/platform/intl';
 import messages from '../../messages/en.json';
 import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { AppointmentFinancials, AppointmentMoneyDialog, AppointmentMoneyBlock } from '@/components/admin/AppointmentFinancials';
@@ -16,14 +16,14 @@ vi.mock('convex/react', () => ({
     return name.endsWith(':markAppointmentPaid') ? mocks.pay : name.endsWith(':refundAppointment') ? mocks.refund : mocks.correct;
   }
 }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock('@/i18n/navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
+vi.mock('@/platform/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock('@/platform/localized-navigation', () => ({ Link: ({ children, ...props }: { children: ReactNode }) => createElement('a', props, children) }));
 const now = Date.UTC(2026,10,1,5);
 const appointment = { _id: 'appointment1', price: 120000, currency: 'THB', status: 'completed', paymentStatus: 'paid', revision: 4 } as Doc<'appointments'>;
 const payment = { _id: 'payment1', amount: 120000, currency: 'THB', method: 'cash', effectiveAt: now - 1000, recordedAt: now, recordedBy: 'desk@example.com', status: 'recorded', refunded: 0 } as Doc<'appointmentPayments'>;
-const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: 'en', messages, timeZone: 'Asia/Bangkok' } as unknown as ComponentProps<typeof IntlProvider>;
 let root: Root;
-const render = (node: ReactNode) => act(async () => root.render(createElement(NextIntlClientProvider, intl, createElement(ConfirmProvider, null, node))));
+const render = (node: ReactNode) => act(async () => root.render(createElement(IntlProvider, intl, createElement(ConfirmProvider, null, node))));
 const button = (text: string) => [...document.querySelectorAll('button')].find(el => el.textContent?.trim() === text);
 const startsWith = (text: string) => [...document.querySelectorAll('button')].find(el => el.textContent?.trim().startsWith(text));
 const click = (el: Element | undefined) => act(async () => (el as HTMLElement).click());

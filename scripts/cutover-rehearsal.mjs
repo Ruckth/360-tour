@@ -465,6 +465,38 @@ export function judgeHoldProbe(hold) {
   });
 }
 
+// ---------- certify verdicts ----------
+
+/** The Convex CLI's own marker for a push its schema validator rejected. */
+const SCHEMA_VALIDATION_FAILED = /^✖ Schema validation failed\.$/m;
+/** The validator's per-document line: table, then the reason. */
+const SCHEMA_DOCUMENT = /^Document with ID "[^"\n]+" in table "(\w+)" does not match the schema: (.+)$/m;
+/** Reasons that name one field, in the validator's own wording. */
+const SCHEMA_FIELD = [
+  /^Object contains extra field `(\w+)` that is not in the validator\./,
+  /^Object is missing the required field `(\w+)`/,
+];
+
+/**
+ * Pure: the certify verdict for one target deploy onto restored data. Only a recognized native schema-validation
+ * failure, with the table and field it names, is `refused`. Anything else that failed (backend unreachable, process
+ * killed, CLI or deploy error, or a validation failure without table/field evidence) is `inconclusive`: it says nothing
+ * about compatibility and must not lead to a reset. Only the table, field and a fixed reason category are returned;
+ * the CLI output itself stays in the private log.
+ * @param {number | null} code CLI exit code (null: killed or never ran) @param {string} output full CLI output
+ * @returns {{result: 'accepted'} | {result: 'refused', table: string, field: string, evidence: 'native schema validation'} | {result: 'inconclusive', reason: string}}
+ */
+export function classifyDeploy(code, output) {
+  if (code === null) return { result: 'inconclusive', reason: 'deploy process did not exit normally' };
+  if (code === 0 && !SCHEMA_VALIDATION_FAILED.test(output)) return { result: 'accepted' };
+  if (code === 0) return { result: 'inconclusive', reason: 'deploy exited 0 but reported a schema validation failure' };
+  if (!SCHEMA_VALIDATION_FAILED.test(output)) return { result: 'inconclusive', reason: 'deploy failed without a native schema validation failure' };
+  const document = output.match(SCHEMA_DOCUMENT);
+  const field = document && SCHEMA_FIELD.map(re => document[2].match(re)?.[1]).find(Boolean);
+  if (!document || !field) return { result: 'inconclusive', reason: 'schema validation failed without table and field evidence' };
+  return { result: 'refused', table: document[1], field, evidence: 'native schema validation' };
+}
+
 // ---------- snapshot inspection ----------
 
 /** Per-table canonical digests (documents sorted by _id), storage blob hashes and dangling *Id references. */
@@ -824,14 +856,23 @@ async function rehearse() {
       return { tablesMatched: Object.keys(restored.summary.tables).length, blobsMatched: Object.keys(restored.summary.blobs).length };
     };
     report.certificate.restore = await step('re-export the restore and compare every table digest and blob hash', () => compareToBackup('export-restored.zip'));
-    // Keep the full CLI message in the private log only; the report names the table and field.
-    /** @returns {Promise<{result: 'accepted' | 'refused', table?: string | null, field?: string | null}>} */
-    const tryNew = async () => deploy(R, src.new).then(() => ({ result: /** @type {const} */ ('accepted') }), (/** @type {any} */ error) => {
-      const message = String(error?.message ?? error);
-      return { result: /** @type {const} */ ('refused'), table: message.match(/table [`"']?(\w+)/)?.[1] ?? null, field: message.match(/field [`"']?(\w+)/)?.[1] ?? null };
-    });
+    // The full CLI output goes to the private convex-r.log (mode 600) only; the verdict carries the table, field and a
+    // fixed reason category. A deploy that never ran (target identity check, spawn failure) is inconclusive too.
+    /** @returns {Promise<ReturnType<typeof classifyDeploy>>} */
+    const tryNew = async () => convex(R, src.new, ['deploy', '--typecheck', 'disable', '--yes'], { allowFail: true })
+      .then(r => classifyDeploy(r.code, r.output), () => classifyDeploy(null, ''));
+    /** @param {ReturnType<typeof classifyDeploy>} v */
+    const stopIfInconclusive = v => {
+      if (v.result !== 'inconclusive') return;
+      report.certificate.newOnRestoredData = v;
+      fs.writeFileSync(path.join(work, 'certificate.json'), JSON.stringify({ ...report.certificate, at: new Date().toISOString(), runId }, null, 2) + '\n', { mode: 0o600 });
+      say(`CERTIFICATE: inconclusive (${v.reason}); no compatibility verdict, no reset recommendation. Details: private convex-r.log`);
+      throw new Error(`certify inconclusive: ${v.reason}`);
+    };
     let verdict = await step('deploy target revision (--new) onto the restored data (still paused)', tryNew);
-    if (verdict.result === 'refused' && args.includes('--clear-tour-certificates')) {
+    stopIfInconclusive(verdict);
+    // Clearing certificates addresses exactly one refusal: OLD's tourScenes validator lacks ordinaryTourCertified.
+    if (verdict.result === 'refused' && verdict.table === 'tourScenes' && verdict.field === 'ordinaryTourCertified' && args.includes('--clear-tour-certificates')) {
       report.certificate.firstAttempt = verdict;
       const cleared = await step('clear ordinaryTourCertified with the restore revision maintenance mutation, then retry', async () => {
         let cursor = null, checkpoint = null, total = 0, done = false;
@@ -843,11 +884,12 @@ async function rehearse() {
       });
       report.certificate.cleared = cleared.cleared;
       verdict = await step('deploy target revision (--new) after clearing certificates', tryNew);
+      stopIfInconclusive(verdict);
     }
     report.certificate.newOnRestoredData = verdict;
     if (verdict.result === 'accepted' && !report.certificate.cleared) report.certificate.afterNewDeploy = await step('re-export after target deploy: data unchanged', () => compareToBackup('export-after-new.zip'));
     fs.writeFileSync(path.join(work, 'certificate.json'), JSON.stringify({ ...report.certificate, at: new Date().toISOString(), runId }, null, 2) + '\n', { mode: 0o600 });
-    say(`CERTIFICATE: target revision ${verdict.result} on restored data${verdict.result === 'refused' ? ` (${verdict.table ?? '?'}.${verdict.field ?? '?'})` : ''}`);
+    say(`CERTIFICATE: target revision ${verdict.result} on restored data${verdict.result === 'refused' ? ` (${verdict.table}.${verdict.field}, native schema validation)` : ''}`);
   }
 
   try {
@@ -950,8 +992,9 @@ async function rehearse() {
     await step('lift internal pause (ingress still gated) for NEW acceptance', async () => { await setEnv(P, 'ARCH_RESET_PAUSED', null); storage.length = 0; await uploadProbe(P, 3); return { providerFetch: 'blackholed', publicFrontend: 'not exposed' }; });
     if (args.includes('--frontends')) {
       await step('NEW default frontend (Start) SSR probe against accepted backend', () => frontendProbe('new'));
-      // Frontend-only rollback: the explicit Next rebuild from the NEW revision against the same accepted NEW backend.
-      await step('NEW explicit FRONTEND=next rebuild SSR probe against accepted backend', () => frontendProbe('new', 'next'));
+      // Frontend-only rollback while NEW still ships the Next entry: its explicit Next rebuild against the accepted
+      // backend. After the Next entry's retirement the Next rollback is an archived (OLD) revision, probed below.
+      if (await frontendTargetFor(src.new, 'next')) await step('NEW explicit FRONTEND=next rebuild SSR probe against accepted backend', () => frontendProbe('new', 'next'));
     }
     report.forwardSmokeSeparationMs = await smokeTwice(P, 'NEW forward');
 
@@ -987,7 +1030,12 @@ async function rehearse() {
       if (!sameCrons(crons, manifest.old.crons)) throw new Error(`restored OLD registered crons ${JSON.stringify(crons)}`);
       return { cronJobs: crons.length };
     });
-    if (args.includes('--frontends')) await step('OLD default frontend SSR probe against restored backend', () => frontendProbe('old'));
+    if (args.includes('--frontends')) {
+      await step('OLD default frontend SSR probe against restored backend', () => frontendProbe('old'));
+      // An OLD revision that ships both entries also rebuilds its Next entry: the archived Next rollback path.
+      const oldNext = await frontendTargetFor(src.old, 'next');
+      if (oldNext && (await frontendTargetFor(src.old))?.frontend !== 'next') await step('OLD explicit FRONTEND=next rebuild SSR probe against restored backend', () => frontendProbe('old', 'next'));
+    }
     report.rollbackSmokeSeparationMs = await smokeTwice(P, 'OLD rollback');
     report.ok = true;
   } finally {
@@ -1005,18 +1053,34 @@ async function rehearse() {
   }
 
   /**
-   * Builds a revision's frontend through its own selection (scripts/frontend-target.mjs and package scripts), never a
-   * hand-written build: NEW defaults to Start, FRONTEND=next is its explicit Next rebuild, and older revisions use `build`.
+   * A revision's own frontend selection (scripts/frontend-target.mjs and package scripts), or null when that revision
+   * cannot build the requested entry. Revisions without a selector (pre-Start `6e6a562c` and the Phase 3 OLD) build
+   * their default Next with `build`; Phase 3 selects Start only through START_PRODUCTION/START_PREVIEW, which the
+   * rehearsal environment never sets. The dual-entry checkpoint accepts FRONTEND=next; the Start-only head builds
+   * only Start.
+   * @param {string} dir @param {'start' | 'next' | undefined} requested
+   * @returns {Promise<{ frontend: 'start' | 'next', script: string } | null>}
+   */
+  async function frontendTargetFor(dir, requested = undefined) {
+    const selector = path.join(dir, 'scripts/frontend-target.mjs');
+    if (!fs.existsSync(selector)) return requested === 'start' ? null : { frontend: 'next', script: 'build' };
+    try {
+      const target = (await import(selector)).frontendTarget(requested ? { FRONTEND: requested } : {});
+      return !requested || target.frontend === requested ? target : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Builds a revision's frontend through its own selection, never a hand-written build, and probes its room SSR.
    * @param {'old' | 'new'} side @param {'start' | 'next' | undefined} requested
    */
   async function frontendProbe(side, requested = undefined) {
     const P = backends.get('p');
     const port = await freePort(), dir = side === 'new' ? src.new : src.old;
-    const selector = path.join(dir, 'scripts/frontend-target.mjs');
-    const target = fs.existsSync(selector)
-      ? (await import(selector)).frontendTarget({ FRONTEND: requested })
-      : { frontend: 'next', script: 'build' }; // pre-Start-default revisions build Next with `build`
-    if (requested && target.frontend !== requested) throw new Error(`${side} cannot build ${requested}`);
+    const target = await frontendTargetFor(dir, requested);
+    if (!target) throw new Error(`${side} cannot build ${requested ?? 'its default frontend'}`);
     const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
     // Dedicated Clerk *test* tenant values, supplied privately through the environment and redacted from every log.
     const key = (flag('--clerk-publishable-key', process.env.REHEARSAL_CLERK_PUBLISHABLE_KEY) ?? ''), clerkSecret = process.env.REHEARSAL_CLERK_SECRET_KEY ?? '';
@@ -1027,15 +1091,18 @@ async function rehearse() {
       NEXT_PUBLIC_SITE_URL: `http://localhost:${port}`, VITE_SITE_URL: `http://localhost:${port}`, SITE_URL: `http://localhost:${port}`,
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: key, VITE_CLERK_PUBLISHABLE_KEY: key, CLERK_PUBLISHABLE_KEY: key, CLERK_SECRET_KEY: clerkSecret };
     await run('npx', ['--yes', pkg.packageManager, 'run', target.script], { cwd: dir, env, logName: `frontend-${side}-${target.frontend}.log` });
-    const server = /** @type {import('node:child_process').ChildProcess} */ (spawn(process.execPath, target.frontend === 'start' ? ['.output/server/index.mjs'] : ['node_modules/next/dist/bin/next', 'start', '-p', String(port)], { cwd: dir, env: /** @type {NodeJS.ProcessEnv} */ ({ ...env, PORT: String(port), HOST: '127.0.0.1' }), stdio: 'ignore' }));
+    // The revision's own server command: each `build*` script pairs with its `preview*` script, and both servers read PORT.
+    const preview = target.script.replace(/^build/, 'preview');
+    if (!pkg.scripts?.[preview]) throw new Error(`${side} has no ${preview} script for ${target.script}`);
+    const server = /** @type {import('node:child_process').ChildProcess} */ (spawn('npx', ['--yes', pkg.packageManager, 'run', preview], { cwd: dir, env: /** @type {NodeJS.ProcessEnv} */ ({ ...env, PORT: String(port), HOST: '127.0.0.1' }), stdio: 'ignore', detached: true }));
     try {
       let response;
       for (let i = 0; i < 150; i++) { try { response = await fetch(`http://localhost:${port}/rooms/pool-villa`); if (response.status < 500) break; } catch {} await delay(200); }
       const html = await response?.text() ?? '';
       const villa = (await client(P).query(ref('catalog/publicProperties:getBySlug'), { slug: 'pool-villa' }))?.villa;
       if (response?.status !== 200 || !villa?.name || !html.includes(villa.name)) throw new Error(`${side} ${target.frontend} /rooms/pool-villa: ${response?.status}`);
-      return { frontend: target.frontend, script: target.script, status: response.status, villaInHtml: true, bytes: html.length };
-    } finally { server.kill('SIGTERM'); }
+      return { frontend: target.frontend, script: target.script, preview, status: response.status, villaInHtml: true, bytes: html.length };
+    } finally { try { process.kill(-(server.pid ?? 0), 'SIGTERM'); } catch { server.kill('SIGTERM'); } }
   }
 }
 

@@ -99,7 +99,7 @@ try {
   await start();
   const firstConfig = JSON.parse(await fs.readFile('.local-dev/backend/.convex/local/default/config.json', 'utf8'));
   assert.ok(firstConfig.deploymentName.startsWith('anonymous-'));
-  report.push(activeLog.includes('Local backend seeded from empty.') ? 'Fresh anonymous backend seeded from empty before Next.' : 'Existing local data retained; empty-only seed refused.');
+  report.push(activeLog.includes('Local backend seeded from empty.') ? 'Fresh anonymous backend seeded from empty before Start.' : 'Existing local data retained; empty-only seed refused.');
   const configStat = await fs.stat('.local-dev/backend/.convex/local/default/config.json');
   assert.equal(configStat.mode & 0o077, 0);
   const duplicate = spawnSync('bun', ['run', 'dev'], { cwd: root, env: childEnv, encoding: 'utf8' });
@@ -125,7 +125,7 @@ try {
   report.push('Real Clerk nonstaff JWT refused protected catalog access.');
   await stop(); await stoppedPorts();
   await assert.rejects(fetch(app + '/en'));
-  report.push('SIGINT stopped Next and Convex, released the lock and retained private data.');
+  report.push('SIGINT stopped Start and Convex, released the lock and retained private data.');
   await start();
   assert.ok(activeLog.includes('Local backend data preserved; seed refused nonempty database.'));
   const afterConfig = JSON.parse(await fs.readFile('.local-dev/backend/.convex/local/default/config.json', 'utf8'));
@@ -142,18 +142,18 @@ try {
   await clerk.signOut({ page }); await page.close();
   report.push('Restart reused the exact anonymous deployment; real Clerk query read the identical saved order; direct reseed refused without changing it.');
   await stop('SIGHUP'); await stoppedPorts();
-  report.push('Terminal-close SIGHUP stopped Next and Convex and released the lock.');
+  report.push('Terminal-close SIGHUP stopped Start and Convex and released the lock.');
   blocker = net.createServer();
   blocker.on('connection', socket => { blockerSockets.add(socket); socket.on('close', () => blockerSockets.delete(socket)); });
   await new Promise(resolve => blocker.listen(port, 'localhost', resolve));
   activeLog = '';
   child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', value => { activeLog += value; });
-  await waitFor(async () => child.exitCode !== null, 'Next port failure cleanup', 180000);
+  await waitFor(async () => child.exitCode !== null, 'Start port failure cleanup', 180000);
   assert.equal(child.exitCode, 1);
   assert.ok(activeLog.includes('exited') || activeLog.includes('failed'));
   await stoppedPorts();
-  report.push('Occupied Next port caused failure, stopped its backend and released the lock.');
+  report.push('Occupied Start port caused failure, stopped its backend and released the lock.');
   console.log(report.join('\n'));
 } catch (error) {
   output.write(`Local lifecycle acceptance failed: ${error.stack || error.message}\n${activeLog}\n`); output.end(); process.exitCode = 1;

@@ -1,6 +1,6 @@
 # Production Deployment
 
-This project deploys as a Next.js App Router app on Vercel with Convex for backend data and functions. Clerk configuration is required by the app and protects the admin area, AI chat uses Convex environment variables, and live checkout uses Stripe when the Convex payment secrets are configured. Missing backend/auth configuration fails clearly; the old demo checkout was removed in Phase 3d.
+This project deploys as a TanStack Start app (Nitro Build Output API) on Vercel with Convex for backend data and functions. Clerk configuration is required by the app and protects the admin area, AI chat uses Convex environment variables, and live checkout uses Stripe when the Convex payment secrets are configured. Missing backend/auth configuration fails clearly; the old demo checkout was removed in Phase 3d.
 
 ## Current Production Shape
 

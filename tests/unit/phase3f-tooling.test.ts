@@ -5,10 +5,10 @@ import http from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
-import { readDevConfig, refuseInheritedTarget, devEnvironment, requireAnonymousState } from '../../scripts/local-dev-config.mjs';
+import { readDevConfig, refuseInheritedTarget, devEnvironment, devPublicEnvironment, requireAnonymousState } from '../../scripts/local-dev-config.mjs';
 import { buildSeededPreview, previewConfiguration, previewUrl, previewDashboardTarget, assertPreviewProvidersDisabled, assertPreviewInvalidationOrigin, previewFrontendEnvironment } from '../../scripts/preview-build.mjs';
 import { seedEmpty } from '../../scripts/seed-empty.mjs';
-import { testProjects } from '../../scripts/vitest-projects.mjs';
+import { CHECKPOINT_HISTORY_READERS, testProjects } from '../../scripts/vitest-projects.mjs';
 
 const keyHost = Buffer.from('tenant.clerk.accounts.dev$').toString('base64');
 describe('persistent local development configuration', () => {
@@ -23,6 +23,10 @@ describe('persistent local development configuration', () => {
       expect(parsed.port).toBe(3035);
       const env = devEnvironment({ PATH: '/bin', CONVEX_DEPLOY_KEY: 'inherited', AI_API_KEY: 'inherited', RESEND_API_KEY: 'inherited' }, '/private/test-home', parsed);
       expect(env).toMatchObject({ HOME: '/private/test-home', CONVEX_DEPLOY_KEY: '', AI_API_KEY: '', RESEND_API_KEY: '', CONVEX_AGENT_MODE: 'anonymous' });
+      // The Start dev server prefers VITE_* over NEXT_PUBLIC_*: the blanked VITE_* keys must be rebound to this checkout's values.
+      const dev = { ...env, ...devPublicEnvironment({ convexUrl: 'http://127.0.0.1:3210', siteUrl: 'http://127.0.0.1:3211', appUrl: 'http://localhost:3035', publishableKey: `pk_test_${keyHost}` }) };
+      expect((env as Record<string, string | undefined>).VITE_CONVEX_URL).toBe('');
+      expect(dev).toMatchObject({ VITE_CONVEX_URL: 'http://127.0.0.1:3210', NEXT_PUBLIC_CONVEX_URL: 'http://127.0.0.1:3210', VITE_CONVEX_SITE_URL: 'http://127.0.0.1:3211', VITE_SITE_URL: 'http://localhost:3035', VITE_CLERK_PUBLISHABLE_KEY: `pk_test_${keyHost}` });
       for (const extra of ['CONVEX_DEPLOY_KEY=forbidden', 'STRIPE_SECRET_KEY=forbidden', 'LOCAL_DEV_OWNER_EMAILS=duplicate']) {
         await fs.writeFile(file, config + extra);
         await expect(readDevConfig(file)).rejects.toThrow('Unknown or duplicate');
@@ -154,4 +158,22 @@ it('Vitest projects partition all former defaults once, preserving DOM harness a
   expect(projects.guards).toContain('tests/unit/convex-schema-tools.test.ts');
   expect(projects.unit).toContain('tests/unit/heavy.test.ts');
   expect(projects.dom.every(file => file.startsWith('tests/unit/'))).toBe(true);
+});
+
+it('runs every reader of the archived dual-entry checkpoint in the full-history guards job', async () => {
+  const root = process.cwd();
+  const projects = testProjects(root);
+  // History readers import the checkpoint helpers (anything but the SHA constant) or the route parity manifest/runner.
+  const readsHistory = (source: string) => [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*["']([^"']+)["']/g)].some(([, names, from]) =>
+    /start-route-parity(\.manifest)?\.mjs$/.test(from) || (/dual-entry-checkpoint\.mjs$/.test(from) && names.split(',').some(name => name.trim() && name.trim() !== 'DUAL_ENTRY_CHECKPOINT_SHA')))
+    || /scripts\/bench\/start-route-parity\.mjs|DUAL_ENTRY_CHECKPOINT_REF/.test(source);
+  const readers = [];
+  // This file names the patterns itself, so it is excluded from its own scan.
+  for (const file of Object.values(projects).flat().filter(file => file !== 'tests/unit/phase3f-tooling.test.ts')) {
+    if (readsHistory(await fs.readFile(path.join(root, file), 'utf8'))) readers.push(file);
+  }
+  expect(readers.sort()).toEqual(CHECKPOINT_HISTORY_READERS.map(name => `tests/unit/${name}.test.ts`).sort());
+  for (const file of readers) expect(projects.guards, file).toContain(file);
+  // Explicit classification: this test imports only the constant and never reads history.
+  expect(projects.unit).toContain('tests/unit/frontend-entry.test.ts');
 });

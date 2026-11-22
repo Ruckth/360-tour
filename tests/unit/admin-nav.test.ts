@@ -8,13 +8,13 @@ import { AdminShell } from '@/components/admin/AdminShell';
 import { ADMIN_NAV, ADMIN_TAB_BAR } from '@/components/admin/admin-routes';
 
 const route = vi.hoisted(() => ({ pathname: '/admin/chats' }));
-vi.mock('@clerk/nextjs', () => ({
+vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
   UserButton: () => null,
   SignInButton: () => null,
 }));
 vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => ({}), useConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }), ...await (async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }))() }));
-vi.mock('next/navigation', () => ({
+vi.mock('@/platform/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: vi.fn() }),

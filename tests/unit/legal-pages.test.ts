@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { resort } from "@/lib/data/resort-config";
 import en from "../../messages/en.json";
 import th from "../../messages/th.json";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/privacy" }));
-vi.mock("next/link", async () => {
+vi.mock("@/platform/navigation", () => ({ usePathname: () => "/privacy" }));
+vi.mock("@/platform/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href, className }: { children: ReactNode; href: string; className?: string }) => createElement("a", { href, className }, children) };
 });
@@ -30,9 +30,9 @@ const button = (label: string) => [...document.querySelectorAll("button")].find(
 const latinWords = () => NAMES.reduce((rest, name) => rest.split(name).join(" "), text()).match(/[A-Za-z]{2,}/g) ?? [];
 
 async function render(locale: string, messages: Messages, node: ReactNode) {
-  const intl = { locale, messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+  const intl = { locale, messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
   root = createRoot(document.body.appendChild(document.createElement("div")));
-  await act(async () => root!.render(createElement(NextIntlClientProvider, intl, node)));
+  await act(async () => root!.render(createElement(IntlProvider, intl, node)));
 }
 async function legalPage(locale: string, messages: Messages, kind: "privacy" | "terms") {
   const { LegalPage } = await import("@/components/legal/LegalPage");

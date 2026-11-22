@@ -1,4 +1,4 @@
-import type { init } from "@sentry/nextjs";
+import type { init } from "@sentry/tanstackstart-react";
 
 type DataCollection = NonNullable<NonNullable<Parameters<typeof init>[0]>["dataCollection"]>;
 

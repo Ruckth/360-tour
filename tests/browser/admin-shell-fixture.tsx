@@ -1,6 +1,6 @@
 import type { Id } from "convex/_generated/dataModel";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
@@ -111,7 +111,7 @@ function CheckoutPage({ initial }: { initial: OrderId | null }) {
 async function main() {
   const orderId = await seed();
   createRoot(document.getElementById("root")!).render(
-    <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
+    <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
       <StaffAccessProvider access={access}>
         <CheckoutBackendProvider backend={backend}>
           <div data-fixture-ready="" className="contents">
@@ -121,7 +121,7 @@ async function main() {
           </div>
         </CheckoutBackendProvider>
       </StaffAccessProvider>
-    </NextIntlClientProvider>,
+    </IntlProvider>,
   );
 }
 void main();

@@ -92,6 +92,7 @@ export class TourTextureCache<T extends DisposableTexture> {
   private prefetchQueue: Array<{ path: string; generation: number }> = [];
   private activePrefetches = 0;
   private prefetchEnabled = true;
+  private canStartPrefetch?: () => boolean;
 
   private generation = 0;
   private epoch = 0;
@@ -202,6 +203,7 @@ export class TourTextureCache<T extends DisposableTexture> {
   prefetch(paths: string[], generation = this.generation): void {
     if (this.disposed || generation !== this.generation) return;
     this.prefetchEnabled = true;
+    this.canStartPrefetch = undefined;
     for (const path of paths) {
       if (this.cache.has(path)) continue;
       // Already loading (any generation): its completion installs it, so do not duplicate it.
@@ -221,8 +223,9 @@ export class TourTextureCache<T extends DisposableTexture> {
    * purely speculative in-flight prefetches that are no longer targeted, re-enable draining, and
    * pump the updated priority order. Resident textures and flights with live acquire claims stay intact.
    */
-  replacePrefetch(paths: string[], generation = this.generation): void {
-    if (this.disposed || generation !== this.generation) return;
+  replacePrefetch(paths: string[], generation = this.generation, canStart?: () => boolean): void {
+    if (this.disposed || generation !== this.generation || canStart?.() === false) return;
+    this.canStartPrefetch = canStart;
     const wanted = new Set(paths);
     for (const flight of [...this.inFlight.values()]) {
       if (flight.holdsPrefetchSlot && !wanted.has(flight.path) && !this.hasLiveClaim(flight)) {
@@ -240,13 +243,19 @@ export class TourTextureCache<T extends DisposableTexture> {
     this.pumpPrefetch();
   }
 
+  /** Stop queue draining immediately, leaving any pending claims available to room navigation. */
+  pausePrefetches(): void {
+    this.prefetchEnabled = false;
+    this.canStartPrefetch = undefined;
+    this.prefetchQueue = [];
+  }
+
   /**
    * Pause prefetch draining, drop queued speculative entries, and cancel purely speculative
    * in-flight prefetches while preserving resident entries and flights with a live acquire claim.
    */
   cancelPrefetches(): void {
-    this.prefetchEnabled = false;
-    this.prefetchQueue = [];
+    this.pausePrefetches();
     for (const flight of [...this.inFlight.values()]) {
       if (flight.holdsPrefetchSlot && !this.hasLiveClaim(flight)) {
         this.cancelSpeculativeFlight(flight);
@@ -275,7 +284,7 @@ export class TourTextureCache<T extends DisposableTexture> {
     this.disposed = true;
     for (const flight of this.inFlight.values()) flight.controller.abort();
     this.inFlight.clear();
-    this.prefetchQueue = [];
+    this.pausePrefetches();
     this.activePrefetches = 0;
     for (const entry of this.cache.values()) safeDispose(entry.texture);
     this.cache.clear();
@@ -395,6 +404,10 @@ export class TourTextureCache<T extends DisposableTexture> {
       this.activePrefetches < this.prefetchConcurrency &&
       this.prefetchQueue.length > 0
     ) {
+      if (this.canStartPrefetch?.() === false) {
+        this.pausePrefetches();
+        return;
+      }
       const next = this.prefetchQueue.shift()!;
       if (next.generation !== this.generation) continue;
       if (this.cache.has(next.path)) continue;

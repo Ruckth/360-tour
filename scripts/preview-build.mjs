@@ -34,7 +34,7 @@ export function assertPreviewInvalidationOrigin(listing, env) {
   if (!own.includes(host)) fail("must be this Preview's own deployment or branch host");
 }
 
-/** Pin disabled values so Next cannot restore business credentials from dotenv.
+/** Pin disabled values so a dotenv loader cannot restore business credentials.
  * @param {NodeJS.ProcessEnv} env @param {string} url
  */
 export function previewFrontendEnvironment(env, url) {

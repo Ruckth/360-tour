@@ -18,7 +18,7 @@ vi.mock("convex/browser", () => ({
   },
 }));
 vi.mock("@/lib/admin/reply-delivery", () => ({ deliverAdminReply: deliver }));
-import { POST } from "@/app/api/admin/chat/reply/route";
+import { sendAdminReply as POST } from "@/lib/server/http/admin-chat-reply.server";
 
 function request() {
   return new Request("http://localhost/api/admin/chat/reply", {

@@ -2,7 +2,7 @@ import { bahtToSatang } from "convex/shared/money";
 type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
@@ -360,11 +360,11 @@ declare global {
 window.desk = { calls: () => desk.calls, appointments: () => desk.appointments };
 
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
+  <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
     <StaffAccessProvider access={access}>
       <ConfirmProvider>
         <Desk />
       </ConfirmProvider>
     </StaffAccessProvider>
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

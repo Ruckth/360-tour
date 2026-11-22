@@ -7,7 +7,7 @@ import { useState } from "react";
 import { NewAppointmentDialog } from "@/components/admin/NewAppointmentDialog";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { createRoot } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import type { AdminProperty } from "@/components/admin/admin-bookings-shared";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -116,11 +116,11 @@ function Fixture() {
 }
 
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider
+  <IntlProvider
     locale="en"
     timeZone="Asia/Bangkok"
     messages={{ Booking: { checkIn: "Check in", checkOut: "Check out" } }}
   >
     <ConfirmProvider><Fixture /></ConfirmProvider>
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

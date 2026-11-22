@@ -38,7 +38,7 @@ function staticGraph(entries: string[]) {
 }
 
 it("keeps the pay panel and attempt flow out of the checkout's initial JavaScript", () => {
-  const graph = staticGraph(["src/app/admin/checkout/page.tsx", "src/components/checkout/convex-backend.ts"]);
+  const graph = staticGraph(["src/components/checkout/AdminCheckoutPage.tsx", "src/components/checkout/convex-backend.ts"]);
   expect(graph).toContain("src/components/checkout/OrderPanel.tsx");
   expect(graph).not.toContain("src/components/checkout/PayPanel.tsx");
   expect(graph).toContain("src/components/checkout/pay-desk-backend.ts");

@@ -2,7 +2,7 @@ import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import commerceEn from "../../messages/commerce/en.json";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { CheckoutBackendProvider, returnArgs, type CheckoutBackend, type OrderView, type ReturnLookup, type ReturnsDesk } from "@/components/checkout/backend";
@@ -60,7 +60,7 @@ it("shows Replacement vouchers on a returned receipt: each names the voucher it 
   const view = (fields: Record<string, unknown>) => ({ order: { _id: "order1", returnedTotal: 0 }, commerce: { hasReplacementSlips: true }, activeReturn: null, voucherPayments, ...fields }) as unknown as OrderView;
   const show = (receipt: OrderView) => act(async () => root.render(createElement(
     CheckoutBackendProvider, { backend: { returns: desk, useActions: () => ({}) } as unknown as CheckoutBackend } as ComponentProps<typeof CheckoutBackendProvider>,
-    createElement(NextIntlClientProvider, { locale: "en", timeZone: "Asia/Bangkok", messages: commerceEn } as unknown as ComponentProps<typeof NextIntlClientProvider>,
+    createElement(IntlProvider, { locale: "en", timeZone: "Asia/Bangkok", messages: commerceEn } as unknown as ComponentProps<typeof IntlProvider>,
       createElement(ReplacementVouchers, { view: receipt }) as ReactNode),
   )));
 

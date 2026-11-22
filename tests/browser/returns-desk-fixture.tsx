@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { ConvexError } from "convex/values";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -205,7 +205,7 @@ function Harness() {
 
 // The admin layout supplies the commerce catalog to receipts (CommerceReceiptRow); so does this page.
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={commerceEn}>
+  <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={commerceEn}>
     <ConfirmProvider><Harness /></ConfirmProvider>
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

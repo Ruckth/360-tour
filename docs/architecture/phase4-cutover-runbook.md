@@ -4,20 +4,27 @@ Status: **prepared, not executed against any shared target.** This runbook and `
 
 ## 1. Revision pair and what the manifest says
 
-| | OLD (production today) | NEW (candidate) |
+| | OLD (**historical**, pre-Phase 3 production observed 2026-11-22; not the cutover OLD) | NEW (candidate) |
 | --- | --- | --- |
-| SHA | `6e6a562c` (`origin/main`, Next): the live production deployment `dpl_BXw8P9Sv…`, verified read-only | rehearsed `20b46534`; the tooling now targets `t3/phase4-cutover-start-default-integration` = this work merged with `eeb076a1` (Start default) |
+| SHA | `6e6a562c` (then `origin/main`, Next): the production deployment at that time, `dpl_BXw8P9Sv…`, verified read-only (historical) | rehearsed `20b46534`; the tooling now targets `t3/phase4-cutover-start-default-integration` = this work merged with `eeb076a1` (Start default). The Phase 4 PR ends with two buildable commits: the Preview-accepted dual-entry Start-default checkpoint, then the Start-only head. Production builds the head (§7) |
 | Toolchain | pnpm 10.30.3, `pnpm-lock.yaml`, Node 22 | Bun 1.4.5, `bun.lock`, Node 22 |
 | Vercel framework | project setting `nextjs` (`vercel.json` has no `framework` key) | `vercel.json` `"framework": null` → **Other** for that deployment. The project setting stays `nextjs` |
 | Vercel `installCommand` | `pnpm install` | `npx --yes bun@1.4.5 install --frozen-lockfile` |
 | Vercel `buildCommand` | `pnpm vercel-build` | `npx --yes bun@1.4.5 run vercel-build` |
-| Production build | `convex deploy --cmd 'pnpm build'` → Next | default: `convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'bun run build:start'` → Nitro Build Output. `FRONTEND=next` → `build:next`, which also needs `"framework": "nextjs"` in `vercel.json`. `FRONTEND_ONLY_CONVEX_URL=https://wary-toad-189.convex.cloud` builds the frontend only, with no `convex deploy` |
+| Production build | `convex deploy --cmd 'pnpm build'` → Next | Start-only head: `convex deploy --cmd-url-env-var-name VITE_CONVEX_URL --cmd 'bun run build'` → Nitro Build Output; `FRONTEND=next` is refused before any deploy. The dual-entry checkpoint (and the rehearsed SHAs below) used `bun run build:start`, with `FRONTEND=next` → `build:next`, which also needs `"framework": "nextjs"` in `vercel.json`. `FRONTEND_ONLY_CONVEX_URL=https://wary-toad-189.convex.cloud` builds the frontend only, with no `convex deploy` |
 | Root tables / components | 97 / `rateLimiter` (`@convex-dev/rate-limiter@0.3.2`, table `rateLimits`) | identical |
 | Schema source graph | — | **byte-identical** (`schema.sourcesIdentical: true`) |
 | Crons | 10 | 10 (same names) |
 | Maintenance gate / seed | `ARCH_RESET_PAUSED`, `maintenance/seed:seedAll` | same |
 
 The NEW backend adds the internal action `catalog/properties:deliverVillaInvalidation` and changes `adminReviews`/`propertyEdits` behavior. Its schema is unchanged, and the rehearsal deployed NEW onto the restored OLD export without error (`newSchemaOnOldData: accepted`). **For this pair, production needs no reset or reseed.** The cutover is an in-place backend deploy plus a framework switch. The clear/restore path below is rehearsed as the contingency. It becomes mandatory only if a later Phase 3/4 integration produces `sourcesIdentical: false` **and** the in-place probe rejects the old data.
+
+**The OLD column is historical.** It records the `6e6a562c` pnpm production observed on 2026-11-22. The actual OLD at the Phase 4 cutover is the Phase 3 merge `c7e07a2256d08c0a7ebff201a1c625b711046692` (verified Stage 0 deployment `dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM`), with these conventions; regenerate the table for the exact pair:
+
+- **Toolchain:** Bun 1.4.5 and `bun.lock`; Vercel install `npx --yes bun@1.4.5 install --frozen-lockfile`, build `npx --yes bun@1.4.5 run vercel-build`. `vercel.json` has no `framework` key, so the project preset `nextjs` applies.
+- **Production build:** always deploys the backend: `convex deploy --typecheck enable` with `--cmd 'bun run build'` (Next, `next build`, `NEXT_PUBLIC_CONVEX_URL`). Only `START_PRODUCTION=1` selects `bun run build:start` (Start, `VITE_CONVEX_URL`). There is no `FRONTEND` selector and no `FRONTEND_ONLY_CONVEX_URL`: an OLD production build can never skip `convex deploy`. Preview builds Start only with `START_PREVIEW=1`.
+- **Serving:** `bun run preview` (`next start`) for the Next build, `bun run preview:start` for Start.
+- Only the dual-entry checkpoint and the Start-only head honor `FRONTEND_ONLY_CONVEX_URL`.
 
 Regenerate both items for the exact final SHAs; the values above are not portable:
 
@@ -51,7 +58,7 @@ Sequence: exact `git archive` of each SHA, each installed from its own lockfile.
 - **Roles:** the owner via `ADMIN_EMAILS`; the cashier through the real `setGrant` → `claimInvite` invitation flow; a non-staff user and an anonymous caller are both denied `listPeople`.
 - **Scheduler:** there must be no failed scheduled function and only allowlisted pending jobs.
 
-`--frontends` builds frontends inside the archive (no checkout `.env*`) against P through each revision's **own** selection: `scripts/frontend-target.mjs` plus its package script, run with that revision's package manager. Each probe requires `/rooms/pool-villa` to return 200 with the villa name. After the forward run it builds the NEW default (Start, `build:start`) and NEW `FRONTEND=next` (`build:next`, the frontend-only Next rebuild against the same NEW backend). After rollback it builds the OLD default (`build`, which is Next at `6e6a562c`). It needs a Clerk **test** publishable key in `REHEARSAL_CLERK_PUBLISHABLE_KEY`.
+`--frontends` builds frontends inside the archive (no checkout `.env*`) against P through each revision's **own** selection: `scripts/frontend-target.mjs` plus its package script, run with that revision's package manager. Each probe requires `/rooms/pool-villa` to return 200 with the villa name. After the forward run it builds the NEW default and, only while NEW still ships Next, NEW `FRONTEND=next`. Historically (NEW = the dual-entry `9cd9836c`) that was Start `build:start` plus `build:next`; for the Start-only head it is Start `build` alone. After rollback it builds the OLD default through OLD's own scripts with no `START_*` variable set: `build`, which is Next at both `6e6a562c` and the Phase 3 OLD, served by its `preview` (`next start`). It adds OLD `FRONTEND=next` only when OLD has a frontend selector that accepts it (the dual-entry checkpoint). It needs a Clerk **test** publishable key in `REHEARSAL_CLERK_PUBLISHABLE_KEY`.
 
 ## 2a. Read-only Vercel settings and the Instagram rewrite
 
@@ -104,11 +111,11 @@ Every other production deployment is reported separately:
 
 Values are never kept. The gate fails closed unless all three are complete: present and well-formed, `hiddenProductionEnvCount` 0, and no further page, since neither endpoint documents a page cursor. It also requires the two project inventories to agree. It then requires `FRONTEND`, `FRONTEND_ONLY_CONVEX_URL`, `START_PRODUCTION`, `START_PREVIEW` and `START_SSR_RUNTIME` absent from the production target, project or linked shared. Other names are not restricted, including the required `START_VILLA_INVALIDATION_SECRET`/`START_VILLA_INVALIDATION_ORIGIN`. `--expected-production-env <file>` (one name per line, `#` comments) additionally requires the exact production name set, so an unreviewed addition or removal also stops the step. A failed env read does not abort the snapshot; it is recorded as `unavailable` and fails only the gate. Read-only check on 2026-11-22: the list endpoint returned 31 entries (22 on production, `hiddenProductionEnvCount: 0`, no selectors), and the shared endpoint returned 0 linked variables with `next: null`. Both flags fail only after the snapshot is printed and written, so a failing run stays inspectable; without them the command is diagnostic only. Use it after every promotion and every reversal.
 
-Read-only check on 2026-11-22: `tour.helpgueststay.com` → `dpl_BXw8P9SvHneaUJvsGFiWRSoynLHr` at `6e6a562c9d0424f091654ba1e8b69a27b5e92242`, with staged `[]`, queued `[]`, and previous `dpl_5dBaMv2X…`, `dpl_3mdr9r3f…`. `--expect-live` with that ID and SHA exited 0; a deliberately wrong ID exited 1.
+**Historical** read-only check on 2026-11-22 (pre-Phase 3 production, not the cutover OLD): `tour.helpgueststay.com` → `dpl_BXw8P9SvHneaUJvsGFiWRSoynLHr` at `6e6a562c9d0424f091654ba1e8b69a27b5e92242`, with staged `[]`, queued `[]`, and previous `dpl_5dBaMv2X…`, `dpl_3mdr9r3f…`. `--expect-live` with that ID and SHA exited 0; a deliberately wrong ID exited 1.
 
 `instagram-probe` sends one GET with a random `hub.verify_token`. It passes only when it receives Convex's `403 Forbidden` from the Meta challenge handler; a frontend 404 or HTML fails it. Because the route forwards to the **production** Convex site even from a Preview, the probe never POSTs.
 
-Stage 0 snapshot captured 2026-11-22 (`output/cutover-settings/stage0-202611221127.json`, private), with `--new` = the integration branch:
+Stage 0 snapshot captured 2026-11-22 (`output/cutover-settings/stage0-202611221127.json`, private), with `--new` = the integration branch. **Historical:** it shows the `6e6a562c` pnpm production; repeat it on the actual Phase 3 OLD (§4 Stage 0):
 
 - **Production deployment:** `dpl_BXw8P9SvHneaUJvsGFiWRSoynLHr` at `6e6a562c` (`productionIsOld: true`), aliases `tour.helpgueststay.com` and the `*.vercel.app` project aliases. Its deployment settings record framework `nextjs`, `pnpm vercel-build` and `pnpm install`.
 - **Project settings:** framework `nextjs`, build `pnpm vercel-build`, install `pnpm install`, output default, root default, Node **24.x**, regions `iad1`, `autoAssignCustomDomains: true`. Both SHAs declare `engines.node` `22.x`, which governs the build and function runtime; record both values.
@@ -119,7 +126,7 @@ Stage 0 snapshot captured 2026-11-22 (`output/cutover-settings/stage0-2026112211
 
 ## 3. Evidence: proved vs. still open
 
-**Acceptance run `r20261122051731-1a7967` — PASS, 26/26 steps** (2026-11-22, 05:17:31Z–05:30:47Z). It started on the measurement-window signal and was run with `--frontends --smoke-gap-ms 300000`, Node v22.22.3 and `convex-local-backend` `precompiled-2026-11-21-cf39368` (SHA-256 `c20e92b9…5d92`).
+**Historical acceptance run `r20261122051731-1a7967` (pair `6e6a562c → 9cd9836c`) — PASS, 26/26 steps** (2026-11-22, 05:17:31Z–05:30:47Z). It started on the measurement-window signal and was run with `--frontends --smoke-gap-ms 300000`, Node v22.22.3 and `convex-local-backend` `precompiled-2026-11-21-cf39368` (SHA-256 `c20e92b9…5d92`).
 
 - **Revisions:** OLD `6e6a562c9d0424f091654ba1e8b69a27b5e92242` (pnpm 10.30.3, Next); NEW `9cd9836ca70e92ec13ff7355b423728435b58817` (Bun 1.4.5, Start default plus the Next entry, compatible Phase 3 changes).
 - **Manifest:** schema sources identical, 97 tables, `rateLimiter` component, 10 crons. `clear-old.zip` and `clear-new.zip` both have 98 entries, SHA-256 `811a0093…185b`.
@@ -156,7 +163,7 @@ Earlier debug run `r20261122041304-94b792` (5 s smoke gap, not an acceptance run
 
 The cron-count assertions were added after that run.
 
-| Claim | Status |
+| Claim | Status (historical pairs named below; rerun on the final SHAs) |
 | --- | --- |
 | Tool, manifest and clear ZIPs are reproducible and revision-aware | Proved (unit tests plus run) |
 | OLD export restore is byte-verified on an isolated OLD target before any clear | Proved |
@@ -184,7 +191,7 @@ Do every step from §4 onward only with root's approval and on the verified prod
 
 - **Production env pin:** after the gate passes, review `snapshot.productionEnv.list.names` and save it as the names-only pin: `node -e 'const s=require("./stage0.json").snapshot.productionEnv;console.log([...new Set([...s.list.names,...s.shared.names])].sort().join("\n"))' > stage0-production-env.names`. Every later gated run (§4 Stage 3 checks, §5.3) adds `--expected-production-env stage0-production-env.names`. A deliberate change, such as provisioning `START_VILLA_INVALIDATION_SECRET` for push invalidation, means updating the pin in the same reviewed step.
 - **Routes record:** `vercel api -X GET /v1/projects/<id>/routes` and `…/routes/versions` into private files. The snapshot below also keeps `snapshot.routesVersion` (the live routes version id, the routes restore point) and `snapshot.live.domains` (the hosts the §4c hold is scoped to).
-- **Settings snapshot:** run `vercel-settings --production-env-gate --out stage0.json` and confirm `productionIsOld`, `instagramRewrite.ok` and no frontend env variables. Record `snapshot.live.id` and `snapshot.live.sha` as the **rollback target**. Today that is `dpl_BXw8P9Sv…` at `6e6a562c…`, derived from `tour.helpgueststay.com`. Do not take the rollback target from a deployment list. `staged` and `queued` must both be empty before Stage 1.
+- **Settings snapshot:** run `vercel-settings --production-env-gate --out stage0.json` and confirm `productionIsOld`, `instagramRewrite.ok` and no frontend env variables. On the Phase 3 OLD, `START_PRODUCTION` must be absent from production: an OLD rebuild then builds Next with `bun run build`. The flag fails the snapshot if it is present, because `START_PRODUCTION=1` would make an OLD rollback rebuild Start. Also record the OLD SHA's own `package.json` scripts, `vercel.json` and `scripts/vercel-build.mjs` (Bun; always `convex deploy`; no `FRONTEND_ONLY_CONVEX_URL`). Record `snapshot.live.id` and `snapshot.live.sha` as the **rollback target**. The verified Stage 0 OLD at the freeze is `dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM` at `c7e07a2256d08c0a7ebff201a1c625b711046692` (the Phase 3 merge), derived from `tour.helpgueststay.com`. Before any alias move or OLD deploy, read `snapshot.live.id` and `snapshot.live.sha` from a fresh Stage 0 snapshot and use only those values; if they differ from this record, stop and re-verify. Do not take the rollback target from a deployment list. `staged` and `queued` must both be empty before Stage 1.
 - **Convex:** backend deploy timestamp, environment variable names, cron list and scheduler state. For villa push invalidation, record whether Convex `START_VILLA_INVALIDATION_ORIGIN` and `START_VILLA_INVALIDATION_SECRET`, and the Vercel production `START_VILLA_INVALIDATION_SECRET`, are set. Keep any prior values only in the operator's secret store; §5 restores exactly that state.
 - **Providers:** webhook URLs and status for Stripe, LINE, Facebook, WhatsApp and Instagram, and the iCal feeds.
 - **Contracts:** `node scripts/check-function-contracts.mjs --base <prod-sha>`. The in-place NEW backend must keep every contract the still-serving Next frontend calls.
@@ -195,14 +202,14 @@ Do every step from §4 onward only with root's approval and on the verified prod
 1. Turn the project's automatic production domain assignment **off**, and record that it was on. This removes `autoPromoteRisk`. Do not change the framework, install, build or output project settings: NEW's `vercel.json` overrides them per deployment, and leaving them alone keeps the OLD rollback build intact.
 
    For a Git-triggered merge, the project setting is `autoAssignCustomDomains` on `PATCH /v9/projects/{idOrName}`. Change that field alone and read it back before merging. A manual `$VC deploy --prod --skip-domain` applies to that individual CLI deployment. Promote the accepted production deployment with `$VC promote <deployment-id>`. Record the prior project value for restoration. [Project API](https://vercel.com/docs/rest-api/projects/update-an-existing-project) · [Staged production deployments](https://vercel.com/docs/deployments/promoting-a-deployment)
-2. Merge NEW to `main`, or create a production deployment of the NEW SHA. The default production build runs `convex deploy` in place (schema-compatible) and then `bun run build:start` with the deploy-callback URL. The result is READY but not aliased. Record the Convex backend revision before and after. From this point Next (old alias) is served by the NEW backend, which is why the Stage 0 contract check matters.
-   - If the backend is already deployed and only the frontend must be re-staged, set `FRONTEND_ONLY_CONVEX_URL` **for that one deployment only**: `$VC deploy --prod --skip-domain --build-env FRONTEND_ONLY_CONVEX_URL=https://wary-toad-189.convex.cloud --scope …`. It runs no `convex deploy`, and production accepts only that exact URL. Never add it, or any other frontend selector (`FRONTEND`, `START_PRODUCTION`, `START_PREVIEW`, `START_SSR_RUNTIME`), as a production project or linked shared variable: every later production build, including an OLD rollback build, would inherit it. The production env gate (§2a) fails on any of them.
+2. Merge NEW to `main`, or create a production deployment of the NEW SHA. The production build of the Start-only head runs `convex deploy` in place (schema-compatible) and then `bun run build` (Start) with the deploy-callback URL. The result is READY but not aliased. Record the Convex backend revision before and after. From this point Next (old alias) is served by the NEW backend, which is why the Stage 0 contract check matters.
+   - If the backend is already deployed and only the NEW frontend must be re-staged, set `FRONTEND_ONLY_CONVEX_URL` **for that one deployment only** (the Start-only head and the dual-entry checkpoint honor it; the Phase 3 OLD does not): `$VC deploy --prod --skip-domain --build-env FRONTEND_ONLY_CONVEX_URL=https://wary-toad-189.convex.cloud --scope …`. It runs no `convex deploy`, and production accepts only that exact URL. Never add it, or any other frontend selector (`FRONTEND`, `START_PRODUCTION`, `START_PREVIEW`, `START_SSR_RUNTIME`), as a production project or linked shared variable: every later production build, including an OLD rollback build, would inherit it. The production env gate (§2a) fails on any of them.
    - **Push-invalidation precondition** (the [accepted room-cache contract](../plans/benchmarks/room-preview-cache.md#what-a-guest-sees-after-a-write)). First prove it on a **dedicated Preview**: a Start Preview deployment paired with its own Preview Convex backend, never production Convex. Set the Convex `START_VILLA_INVALIDATION_ORIGIN` to that Preview's exact origin and the same `START_VILLA_INVALIDATION_SECRET` on both. Edit a villa there and confirm the signed invalidation gets HTTP 204 with shared-cache acknowledgement. Then do the production staging below. For push invalidation, provision the same server-only `START_VILLA_INVALIDATION_SECRET` on Start and Convex. Set the Convex `START_VILLA_INVALIDATION_ORIGIN` to the accepted Start origin. A protected origin also needs its server-side automation bypass. Verify a signed invalidation receives HTTP 204 with shared-cache acknowledgement. After promotion, use the stable production origin. Keep secrets out of reports and restore the previous settings on rollback. If operating with TTL-only refresh, record that choice and check archive and reactivation as in the hosted study. [Villa freshness and writer coverage](../plans/benchmarks/room-preview-cache.md)
 3. On the staged deployment URL (with protection bypass):
    - `instagram-probe` must report `forwardedToConvex: true`;
    - `/rooms/pool-villa?tour=1`, the EN and TH headers and the admin sign-in page must render;
    - the assets must contain no Preview `convex.cloud` URL.
-4. Confirm the staged function reports the tested Bun 1.4 runtime before promoting it. Bun is the default for Start deployments. To stage the tested fallback on Node 22, rebuild with `START_SSR_RUNTIME=node` and repeat the same checks on the new deployment.
+4. Confirm the staged function reports the tested Bun 1.4 runtime before promoting it. Bun is the default for Start deployments. To stage the tested fallback on Node 22, rebuild that one deployment with `$VC deploy --prod --skip-domain --build-env START_SSR_RUNTIME=node --scope …` and repeat the same checks on the new deployment. Never set `START_SSR_RUNTIME` as a production project or linked shared variable: the production env gate (§2a) fails on it.
 
 **Stage 2: hold traffic (maintenance plan, §4c).**
 
@@ -235,7 +242,7 @@ Each item states which credentials it uses. **Exact-seeded** means run-owned tes
   - a **signed sandbox Stripe webhook** that confirms the booking, with replay accepted and a forged signature rejected;
   - roles: owner, invited cashier, non-staff and anonymous.
 - **Backup:** the targeted backup, byte-verified isolated restore and rollback restore are part of this gate.
-- **Status:** passed for `6e6a562c` → `9cd9836c` (§3); rerun on the final SHAs.
+- **Status:** historical pass for `6e6a562c` → `9cd9836c` (§3); rerun on the final SHAs.
 
 **3. Production staging and post-promotion (live/anonymous only). Twice, 5 minutes apart, per target.**
 
@@ -274,7 +281,7 @@ node scripts/tour-smoke.mjs --url <staged-url | https://tour.helpgueststay.com> 
 ## 4b. Schema compatibility before rollout (Phase 2 vs Phase 3)
 
 1. **Offline certificate.** Run `node scripts/cutover-rehearsal.mjs manifest --old <prod-sha> --new <candidate-sha>`.
-   - If `schema.sourcesIdentical` is true and the table and component inventories match, an in-place deploy cannot change stored shapes. That held for `6e6a562c` → `20b46534` and `9cd9836c`.
+   - If `schema.sourcesIdentical` is true and the table and component inventories match, an in-place deploy cannot change stored shapes. That held for the historical pairs `6e6a562c` → `20b46534` and `9cd9836c`.
    - Archive `manifest.json`, which records full SHAs, schema-source hashes and lockfiles.
 2. **If any schema source differs** (for example, Phase 3 storage changes): run `rehearse --old <prod-sha> --new <candidate-sha>`. Its R step deploys NEW onto the restored OLD export and records `inPlaceCompatibility`. `accepted` proves the code path on the demo data only.
    - Before production, certify against real shapes with the Stage 0 production export:
@@ -286,20 +293,20 @@ node scripts/tour-smoke.mjs --url <staged-url | https://tour.helpgueststay.com> 
 
    - **Inputs and refusals:** the backup must be mode 600 and match `--sha256`, otherwise the command refuses before doing any work.
    - **Restore:** it installs each SHA from its own lockfile and starts one run-owned `127.0.0.1` backend. That backend has a fresh instance secret and a blackholed action-fetch proxy, so there is no egress, and `ARCH_RESET_PAUSED=1` stays set throughout. It deploys the OLD maintenance copy, imports the backup, re-exports, and requires every table digest and blob hash to match.
-   - **The test:** it then deploys NEW onto that data while still paused, and records `accepted` or `refused`. A refusal names only the table and field; the full CLI message stays in the private log.
+   - **The test:** it then deploys NEW onto that data while still paused, and records `accepted`, `refused` or `inconclusive`. `refused` requires the Convex CLI's native `✖ Schema validation failed.` marker plus a document line naming the table and field; every other failure (backend unreachable, process killed, other CLI or deploy errors, validation output without table and field) is `inconclusive`. A refusal names only the table and field; the full CLI message stays in the private log.
    - **Outputs:** `output/cutover-certificate/<run>/certificate.json` and `report.json` (mode 600) hold the SHAs, the backup hash, counts, digests and the verdict. Restored backend state, re-exports and source copies are deleted at the end unless `--keep-state`.
    - **Coordination:** it needs dependency installs and one local backend, but no frontend builds. Run it in a functional window.
-   - **Decision:** `accepted` certifies the in-place cutover for that backup; `refused` selects the reset path (§6).
-4. **Rollback constraint for `ordinaryTourCertified`.** Phase 3 adds the optional `tourScenes.ordinaryTourCertified: true`. OLD's `tourScenes` validator has no such field.
-   - Once NEW has certified any room, deploying OLD functions onto that data is refused by schema validation. The OLD Next frontend alias reversal alone is unaffected, because it uses only reads that ignore the field.
-   - **Before any OLD backend deploy (§5.3)** on post-cutover data:
+   - **Decision:** `accepted` certifies the in-place cutover for that backup; `refused` selects the reset path (§6); `inconclusive` writes the certificate, prints no verdict or reset recommendation and exits nonzero: fix the cause and rerun. `--clear-tour-certificates` retries only after the `tourScenes.ordinaryTourCertified` refusal.
+4. **Rollback constraint for `ordinaryTourCertified`.** Phase 3 adds the optional `tourScenes.ordinaryTourCertified: true`. The Phase 3 merge `c7e07a2256d08c0a7ebff201a1c625b711046692` and R use the identical validator (`v.optional(v.literal(true))` in `convex/catalog/validators.ts`), so a rollback to P3 keeps those records valid and needs no clearing or pause. The constraint below applies only when a chosen older revision's schema actually rejects the field (pre-Phase 3, such as historical `6e6a562c`).
+   - For such a pre-Phase 3 revision only: once NEW has certified any room, deploying its functions onto that data is refused by schema validation. The OLD Next frontend alias reversal alone is unaffected, because it uses only reads that ignore the field.
+   - **Before a pre-Phase 3 backend deploy (§5.3)** on post-cutover data (never for P3 `c7e07a22`):
      1. Pause public writes (`ARCH_RESET_PAUSED=1`).
      2. While NEW is still deployed, clear the markers with `maintenance/tourCertificates:page` in `mode: 'clear'` (see `docs/architecture/tour-certificate-recovery.md`), paging until `isDone`.
      3. Run the same mutation in `mode: 'check'`; it must report 0.
      4. Only then deploy OLD.
-   - **Alternatively**, restore the Stage 0 export, which predates any marker (§6 rollback), and accept losing post-cutover writes.
+   - **An older backup can support a pre-Phase 3 downgrade** when an isolated restore and certificate prove it contains zero markers and that the target accepts its data. A Phase 3 Stage 0 export may already contain markers. Restoring a backup also discards writes made after its capture (§6 rollback).
    - `certify --clear-tour-certificates` rehearses exactly this on a copy. It restores a NEW-marked backup under NEW, expects OLD to be refused, clears the markers through the restore revision's maintenance mutation, and expects OLD to be accepted.
-   - **Synthetic demonstration, 2026-11-22, functional window, heavy queue** (private runs under `output/cutover-certificate/`, mode 700):
+   - **Historical synthetic demonstration (pre-Phase 3 OLD `6e6a562c`), 2026-11-22, functional window, heavy queue.** Its native refusal applies only to pre-Phase 3 schemas (private runs under `output/cutover-certificate/`, mode 700):
      - **Forward** `r20261122062605-96f0ac`, synthetic seeded OLD export `16986c71…e345` restored under `6e6a562c9d0424f091654ba1e8b69a27b5e92242`:
        - the restore re-export matched 100 table digests and 2 blobs;
        - NEW `35568ba9ee28a90c51555f6d945e0fe07fd2ab6f` (schema sources differ: the optional marker) was **accepted**;
@@ -311,7 +318,7 @@ node scripts/tour-smoke.mjs --url <staged-url | https://tour.helpgueststay.com> 
      - **Cleanup:** after each run only `certificate.json`, `report.json`, the logs and the manifest remain; backend state, re-exports and source copies were deleted and no backend process remained.
      - **Not yet done:** the real Stage 0 production certificate on the final release SHA.
 5. **Exact-SHA final rehearsal is reserved.** After Phase 3/4 integrate, rerun `manifest` plus `rehearse --frontends --smoke-gap-ms 300000` on the exact production SHA and the exact release SHA. The existing reports cover only the SHAs named in §3.
-   - **Prepared, not run.** It waits until root names both targets: the exact production revision (today's live `6e6a562c…`, unless P2/P3 production changes it) and the exact integrated E release SHA. Then, in a functional window:
+   - **Prepared, not run.** It waits until root names both targets: the exact production revision (the verified Stage 0 OLD, the Phase 3 merge `c7e07a2256d08c0a7ebff201a1c625b711046692` at `dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM`, re-read from the fresh Stage 0 snapshot) and the exact integrated E release SHA. The release SHA is the Start-only Phase 4 PR head with its `bun.lock`: Stage E measures that shipping code, not the dual-entry checkpoint. Then, in a functional window:
 
      ```sh
      node scripts/cutover-rehearsal.mjs manifest --old <prod-sha> --new <release-sha> --out output/cutover-manifest-final
@@ -326,7 +333,7 @@ node scripts/tour-smoke.mjs --url <staged-url | https://tour.helpgueststay.com> 
 
 **What the plan supports.** The team is on Hobby. A firewall custom rule (3 allowed) can only `deny` with **403**, with no custom status. A project-level route with `set-status` returns a real **503** with headers and needs no redeploy. It is staged first, goes live only when its version is promoted, and is reversible by restoring the previous routes version. The Instagram rewrite is already a project route, proved to run ahead of the Nitro output.
 
-**Scope.** Project routes apply to every deployment, so the hold carries a `has` **host** condition: an anchored, escaped match of the Stage 0 `snapshot.live.domains` (today exactly `^(?:tour\.helpgueststay\.com)$`). Everything else keeps its usual protection and stays reachable without the token:
+**Scope.** Project routes apply to every deployment, so the hold carries a `has` **host** condition: an anchored, escaped match of the Stage 0 `snapshot.live.domains` (at the 2026-11-22 read exactly `^(?:tour\.helpgueststay\.com)$`; build it from the fresh Stage 0 list). Everything else keeps its usual protection and stays reachable without the token:
 
 - Previews and branch aliases;
 - the staged immutable URL used for the Stage 3 pre-promotion pass;
@@ -412,9 +419,9 @@ env -u CUTOVER_HOLD_TOKEN_FILE -u CUTOVER_HOLD_TOKEN -u VERCEL_PROTECTION_BYPASS
 ## 5. Rollback (schema-compatible pair)
 
 1. Publish the §4c hold again (operator token, Instagram exemption).
-2. **Frontend:** first confirm that `queued` is empty and automatic domain assignment is off, so no build can re-alias production afterwards. Then move the alias to the **Stage 0 `snapshot.live.id`** (`dpl_BXw8P9Sv…`), not the newest READY deployment. On Hobby, `$VC rollback` only reaches the immediately previous production deployment, so use it only if nothing else was promoted since the cutover; otherwise `$VC alias set <stage0-deployment-url> tour.helpgueststay.com`. Verify the public mapping with `vercel-settings --expect-live <stage0-live-id> --expect-live-sha <stage0-live-sha>`, which must exit 0. This needs no rebuild and no settings change, because the project settings were never edited: framework `nextjs`, pnpm commands.
-3. **Backend, only if the NEW functions are the problem:** first apply the `ordinaryTourCertified` constraint (§4b.4), and run `vercel-settings --production-env-gate --expected-production-env stage0-production-env.names` (it must exit 0; update the pin first for any change that was deliberate since Stage 0). Then create a production deployment of the OLD SHA. Its `vercel.json` has no `framework`, so the unchanged project preset `nextjs` applies, and its `vercel-build` runs `convex deploy --cmd 'pnpm build'`. Verify that this subsequent OLD build is READY and appears in `staged`, then alias it. `--expect-live <its-id> --expect-live-sha <OLD-sha>` must exit 0.
-   - A hosted Next rebuild **from the NEW SHA** (`FRONTEND=next`, per-deployment `--build-env` only) is **only a documented fallback**. It is not a checkpoint, not a gate and not exercised hosted. It also needs `"framework": "nextjs"` in `vercel.json`, which is a source change, so it is not the emergency path. The rehearsal proves only that it builds and serves locally against rehearsal data (§3).
+2. **Frontend:** first confirm that `queued` is empty and automatic domain assignment is off, so no build can re-alias production afterwards. Then move the alias to the **Stage 0 `snapshot.live.id`**, read from the fresh Stage 0 `stage0.json` (at the freeze `dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM` at `c7e07a2256d08c0a7ebff201a1c625b711046692`), not the newest READY deployment. On Hobby, `$VC rollback` only reaches the immediately previous production deployment, so use it only if nothing else was promoted since the cutover; otherwise `$VC alias set <stage0-deployment-url> tour.helpgueststay.com`. Verify the public mapping with `vercel-settings --expect-live <stage0-live-id> --expect-live-sha <stage0-live-sha>`, which must exit 0. This needs no rebuild and no settings change, because the project settings were never edited (historical observation 2026-11-22: framework `nextjs`, pnpm commands; Phase 3 and later revisions override install and build with Bun in `vercel.json`; confirm in the fresh Stage 0 snapshot).
+3. **Backend, only if the NEW functions are the problem:** if the chosen OLD is older than Phase 3, first apply the `ordinaryTourCertified` constraint (§4b.4); it does not apply to the Phase 3 merge `c7e07a22`. Then run `vercel-settings --production-env-gate --expected-production-env stage0-production-env.names` (it must exit 0; update the pin first for any change that was deliberate since Stage 0). Then create a production deployment of the OLD SHA, with `START_PRODUCTION` absent (Stage 0). Its `vercel.json` has no `framework`, so the unchanged project preset `nextjs` applies. The Phase 3 OLD installs with Bun and its `vercel-build` always runs `convex deploy --typecheck enable --cmd 'bun run build'` (Next); it cannot build frontend-only. (Historically `6e6a562c` ran `convex deploy --cmd 'pnpm build'`.) Verify that this subsequent OLD build is READY and appears in `staged`, then alias it. `--expect-live <its-id> --expect-live-sha <OLD-sha>` must exit 0.
+   - The Start-only NEW SHA has no Next entry and refuses `FRONTEND=next` before any deploy. A Next rebuild uses the dual-entry checkpoint with its own `FRONTEND=next` (per-deployment `--build-env` only) plus `"framework": "nextjs"` in its `vercel.json` (§7). That is a source change, so it is not the emergency path. The rehearsal proves only that the checkpoint's rebuild builds and serves locally against rehearsal data (§3).
 4. **Villa invalidation settings:** restore the Stage 0 state of Convex `START_VILLA_INVALIDATION_ORIGIN` and `START_VILLA_INVALIDATION_SECRET`, and of the Vercel `START_VILLA_INVALIDATION_SECRET`, before reopening traffic. Usually that means removing the origin, so the still-deployed NEW backend stops posting to an origin that now serves OLD Next, which has no Start cache endpoint. If Start is promoted again later, start a new cache namespace or expire the affected shared generations, as the contract requires after a restore or import.
 5. Run `vercel-settings --compare stage0.json`; it must show no unexpected change. Run `instagram-probe` against the production alias.
 6. Run two smoke passes 5 min apart with `CUTOVER_HOLD_TOKEN_FILE` and `--expect-frontend next --expect-hold`. Reopen (§4c) only if both pass with no new scheduler failures; otherwise keep the hold published and retain both exports.
@@ -433,3 +440,29 @@ Follow the rehearsed order in §2 against the verified deployment with `--prod` 
 8. Lift the pause behind the firewall and run the two smoke passes. Then build, promote and reopen as in §4.
 
 Rollback mirrors §2.7 with `clear-new.zip` and the verified OLD export. Restore provider callbacks and Stripe reconciliation per the Phase 1 runbook §5.
+
+## 7. After the Next entry's retirement
+
+The Phase 4 PR carries the retirement as its last commit. Its parent is the **dual-entry checkpoint**: the audited Start-default commit that still ships the Next entry, accepted on Preview before the retirement commit is accepted. It is the first independently buildable ancestor in the PR, and both commits become ordinary main history when the PR merges. No separate tag or PR is involved. The checkpoint was never the public production alias: the verified Stage 0 Next deployment (`dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM`, the Phase 3 merge `c7e07a2256d08c0a7ebff201a1c625b711046692`) stays production until the Phase 4 cutover, which promotes the Start-only head.
+
+`DUAL_ENTRY_CHECKPOINT_SHA` in `scripts/dual-entry-checkpoint.mjs` records the checkpoint as an ordinary full SHA. `verifyCheckpointParent` (run in CI by `tests/unit/dual-entry-checkpoint.test.ts`) finds the single commit in full history that deleted both `src/app/layout.tsx` and `next.config.ts`, and requires its first parent to equal that SHA and to ship both entries.
+
+**Packaging and the final SHA.**
+1. Package the PR as two commits: the checkpoint C, then the Start-only commit R, with C as R's first parent.
+2. Set `DUAL_ENTRY_CHECKPOINT_SHA` in R to C's full SHA. C precedes R, so R can name it.
+3. Any later rebase or amend of C or R changes C's SHA, and the guard then fails until the constant is updated.
+4. Merge with a **merge commit** (the repository allows them). A merge commit records no deletion of its own, and full-history search follows the PR side, so R stays the retirement commit and C stays its parent in main's ordinary history.
+5. A squash or rebase merge would rewrite or drop C; the guard fails, so do not use one.
+6. Later ordinary commits on main do not affect the check.
+7. **Release evidence:** the exact shipping revision's Stage E and rehearsal records are not in R. The Phase 4 PR links them by an immutable evidence commit (a full SHA) whose records name R's SHA. Earlier R6 records (`docs/plans/benchmarks/start-only-r6-verification.md`, `start-sentry-r6.md`) are provisional and do not replace them.
+
+The packaged value is the permanent checkpoint C `93b08fd084679fba52431ab2abed0afabcc4abe2`, whose own parent is the Phase 3 merge `c7e07a2256d08c0a7ebff201a1c625b711046692`. The Start-only head refuses `FRONTEND=next` before any deploy, with a git-free message naming Instant Rollback, that SHA and this section.
+
+- **Frontend rollback to Next:** Instant Rollback, or reverse the alias, to the Stage 0 live Next deployment (§5). This needs no rebuild.
+- **Next rebuild:** use that revision's own commands.
+  - **Dual-entry checkpoint:** `FRONTEND=next` through its `vercel-build`, plus `"framework": "nextjs"` in its `vercel.json`. It is the only Next-capable revision that honors `FRONTEND_ONLY_CONVEX_URL`, so it alone can rebuild Next against the accepted backend without a `convex deploy`.
+  - **Phase 3 OLD:** its own Bun `vercel-build` with `START_PRODUCTION` absent always deploys its backend, then builds Next with `bun run build` (§5). Use it only as the backend-plus-frontend rollback.
+  - **Historical `6e6a562c`:** pnpm, `convex deploy --cmd 'pnpm build'`.
+- **Historic verification:** a historic revision's tools run from a checkout of that revision with its own scripts (`build:next`/`preview:next`, `test:e2e:start`, `bench:routes --check-budgets`, `bench:routes:start`, its parity runner). The Start-only head does not re-implement them.
+- **Rehearsal:** `cutover-rehearsal.mjs rehearse --frontends` builds every revision through its own selection (`scripts/frontend-target.mjs` or its absence) and serves it with the matching `preview*` script. It probes NEW's explicit Next rebuild only while NEW still ships Next, and adds an OLD explicit `FRONTEND=next` rebuild whenever OLD ships both entries. The final E rehearsal uses the actual Phase 3 production SHA as OLD and the Start-only head as NEW; OLD rebuilds Next through its own `build`/`preview` with no `START_*` variable.
+- **Route inventory:** the parity manifest coverage check and the admin route map read the archived `src/app` tree with git at the recorded SHA (tooling and CI, which fetch full history). `DUAL_ENTRY_CHECKPOINT_REF=<candidate>` substitutes another dual-entry commit for an isolated rehearsal only.

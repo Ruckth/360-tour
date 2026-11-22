@@ -12,13 +12,13 @@ import { CheckoutView } from '@/components/checkout/CheckoutView';
 import { createFixtureBackend } from '../support/checkout-backend';
 
 const route = vi.hoisted(() => ({ pathname: '/admin/checkout', push: vi.fn() }));
-vi.mock('@clerk/nextjs', () => ({
+vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
   UserButton: () => null,
   SignInButton: () => null,
 }));
 vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => ({}), useConvexAuth: () => ({ isAuthEnabled: true, isAuthenticated: true }), ...await (async () => (await import('./admin-shell-convex')).shellConvex({ role: 'owner' }))() }));
-vi.mock('next/navigation', () => ({
+vi.mock('@/platform/navigation', () => ({
   usePathname: () => route.pathname,
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ push: route.push }),

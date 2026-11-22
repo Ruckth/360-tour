@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CheckoutBackendProvider, type FinancialRows, type OrderId } from "@/components/checkout/backend";
 import { createFixtureBackend } from "./checkout-transport";
@@ -29,11 +29,11 @@ const audit: FinancialRows["audit"] = {
 const backend = await createFixtureBackend({ financialHistory: { bookingRefunds: [stay], appointmentRefunds: [appointment], audit: [audit] } });
 await backend.useActions().settleOrder({ orderId, idempotencyKey: "r6-ledger-paid", expectedDue: 78000, expectedRevision: 2, expectedCustomerRevision: 0, tenders: [{ method: "card", amount: 78000 }] });
 createRoot(document.getElementById("root")!).render(
-  <NextIntlClientProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
+  <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
     <ConfirmProvider><CheckoutBackendProvider backend={backend}>
       <div className="min-h-dvh bg-background text-foreground" data-fixture-ready="">
         <ReceiptView orderId={orderId} onNewSale={() => {}} onOpenOrder={() => {}} />
       </div>
     </CheckoutBackendProvider></ConfirmProvider>
-  </NextIntlClientProvider>,
+  </IntlProvider>,
 );

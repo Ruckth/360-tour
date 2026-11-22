@@ -168,9 +168,10 @@ add('migrations', 1, 'migrations.define calls', count(convexProd, /migrations\.d
 suiteMetric(1, 'phase1-tests', 'Required phase 1 test files executed and passing');
 add('reexport-pages', 1, 'Files under [locale] that only re-export another page', srcFiles.filter((p) => rel(p).startsWith('src/app/[locale]/') && /^\s*export\s*\{[^}]*\}\s*from\s*["']@\/app\//m.test(read(p))).length, 0);
 
-add('channel-routes', 2, 'Next.js webhook route folders left (line/facebook/instagram/whatsapp)', ['line', 'facebook', 'instagram', 'whatsapp'].filter((c) => existsSync(join(ROOT, `src/app/api/${c}`))).length, 0);
+const startApiRoutes = srcFiles.filter((p) => /^src\/start-app\/routes\/api\./.test(rel(p)));
+add('channel-routes', 2, 'Frontend webhook routes left (line/facebook/instagram/whatsapp; Next folders or Start api routes)', ['line', 'facebook', 'instagram', 'whatsapp'].filter((c) => existsSync(join(ROOT, `src/app/api/${c}`)) || startApiRoutes.some((p) => rel(p).startsWith(`src/start-app/routes/api.${c}`))).length, 0);
 add('server-secret-uses', 2, 'Calls to requireServerSecret', count(convexProd, /requireServerSecret\(/g), 0);
-add('as-never-webhooks', 2, '`as never` casts in src/app/api', count(srcFiles.filter((p) => rel(p).startsWith('src/app/api/')), /as never/g), 0);
+add('as-never-webhooks', 2, '`as never` casts in frontend HTTP handlers', count(srcFiles.filter((p) => rel(p).startsWith('src/app/api/') || startApiRoutes.includes(p) || rel(p).startsWith('src/lib/server/http/')), /as never/g), 0);
 suiteMetric(2, 'phase2-tests', 'Required phase 2 test files executed and passing');
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 

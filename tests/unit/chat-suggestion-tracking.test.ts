@@ -11,7 +11,7 @@ import { useChatSuggestions } from "@/components/chat/session/useChatSuggestions
 
 const transport = vi.hoisted(() => ({ query: vi.fn(), mutation: vi.fn() }));
 vi.mock("convex/react", () => ({ useConvex: () => transport }));
-vi.mock("next-intl", () => {
+vi.mock("@/platform/intl", () => {
   const translate = (key: string) => key;
   return { useTranslations: () => translate };
 });

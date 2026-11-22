@@ -1,12 +1,13 @@
 // Runtimes whose importers must share one installed implementation, checked with Node's package
 // lookup from each importer's real directory (independent of Bun's physical layout). Separate
-// copies make Next bundle the same runtime twice into every page that loads both importers.
+// copies make the client bundle carry the same runtime twice on every page that loads both importers.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 /** Each importer is a chain of packages resolved in turn from the checkout root. */
 export const SHARED_RUNTIMES = /** @type {const} */ ([
-  { name: 'Clerk', shared: '@clerk/shared', importers: [['@clerk/nextjs'], ['@clerk/react']] },
+  // Start's Clerk SDK and the @clerk/react it resolves.
+  { name: 'Clerk', shared: '@clerk/shared', importers: [['@clerk/tanstack-react-start'], ['@clerk/tanstack-react-start', '@clerk/react']] },
   {
     name: 'Floating UI',
     shared: '@floating-ui/react-dom',

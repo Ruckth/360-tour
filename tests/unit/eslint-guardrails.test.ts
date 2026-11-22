@@ -48,3 +48,22 @@ it('checks deployed harness registrations and configures every Convex entry exte
     expect(config.rules['architecture/ownership'][0]).toBe(2);
   }
 });
+
+// The five framework-neutral checks kept from @next/next, each as its own rule in the real config.
+it.each([
+  ["no-raw-img", 'export const A = () => <img src="/a.webp" alt="" />;', 'import Image from "@/platform/image";\nexport const A = () => <Image src="/a.webp" alt="" width={1} height={1} />;'],
+  ["no-stylesheet-link", 'export const A = () => <link rel="stylesheet" href="/a.css" />;', 'export const A = () => <link rel="preload" href="/a.woff2" as="font" />;'],
+  ["no-sync-scripts", 'export const A = () => <script src="/a.js" />;', 'export const A = () => <><script src="/a.js" async /><script src="/b.js" defer /><script>{"1"}</script></>;'],
+  ["no-polyfill-io", 'export const A = () => <script async src="https://cdn.polyfill.io/v3/polyfill.min.js" />;', 'export const A = () => <script async src="https://example.test/app.js" />;'],
+  ["no-module-variable", 'const module = 1;\nexport default module;', 'const moduleName = 1;\nexport default moduleName;'],
+])("enforces react-app/%s with its own name in the repository config", async (name, bad, good) => {
+  const eslint = new ESLint();
+  const filePath = "src/components/guard-fixture.tsx";
+  const ids = async (source: string) => (await eslint.lintText(source, { filePath }))[0].messages.map(m => m.ruleId);
+  expect((await eslint.calculateConfigForFile(filePath)).rules[`react-app/${name}`]).toEqual([2]);
+  expect(await ids(bad)).toContain(`react-app/${name}`);
+  expect(await ids(good)).not.toContain(`react-app/${name}`);
+  // An exemption names exactly this rule and silences nothing else.
+  const exempt = await eslint.lintText(`// eslint-disable-next-line react-app/${name} -- fixture\n${bad}`, { filePath });
+  expect(exempt[0].messages.map(m => m.ruleId)).not.toContain(`react-app/${name}`);
+});

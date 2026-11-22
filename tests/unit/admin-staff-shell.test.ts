@@ -16,7 +16,7 @@ const state = vi.hoisted(() => ({
   replace: vi.fn(),
   claim: vi.fn(async () => null),
 }));
-vi.mock('@clerk/nextjs', () => ({
+vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
   UserButton: () => null,
   SignInButton: () => null,
@@ -33,7 +33,7 @@ vi.mock('convex/react', () => ({
     const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
     return { results: Array.from({ length: pending }, (_, i) => ({ _id: `appr${i}`, kind: 'discount', requesterEmail: 'mint@example.com', createdAt: 0, expiresAt: 0, status: 'pending', label: 'discount', summary: { amount: 100 } })), status: 'Exhausted', loadMore: () => undefined };
   }, useQueries: () => ({}) }));
-vi.mock('next/navigation', () => ({
+vi.mock('@/platform/navigation', () => ({
   usePathname: () => state.pathname,
   useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : ''),
   useRouter: () => ({ push: vi.fn(), replace: state.replace }),

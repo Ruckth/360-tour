@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import messages from "../../messages/en.json";
 
@@ -12,8 +12,8 @@ import messages from "../../messages/en.json";
  */
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
-vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
-vi.mock("next/link", async () => {
+vi.mock("@/platform/navigation", () => ({ usePathname: () => nav.pathname }));
+vi.mock("@/platform/link", async () => {
   const { createElement } = await import("react");
   return { default: ({ children, href }: { children: ReactNode; href: string }) => createElement("a", { href }, children) };
 });
@@ -21,7 +21,7 @@ vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typ
 
 const HOST = "https://ph.invalid";
 const OPT_KEY = "__ph_opt_in_out_phc_test";
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 const requests: string[] = [];
 let root: Root | null = null;
 
@@ -89,7 +89,7 @@ async function page(path: string) {
   const render = async (to: string) => {
     nav.pathname = to;
     window.history.replaceState(null, "", to);
-    await act(async () => root!.render(createElement(NextIntlClientProvider, intl, createElement(AnalyticsConsent))));
+    await act(async () => root!.render(createElement(IntlProvider, intl, createElement(AnalyticsConsent))));
     await settle();
   };
   root = createRoot(document.body.appendChild(document.createElement("div")));

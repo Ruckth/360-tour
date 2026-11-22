@@ -7,7 +7,7 @@ import { inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-sche
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { promisify } from 'node:util';
 import { HOLD_HEADER, HOLD_ROUTE_NAME, evaluateRoutes, holdRequestBody, holdRoute, judgeHold, operatorHeaders, originFetch, planHold, readSecret, smokeUrl } from '../../scripts/lib/operator-access.mjs';
-import { buildManifest, collectPages, readVercelWith, compareSnapshots, FORBIDDEN_PRODUCTION_ENV, HOLD_PROBE_PATHS, judgeHoldProbe, productionEnvGate, productionEnvInventories, startProductionGate, startProductionInProduction, instagramRewriteProbe, judgePublicSmoke, liveProduction, summarizeSnapshot, vercelFindings, vercelSnapshot } from '../../scripts/cutover-rehearsal.mjs';
+import { buildManifest, classifyDeploy, collectPages, readVercelWith, compareSnapshots, FORBIDDEN_PRODUCTION_ENV, HOLD_PROBE_PATHS, judgeHoldProbe, productionEnvGate, productionEnvInventories, startProductionGate, startProductionInProduction, instagramRewriteProbe, judgePublicSmoke, liveProduction, summarizeSnapshot, vercelFindings, vercelSnapshot } from '../../scripts/cutover-rehearsal.mjs';
 
 const scratch: string[] = [];
 afterAll(() => scratch.forEach(dir => rmSync(dir, { recursive: true, force: true })));
@@ -535,3 +535,30 @@ it('gates production env on independent per-target inventories, names only', () 
   expect(productionEnvInventories({ id: 'prj_1', env: [] }, undefined, undefined).list.state).toBe('unavailable');
 });
 
+
+it('certify refuses only on a recognized native schema validation failure with table and field evidence', () => {
+  const fixture = (name: string) => readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
+  // Real CLI output of the known synthetic refusal (run r20261122062741-b17479), document id and values redacted.
+  const refusal = fixture('convex-schema-validation-refusal.txt');
+  expect(classifyDeploy(1, refusal)).toEqual({ result: 'refused', table: 'tourScenes', field: 'ordinaryTourCertified', evidence: 'native schema validation' });
+  // Negative control: real CLI output of the same deploy against a closed loopback port (backend unavailable).
+  const unavailable = fixture('convex-deploy-backend-unavailable.txt');
+  expect(unavailable).toMatch(/fetch failed/);
+  expect(classifyDeploy(1, unavailable)).toEqual({ result: 'inconclusive', reason: 'deploy failed without a native schema validation failure' });
+  // Process killed or never spawned (target identity refusal, ENOENT): no output, no exit code.
+  expect(classifyDeploy(null, '')).toEqual({ result: 'inconclusive', reason: 'deploy process did not exit normally' });
+  // Words the old matcher keyed on ("table x", "field y") in a non-validation error must not read as a refusal.
+  expect(classifyDeploy(1, 'Error: could not reach table `tourScenes` field `slug`: ECONNRESET')).toMatchObject({ result: 'inconclusive' });
+  // The marker without a document line, or a reason that names no field, is not evidence either.
+  expect(classifyDeploy(1, '✖ Schema validation failed.\n')).toEqual({ result: 'inconclusive', reason: 'schema validation failed without table and field evidence' });
+  expect(classifyDeploy(1, refusal.replace(/Object contains extra field `ordinaryTourCertified` that is not in the validator\./, 'Something unexpected.'))).toMatchObject({ result: 'inconclusive' });
+  // A truncated tail that lost the marker (what the old error-message parsing saw) is inconclusive.
+  expect(classifyDeploy(1, refusal.slice(refusal.indexOf('Document with ID')))).toMatchObject({ result: 'inconclusive' });
+  expect(classifyDeploy(1, refusal.replace('Object contains extra field `ordinaryTourCertified` that is not in the validator.', 'Object is missing the required field `slug`. Consider wrapping the field validator in `v.optional(...)` if this is expected.')))
+    .toEqual({ result: 'refused', table: 'tourScenes', field: 'slug', evidence: 'native schema validation' });
+  expect(classifyDeploy(0, 'Schema validation complete.\n✔ Deployed Convex functions')).toEqual({ result: 'accepted' });
+  expect(classifyDeploy(null, refusal)).toEqual({ result: 'inconclusive', reason: 'deploy process did not exit normally' });
+  expect(classifyDeploy(0, refusal)).toMatchObject({ result: 'inconclusive' });
+  // Sanitized: a verdict never carries CLI text beyond the table, field and a fixed reason.
+  for (const v of [classifyDeploy(1, refusal), classifyDeploy(1, unavailable)]) expect(JSON.stringify(v)).not.toMatch(/127\.0\.0\.1|fetch failed|Validator|Object:/);
+});

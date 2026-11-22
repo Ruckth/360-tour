@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import ServicesPage from "@/app/[locale]/services/page";
-import ChatPage from "@/app/[locale]/chat/page";
+import { GuestChatPage } from "@/components/chat/GuestChatPage";
+import { ServicesView } from "@/components/services/ServicesView";
+import type { Locale } from "@/i18n/routing";
 import { getServiceCatalog, getPublicService } from "@/lib/server/services";
 import { getPublicMessages } from "@/lib/i18n/server-content";
+import type { PageSearch } from "@/lib/page-search";
+import { servicesQuery } from "@/lib/services-query";
+import { chatQuery, guestSearch, loadStartChatData, validateServicesInput } from "@/start-app/guest/guest-route";
 
-const state = vi.hoisted(() => ({ locale: "en" }));
-vi.mock("next-intl/server", () => ({ getLocale: async () => state.locale }));
+const state = vi.hoisted(() => ({ locale: "en" as Locale }));
 vi.mock("@/lib/server/services", () => ({
   getServiceCatalog: vi.fn(),
   getPublicService: vi.fn(),
@@ -24,14 +27,26 @@ const service = {
   currency: "THB",
   durationMin: 60,
 };
+/** The Start /services route: search validation, loader deps, server-function input, then the view. */
+async function ServicesPage({ searchParams }: { searchParams: Promise<PageSearch> }) {
+  const query = servicesQuery(guestSearch(await searchParams));
+  const [directory, result] = await getServiceCatalog(validateServicesInput(query));
+  const t = getPublicMessages(state.locale).ServiceCatalog;
+  return createElement(ServicesView, { locale: state.locale, t, query, directory, result });
+}
 async function render(params: Record<string, string> = {}) {
   document.body.innerHTML = renderToStaticMarkup(
     await ServicesPage({ searchParams: Promise.resolve(params) }),
   );
 }
-/** The chat page renders the shared `GuestChatPage`; unwrap it to the `AIChatPage` element. */
+/** The Start /chat route renders the shared `GuestChatPage`; unwrap it to the `AIChatPage` element. */
 async function chatElement(params: Record<string, string>) {
-  const page = await ChatPage({ searchParams: Promise.resolve(params) });
+  const { service, property } = await loadStartChatData(
+    { locale: state.locale, ...chatQuery(guestSearch(params)) },
+    { getPublicService, getVilla: async () => ({ page: null }) },
+  );
+  const draftTemplate = getPublicMessages(state.locale).ServiceCatalog.draft;
+  const page = createElement(GuestChatPage, { service, property, draftTemplate });
   return (page.type as (props: typeof page.props) => ReactElement<{ initialDraft?: string }>)(page.props);
 }
 function link(label: string) {

@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName, type FunctionReference, type FunctionReturnType } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { api } from "convex/_generated/api";
-import { NextIntlClientProvider } from "next-intl";
+import { IntlProvider } from "@/platform/intl";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { BookingQuickActions } from "@/components/admin/BookingQuickActions";
@@ -50,7 +50,7 @@ vi.mock("convex/react", () => ({
   usePaginatedQuery: (_ref: unknown, args: unknown) => pages.read(args),
   useConvex: () => client,
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 /** A resort (Bangkok, UTC+7) wall-clock time, whatever zone the test machine runs in. */
 const at = (date: string, time: string) => Date.parse(`${date}T${time}:00+07:00`);
@@ -78,12 +78,12 @@ const financials = {
   legacyManual: { cancellable: false, reason: "x" }, hasStripePayment: false, complete: true,
 } as unknown as Financials;
 
-/** The booking date picker reads its labels from next-intl. */
-const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof NextIntlClientProvider>;
+/** The booking date picker reads its labels from the intl provider. */
+const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 
 let root: Root;
 const render = (node: ReactNode) => act(async () => root.render(
-  createElement(NextIntlClientProvider, intl, createElement(TooltipProvider, null, createElement(ConfirmProvider, null, node))),
+  createElement(IntlProvider, intl, createElement(TooltipProvider, null, createElement(ConfirmProvider, null, node))),
 ));
 const click = async (el: Element | null | undefined) => {
   const disclosure = el?.closest("details");

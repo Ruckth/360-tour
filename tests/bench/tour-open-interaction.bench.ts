@@ -841,7 +841,10 @@ test("close cancels a pending neighbor before a fresh same-tab tour open", async
   const transfers = new Map<string, Transfer>();
   const capture = async () => page.evaluate(() => {
     const sample = (window as unknown as InstrumentedWindow).__tourSample;
-    return { opened: sample.opened, cutoff: sample.stages.first_usable_frame, origin: performance.timeOrigin };
+    return {
+      opened: sample.opened, cutoff: sample.stages.first_usable_frame, origin: performance.timeOrigin,
+      cacheHit: sample.stages.first_panorama_cache_hit ?? null,
+    };
   });
   const observations: Awaited<ReturnType<typeof capture>>[] = [];
   try {
@@ -880,6 +883,11 @@ test("close cancels a pending neighbor before a fresh same-tab tour open", async
     await waitForScene(page, EXPECTED_FIRST_ROOM);
     const first = await capture();
     observations.push(first);
+    const startsThroughUsable = ({ opened, cutoff, origin }: typeof first) => {
+      expect(opened).not.toBeNull();
+      return [...transfers.values()].filter(({ wallMs }) => wallMs >= origin + opened! && wallMs <= origin + cutoff);
+    };
+    expect(startsThroughUsable(first).map(({ path }) => path)).toEqual([EXPECTED_FIRST_PANORAMA]);
     const pendingNeighbor = () => [...transfers.values()].find(
       ({ path, status, terminal }) => path === EXPECTED_NEIGHBOR_PREFETCH_PANORAMA && status === 200 && !terminal,
     );
@@ -887,7 +895,10 @@ test("close cancels a pending neighbor before a fresh same-tab tour open", async
     const neighbor = pendingNeighbor()!;
     expect(neighbor.wallMs - first.origin).toBeGreaterThan(first.cutoff);
     expect(currentStarts()).toHaveLength(1);
-    expect(currentStarts()[0].terminal?.canceled).toBe(false);
+    const cold = currentStarts()[0];
+    expect(cold.status).toBe(200);
+    expect(cold.terminal?.canceled).toBe(false);
+    expect(cold.terminal?.endWallMs).toBeLessThanOrEqual(first.origin + first.cutoff);
 
     // Do not wait on the terminal event before reopening; that would mask a late cancellation.
     await close.click();
@@ -906,10 +917,22 @@ test("close cancels a pending neighbor before a fresh same-tab tour open", async
     expect(neighbor.terminal?.endWallMs, "old transfer must end before the next trusted tap").toBeLessThanOrEqual(
       reopened.origin + reopened.opened!,
     );
-    // Count request starts, not successful responses; an aborted StrictMode duplicate still counts.
-    expect(currentStarts()).toHaveLength(2);
-    expect(currentStarts()[1].terminal?.canceled).toBe(false);
-    expect(currentStarts()[1].wallMs - reopened.origin).toBeGreaterThanOrEqual(reopened.opened!);
+    // Count all starts, including failed or aborted duplicates. A same-tab CPU reuse has no
+    // fresh network start, so require the mark from this confirmed, visibly drawn reopen.
+    const current = currentStarts();
+    if (current.length === 1) {
+      expect(startsThroughUsable(reopened)).toEqual([]);
+      expect(reopened.cacheHit, "one current transfer requires a fresh CPU cache hit").not.toBeNull();
+      expect(reopened.cacheHit!).toBeGreaterThanOrEqual(reopened.opened!);
+      expect(reopened.cacheHit!).toBeLessThanOrEqual(reopened.cutoff);
+    } else {
+      expect(current).toHaveLength(2);
+      expect(startsThroughUsable(reopened).map(({ path }) => path)).toEqual([EXPECTED_FIRST_PANORAMA]);
+      expect(current[1].status).toBe(200);
+      expect(current[1].terminal?.canceled).toBe(false);
+      expect(current[1].terminal?.endWallMs).toBeLessThanOrEqual(reopened.origin + reopened.cutoff);
+      expect(current[1].wallMs - reopened.origin).toBeGreaterThanOrEqual(reopened.opened!);
+    }
   } finally {
     try {
       mkdirSync(path.dirname(output), { recursive: true, mode: 0o700 });

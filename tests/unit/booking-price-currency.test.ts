@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { BookingProperty } from "@/lib/booking/booking";
 
 const comparison = vi.hoisted(() => ({ currency: "THB" }));
-vi.mock("next-intl", () => ({
+vi.mock("@/platform/intl", () => ({
   useLocale: () => "en",
   useTranslations: () => (key: string, values?: { amount?: string }) => (values?.amount ? `${key} ${values.amount}` : key),
 }));
