@@ -10,7 +10,7 @@ async function audit(page: Page, width: number, name: string) {
     expect(box.y + box.height).toBeLessThanOrEqual(901);
   }
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await page.screenshot({ path: test.info().outputPath(`${name}.png`), fullPage: false });
+  if (process.env.CAPTURE_SCREENSHOTS === "1") await page.screenshot({ path: test.info().outputPath(`${name}.png`), fullPage: false });
 }
 for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440]) {
   for (const scenario of ["normal", "no-spend"]) test(`add spend ${scenario} ${width} ${theme}`, async ({ page }) => {

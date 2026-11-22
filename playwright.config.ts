@@ -22,7 +22,7 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
   },
-  workers: 2,
+  workers: ci ? 4 : 2,
   projects: [
     { name: "clerk-setup", testMatch: /auth.setup.ts/ },
     {

@@ -31,8 +31,10 @@ async function order(page: Page, taps: Taps) {
   return page.getByRole("dialog");
 }
 
+const CAPTURE_SHOTS = process.env.CAPTURE_SCREENSHOTS === "1";
+
 async function shot(page: Page, name: string) {
-  await page.screenshot({ path: `test-results/pay-desk/${name}-${page.viewportSize()!.width}.png` });
+  if (CAPTURE_SHOTS) await page.screenshot({ path: `test-results/pay-desk/${name}-${page.viewportSize()!.width}.png` });
 }
 
 async function targets(scope: Locator) {

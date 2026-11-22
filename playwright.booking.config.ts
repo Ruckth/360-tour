@@ -10,7 +10,7 @@ const capturing = Object.keys(process.env).some((name) => name.startsWith("CAPTU
 export default defineConfig({
   // Shard by test, not by file, so CI shards finish together.
   fullyParallel: true,
-  workers: 2,
+  workers: process.env.CI ? 4 : 2,
   outputDir: "test-results/components",
   testDir: "./tests/browser",
   testMatch: "**/*.spec.ts",

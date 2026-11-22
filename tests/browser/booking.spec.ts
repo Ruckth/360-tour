@@ -64,7 +64,7 @@ for (const viewport of [
     expect(totalBox!.x + totalBox!.width).toBeLessThanOrEqual(geometry.right - geometry.padding);
     expect(totalBox!.y).toBeGreaterThanOrEqual(geometry.top);
     expect(totalBox!.y + totalBox!.height).toBeLessThanOrEqual(geometry.bottom);
-    await page.screenshot({ path: testInfo.outputPath("booking-popup.png") });
+    if (process.env.CAPTURE_SCREENSHOTS === "1") await page.screenshot({ path: testInfo.outputPath("booking-popup.png") });
     await submit.scrollIntoViewIfNeeded();
     const box = await submit.boundingBox();
     expect(box!.x).toBeGreaterThanOrEqual(geometry.left + geometry.padding);

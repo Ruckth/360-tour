@@ -228,7 +228,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       await expectTappable(page, sheet, confirm, "Confirm cash");
       for (const name of ["Cash", "Split payment"]) await expectTappable(page, sheet, sheet.getByRole("button", { name, exact: true }), name);
       await expectTappable(page, sheet, sheet.getByRole("group", { name: "Notes handed over" }).getByRole("button").last(), "last note chip");
-      await page.screenshot({ path: `test-results/ux-p3-shell-${viewport.width}x${viewport.height}-cash.png` });
+      if (process.env.CAPTURE_SCREENSHOTS === "1") await page.screenshot({ path: `test-results/ux-p3-shell-${viewport.width}x${viewport.height}-cash.png` });
     });
 
     test("split and card stay reachable", async ({ page }) => {
@@ -238,7 +238,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 320, height: 568 }
       const confirm = sheet.getByRole("button", { name: /^Confirm ฿500 cash \+ ฿[\d,]+ PromptPay$/ });
       await confirm.scrollIntoViewIfNeeded();
       await expectTappable(page, sheet, confirm, "Confirm split");
-      await page.screenshot({ path: `test-results/ux-p3-shell-${viewport.width}x${viewport.height}-split.png` });
+      if (process.env.CAPTURE_SCREENSHOTS === "1") await page.screenshot({ path: `test-results/ux-p3-shell-${viewport.width}x${viewport.height}-split.png` });
 
       // Splitting shows Back instead of the tender row; the order's tenders are one tap behind it.
       await sheet.getByRole("group", { name: "Take payment by" }).getByRole("button", { name: "Card", exact: true }).click();
