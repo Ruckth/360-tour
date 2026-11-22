@@ -1,7 +1,7 @@
 name: Verify
 on:
   push:
-    branches: [main]
+    branches: [main, bench/verify-five-minutes-20261122]
   pull_request:
 permissions:
   contents: read
@@ -60,10 +60,14 @@ jobs:
   components:
     # Booking component suites run against Vite with mocked Clerk and Next: no backend, no credentials.
     runs-on: ubuntu-24.04
+    # Match @playwright/test in pnpm-lock.yaml so Chromium and its fonts are present.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --ipc=host
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -74,28 +78,16 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Read installed Playwright version
-        id: playwright-version
-        # Frozen install resolves this exact version from pnpm-lock.yaml.
-        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
-      - run: pnpm test:booking-ui --shard=${{ matrix.shard }}/2
+      - run: pnpm test:booking-ui --shard=${{ matrix.shard }}/6
 
   integration:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
     # No pull_request_target or authenticated artifact upload.
     runs-on: ubuntu-24.04
+    # Match @playwright/test in pnpm-lock.yaml so Chromium and its fonts are present.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --ipc=host
     env:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
       CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
@@ -121,22 +113,6 @@ jobs:
           test -n "$CLERK_JWT_ISSUER_DOMAIN"
           [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" == pk_test_* ]]
           [[ "$CLERK_SECRET_KEY" == sk_test_* ]]
-      - name: Read installed Playwright version
-        id: playwright-version
-        # Frozen install resolves this exact version from pnpm-lock.yaml.
-        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
       - name: Cache Next build intermediates
         uses: actions/cache@v4
         with:
@@ -156,13 +132,55 @@ jobs:
         run: pnpm test:e2e
       - name: Check initial JavaScript budgets on the integration build
         run: pnpm bench:routes --check-budgets
+
+  devcheck:
+    # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
+    # No pull_request_target or authenticated artifact upload.
+    runs-on: ubuntu-24.04
+    # Match @playwright/test in pnpm-lock.yaml so Chromium and its fonts are present.
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+      options: --ipc=host
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+      CLERK_JWT_ISSUER_DOMAIN: ${{ secrets.E2E_CLERK_JWT_ISSUER_DOMAIN }}
+      VITEST_MAX_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Require dedicated Clerk test tenant
+        shell: bash
+        run: |
+          test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
+          test -n "$CLERK_SECRET_KEY"
+          test -n "$CLERK_JWT_ISSUER_DOMAIN"
+          [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" == pk_test_* ]]
+          [[ "$CLERK_SECRET_KEY" == sk_test_* ]]
+      - name: Cache downloadable Convex backend binaries
+        uses: actions/cache@v4
+        with:
+          # Only binaries/dashboard; private deployment and auth state stay in output/.
+          path: ~/.cache/360-tour/convex
+          key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            convex-${{ runner.os }}-${{ runner.arch }}-
       - name: Verify persistent local dev restart, real Clerk and failure cleanup
         run: pnpm test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
 
   verify:
     name: verify
-    needs: [static, unit, components, integration]
+    needs: [static, unit, components, integration, devcheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:
