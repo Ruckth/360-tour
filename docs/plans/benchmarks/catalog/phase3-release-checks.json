@@ -1,0 +1,463 @@
+{
+  "environment": "Protected Vercel Preview, TanStack Start on Vercel-managed Bun, provider dispatch disabled, dedicated Convex demo seed and Clerk test identities",
+  "nextBundleEnvironment": "Clean local integration builds, Bun 1.4.5, Node 22.22.3, gzip and Brotli in bytes",
+  "nextCheckoutGzipLimit": 546446,
+  "runs": [
+    {
+      "source": "75cd92c96e17df2d1033d82ae7e1c7cd156e851f",
+      "nextRoutes": {
+        "generatedAt": "2026-11-22T08:01:23.397Z",
+        "results": [
+          {
+            "route": "/[locale]/(home)",
+            "chunks": 20,
+            "raw": 1027190,
+            "gzip": 302900,
+            "brotli": 265091,
+            "localeScripts": []
+          },
+          {
+            "route": "/[locale]/rooms/[id]",
+            "chunks": 20,
+            "raw": 1023855,
+            "gzip": 301262,
+            "brotli": 263603,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/checkout",
+            "chunks": 34,
+            "raw": 1843910,
+            "gzip": 546812,
+            "brotli": 477316,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/properties/[id]",
+            "chunks": 30,
+            "raw": 1512646,
+            "gzip": 455962,
+            "brotli": 398821,
+            "localeScripts": []
+          }
+        ]
+      },
+      "authenticatedPreview": {
+        "status": "passed",
+        "observations": {
+          "checkout-read-only": {
+            "target": "pass",
+            "setup": "pass",
+            "checkout-read-only": "pass"
+          },
+          "isolated-fixtures": {
+            "target": "pass",
+            "setup": "pass",
+            "auth": "pass",
+            "booking": "pass",
+            "chat": "pass",
+            "live-tour": "pass",
+            "cleanup": "pass"
+          },
+          "teardown": "passed"
+        }
+      },
+      "seedProvenance": "The first protected deployment seeded the dedicated backend. Provisioning stopped at the deployment-metadata check. A second deployment of the same source supplied the required isolation marker. Both deployment records identified the same seeded backend."
+    },
+    {
+      "source": "731721c9f7164f55e4d9d5fff8f37683fc9580a5",
+      "nextRoutes": {
+        "generatedAt": "2026-11-22T08:06:30.558Z",
+        "results": [
+          {
+            "route": "/[locale]/(home)",
+            "chunks": 20,
+            "raw": 1027190,
+            "gzip": 302895,
+            "brotli": 265107,
+            "localeScripts": []
+          },
+          {
+            "route": "/[locale]/rooms/[id]",
+            "chunks": 20,
+            "raw": 1023855,
+            "gzip": 301257,
+            "brotli": 263619,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/checkout",
+            "chunks": 33,
+            "raw": 1820825,
+            "gzip": 537419,
+            "brotli": 468742,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/properties/[id]",
+            "chunks": 30,
+            "raw": 1512646,
+            "gzip": 455957,
+            "brotli": 398839,
+            "localeScripts": []
+          }
+        ]
+      },
+      "authenticatedPreview": {
+        "status": "passed",
+        "observations": {
+          "checkout-read-only": {
+            "target": "pass",
+            "setup": "pass",
+            "checkout-read-only": "pass"
+          },
+          "isolated-fixtures": {
+            "target": "pass",
+            "setup": "pass",
+            "auth": "pass",
+            "booking": "pass",
+            "chat": "pass",
+            "live-tour": "pass",
+            "cleanup": "pass"
+          },
+          "teardown": "passed"
+        }
+      },
+      "seedProvenance": "New dedicated backend, seeded by the protected deployment of this exact revision."
+    },
+    {
+      "source": "ace4dfae1c58baf64a39352a51ae0a9b50f0aecf",
+      "nextRoutes": {
+        "generatedAt": "2026-11-22T08:18:46.528Z",
+        "results": [
+          {
+            "route": "/[locale]/(home)",
+            "chunks": 20,
+            "raw": 1027190,
+            "gzip": 302895,
+            "brotli": 265096,
+            "localeScripts": []
+          },
+          {
+            "route": "/[locale]/rooms/[id]",
+            "chunks": 20,
+            "raw": 1023855,
+            "gzip": 301257,
+            "brotli": 263608,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/checkout",
+            "chunks": 33,
+            "raw": 1820969,
+            "gzip": 537461,
+            "brotli": 468783,
+            "localeScripts": []
+          },
+          {
+            "route": "/admin/properties/[id]",
+            "chunks": 30,
+            "raw": 1512646,
+            "gzip": 455956,
+            "brotli": 398840,
+            "localeScripts": []
+          }
+        ]
+      },
+      "authenticatedPreview": {
+        "status": "passed",
+        "observations": {
+          "checkout-read-only": {
+            "target": "pass",
+            "setup": "pass",
+            "checkout-read-only": "pass"
+          },
+          "isolated-fixtures": {
+            "target": "pass",
+            "setup": "pass",
+            "auth": "pass",
+            "booking": "pass",
+            "chat": "pass",
+            "live-tour": "pass",
+            "cleanup": "pass"
+          },
+          "teardown": "passed"
+        }
+      },
+      "seedProvenance": "New dedicated backend, seeded by the protected deployment of this exact revision.",
+      "startRoutes": [
+        {
+          "route": "/{-$locale}/",
+          "chunks": [
+            "assets/PropertyImage-B5FN-x2n.js",
+            "assets/ReviewCarousel-DU7ljpB4.js",
+            "assets/SwipeRail-CHupo-3B.js",
+            "assets/_-_locale_.index-BQH-BJLc.js",
+            "assets/arrow-down-FydBX5je.js",
+            "assets/arrow-right-B3rlD9u9.js",
+            "assets/badge-DakvxqtG.js",
+            "assets/bench-CN-vVgVG.js",
+            "assets/chevron-left-B_i6SfJz.js",
+            "assets/chevron-right-D5wkkClE.js",
+            "assets/dates-BGTL7S8o.js",
+            "assets/earth-BYDz59YQ.js",
+            "assets/image-Bmx0rlK0.js",
+            "assets/index-BoRMPKov.js",
+            "assets/money-BCkWHY1d.js",
+            "assets/sparkles-BCr_10qD.js",
+            "assets/star-BSWdW4dA.js",
+            "assets/time-CKNc9z0-.js",
+            "assets/users-B9NpQVXD.js",
+            "assets/values-BzCaSPF7.js",
+            "assets/waves-iDBBOjUj.js"
+          ],
+          "raw": 781353,
+          "gzip": 242763,
+          "brotli": 206700,
+          "localeScripts": []
+        },
+        {
+          "route": "/{-$locale}/rooms/$id",
+          "chunks": [
+            "assets/OtaRateComparison-rM53Oapm.js",
+            "assets/PropertyImage-B5FN-x2n.js",
+            "assets/ReviewCarousel-DU7ljpB4.js",
+            "assets/StartRoomBoundaries-BCbOUZG4.js",
+            "assets/SwipeRail-CHupo-3B.js",
+            "assets/_-_locale_.rooms._id-Du0wMGzw.js",
+            "assets/_-_locale_.rooms._id-Un89adyh.js",
+            "assets/_-_locale_.rooms._id-aYzwOgp0.js",
+            "assets/bench-CN-vVgVG.js",
+            "assets/chevron-left-B_i6SfJz.js",
+            "assets/chevron-right-D5wkkClE.js",
+            "assets/earth-BYDz59YQ.js",
+            "assets/external-link-b5VFWdwd.js",
+            "assets/image-Bmx0rlK0.js",
+            "assets/index-BoRMPKov.js",
+            "assets/money-BCkWHY1d.js",
+            "assets/pricing-DLlxcVqV.js",
+            "assets/shield-check-ByVn2CzL.js",
+            "assets/star-BSWdW4dA.js",
+            "assets/users-B9NpQVXD.js"
+          ],
+          "raw": 770612,
+          "gzip": 239312,
+          "brotli": 203489,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/properties/$id",
+          "chunks": [
+            "assets/AdminBoundaries-C5NfrDqC.js",
+            "assets/CheckoutLayers-C2oVnAdG.js",
+            "assets/ConfirmDialog-DqvranHm.js",
+            "assets/DisabledReason-1pAdNtJX.js",
+            "assets/ErrorBoundary-CS2_l24I.js",
+            "assets/MenuTrigger-D2Ci3j5W.js",
+            "assets/OtaRatesDialog-3TAfY72V.js",
+            "assets/RecordHistoryPanel-BYJYRnaY.js",
+            "assets/StatusBadge-B9eQ_LX4.js",
+            "assets/admin-BwHoYdbY.js",
+            "assets/admin-CxnJfd3-.js",
+            "assets/admin-NOmXJ_Kh.js",
+            "assets/admin.properties._id-DXe9xOid.js",
+            "assets/admin.properties._id-EryT1u7F.js",
+            "assets/arrow-down-FydBX5je.js",
+            "assets/arrow-up-F2gG1gVA.js",
+            "assets/backend-CIMlmGI4.js",
+            "assets/badge-DakvxqtG.js",
+            "assets/calendar-D0VkaSMT.js",
+            "assets/calendar-days-dxHJHcP1.js",
+            "assets/checkout-ui--VM8ZID-.js",
+            "assets/chevron-left-B_i6SfJz.js",
+            "assets/chevron-right-D5wkkClE.js",
+            "assets/commerce-messages-DLpLRmPA.js",
+            "assets/convex-backend-B4Tn3Rjn.js",
+            "assets/coupon-refusals-Br6tX_du.js",
+            "assets/date-picker-BmLe2b44.js",
+            "assets/dates-BGTL7S8o.js",
+            "assets/dialog-KPSbku7a.js",
+            "assets/disclosure-tqW1c9qf.js",
+            "assets/dist-REd0OY3W.js",
+            "assets/external-link-b5VFWdwd.js",
+            "assets/format-Bx-LN-sG.js",
+            "assets/format-Cq_D-vWP.js",
+            "assets/imageUploads-UG3mnLzm.js",
+            "assets/index-BoRMPKov.js",
+            "assets/info-D9MVhYRV.js",
+            "assets/info-tip-B5aFaOgW.js",
+            "assets/input-BNcc5Fmf.js",
+            "assets/label-BbocM7ie.js",
+            "assets/labels-u4xw8gji.js",
+            "assets/lock-BwJQMVvt.js",
+            "assets/map-pin-BS7OA45a.js",
+            "assets/marketingReport-CwXjBTVc.js",
+            "assets/money-BCkWHY1d.js",
+            "assets/money-input-CEA6TM4u.js",
+            "assets/offers-CxQG-mm3.js",
+            "assets/orderMath-B47kvZf8.js",
+            "assets/pencil-B5lRRYLQ.js",
+            "assets/picker-field-DeBsuOrD.js",
+            "assets/plus-CopD1DLd.js",
+            "assets/rotate-cw-BnvbktaI.js",
+            "assets/search-yHWab5M-.js",
+            "assets/select-ZLmXdyfS.js",
+            "assets/sheet-B8dG79jg.js",
+            "assets/shield-Ox3LA-oA.js",
+            "assets/shield-check-ByVn2CzL.js",
+            "assets/skeleton-DPvc8oG_.js",
+            "assets/slug-CwKB00VJ.js",
+            "assets/spinner-DLL-72Zk.js",
+            "assets/staff-access-C1Eg0Mxr.js",
+            "assets/staff-approvals-BZGOaHSh.js",
+            "assets/staff-bookings-CF8BlnSz.js",
+            "assets/staff-time-wzjlWYEO.js",
+            "assets/star-BSWdW4dA.js",
+            "assets/status-tones-SLmIe0Lu.js",
+            "assets/textarea-D3D8kSQZ.js",
+            "assets/time-CKNc9z0-.js",
+            "assets/toast-zxZoYmus.js",
+            "assets/tooltip-CAknLbNI.js",
+            "assets/trash-2-D0c-0jao.js",
+            "assets/triangle-alert-D4xR7d-B.js",
+            "assets/undo-2-BwzWv5Yg.js",
+            "assets/use-mobile-BnVKqdO-.js",
+            "assets/use_paginated_query-6oMc495m.js",
+            "assets/values-BzCaSPF7.js",
+            "assets/voucher-mask-BcysPld1.js"
+          ],
+          "raw": 1190068,
+          "gzip": 384834,
+          "brotli": 333022,
+          "localeScripts": []
+        },
+        {
+          "route": "/admin/checkout/",
+          "chunks": [
+            "assets/AdminBoundaries-C5NfrDqC.js",
+            "assets/ApprovalRequest-B2DfbI5S.js",
+            "assets/CheckoutLayers-C2oVnAdG.js",
+            "assets/CheckoutView-ENf-9dGn.js",
+            "assets/ConfirmDialog-DqvranHm.js",
+            "assets/ErrorBoundary-CS2_l24I.js",
+            "assets/FinancialHistory-C3zkc18-.js",
+            "assets/MarketingBits-Y-57xNHF.js",
+            "assets/MenuTrigger-D2Ci3j5W.js",
+            "assets/SegmentedTabs-BwitiXBf.js",
+            "assets/admin-BwHoYdbY.js",
+            "assets/admin-CxnJfd3-.js",
+            "assets/admin-NOmXJ_Kh.js",
+            "assets/admin.checkout.index-97BfD1xb.js",
+            "assets/admin.checkout.index-BkqhC6nK.js",
+            "assets/arrow-left-Cb8oTj4e.js",
+            "assets/backend-CIMlmGI4.js",
+            "assets/badge-DakvxqtG.js",
+            "assets/calendar-D0VkaSMT.js",
+            "assets/calendar-days-dxHJHcP1.js",
+            "assets/card-BaSR4vIY.js",
+            "assets/checkout-source-CLkZ1gsT.js",
+            "assets/checkout-ui--VM8ZID-.js",
+            "assets/chevron-left-B_i6SfJz.js",
+            "assets/chevron-right-D5wkkClE.js",
+            "assets/circle-alert-zsETu0rx.js",
+            "assets/circle-check-Dcx8hjKy.js",
+            "assets/commerce-messages-DLpLRmPA.js",
+            "assets/convex-backend-B4Tn3Rjn.js",
+            "assets/copy-jtPO3HSt.js",
+            "assets/coupon-refusals-Br6tX_du.js",
+            "assets/date-picker-BmLe2b44.js",
+            "assets/dates-BGTL7S8o.js",
+            "assets/dialog-KPSbku7a.js",
+            "assets/disclosure-tqW1c9qf.js",
+            "assets/discount-input-C0F5caeN.js",
+            "assets/dist-REd0OY3W.js",
+            "assets/ellipsis-BR-xGGLJ.js",
+            "assets/external-link-b5VFWdwd.js",
+            "assets/format-Bx-LN-sG.js",
+            "assets/format-Cq_D-vWP.js",
+            "assets/getRoundingMethod-BBnwH5Wu.js",
+            "assets/index-BoRMPKov.js",
+            "assets/info-D9MVhYRV.js",
+            "assets/info-tip-B5aFaOgW.js",
+            "assets/input-BNcc5Fmf.js",
+            "assets/label-BbocM7ie.js",
+            "assets/labels-u4xw8gji.js",
+            "assets/link-2-Bc1VwjVm.js",
+            "assets/marketing-format-INZKW-VI.js",
+            "assets/marketingReport-CwXjBTVc.js",
+            "assets/minus-n6Ls3hlT.js",
+            "assets/money-BCkWHY1d.js",
+            "assets/money-input-CEA6TM4u.js",
+            "assets/more-menu-C_CzHEgE.js",
+            "assets/offers-CxQG-mm3.js",
+            "assets/orderMath-B47kvZf8.js",
+            "assets/payment-time-C07Dm1Js.js",
+            "assets/phone-CdoYMni_.js",
+            "assets/picker-field-DeBsuOrD.js",
+            "assets/plus-CopD1DLd.js",
+            "assets/reason-field-C144AGjQ.js",
+            "assets/receipt-text-jixcTAH7.js",
+            "assets/refresh-cw-u9Xbz6lu.js",
+            "assets/rotate-cw-BnvbktaI.js",
+            "assets/search-yHWab5M-.js",
+            "assets/select-ZLmXdyfS.js",
+            "assets/sheet-B8dG79jg.js",
+            "assets/shield-Ox3LA-oA.js",
+            "assets/shield-check-ByVn2CzL.js",
+            "assets/skeleton-DPvc8oG_.js",
+            "assets/sparkles-BCr_10qD.js",
+            "assets/spinner-DLL-72Zk.js",
+            "assets/staff-access-C1Eg0Mxr.js",
+            "assets/staff-approvals-BZGOaHSh.js",
+            "assets/staff-bookings-CF8BlnSz.js",
+            "assets/staff-time-wzjlWYEO.js",
+            "assets/status-tones-SLmIe0Lu.js",
+            "assets/textarea-D3D8kSQZ.js",
+            "assets/ticket-percent-CmYyX-Gz.js",
+            "assets/time-CKNc9z0-.js",
+            "assets/timing-gate-CPwOjy0i.js",
+            "assets/toast-zxZoYmus.js",
+            "assets/toggle-group-fy-w-6No.js",
+            "assets/tooltip-CAknLbNI.js",
+            "assets/trash-2-D0c-0jao.js",
+            "assets/triangle-alert-D4xR7d-B.js",
+            "assets/undo-2-BwzWv5Yg.js",
+            "assets/use-mobile-BnVKqdO-.js",
+            "assets/use-unsaved-guard-BW_szKcB.js",
+            "assets/use_paginated_query-6oMc495m.js",
+            "assets/values-BzCaSPF7.js",
+            "assets/voucher-mask-BcysPld1.js"
+          ],
+          "raw": 1494729,
+          "gzip": 469567,
+          "brotli": 406570,
+          "localeScripts": []
+        }
+      ]
+    }
+  ],
+  "hostedRoutes": {
+    "source": "ace4dfae1c58baf64a39352a51ae0a9b50f0aecf",
+    "scope": "full",
+    "overallVerdict": "pass",
+    "summary": {
+      "control": {
+        "pass": 61,
+        "fail": 0,
+        "unavailable": 0
+      },
+      "candidate": {
+        "pass": 61,
+        "fail": 0,
+        "unavailable": 0
+      },
+      "parity": {
+        "match": 59,
+        "improved": 2,
+        "drift": 0,
+        "fail": 0,
+        "pending": 0
+      }
+    }
+  }
+}

@@ -71,6 +71,8 @@ type SceneProps = {
   retrySignal?: number;
   detailRequest?: PanoramaDetailRequest | null;
   onDetailStatusChange?: (status: PanoramaDetailStatus) => void;
+  /** No look-around drag while set; hotspot clicks still reach onNavigate, which decides. */
+  inputLocked?: boolean;
 };
 
 function SphereScene({
@@ -87,6 +89,7 @@ function SphereScene({
   retrySignal,
   detailRequest,
   onDetailStatusChange,
+  inputLocked = false,
 }: SceneProps) {
   const invalidate = useThree((state) => state.invalidate);
   const getState = useThree((state) => state.get);
@@ -184,7 +187,7 @@ function SphereScene({
 
   return (
     <>
-      <TourCamera />
+      <TourCamera enabled={!inputLocked} />
       {crossfadeKey && outgoing ? (
         // Opaque and drawn first; the incoming sphere fades in over it (a true crossfade).
         <RoomSphere key={`outgoing:${outgoing.roomId}`} texture={outgoing.texture} opacity={1} />

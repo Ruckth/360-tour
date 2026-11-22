@@ -180,6 +180,9 @@ function display(value: unknown, field: string): string {
   }
   if (typeof value === "object") {
     const row = object(value);
+    if (typeof row.roomAuditPreview === "string" && typeof row.auditBytes === "number" && typeof row.auditSha256 === "string") {
+      return `${row.roomAuditPreview} · ${row.auditBytes.toLocaleString("en-US")} bytes · SHA-256 ${row.auditSha256}`;
+    }
     if (typeof row.start === "string" && typeof row.end === "string") {
       return `${typeof row.weekday === "number" ? `${DAYS[row.weekday]} ` : ""}${row.start}–${row.end}${row.label ? ` (${row.label})` : ""}`;
     }

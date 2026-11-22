@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
-import { api } from "convex/_generated/api";
+import { useAuth } from "@/platform/auth";
 import { useTranslations } from "@/platform/intl";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -14,26 +14,27 @@ import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
-import { useQuery } from "convex/react";
 import { markTourBench } from "@/lib/tour/bench";
 import { resolveTourRooms } from "@/lib/tour/rooms";
+import { useLiveTourRooms } from "@/lib/tour/use-live-tour-rooms";
 import { cn } from "@/lib/utils";
 
 type Phase = "intro" | "tour" | "conclusion" | "leadCapture";
-const tourRoomsQuery = api.catalog.properties.getTourRooms;
 const ROOMS_TIMEOUT_MS = 3_000;
 
-export function TourViewer({
-  property,
-  onClose,
-}: {
-  property: Property;
-  onClose: () => void;
-}) {
+type TourViewerProps = { property: Property; onClose: () => void };
+
+/** A different villa or signed-in identity starts a new viewer: no scene or selection carries over. */
+export function TourViewer(props: TourViewerProps) {
+  const { userId } = useAuth();
+  return <LiveTourViewer key={`${props.property.id}\n${userId ?? ""}`} {...props} />;
+}
+
+function LiveTourViewer({ property, onClose }: TourViewerProps) {
   const messages = usePublicMessages();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const liveRooms = useQuery(tourRoomsQuery, { slug: property.id });
+  const { rooms: liveRooms, fresh } = useLiveTourRooms(property.id);
   const [timedOut, setTimedOut] = useState(false);
   // Wait for actual DB rooms; a timeout shows the unavailable state without inventing rooms.
   const roomsReady = liveRooms !== undefined || timedOut;
@@ -42,8 +43,8 @@ export function TourViewer({
     [liveRooms, messages, property.tourRoomIds, roomsReady],
   );
   const [phase, setPhase] = useState<Phase>("intro");
+  // An explicit choice made by navigating; null follows the first room in the current tour order.
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
-  // The first room in tour order until the guest moves (or the selected room disappears).
   const currentRoom = activeRooms.find((room) => room.id === selectedRoomId) ?? activeRooms[0];
   const currentRoomId = currentRoom?.id ?? "";
   const [previousRoomId, setPreviousRoomId] = useState<string | null>(null);
@@ -58,6 +59,8 @@ export function TourViewer({
   const [visited, setVisited] = useState<Set<string>>(new Set());
   const activeRoomIds = useMemo(() => new Set(activeRooms.map((room) => room.id)), [activeRooms]);
   const roomsResolvedRef = useRef(false);
+  // A removed choice falls back to the first room for good, even if that room returns later.
+  if (selectedRoomId && liveRooms !== undefined && !activeRoomIds.has(selectedRoomId)) setSelectedRoomId(null);
 
   useBodyScrollLock(true);
 
@@ -121,10 +124,12 @@ export function TourViewer({
     setPreviousRoomId(null);
   }, []);
 
+  // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
+  const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready" || !fresh;
+
   function navigateTo(roomId: string) {
     if (!activeRoomIds.has(roomId)) return;
-    // Navigation is locked while a room is loading, crossfading, or failed (retry first).
-    if (transitioning || loadFailed || sceneStatus !== "ready" || roomId === currentRoomId) return;
+    if (navigationLocked || roomId === currentRoomId) return;
     setPreviousRoomId(currentRoomId);
     setSelectedRoomId(roomId);
     setTransitioning(true);
@@ -139,7 +144,6 @@ export function TourViewer({
   );
   const previousRoom = activeRooms[(currentRoomIndex - 1 + activeRooms.length) % activeRooms.length];
   const nextRoom = activeRooms[(currentRoomIndex + 1) % activeRooms.length];
-  const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready";
 
   // A villa without tour rooms still gets a visible, closable screen: the scroll lock above
   // must never outlive what the guest can see and dismiss.
@@ -175,6 +179,7 @@ export function TourViewer({
       data-scene-status={sceneStatus}
       data-requested-room={currentRoomId}
       data-shown-room={shownRoomId ?? ""}
+      data-live={fresh ? "confirmed" : "unconfirmed"}
       aria-busy={navigationLocked}
       className="fixed inset-0 z-[70] bg-black"
       style={{ touchAction: "none" }}
@@ -202,6 +207,7 @@ export function TourViewer({
             retrySignal={retryNonce}
             detailRequest={detailRequest}
             onDetailStatusChange={setDetailStatus}
+            inputLocked={!fresh}
           />
         ) : null}
       </div>

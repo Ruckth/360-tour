@@ -7,6 +7,7 @@ import { appendRecordHistory } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 import { toPublicProperty, type PublicProperty } from './model';
 import { propertyNightlyPrice, savePropertyEdit } from './private/propertyEdits';
+import { assertUncertifiedRoomGrowth, certifyOrdinaryRoom, MAX_TOUR_ROOMS, propertyRooms, roomEditByteGrowth, roomEditWithCertificate, sortTourRooms } from './private/tourRooms';
 import { deliverVillaCacheInvalidation } from './private/villaInvalidation';
 
 const otaPlatform = v.union(v.literal('booking_com'), v.literal('agoda'), v.literal('airbnb'), v.literal('expedia'));
@@ -45,15 +46,9 @@ export const getTourRooms = publicQuery({
 		const property = await ctx.db.query('properties')
 			.withIndex('by_slug', (q) => q.eq('slug', args.slug)).unique();
 		if (!property || property.status !== 'active') return null;
-		const rooms = await ctx.db.query('tourScenes')
-			.withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(50);
-		const rank = (slug: string) => {
-			const index = property.tourRoomIds.indexOf(slug);
-			return index === -1 ? Infinity : index;
-		};
-		// Stable sort: unlisted rooms keep the index's creation order.
-		return rooms
-			.sort((a, b) => rank(a.slug) - rank(b.slug) || 0)
+		const rooms = await propertyRooms(ctx, property._id);
+		return sortTourRooms(rooms, property.tourRoomIds)
+			.slice(0, MAX_TOUR_ROOMS)
 			.map(({ slug, name, imagePath, hotspots }) => ({ slug, name, imagePath, hotspots }));
 	}
 });
@@ -212,10 +207,20 @@ export const updateRoom = adminMutation({
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
-		if (!(await ctx.db.get(args.roomId))) throw new Error('Room not found');
-		await history.patchRoom(args.roomId, {
+		const room = await ctx.db.get(args.roomId);
+		if (!room) throw new Error('Room not found');
+		const patch = {
 			...(args.name !== undefined ? { name: required(args.name, 'Room name') } : {}),
 			...(args.imagePath !== undefined ? { imagePath: imageUrl(required(args.imagePath, 'Room image')) } : {})
-		});
+		};
+		if (room.ordinaryTourCertified) {
+			await history.patchRoom(room, roomEditWithCertificate(room, patch));
+			return;
+		}
+		const growth = roomEditByteGrowth(room, patch);
+		const certified = growth > 0 && await assertUncertifiedRoomGrowth(ctx, room.propertyId, growth);
+		// Certify only the edited scene, using the same write as its history event.
+		const certificate = certified ? certifyOrdinaryRoom({ ...room, ...patch }).ordinaryTourCertified : undefined;
+		await history.patchRoom(room, { ...patch, ...(certificate && { ordinaryTourCertified: certificate }) });
 	}
 });

@@ -72,7 +72,19 @@ describe("customer display dialog", () => {
     expect(document.querySelector('[aria-label="Display link"]')).toBeNull();
     await act(async () => button("Create link").click());
     expect(mutations["pos/displays:createPairLink"]).toHaveBeenCalledExactlyOnceWith({ clientId: "tab-here" });
-    expect(document.querySelector<HTMLInputElement>('[aria-label="Display link"]')!.value).toContain("#pair=secret");
+    const link = document.querySelector<HTMLInputElement>('[aria-label="Display link"]')!.value;
+    expect(link).toContain("#pair=secret");
+    await vi.waitFor(() => {
+      expect(document.querySelector("svg[data-qr-value]")?.getAttribute("data-qr-value")).toBe(link);
+    });
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    try {
+      await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Copy link"]')!.click());
+      expect(writeText).toHaveBeenCalledExactlyOnceWith(link);
+      expect(document.querySelector('[aria-label="Copied"]')).toBeTruthy();
+    } finally {
+      writeText.mockRestore();
+    }
   });
 
   it("takes the display over with this tab's order", async () => {
@@ -213,4 +225,27 @@ it("renders the QR once through 60 countdown ticks, updates it once for a new UR
   expect(document.querySelector<HTMLButtonElement>('[aria-label="Copy link"]')!.disabled).toBe(true);
   expect(button("Link expired · New link")).toBeTruthy();
   expect(qrRender).toHaveBeenCalledTimes(2);
+});
+
+it("keeps the display link and copy action when the QR module fails to load", async () => {
+  vi.resetModules();
+  vi.doMock("react-qr-code", () => { throw new Error("QR chunk unavailable"); });
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  try {
+    const { CustomerDisplayControl: Control } = await import("@/components/admin/CustomerDisplayDialog");
+    await act(async () => root.render(createElement(Control, { orderId: null })));
+    await act(async () => button("Display ·").click());
+    await act(async () => button("Pair a different display").click());
+    await act(async () => button("Create link").click());
+
+    await vi.waitFor(() => expect(dialog()?.querySelector('[role="status"]')?.textContent).toBe("QR unavailable. Copy the link."));
+    const link = document.querySelector<HTMLInputElement>('[aria-label="Display link"]')!.value;
+    expect(link).toContain("#pair=secret");
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Copy link"]')!.click());
+    expect(writeText).toHaveBeenCalledExactlyOnceWith(link);
+    expect(document.querySelector('[aria-label="Copied"]')).toBeTruthy();
+  } finally {
+    writeText.mockRestore();
+    vi.doUnmock("react-qr-code");
+  }
 });

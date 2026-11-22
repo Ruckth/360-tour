@@ -67,6 +67,23 @@ await fs.mkdir(project, { mode: 0o700 });
 await fs.cp(path.join(root, "convex"), path.join(project, "convex"), {
   recursive: true,
 });
+// Install this authenticated fixture helper only in the fresh disposable backend copy.
+if (supplied.BENCH_ROOM_RENAME_FIRST === "1") {
+  await fs.writeFile(path.join(project, "convex", "maintenance", "roomRenameBenchmarkFixture.ts"), `
+    import { v } from "convex/values";
+    import { adminMutation } from "../auth/model";
+    export const clearCertificate = adminMutation({
+      args: { roomId: v.id("tourScenes") },
+      handler: async (ctx, { roomId }) => {
+        const room = await ctx.db.get(roomId);
+        const villa = room && await ctx.db.get(room.propertyId);
+        if (villa?.status !== "draft" || !["rename-2", "rename-50"].includes(villa.slug))
+          throw new Error("Require the local room rename fixture");
+        await ctx.db.patch(roomId, { ordinaryTourCertified: undefined });
+      },
+    });
+  `, { flag: "wx", mode: 0o600 });
+}
 await fs.copyFile(
   path.join(root, "package.json"),
   path.join(project, "package.json"),
@@ -85,10 +102,27 @@ const port = () =>
       server.close(() => resolve(value));
     });
   });
-const cloud = await port(),
-  site = await port(),
-  app = await port(),
-  component = await port();
+let fixedRenamePorts;
+if (supplied.BENCH_ROOM_RENAME_PORTS) {
+  const items = supplied.BENCH_ROOM_RENAME_PORTS.split(",");
+  fixedRenamePorts = items.map(Number);
+  if (items.length !== 3 || new Set(fixedRenamePorts).size !== 3 ||
+      items.some((item) => !/^[0-9]+$/.test(item)) ||
+      fixedRenamePorts.some((candidate) => candidate < 1024 || candidate > 65535)) {
+    throw new Error("BENCH_ROOM_RENAME_PORTS must be three distinct unprivileged cloud,site,app ports");
+  }
+  // Probe the loopback bindings before starting any process. The real listeners still bind
+  // normally and fail if another process takes a port before startup.
+  for (const candidate of fixedRenamePorts) {
+    await new Promise((resolve, reject) => {
+      const server = net.createServer();
+      server.once("error", reject);
+      server.listen(candidate, "127.0.0.1", () => server.close(resolve));
+    });
+  }
+}
+const [cloud, site, app] = fixedRenamePorts ?? [await port(), await port(), await port()];
+const component = await port();
 const url = requireLocalBackend(`http://127.0.0.1:${cloud}`),
   baseURL = `http://localhost:${app}`;
 const env = {
@@ -230,6 +264,12 @@ try {
       String(cloud),
       "--local-site-port",
       String(site),
+      ...(supplied.BENCH_ROOM_RENAME_DASHBOARD_FREE === "1" ? [
+        // --until-success skips the anonymous dashboard prelude. Its startup command
+        // keeps the backend alive and exits if the Convex CLI process goes away.
+        "--until-success", "--start",
+        "exec node -e 'const owner = process.ppid; setInterval(() => { try { process.kill(owner, 0) } catch { process.exit(0) } }, 250)'",
+      ] : []),
       "--typecheck",
       "disable",
       "--tail-logs",

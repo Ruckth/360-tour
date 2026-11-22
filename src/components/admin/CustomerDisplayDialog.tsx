@@ -7,9 +7,9 @@ import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
 import { formatDistanceStrict } from "date-fns";
 import { ArrowRightLeft, Check, Copy, ExternalLink, Link2, MonitorSmartphone, RefreshCw, Share2, X } from "lucide-react";
-import { memo, useCallback, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, memo, Suspense, useCallback, useId, useRef, useState, type ComponentType, type FormEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import QRCode from "react-qr-code";
+import type { QRCodeProps } from "react-qr-code";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import { CheckoutDialogContent } from "@/components/checkout/CheckoutLayers";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,13 @@ import { errorText, useNow } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useDisplayDriver } from "./useDisplayDriver";
 
-const MemoQRCode = memo(QRCode);
+const PairingQRCode = memo(lazy<ComponentType<QRCodeProps>>(async () => {
+  try {
+    return await import("react-qr-code");
+  } catch {
+    return { default: () => <p role="status" className="text-sm">QR unavailable. Copy the link.</p> };
+  }
+}));
 
 const ONLINE_MS = 60_000;
 const THIS_COMPUTER = "This computer";
@@ -392,7 +398,9 @@ function SendLink({ link, error: createError, loading, create, replacing }: Retu
     <div className="grid gap-4 pt-2 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
       <div className={cn("mx-auto rounded-xl border border-border bg-white p-3", expired && "opacity-30")}>
         {/* Rendered locally; the secret never goes to a QR service. */}
-        <MemoQRCode value={link.url} size={152} level="M" aria-label="QR code for the display link" />
+        <Suspense fallback={<div className="grid size-[152px] place-items-center"><Spinner label="Loading QR code" className="size-5" /></div>}>
+          <PairingQRCode value={link.url} size={152} level="M" aria-label="QR code for the display link" />
+        </Suspense>
       </div>
       <div className="grid min-w-0 gap-3">
         <p className="text-sm text-muted-foreground">

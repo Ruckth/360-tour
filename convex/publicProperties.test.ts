@@ -4,6 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
+import { featuredReviews } from './catalog/publicProperties';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -105,6 +106,62 @@ describe('public villa queries', () => {
 			['active-villa', 5],
 			['active-villa', 4]
 		]);
+	});
+
+	it('reads only the reviews needed for the exact ranked result and keeps the 200-row ceiling', async () => {
+		const t = convexTest(schema, modules);
+		const { draft, expected } = await t.run(async ctx => {
+			const active = await ctx.db.insert('properties', villa('active', 'active'));
+			const draft = await ctx.db.insert('properties', villa('draft', 'draft'));
+			const archive = await ctx.db.insert('properties', villa('archived', 'archived'));
+			for (let i = 0; i < 200; i++) await ctx.db.insert('reviews', review(active, 3, '2026-01-01'));
+			const expected = [];
+			for (const rating of [4, 4, 5, 5, 5, 5]) {
+				expected.unshift(await ctx.db.insert('reviews', review(active, rating, '2026-01-01')));
+			}
+			for (const propertyId of [draft, archive, draft]) {
+				await ctx.db.insert('reviews', review(propertyId, 5, '2026-01-01'));
+			}
+			return { draft, expected };
+		});
+
+		const measure = (stream: boolean) => t.run(async ctx => {
+			const start = await ctx.meta.getTransactionMetrics();
+			let ids: Id<'reviews'>[];
+			if (stream) {
+				const result: { id: Id<'reviews'> }[] = await Reflect.get(featuredReviews, '_handler')(ctx, { limit: 6 });
+				ids = result.map(item => item.id);
+			} else {
+				// Reproduce the old eager read and its one property lookup per distinct ID.
+				const ranked = await ctx.db.query('reviews').withIndex('by_rating').order('desc').take(200);
+				const eligible = new Map<Id<'properties'>, boolean>();
+				ids = [];
+				for (const review of ranked) {
+					if (!eligible.has(review.propertyId)) {
+						const property = await ctx.db.get(review.propertyId);
+						eligible.set(review.propertyId, property?.status === 'active');
+					}
+					if (eligible.get(review.propertyId)) ids.push(review._id);
+					if (ids.length === 6) break;
+				}
+			}
+			const end = await ctx.meta.getTransactionMetrics();
+			return { ids, reads: end.documentsRead.used - start.documentsRead.used, bytes: end.bytesRead.used - start.bytesRead.used };
+		});
+
+		const before = await measure(false);
+		const after = await measure(true);
+		expect(before).toMatchObject({ ids: expected, reads: 203 });
+		expect(after).toMatchObject({ ids: expected, reads: 12 });
+		expect(after.bytes).toBeLessThan(before.bytes * 0.7);
+		expect((await t.query(api.catalog.publicProperties.featuredReviews, { limit: 6 })).map(item => item.id)).toEqual(expected);
+
+		await t.run(async ctx => {
+			for (let i = 0; i < 200; i++) await ctx.db.insert('reviews', review(draft, 5, '2026-01-01'));
+		});
+		const worst = await measure(false);
+		expect(worst).toMatchObject({ ids: [], reads: 201 });
+		expect(await measure(true)).toEqual(worst);
 	});
 
 	it('uses the full social proof count and shows only the newest 20 reviews', async () => {

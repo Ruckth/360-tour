@@ -6,13 +6,20 @@ import { createServer } from "node:http";
  * @typedef {{backendUrl: string, adminKey: string, nextLog: string, out: string}} BenchOptions
  * @typedef {{
  *   kind: string, udfType: string, componentPath?: string, identifier: string,
- *   cachedResult?: boolean, error?: string, executionTime?: number, userExecutionTime?: number,
+ *   cachedResult?: boolean, occInfo?: {retryCount?: number} | null, error?: string, executionTime?: number, userExecutionTime?: number,
  *   usageStats?: Record<string, number>, returnBytes?: number, requestId: string, executionId: string
  * }} ConvexLog
  */
-const observedQueries = new Set([
+const tourQueries = new Set([
   "catalog/publicProperties:getBySlug",
   "catalog/properties:getTourRooms",
+]);
+const catalogFunctions = new Map([
+  ["catalog/publicProperties:featuredReviews", "Query"],
+  ["pos/orders:listOpenOrders", "Query"],
+  ["messaging/adminChat:listSessions", "Query"],
+  ["catalog/adminReviews:update", "Mutation"],
+  ["catalog/properties:updateRoom", "Mutation"],
 ]);
 /** @param {unknown} value */
 const nonnegative = (value) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
@@ -23,12 +30,18 @@ function secondsToMs(value) {
 }
 
 /** @param {ConvexLog} entry */
-function publicConvexSpan(entry) {
-  if (entry.kind !== "Completion" || entry.udfType !== "Query" ||
-      entry.componentPath || !observedQueries.has(entry.identifier)) return null;
+function publicConvexSpan(entry, catalog = false) {
+  if (entry.kind !== "Completion" || entry.componentPath) return null;
+  const expectedType = catalog ? catalogFunctions.get(entry.identifier) : tourQueries.has(entry.identifier) ? "Query" : undefined;
+  if (entry.udfType !== expectedType || !expectedType) return null;
 
   return {
     function: entry.identifier,
+    ...(catalog ? {
+      databaseWriteBytes: nonnegative(entry.usageStats?.databaseWriteBytes),
+      databaseWriteDocuments: nonnegative(entry.usageStats?.databaseWriteDocuments),
+      occRetryCount: nonnegative(entry.occInfo?.retryCount) ?? 0,
+    } : {}),
     cached: entry.cachedResult === true,
     outcome: entry.error == null ? "success" : "error",
     executionMs: secondsToMs(entry.executionTime),
@@ -74,7 +87,7 @@ function publicHttpSpans(log) {
 }
 
 /** @param {BenchOptions} options */
-async function checkpoint({ backendUrl, adminKey, nextLog }) {
+async function checkpoint({ backendUrl, adminKey, nextLog }, catalog = false) {
   // A zero cursor takes a snapshot of the fresh backend's recent log buffer.
   // An incremental cursor long-polls when a full-route cache hit executes no UDFs.
   const response = await fetch(backendUrl + "/api/stream_function_logs?cursor=0", {
@@ -87,7 +100,7 @@ async function checkpoint({ backendUrl, adminKey, nextLog }) {
   const log = await readFile(nextLog, "utf8");
   const convex = new Map();
   for (const entry of entries) {
-    const span = publicConvexSpan(entry);
+    const span = publicConvexSpan(entry, catalog);
     if (span) convex.set(`${entry.requestId}:${entry.executionId}`, span);
   }
   return { convex, ssr: publicSsrSpans(log), http: publicHttpSpans(log) };
@@ -146,12 +159,12 @@ export async function startBenchSpans(options) {
     }
     if (req.url === `${route}/start`) {
       if (active || artifact.runs.some((run) => run.runId === runId)) return res.writeHead(409).end();
-      active = { runId, before: await checkpoint(options) };
+      active = { runId, before: await checkpoint(options, runId.startsWith("catalog-")) };
       return res.writeHead(204).end();
     }
     if (!active || active.runId !== runId) return res.writeHead(409).end();
     const { before } = active;
-    const after = await checkpoint(options);
+    const after = await checkpoint(options, runId.startsWith("catalog-"));
     const run = {
       runId,
       ssr: after.ssr.slice(before.ssr.length),

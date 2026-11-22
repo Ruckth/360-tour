@@ -62,7 +62,7 @@ function IntentionalChatWidget() {
 
   if (activated) {
     return (
-      // The widget opens itself once mounted and focuses its composer (useChatSession).
+      // The widget opens itself and moves focus into the overlay once mounted.
       <LazyAIChatWidget
         initialOpen
         contactEmail={resort.contactEmail}

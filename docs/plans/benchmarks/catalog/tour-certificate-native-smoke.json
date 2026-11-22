@@ -1,0 +1,37 @@
+{
+  "sourceRevision": "87409241ef90417d6b950d1dcc8fae1f51150c4f",
+  "snapshotSha256": "65b86be626103be55e5cd74d0f6edde05d097010ba5ef24a7a25d743c4dddde4",
+  "scoped": {
+    "pages": 7,
+    "scanned": 51,
+    "certified": 2,
+    "cleared": 2,
+    "shortNonterminal": 0
+  },
+  "gardenInspection": {
+    "pages": 2,
+    "scanned": 10,
+    "certified": 10,
+    "cleared": 0,
+    "shortNonterminal": 1
+  },
+  "wholeBefore": {
+    "pages": 9,
+    "scanned": 62,
+    "certified": 11,
+    "cleared": 0,
+    "shortNonterminal": 1
+  },
+  "wholeClear": {
+    "pages": 9,
+    "scanned": 62,
+    "certified": 11,
+    "cleared": 11,
+    "shortNonterminal": 1
+  },
+  "guardedAfterRepair": true,
+  "exactDocumentBytes": 1048576,
+  "ordinaryCertificateRemoved": true,
+  "localOnly": true,
+  "earlierWriterSimulation": "uncertified native snapshot append"
+}

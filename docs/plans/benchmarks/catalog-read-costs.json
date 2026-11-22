@@ -1,0 +1,1132 @@
+{
+  "schemaVersion": 1,
+  "framework": "convex-test transaction counters",
+  "control": {
+    "git": "ca677461c30935b0a7490e8ba3ee18243febdc1e",
+    "suiteSha256": "e315d77f40624b7d17fafb604756b47b4f92b9a332631ff02b924767624d1508"
+  },
+  "candidate": {
+    "git": "a64bf1989c6dda82b57223cd0ac87695ccfb5840",
+    "suiteSha256": "e549321c83bccb4dba3dd818bc5a76a0e55c889550a8f2e30d3474fd6b7ea85e"
+  },
+  "columns": [
+    "rowsReturned",
+    "serializedBytes",
+    "documentsRead",
+    "bytesRead",
+    "databaseQueries",
+    "documentsWritten",
+    "bytesWritten",
+    "functionsScheduled",
+    "scheduledFunctionArgsBytes"
+  ],
+  "rows": [
+    {
+      "group": "tour-scenes",
+      "fixture": "1 scene (0 hotspots)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        1,
+        105,
+        2,
+        1140,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        105,
+        2,
+        1140,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "tour-scenes",
+      "fixture": "10 scenes (4 hotspots/scene)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "tour-scenes",
+      "fixture": "50 scenes (4 hotspots/scene)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        50,
+        27951,
+        51,
+        34732,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        50,
+        27951,
+        51,
+        34732,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "tour-scenes",
+      "fixture": "50 scenes (20 hotspots/scene, MAX_HOTSPOTS)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        50,
+        117251,
+        51,
+        128332,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        50,
+        117251,
+        51,
+        128332,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "unrelated-10x",
+      "fixture": "10 scenes + 10 unrelated villas (100 unrelated scenes)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "unrelated-10x",
+      "fixture": "10 scenes + 100 unrelated villas (1,000 unrelated scenes)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        5591,
+        11,
+        7692,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "villa-detail",
+      "fixture": "0 reviews",
+      "function": "catalog/publicProperties:getBySlug",
+      "control": [
+        1,
+        982,
+        1,
+        952,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        982,
+        1,
+        952,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "villa-detail",
+      "fixture": "20 reviews",
+      "function": "catalog/publicProperties:getBySlug",
+      "control": [
+        21,
+        14779,
+        22,
+        15126,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        21,
+        14779,
+        22,
+        15126,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "villa-detail",
+      "fixture": "50 stored reviews (capped at 20)",
+      "function": "catalog/publicProperties:getBySlug",
+      "control": [
+        21,
+        14779,
+        22,
+        15126,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        21,
+        14779,
+        22,
+        15126,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "unrelated-10x",
+      "fixture": "20 reviews + 10 unrelated villas (50 unrelated reviews)",
+      "function": "catalog/publicProperties:getBySlug",
+      "control": [
+        21,
+        14768,
+        22,
+        15116,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        21,
+        14768,
+        22,
+        15116,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "unrelated-10x",
+      "fixture": "20 reviews + 100 unrelated villas (500 unrelated reviews)",
+      "function": "catalog/publicProperties:getBySlug",
+      "control": [
+        21,
+        14768,
+        22,
+        15116,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        21,
+        14768,
+        22,
+        15116,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "unrelated-10x",
+      "fixture": "4 OTA rates + 100 unrelated villas (400 unrelated OTA rates)",
+      "function": "catalog/properties:getOtaComparison",
+      "control": [
+        4,
+        560,
+        5,
+        1792,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        4,
+        560,
+        5,
+        1792,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa (0 inactive)",
+      "function": "catalog/publicProperties:list",
+      "control": [
+        1,
+        990,
+        3,
+        2066,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        990,
+        3,
+        2066,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa (0 inactive)",
+      "function": "catalog/properties:list",
+      "control": [
+        1,
+        927,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        927,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa (0 inactive)",
+      "function": "catalog/publicProperties:listSlugs",
+      "control": [
+        1,
+        68,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        68,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa + 100 inactive (draft/archived)",
+      "function": "catalog/publicProperties:list",
+      "control": [
+        1,
+        990,
+        3,
+        2066,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        990,
+        3,
+        2066,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa + 100 inactive (draft/archived)",
+      "function": "catalog/properties:list",
+      "control": [
+        1,
+        927,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        927,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "1 active villa + 100 inactive (draft/archived)",
+      "function": "catalog/publicProperties:listSlugs",
+      "control": [
+        1,
+        68,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        68,
+        1,
+        946,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas (0 inactive)",
+      "function": "catalog/publicProperties:list",
+      "control": [
+        100,
+        95733,
+        201,
+        112946,
+        102,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        95733,
+        201,
+        112946,
+        102,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas (0 inactive)",
+      "function": "catalog/properties:list",
+      "control": [
+        100,
+        93072,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        93072,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas (0 inactive)",
+      "function": "catalog/publicProperties:listSlugs",
+      "control": [
+        100,
+        1355,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        1355,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas + 100 inactive (draft/archived)",
+      "function": "catalog/publicProperties:list",
+      "control": [
+        100,
+        95733,
+        201,
+        112946,
+        102,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        95733,
+        201,
+        112946,
+        102,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas + 100 inactive (draft/archived)",
+      "function": "catalog/properties:list",
+      "control": [
+        100,
+        93072,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        93072,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalogue-list",
+      "fixture": "100 active villas + 100 inactive (draft/archived)",
+      "function": "catalog/publicProperties:listSlugs",
+      "control": [
+        100,
+        1355,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        100,
+        1355,
+        100,
+        94600,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "featured-reviews",
+      "fixture": "200 reviews all active (5 active villas, limit=6)",
+      "function": "catalog/publicProperties:featuredReviews",
+      "control": [
+        6,
+        4117,
+        205,
+        144600,
+        6,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        6,
+        4117,
+        11,
+        8800,
+        6,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "featured-reviews",
+      "fixture": "Realistic mixed 200 reviews (60% active / 40% archived+draft interleaved, limit=6)",
+      "function": "catalog/publicProperties:featuredReviews",
+      "control": [
+        6,
+        4141,
+        209,
+        148414,
+        10,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        6,
+        4141,
+        20,
+        16114,
+        10,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "featured-reviews",
+      "fixture": "Realistic mixed 200 reviews (80 archived/draft 5-star first, then 120 active, limit=6)",
+      "function": "catalog/publicProperties:featuredReviews",
+      "control": [
+        6,
+        4165,
+        214,
+        153268,
+        15,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        6,
+        4165,
+        100,
+        73468,
+        15,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "featured-reviews",
+      "fixture": "Original bounded-200 cap (201 archived 5-star ahead of 20 active, limit=6)",
+      "function": "catalog/publicProperties:featuredReviews",
+      "control": [
+        0,
+        2,
+        201,
+        140940,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        2,
+        201,
+        140940,
+        2,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "featured-reviews",
+      "fixture": "10x total reviews (2,000 mixed active/archived, limit=6)",
+      "function": "catalog/publicProperties:featuredReviews",
+      "control": [
+        6,
+        4153,
+        209,
+        148474,
+        10,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        6,
+        4153,
+        20,
+        16174,
+        10,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "scale-controls",
+      "fixture": "Booking overlap isAvailable (1x -> 10x unrelated villas/bookings)",
+      "function": "bookings/calendar/availability:isAvailable",
+      "control": [
+        1,
+        4,
+        1,
+        429,
+        3,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        4,
+        1,
+        429,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "scale-controls",
+      "fixture": "Booking month getBlockedDates (1x -> 10x unrelated availability)",
+      "function": "bookings/calendar/availability:getBlockedDates",
+      "control": [
+        5,
+        66,
+        5,
+        780,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        5,
+        66,
+        5,
+        780,
+        1,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "scale-controls",
+      "fixture": "Admin inbox needs_reply pre-initialization (10 rows)",
+      "function": "messaging/adminChat:listSessions",
+      "control": [
+        10,
+        8742,
+        41,
+        16003,
+        32,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        8742,
+        41,
+        16003,
+        32,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "scale-controls",
+      "fixture": "Admin inbox needs_reply initialized + 60 unrelated processing",
+      "function": "messaging/adminChat:listSessions",
+      "control": [
+        10,
+        8742,
+        20,
+        16710,
+        12,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        8742,
+        20,
+        16710,
+        12,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "scale-controls",
+      "fixture": "Admin inbox needs_reply initialized + 600 unrelated processing (10x)",
+      "function": "messaging/adminChat:listSessions",
+      "control": [
+        10,
+        8742,
+        20,
+        16710,
+        12,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        10,
+        8742,
+        20,
+        16710,
+        12,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "createRoom (adding 50th room to 49-scene villa)",
+      "function": "catalog/adminProperties:createRoom",
+      "control": [
+        1,
+        34,
+        52,
+        35663,
+        5,
+        7,
+        6880,
+        0,
+        0
+      ],
+      "candidate": [
+        1,
+        34,
+        52,
+        35663,
+        5,
+        7,
+        6880,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "updateRoom (rename 1 room on 50-scene villa)",
+      "function": "catalog/properties:updateRoom",
+      "control": [
+        0,
+        4,
+        4,
+        2667,
+        4,
+        3,
+        2339,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        4,
+        4,
+        2667,
+        4,
+        3,
+        2339,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "setHotspots (4 hotspots on 50-scene villa)",
+      "function": "catalog/adminProperties:setHotspots",
+      "control": [
+        0,
+        4,
+        56,
+        35942,
+        5,
+        3,
+        2254,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        4,
+        56,
+        35942,
+        5,
+        3,
+        2254,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "reorderRooms (50 scenes)",
+      "function": "catalog/adminProperties:reorderRooms",
+      "control": [
+        0,
+        4,
+        54,
+        36162,
+        3,
+        4,
+        6131,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        4,
+        54,
+        36162,
+        3,
+        4,
+        6131,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "properties:update (price-only edit on active villa)",
+      "function": "catalog/properties:update",
+      "control": [
+        0,
+        4,
+        4,
+        3378,
+        2,
+        4,
+        5149,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        4,
+        4,
+        3378,
+        2,
+        4,
+        5149,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "catalog-writes",
+      "fixture": "deleteRoom (remove 1 room from 50-scene villa)",
+      "function": "catalog/adminProperties:deleteRoom",
+      "control": [
+        0,
+        4,
+        69,
+        45684,
+        19,
+        19,
+        15545,
+        0,
+        0
+      ],
+      "candidate": [
+        0,
+        4,
+        69,
+        45684,
+        19,
+        19,
+        15545,
+        0,
+        0
+      ]
+    },
+    {
+      "group": "oversize-cap",
+      "fixture": "51 scenes with tourRoomIds[0]=room-51 (last by creation)",
+      "function": "catalog/properties:getTourRooms",
+      "control": [
+        50,
+        16451,
+        51,
+        22465,
+        2,
+        0,
+        0,
+        0,
+        0
+      ],
+      "candidate": [
+        50,
+        16451,
+        103,
+        44825,
+        3,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

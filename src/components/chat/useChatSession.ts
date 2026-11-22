@@ -65,7 +65,7 @@ export function useChatSession(props: ChatExperienceProps) {
   const { suggestions, visibleSuggestions } = useChatSuggestions(guest.credentials?.sessionId ?? null, activePropertySlug, latestExchange);
   const handoff = useChatHandoff(mode, hydrated, guest.ensureSession);
   const viewport = useChatViewport(mode, open, mounted);
-  const { inputRef, isTranscriptNearEnd, scrollTranscriptToEnd } = viewport;
+  const { isTranscriptNearEnd, scrollTranscriptToEnd } = viewport;
   const sessionKey = guest.credentials?.sessionId;
   const activeSession = useRef(sessionKey);
   useEffect(() => { activeSession.current = sessionKey; }, [sessionKey]);
@@ -117,10 +117,6 @@ export function useChatSession(props: ChatExperienceProps) {
     if (open) return;
     const timer = window.setTimeout(() => setMounted(false), 220); return () => clearTimeout(timer);
   }, [open]);
-  useEffect(() => {
-    if (!open || mode === 'page') return;
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 260); return () => clearTimeout(timer);
-  }, [open, mode, inputRef]);
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && window.matchMedia('(min-width: 768px)').matches) closeChat(); };

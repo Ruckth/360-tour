@@ -127,6 +127,20 @@ This example adds a bounded admin-only note list to **catalog**. It is documenta
 
 4. Validate and capture evidence. Include desktop/mobile, loading/empty/error, keyboard/focus, pending and successful save states for a changed UI. For protected screens use the actual local Clerk session; component actors are separate focused test tools. Keep authenticated artifacts private. No screenshot is needed for this Phase 3e tooling/documentation change because it changes no rendered behavior.
 
+## Tour room limits and legacy data
+
+A new or duplicated tour can contain up to 50 rooms. On reads, the catalog orders each villa's rooms by its saved `tourRoomIds`, then by creation order for unlisted rooms. The public endpoint returns the first 50 in that order. The staff editor can inspect, reorder and remove imported rooms up to a 500-row, 2 MiB indexed read budget. Duplicate and add operations cannot extend a tour beyond 50.
+
+The 2 MiB limit is inclusive. An optional `tourScenes.ordinaryTourCertified` marker records that the scene belongs to a tour with at most 50 current scenes. Adding a room proves the total through a bounded indexed read. Duplicating a tour copies all scenes only after a bounded read verifies the size. The empty-database fixture knows exactly which scenes it inserts. Removing scenes can only reduce the count, and the application cannot grow a certified tour past 50.
+
+A growing edit to an unmarked room can mark that room only after an indexed read reaches the end of a range with at most 50 scenes. The same transaction writes the marker, edited room and audit. A short-circuited read leaves the room unmarked. Edits to certified rooms use the scene already read, with no parent read or tour-size traversal. An oversized tour still checks its shared headroom against the indexed range. Non-growing name and image edits need no scene scan. Hotspot edits reuse their target-validation scan.
+
+Older rows have no marker and need no required migration or reset. The [certificate recovery runbook](docs/architecture/tour-certificate-recovery.md) covers partial imports, manual writes and rollback. None of those paths may resume ordinary writes with stale markers.
+
+Room history retains the full before and after snapshots when they fit in a Convex document. Larger entries retain changed fields only. A changed value that still cannot fit is recorded with a bounded preview, its size and a SHA-256 fingerprint. Large room names use a shortened label in history discovery, including after deletion.
+
+An import exceeding the recovery budget produces an explicit error. Recover from a verified data export on an isolated target: reduce the affected villa to at most 50 rooms, remove retired slugs from the order list and remove their hotspot and snippet references before importing. Verify the ordered guest response and editor against the corrected export before any shared-target change.
+
 ## Current validation commands
 
 Use Bun 1.4.5 (see `.bun-version`), Node 22 and `VITEST_MAX_WORKERS=2` locally (CI defaults to four). Vitest caps this ceiling at available CPUs. Heavy commands enter the shared three-slot queue.
@@ -148,7 +162,7 @@ bun run arch:score --phase 4    # clean-tree is reported, not gated
 bun run arch:score --phase4     # equivalent spelling, 31 completed-phase gates
 ```
 
-GitHub runs the Next and Start integration suites on separate fresh backends. Each job checks the bundle produced by its own build. The development restart test has its own runner and the static job covers Convex typechecking. The final `verify` job requires every lane to succeed. Keep rule permutations in Vitest or the Convex harness. Use Playwright for behavior that depends on Chromium, such as focus, layout, touch, printing and multiple tabs. To capture the optional evidence images while running the booking, payment, returns or marketing-spend specs, set `CAPTURE_SCREENSHOTS=1`.
+GitHub runs the Next and Start integration suites on separate fresh backends. Each job checks the bundle produced by its own build. Each real-Clerk E2E job uses one Playwright worker to stay within the shared sign-in quota. The development restart test has its own runner and the static job covers Convex typechecking. The final `verify` job requires every lane to succeed. Keep rule permutations in Vitest or the Convex harness. Use Playwright for behavior that depends on Chromium, such as focus, layout, touch, printing and multiple tabs. To capture the optional evidence images while running the booking, payment, returns or marketing-spend specs, set `CAPTURE_SCREENSHOTS=1`.
 
 A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 4), so all 31 completed-phase gates remain enforced. The `clean-tree` count of modified tracked files is advisory and never fails a phase run, and required test files execute in one bounded Vitest run and count only with nonzero cases all passing (no skipped, pending or todo cases). Each file must also report every explicitly required regression title as passed; deleting or renaming a required case fails the gate even if its remaining cases pass. The 16 required titles are listed with their owning files in `scripts/arch-scorecard.mjs`. Phase 0 requires one file, Phase 1 two, Phase 2 two and Phase 4 one. This adds a small backend-suite run to static CI and scorecard invocations.
 

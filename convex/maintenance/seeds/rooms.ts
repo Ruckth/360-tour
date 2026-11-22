@@ -71,6 +71,7 @@ export async function seedRooms(ctx: MutationCtx, properties: PropertyMap): Prom
 	for (const { propertyKey, ...rest } of ROOMS) {
 		await ctx.db.insert('tourScenes', {
 			propertyId: properties[propertyKey],
+			ordinaryTourCertified: true,
 			...rest
 		});
 	}

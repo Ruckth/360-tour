@@ -22,7 +22,8 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
   },
-  workers: ci ? 4 : 2,
+  // Each CI entry has its own runner, but both sign into the same Clerk test tenant.
+  workers: ci ? 1 : 2,
   projects: [
     { name: "clerk-setup", testMatch: /auth.setup.ts/ },
     {

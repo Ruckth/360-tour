@@ -4,9 +4,12 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Property } from "@/lib/data/properties";
 
-const rooms = vi.hoisted(() => ({ loading: false }));
+import { fakeTourClient } from "./tour-live-client";
+
+const rooms = vi.hoisted(() => ({ loading: false, client: undefined as unknown }));
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
-vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useQuery: () => rooms.loading ? undefined : [] }));
+vi.mock("@/platform/auth", () => ({ useAuth: () => ({ userId: null }) }));
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), useConvex: () => rooms.client }));
 vi.mock("@/lib/i18n/use-public-messages", () => ({ usePublicMessages: () => ({}) }));
 vi.mock("@/components/tour/TourCanvas", () => ({ TourCanvas: () => null }));
 
@@ -27,6 +30,8 @@ describe("a villa with no tour rooms", () => {
   /** Mirrors VillaCard/RoomDetailClient: closing unmounts the viewer through onClose. */
   async function openTour() {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const convex = fakeTourClient();
+    rooms.client = convex.client;
     const onClose = vi.fn();
     function Parent() {
       const [open, setOpen] = useState(true);
@@ -34,6 +39,7 @@ describe("a villa with no tour rooms", () => {
     }
     root = createRoot(document.body.appendChild(document.createElement("div")));
     await act(async () => root!.render(createElement(Parent)));
+    if (!rooms.loading) await act(async () => convex.deliver(villa.id, []));
     return onClose;
   }
   const closeButton = () => [...document.querySelectorAll("button")].find((b) => (b.getAttribute("aria-label") ?? b.textContent?.trim()) === "close");

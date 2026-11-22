@@ -216,12 +216,14 @@ describe('360 rooms', () => {
 		await expect(
 			admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'X', imagePath: 'https://example.com/pano.webp' })
 		).rejects.toThrow('uploaded photo');
-		expect((await t.run((ctx) => ctx.db.get(propertyId)))?.tourRoomIds).toEqual(['living-room', 'pool', 'bedroom', 'pool-2']);
+		expect(await t.run((ctx) => ctx.db.get(propertyId))).toMatchObject({
+			tourRoomIds: ['living-room', 'pool', 'bedroom', 'pool-2']
+		});
 
 		// Room slugs only need to be unique within a villa.
 		const other = await admin.mutation(api.catalog.adminProperties.create, { name: 'Other' });
 		await admin.mutation(api.catalog.adminProperties.createRoom, { propertyId: other, name: 'Pool', imagePath: '/x.webp' });
-		expect((await admin.query(api.catalog.adminProperties.get, { propertyId: other }))?.rooms.map((room) => room.slug)).toEqual(['pool']);
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId: other }))?.rooms).toMatchObject([{ slug: 'pool', ordinaryTourCertified: true }]);
 	});
 
 	it('reorders rooms and rejects stale orders', async () => {
@@ -281,7 +283,8 @@ describe('360 rooms', () => {
 		expect(state.pool).toBeNull();
 		expect(state.living?.hotspots.map((hotspot) => hotspot.targetRoomSlug)).toEqual(['bedroom']);
 		expect(state.bedroom?.hotspots).toEqual([]);
-		expect(state.property?.tourRoomIds).toEqual(['living-room', 'bedroom']);
+		expect(state.property).toMatchObject({ tourRoomIds: ['living-room', 'bedroom'] });
+		expect(state.living?.ordinaryTourCertified).toBe(true);
 	});
 
 	it('duplicates a villa as a draft with photos, rooms, hotspots and OTA rates', async () => {
@@ -318,6 +321,7 @@ describe('360 rooms', () => {
 		expect(copy?.property.icalExportToken).toBeUndefined();
 		expect(copy?.slugLocked).toBe(false);
 		expect(copy?.rooms.map((room) => room.slug)).toEqual(['living-room', 'pool', 'bedroom']);
+		expect(copy?.rooms.every(room => room.ordinaryTourCertified)).toBe(true);
 		const copiedLiving = copy?.rooms.find((room) => room.slug === 'living-room');
 		expect(copiedLiving?._id).not.toBe(living);
 		expect(copiedLiving?.hotspots).toEqual([{ id: 'living-room-to-pool', label: 'Pool', targetRoomSlug: 'pool', position: [1, 2, 3] }]);

@@ -34,6 +34,7 @@ export const propertiesFields = {
 	};
 
 export const tourScenesFields = {
+		ordinaryTourCertified: v.optional(v.literal(true)),
 		propertyId: v.id('properties'),
 		slug: v.string(),
 		name: v.string(),
