@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "old": "c7e07a2256d08c0a7ebff201a1c625b711046692",
+  "checkpoint": "93b08fd084679fba52431ab2abed0afabcc4abe2",
+  "release": "295323064cf4b6f5fb30595ae2129f17c3ffdaca",
+  "hosted": [
+    {
+      "commit": "93b08fd084679fba52431ab2abed0afabcc4abe2",
+      "managedRuntime": "bun/1.4.4",
+      "http": {
+        "control": {
+          "pass": 61,
+          "fail": 0,
+          "unavailable": 0
+        },
+        "candidate": {
+          "pass": 61,
+          "fail": 0,
+          "unavailable": 0
+        },
+        "parity": {
+          "match": 59,
+          "improved": 2,
+          "drift": 0,
+          "fail": 0,
+          "pending": 0
+        }
+      },
+      "authenticated": {
+        "checkout-read-only": [
+          "checkout-read-only",
+          "setup",
+          "target"
+        ],
+        "isolated-fixtures": [
+          "auth",
+          "booking",
+          "chat",
+          "cleanup",
+          "live-tour",
+          "setup",
+          "target"
+        ]
+      },
+      "teardown": "passed",
+      "uncredentialedRoomStatus": 302,
+      "instagram": {
+        "status": 403,
+        "body": "Forbidden",
+        "platformError": false
+      }
+    },
+    {
+      "commit": "295323064cf4b6f5fb30595ae2129f17c3ffdaca",
+      "managedRuntime": "bun/1.4.4",
+      "http": {
+        "control": {
+          "pass": 61,
+          "fail": 0,
+          "unavailable": 0
+        },
+        "candidate": {
+          "pass": 61,
+          "fail": 0,
+          "unavailable": 0
+        },
+        "parity": {
+          "match": 59,
+          "improved": 2,
+          "drift": 0,
+          "fail": 0,
+          "pending": 0
+        }
+      },
+      "authenticated": {
+        "checkout-read-only": [
+          "checkout-read-only",
+          "setup",
+          "target"
+        ],
+        "isolated-fixtures": [
+          "auth",
+          "booking",
+          "chat",
+          "cleanup",
+          "live-tour",
+          "setup",
+          "target"
+        ]
+      },
+      "teardown": "passed",
+      "uncredentialedRoomStatus": 302,
+      "instagram": {
+        "status": 403,
+        "body": "Forbidden",
+        "platformError": false
+      }
+    }
+  ],
+  "stage0": {
+    "registeredCrons": 10,
+    "stableFunctionContracts": true,
+    "functionCount": 410,
+    "scheduledCallSites": 61,
+    "pendingSchedulerSnapshot": {
+      "rows": 0,
+      "states": {},
+      "truncated": false
+    },
+    "tourInventory": {
+      "villas": 3,
+      "scenes": 5,
+      "maxScenes": 2,
+      "largestAggregateBytes": 587
+    },
+    "verifiedLiveProductionSha": "c7e07a2256d08c0a7ebff201a1c625b711046692",
+    "stagedDeployments": 0,
+    "queuedDeployments": 0,
+    "restore": {
+      "run": "r20261122101438-5e8a44",
+      "before": {
+        "tablesMatched": 133,
+        "blobsMatched": 0
+      },
+      "after": {
+        "tablesMatched": 133,
+        "blobsMatched": 0
+      },
+      "result": "accepted",
+      "finished": "2026-11-22T10:16:03.104Z",
+      "backupHashVerified": true
+    }
+  }
+}

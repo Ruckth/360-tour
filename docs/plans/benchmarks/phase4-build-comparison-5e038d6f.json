@@ -1,0 +1,18 @@
+{
+  "baseline": "3dbc571ebe5fd25a822b9404fafa7fd048adbc71",
+  "source": "5e038d6f7cf573bcd73c6988189baa82577e8a06",
+  "baselineFiles": 1520,
+  "candidateFiles": 1520,
+  "jsCount": 1446,
+  "publicFiles": 307,
+  "serverFiles": 1213,
+  "byteIdentical": 1519,
+  "nitroEntry": {
+    "file": "server/index.mjs",
+    "onlyDifference": "Build-time mtimes for public assets",
+    "count": 307,
+    "normalizedSha256": "6032cbb759551ce1d2ff8358721629513f96ed36e8d7635b515f1210b934af4b"
+  },
+  "graphOnly": "The build measurement plugin writes output/start-route-js outside the deployment.",
+  "nativeFinalBudgetExit": 0
+}

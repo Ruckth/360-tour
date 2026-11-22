@@ -1,0 +1,513 @@
+{
+  "runId": "r20261122130842-c41978",
+  "startedAt": "2026-11-22T13:08:42.529Z",
+  "node": "v24.19.0",
+  "steps": [
+    {
+      "name": "prepare exact OLD/NEW sources and lockfile installs",
+      "ok": true,
+      "ms": 35086,
+      "details": {
+        "old": "c7e07a2256d0",
+        "new": "5e038d6f7cf5",
+        "schema": {
+          "sourcesIdentical": false,
+          "tablesAdded": [],
+          "tablesRemoved": [],
+          "componentsIdentical": true
+        }
+      }
+    },
+    {
+      "name": "start run-owned backend P (production stand-in)",
+      "ok": true,
+      "ms": 1894,
+      "details": {
+        "instance": "rehearsal-r20261122130842-c41978-p",
+        "url": "http://127.0.0.1:57469"
+      }
+    },
+    {
+      "name": "OLD live state: deploy OLD, seed, smoke and upload storage",
+      "ok": true,
+      "ms": 5500,
+      "details": {
+        "live": {
+          "label": "OLD live",
+          "at": "2026-11-22T13:09:25.131Z",
+          "villas": 3,
+          "scenes": 2,
+          "storageBlobs": 2,
+          "payment": {
+            "webhook": 200,
+            "replay": 200,
+            "forged": 400,
+            "status": "confirmed"
+          },
+          "roles": {
+            "owner": "owner",
+            "cashier": "cashier",
+            "nonstaff": null,
+            "anonymous": null,
+            "ownerTeam": true,
+            "cashierTeamDenied": true,
+            "nonstaffTeamDenied": true
+          },
+          "pending": 3,
+          "failedScheduled": 0
+        },
+        "storageBlobs": 2,
+        "cronJobs": 10
+      }
+    },
+    {
+      "name": "quiesce OLD: money cutoff, maintenance flag, paused ingress",
+      "ok": true,
+      "ms": 1155,
+      "details": {
+        "cutoverAt": 1795352965143,
+        "publicQuery": true,
+        "publicMutation": true,
+        "stripeHttp": 503,
+        "lineHttp": 503
+      }
+    },
+    {
+      "name": "deploy OLD maintenance copy (crons paused, drain helper) and drain scheduler",
+      "ok": true,
+      "ms": 2858,
+      "details": {
+        "cronJobs": 0,
+        "cancelled": 3,
+        "afterRescan": {
+          "pending": [],
+          "inProgress": [],
+          "failed": []
+        },
+        "paused": {
+          "publicQuery": true,
+          "publicMutation": true,
+          "stripeHttp": 503,
+          "lineHttp": 503
+        }
+      }
+    },
+    {
+      "name": "export quiesced OLD with file storage",
+      "ok": true,
+      "ms": 968,
+      "details": {
+        "sha256": "0a3f82e362be7915795c5ea42a6c9295606cea05b2c3becbf7b4534848589a9d",
+        "tables": [
+          "orderCounters=1",
+          "siteSettings=1",
+          "messages=1",
+          "orderLines=1",
+          "cashierRules=1",
+          "staffGrants=1",
+          "businessFacts=1",
+          "rateLimits=3",
+          "reviewStats=3",
+          "bookingPayments=2",
+          "conversations=1",
+          "tourSnippets=4",
+          "orders=4",
+          "availability=6",
+          "tourScenes=5",
+          "services=6",
+          "appointments=4",
+          "properties=3",
+          "bookings=3",
+          "reviews=7",
+          "recordChanges=8",
+          "staff=5",
+          "_storage=2"
+        ],
+        "blobs": 2,
+        "dangling": []
+      }
+    },
+    {
+      "name": "prove OLD export restore on isolated backend R",
+      "ok": true,
+      "ms": 16715,
+      "details": {
+        "tablesMatched": 100,
+        "blobsMatched": 2,
+        "newSchemaOnOldData": "accepted"
+      }
+    },
+    {
+      "name": "interrupted OLD clear (backend SIGKILL mid-import), restart and classify",
+      "ok": true,
+      "ms": 1715,
+      "details": {
+        "cliExit": 1,
+        "state": "untouched"
+      }
+    },
+    {
+      "name": "complete OLD clear while OLD is deployed; verify root, component and scheduler state",
+      "ok": true,
+      "ms": 6309,
+      "details": {
+        "remaining": [
+          "_storage=2"
+        ],
+        "componentTables": [
+          "_components/rateLimiter/rateLimits",
+          "_components/rateLimiter/_storage"
+        ]
+      }
+    },
+    {
+      "name": "deploy paused NEW and verify table inventory",
+      "ok": true,
+      "ms": 3088,
+      "details": {
+        "tables": 97,
+        "cronJobs": 10,
+        "paused": {
+          "publicQuery": true,
+          "publicMutation": true,
+          "stripeHttp": 503,
+          "lineHttp": 503
+        }
+      }
+    },
+    {
+      "name": "interrupted reseed (backend SIGKILL mid-seed), restart, resume",
+      "ok": true,
+      "ms": 2301,
+      "details": {
+        "cliExit": 1,
+        "stateAfterRestart": "empty",
+        "resumed": "seeded-after-restart"
+      }
+    },
+    {
+      "name": "second identical seed is refused",
+      "ok": true,
+      "ms": 524,
+      "details": {
+        "refused": "Seed requires an empty database; properties is not empty"
+      }
+    },
+    {
+      "name": "compare seeded counts, references and public assets",
+      "ok": true,
+      "ms": 723,
+      "details": {
+        "keyCounts": {
+          "properties": 3,
+          "tourScenes": 5,
+          "reviews": 7,
+          "reviewStats": 3,
+          "bookings": 2,
+          "bookingPayments": 1,
+          "orders": 3,
+          "orderLines": 1,
+          "conversations": 1,
+          "messages": 1
+        },
+        "publicAssetsChecked": 13,
+        "dangling": 0
+      }
+    },
+    {
+      "name": "lift internal pause (ingress still gated) for NEW acceptance",
+      "ok": true,
+      "ms": 508,
+      "details": {
+        "providerFetch": "blackholed",
+        "publicFrontend": "not exposed"
+      }
+    },
+    {
+      "name": "NEW default frontend (Start) SSR probe against accepted backend",
+      "ok": true,
+      "ms": 12028,
+      "details": {
+        "frontend": "start",
+        "script": "build",
+        "preview": "preview",
+        "status": 200,
+        "villaInHtml": true,
+        "bytes": 102480
+      }
+    },
+    {
+      "name": "NEW forward: smoke pass 1 (tour, booking/payment sandbox, roles)",
+      "ok": true,
+      "ms": 693,
+      "details": {
+        "label": "NEW forward",
+        "at": "2026-11-22T13:10:14.732Z",
+        "villas": 3,
+        "scenes": 2,
+        "storageBlobs": 1,
+        "payment": {
+          "webhook": 200,
+          "replay": 200,
+          "forged": 400,
+          "status": "confirmed"
+        },
+        "roles": {
+          "owner": "owner",
+          "cashier": "cashier",
+          "nonstaff": null,
+          "anonymous": null,
+          "ownerTeam": true,
+          "cashierTeamDenied": true,
+          "nonstaffTeamDenied": true
+        },
+        "pending": 3,
+        "failedScheduled": 0
+      }
+    },
+    {
+      "name": "NEW forward: smoke pass 2",
+      "ok": true,
+      "ms": 693,
+      "details": {
+        "label": "NEW forward",
+        "at": "2026-11-22T13:15:15.428Z",
+        "villas": 3,
+        "scenes": 2,
+        "storageBlobs": 1,
+        "payment": {
+          "webhook": 200,
+          "replay": 200,
+          "forged": 400,
+          "status": "confirmed"
+        },
+        "roles": {
+          "owner": "owner",
+          "cashier": "cashier",
+          "nonstaff": null,
+          "anonymous": null,
+          "ownerTeam": true,
+          "cashierTeamDenied": true,
+          "nonstaffTeamDenied": true
+        },
+        "pending": 6,
+        "failedScheduled": 0,
+        "separationMs": 300696
+      }
+    },
+    {
+      "name": "rollback: pause NEW, deploy NEW maintenance copy, drain",
+      "ok": true,
+      "ms": 3244,
+      "details": {
+        "cronJobs": 0,
+        "cancelled": 6,
+        "afterRescan": {
+          "pending": [],
+          "inProgress": [],
+          "failed": []
+        },
+        "paused": {
+          "publicQuery": true,
+          "publicMutation": true,
+          "stripeHttp": 503,
+          "lineHttp": 503
+        }
+      }
+    },
+    {
+      "name": "rollback: capture failed NEW state",
+      "ok": true,
+      "ms": 783,
+      "details": {
+        "sha256": "7d7fdff2f2eaa7d643783ea5042e0dd8cdc798ce1a0a6343c525badda1ef99ca",
+        "tables": 22
+      }
+    },
+    {
+      "name": "rollback: clear NEW records while NEW is deployed",
+      "ok": true,
+      "ms": 4428,
+      "details": {
+        "remaining": [
+          "_storage=3"
+        ]
+      }
+    },
+    {
+      "name": "rollback: deploy paused OLD, restore verified OLD export, verify content and file checksums",
+      "ok": true,
+      "ms": 7796,
+      "details": {
+        "tablesMatched": 100,
+        "blobsMatched": 2,
+        "paused": {
+          "publicQuery": true,
+          "publicMutation": true,
+          "stripeHttp": 503,
+          "lineHttp": 503
+        }
+      }
+    },
+    {
+      "name": "rollback: deploy OLD (crons restored) and lift internal pause",
+      "ok": true,
+      "ms": 2513,
+      "details": {
+        "cronJobs": 10
+      }
+    },
+    {
+      "name": "OLD default frontend SSR probe against restored backend",
+      "ok": true,
+      "ms": 16149,
+      "details": {
+        "frontend": "next",
+        "script": "build",
+        "preview": "preview",
+        "status": 200,
+        "villaInHtml": true,
+        "bytes": 126065
+      }
+    },
+    {
+      "name": "OLD rollback: smoke pass 1 (tour, booking/payment sandbox, roles)",
+      "ok": true,
+      "ms": 643,
+      "details": {
+        "label": "OLD rollback",
+        "at": "2026-11-22T13:15:50.987Z",
+        "villas": 3,
+        "scenes": 2,
+        "storageBlobs": 2,
+        "payment": {
+          "webhook": 200,
+          "replay": 200,
+          "forged": 400,
+          "status": "confirmed"
+        },
+        "roles": {
+          "owner": "owner",
+          "cashier": "cashier",
+          "nonstaff": null,
+          "anonymous": null,
+          "ownerTeam": true,
+          "cashierTeamDenied": true,
+          "nonstaffTeamDenied": true
+        },
+        "pending": 3,
+        "failedScheduled": 0
+      }
+    },
+    {
+      "name": "OLD rollback: smoke pass 2",
+      "ok": true,
+      "ms": 715,
+      "details": {
+        "label": "OLD rollback",
+        "at": "2026-11-22T13:20:51.704Z",
+        "villas": 3,
+        "scenes": 2,
+        "storageBlobs": 2,
+        "payment": {
+          "webhook": 200,
+          "replay": 200,
+          "forged": 400,
+          "status": "confirmed"
+        },
+        "roles": {
+          "owner": "owner",
+          "cashier": "cashier",
+          "nonstaff": null,
+          "anonymous": null,
+          "ownerTeam": true,
+          "cashierTeamDenied": true,
+          "nonstaffTeamDenied": true
+        },
+        "pending": 6,
+        "failedScheduled": 0,
+        "separationMs": 300717
+      }
+    }
+  ],
+  "manifest": {
+    "old": "c7e07a2256d08c0a7ebff201a1c625b711046692",
+    "new": "5e038d6f7cf573bcd73c6988189baa82577e8a06",
+    "schema": {
+      "sourcesIdentical": false,
+      "tablesAdded": [],
+      "tablesRemoved": [],
+      "componentsIdentical": true
+    },
+    "artifacts": {
+      "clearOld": {
+        "file": "clear-old.zip",
+        "entries": 98,
+        "sha256": "811a00930623df6c408c68fea95f06c31123ceb8c53ba3000150ff7648ae185b"
+      },
+      "clearNew": {
+        "file": "clear-new.zip",
+        "entries": 98,
+        "sha256": "811a00930623df6c408c68fea95f06c31123ceb8c53ba3000150ff7648ae185b"
+      }
+    }
+  },
+  "backendBinary": {
+    "path": ".cache/360-tour/convex/binaries/precompiled-2026-11-21-cf39368/convex-local-backend",
+    "sha256": "c20e92b96ec806211410938c58d9321251d784984eb2a9c62e527a322b955d92"
+  },
+  "exportOld": {
+    "sha256": "0a3f82e362be7915795c5ea42a6c9295606cea05b2c3becbf7b4534848589a9d",
+    "tables": [
+      "orderCounters=1",
+      "siteSettings=1",
+      "messages=1",
+      "orderLines=1",
+      "cashierRules=1",
+      "staffGrants=1",
+      "businessFacts=1",
+      "rateLimits=3",
+      "reviewStats=3",
+      "bookingPayments=2",
+      "conversations=1",
+      "tourSnippets=4",
+      "orders=4",
+      "availability=6",
+      "tourScenes=5",
+      "services=6",
+      "appointments=4",
+      "properties=3",
+      "bookings=3",
+      "reviews=7",
+      "recordChanges=8",
+      "staff=5",
+      "_storage=2"
+    ],
+    "blobs": 2,
+    "dangling": []
+  },
+  "inPlaceCompatibility": "accepted",
+  "forwardSmokeSeparationMs": 300696,
+  "exportNewFailed": {
+    "sha256": "7d7fdff2f2eaa7d643783ea5042e0dd8cdc798ce1a0a6343c525badda1ef99ca",
+    "tables": 22
+  },
+  "rollbackSmokeSeparationMs": 300717,
+  "ok": true,
+  "finishedAt": "2026-11-22T13:21:08.206Z",
+  "privateArtifacts": {
+    "report.json": "dfef0bfb87219eba299528aeb8b74614bf36e621ef568719cc53b368144670d1",
+    "rehearsal.log": "0fd7aa08f7c0b838f9a99b3fdb3a6766e6645f73806e5d25732ca9c08ef8f030",
+    "export-old.zip": "0a3f82e362be7915795c5ea42a6c9295606cea05b2c3becbf7b4534848589a9d",
+    "export-new-failed.zip": "7d7fdff2f2eaa7d643783ea5042e0dd8cdc798ce1a0a6343c525badda1ef99ca",
+    "export-p-rolled-back.zip": "abf722ea2ca7e06318850bf62884559643e2c7d3b35b113ac44925d2fc4dd112",
+    "native-stdout.log": "d7e8e95727a4d4fe9ddbb2ac8bd07ec477d79afc41ac32052585d79a984d1725"
+  },
+  "command": "node scripts/heavy.mjs node scripts/cutover-rehearsal.mjs rehearse --old c7e07a2256d08c0a7ebff201a1c625b711046692 --new 5e038d6f7cf573bcd73c6988189baa82577e8a06 --frontends --smoke-gap-ms 300000",
+  "scriptSha256": "f7aa7aef0509c6964fae5c3588b113858b4f887dcfc89cc7d4e01d4e15332779",
+  "binding": {
+    "old": "c7e07a2256d08c0a7ebff201a1c625b711046692",
+    "release": "5e038d6f7cf573bcd73c6988189baa82577e8a06",
+    "c": "93b08fd084679fba52431ab2abed0afabcc4abe2"
+  }
+}

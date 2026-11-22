@@ -1,0 +1,71 @@
+{
+  "release": "295323064cf4b6f5fb30595ae2129f17c3ffdaca",
+  "toolchain": {
+    "localBun": "1.4.5",
+    "localNode": "22.22.3",
+    "hostedPreviewBun": "1.4.4"
+  },
+  "fullIntegration": {
+    "exit": 0,
+    "logSha256": "63dfe8b05e140e088fc950bd2dd03487ced6f42116e468ab41bebdeaae241d07",
+    "unitPassed": 4305,
+    "unitFilesPassed": 378,
+    "bookingUiPassed": 814,
+    "realClerkEndToEndPassed": 86,
+    "startBuild": "pass"
+  },
+  "architecture": {
+    "passed": 32,
+    "total": 32
+  },
+  "routeTreeDiff": "empty",
+  "noUndefScripts": 66,
+  "knip": "pass",
+  "budgets": [
+    {
+      "key": "home",
+      "raw": 782031,
+      "gzip": 242844,
+      "brotli": 206801
+    },
+    {
+      "key": "room",
+      "raw": 771290,
+      "gzip": 239390,
+      "brotli": 203603
+    },
+    {
+      "key": "property",
+      "raw": 1190746,
+      "gzip": 384926,
+      "brotli": 333023
+    },
+    {
+      "key": "checkout",
+      "raw": 1495407,
+      "gzip": 469672,
+      "brotli": 406503
+    }
+  ],
+  "devRestart": {
+    "testedSource": "final local-dev scripts, on isolated corrected tree prior to binding the release commit",
+    "fullRunsPassed": 2,
+    "scope": [
+      "local seed and data persistence",
+      "shutdown and restart",
+      "terminal-close SIGHUP",
+      "occupied port cleanup"
+    ],
+    "firstFailure": "stale launcher label",
+    "secondFailure": "empty Vite public environment values",
+    "localLogSha256": [
+      "799a1448f08d4ffa00d8e5b8e49414a77d91f0d362b6d2a41258dbe1b0568515",
+      "6a874dc58677902429542c2d92b8ef578e1b1eedcc93fbdfa111508dda75b975"
+    ]
+  },
+  "smoke": {
+    "standaloneSource": "c4f26bd58ae80bee138579e8cc39b5da5cf1f5db",
+    "standaloneExit": 0,
+    "finalSourceCoverage": "full real-Clerk E2E includes smoke specs"
+  }
+}
