@@ -67,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -78,7 +78,7 @@ jobs:
           node-version: '22'
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:booking-ui --shard=${{ matrix.shard }}/6
+      - run: pnpm test:booking-ui --shard=${{ matrix.shard }}/8
 
   integration:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
@@ -137,10 +137,6 @@ jobs:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
     # No pull_request_target or authenticated artifact upload.
     runs-on: ubuntu-24.04
-    # Match @playwright/test in pnpm-lock.yaml so Chromium and its fonts are present.
-    container:
-      image: mcr.microsoft.com/playwright:v1.60.0-noble
-      options: --ipc=host
     env:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
       CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
@@ -166,6 +162,24 @@ jobs:
           test -n "$CLERK_JWT_ISSUER_DOMAIN"
           [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" == pk_test_* ]]
           [[ "$CLERK_SECRET_KEY" == sk_test_* ]]
+      - name: Read installed Playwright version
+        id: playwright-version
+        # Frozen install resolves this exact version from pnpm-lock.yaml.
+        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
+      - name: Install Playwright Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install chromium
+      - name: Check Chromium can launch for lifecycle acceptance
+        run: |
+          if ! node -e "require('@playwright/test').chromium.launch().then(browser => browser.close()).catch(() => process.exit(1))"; then
+            pnpm exec playwright install-deps chromium
+          fi
       - name: Cache downloadable Convex backend binaries
         uses: actions/cache@v4
         with:
