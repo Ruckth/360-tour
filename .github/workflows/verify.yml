@@ -13,15 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: bun install --frozen-lockfile
+      - uses: ./.github/actions/setup
       - run: bun check
       - run: bun run knip
       - run: bun run arch:score --phase "$(cat .arch-phase)"
@@ -31,27 +23,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4]
+    env:
+      VITEST_MAX_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: Unit, DOM and Convex shard
+        run: bun run test:unit --project unit --project dom --project convex --shard=${{ matrix.shard }}/4
+
+  guards:
+    # Serial repository guards and messaging benchmark run independently from unit shards.
+    runs-on: ubuntu-24.04
     env:
       VITEST_MAX_WORKERS: '4'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: bun install --frozen-lockfile
-      - name: Unit, DOM and Convex shard
-        run: bun run test:unit --project unit --project dom --project convex --shard=${{ matrix.shard }}/2
+      - uses: ./.github/actions/setup
       - name: Serial repository guards (once overall)
-        if: matrix.shard == 1
         run: bun run test:guards
       - name: Verify one durable write per messaging acknowledgement
-        if: matrix.shard == 1
         run: bun run bench:messaging
 
   components:
@@ -60,33 +53,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: bun install --frozen-lockfile
-      - name: Read installed Playwright version
-        id: playwright-version
-        # Frozen install resolves this exact version from bun.lock.
-        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: bun run playwright install --with-deps chromium
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: bun run playwright install-deps chromium
-      - run: bun run test:booking-ui --shard=${{ matrix.shard }}/2
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - run: bun run test:booking-ui --shard=${{ matrix.shard }}/8
 
   integration:
     # Forks receive no secrets and fail preflight; a skipped job must not imply verification.
@@ -99,39 +71,10 @@ jobs:
       VITEST_MAX_WORKERS: '4'
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.5
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - run: bun install --frozen-lockfile
       - name: Require dedicated Clerk test tenant
-        shell: bash
-        run: |
-          test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY"
-          test -n "$CLERK_SECRET_KEY"
-          test -n "$CLERK_JWT_ISSUER_DOMAIN"
-          [[ "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" == pk_test_* ]] || exit 1
-          [[ "$CLERK_SECRET_KEY" == sk_test_* ]] || exit 1
-      - name: Read installed Playwright version
-        id: playwright-version
-        # Frozen install resolves this exact version from bun.lock.
-        run: node -p '"version=" + require("@playwright/test/package.json").version' >> "$GITHUB_OUTPUT"
-      - name: Cache Playwright browsers
-        id: playwright-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright-version.outputs.version }}
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: bun run playwright install --with-deps chromium
-      - name: Install Playwright system dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: bun run playwright install-deps chromium
+        run: bash .github/scripts/require-clerk-test.sh
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
       - name: Cache Next build intermediates
         uses: actions/cache@v4
         with:
@@ -151,19 +94,69 @@ jobs:
         run: bun run test:e2e
       - name: Check initial JavaScript budgets on the integration build
         run: bun run bench:routes --check-budgets
+      # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
+
+  integration_start:
+    # TanStack Start build, E2E, route tree check and initial JS budgets run in parallel with Next.
+    runs-on: ubuntu-24.04
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+      CLERK_JWT_ISSUER_DOMAIN: ${{ secrets.E2E_CLERK_JWT_ISSUER_DOMAIN }}
+      VITEST_MAX_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require dedicated Clerk test tenant
+        run: bash .github/scripts/require-clerk-test.sh
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Restore downloadable Convex backend binaries
+        uses: actions/cache/restore@v4
+        with:
+          # Only binaries/dashboard; private deployment and auth state stay in output/.
+          path: ~/.cache/360-tour/convex
+          key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}
+          restore-keys: |
+            convex-${{ runner.os }}-${{ runner.arch }}-
       - name: Build and run Start E2E against a fresh seeded backend
         run: bun run test:e2e:start
       - name: Confirm the committed route tree matches the Start build
         run: git diff --exit-code -- src/start-app/routeTree.gen.ts
       - name: Check all four Start initial JavaScript budgets
         run: bun run bench:routes:start
+      # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
+
+  devcheck:
+    # Persistent local development restart, real Clerk and failure cleanup run independently.
+    runs-on: ubuntu-24.04
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.E2E_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.E2E_CLERK_SECRET_KEY }}
+      CLERK_JWT_ISSUER_DOMAIN: ${{ secrets.E2E_CLERK_JWT_ISSUER_DOMAIN }}
+      # Convex typechecking already runs in static via bun check (tsgo).
+      LOCAL_DEV_SKIP_TYPECHECK: '1'
+      VITEST_MAX_WORKERS: '4'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require dedicated Clerk test tenant
+        run: bash .github/scripts/require-clerk-test.sh
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Restore downloadable Convex backend binaries
+        uses: actions/cache/restore@v4
+        with:
+          # Only binaries/dashboard; private deployment and auth state stay in output/.
+          path: ~/.cache/360-tour/convex
+          key: convex-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('bun.lock', 'bunfig.toml', '.bun-version') }}
+          restore-keys: |
+            convex-${{ runner.os }}-${{ runner.arch }}-
       - name: Verify persistent local dev restart, real Clerk and failure cleanup
         run: bun run test:dev
       # Authenticated state, traces, screenshots and backend logs are intentionally never uploaded.
 
   verify:
     name: verify
-    needs: [static, unit, components, integration]
+    needs: [static, unit, guards, components, integration, integration_start, devcheck]
     if: always()
     runs-on: ubuntu-24.04
     steps:

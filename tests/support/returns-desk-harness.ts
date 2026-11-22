@@ -155,9 +155,11 @@ async function seedVisitVariant(ctx: MutationCtx, variant: ReturnsVariant, creat
   return orderId;
 }
 
+const CONVEX_MODULES = import.meta.glob("../../convex/**/*.ts");
+
 /** One isolated database per fixture session; every call names who makes it (two screens, one database). */
 export async function createFixtureBackend(options: { variant?: ReturnsVariant } = {}) {
-  const t = convexTest(schema, import.meta.glob("../../convex/**/*.ts"));
+  const t = convexTest(schema, CONVEX_MODULES);
   const identity = (who: HarnessRole) => ({ email: EMAILS[who], emailVerified: true, tokenIdentifier: `https://test.clerk.dev|${EMAILS[who]}` });
   const orderId = await t.run(async (ctx) => {
     const now = Date.now();
