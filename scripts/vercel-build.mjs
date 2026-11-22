@@ -27,7 +27,7 @@ try {
   if (process.env.VERCEL_ENV === 'production') {
     // Preserve the existing production path. No preview seed or production cutover here.
     if (process.env.VERCEL !== '1' || !/^prod:wary-toad-189\|[^\s|]+$/.test(process.env.CONVEX_DEPLOY_KEY || '')) throw new Error('Production requires its explicit deployment key; Preview keys cannot target production');
-    await run(process.execPath, [cli, 'deploy', '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'pnpm build'], process.env, true);
+    await run(process.execPath, [cli, 'deploy', '--cmd-url-env-var-name', 'NEXT_PUBLIC_CONVEX_URL', '--cmd', 'bun run build'], process.env, true);
   } else {
     const { branch } = previewConfiguration(process.env);
     work = await fs.mkdtemp(path.join(os.tmpdir(), '360-preview-build-'));
@@ -51,7 +51,7 @@ try {
       seed: () => convex(['run', '--preview-name', branch, 'maintenance/seed:seedAll', '{"scenario":"demo-resort"}']),
       build: async url => {
         console.log('Preview backend deployed; empty-only seed complete. Building Next.');
-        await run('pnpm', ['build'], previewFrontendEnvironment(env, url), true);
+        await run('bun', ['run', 'build'], previewFrontendEnvironment(env, url), true);
       },
     });
     console.log(`Preview initialization: ${result}.`);

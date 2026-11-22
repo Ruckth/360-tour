@@ -7,7 +7,7 @@ import { expect, it } from 'vitest';
 it('keeps ESLint untyped and checks floating promises with the standard oxlint script', async () => {
   const pkg = JSON.parse(await readFile('package.json', 'utf8'));
   expect(pkg.scripts['lint:types']).toBe('oxlint --type-aware -A all -D typescript/no-floating-promises');
-  expect(pkg.scripts.lint).toContain('pnpm lint:types');
+  expect(pkg.scripts.lint).toContain('bun run lint:types');
   const eslint = new ESLint();
   const config = await eslint.calculateConfigForFile('tests/unit/eslint-guardrails.test.ts');
   expect(config.languageOptions.parserOptions.project).toBeUndefined();
@@ -18,12 +18,12 @@ it('keeps ESLint untyped and checks floating promises with the standard oxlint s
   ];
   try {
     for (const file of fixtures) await writeFile(file, 'async function operation() { return 1; }\noperation();\nexport {};\n');
-    const bad = await promisify(execFile)('pnpm', ['lint:types', ...fixtures]).catch(error => error);
+    const bad = await promisify(execFile)('bun', ['run', '--silent', 'lint:types', ...fixtures]).catch(error => error);
     expect(bad.code).toBe(1);
     expect(bad.stdout).toContain('no-floating-promises');
     for (const file of fixtures) expect(bad.stdout).toContain(file);
     for (const file of fixtures) await writeFile(file, 'async function operation() { return 1; }\nawait operation();\nexport {};\n');
-    await expect(promisify(execFile)('pnpm', ['lint:types', ...fixtures])).resolves.toMatchObject({ stderr: '' });
+    await expect(promisify(execFile)('bun', ['run', '--silent', 'lint:types', ...fixtures])).resolves.toMatchObject({ stderr: '' });
   } finally {
     await Promise.all(fixtures.map(file => rm(file, { force: true })));
   }

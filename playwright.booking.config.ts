@@ -21,7 +21,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `pnpm exec vite --config tests/browser/vite.config.ts --port ${port} --strictPort`,
+    command: `bun run vite --config tests/browser/vite.config.ts --port ${port} --strictPort`,
     url: `${baseURL}/tests/browser/index.html`,
     reuseExistingServer: false,
   },

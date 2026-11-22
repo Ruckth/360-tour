@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Local synthetic benchmarks only; never part of `pnpm test:unit`.
+// Local synthetic benchmarks only; never part of `bun run test:unit`.
 export default defineConfig({
   test: {
     include: ["tests/bench/**/*.vitest.ts"],

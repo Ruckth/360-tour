@@ -5,7 +5,7 @@ const parallel = process.argv[2] === '--parallel';
 const scripts = process.argv.slice(parallel ? 3 : 2);
 async function run(script) {
   return await new Promise(resolve => {
-    const child = spawn('pnpm', ['run', script], { stdio: 'inherit' });
+    const child = spawn('bun', ['run', script], { stdio: 'inherit' });
     child.once('error', error => { console.error(error); resolve(1); });
     child.once('exit', code => resolve(code ?? 1));
   });

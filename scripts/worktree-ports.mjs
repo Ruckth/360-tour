@@ -35,7 +35,7 @@ export function readWorktreePorts(root) {
   if (!ports || typeof ports !== 'object' || Array.isArray(ports) ||
       !Object.entries(ports).every(([key, value]) =>
         ['LOCAL_DEV_PORT', 'BOOKING_UI_PORT'].includes(key) && Number.isInteger(value) && Number(value) >= 1024 && Number(value) <= 65535)) {
-    throw new Error(`Invalid ${portsFilename}; rerun pnpm worktree:setup`);
+    throw new Error(`Invalid ${portsFilename}; rerun bun run worktree:setup`);
   }
   return ports;
 }

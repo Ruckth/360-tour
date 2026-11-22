@@ -26,7 +26,7 @@ export function runRequiredSuites(root, files, requiredTitles = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'architecture-suites-'));
   try {
     const reportPath = join(directory, 'results.json');
-    const result = spawnSync(process.execPath, ['scripts/heavy.mjs', 'pnpm', 'exec', 'vitest', 'run', ...files,
+    const result = spawnSync(process.execPath, ['scripts/heavy.mjs', 'bun', 'run', 'vitest', 'run', ...files,
       '--reporter=json', `--outputFile=${reportPath}`], {
       cwd: root, encoding: 'utf8', timeout: 180_000, maxBuffer: 4 * 1024 * 1024,
     });

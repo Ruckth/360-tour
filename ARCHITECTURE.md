@@ -115,33 +115,34 @@ This example adds a bounded admin-only note list to **catalog**. It is documenta
    }
    ```
 
-   Use existing UI primitives, translations, capability UI and the admin error boundary for the complete product screen. Never synthesize notes on failure. Await writes at the operation boundary and present actionable errors. Effects can explicitly `void` an operation only when its failure handling and cancellation already live inside it; `void` itself does not catch rejection. `no-floating-promises` is checked by type-aware oxlint through `pnpm lint:types`, including app/backend/tests/scripts; ESLint runs without a type program; `no-misused-promises` is not enabled.
+   Use existing UI primitives, translations, capability UI and the admin error boundary for the complete product screen. Never synthesize notes on failure. Await writes at the operation boundary and present actionable errors. Effects can explicitly `void` an operation only when its failure handling and cancellation already live inside it; `void` itself does not catch rejection. `no-floating-promises` is checked by type-aware oxlint through `bun run lint:types`, including app/backend/tests/scripts; ESLint runs without a type program; `no-misused-promises` is not enabled.
 
 4. Validate and capture evidence. Include desktop/mobile, loading/empty/error, keyboard/focus, pending and successful save states for a changed UI. For protected screens use the actual local Clerk session; component actors are separate focused test tools. Keep authenticated artifacts private. No screenshot is needed for this Phase 3e tooling/documentation change because it changes no rendered behavior.
 
 ## Current validation commands
 
-Use Node 22 (`PATH=/opt/homebrew/opt/node@22/bin:$PATH` on this Mac) and `VITEST_MAX_WORKERS=2` locally (CI defaults to four). Vitest caps this ceiling at available CPUs. Heavy commands enter the shared three-slot queue.
+Use Bun 1.4.5 (see `.bun-version`), Node 22 and `VITEST_MAX_WORKERS=2` locally (CI defaults to four). Vitest caps this ceiling at available CPUs. Heavy commands enter the shared three-slot queue.
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm check:fast              # TS 7 types, typed oxlint, cached untyped ESLint
-pnpm typecheck               # app/test/Convex TS 7 checks in parallel
-pnpm lint                    # untyped ESLint --max-warnings 0 + typed oxlint
-pnpm knip
-pnpm test:unit               # all four Vitest projects, queued; full former default
-pnpm test:pure               # pure/Node tests and pure backend leaves
-pnpm test:guards             # serial CLI/repository guards, 60-second default timeout
-pnpm test:dom <file-filter>   # DOM views, same real Convex harness
-pnpm test:convex <filter>     # edge-runtime backend suites
-pnpm verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
-pnpm arch:score --phase 4    # clean-tree is reported, not gated
-pnpm arch:score --phase4     # equivalent spelling, 31 completed-phase gates
+bun install --frozen-lockfile
+bun check                   # full static gate
+bun run check:fast              # TS 7 types, typed oxlint, cached untyped ESLint
+bun run typecheck               # app/test/Convex TS 7 checks in parallel
+bun run lint                    # untyped ESLint --max-warnings 0 + typed oxlint
+bun run knip
+bun run test:unit               # all four Vitest projects, queued; full former default
+bun run test:pure               # pure/Node tests and pure backend leaves
+bun run test:guards             # serial CLI/repository guards, 60-second default timeout
+bun run test:dom <file-filter>   # DOM views, same real Convex harness
+bun run test:convex <filter>     # edge-runtime backend suites
+bun run verify:integration      # types, zero-warning lint, unit/backend, build, component UI, real Clerk E2E
+bun run arch:score --phase 4    # clean-tree is reported, not gated
+bun run arch:score --phase4     # equivalent spelling, 31 completed-phase gates
 ```
 
 A scorecard phase flag measures/reports only metrics due through that phase; omit the flag for the complete report. CI uses `.arch-phase` (currently 4), so all 31 completed-phase gates remain enforced. The `clean-tree` count of modified tracked files is advisory and never fails a phase run, and required test files execute in one bounded Vitest run and count only with nonzero cases all passing (no skipped, pending or todo cases). Each file must also report every explicitly required regression title as passed; deleting or renaming a required case fails the gate even if its remaining cases pass. The 16 required titles are listed with their owning files in `scripts/arch-scorecard.mjs`. Phase 0 requires one file, Phase 1 two, Phase 2 two and Phase 4 one. This adds a small backend-suite run to static CI and scorecard invocations.
 
-`pnpm verify` holds one machine-wide heavy slot while running typechecks, zero-warning lint, all four test projects and a production build with real configured app variables. `pnpm vercel-build` also type-checks before its deploy/build wrapper; Next skips its duplicate TypeScript pass. With no configuration it must fail clearly. `pnpm verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `pnpm test:booking-ui` covers component/browser behavior; `pnpm test:e2e` owns a complete local backend/auth/build lifecycle. Heavy commands use `scripts/heavy.mjs` (three shared slots; nested calls reuse their slot). Keep this checkout’s heavy commands sequential and set `VITEST_MAX_WORKERS=2` locally; CI defaults to four workers and bypasses the machine queue.
+`bun run verify` holds one machine-wide heavy slot while running typechecks, zero-warning lint, all four test projects and a production build with real configured app variables. The full static gate runs once per verification. `bun run vercel-build` also type-checks before its deploy/build wrapper; Next skips its duplicate TypeScript pass. With no configuration it must fail clearly. `bun run verify:integration` provisions its own anonymous local Convex, seeds only that fresh backend and uses three dedicated Clerk test fields from CI or ignored mode-600 `.env.e2e.local`. Run-owned test users are removed afterward. It refuses production Clerk keys and disables outbound business providers. `bun run test:booking-ui` covers component/browser behavior; `bun run test:e2e` owns a complete local backend/auth/build lifecycle. Heavy commands use `scripts/heavy.mjs` (three shared slots; nested calls reuse their slot). Keep this checkout’s heavy commands sequential and set `VITEST_MAX_WORKERS=2` locally; CI defaults to four workers and bypasses the machine queue.
 
 For a refactor that claims unchanged backend contracts, compare to its **explicit reviewed parent**, not an old universal snapshot:
 
@@ -154,7 +155,7 @@ node scripts/check-function-contracts.mjs --base <reviewed-parent> --local-spec 
 
 The first compares actual schema exports offline; the second checks registration initializers/builder bindings and full HTTP/scheduler source for that refactor. These are equivalence tools, not restrictions against adding features. For an intentional contract change, review the actual schema/data rollout and update coverage/inventory deliberately. Active reset/maintenance artifact generation, rollback safety and historical schema restoration tests remain supported; follow the [reset runbook](docs/architecture/phase1-reset-runbook.md) for authorized operations. One-shot Phase 3b/3c move generators and fixed-base source proofs are historical, retired in 3e and recoverable from git. Their old commands are not current validation.
 
-`pnpm dev` now owns one private persistent checkout-local anonymous Convex and Next lifetime; it requires mode-600 `.env.dev.local`, explicit Clerk test owners and no inherited deployment target, and seeds only an empty database. `pnpm test:dev` exercises restart/auth/SIGINT/failure behavior with unique run-owned users. See the [Phase 3f operations runbook](docs/architecture/phase3f-operations.md) for command interfaces, focused Vitest projects, guarded deploy→seed→Next Preview ordering and conservative offline retention. Root owns actual key/environment settings, live Preview acceptance and all retention deletion. The [Phase 4 implementation record](docs/architecture/phase4-implementation.md) documents return contracts, measured read budgets, additive initialization and the canonical appointment audit. A passing static report does not prove live initialization, deployment acceptance or provider delivery.
+`bun run dev` now owns one private persistent checkout-local anonymous Convex and Next lifetime; it requires mode-600 `.env.dev.local`, explicit Clerk test owners and no inherited deployment target, and seeds only an empty database. `bun run test:dev` exercises restart/auth/SIGINT/failure behavior with unique run-owned users. See the [Phase 3f operations runbook](docs/architecture/phase3f-operations.md) for command interfaces, focused Vitest projects, guarded deploy→seed→Next Preview ordering and conservative offline retention. Root owns actual key/environment settings, live Preview acceptance and all retention deletion. The [Phase 4 implementation record](docs/architecture/phase4-implementation.md) documents return contracts, measured read budgets, additive initialization and the canonical appointment audit. A passing static report does not prove live initialization, deployment acceptance or provider delivery.
 
 
 No-login return validators live in the owning domain's `validators.ts`; reuse appropriate stored shapes while explicitly selecting public fields. Projection-only fields stay off admin browser responses; Web delivery/tool evidence remains on the event. Message writes update the conversation head through `patchSessionAfterMessages`; channel-event inserts/patches use the messaging projection writers. The existing `inboxState` is the canonical staff-work state. Missing projection versions retain live reads until bounded initialization completes; preserve cursor source indexes through cutover. Cross-domain callers use `messaging/model.ts`, including the guarded eval writer's initialized projection refresh. Review writers adjust exact sum/count in the owning transaction before changing the review. New appointment history writes one typed `recordChanges.appointmentAudit` payload; retain the merged historical reader and widened schema during rollback. Follow the Phase 4 runbook before any populated deployment cutover.

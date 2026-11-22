@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// CAPTURE_VIS_A=1 BOOKING_UI_PORT=4371 pnpm exec playwright test -c playwright.booking.config.ts vis-a-screenshots --workers=1
+// CAPTURE_VIS_A=1 BOOKING_UI_PORT=4371 bun run playwright test -c playwright.booking.config.ts vis-a-screenshots --workers=1
 // Same staff fixtures and actions as now-screenshots; historical archives stay unchanged.
 test.skip(process.env.CAPTURE_VIS_A !== "1", "Set CAPTURE_VIS_A=1 to capture Package A.");
 test.use({ colorScheme: "light", timezoneId: "Asia/Bangkok" });

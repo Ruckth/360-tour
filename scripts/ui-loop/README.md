@@ -1,24 +1,24 @@
 # Admin UI loop
 
-Requires Node 24, pnpm dependencies, Chromium, the existing Next server at
+Requires Node 24, bun run dependencies, Chromium, the existing Next server at
 http://localhost:3410, and `.env.local` with Clerk keys, UI_LOOP_ADMIN_EMAIL,
 UI_LOOP_BASE_URL. Set UI_LOOP_NOW to override the fixed Bangkok clock.
 No deployment, seeding, application writes, commits or pushes are performed.
 Convex websocket writes and HTTP mutation/action/run POSTs are blocked.
 
 ```sh
-pnpm ui-loop:capture --section 1-daily --round 0 --screens chats --devices phone,ipad-l
-pnpm ui-loop:capture --section all --round 0 --check-only-devices
-pnpm ui-loop:audit --section 1-daily --round 0 --auditor A --screens chats --devices ipad-l --runs 1
-pnpm ui-loop:report --section 1-daily --round 0
-pnpm ui-loop:report --all --round 0   # writes output/ui-loop/rollup-round-0.md
-pnpm ui-loop:anchors build --from output/ui-loop/1-daily/round-0
-pnpm ui-loop:audit --section 1-daily --round 0 --auditor A --runs 3 --calibrate
-pnpm ui-loop:anchors agree --from output/ui-loop/1-daily/round-0/audit-A
-pnpm ui-loop:audit --section 1-daily --round 0 --auditor B --runs 3 --prepare-only
-pnpm ui-loop:audit ingest --section 1-daily --round 0 --auditor B
-pnpm ui-loop:annotate strip --section 1-daily --screen chats --base 0 --current 1
-pnpm ui-loop:annotate callouts --section 1-daily --round 0 --screen chats --device ipad-l --notes notes.json
+bun run ui-loop:capture --section 1-daily --round 0 --screens chats --devices phone,ipad-l
+bun run ui-loop:capture --section all --round 0 --check-only-devices
+bun run ui-loop:audit --section 1-daily --round 0 --auditor A --screens chats --devices ipad-l --runs 1
+bun run ui-loop:report --section 1-daily --round 0
+bun run ui-loop:report --all --round 0   # writes output/ui-loop/rollup-round-0.md
+bun run ui-loop:anchors build --from output/ui-loop/1-daily/round-0
+bun run ui-loop:audit --section 1-daily --round 0 --auditor A --runs 3 --calibrate
+bun run ui-loop:anchors agree --from output/ui-loop/1-daily/round-0/audit-A
+bun run ui-loop:audit --section 1-daily --round 0 --auditor B --runs 3 --prepare-only
+bun run ui-loop:audit ingest --section 1-daily --round 0 --auditor B
+bun run ui-loop:annotate strip --section 1-daily --screen chats --base 0 --current 1
+bun run ui-loop:annotate callouts --section 1-daily --round 0 --screen chats --device ipad-l --notes notes.json
 ```
 
 Capture supports --concurrency, --debug-shots, --states, --inject and --out.

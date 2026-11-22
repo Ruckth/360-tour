@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { openDesk } from "./helpers/desk-taps";
 import { MONEY_DRAFT_SCENARIOS, openMoneyDraft } from "./helpers/money-drafts";
 
-// CAPTURE_NOW=1 BOOKING_UI_PORT=4370 pnpm exec playwright test -c playwright.booking.config.ts now-screenshots --workers=1
+// CAPTURE_NOW=1 BOOKING_UI_PORT=4370 bun run playwright test -c playwright.booking.config.ts now-screenshots --workers=1
 // Original archives are never written by this spec. Extras are viewport captures.
 test.skip(
   process.env.CAPTURE_NOW !== "1",

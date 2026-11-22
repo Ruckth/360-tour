@@ -4,7 +4,7 @@ Phase 3f local development and live Preview exits are accepted; `.arch-phase` is
 
 ## One persistent local command
 
-Use Node 22 and install with `pnpm install --frozen-lockfile`. Create **ignored mode-600 `.env.dev.local`**, containing only:
+Use Node 22 and install with `bun install --frozen-lockfile`. Create **ignored mode-600 `.env.dev.local`**, containing only:
 
 ```dotenv
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=<matching real Clerk test publishable key>
@@ -17,9 +17,9 @@ LOCAL_DEV_PORT=3000
 The three Clerk fields must identify the same active test tenant, with its `convex` JWT template and audience `convex`. Sign in through the actual Clerk UI with an allowlisted test account. The dev command never impersonates a user or creates a shared owner. An invalid tenant, template or owner remains an actual auth failure; no fake auth or placeholder client exists.
 
 ```sh
-pnpm dev
+bun run dev
 # Ctrl-C stops Next, the Convex CLI and its backend; data survives.
-pnpm dev                 # same backend/data, nonempty seed refusal is expected
+bun run dev                 # same backend/data, nonempty seed refusal is expected
 ```
 
 The command refuses inherited Convex deploy keys, targets and override tokens **before launching anything**. Its private selector file is rebuilt from a validated anonymous state record; even stale CLI dotenv selectors cannot choose a shared target. Unset those variables; do not substitute a shared URL. It reads only `.env.dev.local`, never ordinary dotenv files for deployment selection. Next receives explicit local URLs, the Clerk fields and disabled external-service/deploy values, which prevent its dotenv loader from restoring business credentials. Dev `HOME` is private and contains no normal Convex login. Anonymous Convex can contact Convex infrastructure for binary download/anonymous provisioning; it creates no project Preview and requires no paid upgrade or deploy key.
@@ -28,20 +28,20 @@ Private `.local-dev/` belongs to this checkout: a realpath ownership marker, exc
 
 The command configures only its anonymous loopback backend's Clerk issuer and owner allowlist, invokes the existing atomic `maintenance/seed:seedAll` with `demo-resort`, and starts Next after that finishes. The mutation checks every schema table before its first write. Its exact nonempty refusal retains the database; every other error fails startup. It does not reset, replace, import, partially repair or duplicate an existing seed. Signal/child failure stops owned process groups and releases the lock. Backend source/type errors use Convex's normal watch-and-retry behavior; first successful deployment is required before Next starts.
 
-`pnpm dev:full` is an alias. `pnpm dev:next` and `pnpm dev:convex` remain low-level commands for deliberately configured operator sessions; they do not provide this isolation. `pnpm seed` remains an explicit operator mutation and is not needed for local startup.
+`bun run dev:full` is an alias. `bun run dev:next` and `bun run dev:convex` remain low-level commands for deliberately configured operator sessions; they do not provide this isolation. `bun run seed` remains an explicit operator mutation and is not needed for local startup.
 
 ## Focused tests and full coverage
 
 ```sh
-VITEST_MAX_WORKERS=2 pnpm test:pure             # pure rules and Node tests
-VITEST_MAX_WORKERS=2 pnpm test:dom pos-order-recovery
-VITEST_MAX_WORKERS=2 pnpm test:convex adminChat
-VITEST_MAX_WORKERS=2 pnpm test:unit             # ALL four projects, queued; former default preserved
-VITEST_MAX_WORKERS=2 pnpm exec vitest --project dom  # focused watch mode
-pnpm test:guards                              # serial CLI and repository guards
-pnpm test:booking-ui                          # component/browser checks, same harness
-pnpm verify:integration                       # complete isolated backend/build/real Clerk E2E
-pnpm test:dev                                 # persistent dev lifecycle acceptance
+VITEST_MAX_WORKERS=2 bun run test:pure             # pure rules and Node tests
+VITEST_MAX_WORKERS=2 bun run test:dom pos-order-recovery
+VITEST_MAX_WORKERS=2 bun run test:convex adminChat
+VITEST_MAX_WORKERS=2 bun run test:unit             # ALL four projects, queued; former default preserved
+VITEST_MAX_WORKERS=2 bun run vitest --project dom  # focused watch mode
+bun run test:guards                              # serial CLI and repository guards
+bun run test:booking-ui                          # component/browser checks, same harness
+bun run verify:integration                       # complete isolated backend/build/real Clerk E2E
+bun run test:dev                                 # persistent dev lifecycle acceptance
 ```
 
 The projects partition the former `tests/unit/**/*.test.ts` and `convex/**/*.test.ts` defaults exactly once. Existing `happy-dom`/`edge-runtime` declarations choose DOM/Convex projects; CLI/process-spawning and repository-wide guards run in a serial Node `guards` project with a 60-second default timeout; other tests run in Node `unit`, including pure backend leaves. DOM and Convex retain the real rate-limiter component setup and existing backend harness. Unknown environment declarations fail configuration. No tests, assertions, coverage paths or explicit archive budgets are dropped; floating-promise coverage uses type-aware oxlint and ESLint retains untyped architecture checks. `test:unit` retains its historical full-suite meaning so `verify`, CI and integration keep full default coverage.
@@ -50,7 +50,7 @@ The projects partition the former `tests/unit/**/*.test.ts` and `convex/**/*.tes
 
 ## Vercel Preview ordering and root configuration
 
-The root correction pins Convex **1.50.0**. Its deploy command runs `--cmd` **before** pushing functions; `--preview-run` runs **after** the push. Thus `convex deploy --cmd 'pnpm build' --preview-run ...` can statically cache an empty catalog. The current `pnpm vercel-build` Preview path instead:
+The root correction pins Convex **1.50.0**. Its deploy command runs `--cmd` **before** pushing functions; `--preview-run` runs **after** the push. Thus `convex deploy --cmd 'bun run build' --preview-run ...` can statically cache an empty catalog. The current `bun run vercel-build` Preview path instead:
 
 1. Validates Vercel Git Preview metadata for `Ruckth/360-tour`, a non-default branch and the exact configured project-scoped Preview Deploy Key (`preview:<team>:<project>|…`). Personal, project-admin, concrete-deployment and production keys are refused.
 2. Uses installed `convex deploy --preview-name <exact-branch> --cmd 'node scripts/preview-capture.mjs'`. After claim/default inheritance, that pre-push command resolves the exact branch identity and inspects `convex env list` privately. It rejects nonempty business-provider variables before any function push, then captures the canonical URL in a private temporary file; it never builds or seeds. A rejection can leave a claimed empty deployment, but installs no functions/crons. The CLI then pushes backend/components.
@@ -63,7 +63,7 @@ The root correction pins Convex **1.50.0**. Its deploy command runs `--cmd` **be
 The existing Vercel Git integration is the workflow; there is no duplicate GitHub deploy job, personal-token CI or new cloud framework. Root owns these **external operations**, not the implementer:
 
 - Keep Vercel's existing **Preview-only** `CONVEX_DEPLOY_KEY` project Preview key. Verify its team/project scope; no token request, key value disclosure or quota upgrade is required.
-- Set Preview-only nonsecret `CONVEX_PREVIEW_TEAM`, `CONVEX_PREVIEW_PROJECT`, and `CONVEX_PREVIEW_DEFAULT_BRANCH` to the actual Convex slugs and Git default branch. Expose Vercel Git system variables. Keep the build command `pnpm vercel-build` (also set in `vercel.json`). No production environment change is part of this PR.
+- Set Preview-only nonsecret `CONVEX_PREVIEW_TEAM`, `CONVEX_PREVIEW_PROJECT`, and `CONVEX_PREVIEW_DEFAULT_BRANCH` to the actual Convex slugs and Git default branch. Expose Vercel Git system variables. Keep the build command `bun run vercel-build` (also set in `vercel.json`). No production environment change is part of this PR.
 - Set the matching test Clerk frontend variables in Vercel Preview and the matching `CLERK_JWT_ISSUER_DOMAIN`/explicit preview `ADMIN_EMAILS` through Convex project **Preview defaults**, before the first push. Validate the actual tenant/JWT template and Clerk allowed/custom domains. Remove business credentials from the Preview type of project defaults before claiming a deployment. Preserve dev/prod defaults and existing deployment environments. A post-push/pre-seed check alone is too late because pushed crons/routes are already active. Do not copy external business credentials into Preview defaults. Keep model, social, email, payment and refund providers disabled for acceptance.
 - After reviewing/merging the stack, trigger one authorized Preview. Verify its dashboard project/type/branch identity against production/shared-dev baselines; inspect actual seeded catalog, real Clerk owner and nonstaff access, a local-only durable write and a second push/rebuild retaining that write without reseed. Verify Next's rendered catalog is populated on its first build. Root owns actual Preview creation, live acceptance, GH/Vercel environment settings and any eventual production cutover.
 
@@ -75,7 +75,7 @@ Primary references checked alongside installed source/help: [Convex Vercel integ
 
 There is no urgent cleanup: root already exported/backed up and removed obsolete merged PR60–71 architecture previews with fresh project/type/branch/merge proofs; the last supplied project count is around 27. Do not delete another preview to make this implementation pass. Seven days after **both deployment creation and PR merge** is the minimum retention, not an automatic deletion date.
 
-`pnpm preview:retention` is an **offline planner**. It never reads keys, calls a network, exports data or deletes anything; there is deliberately no `--apply`. Root can use it instead of the ignored ad hoc tool after inspecting its evidence. It requires one explicit architecture branch, project id/team/slug, fresh complete inventory and GitHub proof. Default/production/shared-dev, wrong-type/project, unrelated branches, fork PRs, nonarchitecture branches, stacked PRs not yet merged to the default branch, open/closed-unmerged PRs, and reused branches with new commits are protected. A deployment name resembling a branch is never identity proof.
+`bun run preview:retention` is an **offline planner**. It never reads keys, calls a network, exports data or deletes anything; there is deliberately no `--apply`. Root can use it instead of the ignored ad hoc tool after inspecting its evidence. It requires one explicit architecture branch, project id/team/slug, fresh complete inventory and GitHub proof. Default/production/shared-dev, wrong-type/project, unrelated branches, fork PRs, nonarchitecture branches, stacked PRs not yet merged to the default branch, open/closed-unmerged PRs, and reused branches with new commits are protected. A deployment name resembling a branch is never identity proof.
 
 Root's authorized operator procedure:
 
@@ -96,7 +96,7 @@ Root's authorized operator procedure:
 For a confirmed deleted branch use `exists: false, headSha: null`. Include **all** PRs for the branch, not only its oldest merged PR.
 
 ```sh
-pnpm preview:retention --evidence <private-evidence.json> --project-id <id> --team <team> --project <project> --branch <exact-architecture-branch>
+bun run preview:retention --evidence <private-evidence.json> --project-id <id> --team <team> --project <project> --branch <exact-architecture-branch>
 ```
 
 4. Only for an eligible exact Preview, root first exports a **complete backup including component data and file storage** using the supported installed CLI `convex export --preview-name <exact-branch> --include-file-storage --path <private-snapshot.zip>` with that project's Preview key in an isolated HOME/explicit env file. Confirm the resolved target against the inventory before export. Never reuse production/shared data. Keep the export, raw proofs and SHA-256 permanently protected through the cleanup/rollback window. Record a manifest entry `{deploymentId,deploymentName,projectId,previewIdentifier,path,exportedAt,includeFileStorage:true,sha256}`. `exportedAt` must be freshly captured after the export. Run the planner again with `--backups <private-manifest.json>`. It verifies mode-600 file/mode-700 directory, exact identity, freshness, hash, root table/storage inventories, the installed rateLimiter component table/storage inventories and **every ZIP member's CRC** under a 30-second budget before emitting an operator endpoint. No endpoint is emitted for a protected or unbacked preview.

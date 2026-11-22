@@ -1,6 +1,6 @@
 import { test } from "@playwright/test";
 
-// CAPTURE_CHECKOUT_RULES=1 pnpm exec playwright test -c playwright.booking.config.ts checkout-rules-screenshots --workers=1
+// CAPTURE_CHECKOUT_RULES=1 bun run playwright test -c playwright.booking.config.ts checkout-rules-screenshots --workers=1
 // Settings › Checkout rules at the four audit widths, into output/checkout-rules/.
 test.skip(process.env.CAPTURE_CHECKOUT_RULES !== "1", "Set CAPTURE_CHECKOUT_RULES=1 to capture Checkout rules.");
 test.use({ colorScheme: "light", timezoneId: "Asia/Bangkok" });

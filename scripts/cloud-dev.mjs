@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
  * @param {Record<string, string | undefined>} env
  */
 export function requireCloudDevOptIn(env) {
-  if (env.ALLOW_CLOUD_DEV !== '1') throw new Error('Refusing shared cloud dev access. pnpm dev runs a local backend. Set ALLOW_CLOUD_DEV=1 only to intentionally use the cloud dev deployment.');
+  if (env.ALLOW_CLOUD_DEV !== '1') throw new Error('Refusing shared cloud dev access. bun run dev runs a local backend. Set ALLOW_CLOUD_DEV=1 only to intentionally use the cloud dev deployment.');
 }
 
 function main() {

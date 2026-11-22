@@ -5,7 +5,7 @@ import { UX_VIEWPORTS } from "./helpers/ux-census";
  * After screenshots for the r2 checkout and receipt pass, in docs/screenshots/ux-r2-checkout/.
  * The before set is docs/reviews/ux-audit/final-screens on ux/final-audit. Skipped in the normal
  * run; capture with:
- *   CAPTURE_UX_R2=after pnpm exec playwright test -c playwright.booking.config.ts ux-r2-checkout-screenshots
+ *   CAPTURE_UX_R2=after bun run playwright test -c playwright.booking.config.ts ux-r2-checkout-screenshots
  */
 const phase = process.env.CAPTURE_UX_R2;
 test.skip(!phase, "Set CAPTURE_UX_R2=after to capture screenshots.");

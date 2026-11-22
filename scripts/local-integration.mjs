@@ -315,14 +315,14 @@ try {
     "Fresh local backend seeded; dedicated Clerk test identities ready.",
   );
   const verify = process.argv.includes("--verify");
-  await run("pnpm", [verify ? "verify" : "build"]);
+  await run("bun", ["run", verify ? "verify" : "build"]);
   if (supplied.BENCH_SPANS_OUT) {
     await launch(process.execPath, [
       "--import", "./scripts/local-bench-next-timing.mjs",
       "./node_modules/next/dist/bin/next", "start", "-p", String(app),
     ], root, { ...env, BENCH_LOCAL_SSR: "1", BENCH_NEXT_PORT: String(app) }, "next.log");
   } else {
-    await launch("pnpm", ["exec", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
+    await launch("bun", ["run", "next", "start", "-p", String(app)], root, { ...env, BENCH_LOCAL_SSR: "" }, "next.log");
   }
   await until(async () => {
     try {
@@ -331,11 +331,11 @@ try {
       return false;
     }
   }, "Next server");
-  if (verify) await run("pnpm", ["test:booking-ui"]);
+  if (verify) await run("bun", ["run", "test:booking-ui"]);
   const separator = process.argv.indexOf("--");
   const command =
     separator < 0
-      ? ["pnpm", "exec", "playwright", "test"]
+      ? ["bun", "run", "playwright", "test"]
       : process.argv.slice(separator + 1);
   if (supplied.BENCH_SPANS_OUT) {
     benchSpans = await startBenchSpans({

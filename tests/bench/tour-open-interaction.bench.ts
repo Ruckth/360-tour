@@ -505,7 +505,7 @@ async function benchmarkMetadata(browser: Browser) {
     uploadBytesPerSec: MOBILE_PROFILE.uploadThroughput,
     expectedFirstRoom: EXPECTED_FIRST_ROOM,
     expectedFirstPanorama: EXPECTED_FIRST_PANORAMA,
-    lockSha256: digest("pnpm-lock.yaml"),
+    lockSha256: digest("bun.lock"),
     assetSha256: digest("public/tour/panoramas/v1/pool-villa-living-2048.webp"),
     seed: "demo-resort",
     sceneSeedSha256: digest("convex/maintenance/seeds/rooms.ts"),

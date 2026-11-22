@@ -56,7 +56,7 @@ const app = `http://localhost:${port}`;
 const childEnv = { PATH: process.env.PATH, ...disabledServices };
 async function start() {
   activeLog = '';
-  child = spawn(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] });
   children.push(child);
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', value => { activeLog += value; output.write(value); });
   await waitFor(async () => {
@@ -96,7 +96,7 @@ try {
   report.push(activeLog.includes('Local backend seeded from empty.') ? 'Fresh anonymous backend seeded from empty before Next.' : 'Existing local data retained; empty-only seed refused.');
   const configStat = await fs.stat('.local-dev/backend/.convex/local/default/config.json');
   assert.equal(configStat.mode & 0o077, 0);
-  const duplicate = spawnSync(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, encoding: 'utf8' });
+  const duplicate = spawnSync('bun', ['run', 'dev'], { cwd: root, env: childEnv, encoding: 'utf8' });
   assert.equal(duplicate.status, 1);
   assert.match(duplicate.stderr, /Local dev lock exists/);
   report.push('Concurrent startup refused the lock without stopping its owner.');
@@ -141,7 +141,7 @@ try {
   blocker.on('connection', socket => { blockerSockets.add(socket); socket.on('close', () => blockerSockets.delete(socket)); });
   await new Promise(resolve => blocker.listen(port, 'localhost', resolve));
   activeLog = '';
-  child = spawn(process.execPath, ['scripts/local-dev.mjs'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
+  child = spawn('bun', ['run', 'dev'], { cwd: root, env: childEnv, stdio: ['ignore', 'pipe', 'pipe'] }); children.push(child);
   for (const stream of [child.stdout, child.stderr]) stream.setEncoding('utf8').on('data', value => { activeLog += value; });
   await waitFor(async () => child.exitCode !== null, 'Next port failure cleanup', 180000);
   assert.equal(child.exitCode, 1);

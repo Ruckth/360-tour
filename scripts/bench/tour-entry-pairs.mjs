@@ -31,7 +31,7 @@ for (let batch = 1; batch <= 2; batch++) {
       const name = `batch${batch}-pair${pair}-delay${withheld}`;
       console.log(name);
       const runFile = path.join(out, name + ".json");
-      const result = spawnSync("pnpm", ["bench:browser", "tour-open-interaction", "--grep", "tour entry to first responsive frame"], {
+      const result = spawnSync("bun", ["run", "bench:browser", "tour-open-interaction", "--grep", "tour entry to first responsive frame"], {
         stdio: "inherit",
         env: {
           ...process.env,

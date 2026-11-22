@@ -4,11 +4,11 @@ Describe the user-visible result, owning domain, access policy and any schema/co
 
 ## Validation
 
-- [ ] Node 22; frozen install; `VITEST_MAX_WORKERS=4`; serial Next builds
-- [ ] `pnpm typecheck`, `pnpm lint` (zero warnings), `pnpm knip`
-- [ ] Meaningful focused tests and full `pnpm test:unit` (or included in integration)
-- [ ] `pnpm verify:integration` with the real isolated backend and dedicated Clerk test tenant
-- [ ] Clean committed tree: `pnpm arch:score --phase $(cat .arch-phase)` (currently Phase 3)
+- [ ] Bun 1.4.5 and Node 22; frozen install; `VITEST_MAX_WORKERS=4`; serial Next builds
+- [ ] `bun check`, `bun run knip`
+- [ ] Meaningful focused tests and full `bun run test:unit` (or included in integration)
+- [ ] `bun run verify:integration` with the real isolated backend and dedicated Clerk test tenant
+- [ ] Clean committed tree: `bun run arch:score --phase $(cat .arch-phase)`
 - [ ] For unchanged-contract refactors: explicit-parent schema equality and registration/HTTP/scheduler comparison
 - [ ] Describe failures, skipped checks, remaining limits and any required root-owned CI/Preview/live acceptance
 

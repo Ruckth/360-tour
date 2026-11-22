@@ -1,7 +1,7 @@
 /**
  * Records AI booking conversations over the messaging-channel pipeline (the same
  * generateConciergeReply + booking tools used by the LINE/WhatsApp/Messenger webhooks).
- * Each guest turn runs `npx convex run [--prod] maintenance/chatEval:messagingTurn` and the reply, plus
+ * Each guest turn runs `bun run convex run [--prod] maintenance/chatEval:messagingTurn` and the reply, plus
  * the tools the AI called, is rendered in a local chat page that Playwright records.
  *
  *   node scripts/ai-demo/record-messaging.ts <scenario> [--prod]
@@ -24,7 +24,7 @@ mkdirSync(join(outDir, "raw"), { recursive: true });
 mkdirSync(join(outDir, "transcripts"), { recursive: true });
 
 function convexRun<T>(fn: string, args: unknown): T {
-  const out = execFileSync("npx", ["convex", "run", ...(prod ? ["--prod"] : []), fn, JSON.stringify(args)], {
+  const out = execFileSync("bun", ["run", "convex", "run", ...(prod ? ["--prod"] : []), fn, JSON.stringify(args)], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 180_000,

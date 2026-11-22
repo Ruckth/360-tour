@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-// CAPTURE_VIS_C=1 BOOKING_UI_PORT=4373 pnpm exec playwright test -c playwright.booking.config.ts vis-c-screenshots --workers=1
+// CAPTURE_VIS_C=1 BOOKING_UI_PORT=4373 bun run playwright test -c playwright.booking.config.ts vis-c-screenshots --workers=1
 // Same fixtures, states and light-mode viewports as docs/screenshots/now/README.md.
 test.skip(process.env.CAPTURE_VIS_C !== "1", "Set CAPTURE_VIS_C=1 to capture Package C.");
 test.use({ colorScheme: "light", timezoneId: "Asia/Bangkok" });
