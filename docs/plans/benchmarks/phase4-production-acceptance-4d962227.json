@@ -1,0 +1,337 @@
+{
+  "dateUtc": "2026-11-22",
+  "environment": "Personal demo on Vercel Hobby",
+  "source": {
+    "merge": "4d9622275fba56aef635b43336f2e482d66ac2b4",
+    "old": "c7e07a2256d08c0a7ebff201a1c625b711046692",
+    "release": "5e038d6f7cf573bcd73c6988189baa82577e8a06",
+    "tree": "ad34fa88757af48c4f1883d3bec087d1112b169f"
+  },
+  "domain": "tour.helpgueststay.com",
+  "previousDeployment": "dpl_4X95Z9YtScq1mr2P6Gjd1xZ4LSfM",
+  "liveDeployment": "dpl_GFHiQEbXArMWzyRizDnrc3G5UxJN",
+  "ci": {
+    "pr": 99,
+    "checks": 19,
+    "mainRun": 45036430885,
+    "attempt": 3,
+    "conclusion": "success",
+    "head_sha": "4d9622275fba56aef635b43336f2e482d66ac2b4",
+    "status": "completed"
+  },
+  "deployedArtifacts": {
+    "deployment": "dpl_GFHiQEbXArMWzyRizDnrc3G5UxJN",
+    "revision": "4d9622275fba56aef635b43336f2e482d66ac2b4",
+    "ssrFunctions": {
+      "__server": "bun1.4.x"
+    },
+    "guestScriptGraphCount": 252,
+    "observedConvexHosts": [
+      "wary-toad-189.convex.cloud",
+      "wary-toad-189.convex.site"
+    ]
+  },
+  "compatibleInPlace": true,
+  "backendPushUtc": "2026-11-22T15:07:58.537798+00:00",
+  "stagingAndProductionSmoke": {
+    "staged": [
+      {
+        "started": "2026-11-22T15:08:22.360707+00:00",
+        "finished": "2026-11-22T15:08:36.023324+00:00",
+        "frontend": "start",
+        "clerk": "live",
+        "browserHttpStatus": 200,
+        "currentSceneReady": true,
+        "settledBeforeDrag": true,
+        "pixelsChanged": true,
+        "pageErrorCount": 0,
+        "writeAttempts": 0
+      },
+      {
+        "started": "2026-11-22T15:13:36.278762+00:00",
+        "finished": "2026-11-22T15:13:48.645609+00:00",
+        "frontend": "start",
+        "clerk": "live",
+        "browserHttpStatus": 200,
+        "currentSceneReady": true,
+        "settledBeforeDrag": true,
+        "pixelsChanged": true,
+        "pageErrorCount": 0,
+        "writeAttempts": 0
+      }
+    ],
+    "held-production": [
+      {
+        "started": "2026-11-22T15:30:17.388877+00:00",
+        "finished": "2026-11-22T15:30:33.198430+00:00",
+        "frontend": "start",
+        "clerk": "live",
+        "browserHttpStatus": 200,
+        "currentSceneReady": true,
+        "settledBeforeDrag": true,
+        "pixelsChanged": true,
+        "pageErrorCount": 0,
+        "writeAttempts": 0
+      },
+      {
+        "started": "2026-11-22T15:35:33.458519+00:00",
+        "finished": "2026-11-22T15:35:51.560188+00:00",
+        "frontend": "start",
+        "clerk": "live",
+        "browserHttpStatus": 200,
+        "currentSceneReady": true,
+        "settledBeforeDrag": true,
+        "pixelsChanged": true,
+        "pageErrorCount": 0,
+        "writeAttempts": 0
+      }
+    ],
+    "reopened": [
+      {
+        "started": "2026-11-22T15:36:26.763860+00:00",
+        "finished": "2026-11-22T15:36:37.841403+00:00",
+        "frontend": "start",
+        "clerk": "live",
+        "browserHttpStatus": 200,
+        "currentSceneReady": true,
+        "settledBeforeDrag": true,
+        "pixelsChanged": true,
+        "pageErrorCount": 0,
+        "writeAttempts": 0
+      }
+    ]
+  },
+  "temporaryHold": {
+    "routePlanNativeCheckPassedOnLive": false,
+    "routeRestored": true,
+    "preHoldRoutesVersion": "438f80f7-2cb6-43cc-9112-a53dbd590ba9",
+    "restoredRoutesVersion": "e3dcba8c-90a4-4e11-9a0b-0fa98a28015d",
+    "routeGuestStatus": 503,
+    "routeRetryAfterSeconds": 600,
+    "routePlatformError": "SERVICE_UNAVAILABLE",
+    "firewallStartVersion": 26,
+    "firewallActiveVersion": 27,
+    "firewallRestoredVersion": 28,
+    "firewallMatchesOriginal": true,
+    "guestAndOperatorMatrices": [
+      {
+        "/": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/rooms/pool-villa?tour=1": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/admin": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 307
+        },
+        "/api/internal/villa-cache": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 404
+        }
+      },
+      {
+        "/": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/rooms/pool-villa?tour=1": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/admin": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 307
+        },
+        "/api/internal/villa-cache": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        }
+      },
+      {
+        "/": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/rooms/pool-villa?tour=1": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        },
+        "/admin": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 307
+        },
+        "/api/internal/villa-cache": {
+          "guest": 403,
+          "incorrectHeader": 403,
+          "operator": 200
+        }
+      }
+    ],
+    "instagramExemptionVerifiedInEveryMatrix": true
+  },
+  "reopenedUtc": "2026-11-22T15:36:26.731089Z",
+  "observation": {
+    "since": "2026-11-22T15:36:26.731089Z",
+    "until": "2026-11-22T16:06:49.687384+00:00",
+    "http": {
+      "statuses": {
+        "403": 4,
+        "200": 61,
+        "307": 5,
+        "404": 4,
+        "204": 1,
+        "401": 1
+      },
+      "coverage": {
+        "count": 76,
+        "truncated": false,
+        "excludedIntervals": 0
+      },
+      "serverErrors": {
+        "count": 0,
+        "truncated": false,
+        "excludedIntervals": 0
+      },
+      "runtimeErrors": {
+        "count": 0,
+        "truncated": false,
+        "excludedIntervals": 0
+      }
+    },
+    "convex": {
+      "completions": 108,
+      "failures": 1,
+      "failedFunctionTypes": {
+        "Query": 1
+      },
+      "historyReachesStart": true,
+      "providerFunctionCalls": {
+        "stripe": 0,
+        "instagram": 6,
+        "whatsapp": 0,
+        "facebook": 0,
+        "line": 0,
+        "ical": 2
+      },
+      "scheduler": {
+        "states": {},
+        "truncated": false
+      }
+    }
+  },
+  "previousProductionBaseline": {
+    "since": "2026-11-22T14:30:24.972546Z",
+    "until": "2026-11-22T15:00:39.983234+00:00",
+    "http": {
+      "statuses": {
+        "200": 1
+      },
+      "coverage": {
+        "count": 1,
+        "truncated": false,
+        "excludedIntervals": 0
+      },
+      "serverErrors": {
+        "count": 0,
+        "truncated": false,
+        "excludedIntervals": 0
+      },
+      "runtimeErrors": {
+        "count": 0,
+        "truncated": false,
+        "excludedIntervals": 0
+      }
+    },
+    "convex": {
+      "completions": 75,
+      "failures": 1,
+      "failedFunctionTypes": {
+        "Query": 1
+      },
+      "historyReachesStart": true,
+      "providerFunctionCalls": {
+        "stripe": 0,
+        "instagram": 0,
+        "whatsapp": 0,
+        "facebook": 0,
+        "line": 0,
+        "ical": 2
+      },
+      "scheduler": {
+        "states": {},
+        "truncated": false
+      }
+    }
+  },
+  "finalSettings": {
+    "verifiedUtc": "2026-11-22T16:08:10.548Z",
+    "publicAliasSha": "4d9622275fba56aef635b43336f2e482d66ac2b4",
+    "queued": 0,
+    "staged": 0,
+    "maintenanceRules": 0,
+    "customFirewallRules": 0,
+    "routeContentsMatchStage0": true,
+    "firewallMatchesStage0": true,
+    "automaticDomainAssignment": true,
+    "productionEnvSourceStates": {
+      "embedded": "ok",
+      "list": "ok",
+      "shared": "ok"
+    },
+    "productionEnvNamesBefore": 22,
+    "productionEnvNamesAfter": 23,
+    "productionEnvNamesAdded": [
+      "START_VILLA_INVALIDATION_SECRET"
+    ],
+    "registeredCrons": 10,
+    "villaInvalidationOnPublicDomain": true
+  },
+  "observationCoverage": {
+    "sources": [
+      "Vercel request and runtime logs",
+      "Convex function and scheduler logs",
+      "anonymous guest smoke"
+    ],
+    "providerDashboardsReviewed": false,
+    "syntheticProductionPayment": false
+  },
+  "privateReceiptSha256": {
+    "after-promotion.json": "29a52dc25448684239db040564623ca813d472cd5a1e5493b030273a47755339",
+    "health-held-before-reopen.json": "71833e2a024e15aa07042bdee1f3a3c2b917aaa925029cdb32e98ee9d17c29f2",
+    "observe-0120s-health.json": "ef3bd59d2476d013be2d1b6bba39acabfb1c5dcdaf053bda3acabe1dfece5d48",
+    "observe-0600s-health.json": "e71c0a7ebb614c6e89bd2e44b84cc566ef0a08690c1b2df0cc2f03de026a7435",
+    "observe-1200s-health.json": "d9afd85b089ada2ef22974bad9f934f01432da1a0a15d55ac562fbd2628d4727",
+    "observe-1800s-health.json": "8b03a4edc71539d0293fc2468be52cda6ad810b0407de320e1045bc672becfa9",
+    "final-settings.json": "cabe862b6eb39819c019bf595bc440894cc283753576b554a975ba945d03e1ba",
+    "final-crons.json": "57c5f3d3acf55fc0bb86707920d0a36d490599fe5e1eeba81413a482a506f67e"
+  },
+  "evidenceCheckoutValidation": {
+    "checkFast": "pass",
+    "cutoverTests": 20,
+    "verifyUnitTests": 4341,
+    "verifyExit": 0,
+    "verifyCompletedUtc": "2026-11-22T15:57:00Z"
+  },
+  "comparedBackendFailures": [
+    {
+      "function": "pos/staffApprovals:pendingPage",
+      "atUtc": "2026-11-22T15:43:14.023476+00:00",
+      "type": "Query",
+      "sameErrorAsBeforeSwitch": true
+    }
+  ]
+}
