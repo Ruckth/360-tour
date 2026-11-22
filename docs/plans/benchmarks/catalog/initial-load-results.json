@@ -1,0 +1,596 @@
+[
+  {
+    "series": "control-then-candidate",
+    "control": {
+      "revision": "ca677461c30935b0a7490e8ba3ee18243febdc1e",
+      "sha256": {
+        "samples": "23134a89e2ce5c64521d40d046297ba5de40fc318a99f36d8dd10cd20a496103",
+        "spans": "d2bae593f21ad1cf76a15fe86bd93111411daf967b16c37cabd7fadcbcfe1d5a"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": false,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "candidate": {
+      "revision": "a64bf1989c6dda82b57223cd0ac87695ccfb5840",
+      "sha256": {
+        "samples": "02315e01c6db9cc496242f9a8b8663215698e3adbbf7789e1012b6c498590abb",
+        "spans": "e78666bc627115556e99af3616578fa13ff6ef3cbbf3cdf499d26dac6a64193f"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": false,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "passed": true,
+    "comparisons": [
+      {
+        "operation": "checkout/1",
+        "control": {
+          "n": 100,
+          "median": 18.357271000000765,
+          "p95": 23.292124999999942
+        },
+        "candidate": {
+          "n": 100,
+          "median": 17.934354000000894,
+          "p95": 22.106040999999095
+        },
+        "p95Percent": -5.092210350068315,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "checkout/10",
+        "control": {
+          "n": 100,
+          "median": 22.709812500001135,
+          "p95": 27.962791999998444
+        },
+        "candidate": {
+          "n": 100,
+          "median": 19.580333499998233,
+          "p95": 23.519957999997132
+        },
+        "p95Percent": -15.888377669874876,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "featured-post-edit/1",
+        "control": {
+          "n": 100,
+          "median": 11.560563000000911,
+          "p95": 31.553749999999127
+        },
+        "candidate": {
+          "n": 100,
+          "median": 7.005895499999497,
+          "p95": 11.041958000001614
+        },
+        "p95Percent": -65.00587727290126,
+        "maxChange": -20,
+        "passed": true
+      },
+      {
+        "operation": "featured-post-edit/10",
+        "control": {
+          "n": 100,
+          "median": 19.943562500000553,
+          "p95": 30.176832999997714
+        },
+        "candidate": {
+          "n": 100,
+          "median": 7.625041499999497,
+          "p95": 11.562459000000672
+        },
+        "p95Percent": -61.68431922593882,
+        "maxChange": -20,
+        "passed": true
+      },
+      {
+        "operation": "featured-warm/1",
+        "control": {
+          "n": 100,
+          "median": 0.8866045000013401,
+          "p95": 2.0228340000030585
+        },
+        "candidate": {
+          "n": 100,
+          "median": 0.8151250000009895,
+          "p95": 1.630457999999635
+        },
+        "p95Percent": -19.397340562934495,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "featured-warm/10",
+        "control": {
+          "n": 100,
+          "median": 2.4046870000020135,
+          "p95": 4.3978750000023865
+        },
+        "candidate": {
+          "n": 100,
+          "median": 1.4599584999996296,
+          "p95": 2.194916000000376
+        },
+        "p95Percent": -50.09144188956747,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "inbox/1",
+        "control": {
+          "n": 100,
+          "median": 18.39489549999962,
+          "p95": 23.245332999998936
+        },
+        "candidate": {
+          "n": 100,
+          "median": 17.808937999997397,
+          "p95": 21.846042000001034
+        },
+        "p95Percent": -6.019664248294343,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "inbox/10",
+        "control": {
+          "n": 100,
+          "median": 21.174770500001614,
+          "p95": 28.54979199999798
+        },
+        "candidate": {
+          "n": 100,
+          "median": 19.448624999997264,
+          "p95": 22.93437499999709
+        },
+        "p95Percent": -19.66885433001153,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "review-write/1",
+        "control": {
+          "n": 100,
+          "median": 25.383812500000204,
+          "p95": 46.11833399999887
+        },
+        "candidate": {
+          "n": 100,
+          "median": 24.52479200000198,
+          "p95": 29.063083000000915
+        },
+        "p95Percent": -36.981498507726606,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "review-write/10",
+        "control": {
+          "n": 10,
+          "median": 30.009603999998944,
+          "p95": 47.92937499999971
+        },
+        "candidate": {
+          "n": 10,
+          "median": 23.69160350000311,
+          "p95": 28.73370799999975
+        },
+        "p95Percent": -40.04990050464892,
+        "maxChange": 5,
+        "passed": true
+      }
+    ]
+  },
+  {
+    "series": "candidate-then-control",
+    "control": {
+      "revision": "d3b3623c68c1492c21e18a7c3d9665dc73a120dc",
+      "sha256": {
+        "samples": "1971d66d5fc8ff821aeb3523c8c9b1d745d1212a6a11fb3ac6a6b001b21667ee",
+        "spans": "9cab167b2ee45db94965a0e4f08e4fbf20daf6408dc7f9ca531c5d395887b71f"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": false,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "candidate": {
+      "revision": "f775e9396400dc942d54546e7908c600fd08b246",
+      "sha256": {
+        "samples": "fcc0abadc3e6febcdd47c0f71881905379c1441051cd3b01ec76bd6b21f57722",
+        "spans": "beaf1ac68ea77100f390bbf0d1501a50a73c873b99a85adc757339a601f4cae4"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": false,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "passed": false,
+    "comparisons": [
+      {
+        "operation": "checkout/1",
+        "control": {
+          "n": 100,
+          "median": 17.94977150000159,
+          "p95": 21.880667000001267
+        },
+        "candidate": {
+          "n": 100,
+          "median": 18.725187500000175,
+          "p95": 24.220249999998487
+        },
+        "p95Percent": 10.692466550480773,
+        "maxChange": 5,
+        "passed": false
+      },
+      {
+        "operation": "checkout/10",
+        "control": {
+          "n": 100,
+          "median": 20.95270850000088,
+          "p95": 23.08170799999789
+        },
+        "candidate": {
+          "n": 100,
+          "median": 20.92756250000093,
+          "p95": 27.420250000002852
+        },
+        "p95Percent": 18.796451285170757,
+        "maxChange": 5,
+        "passed": false
+      },
+      {
+        "operation": "featured-post-edit/1",
+        "control": {
+          "n": 100,
+          "median": 13.89654150000024,
+          "p95": 38.680292000004556
+        },
+        "candidate": {
+          "n": 100,
+          "median": 9.166646000003311,
+          "p95": 22.98066700000345
+        },
+        "p95Percent": -40.58817601480169,
+        "maxChange": -20,
+        "passed": true
+      },
+      {
+        "operation": "featured-post-edit/10",
+        "control": {
+          "n": 100,
+          "median": 16.455479000000196,
+          "p95": 38.861041999996814
+        },
+        "candidate": {
+          "n": 100,
+          "median": 9.664582999997947,
+          "p95": 38.85583299999416
+        },
+        "p95Percent": -0.013404169663411292,
+        "maxChange": -20,
+        "passed": false
+      },
+      {
+        "operation": "featured-warm/1",
+        "control": {
+          "n": 100,
+          "median": 1.064250000001266,
+          "p95": 2.9834999999984575
+        },
+        "candidate": {
+          "n": 100,
+          "median": 0.9640830000007554,
+          "p95": 4.387834000001021
+        },
+        "p95Percent": 47.07001843483458,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "featured-warm/10",
+        "control": {
+          "n": 100,
+          "median": 2.45745800000077,
+          "p95": 4.492500000000291
+        },
+        "candidate": {
+          "n": 100,
+          "median": 1.7041464999965683,
+          "p95": 8.600415999993857
+        },
+        "p95Percent": 91.43942125750249,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "inbox/1",
+        "control": {
+          "n": 100,
+          "median": 18.25445799999943,
+          "p95": 24.507458000000042
+        },
+        "candidate": {
+          "n": 100,
+          "median": 18.68481199999951,
+          "p95": 24.16029200000048
+        },
+        "p95Percent": -1.4165728652868026,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "inbox/10",
+        "control": {
+          "n": 100,
+          "median": 20.190083000001323,
+          "p95": 22.44445799999812
+        },
+        "candidate": {
+          "n": 100,
+          "median": 21.54731200000242,
+          "p95": 23.956124999996973
+        },
+        "p95Percent": 6.735145932234032,
+        "maxChange": 5,
+        "passed": false
+      },
+      {
+        "operation": "review-write/1",
+        "control": {
+          "n": 100,
+          "median": 26.508375000000342,
+          "p95": 55.213167000001704
+        },
+        "candidate": {
+          "n": 100,
+          "median": 28.22418749999906,
+          "p95": 43.01270900000236
+        },
+        "p95Percent": -22.09700812851211,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "review-write/10",
+        "control": {
+          "n": 10,
+          "median": 26.216479499998968,
+          "p95": 30.060665999997582
+        },
+        "candidate": {
+          "n": 10,
+          "median": 25.544583500002773,
+          "p95": 47.22929199999635
+        },
+        "p95Percent": 57.11325890118386,
+        "maxChange": 5,
+        "passed": false
+      }
+    ]
+  },
+  {
+    "series": "alternating-first",
+    "control": {
+      "revision": "d485c83d56d61bee04d2397cadd78c00783d1bcd",
+      "sha256": {
+        "samples": "3dcd2f521d81f47a5e50c416f8263f009bae8dfc46bf55c9756cffa85ad8a1e1",
+        "spans": "18a17bede897a29f1ee40bbacffdd933a6f9ddadcc495769321d6e386d9a4231"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": true,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "candidate": {
+      "revision": "972965d95a75034498b55d878efaadc097a2e827",
+      "sha256": {
+        "samples": "361e22ad66cacfc3021d14eb36bedb07b32043b8da54ebe6b13cfe23ba88455c",
+        "spans": "634d3745f4ed3cc1b85fbc122c5737791a2f364b2d37080ccb11ee4644416e2c"
+      },
+      "fixture": {
+        "reviews": 200,
+        "editCadenceMs": 350,
+        "paired": true,
+        "batches": {
+          "1": 100,
+          "10": 10
+        }
+      }
+    },
+    "passed": false,
+    "comparisons": [
+      {
+        "operation": "checkout/1",
+        "control": {
+          "n": 100,
+          "median": 17.963708000001134,
+          "p95": 22.328667000001587
+        },
+        "candidate": {
+          "n": 100,
+          "median": 18.434562000005826,
+          "p95": 22.09979200000089
+        },
+        "p95Percent": -1.0250276024120986,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "checkout/10",
+        "control": {
+          "n": 100,
+          "median": 20.059479499999725,
+          "p95": 24.124292000000423
+        },
+        "candidate": {
+          "n": 100,
+          "median": 19.608625000000757,
+          "p95": 23.026541999992332
+        },
+        "p95Percent": -4.550392608446585,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "featured-post-edit/1",
+        "control": {
+          "n": 100,
+          "median": 10.982374999999593,
+          "p95": 19.419792000000598
+        },
+        "candidate": {
+          "n": 100,
+          "median": 6.813521000000037,
+          "p95": 13.367332999987411
+        },
+        "p95Percent": -31.166446067048504,
+        "maxChange": -20,
+        "passed": true
+      },
+      {
+        "operation": "featured-post-edit/10",
+        "control": {
+          "n": 100,
+          "median": 11.185249999998632,
+          "p95": 25.53137499999866
+        },
+        "candidate": {
+          "n": 100,
+          "median": 6.784458500005712,
+          "p95": 8.473209000003408
+        },
+        "p95Percent": -66.8125629739728,
+        "maxChange": -20,
+        "passed": true
+      },
+      {
+        "operation": "featured-warm/1",
+        "control": {
+          "n": 100,
+          "median": 0.8276454999977432,
+          "p95": 2.1520409999975527
+        },
+        "candidate": {
+          "n": 100,
+          "median": 0.7845000000015716,
+          "p95": 1.4721250000002328
+        },
+        "p95Percent": -31.594007734894134,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "featured-warm/10",
+        "control": {
+          "n": 100,
+          "median": 1.6049375000002328,
+          "p95": 2.952707999997074
+        },
+        "candidate": {
+          "n": 100,
+          "median": 1.3173339999993914,
+          "p95": 2.0367089999926975
+        },
+        "p95Percent": -31.022336106559944,
+        "maxChange": null,
+        "passed": null
+      },
+      {
+        "operation": "inbox/1",
+        "control": {
+          "n": 100,
+          "median": 17.921854000001986,
+          "p95": 21.91108399999939
+        },
+        "candidate": {
+          "n": 100,
+          "median": 18.543166499999643,
+          "p95": 24.006084000000556
+        },
+        "p95Percent": 9.561370856874184,
+        "maxChange": 5,
+        "passed": false
+      },
+      {
+        "operation": "inbox/10",
+        "control": {
+          "n": 100,
+          "median": 19.6214579999978,
+          "p95": 22.406208000000333
+        },
+        "candidate": {
+          "n": 100,
+          "median": 19.2645835000003,
+          "p95": 23.402084000001196
+        },
+        "p95Percent": 4.444643198888665,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "review-write/1",
+        "control": {
+          "n": 100,
+          "median": 24.37010399999781,
+          "p95": 40.60112500000105
+        },
+        "candidate": {
+          "n": 100,
+          "median": 24.62724999999773,
+          "p95": 34.5067080000008
+        },
+        "p95Percent": -15.010463380017402,
+        "maxChange": 5,
+        "passed": true
+      },
+      {
+        "operation": "review-write/10",
+        "control": {
+          "n": 10,
+          "median": 23.53108400000201,
+          "p95": 28.38366700000188
+        },
+        "candidate": {
+          "n": 10,
+          "median": 25.749520499994105,
+          "p95": 35.79595800000243
+        },
+        "p95Percent": 26.11463487082222,
+        "maxChange": 5,
+        "passed": false
+      }
+    ]
+  }
+]

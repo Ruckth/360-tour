@@ -9,6 +9,7 @@ import type { Doc } from '../_generated/dataModel';
 
 const MAX_VILLAS = 100;
 const MAX_REVIEWS_SHOWN = 20;
+const MAX_FEATURED_REVIEWS_EXAMINED = 200;
 
 async function villaSocialProof(ctx: QueryCtx, propertyId: Doc<'properties'>['_id']) {
 	return await ctx.db
@@ -127,14 +128,17 @@ export const featuredReviews = publicQuery({
 		const limit = Math.min(Math.max(Math.floor(args.limit ?? 6), 1), 20);
 		const slugs = new Map<string, string | null>();
 		const results: ReturnType<typeof publicReview>[] = [];
-		for (const review of await ctx.db.query('reviews').withIndex('by_rating').order('desc').take(200)) {
+		let examined = 0;
+		const rankedReviews = ctx.db.query('reviews').withIndex('by_rating').order('desc');
+		for await (const review of rankedReviews) {
+			examined++;
 			if (!slugs.has(review.propertyId)) {
 				const property = await ctx.db.get(review.propertyId);
 				slugs.set(review.propertyId, property?.status === 'active' ? property.slug : null);
 			}
 			const slug = slugs.get(review.propertyId);
 			if (slug) results.push(publicReview(review, slug));
-			if (results.length >= limit) break;
+			if (results.length >= limit || examined >= MAX_FEATURED_REVIEWS_EXAMINED) break;
 		}
 		return results;
 	}

@@ -1,10 +1,12 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
+import { getDocumentSize } from 'convex/values';
 import { makeFunctionReference, type PaginationOptions, type PaginationResult } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
+import { boundedRoomAudit } from './settings/roomAudit';
 
 const modules = import.meta.glob('./**/*.ts');
 const list = makeFunctionReference<
@@ -268,6 +270,73 @@ describe('configuration history and safe restoration', () => {
 			(await admin.query(list, { entityType: 'room', entityId: room, paginationOpts: page })).page[0]
 		).toMatchObject({ kind: 'deleted', before: { name: 'Living', imagePath: '/living.jpg' }, after: null });
 	});
+	it('preserves an exact-fitting room audit and bounds the next byte for the longest document ID', async () => {
+		const event = { entityType: 'room' as const, entityId: 'r'.repeat(37), kind: 'created', actor: 'admin@example.com',
+			before: null, after: { name: '' } };
+		const size = (value: typeof event) => getDocumentSize({ ...value, _id: 'a'.repeat(37), _creationTime: 0, recordedAt: 0, effectiveAt: 0 });
+		const name = 'x'.repeat(1024 * 1024 - size(event));
+		const boundary = { ...event, after: { name } };
+		expect(size(boundary)).toBe(1024 * 1024);
+		expect(await boundedRoomAudit(boundary)).toBe(boundary);
+		const compact = await boundedRoomAudit({ ...event, after: { name: name + 'x' } });
+		expect(compact.after?.name).toMatchObject({ roomAuditPreview: expect.any(String), auditSha256: expect.any(String) });
+		expect(getDocumentSize({ ...compact, _id: 'a'.repeat(37), _creationTime: 0, recordedAt: 0, effectiveAt: 0 }))
+			.toBeLessThan(1024 * 1024);
+	});
+
+	it('keeps oversized room history readable and can delete a referenced room from a legacy tour', async () => {
+		const { t, admin } = setup();
+		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Legacy villa' });
+		const name = '🌴'.repeat(160_000) + 'A';
+		const large = await admin.mutation(api.catalog.adminProperties.createRoom, {
+			propertyId, slug: 'large', name, imagePath: '/large.webp'
+		});
+		const destination = await admin.mutation(api.catalog.adminProperties.createRoom, {
+			propertyId, slug: 'destination', name: 'Destination', imagePath: '/destination.webp'
+		});
+		await admin.mutation(api.catalog.properties.updateRoom, {
+			roomId: large, name: name.slice(0, -1) + 'B'
+		});
+		await t.run(async ctx => {
+			// A partial import must drop an existing certificate before adding scenes.
+			await ctx.db.patch(large, { ordinaryTourCertified: undefined });
+			await ctx.db.patch(destination, { ordinaryTourCertified: undefined });
+			for (let i = 0; i < 49; i++) {
+				await ctx.db.insert('tourScenes', {
+					propertyId, slug: `room-${i}`, name: 'Imported', imagePath: '/image.webp', hotspots: []
+				});
+			}
+		});
+		await admin.mutation(api.catalog.adminProperties.setHotspots, {
+			roomId: large, hotspots: [{ label: 'Destination', targetRoomSlug: 'destination', position: [1, 2, 3] }]
+		});
+		await admin.mutation(api.catalog.adminProperties.deleteRoom, { roomId: destination });
+		const readHistory = async () =>
+			(await admin.query(list, { entityType: 'room', entityId: large, paginationOpts: page })).page;
+		const rows = await readHistory();
+		expect(rows.every(row => getDocumentSize(row) <= 1024 * 1024)).toBe(true);
+		const [removedLink, addedLink, renamed, created] = rows;
+		expect(removedLink.before.hotspots).toMatchObject([{ label: 'Destination', targetRoomSlug: 'destination' }]);
+		expect(removedLink.after).toEqual({ hotspots: [] });
+		expect(addedLink.after.hotspots).toHaveLength(1);
+		expect(renamed.before.name).toMatchObject({
+			roomAuditPreview: '🌴'.repeat(120) + '…', auditBytes: expect.any(Number), auditSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+		});
+		expect(renamed.after.name.auditSha256).not.toBe(renamed.before.name.auditSha256);
+		expect(created.after.name).toBe(name);
+		expect((await admin.query(api.catalog.adminProperties.get, { propertyId }))?.rooms).toHaveLength(50);
+
+		await admin.mutation(api.catalog.adminProperties.deleteRoom, { roomId: large });
+		const deleted = (await readHistory())[0];
+		expect(deleted).toMatchObject({ kind: 'deleted', before: { slug: 'large', hotspots: [] }, after: null });
+		expect(getDocumentSize(deleted)).toBeLessThan(1024 * 1024);
+		const discovery = (await admin.query(records, { propertyId, paginationOpts: { numItems: 50, cursor: null } })).page;
+		expect(discovery).toEqual(expect.arrayContaining([
+			expect.objectContaining({ name: '🌴'.repeat(120) + '…', slug: 'large', deleted: true, entityId: large }),
+			expect.objectContaining({ name: 'Destination', slug: 'destination', deleted: true, entityId: destination })
+		]));
+	});
+
 	it('paginates beyond the first history page and logs OTA edits and removals', async () => {
 		const { admin } = setup();
 		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });

@@ -2,6 +2,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { BUSINESS_FIELDS, type EffectiveSettings } from '../shared/siteSettings';
 import { appendRecordHistory } from './recordWriter';
+import { boundedRoomAudit, roomAuditLabel } from './roomAudit';
 
 /** Allow lists, never a spread of a database row: tokens and future provider fields stay out. */
 export function settingsSnapshot(settings: EffectiveSettings) {
@@ -59,19 +60,26 @@ export async function logConfiguration(
 	const propertyId = type === 'property' ? (row._id as Id<'properties'>) : (row as Doc<'tourScenes'>).propertyId;
 	const snapshot = (value: typeof row) =>
 		type === 'property' ? propertySnapshot(value as Doc<'properties'>) : roomSnapshot(value as Doc<'tourScenes'>);
-	await appendRecordHistory(ctx, {
-		entityType: type,
+	const event = {
 		entityId,
 		actor,
 		kind,
 		before: before ? snapshot(before) : null,
 		after: after ? snapshot(after) : null
-	});
+	};
+	await appendRecordHistory(ctx, type === 'room'
+		? await boundedRoomAudit({ entityType: 'room', ...event })
+		: { entityType: 'property', ...event });
 	const existing = await ctx.db
 		.query('configurationHistoryIndex')
 		.withIndex('by_entityType_and_entityId', (q) => q.eq('entityType', type).eq('entityId', entityId))
 		.unique();
-	const fields = { name: row.name, slug: row.slug, deleted: !after, updatedAt: Date.now() };
+	const fields = {
+		name: type === 'room' ? roomAuditLabel(row.name) : row.name,
+		slug: type === 'room' ? roomAuditLabel(row.slug) : row.slug,
+		deleted: !after,
+		updatedAt: Date.now()
+	};
 	if (existing) await ctx.db.patch(existing._id, fields);
 	else await ctx.db.insert('configurationHistoryIndex', { entityType: type, entityId, propertyId, ...fields });
 }
@@ -94,10 +102,9 @@ export function configurationWriter(ctx: MutationCtx, actor: string) {
 			await ctx.db.patch(id, fields);
 			await logConfiguration(ctx, actor, 'updated', before, await ctx.db.get(id), 'property');
 		},
-		async patchRoom(id: Id<'tourScenes'>, fields: Partial<Omit<Doc<'tourScenes'>, '_id' | '_creationTime'>>) {
-			const before = await ctx.db.get(id);
-			await ctx.db.patch(id, fields);
-			await logConfiguration(ctx, actor, 'updated', before, await ctx.db.get(id), 'room');
+		async patchRoom(before: Doc<'tourScenes'>, fields: Partial<Pick<Doc<'tourScenes'>, 'name' | 'imagePath' | 'hotspots' | 'ordinaryTourCertified'>>) {
+			await ctx.db.patch(before._id, fields);
+			await logConfiguration(ctx, actor, 'updated', before, { ...before, ...fields }, 'room');
 		},
 		async deleteProperty(id: Id<'properties'>) {
 			await logConfiguration(ctx, actor, 'deleted', await ctx.db.get(id), null, 'property');

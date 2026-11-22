@@ -1,0 +1,296 @@
+{
+  "arms": {
+    "control": {
+      "revision": "44e7550bfcce6e1bebd16a186fb2da1a6f16d370",
+      "repeats": 100,
+      "node": "v22.22.3",
+      "arch": "arm64",
+      "platform": "darwin",
+      "verifiedResponseSha256": "e74f99be538bae61b7292688d9011b72636e98fe1623c22f616dd99c772ab8e7",
+      "sha256": {
+        "samples": "7fee8de3a92f44b323384303e9d8afd90d6e7a73bb20c651d34b234f72a5c5e4",
+        "spans": "cd96565c81c8cfbbcdb77693d54465f61f1acd0ff86604bfb32ea8860ed413e4"
+      },
+      "rows": {
+        "2": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 24.484208499998203,
+            "p95": 28.103375000006054,
+            "max": 33.98483400000259
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 4.8770620000000005,
+            "p95": 5.3778749999999995,
+            "max": 5.758125000000001
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 3.6648959999999997,
+            "p95": 4.167166,
+            "max": 4.426750999999999
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "50": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 24.2711664999988,
+            "p95": 28.585500000001048,
+            "max": 37.88079199999629
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 4.707479,
+            "p95": 5.377125,
+            "max": 5.988709
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 3.5801665,
+            "p95": 4.227164,
+            "max": 4.661581
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        }
+      }
+    },
+    "candidate": {
+      "revision": "b4dac46cb5edc11e5db45b54b70f7f7dfea59d44",
+      "repeats": 100,
+      "node": "v22.22.3",
+      "arch": "arm64",
+      "platform": "darwin",
+      "verifiedResponseSha256": "e74f99be538bae61b7292688d9011b72636e98fe1623c22f616dd99c772ab8e7",
+      "sha256": {
+        "samples": "bfff2b25532f9fea19c9ffd88efe8a651fbfd3a4b27c8b7b9f9495234577cab4",
+        "spans": "87dca7227d8375fc764bb91766f05bc94cb4e46f7b1ca2fa0c7a6f82a45b291b"
+      },
+      "rows": {
+        "2": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 26.618354000002,
+            "p95": 30.838375000006636,
+            "max": 34.190583999996306
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 5.4749795,
+            "p95": 6.764917,
+            "max": 7.788833
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 4.2563335,
+            "p95": 5.395462,
+            "max": 6.145413
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 8.0,
+            "p95": 8,
+            "max": 8
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1780.0,
+            "p95": 1780,
+            "max": 1780
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1780.0,
+            "p95": 1780,
+            "max": 1780
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "50": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 27.60987500000192,
+            "p95": 31.75974999999744,
+            "max": 41.68124999999418
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 6.8173335,
+            "p95": 8.591583,
+            "max": 9.293458
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 4.864751,
+            "p95": 6.420127,
+            "max": 7.008375
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 56.0,
+            "p95": 56,
+            "max": 56
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 14534.0,
+            "p95": 14534,
+            "max": 14534
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 14534.0,
+            "p95": 14534,
+            "max": 14534
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "rooms": 2,
+      "beforeMs": 28.103375000006054,
+      "afterMs": 30.838375000006636,
+      "p95ChangePercent": 9.731927215147618,
+      "withinFivePercent": false
+    },
+    {
+      "rooms": 50,
+      "beforeMs": 28.585500000001048,
+      "afterMs": 31.75974999999744,
+      "p95ChangePercent": 11.104406079992568,
+      "withinFivePercent": false
+    }
+  ]
+}

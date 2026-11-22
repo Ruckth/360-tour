@@ -1,0 +1,178 @@
+{
+  "revision": "3f38838e856edf14eb1169d2c41fceb4ea9b7c26",
+  "workingTreeClean": true,
+  "entry": "start",
+  "fixture": {
+    "rooms": [
+      {
+        "slug": "living",
+        "imagePath": "/tour/panoramas/v1/pool-villa-living-2048.webp"
+      },
+      {
+        "slug": "pool",
+        "imagePath": "/tour/panoramas/v1/pool-villa-pool-2048.webp"
+      },
+      {
+        "slug": "garden",
+        "imagePath": "/tour/panoramas/v1/garden-villa-360-2048.webp"
+      }
+    ],
+    "rttMs": 150
+  },
+  "scenarios": {
+    "reorderAndRemoval": {
+      "unchangedFirstImplicit": {
+        "commitToAppliedMs": 112,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "living",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Pool",
+            "Fixture Garden"
+          ]
+        }
+      },
+      "explicitKept": {
+        "commitToAppliedMs": 111,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "pool",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Garden",
+            "Fixture Living"
+          ]
+        }
+      },
+      "implicitMoved": {
+        "commitToAppliedMs": 115,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "garden",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Pool",
+            "Fixture Living"
+          ]
+        }
+      },
+      "explicitRemoved": {
+        "commitToAppliedMs": 112,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "garden",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Living",
+            "Fixture Living"
+          ]
+        }
+      }
+    },
+    "archive": {
+      "ordinary": {
+        "panoramaRequests": 0,
+        "subscriptions": 0
+      },
+      "cleared": [
+        {
+          "commitToAppliedMs": 122,
+          "deliveryToAppliedFrames": 0,
+          "applied": {
+            "status": "empty",
+            "requested": "",
+            "live": "",
+            "nav": []
+          }
+        },
+        {
+          "commitToAppliedMs": 122,
+          "deliveryToAppliedFrames": 0,
+          "applied": {
+            "status": "empty",
+            "requested": "",
+            "live": "",
+            "nav": []
+          }
+        }
+      ],
+      "reload": {
+        "status": 200,
+        "panoramaRequests": 0
+      }
+    },
+    "reconnect": {
+      "unchangedAfterHold": {
+        "commitToAppliedMs": 78,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "living",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Garden",
+            "Fixture Pool"
+          ]
+        }
+      },
+      "onlineEdit": {
+        "commitToAppliedMs": 123,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "garden",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Pool",
+            "Fixture Living"
+          ]
+        }
+      },
+      "offlineCaughtUp": {
+        "commitToAppliedMs": 314,
+        "deliveryToAppliedFrames": 0,
+        "applied": {
+          "status": "ready",
+          "requested": "garden",
+          "live": "confirmed",
+          "nav": [
+            "Fixture Pool",
+            "Fixture Living"
+          ]
+        }
+      },
+      "dragWhileUnconfirmed": false,
+      "dragOnceConfirmed": true
+    },
+    "remount": {
+      "identity": {
+        "remountToVerifiedMs": 154,
+        "shownBeforeVerified": 0
+      },
+      "warmReopenArchived": {
+        "heldMs": 1556,
+        "panoramaRequests": 0,
+        "cleared": {
+          "commitToAppliedMs": 77,
+          "deliveryToAppliedFrames": 0,
+          "applied": {
+            "status": "empty",
+            "requested": "",
+            "live": "",
+            "nav": []
+          }
+        }
+      }
+    },
+    "sharedWatch": {
+      "secondWatchDeliveriesWithoutChange": 0,
+      "serverReads": 1,
+      "liveSubscriptionAdds": 1
+    }
+  }
+}

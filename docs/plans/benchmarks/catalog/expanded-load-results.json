@@ -1,0 +1,1448 @@
+{
+  "schemaVersion": 2,
+  "passed": true,
+  "comparisons": [
+    {
+      "operation": "checkout/1",
+      "control": {
+        "n": 200,
+        "median": 18.29614550000042,
+        "p95": 21.856416999995417
+      },
+      "candidate": {
+        "n": 200,
+        "median": 17.52531249999811,
+        "p95": 20.98595899999782
+      },
+      "p95Percent": -3.982619841110191,
+      "maxChange": 5,
+      "passed": true
+    },
+    {
+      "operation": "checkout/10",
+      "control": {
+        "n": 2000,
+        "median": 19.805707999999868,
+        "p95": 23.85975000000326
+      },
+      "candidate": {
+        "n": 2000,
+        "median": 18.98456250000163,
+        "p95": 23.004209000006085
+      },
+      "p95Percent": -3.58570814864807,
+      "maxChange": 5,
+      "passed": true
+    },
+    {
+      "operation": "featured-post-edit/1",
+      "control": {
+        "n": 200,
+        "median": 11.547500000002401,
+        "p95": 15.119500000000698
+      },
+      "candidate": {
+        "n": 200,
+        "median": 6.7131460000036896,
+        "p95": 10.02299999999741
+      },
+      "p95Percent": -33.70812526871294,
+      "maxChange": -20,
+      "passed": true
+    },
+    {
+      "operation": "featured-post-edit/10",
+      "control": {
+        "n": 2000,
+        "median": 12.045020999983535,
+        "p95": 15.876250000001164
+      },
+      "candidate": {
+        "n": 2000,
+        "median": 7.279354000012972,
+        "p95": 10.580165999999736
+      },
+      "p95Percent": -33.35853239903025,
+      "maxChange": -20,
+      "passed": true
+    },
+    {
+      "operation": "featured-warm/1",
+      "control": {
+        "n": 200,
+        "median": 0.6435209999999643,
+        "p95": 0.8332500000014988
+      },
+      "candidate": {
+        "n": 200,
+        "median": 0.6539584999991348,
+        "p95": 0.9310830000013084
+      },
+      "p95Percent": 11.74113411336737,
+      "maxChange": null,
+      "passed": null
+    },
+    {
+      "operation": "featured-warm/10",
+      "control": {
+        "n": 2000,
+        "median": 1.1643330000079004,
+        "p95": 2.280292000010377
+      },
+      "candidate": {
+        "n": 2000,
+        "median": 1.1287499999962165,
+        "p95": 2.081208000003244
+      },
+      "p95Percent": -8.730636252121526,
+      "maxChange": null,
+      "passed": null
+    },
+    {
+      "operation": "inbox/1",
+      "control": {
+        "n": 200,
+        "median": 18.01762499999313,
+        "p95": 21.382625000012922
+      },
+      "candidate": {
+        "n": 200,
+        "median": 17.26264600000104,
+        "p95": 21.874166999999943
+      },
+      "p95Percent": 2.2987916590536672,
+      "maxChange": 5,
+      "passed": true
+    },
+    {
+      "operation": "inbox/10",
+      "control": {
+        "n": 2000,
+        "median": 19.79862499999581,
+        "p95": 24.527750000008382
+      },
+      "candidate": {
+        "n": 2000,
+        "median": 18.983729499996116,
+        "p95": 22.869750000012573
+      },
+      "p95Percent": -6.759690554556541,
+      "maxChange": 5,
+      "passed": true
+    },
+    {
+      "operation": "review-write/1",
+      "control": {
+        "n": 200,
+        "median": 25.81958300000042,
+        "p95": 34.44779099999869
+      },
+      "candidate": {
+        "n": 200,
+        "median": 24.450103999997737,
+        "p95": 34.5970410000009
+      },
+      "p95Percent": 0.43326435649304607,
+      "maxChange": 5,
+      "passed": true
+    },
+    {
+      "operation": "review-write/10",
+      "control": {
+        "n": 200,
+        "median": 25.75785400001041,
+        "p95": 34.03408300000592
+      },
+      "candidate": {
+        "n": 200,
+        "median": 24.45589550001023,
+        "p95": 33.273666000022786
+      },
+      "p95Percent": -2.2342808530584013,
+      "maxChange": 5,
+      "passed": true
+    }
+  ],
+  "control": {
+    "revision": "6863add2967dcefb01a5c173b8b3c8e502a434fb",
+    "sha256": {
+      "samples": "c46484f1976ebb7bc728e73bfe32da51ef3ee55975c59ba1efffdc5610ca5e9f",
+      "spans": "904804aa985aa6ae9b05c4e77ed822c79b93f845387a03bb1120e02f77cd081d"
+    },
+    "lockSha": "a52c339238d75861dec17ac724124bf2519df85e05e620aaddd5b392efd5a8a9",
+    "versions": {
+      "node": "v22.22.3",
+      "system": "darwin",
+      "arch": "arm64",
+      "convexClient": "1.50.0"
+    },
+    "fixture": {
+      "reviews": 200,
+      "editCadenceMs": 350,
+      "paired": true,
+      "batches": {
+        "1": 200,
+        "10": 200
+      }
+    },
+    "operations": {
+      "review-write/1": {
+        "n": 200,
+        "median": 25.81958300000042,
+        "p95": 34.44779099999869
+      },
+      "featured-post-edit/1": {
+        "n": 200,
+        "median": 11.547500000002401,
+        "p95": 15.119500000000698
+      },
+      "featured-warm/1": {
+        "n": 200,
+        "median": 0.6435209999999643,
+        "p95": 0.8332500000014988
+      },
+      "checkout/1": {
+        "n": 200,
+        "median": 18.29614550000042,
+        "p95": 21.856416999995417
+      },
+      "inbox/1": {
+        "n": 200,
+        "median": 18.01762499999313,
+        "p95": 21.382625000012922
+      },
+      "review-write/10": {
+        "n": 200,
+        "median": 25.75785400001041,
+        "p95": 34.03408300000592
+      },
+      "featured-post-edit/10": {
+        "n": 2000,
+        "median": 12.045020999983535,
+        "p95": 15.876250000001164
+      },
+      "featured-warm/10": {
+        "n": 2000,
+        "median": 1.1643330000079004,
+        "p95": 2.280292000010377
+      },
+      "checkout/10": {
+        "n": 2000,
+        "median": 19.805707999999868,
+        "p95": 23.85975000000326
+      },
+      "inbox/10": {
+        "n": 2000,
+        "median": 19.79862499999581,
+        "p95": 24.527750000008382
+      }
+    },
+    "backend": {
+      "catalog/adminReviews:update/1/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 5.0846875,
+          "p95": 9.976417
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.9399805000000003,
+          "p95": 7.373792
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 3,
+          "p95": 3
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 1290,
+          "p95": 1291
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 1290,
+          "p95": 1291
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 837,
+          "p95": 837
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 4,
+          "p95": 4
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/1/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 10.7042915,
+          "p95": 14.072084
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 5.659522,
+          "p95": 7.579049
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 202,
+          "p95": 202
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 113770,
+          "p95": 113770
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 113770,
+          "p95": 113770
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/1/cached": {
+        "executionMs": {
+          "n": 200,
+          "median": 0.0083125,
+          "p95": 0.011791
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "pos/orders:listOpenOrders/1/cached": {
+        "executionMs": {
+          "n": 200,
+          "median": 0.0173125,
+          "p95": 0.021667000000000002
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 456,
+          "p95": 456
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/1/cached": {
+        "executionMs": {
+          "n": 195,
+          "median": 0.013959,
+          "p95": 0.019
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 195,
+          "median": 1096,
+          "p95": 1096
+        },
+        "occRetryCount": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/1/fresh": {
+        "executionMs": {
+          "n": 5,
+          "median": 4.393959000000001,
+          "p95": 5.436041
+        },
+        "handlerMs": {
+          "n": 5,
+          "median": 3.606252,
+          "p95": 4.4862519999999995
+        },
+        "databaseReadDocuments": {
+          "n": 5,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseReadBytes": {
+          "n": 5,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseIoReadBytes": {
+          "n": 5,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseWriteDocuments": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 5,
+          "median": 1096,
+          "p95": 1096
+        },
+        "occRetryCount": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/adminReviews:update/10/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 4.8707295,
+          "p95": 9.365625000000001
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.7248745,
+          "p95": 6.8144149999999994
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 3,
+          "p95": 3
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 1291,
+          "p95": 1291
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 1291,
+          "p95": 1291
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 837,
+          "p95": 837
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 4,
+          "p95": 4
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/10/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 10.770937499999999,
+          "p95": 14.067833
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 5.631705500000001,
+          "p95": 7.621118
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 202,
+          "p95": 202
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 113770,
+          "p95": 113770
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 113770,
+          "p95": 113770
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/10/cached": {
+        "executionMs": {
+          "n": 3800,
+          "median": 0.047854,
+          "p95": 13.525417
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 3800,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "pos/orders:listOpenOrders/10/cached": {
+        "executionMs": {
+          "n": 2000,
+          "median": 0.008875000000000001,
+          "p95": 0.028
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 2000,
+          "median": 456,
+          "p95": 456
+        },
+        "occRetryCount": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/10/cached": {
+        "executionMs": {
+          "n": 1994,
+          "median": 0.008708,
+          "p95": 0.026542
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 1994,
+          "median": 69,
+          "p95": 69
+        },
+        "occRetryCount": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/10/fresh": {
+        "executionMs": {
+          "n": 6,
+          "median": 4.522270499999999,
+          "p95": 5.240166
+        },
+        "handlerMs": {
+          "n": 6,
+          "median": 3.63423,
+          "p95": 4.431124
+        },
+        "databaseReadDocuments": {
+          "n": 6,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseReadBytes": {
+          "n": 6,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseIoReadBytes": {
+          "n": 6,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseWriteDocuments": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 6,
+          "median": 69,
+          "p95": 69
+        },
+        "occRetryCount": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        }
+      }
+    }
+  },
+  "candidate": {
+    "revision": "b7a6f039dca4c571714e202de8f80c614074d85f",
+    "sha256": {
+      "samples": "4a04e35b1b721dc7cc4dc47f45ce27435238b3171f2e554f02fce9a3eee383e8",
+      "spans": "334bbfe6f71875aa20c3bf970ce3608b8ffdf4c3bedb36553cceb51b042a9a36"
+    },
+    "lockSha": "a52c339238d75861dec17ac724124bf2519df85e05e620aaddd5b392efd5a8a9",
+    "versions": {
+      "node": "v22.22.3",
+      "system": "darwin",
+      "arch": "arm64",
+      "convexClient": "1.50.0"
+    },
+    "fixture": {
+      "reviews": 200,
+      "editCadenceMs": 350,
+      "paired": true,
+      "batches": {
+        "1": 200,
+        "10": 200
+      }
+    },
+    "operations": {
+      "review-write/1": {
+        "n": 200,
+        "median": 24.450103999997737,
+        "p95": 34.5970410000009
+      },
+      "featured-post-edit/1": {
+        "n": 200,
+        "median": 6.7131460000036896,
+        "p95": 10.02299999999741
+      },
+      "featured-warm/1": {
+        "n": 200,
+        "median": 0.6539584999991348,
+        "p95": 0.9310830000013084
+      },
+      "checkout/1": {
+        "n": 200,
+        "median": 17.52531249999811,
+        "p95": 20.98595899999782
+      },
+      "inbox/1": {
+        "n": 200,
+        "median": 17.26264600000104,
+        "p95": 21.874166999999943
+      },
+      "review-write/10": {
+        "n": 200,
+        "median": 24.45589550001023,
+        "p95": 33.273666000022786
+      },
+      "featured-post-edit/10": {
+        "n": 2000,
+        "median": 7.279354000012972,
+        "p95": 10.580165999999736
+      },
+      "featured-warm/10": {
+        "n": 2000,
+        "median": 1.1287499999962165,
+        "p95": 2.081208000003244
+      },
+      "checkout/10": {
+        "n": 2000,
+        "median": 18.98456250000163,
+        "p95": 23.004209000006085
+      },
+      "inbox/10": {
+        "n": 2000,
+        "median": 18.983729499996116,
+        "p95": 22.869750000012573
+      }
+    },
+    "backend": {
+      "catalog/adminReviews:update/1/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 4.640708500000001,
+          "p95": 9.777458
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.5265815,
+          "p95": 7.256749
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 3,
+          "p95": 3
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 1290,
+          "p95": 1291
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 1290,
+          "p95": 1291
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 837,
+          "p95": 837
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 4,
+          "p95": 4
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/1/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 5.874500000000001,
+          "p95": 8.780708
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.3549805,
+          "p95": 4.987957000000001
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 9,
+          "p95": 9
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 5221,
+          "p95": 5221
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 5221,
+          "p95": 5221
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/1/cached": {
+        "executionMs": {
+          "n": 200,
+          "median": 0.009062500000000001,
+          "p95": 0.013167
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "pos/orders:listOpenOrders/1/cached": {
+        "executionMs": {
+          "n": 200,
+          "median": 0.017812500000000002,
+          "p95": 0.023791999999999997
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 456,
+          "p95": 456
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/1/cached": {
+        "executionMs": {
+          "n": 195,
+          "median": 0.01375,
+          "p95": 0.018958
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 195,
+          "median": 1095,
+          "p95": 1095
+        },
+        "occRetryCount": {
+          "n": 195,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/1/fresh": {
+        "executionMs": {
+          "n": 5,
+          "median": 4.305334,
+          "p95": 4.797833
+        },
+        "handlerMs": {
+          "n": 5,
+          "median": 3.529874,
+          "p95": 3.920791
+        },
+        "databaseReadDocuments": {
+          "n": 5,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseReadBytes": {
+          "n": 5,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseIoReadBytes": {
+          "n": 5,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseWriteDocuments": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 5,
+          "median": 1095,
+          "p95": 1095
+        },
+        "occRetryCount": {
+          "n": 5,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/adminReviews:update/10/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 4.7049375,
+          "p95": 10.030959000000001
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.5612705,
+          "p95": 7.342378
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 3,
+          "p95": 3
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 1291,
+          "p95": 1291
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 1291,
+          "p95": 1291
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 837,
+          "p95": 837
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 4,
+          "p95": 4
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/10/cached": {
+        "executionMs": {
+          "n": 3800,
+          "median": 0.0465835,
+          "p95": 8.248125
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 3800,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 3800,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "catalog/publicProperties:featuredReviews/10/fresh": {
+        "executionMs": {
+          "n": 200,
+          "median": 5.9542915,
+          "p95": 8.776708
+        },
+        "handlerMs": {
+          "n": 200,
+          "median": 3.4179779999999997,
+          "p95": 5.155251
+        },
+        "databaseReadDocuments": {
+          "n": 200,
+          "median": 9,
+          "p95": 9
+        },
+        "databaseReadBytes": {
+          "n": 200,
+          "median": 5221,
+          "p95": 5221
+        },
+        "databaseIoReadBytes": {
+          "n": 200,
+          "median": 5221,
+          "p95": 5221
+        },
+        "databaseWriteDocuments": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 200,
+          "median": 3010,
+          "p95": 3010
+        },
+        "occRetryCount": {
+          "n": 200,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "pos/orders:listOpenOrders/10/cached": {
+        "executionMs": {
+          "n": 2000,
+          "median": 0.009084,
+          "p95": 0.026542
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 2000,
+          "median": 456,
+          "p95": 456
+        },
+        "occRetryCount": {
+          "n": 2000,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/10/cached": {
+        "executionMs": {
+          "n": 1994,
+          "median": 0.008542000000000001,
+          "p95": 0.025415999999999998
+        },
+        "handlerMs": {
+          "n": 0,
+          "median": null,
+          "p95": null
+        },
+        "databaseReadDocuments": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseReadBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseIoReadBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteDocuments": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 1994,
+          "median": 69,
+          "p95": 69
+        },
+        "occRetryCount": {
+          "n": 1994,
+          "median": 0,
+          "p95": 0
+        }
+      },
+      "messaging/adminChat:listSessions/10/fresh": {
+        "executionMs": {
+          "n": 6,
+          "median": 4.030854,
+          "p95": 4.727875
+        },
+        "handlerMs": {
+          "n": 6,
+          "median": 3.201478,
+          "p95": 3.798249
+        },
+        "databaseReadDocuments": {
+          "n": 6,
+          "median": 1,
+          "p95": 1
+        },
+        "databaseReadBytes": {
+          "n": 6,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseIoReadBytes": {
+          "n": 6,
+          "median": 888,
+          "p95": 888
+        },
+        "databaseWriteDocuments": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        },
+        "databaseWriteBytes": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        },
+        "returnBytes": {
+          "n": 6,
+          "median": 69,
+          "p95": 69
+        },
+        "occRetryCount": {
+          "n": 6,
+          "median": 0,
+          "p95": 0
+        }
+      }
+    }
+  }
+}

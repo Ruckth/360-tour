@@ -1,0 +1,562 @@
+{
+  "arms": {
+    "control": {
+      "revision": "4c88ed5be07a4cc4160a145a07551d388a060900",
+      "repeats": 100,
+      "node": "v22.22.3",
+      "arch": "arm64",
+      "platform": "darwin",
+      "verifiedResponseSha256": "e9ab2764149ada9b4e2a6bd09dab9d42665baa990e2683193d3f74a52b42063c",
+      "sha256": {
+        "samples": "feb097de20316ff1886216c44ed28815c94b2f7ab56fcd94ec13592186521b53",
+        "spans": "c059e7415cc2f79a53803a41f55eb27facd2cb8eea9beb26438f50c7ea8f3db4"
+      },
+      "rows": {
+        "steady/2": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 25.183354000007967,
+            "p95": 28.90508399999817,
+            "max": 31.138291000010213
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 4.9662705,
+            "p95": 5.649291,
+            "max": 8.195917
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 3.657146,
+            "p95": 4.179664,
+            "max": 6.096003
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "steady/50": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 24.896229500001937,
+            "p95": 28.652708000008715,
+            "max": 31.48408299998846
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 4.8757705,
+            "p95": 5.562958,
+            "max": 8.976042
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 3.611478,
+            "p95": 4.22025,
+            "max": 5.548792000000001
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "first-uncertified/2": {
+          "elapsedMs": {
+            "n": 10,
+            "median": 25.07618750000256,
+            "p95": 28.226332999998704,
+            "max": 28.226332999998704
+          },
+          "executionMs": {
+            "n": 10,
+            "median": 4.643271,
+            "p95": 5.051125,
+            "max": 5.051125
+          },
+          "handlerMs": {
+            "n": 10,
+            "median": 3.4683135,
+            "p95": 3.9185410000000003,
+            "max": 3.9185410000000003
+          },
+          "databaseReadDocuments": {
+            "n": 10,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 10,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 10,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 10,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 10,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 10,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "first-uncertified/50": {
+          "elapsedMs": {
+            "n": 10,
+            "median": 24.94895799999358,
+            "p95": 28.850791000004392,
+            "max": 28.850791000004392
+          },
+          "executionMs": {
+            "n": 10,
+            "median": 4.8258545,
+            "p95": 5.55225,
+            "max": 5.55225
+          },
+          "handlerMs": {
+            "n": 10,
+            "median": 3.668438,
+            "p95": 4.388792,
+            "max": 4.388792
+          },
+          "databaseReadDocuments": {
+            "n": 10,
+            "median": 6.0,
+            "p95": 6,
+            "max": 6
+          },
+          "databaseReadBytes": {
+            "n": 10,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseIoReadBytes": {
+            "n": 10,
+            "median": 1260.0,
+            "p95": 1260,
+            "max": 1260
+          },
+          "databaseWriteDocuments": {
+            "n": 10,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 10,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 10,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        }
+      }
+    },
+    "candidate": {
+      "revision": "0d46e516c8b8543b69df860876f261f7394714d2",
+      "repeats": 100,
+      "node": "v22.22.3",
+      "arch": "arm64",
+      "platform": "darwin",
+      "verifiedResponseSha256": "e9ab2764149ada9b4e2a6bd09dab9d42665baa990e2683193d3f74a52b42063c",
+      "sha256": {
+        "samples": "8db864d9021e461a8e0b17ba2fe58ae544247c0d35ca249724b6477f87436662",
+        "spans": "b14d66d3c490938d07d2061bb162c2f1ac2d62cc91f3d081c9be0ba3a593889b"
+      },
+      "rows": {
+        "steady/2": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 26.44995850000123,
+            "p95": 31.623290999996243,
+            "max": 44.346916999988025
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 6.3025,
+            "p95": 7.518583,
+            "max": 20.462500000000002
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 5.0667725,
+            "p95": 6.0208759999999995,
+            "max": 16.776329999999998
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 5.0,
+            "p95": 5,
+            "max": 5
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1258.0,
+            "p95": 1258,
+            "max": 1258
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1258.0,
+            "p95": 1258,
+            "max": 1258
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "steady/50": {
+          "elapsedMs": {
+            "n": 100,
+            "median": 26.546625000002678,
+            "p95": 30.49783400000888,
+            "max": 177.85120800000732
+          },
+          "executionMs": {
+            "n": 100,
+            "median": 6.0376875000000005,
+            "p95": 7.4806669999999995,
+            "max": 39.906916
+          },
+          "handlerMs": {
+            "n": 100,
+            "median": 4.3764375,
+            "p95": 5.984085,
+            "max": 16.874419000000003
+          },
+          "databaseReadDocuments": {
+            "n": 100,
+            "median": 5.0,
+            "p95": 5,
+            "max": 5
+          },
+          "databaseReadBytes": {
+            "n": 100,
+            "median": 1684.0,
+            "p95": 1684,
+            "max": 1684
+          },
+          "databaseIoReadBytes": {
+            "n": 100,
+            "median": 1684.0,
+            "p95": 1684,
+            "max": 1684
+          },
+          "databaseWriteDocuments": {
+            "n": 100,
+            "median": 3.0,
+            "p95": 3,
+            "max": 3
+          },
+          "databaseWriteBytes": {
+            "n": 100,
+            "median": 1758.0,
+            "p95": 1758,
+            "max": 1758
+          },
+          "returnBytes": {
+            "n": 100,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 100,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "first-uncertified/2": {
+          "elapsedMs": {
+            "n": 10,
+            "median": 26.7648540000082,
+            "p95": 27.05954099999508,
+            "max": 27.05954099999508
+          },
+          "executionMs": {
+            "n": 10,
+            "median": 5.5639795,
+            "p95": 7.058958,
+            "max": 7.058958
+          },
+          "handlerMs": {
+            "n": 10,
+            "median": 3.964792,
+            "p95": 5.489208,
+            "max": 5.489208
+          },
+          "databaseReadDocuments": {
+            "n": 10,
+            "median": 8.0,
+            "p95": 8,
+            "max": 8
+          },
+          "databaseReadBytes": {
+            "n": 10,
+            "median": 2103.0,
+            "p95": 2103,
+            "max": 2103
+          },
+          "databaseIoReadBytes": {
+            "n": 10,
+            "median": 2103.0,
+            "p95": 2103,
+            "max": 2103
+          },
+          "databaseWriteDocuments": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "databaseWriteBytes": {
+            "n": 10,
+            "median": 2376.0,
+            "p95": 2376,
+            "max": 2376
+          },
+          "returnBytes": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 10,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        },
+        "first-uncertified/50": {
+          "elapsedMs": {
+            "n": 10,
+            "median": 27.603854000000865,
+            "p95": 29.337624999985565,
+            "max": 29.337624999985565
+          },
+          "executionMs": {
+            "n": 10,
+            "median": 7.0030625,
+            "p95": 8.110208,
+            "max": 8.110208
+          },
+          "handlerMs": {
+            "n": 10,
+            "median": 4.6778155,
+            "p95": 5.847509,
+            "max": 5.847509
+          },
+          "databaseReadDocuments": {
+            "n": 10,
+            "median": 56.0,
+            "p95": 56,
+            "max": 56
+          },
+          "databaseReadBytes": {
+            "n": 10,
+            "median": 15709.0,
+            "p95": 15709,
+            "max": 15709
+          },
+          "databaseIoReadBytes": {
+            "n": 10,
+            "median": 15709.0,
+            "p95": 15709,
+            "max": 15709
+          },
+          "databaseWriteDocuments": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "databaseWriteBytes": {
+            "n": 10,
+            "median": 2803.0,
+            "p95": 2803,
+            "max": 2803
+          },
+          "returnBytes": {
+            "n": 10,
+            "median": 4.0,
+            "p95": 4,
+            "max": 4
+          },
+          "occRetryCount": {
+            "n": 10,
+            "median": 0.0,
+            "p95": 0,
+            "max": 0
+          }
+        }
+      }
+    }
+  },
+  "comparisons": [
+    {
+      "phase": "steady",
+      "rooms": 2,
+      "beforeMs": 28.90508399999817,
+      "afterMs": 31.623290999996243,
+      "p95ChangePercent": 9.4039062470749,
+      "withinFivePercent": false
+    },
+    {
+      "phase": "steady",
+      "rooms": 50,
+      "beforeMs": 28.652708000008715,
+      "afterMs": 30.49783400000888,
+      "p95ChangePercent": 6.439621692998809,
+      "withinFivePercent": false
+    },
+    {
+      "phase": "first-uncertified",
+      "rooms": 2,
+      "beforeMs": 28.226332999998704,
+      "afterMs": 27.05954099999508,
+      "p95ChangePercent": -4.133700257853823,
+      "withinFivePercent": null
+    },
+    {
+      "phase": "first-uncertified",
+      "rooms": 50,
+      "beforeMs": 28.850791000004392,
+      "afterMs": 29.337624999985565,
+      "p95ChangePercent": 1.687419939304613,
+      "withinFivePercent": null
+    }
+  ]
+}

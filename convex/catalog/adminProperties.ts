@@ -7,11 +7,11 @@ import { configurationWriter, logOtaRate } from '../settings/model';
 import { amount, imageUrl, required } from '../shared/validation';
 import { catalogueRevision } from '../commerce/model';
 import { savePropertyEdit } from './private/propertyEdits';
+import { assertOversizedTourGrowth, certifyOrdinaryRoom, MAX_TOUR_ROOMS, propertyRooms, roomEditByteGrowth, roomEditWithCertificate, sortTourRooms } from './private/tourRooms';
 
 // Villa admin: create/delete drafts, slug, status, uploads, 360 rooms and hotspots.
 // Plain field edits stay in `properties.update` / `properties.updateRoom`.
 
-const MAX_ROOMS = 50;
 const MAX_HOTSPOTS = 20;
 const MAX_DELETE_CHILDREN = 500;
 
@@ -69,12 +69,6 @@ async function deleteBlocker(ctx: QueryCtx, property: Doc<'properties'>): Promis
 	return null;
 }
 
-async function propertyRooms(ctx: QueryCtx, propertyId: Id<'properties'>) {
-	const rooms = await ctx.db.query('tourScenes').withIndex('by_property', (q) => q.eq('propertyId', propertyId)).take(MAX_ROOMS + 1);
-	if (rooms.length > MAX_ROOMS) throw new Error('Too many rooms to safely edit this villa. Contact support.');
-	return rooms;
-}
-
 async function getProperty(ctx: QueryCtx, propertyId: Id<'properties'>) {
 	const property = await ctx.db.get(propertyId);
 	if (!property) throw new Error('Property not found');
@@ -98,14 +92,9 @@ export const get = adminQuery({
 		const property = propertyId ? await ctx.db.get(propertyId) : null;
 		if (!property) return null;
 		const rooms = await propertyRooms(ctx, property._id);
-		const position = (slug: string) => {
-			const index = property.tourRoomIds.indexOf(slug);
-			return index === -1 ? Number.MAX_SAFE_INTEGER : index; // rooms missing from the tour go last
-		};
-		rooms.sort((a, b) => position(a.slug) - position(b.slug));
 		return {
 			property,
-			rooms,
+			rooms: sortTourRooms(rooms, property.tourRoomIds),
 			slugLocked: await hasBookings(ctx, property._id),
 			deleteBlocker: await deleteBlocker(ctx, property)
 		};
@@ -151,6 +140,8 @@ export const duplicate = adminMutation({
 		const admin = ctx.admin;
 		const history = configurationWriter(ctx, admin.email);
 		const source = await getProperty(ctx, args.propertyId);
+		const rooms = await propertyRooms(ctx, source._id);
+		if (rooms.length > MAX_TOUR_ROOMS) throw new Error(`Reduce this tour to at most ${MAX_TOUR_ROOMS} rooms before duplicating it`);
 		const name = `${source.name} (copy)`;
 		const slug = await pickSlug(undefined, name, 'villa', 'Slug', (s) => propertySlugTaken(ctx, s));
 		const propertyId = await history.insertProperty({
@@ -171,16 +162,15 @@ export const duplicate = adminMutation({
 			status: 'draft'
 		});
 
-		const rooms = await propertyRooms(ctx, source._id);
 		const roomSlugs = new Set(rooms.map((room) => room.slug));
 		for (const room of rooms) {
-			await history.insertRoom({
+			await history.insertRoom(certifyOrdinaryRoom({
 				propertyId,
 				slug: room.slug,
 				name: room.name,
 				imagePath: room.imagePath,
 				hotspots: room.hotspots.filter((hotspot) => roomSlugs.has(hotspot.targetRoomSlug))
-			});
+			}));
 		}
 		await history.patchProperty(propertyId, { tourRoomIds: source.tourRoomIds.filter((roomSlug) => roomSlugs.has(roomSlug)) });
 
@@ -310,10 +300,10 @@ export const createRoom = adminMutation({
 		const name = required(args.name, 'Room name');
 		const imagePath = imageUrl(required(args.imagePath, 'Panorama'));
 		const rooms = await propertyRooms(ctx, property._id);
-		if (rooms.length >= MAX_ROOMS) throw new Error(`A villa can have at most ${MAX_ROOMS} rooms`);
+		if (rooms.length >= MAX_TOUR_ROOMS) throw new Error(`A villa can have at most ${MAX_TOUR_ROOMS} rooms`);
 		const taken = new Set(rooms.map((room) => room.slug));
 		const slug = await pickSlug(args.slug, name, 'room', 'Room slug', async (s) => taken.has(s));
-		const roomId = await history.insertRoom({ propertyId: property._id, slug, name, imagePath, hotspots: [] });
+		const roomId = await history.insertRoom(certifyOrdinaryRoom({ propertyId: property._id, slug, name, imagePath, hotspots: [] }));
 		await savePropertyEdit(ctx, property, { tourRoomIds: [...property.tourRoomIds.filter((id) => id !== slug), slug] }, admin.email, args.expectedRevision);
 		return roomId;
 	}
@@ -326,10 +316,11 @@ export const deleteRoom = adminMutation({
 		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		const property = await getProperty(ctx, room.propertyId);
-		for (const other of await propertyRooms(ctx, property._id)) {
+		const rooms = await propertyRooms(ctx, property._id);
+		for (const other of rooms) {
 			if (other._id === room._id) continue;
 			const hotspots = other.hotspots.filter((hotspot) => hotspot.targetRoomSlug !== room.slug);
-			if (hotspots.length !== other.hotspots.length) await history.patchRoom(other._id, { hotspots });
+			if (hotspots.length !== other.hotspots.length) await history.patchRoom(other, { hotspots });
 		}
 		const snippets = await ctx.db.query('tourSnippets').withIndex('by_property', (q) => q.eq('propertyId', property._id)).take(MAX_DELETE_CHILDREN + 1);
 		if (snippets.length > MAX_DELETE_CHILDREN) throw new Error('Too many tour snippets to safely remove this room');
@@ -366,7 +357,8 @@ export const setHotspots = adminMutation({
 		const history = configurationWriter(ctx, admin.email);
 		const room = await getRoom(ctx, args.roomId);
 		if (args.hotspots.length > MAX_HOTSPOTS) throw new Error(`A room can have at most ${MAX_HOTSPOTS} hotspots`);
-		const targets = new Set((await propertyRooms(ctx, room.propertyId)).map((other) => other.slug));
+		const rooms = await propertyRooms(ctx, room.propertyId);
+		const targets = new Set(rooms.map((other) => other.slug));
 		targets.delete(room.slug);
 		const usedIds = new Set<string>();
 		const hotspots = args.hotspots.map((hotspot) => {
@@ -380,6 +372,7 @@ export const setHotspots = adminMutation({
 			usedIds.add(id);
 			return { id, label, targetRoomSlug: hotspot.targetRoomSlug, position };
 		});
-		await history.patchRoom(room._id, { hotspots });
+		if (rooms.length > MAX_TOUR_ROOMS) assertOversizedTourGrowth(rooms, roomEditByteGrowth(room, { hotspots }));
+		await history.patchRoom(room, roomEditWithCertificate(room, { hotspots }));
 	}
 });

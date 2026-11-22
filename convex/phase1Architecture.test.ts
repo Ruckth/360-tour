@@ -13,6 +13,9 @@ it('seeds the demo-resort scenario from empty', async () => {
   expect(Object.values(empty.counts).every(count => count === 0)).toBe(true);
   const demo = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'demo-resort' });
   expect(demo.counts).toMatchObject({ properties: 3, tourScenes: 5, reviews: 7, reviewStats: 3, staff: 5, services: 6, appointments: 4, bookings: 2, bookingPayments: 1, orders: 3, orderLines: 1, conversations: 1, messages: 1, siteSettings: 1, cashierRules: 1, businessFacts: 1 });
+  const rooms = await t.run(ctx => ctx.db.query('tourScenes').take(5));
+  expect(rooms).toHaveLength(5);
+  expect(rooms.every(room => room.ordinaryTourCertified)).toBe(true);
   const stay = await t.run(ctx => ctx.db.get(demo.bookings[0].bookingId));
   expect(stay).toMatchObject({ amountPaid: 1445000, amountRefunded: 0, paymentStatus: 'paid', guestEmailsOff: true });
   expect(await t.query(api.messaging.chat.getMessages, { ...demo.conversation! })).toMatchObject([{ role: 'user' }]);
