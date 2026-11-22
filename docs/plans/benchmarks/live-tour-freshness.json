@@ -1,0 +1,240 @@
+{
+  "revision": "2c8f8b67",
+  "base": "0da03820",
+  "harness": "scripts/local-integration.mjs via scripts/heavy.mjs, fresh local seeded Convex, Bun 1.4.5 / Node 22, Playwright workers 2",
+  "fixture": {
+    "rooms": [
+      {
+        "slug": "living",
+        "imagePath": "/tour/panoramas/v1/pool-villa-living-2048.webp"
+      },
+      {
+        "slug": "pool",
+        "imagePath": "/tour/panoramas/v1/pool-villa-pool-2048.webp"
+      },
+      {
+        "slug": "garden",
+        "imagePath": "/tour/panoramas/v1/garden-villa-360-2048.webp"
+      }
+    ],
+    "rttMs": 150
+  },
+  "runs": {
+    "held-next": {
+      "repeatEach": 10,
+      "playwright": {
+        "passed": 11,
+        "failed": 0,
+        "setupProjectTests": 1,
+        "heldCases": 10
+      },
+      "resultFiles": 10,
+      "originReadMatchedV1": true,
+      "staleReadVouched": false,
+      "offlineMountReads": 0,
+      "stalledConnectionsMin": 1
+    },
+    "full-next": {
+      "playwright": {
+        "passed": 7,
+        "failed": 0,
+        "setupProjectTests": 1,
+        "specTests": 6
+      },
+      "reorderAndRemoval": {
+        "unchangedFirstImplicit": {
+          "commitToAppliedMs": 113,
+          "deliveryToAppliedFrames": 0
+        },
+        "explicitKept": {
+          "commitToAppliedMs": 113,
+          "deliveryToAppliedFrames": 0
+        },
+        "implicitMoved": {
+          "commitToAppliedMs": 113,
+          "deliveryToAppliedFrames": 0
+        },
+        "explicitRemoved": {
+          "commitToAppliedMs": 115,
+          "deliveryToAppliedFrames": 0
+        }
+      },
+      "archive": {
+        "ordinary": {
+          "panoramaRequests": 0,
+          "subscriptions": 0
+        },
+        "cleared": [
+          {
+            "commitToAppliedMs": 116,
+            "deliveryToAppliedFrames": 0
+          },
+          {
+            "commitToAppliedMs": 116,
+            "deliveryToAppliedFrames": 0
+          }
+        ],
+        "reload": {
+          "status": 200,
+          "panoramaRequests": 0
+        }
+      },
+      "reconnect": {
+        "unchangedAfterHold": {
+          "commitToAppliedMs": 80,
+          "deliveryToAppliedFrames": 0
+        },
+        "onlineEdit": {
+          "commitToAppliedMs": 127,
+          "deliveryToAppliedFrames": 0
+        },
+        "offlineCaughtUp": {
+          "commitToAppliedMs": 317,
+          "deliveryToAppliedFrames": 0
+        },
+        "dragWhileUnconfirmed": false,
+        "dragOnceConfirmed": true
+      },
+      "remount": {
+        "identity": {
+          "remountToVerifiedMs": 160,
+          "shownBeforeVerified": 0
+        },
+        "warmReopenArchived": {
+          "heldMs": 1556,
+          "panoramaRequests": 0,
+          "cleared": {
+            "commitToAppliedMs": 78,
+            "deliveryToAppliedFrames": 0
+          }
+        }
+      },
+      "sharedWatch": {
+        "secondWatchDeliveriesWithoutChange": 0,
+        "serverReads": 1,
+        "liveSubscriptionAdds": 1
+      },
+      "heldReadReconnect": {
+        "originReadMatchedV1": true,
+        "staleReadVouched": false,
+        "retainedValueBeforeResync": "v1",
+        "offlineMountReads": 0,
+        "proxiedConnections": 3,
+        "stalledConnections": 1
+      }
+    },
+    "held-start": {
+      "repeatEach": 10,
+      "playwright": {
+        "passed": 11,
+        "failed": 0,
+        "setupProjectTests": 1,
+        "heldCases": 10
+      },
+      "resultFiles": 10,
+      "originReadMatchedV1": true,
+      "staleReadVouched": false,
+      "offlineMountReads": 0,
+      "stalledConnectionsMin": 1
+    },
+    "full-start": {
+      "playwright": {
+        "passed": 7,
+        "failed": 0,
+        "setupProjectTests": 1,
+        "specTests": 6
+      },
+      "reorderAndRemoval": {
+        "unchangedFirstImplicit": {
+          "commitToAppliedMs": 121,
+          "deliveryToAppliedFrames": 0
+        },
+        "explicitKept": {
+          "commitToAppliedMs": 120,
+          "deliveryToAppliedFrames": 0
+        },
+        "implicitMoved": {
+          "commitToAppliedMs": 119,
+          "deliveryToAppliedFrames": 0
+        },
+        "explicitRemoved": {
+          "commitToAppliedMs": 111,
+          "deliveryToAppliedFrames": 0
+        }
+      },
+      "archive": {
+        "ordinary": {
+          "panoramaRequests": 0,
+          "subscriptions": 0
+        },
+        "cleared": [
+          {
+            "commitToAppliedMs": 115,
+            "deliveryToAppliedFrames": 0
+          },
+          {
+            "commitToAppliedMs": 115,
+            "deliveryToAppliedFrames": 0
+          }
+        ],
+        "reload": {
+          "status": 200,
+          "panoramaRequests": 0
+        }
+      },
+      "reconnect": {
+        "unchangedAfterHold": {
+          "commitToAppliedMs": 80,
+          "deliveryToAppliedFrames": 0
+        },
+        "onlineEdit": {
+          "commitToAppliedMs": 131,
+          "deliveryToAppliedFrames": 0
+        },
+        "offlineCaughtUp": {
+          "commitToAppliedMs": 317,
+          "deliveryToAppliedFrames": 0
+        },
+        "dragWhileUnconfirmed": false,
+        "dragOnceConfirmed": true
+      },
+      "remount": {
+        "identity": {
+          "remountToVerifiedMs": 155,
+          "shownBeforeVerified": 0
+        },
+        "warmReopenArchived": {
+          "heldMs": 1557,
+          "panoramaRequests": 0,
+          "cleared": {
+            "commitToAppliedMs": 82,
+            "deliveryToAppliedFrames": 0
+          }
+        }
+      },
+      "sharedWatch": {
+        "secondWatchDeliveriesWithoutChange": 0,
+        "serverReads": 1,
+        "liveSubscriptionAdds": 1
+      },
+      "heldReadReconnect": {
+        "originReadMatchedV1": true,
+        "staleReadVouched": false,
+        "retainedValueBeforeResync": "v1",
+        "offlineMountReads": 0,
+        "proxiedConnections": 3,
+        "stalledConnections": 1
+      }
+    }
+  },
+  "negativeControl": {
+    "change": "src/lib/tour/live-tour-rooms.ts restored from 2df100bf (no connection binding), working tree only, then restored",
+    "entry": "next",
+    "playwright": {
+      "passed": 1,
+      "failed": 1,
+      "setupProjectTests": 1
+    },
+    "failedAt": "tests/e2e/live-tour-freshness.spec.ts:646 'no scenes from a read that started on the replaced connection' (the stale v1 read vouched)"
+  }
+}

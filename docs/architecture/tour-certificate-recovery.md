@@ -38,3 +38,9 @@ node scripts/heavy.mjs node scripts/bench/tour-certificate-smoke.mjs   /absolute
 The command uses the local admin key only inside its private temporary directory. It records counts, the export hash and the repair results. It leaves the raw export and logs private and stops the local deployment on exit.
 
 The checkout-local rehearsal passed. A scoped clear removed two stale marks from a 51-scene tour. The whole-table clear removed another 11 marks across 62 scenes, including a nonterminal page stopped by the native byte budget. A fresh check found no remaining marks. After writes reopened, the imported tour still rejected over-budget growth. An ordinary near-limit rename wrote exactly 1,048,576 bytes and released its marker. [Native smoke evidence](../plans/benchmarks/catalog/tour-certificate-native-smoke.json)
+
+## Phase 3 production-shape check
+
+On 22 November 2026, the public production alias served the Phase 2 Next release at `f8eb63e7`. The operator verified the alias and deployment SHA, checked the signed-out routes and renderer, and exported the fixed production Convex target with file storage. The export contained three villas and five scenes. The largest villa had two scenes totaling 587 bytes by Convex document sizing. No scene carried the optional certificate.
+
+Run `r20261122075334-926fbd` restored the private export under the production revision on a paused, isolated local backend with outgoing calls disabled. All 133 exported tables matched, including 32 with data. The export contained zero storage blobs. The Phase 3 backend at `75cd92c9` accepted that data in place. A second export matched all 133 table digests. The generic ID scan flagged two string field names in the original audit history, `recordChanges.entityId` and `recordChanges.lineId`. Their data matched before and after deployment. The production backup and per-table digests are retained privately.

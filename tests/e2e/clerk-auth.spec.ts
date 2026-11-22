@@ -90,6 +90,16 @@ test("@smoke cashier browser session authorizes checkout and preserves manager-o
   await expect(
     page.getByRole("link", { name: "Settings", exact: true }),
   ).toHaveCount(0);
+
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Connect display" }).click();
+  const pairing = page.getByRole("dialog", { name: "Customer display" });
+  await pairing.getByRole("button", { name: "Create link" }).click();
+  await expect(pairing.locator('svg[aria-label="QR code for the display link"] path').first()).toBeVisible();
+  const link = await pairing.getByRole("textbox", { name: "Display link" }).inputValue();
+  await pairing.getByRole("button", { name: "Copy link" }).click();
+  await expect(pairing.getByRole("button", { name: "Copied" })).toBeVisible();
+  expect((await page.evaluate(() => navigator.clipboard.readText())) === link).toBe(true);
 });
 
 test("owner checkout interactions persist a local cash receipt across reload", async ({
