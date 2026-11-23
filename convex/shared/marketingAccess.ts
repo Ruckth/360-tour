@@ -6,6 +6,7 @@ export type MarketingPermission =
   | "view"
   | "draft"
   | "publish"
+  | "serviceFinance"
   | "spend"
   | "partners"
   | "reviewCredits"
@@ -16,6 +17,7 @@ export function marketingCapabilities(role: MarketingRole | "admin" | null) {
     view: role !== null,
     draft: role === "admin" || role === "manager" || role === "marketer",
     publish: role === "admin" || role === "manager",
+    serviceFinance: role === "admin" || role === "finance",
     spend: role === "admin" || role === "manager" || role === "finance",
     partners: role === "admin" || role === "manager",
     reviewCredits: role === "admin" || role === "finance",

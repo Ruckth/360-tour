@@ -155,7 +155,7 @@ add('static-dir', 0, 'Duplicate static/ directory exists (1 = yes)', existsSync(
 add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify-out)', ['output', 'tmp', 'graphify-out'].filter((d) => !new RegExp(`^/?${d}/?$`, 'm').test(gitignore)).length, 0);
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
 
-add('tables', 1, 'Convex tables (74 existing + 23 commerce + 2 profitability)', tableNames.length, 99, schema.tables.map(table => `${table.name} → ${table.source}`));
+add('tables', 1, 'Convex tables (74 existing + 23 commerce + 4 profitability)', tableNames.length, 101, schema.tables.map(table => `${table.name} → ${table.source}`));
 const commercePosTables = new Set(['directPaymentPanels', 'paymentAttempts', 'orderReturns', 'returnPayouts']);
 const commerceTables = schema.tables.filter(table => COMMERCE_TABLE_NAMES.includes(table.name)
 	&& table.source === (commercePosTables.has(table.name) ? 'convex/pos/tables.ts' : 'convex/commerce/tables.ts'));

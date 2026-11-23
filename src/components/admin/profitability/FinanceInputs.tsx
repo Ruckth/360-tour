@@ -10,7 +10,7 @@ import { marketingErrorText } from '../marketing/marketing-format';
 import { inputStyle } from './report-controls';
 
 type Inputs = FunctionReturnType<typeof api.marketing.profitability.financeInputs>;
-function AmountField({ name, label, amount }: { name: string; label: string; amount?: number }) {
+export function AmountField({ name, label, amount }: { name: string; label: string; amount?: number }) {
   return (
     <label className="grid gap-1 text-sm">
       {label} (฿)
@@ -27,7 +27,7 @@ function AmountField({ name, label, amount }: { name: string; label: string; amo
     </label>
   );
 }
-function amount(data: FormData, key: string) {
+export function amount(data: FormData, key: string) {
   const number = parseMoneyInput(String(data.get(key) ?? ''));
   if (!Number.isSafeInteger(number))
     throw new Error('Enter each amount in baht, including zero where applicable.');
@@ -61,6 +61,7 @@ function FinanceForm({
       if (mode === 'cost' && serviceId)
         await recordCosts({
           from: date,
+          reason: String(fields.get('reason') ?? ''),
           serviceId,
           expected: initial.schedule?._id ?? null,
           staff: amount(fields, 'staff'),
@@ -75,7 +76,9 @@ function FinanceForm({
           otherExpenses: amount(fields, 'otherExpenses'),
           tax: amount(fields, 'tax'),
           otherIncome: amount(fields, 'otherIncome'),
-          campaignIds: initial.campaigns.filter((c) => fields.getAll('campaign').includes(c.id)).map((c) => c.id),
+          campaignIds: initial.campaigns.filter((c) => fields.get(c.id) === 'included').map((c) => c.id),
+          excludedCampaignIds: initial.campaigns.filter((c) => fields.get(c.id) === 'excluded').map((c) => c.id),
+          reason: String(fields.get('reason') ?? ''),
         });
       else return;
       saved();
@@ -135,19 +138,28 @@ function FinanceForm({
           <fieldset>
             <legend className="mb-2 font-medium">Service acquisition campaigns</legend>
             <p className="text-sm text-muted-foreground">
-              Selected campaigns contribute their recorded spend to CAC and net profit. Leave empty for confirmed
-              zero acquisition spend.
+              Classify campaign spend for this month. Spending awaiting classification holds CAC and net profit
+              open.
             </p>
             <div className="mt-2 flex flex-wrap gap-3">
               {initial.campaigns.map((c) => (
                 <label key={c.id} className="inline-flex min-h-10 items-center gap-2">
-                  <input
-                    type="checkbox"
-                    name="campaign"
-                    value={c.id}
-                    defaultChecked={initial.statement?.campaignIds.includes(c.id)}
-                  />
                   {c.name}
+                  <select
+                    className={inputStyle}
+                    name={c.id}
+                    defaultValue={
+                      initial.statement?.campaignIds.includes(c.id)
+                        ? 'included'
+                        : initial.statement?.excludedCampaignIds?.includes(c.id)
+                          ? 'excluded'
+                          : ''
+                    }
+                  >
+                    <option value="">Unclassified</option>
+                    <option value="included">Service acquisition</option>
+                    <option value="excluded">Outside service business</option>
+                  </select>
                 </label>
               ))}
             </div>
@@ -158,6 +170,21 @@ function FinanceForm({
           </label>
         </>
       )}
+      {(mode === 'month' ? initial.statement : initial.schedule)?.reason && (
+        <p className="text-sm text-muted-foreground">
+          Last entry note · {(mode === 'month' ? initial.statement : initial.schedule)?.reason}
+        </p>
+      )}
+      <label className="grid gap-1 text-sm">
+        Entry note
+        <input
+          className={inputStyle}
+          name="reason"
+          maxLength={300}
+          required={Boolean(mode === 'month' ? initial.statement : initial.schedule)}
+          placeholder="Required when revising an entry"
+        />
+      </label>
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

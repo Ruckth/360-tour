@@ -8,8 +8,10 @@ import schema from '../schema';
 import { emptyFilters } from '../shared/profitability';
 import { resortMidnight } from '../shared/time';
 import type { FunctionArgs } from 'convex/server';
+import { readServiceFinanceFacts } from './private/serviceFinanceFacts';
 import { readBudget } from '../lib/readBudget';
-import { profitVisits } from '../services/model';
+import { profitVisits, recordAppointmentChange } from '../services/model';
+import { serviceReceiptShares } from '../shared/serviceVat';
 
 const modules = import.meta.glob('/convex/**/*.ts');
 const finance = api.marketing.profitability;
@@ -195,6 +197,7 @@ it('preserves historical rates, refund timing and the October lifetime cutoff', 
     serviceId: ids.serviceId,
     from: '2026-11-01',
     expected: first,
+    reason: 'November costs',
     staff: 20_000,
     materials: 0,
     tools: 0,
@@ -266,7 +269,7 @@ it('denies anonymous and viewer writes, and refuses stale monthly edits', async 
   await expect(query({ from: '2026-01-01' })).rejects.toThrow('92');
 });
 it('keeps a 92-day report with 100 customers and 1000 deliveries within the shared read budget', async () => {
-  const { t, ids, query } = await setup();
+  const { t, user, ids, query } = await setup();
   await t.run(async (ctx) => {
     for (let c = 0; c < 100; c++) {
       const attendeeId = await ctx.db.insert('customers', {
@@ -284,10 +287,212 @@ it('keeps a 92-day report with 100 customers and 1000 deliveries within the shar
     return { count: result.lines.length, documents, ranges, bytes };
   });
   expect(data.count).toBe(1000);
-  expect(data.ranges).toBeLessThan(420);
-  expect(data.documents).toBeLessThan(2500);
+  expect(data.ranges).toBeLessThan(125);
+  expect(data.documents).toBeLessThan(2200);
   expect(data.bytes).toBeLessThan(4_000_000);
-  const result = await query({ metric: 'revenue', page: 2 });
+  await t.run(async (ctx) => {
+    for (let i = 0; i < 600; i++)
+      await ctx.db.insert('orders', {
+        orderNumber: i,
+        paidAt: nov,
+        status: 'paid',
+        hasItems: true,
+        due: 0,
+        total: 10700,
+        itemCount: 1,
+        currency: 'THB',
+        revision: 1,
+        createdBy: email,
+        createdAt: nov,
+        updatedAt: nov,
+      });
+  });
+  const start = performance.now();
+  const metrics = await t.run(async (ctx) => {
+    const facts = await readServiceFinanceFacts(ctx, '2026-10-01', '2026-12-31', true);
+    const { documents, ranges, bytes } = readBudget(ctx);
+    return { rows: facts.lines.length, documents, ranges, bytes };
+  });
+  const openMs = Math.round(performance.now() - start);
+  expect(metrics.ranges).toBeLessThan(140);
+  expect(metrics.documents).toBeLessThan(3000);
+  expect(metrics.bytes).toBeLessThan(3_000_000);
+  const viewId = await user.mutation(api.marketing.profitViews.openView, {
+    from: base.from,
+    to: base.to,
+    refresh: false,
+  });
+  const times = [];
+  for (let page = 0; page < 10; page++) {
+    const begin = performance.now();
+    await query({ viewId, metric: 'revenue', page });
+    times.push(performance.now() - begin);
+  }
+  const p95 = Math.ceil(times.sort((a, b) => a - b)[9]);
+  if (process.env.PROFIT_REPORT_BENCH)
+    console.info('Profitability fixture', JSON.stringify({ ...metrics, openMs, warmPageP95Ms: p95 }));
+  expect(p95).toBeLessThan(1500);
+  const result = await query({ viewId, metric: 'revenue', page: 2 });
   expect(result.detail).toMatchObject({ page: 2, count: 1000, sum: 10_000_000 });
   expect(result.detail?.rows).toHaveLength(25);
+  expect(JSON.stringify(result).length).toBeLessThan(25_000);
+});
+it('holds a refund out of gross profit until its original delivery has finance costs', async () => {
+  const { t, user, ids, query } = await setup();
+  const id = await t.run((ctx) =>
+    deliver(ctx, ids, nov - day * 5, 10700, { amountRefunded: 5350, refundedAt: nov }),
+  );
+  expect((await query()).summary).toMatchObject({ revenue: -5000, gross: null, net: null, missingCount: 1 });
+  await user.mutation(finance.recordVisitCosts, {
+    appointmentId: id,
+    version: 0,
+    staff: 3500,
+    materials: 0,
+    tools: 0,
+    reason: 'Verified payroll',
+  });
+  expect((await query()).summary).toMatchObject({ revenue: -5000, gross: -5000, missingCount: 0 });
+  await expect(
+    user.mutation(finance.recordVisitCosts, {
+      appointmentId: id,
+      version: 0,
+      staff: 1,
+      materials: 0,
+      tools: 0,
+      reason: 'Stale change',
+    }),
+  ).rejects.toThrow('changed');
+});
+it('freezes the cost version on completion and preserves an open view across finance revisions', async () => {
+  const { t, user, ids, query } = await setup();
+  const rates = { serviceId: ids.serviceId, from: base.from, staff: 1000, materials: 100, tools: 50 };
+  const version = await user.mutation(finance.recordCosts, { ...rates, expected: null });
+  const id = await t.run(async (ctx) => {
+    const id = await deliver(ctx, ids, nov, 10700, { status: 'booked' });
+    const visit = (await ctx.db.get(id))!;
+    await recordAppointmentChange(ctx, visit, { status: 'completed' }, { actor: email, kind: 'status' });
+    return id;
+  });
+  expect((await query()).summary.gross).toBe(8850);
+  const viewId = await user.mutation(api.marketing.profitViews.openView, {
+    from: base.from,
+    to: base.to,
+    refresh: false,
+  });
+  await user.mutation(finance.recordCosts, {
+    ...rates,
+    expected: version,
+    staff: 2000,
+    reason: 'New estimated rate',
+  });
+  expect((await query()).summary.gross).toBe(8850);
+  await user.mutation(finance.recordVisitCosts, {
+    appointmentId: id,
+    version: 0,
+    staff: 2000,
+    materials: 100,
+    tools: 50,
+    reason: 'Verified payroll',
+  });
+  expect((await query({ viewId, metric: 'gross', exportRows: true })).detail?.sum).toBe(8850);
+  expect((await query({ metric: 'gross' })).detail?.sum).toBe(7850);
+  await expect(query({ viewId, to: '2026-11-15' })).rejects.toThrow('expired');
+  await t.run((ctx) => ctx.db.patch(viewId, { expiresAt: 0 }));
+  await expect(query({ viewId })).rejects.toThrow('expired');
+});
+it('shows all unclassified spend and requires an explicit service or outside-business classification', async () => {
+  const { t, user, ids, query } = await setup();
+  const campaign = await t.run(async (ctx) => {
+    await deliver(ctx, ids, nov, 10700, { actualCosts: { staff: 100, materials: 0, tools: 0, version: 1 } });
+    return ctx.db.insert('marketingCampaigns', {
+      name: 'Unmapped search',
+      source: 'search',
+      medium: 'paid',
+      status: 'active',
+      createdAt: nov,
+      updatedAt: nov,
+      updatedByEmail: email,
+    });
+  });
+  await user.mutation(api.marketing.report.saveSpend, {
+    campaignId: campaign,
+    from: base.from,
+    to: base.to,
+    amount: 200,
+  });
+  const revision = await user.mutation(finance.recordMonth, { ...month, overhead: 0 });
+  const report = await query({ metric: 'cac' });
+  expect(report.summary).toMatchObject({ unmappedSpend: 200, cac: null, net: null });
+  expect(report.detail?.rows).toContainEqual(expect.objectContaining({ category: 'Unmapped spend', amount: 200 }));
+  await user.mutation(finance.recordMonth, {
+    ...month,
+    overhead: 0,
+    expected: revision,
+    excludedCampaignIds: [campaign],
+    reason: 'Hotel-only campaign',
+  });
+  expect((await query()).summary).toMatchObject({ unmappedSpend: 0, cac: 0, net: 9900 });
+});
+it('protects names, entry, profile changes, exports and snapshots on direct calls', async () => {
+  const { t, user, ids } = await setup();
+  const id = await t.run((ctx) => deliver(ctx, ids));
+  const range = { from: base.from, to: base.to, refresh: false };
+  const namedView = await user.mutation(api.marketing.profitViews.openView, range);
+  const manager = t.withIdentity({
+    email: 'manager@company.test',
+    tokenIdentifier: 'manager',
+    emailVerified: true,
+  });
+  await t.run((ctx) =>
+    ctx.db.insert('marketingGrants', {
+      email: 'manager@company.test',
+      role: 'manager',
+      tokenIdentifier: 'manager',
+      createdAt: nov,
+      updatedAt: nov,
+      updatedByEmail: email,
+    }),
+  );
+  const privateView = await manager.mutation(api.marketing.profitViews.openView, range);
+  const detail = await manager.query(finance.report, { ...base, viewId: privateView, metric: 'ltv' });
+  expect(JSON.stringify(detail)).not.toContain('Customer One');
+  expect(detail.detail?.rows[0].ref).toBe('Attendee 1');
+  await expect(manager.query(finance.report, { ...base, viewId: namedView })).rejects.toThrow('access');
+  await expect(manager.query(finance.report, { ...base, viewId: privateView, exportRows: true })).rejects.toThrow(
+    'export',
+  );
+  await expect(manager.query(finance.financeInputs, { month: month.month, from: base.from })).rejects.toThrow();
+  await expect(manager.query(finance.findCustomers, { name: 'Customer' })).rejects.toThrow();
+  await expect(manager.mutation(finance.recordMonth, month)).rejects.toThrow();
+  await expect(
+    manager.mutation(finance.identifyCustomer, { appointmentId: id, expected: null, customerId: ids.attendeeId }),
+  ).rejects.toThrow();
+  await expect(
+    manager.mutation(finance.recordVisitCosts, {
+      appointmentId: id,
+      version: 0,
+      staff: 0,
+      materials: 0,
+      tools: 0,
+      reason: 'test',
+    }),
+  ).rejects.toThrow();
+});
+it('supports any-of values within an AND rule group and allocates receipt VAT to the satang', async () => {
+  const { t, ids, query } = await setup();
+  await t.run(async (ctx) => {
+    await deliver(ctx, ids);
+    await deliver(ctx, ids, nov + day, 10700, { source: 'line' });
+  });
+  const report = await query({
+    overview: {
+      join: 'and',
+      rules: [
+        { field: 'source', operator: 'is', value: ['admin', 'web'] },
+        { field: 'service', operator: 'is', value: [ids.serviceId] },
+      ],
+    },
+  });
+  expect(report.summary.count).toBe(1);
+  expect(serviceReceiptShares([8, 8, 0])).toEqual([1, 0, 0]);
 });

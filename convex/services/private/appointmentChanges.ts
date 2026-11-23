@@ -3,6 +3,7 @@ import type { PaginationOptions } from 'convex/server';
 import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { deliveryCostVersion } from './costSchedule';
 import { appointmentRevision } from '../../shared/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { appointmentLookupFields } from './serviceSlots';
@@ -32,7 +33,7 @@ const TRACKED = [
 
 type Tracked = (typeof TRACKED)[number];
 
-export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'coverage' | 'pendingReturn'>>;
+export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'receiptVatShare' | 'actualCosts' | 'coverage' | 'pendingReturn' | 'restoredCoverage' | 'restoredCoverageAt'>>;
 
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
@@ -62,7 +63,10 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 		guestPhone: 'guestPhone' in patch ? patch.guestPhone ?? '' : appointment.guestPhone,
 		guestEmail: 'guestEmail' in patch ? patch.guestEmail : appointment.guestEmail
 	});
-	await ctx.db.patch(appointment._id, { ...patch, ...lookup, revision: appointmentRevision(appointment) + 1 });
+	// Bind a delivered visit to the immutable finance entry that was available at completion.
+	const schedule = patch.status === 'completed' && appointment.status !== 'completed' && !appointment.costScheduleId
+		? await deliveryCostVersion(ctx, patch.serviceId ?? appointment.serviceId, patch.end ?? appointment.end) : {};
+	await ctx.db.patch(appointment._id, { ...patch, ...lookup, ...schedule, ...(patch.paymentStatus === 'unpaid' && {receiptVatShare: undefined}), revision: appointmentRevision(appointment) + 1 });
 	const audit = {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
 		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,

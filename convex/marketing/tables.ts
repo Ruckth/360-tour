@@ -9,14 +9,21 @@ export const marketingTables = {
 	// Marketing release 1: campaigns, short links and coupon catalog (see convex/marketing.ts).
 
 	// Marketing R4: grants bind an explicit email invitation to the authenticated canonical identity.
+  serviceProfitViews: defineTable({
+    owner: v.string(), from: v.string(), to: v.string(), named: v.boolean(), expiresAt: v.number(),
+  }).index('by_owner_range', ['owner', 'from', 'to', 'named']),
+  serviceProfitViewChunks: defineTable({
+    viewId: v.id('serviceProfitViews'), sequence: v.number(), payload: v.string(),
+  }).index('by_view', ['viewId', 'sequence']),
+
   serviceCostSchedules: defineTable({
     serviceId: v.id('services'), from: v.string(), staff: v.number(),
-    materials: v.number(), tools: v.number(), actor: v.string(), recordedAt: v.number(),
+    materials: v.number(), tools: v.number(), actor: v.string(), reason: v.optional(v.string()), recordedAt: v.number(),
   }).index('by_serviceId_and_from', ['serviceId', 'from']),
 
   serviceFinanceMonths: defineTable({
-    month: v.string(), campaignIds: v.array(v.id('marketingCampaigns')), overhead: v.number(), otherExpenses: v.number(), tax: v.number(),
-    otherIncome: v.number(), actor: v.string(), recordedAt: v.number(),
+    month: v.string(), excludedCampaignIds: v.optional(v.array(v.id('marketingCampaigns'))), campaignIds: v.array(v.id('marketingCampaigns')), overhead: v.number(), otherExpenses: v.number(), tax: v.number(),
+    otherIncome: v.number(), actor: v.string(), reason: v.optional(v.string()), recordedAt: v.number(),
   }).index('by_month', ['month']),
 
 	marketingGrants: defineTable({

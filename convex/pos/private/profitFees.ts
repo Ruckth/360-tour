@@ -2,12 +2,14 @@ import type { QueryCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { readBudget, ReadBudgetExceeded, readRangeWithinBudget } from '../../lib/readBudget';
 import { lineNet } from '../../shared/orderMath';
-import { roundRatio } from '../../shared/money';
+import { revenueRemaining } from '../../shared/serviceVat';
+import { profitReceiptReader } from './profitReceipt';
 import { resortTodayIso } from '../../shared/time';
 import type { ProfitLine } from '../../shared/profitability';
 
 /** Fee rows are separate from delivered appointments, including when both appear on one receipt. */
 export async function profitFees(ctx: QueryCtx, start: number, end: number): Promise<ProfitLine[]> {
+  const receipts = profitReceiptReader(ctx);
   const byPaid = (status: 'paid' | 'void') =>
     readRangeWithinBudget(
       ctx,
@@ -39,6 +41,21 @@ export async function profitFees(ctx: QueryCtx, start: number, end: number): Pro
   const budget = readBudget(ctx);
   const lines: ProfitLine[] = [];
   const feeLines = new Map<Id<'orderLines'>, Doc<'orderLines'>>();
+  // Fee rows are sparse in most resorts. Probe their existing index before opening one
+  // extras range per receipt. Large fee histories keep the period-bounded fallback.
+  const feeGroups = new Map<Id<'orders'>, Doc<'orderLines'>[]>();
+  const probeLimit = Math.min(500, orders.size + 1);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const probe = await ctx.db
+    .query('orderLines')
+    .withIndex('by_feeAppointmentId', (q) => q.gt('feeAppointmentId', undefined))
+    .take(probeLimit);
+  for (const line of probe) {
+    if (!budget.document(line)) throw new ReadBudgetExceeded();
+    const group = feeGroups.get(line.orderId) ?? [];
+    group.push(line);
+    feeGroups.set(line.orderId, group);
+  }
   function entry(
     line: Doc<'orderLines'>,
     order: Doc<'orders'>,
@@ -65,24 +82,20 @@ export async function profitFees(ctx: QueryCtx, start: number, end: number): Pro
   for (const order of orders.values()) {
     const at = order.paymentEffectiveAt ?? order.paidAt;
     if (at === undefined || at < start || at >= end || order.voidUnreceived) continue;
-    const extras = await readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('orderLines')
-        .withIndex('by_orderId_and_kind', (q) => q.eq('orderId', order._id).eq('kind', 'extra')),
-    );
+    const extras =
+      probe.length < probeLimit
+        ? (feeGroups.get(order._id) ?? [])
+        : await readRangeWithinBudget(
+            ctx,
+            ctx.db
+              .query('orderLines')
+              .withIndex('by_orderId_and_kind', (q) => q.eq('orderId', order._id).eq('kind', 'extra')),
+          );
     for (const line of extras) {
       if (!line.fee) continue;
       feeLines.set(line._id, line);
       const gross = line.saleSnapshot?.paidShare ?? lineNet(line);
-      entry(
-        line,
-        order,
-        line._id,
-        resortTodayIso(at),
-        gross - roundRatio(BigInt(line.saleSnapshot?.vatBase ?? gross) * 7n, 107),
-        false,
-      );
+      entry(line, order, line._id, resortTodayIso(at), gross - (await receipts.tax(line)), false);
     }
   }
   const refundedLines = new Set(refunds.map((row) => row.lineId));
@@ -106,7 +119,9 @@ export async function profitFees(ctx: QueryCtx, start: number, end: number): Pro
     );
     history.sort((a, b) => a.businessDate.localeCompare(b.businessDate) || a._creationTime - b._creationTime);
     let balance = line.saleSnapshot?.paidShare ?? lineNet(line);
-    const net = (value: number) => value - roundRatio(BigInt(value) * 7n, 107);
+    const gross = balance,
+      vat = await receipts.tax(line);
+    const net = (value: number) => revenueRemaining(value, gross, vat);
     for (const row of history) {
       const amount = net(balance - row.amount) - net(balance);
       balance -= row.amount;

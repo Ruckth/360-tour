@@ -1,12 +1,12 @@
 import { ConvexError, v } from 'convex/values';
-import type { Id } from '../_generated/dataModel';
-import { marketingMutation, marketingQuery, type QueryCtx } from '../auth/model';
+import { marketingMutation, marketingQuery } from '../auth/model';
 import { ReadBudgetExceeded, readRangeWithinBudget } from '../lib/readBudget';
-import { profitFees } from '../pos/model';
-import { profitVisits, recordAppointmentChange } from '../services/model';
-import { addDays, isIsoDate } from '../shared/dates';
+import { latestMonth, readServiceFinanceFacts } from './private/serviceFinanceFacts';
+import { readView } from './private/profitViews';
+import { recordAppointmentChange } from '../services/model';
+import { isIsoDate } from '../shared/dates';
 import { assertMoney } from '../shared/money';
-import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds, spendInRange } from '../shared/marketingReport';
+import { MAX_REPORT_DAYS, reportDayCount } from '../shared/marketingReport';
 import {
   calculateProfit,
   matchesProfitRules,
@@ -14,10 +14,15 @@ import {
   profitFilters,
   profitTotals,
   validateProfitFilters,
-  type Expense,
   type ProfitLine,
 } from '../shared/profitability';
 
+function financeReason(value: string | undefined, revision: boolean) {
+  const reason = value?.trim() ?? '';
+  if (reason.length > 300 || (revision && !reason))
+    throw new ConvexError('Enter a short reason for this finance revision.');
+  return reason || 'Initial finance entry';
+}
 const costs = { staff: v.number(), materials: v.number(), tools: v.number() };
 const monthly = { overhead: v.number(), otherExpenses: v.number(), tax: v.number(), otherIncome: v.number() };
 const metric = v.union(
@@ -30,20 +35,8 @@ const metric = v.union(
 function validateMonth(month: string) {
   if (!/^\d{4}-\d{2}$/.test(month) || !isIsoDate(month + '-01')) throw new ConvexError('Choose a calendar month.');
 }
-function endOfMonth(month: string) {
-  const date = new Date(month + '-01T00:00:00Z');
-  date.setUTCMonth(date.getUTCMonth() + 1, 0);
-  return date.toISOString().slice(0, 10);
-}
-const latestMonth = (ctx: QueryCtx, month: string) =>
-  ctx.db
-    .query('serviceFinanceMonths')
-    .withIndex('by_month', (q) => q.eq('month', month))
-    .order('desc')
-    .first();
-
 export const financeInputs = marketingQuery({
-  permission: 'spend',
+  permission: 'serviceFinance',
   args: { month: v.string(), serviceId: v.optional(v.id('services')), from: v.string() },
   handler: async (ctx, args) => {
     validateMonth(args.month);
@@ -69,14 +62,15 @@ export const financeInputs = marketingQuery({
   },
 });
 export const recordCosts = marketingMutation({
-  permission: 'spend',
+  permission: 'serviceFinance',
   args: {
     serviceId: v.id('services'),
     from: v.string(),
     expected: v.union(v.null(), v.id('serviceCostSchedules')),
+    reason: v.optional(v.string()),
     ...costs,
   },
-  handler: async (ctx, { serviceId, from, expected, staff, materials, tools }) => {
+  handler: async (ctx, { serviceId, from, expected, staff, materials, tools, reason }) => {
     if (!isIsoDate(from) || !(await ctx.db.get(serviceId)))
       throw new ConvexError('Select a service and valid effective date.');
     for (const value of [staff, materials, tools]) assertMoney(value, 'Cost', { allowZero: true });
@@ -97,6 +91,7 @@ export const recordCosts = marketingMutation({
     return ctx.db.insert('serviceCostSchedules', {
       serviceId,
       from,
+      reason: financeReason(reason, !!current),
       staff,
       materials,
       tools,
@@ -106,23 +101,27 @@ export const recordCosts = marketingMutation({
   },
 });
 export const recordMonth = marketingMutation({
-  permission: 'spend',
+  permission: 'serviceFinance',
   args: {
     month: v.string(),
     expected: v.union(v.null(), v.id('serviceFinanceMonths')),
     campaignIds: v.array(v.id('marketingCampaigns')),
+    excludedCampaignIds: v.optional(v.array(v.id('marketingCampaigns'))),
+    reason: v.optional(v.string()),
     ...monthly,
   },
-  handler: async (ctx, { month, expected, campaignIds, ...amounts }) => {
+  handler: async (ctx, { month, expected, campaignIds, reason, excludedCampaignIds = [], ...amounts }) => {
     validateMonth(month);
     for (const value of Object.values(amounts)) assertMoney(value, 'Monthly amount', { allowZero: true });
-    if (campaignIds.length > 100 || new Set(campaignIds).size !== campaignIds.length)
+    const classified = [...campaignIds, ...excludedCampaignIds];
+    if (classified.length > 200 || new Set(classified).size !== classified.length)
       throw new ConvexError('Choose up to 100 distinct campaigns.');
-    for (const id of campaignIds) if (!(await ctx.db.get(id))) throw new ConvexError('Campaign no longer exists.');
+    for (const id of classified) if (!(await ctx.db.get(id))) throw new ConvexError('Campaign no longer exists.');
     const current = await latestMonth(ctx, month);
     const ids = [...campaignIds].sort();
     if (
       current &&
+      (current.excludedCampaignIds ?? []).join() === [...excludedCampaignIds].sort().join() &&
       current.campaignIds.join() === ids.join() &&
       current.overhead === amounts.overhead &&
       current.tax === amounts.tax &&
@@ -136,73 +135,20 @@ export const recordMonth = marketingMutation({
       month,
       ...amounts,
       campaignIds: ids,
+      excludedCampaignIds: [...excludedCampaignIds].sort(),
+      reason: financeReason(reason, !!current),
       actor: ctx.marketing.email,
       recordedAt: Date.now(),
     });
   },
 });
 
-async function expensesFor(ctx: QueryCtx, from: string, to: string) {
-  const expenses: Expense[] = [],
-    missingMonths: string[] = [];
-  const names = new Map<Id<'marketingCampaigns'>, string>();
-  for (let first = from.slice(0, 7) + '-01'; first <= to; ) {
-    const month = first.slice(0, 7),
-      last = endOfMonth(month);
-    const statement = await latestMonth(ctx, month);
-    if (!statement) missingMonths.push(month);
-    else {
-      const fields = [
-        ['Overhead', 'overhead'],
-        ['Other expenses', 'otherExpenses'],
-        ['Income tax', 'tax'],
-        ['Other income', 'otherIncome'],
-      ] as const;
-      for (const [kind, field] of fields) {
-        const share = spendInRange({ from: first, to: last, amount: statement[field] }, from, to);
-        expenses.push({
-          id: statement._id + field,
-          day: first,
-          ref: month + ' service accounts',
-          kind,
-          amount: kind === 'Other income' ? share : -share,
-        });
-      }
-      for (const id of statement.campaignIds) {
-        const entries = await readRangeWithinBudget(
-          ctx,
-          ctx.db.query('marketingSpend').withIndex('by_campaignId_and_from', (q) =>
-            q
-              .eq('campaignId', id)
-              .gte('from', addDays(first, -366))
-              .lte('from', last < to ? last : to),
-          ),
-        );
-        if (!names.has(id)) names.set(id, (await ctx.db.get(id))?.name ?? 'Archived campaign');
-        for (const row of entries) {
-          if (row.deletedAt !== undefined) continue;
-          const share = spendInRange(row, from > first ? from : first, to < last ? to : last);
-          if (share)
-            expenses.push({
-              id: row._id + month,
-              day: row.from > first ? row.from : first,
-              ref: names.get(id)!,
-              kind: 'Marketing',
-              amount: -share,
-            });
-        }
-      }
-    }
-    first = addDays(last);
-  }
-  return { expenses, missingMonths };
-}
-
 export const report = marketingQuery({
   permission: 'spend',
   args: {
     from: v.string(),
     to: v.string(),
+    viewId: v.optional(v.id('serviceProfitViews')),
     overview: profitFilters,
     additional: profitFilters,
     metric: v.optional(metric),
@@ -220,11 +166,13 @@ export const report = marketingQuery({
       throw new ConvexError('Invalid transaction filter.');
     validateProfitFilters(overview);
     validateProfitFilters(additional);
-    const { start, end } = reportRangeBounds(from, to);
+    const named = ctx.marketing.capabilities.serviceFinance;
+    if (args.exportRows && !named) throw new ConvexError('Finance access is required to export.');
     try {
-      const { lines, customers, excludedCurrency } = await profitVisits(ctx, start, end);
-      lines.push(...(await profitFees(ctx, start, end)));
-      const facts = { lines, customers, ...(await expensesFor(ctx, from, to)) };
+      const facts = args.viewId
+        ? await readView(ctx, args.viewId, from, to, named)
+        : await readServiceFinanceFacts(ctx, from, to, named);
+      const { lines, excludedCurrency } = facts;
       const base = lines.filter((row) => matchesProfitRules(row, overview));
       const narrowed = overview.rules.length > 0;
       const totals = calculateProfit(facts, base, from, to, narrowed);
@@ -245,6 +193,7 @@ export const report = marketingQuery({
         anonymous,
       } = totals;
       const summary = {
+        unmappedSpend: totals.unmappedSpend,
         count,
         revenue,
         gross,
@@ -274,6 +223,12 @@ export const report = marketingQuery({
       const common = {
         summary,
         breakdown,
+        expenses: narrowed
+          ? []
+          : [...new Set(facts.expenses.map((e) => e.kind))].map((kind) => ({
+              kind,
+              amount: facts.expenses.filter((e) => e.kind === kind).reduce((sum, e) => sum + e.amount, 0),
+            })),
         excludedCurrency,
         missingMonths: facts.missingMonths,
         services: [...services].map(([id, name]) => ({ id, name })),
@@ -317,7 +272,7 @@ export const report = marketingQuery({
 });
 
 export const findCustomers = marketingQuery({
-  permission: 'spend',
+  permission: 'serviceFinance',
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
     const query = name.trim();
@@ -332,7 +287,7 @@ export const findCustomers = marketingQuery({
   },
 });
 export const identifyCustomer = marketingMutation({
-  permission: 'spend',
+  permission: 'serviceFinance',
   args: {
     appointmentId: v.id('appointments'),
     expected: v.union(v.null(), v.id('customers')),
@@ -354,6 +309,39 @@ export const identifyCustomer = marketingMutation({
       visit,
       { reportCustomerId: customerId ?? undefined },
       { actor: ctx.marketing.email, kind: 'details', reason: 'Verified service reporting customer' },
+    );
+    return null;
+  },
+});
+
+export const recordVisitCosts = marketingMutation({
+  permission: 'serviceFinance',
+  args: { appointmentId: v.id('appointments'), version: v.number(), reason: v.string(), ...costs },
+  returns: v.null(),
+  handler: async (ctx, { appointmentId, version, reason, staff, materials, tools }) => {
+    const visit = await ctx.db.get(appointmentId);
+    if (visit?.status !== 'completed') throw new ConvexError('Choose a completed visit.');
+    const note = financeReason(reason, true);
+    const amounts = { staff, materials, tools };
+    for (const n of Object.values(amounts)) assertMoney(n, 'Cost', { allowZero: true });
+    const prior = visit.actualCosts;
+    if (prior && prior.staff === staff && prior.materials === materials && prior.tools === tools) return null;
+    if ((prior?.version ?? 0) !== version)
+      throw new ConvexError('Visit costs changed. Refresh and review the entry.');
+    await recordAppointmentChange(
+      ctx,
+      visit,
+      { actualCosts: { ...amounts, version: version + 1 } },
+      {
+        actor: ctx.marketing.email,
+        kind: 'details',
+        reason: note,
+        details: (['staff', 'materials', 'tools'] as const).map((k) => ({
+          field: k + 'Cost',
+          from: prior?.[k] ?? null,
+          to: amounts[k],
+        })),
+      },
     );
     return null;
   },

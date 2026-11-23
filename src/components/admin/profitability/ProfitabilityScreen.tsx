@@ -1,332 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDownUp, ArrowLeft, ArrowUpRight, CalendarRange, Download, SlidersHorizontal } from 'lucide-react';
-import { useConvex } from 'convex/react';
-import type { FunctionArgs, FunctionReturnType } from 'convex/server';
+import { ArrowLeft, CalendarRange, SlidersHorizontal } from 'lucide-react';
+import { useRouter as useStartRouter, useRouterState } from '@tanstack/react-router';
+import { Overview } from './ProfitOverview';
+import { Details } from './ProfitRecords';
+import { endpoint, box, path, type Href, type Report, type Request } from './report-model';
+import { useConvex, useMutation } from 'convex/react';
 import { api } from 'convex/_generated/api';
-import { metricNames, profitMetrics, type ProfitFilters, type ProfitMetric } from 'convex/shared/profitability';
+import { metricNames, profitMetrics } from 'convex/shared/profitability';
 import { resortTodayIso } from 'convex/shared/time';
 import { MAX_REPORT_DAYS, reportDayCount } from 'convex/shared/marketingReport';
 import Link from '@/platform/link';
-import { usePathname, useRouter, useSearchParams } from '@/platform/navigation';
+import { usePathname, useSearchParams } from '@/platform/navigation';
 import { Button } from '@/components/ui/button';
-import { toCsv } from '@/lib/admin/csv';
 import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
-import { CustomerAssignment } from './CustomerAssignment';
 import { FinanceInputs } from './FinanceInputs';
 import { inputStyle, readGroup, RuleEditor, ruleLabel } from './report-controls';
 
-const path = '/admin/marketing/profitability';
-const endpoint = api.marketing.profitability.report;
-type Report = FunctionReturnType<typeof endpoint>;
-type Request = FunctionArgs<typeof endpoint>;
-const money = (n: number | null) => (n === null ? 'Unavailable' : thb(n));
-const box = 'rounded-xl border border-border bg-card';
-type Href = (detail: boolean, updates: Record<string, string | null>) => string;
-
-function Overview({ report, href, narrowed }: { report: Report; href: Href; narrowed: boolean }) {
-  const s = report.summary;
-  const note: Record<ProfitMetric, string> = {
-    revenue: 'Delivered services and fees, after VAT and refunds',
-    gross: s.missingCount ? s.missingCount + ' rows awaiting costs' : 'After staff, materials and tools',
-    net: narrowed
-      ? 'Shared expenses apply to all services'
-      : report.missingMonths.length
-        ? 'Enter monthly accounts below'
-        : s.missingCount
-          ? 'Complete service costs below'
-          : 'After acquisition spend, expenses and tax',
-    ltv: s.customerCount
-      ? 'Lifetime service revenue ÷ ' + s.customerCount + ' identified customers'
-      : 'Requires an identified attendee',
-    cac: narrowed
-      ? 'Spend applies to the full service business'
-      : report.missingMonths.length
-        ? 'Confirm monthly campaign spend'
-        : thb(s.spend) + ' spend ÷ ' + s.newCount + ' new customers',
-  };
-  return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {profitMetrics.map((metric) => (
-          <Link
-            key={metric}
-            href={href(true, { metric, additional: null })}
-            className={
-              box +
-              ' group flex min-w-0 flex-col gap-3 p-4 transition-colors hover:border-primary focus-visible:ring-2 focus-visible:ring-ring'
-            }
-          >
-            <div className="flex items-start justify-between gap-3 text-sm font-medium">
-              {metricNames[metric]}
-              <ArrowUpRight aria-hidden="true" size={16} className="shrink-0 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-semibold tracking-tight tabular-nums">{money(s[metric])}</div>
-            <span className="text-xs leading-relaxed text-muted-foreground">
-              {metric === 'gross' && s.gross !== null && s.missingCount > 0 && <b>Partial · </b>}
-              {note[metric]}
-            </span>
-          </Link>
-        ))}
-      </div>
-      <section className={box + ' overflow-hidden'}>
-        <header className="border-b border-border p-4 sm:p-5">
-          <h2 className="text-lg font-semibold">Revenue and costs by service</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {s.count} financial rows · {s.customerCount} identified customers · {s.anonymous} rows without an
-            attendee
-          </p>
-        </header>
-        {!report.breakdown.length ? (
-          <p className="p-5 text-sm">No delivered services, fees or refunds match these filters.</p>
-        ) : (
-          <div className="divide-y divide-border">
-            {report.breakdown.map((row) => {
-              const group: ProfitFilters = {
-                join: 'and',
-                rules: [{ field: 'service', operator: 'is', value: row.id }],
-              };
-              const url = (metric: ProfitMetric, category?: string) =>
-                href(true, { metric, additional: JSON.stringify(group), category: category ?? null });
-              return (
-                <article key={row.id} className="grid gap-3 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 className="font-semibold">{row.name}</h3>
-                    <Link
-                      className="text-sm font-semibold underline-offset-4 hover:underline"
-                      href={url('revenue')}
-                    >
-                      {thb(row.revenue)} revenue ↗
-                    </Link>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                    {(['staff', 'materials', 'tools'] as const).map((k) => (
-                      <Link
-                        key={k}
-                        href={url('gross', k[0].toUpperCase() + k.slice(1))}
-                        className="grid gap-0.5 rounded-md bg-muted/50 px-3 py-2 hover:bg-muted"
-                      >
-                        <span className="capitalize text-muted-foreground">{k}</span>
-                        <b className="tabular-nums">
-                          {row.count === row.missingCount ? 'Awaiting costs' : thb(row.costs[k])}
-                        </b>
-                      </Link>
-                    ))}
-                    <Link href={url('gross')} className="grid gap-0.5 rounded-md bg-primary/10 px-3 py-2">
-                      <span>Gross profit</span>
-                      <b className="tabular-nums">{money(row.gross)} ↗</b>
-                    </Link>
-                  </div>
-                  {row.missingCount > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {row.missingCount} rows totaling {thb(row.revenue - row.coveredRevenue)} await a cost
-                      schedule.
-                    </p>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </>
-  );
-}
-
-function Details({
-  report,
-  request,
-  setPage,
-  category,
-  setCategory,
-  search,
-  setSearch,
-  setDescending,
-  refresh,
-}: {
-  report: Report;
-  request: Request;
-  setPage: (page: number) => void;
-  category: string;
-  setCategory: (v: string) => void;
-  search: string;
-  setSearch: (v: string) => void;
-  setDescending: (v: boolean) => void;
-  refresh: () => void;
-}) {
-  const convex = useConvex();
-  const [exporting, setExporting] = useState(false),
-    [error, setError] = useState('');
-  const [assignment, setAssignment] = useState<NonNullable<Report['detail']>['rows'][number] | null>(null);
-  const detail = report.detail,
-    metric = request.metric;
-  if (!detail || !metric) return null;
-  async function download() {
-    setExporting(true);
-    setError('');
-    try {
-      const { detail: all } = await convex.query(endpoint, { ...request, exportRows: true });
-      if (!all) return;
-      const csv = toCsv([
-        ['Date', 'Reference', 'Service', 'Customer', 'Category', 'Amount (THB)'],
-        ...all.rows.map((r) => [
-          r.day,
-          r.ref,
-          r.service,
-          r.customer,
-          r.category,
-          r.amount === null ? '' : r.amount / 100,
-        ]),
-      ]);
-      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'service-' + metric + '-' + request.from + '-' + request.to + '.csv';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (err) {
-      setError(marketingErrorText(err, 'Could not export these records.'));
-    } finally {
-      setExporting(false);
-    }
+declare module '@tanstack/react-router' {
+  interface HistoryState {
+    profitSearch?: { owner: string; text: string };
   }
-  return (
-    <section className={box + ' min-w-0'}>
-      <header className="grid gap-3 border-b border-border p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Supporting records</h2>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void download();
-            }}
-            disabled={exporting || !detail.count}
-          >
-            <Download size={15} />
-            {exporting ? 'Exporting…' : 'Export CSV'}
-          </Button>
-        </div>
-        <p className="text-sm">
-          Overview <b>{money(report.summary[metric])}</b> · After transaction rules <b>{money(detail.value)}</b>
-        </p>
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="grid max-w-full gap-1 text-xs">
-            Search records
-            <input
-              className={inputStyle}
-              type="search"
-              maxLength={120}
-              placeholder="Customer, service, reference"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
-          <label className="grid max-w-full gap-1 text-xs">
-            Record category
-            <select className={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">All categories</option>
-              {[...new Set([...detail.categories, ...(category ? [category] : [])])].map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-          </label>
-          <Button size="sm" variant="ghost" onClick={() => setDescending(!request.descending)}>
-            <ArrowDownUp size={15} />
-            {request.descending ? 'Newest first' : 'Oldest first'}
-          </Button>
-        </div>
-      </header>
-      {error && (
-        <p role="alert" className="px-4 pt-3 text-destructive">
-          {error}
-        </p>
-      )}
-      {assignment?.appointmentId && (
-        <CustomerAssignment
-          visit={assignment.appointmentId}
-          expected={assignment.currentCustomer ?? null}
-          reference={assignment.ref}
-          done={() => {
-            setAssignment(null);
-            refresh();
-          }}
-        />
-      )}
-      {detail.count ? (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">{metricNames[metric]} supporting records</caption>
-            <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
-              <tr>
-                {['Date', 'Reference', 'Service / customer', 'Category', 'Amount'].map((c) => (
-                  <th key={c} scope="col" className="whitespace-nowrap px-4 py-3 last:text-right">
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {detail.rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{r.day || '—'}</td>
-                  <td className="px-4 py-3 font-medium">{r.ref}</td>
-                  <td className="px-4 py-3">
-                    {r.service}
-                    {r.appointmentId && (
-                      <button
-                        type="button"
-                        className="block min-h-10 text-xs text-primary underline"
-                        onClick={() => setAssignment(r)}
-                      >
-                        {r.currentCustomer ? 'Edit customer' : 'Identify customer'}
-                      </button>
-                    )}
-                    {r.customer && r.customer !== r.ref && (
-                      <div className="text-xs text-muted-foreground">{r.customer}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">{r.category}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
-                    {r.amount === null ? '—' : thb(r.amount)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="p-5">No records match the selected rules and search.</p>
-      )}
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-sm">
-        <span aria-live="polite">
-          {detail.count} matching records · {thb(detail.sum)} subtotal
-          {(metric === 'ltv' || metric === 'cac') && ' · ' + detail.people + ' customers'}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" disabled={!detail.page} onClick={() => setPage(detail.page - 1)}>
-            Previous
-          </Button>
-          <span>
-            {detail.page + 1} / {Math.max(1, Math.ceil(detail.count / detail.pageSize))}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={(detail.page + 1) * detail.pageSize >= detail.count}
-            onClick={() => setPage(detail.page + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </footer>
-    </section>
-  );
 }
-
 function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const convex = useConvex(),
-    router = useRouter(),
+    router = useStartRouter(),
     params = useSearchParams(),
     pathname = usePathname();
   const today = resortTodayIso(),
@@ -336,19 +34,38 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     metric = profitMetrics.find((m) => m === chosen) ?? 'revenue';
   const overview = useMemo(() => readGroup(params.get('rules')), [params]),
     additional = useMemo(() => readGroup(params.get('additional')), [params]);
-  const [search, setSearch] = useState(''),
-    [submitted, setSubmitted] = useState(''),
-    [page, setPage] = useState(0),
-    [descending, setDescending] = useState(true);
+  const access = useMarketingAccess();
+  const canWrite = access.role === 'admin' || access.role === 'finance';
+  const savedSearch = useRouterState({ select: (s) => s.location.state.profitSearch });
+  const submitted = detailPage && savedSearch?.owner === access.email ? (savedSearch?.text ?? '') : '';
+  const [draft, setDraft] = useState({ term: submitted, text: submitted });
+  const search = draft.term === submitted ? draft.text : submitted;
+  const setSearch = (text: string) => setDraft({ term: submitted, text });
+  const page = Math.max(0, Math.floor(Number(params.get('page')) || 0));
+  const descending = params.get('sort') !== 'asc';
   const [open, setOpen] = useState(false),
     [revision, setRevision] = useState(0);
+  const openView = useMutation(api.marketing.profitViews.openView);
+  const viewKey = JSON.stringify([access.email, canWrite, from, to, revision]);
+  const [view, setView] = useState<{ key: string; id?: Request['viewId']; error?: string }>();
+  const days = reportDayCount(from, to),
+    valid = days !== null && days <= MAX_REPORT_DAYS;
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setSubmitted(search);
-      setPage(0);
-    }, 220);
-    return () => clearTimeout(timer);
-  }, [search]);
+    if (!valid) return;
+    let active = true;
+    openView({ from, to, refresh: revision > 0 }).then(
+      (id) => {
+        if (active) setView({ key: viewKey, id });
+      },
+      (err) => {
+        if (active) setView({ key: viewKey, error: marketingErrorText(err, 'Could not open the report.') });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [openView, from, to, revision, valid, viewKey]);
+  const viewId = view?.key === viewKey ? view.id : undefined;
   const category = params.get('category') ?? '';
   const request: Request = useMemo(
     () => ({
@@ -356,20 +73,19 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
       to,
       overview,
       additional,
+      viewId,
       search: submitted,
       category,
       page,
       descending,
       ...(detailPage ? { metric } : {}),
     }),
-    [from, to, overview, additional, submitted, category, page, descending, detailPage, metric],
+    [viewId, from, to, overview, additional, submitted, category, page, descending, detailPage, metric],
   );
   const key = JSON.stringify([request, revision]);
   const [state, setState] = useState<{ key: string; data?: Report; error?: string } | null>(null);
-  const days = reportDayCount(from, to),
-    valid = days !== null && days <= MAX_REPORT_DAYS;
   useEffect(() => {
-    if (!valid) return;
+    if (!valid || !viewId) return;
     let active = true;
     convex.query(endpoint, request).then(
       (data) => {
@@ -382,21 +98,31 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     return () => {
       active = false;
     };
-  }, [convex, key, request, valid]);
+  }, [convex, key, request, valid, viewId]);
   const href: Href = (detail, updates) => {
-    const next = new URLSearchParams(params);
+    const next = new URLSearchParams();
+    for (const k of ['rules', 'metric', 'additional', 'page', 'sort', 'lookup', 'category']) {
+      const v = params.get(k);
+      if (v) next.set(k, v);
+    }
     next.set('from', from);
     next.set('to', to);
-    if (!detail) for (const k of ['metric', 'additional', 'category']) next.delete(k);
+    if (!detail) for (const k of ['metric', 'additional', 'category', 'page', 'sort', 'lookup']) next.delete(k);
     for (const [k, v] of Object.entries(updates)) {
       if (v === null) next.delete(k);
       else next.set(k, v);
     }
     return path + (detail ? '/transactions' : '') + '?' + next.toString();
   };
-  function update(changes: Record<string, string | null>) {
-    setPage(0);
-    router.replace(href(detailPage, changes), { scroll: false });
+  function update(changes: Record<string, string | null>, term = submitted) {
+    void router.navigate({
+      href: href(detailPage, { page: null, ...changes }),
+      resetScroll: false,
+      state: (prev) => ({
+        ...prev,
+        profitSearch: detailPage && access.email && term ? { owner: access.email, text: term } : undefined,
+      }),
+    });
   }
   const report = valid && state?.key === key ? state.data : undefined;
   const options = state?.data ?? { services: [], sources: [] };
@@ -419,14 +145,14 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             Delivered services and fees · THB excluding VAT · Bangkok time
           </p>
         </div>
-        {!detailPage && (
+        {!detailPage && canWrite && (
           <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
             <SlidersHorizontal size={16} />
             Finance inputs
           </Button>
         )}
       </header>
-      {open && !detailPage && (
+      {open && !detailPage && canWrite && (
         <section className={box}>
           <h2 className="px-4 pt-4 text-lg font-semibold sm:px-6">Service finance inputs</h2>
           <FinanceInputs today={to} onSave={() => setRevision((v) => v + 1)} />
@@ -480,9 +206,9 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           Updating report…
         </p>
       )}
-      {state?.key === key && state.error && (
+      {((view?.key === viewKey && view.error) || (state?.key === key && state.error)) && (
         <div role="alert" className={box + ' p-4'}>
-          {state.error}{' '}
+          {view?.error ?? state?.error}{' '}
           <Button size="sm" variant="outline" onClick={() => setRevision((v) => v + 1)}>
             Retry
           </Button>
@@ -500,18 +226,25 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
                   report={shown}
                   request={request}
                   refresh={() => setRevision((v) => v + 1)}
-                  setPage={setPage}
+                  busy={loading}
+                  submitSearch={(term) =>
+                    update({ lookup: term ? String(Number(params.get('lookup') ?? 0) + 1) : null }, term.trim())
+                  }
+                  setPage={(p) => update({ page: p ? String(p) : null })}
                   category={category}
                   setCategory={(v) => update({ category: v || null })}
                   search={search}
                   setSearch={setSearch}
-                  setDescending={(v) => {
-                    setPage(0);
-                    setDescending(v);
-                  }}
+                  setDescending={(v) => update({ sort: v ? null : 'asc' })}
                 />
               ) : (
                 <Overview report={shown} href={href} narrowed={overview.rules.length > 0} />
+              )}
+              {!!shown.summary.unmappedSpend && (
+                <p role="status">
+                  Unclassified campaign spend of {thb(shown.summary.unmappedSpend)}. Finance can classify it in
+                  monthly accounts.
+                </p>
               )}
               {!!shown.missingMonths.length && (
                 <p className="text-sm text-muted-foreground">
@@ -550,5 +283,5 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
 export function ProfitabilityScreen({ detailPage = false }: { detailPage?: boolean }) {
   const access = useMarketingAccess();
   if (!access.capabilities.spend) return <p className="p-6">Finance access is required to view profitability.</p>;
-  return <ReportScreen detailPage={detailPage} />;
+  return <ReportScreen key={[access.email, access.role].join('|')} detailPage={detailPage} />;
 }

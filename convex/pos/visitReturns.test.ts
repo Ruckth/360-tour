@@ -7,7 +7,7 @@ import type { MutationCtx } from '../_generated/server';
 import { resolveCommerceSettings } from '../commerce/model';
 import * as budgets from '../lib/readBudget';
 import schema from '../schema';
-import { recordReturnDestination } from '../services/model';
+import { profitVisits, recordReturnDestination } from '../services/model';
 import { projectTender } from '../shared/tenderProjection';
 import { termsOf } from './private/paymentCommerce';
 import type { ReturnPart } from './private/returnPlan';
@@ -554,4 +554,27 @@ it('leaves a performed covered visit and its use in place when the mistaken rece
   expect(await t.run(ctx => ctx.db.get(orderId))).toMatchObject({ status: 'void', commerceRevision: 1 });
   expect(await t.run(ctx => ctx.db.get(appointmentId))).toMatchObject({ paymentStatus: 'paid', coverage: { useId } });
   expect(await t.run(ctx => ctx.db.get(useId))).toMatchObject({ activeAppointmentId: appointmentId });
+});
+it('recognizes a paid package unit on delivery, reverses it on restoration and counts its replacement payment once',async()=>{
+  const {t,owner}=setup();
+  const {args,appointmentId}=await t.run(async ctx=>{
+    const orderId=await receipt(ctx,1,0);
+    const covered=await coveredVisit(ctx,orderId);
+    const grant=(await ctx.db.get(covered.grantId))!;
+    const saleOrder=await receipt(ctx,1,10700);
+    const packageLine=await line(ctx,saleOrder,'package',10700,{saleSnapshot:snapshot('Service package',10700,[{
+      ...allocation(10700),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1,
+    }])});
+    await ctx.db.patch(grant._id,{lineId:packageLine,orderId:saleOrder,paidShare:10700});
+    return {args:selection(orderId,[covered.part]),appointmentId:covered.appointmentId};
+  });
+  const revenue=async(start:number,end:number)=>t.run(async ctx=>(await profitVisits(ctx,start,end)).lines.reduce((sum,row)=>sum+row.revenue,0));
+  expect(await revenue(now-day,now)).toBe(10000);
+  await owner.mutation(command.authorize,args);
+  expect(await revenue(now-day,now)).toBe(10000);
+  expect(await revenue(now,now+day)).toBe(-10000);
+  await owner.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid,{
+    appointmentId,expectedRevision:6,method:'cash',idempotencyKey:'recollect-for-report'
+  });
+  expect(await revenue(now-day,now+day)).toBe(price-Math.round(price*7/107));
 });

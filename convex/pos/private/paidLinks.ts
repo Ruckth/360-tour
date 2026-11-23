@@ -1,3 +1,4 @@
+import { profitReceiptReader } from './profitReceipt';
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
@@ -51,7 +52,7 @@ export async function executeLinkPaidLine(ctx: MutationCtx, args: Infer<typeof l
 			const problem = await appointmentLinkProblem(ctx, line, appointment);
 			if (problem) throw new ConvexError(problem);
 			// The same fields settleOrder writes when the appointment is paid at checkout.
-			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email },
+			await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', receiptVatShare: await profitReceiptReader(ctx).tax(line), price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email },
 				{ actor: admin.email, kind: 'payment', reason: note, effectiveAt });
 			link = { ...base, kind: 'appointment', appointmentId: appointment._id, appointmentPriceBefore: appointment.price };
 		} else {

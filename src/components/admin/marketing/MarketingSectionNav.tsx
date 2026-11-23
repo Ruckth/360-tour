@@ -3,6 +3,7 @@
 import Link from "@/platform/link";
 import { useSelectedLayoutSegment } from "@/platform/navigation";
 import type { ReactNode } from "react";
+import { useMarketingAccess } from "./MarketingAccess";
 import { cn } from "@/lib/utils";
 import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
 
@@ -11,13 +12,14 @@ import { ADMIN_MARKETING_PAGES, adminMarketingPath } from "../admin-routes";
  * so phones, where the sidebar is behind Menu, can switch between them.
  */
 export function MarketingSectionNav({ children }: { children: ReactNode }) {
+  const access = useMarketingAccess();
   const segment = useSelectedLayoutSegment("/admin/marketing");
   return (
     <>
       <nav aria-label="Marketing pages" className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6">
         <ul className="flex max-w-full gap-6 overflow-x-auto shadow-[inset_0_-1px_0_var(--color-border)]">
           {/* Access moved to Settings › Team; its old address redirects there. */}
-          {ADMIN_MARKETING_PAGES.filter(({ id }) => id !== "access").map(({ id, label }) => {
+          {ADMIN_MARKETING_PAGES.filter(({ id }) => id !== "access" && (id !== "profitability" || access.capabilities.spend)).map(({ id, label }) => {
             const current = segment === id;
             return (
               <li key={id} className="shrink-0">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ListFilter, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { parseMoneyInput } from '@/lib/money-input';
@@ -21,7 +21,7 @@ function choices(field: ProfitRule['field'], options: Options) {
     field === 'source'
       ? options.sources
       : field === 'kind'
-        ? ['Service', 'Refund', 'Fee']
+        ? ['Service', 'Refund', 'Fee', 'Settlement']
         : ['Complete', 'Missing'];
   return values.map((value) => ({ value, label: value }));
 }
@@ -29,7 +29,9 @@ export function ruleLabel(rule: ProfitRule, options: Options) {
   const value =
     rule.field === 'revenue'
       ? thb(rule.value)
-      : (choices(rule.field, options).find((v) => v.value === rule.value)?.label ?? rule.value);
+      : (Array.isArray(rule.value) ? rule.value : [rule.value])
+          .map((value) => choices(rule.field, options).find((v) => v.value === value)?.label ?? value)
+          .join(' or ');
   return [labels[rule.field], rule.operator, value].join(' ');
 }
 // Only the finite filter vocabulary goes into the URL. Customer lookup text stays on the page.
@@ -46,9 +48,11 @@ export function readGroup(value: string | null): ProfitFilters {
         (r.field === 'revenue'
           ? ['at least', 'at most'].includes(r.operator) && Number.isSafeInteger(r.value)
           : ['is', 'is not'].includes(r.operator) &&
-            typeof r.value === 'string' &&
-            r.value.length > 0 &&
-            r.value.length <= 150),
+            ((typeof r.value === 'string' && r.value.length > 0 && r.value.length <= 150) ||
+              (Array.isArray(r.value) &&
+                r.value.length > 0 &&
+                r.value.length <= 50 &&
+                r.value.every((v) => typeof v === 'string' && !!v.trim() && v.length <= 150)))),
     );
     return valid ? group : emptyFilters;
   } catch {
@@ -65,6 +69,12 @@ export function RuleEditor({
   options: Options;
   onChange: (next: ProfitFilters) => void;
 }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  function close() {
+    setOpen(false);
+    trigger.current?.focus();
+  }
   const [open, setOpen] = useState(false);
   const [field, setField] = useState<ProfitRule['field']>('service');
   const [negate, setNegate] = useState(false);
@@ -77,9 +87,10 @@ export function RuleEditor({
       const amount = parseMoneyInput(value.replace(/^-/, ''));
       if (!Number.isFinite(amount)) return;
       rule = { field, operator: negate ? 'at most' : 'at least', value: value.startsWith('-') ? -amount : amount };
-    } else rule = { field, operator: negate ? 'is not' : 'is', value };
+    } else rule = { field, operator: negate ? 'is not' : 'is', value: selected.length ? selected : value };
     onChange({ ...group, rules: [...group.rules, rule] });
-    setOpen(false);
+    close();
+    setSelected([]);
     setRaw('');
   }
   return (
@@ -88,6 +99,7 @@ export function RuleEditor({
         <Button
           size="sm"
           variant="outline"
+          ref={trigger}
           aria-expanded={open}
           onClick={() => setOpen(!open)}
           disabled={group.rules.length >= 12}
@@ -121,6 +133,12 @@ export function RuleEditor({
       {open && (
         <form
           className="flex flex-wrap items-end gap-2 rounded-lg bg-muted/60 p-3"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              close();
+            }
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             add();
@@ -135,6 +153,7 @@ export function RuleEditor({
                 setField(e.target.value as ProfitRule['field']);
                 setRaw('');
                 setNegate(false);
+                setSelected([]);
               }}
             >
               {Object.entries(labels).map(([k, v]) => (
@@ -168,7 +187,14 @@ export function RuleEditor({
                 onChange={(e) => setRaw(e.target.value)}
               />
             ) : (
-              <select className={inputStyle} value={value} onChange={(e) => setRaw(e.target.value)}>
+              <select
+                aria-label="Filter values"
+                className={inputStyle}
+                multiple
+                size={Math.min(4, Math.max(2, available.length))}
+                value={selected.length ? selected : value ? [value] : []}
+                onChange={(e) => setSelected([...e.target.selectedOptions].map((o) => o.value))}
+              >
                 {available.map((v) => (
                   <option key={v.value} value={v.value}>
                     {v.label}
@@ -181,7 +207,7 @@ export function RuleEditor({
             <Plus size={15} />
             Apply rule
           </Button>
-          <Button size="sm" type="button" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" type="button" variant="ghost" onClick={close}>
             Cancel
           </Button>
         </form>

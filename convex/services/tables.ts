@@ -152,6 +152,11 @@ export const servicesTables = {
 		attendeeId: v.optional(v.id('customers')),
 		/** Finance-verified identity for reports. Operational package attendance takes precedence. */
 		reportCustomerId: v.optional(v.id('customers')),
+		actualCosts: v.optional(v.object({ staff: v.number(), materials: v.number(), tools: v.number(), version: v.number() })),
+		receiptVatShare: v.optional(v.number()),
+		costScheduleId: v.optional(v.id('serviceCostSchedules')),
+		restoredCoverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), at: v.number() })),
+		restoredCoverageAt: v.optional(v.number()),
 		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
 		pendingReturn: v.optional(v.object({ returnId: v.id('orderReturns'), remaining: v.number() })),
 		serviceId: v.id('services'),
@@ -214,7 +219,9 @@ export const servicesTables = {
 	})
 		.index('by_attendeeId_and_start', ['attendeeId', 'start'])
 		.index('by_status_and_end', ['status', 'end'])
+		.index('by_restoredCoverageAt', ['restoredCoverageAt'])
 		.index('by_reportCustomerId_and_status_and_end', ['reportCustomerId', 'status', 'end'])
+		.index('by_paidAt', ['paidAt'])
 		.index('by_refundedAt', ['refundedAt'])
 		.index('by_attendeeId_and_status_and_end', ['attendeeId', 'status', 'end'])
 		.index('by_staff_start', ['staffId', 'start'])

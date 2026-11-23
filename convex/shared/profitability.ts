@@ -15,7 +15,7 @@ export const filterRule = v.union(
   v.object({
     field: v.union(v.literal('service'), v.literal('source'), v.literal('kind'), v.literal('coverage')),
     operator: v.union(v.literal('is'), v.literal('is not')),
-    value: v.string(),
+    value: v.union(v.string(), v.array(v.string())),
   }),
   v.object({
     field: v.literal('revenue'),
@@ -35,7 +35,7 @@ export type ProfitLine = {
   id: string;
   day: string;
   ref: string;
-  kind: 'Service' | 'Refund' | 'Fee';
+  kind: 'Service' | 'Refund' | 'Fee' | 'Settlement';
   service: string;
   serviceId: string;
   source: string;
@@ -45,13 +45,15 @@ export type ProfitLine = {
   appointmentId?: Id<'appointments'>;
   currentCustomer?: Id<'customers'> | null;
   linkable?: boolean;
+  actualVersion?: number;
+  costBasis?: 'Actual' | 'Scheduled' | 'Historical estimate';
 };
 export type CustomerHistory = { id: string; name: string; lifetime: number; firstDay: string | null };
 export type Expense = {
   id: string;
   day: string;
   ref: string;
-  kind: 'Marketing' | 'Overhead' | 'Other expenses' | 'Income tax' | 'Other income';
+  kind: 'Unmapped spend' | 'Marketing' | 'Overhead' | 'Other expenses' | 'Income tax' | 'Other income';
   amount: number;
 };
 export type ProfitFacts = {
@@ -63,6 +65,13 @@ export type ProfitFacts = {
 export function validateProfitFilters(filters: ProfitFilters) {
   if (filters.rules.length > 12) throw new ConvexError('Use up to 12 rules per filter group.');
   for (const rule of filters.rules) {
+    if (
+      Array.isArray(rule.value) &&
+      (!rule.value.length ||
+        rule.value.length > 50 ||
+        rule.value.some((value) => !value.trim() || value.length > 150))
+    )
+      throw new ConvexError('Choose between one and 50 filter values.');
     if (typeof rule.value === 'string' && (!rule.value.trim() || rule.value.length > 150))
       throw new ConvexError('Choose a filter value.');
     if (typeof rule.value === 'number' && !Number.isSafeInteger(rule.value))
@@ -81,7 +90,8 @@ export function matchesProfitRules(row: ProfitLine, group: ProfitFilters) {
         : rule.field === 'service'
           ? row.serviceId
           : row[rule.field];
-    return rule.operator === 'is' ? value === rule.value : value !== rule.value;
+    const included = Array.isArray(rule.value) ? rule.value.includes(value) : rule.value === value;
+    return rule.operator === 'is' ? included : !included;
   }
   return !group.rules.length || (group.join === 'and' ? group.rules.every(matches) : group.rules.some(matches));
 }
@@ -122,10 +132,13 @@ export function calculateProfit(
   const acquired = customers.filter((c) => c.firstDay !== null && c.firstDay >= from && c.firstDay <= to);
   const lifetime = customers.reduce((sum, c) => sum + c.lifetime, 0);
   const total = profitTotals(lines);
-  const spend = -facts.expenses
+  const spend = facts.expenses
     .filter((row) => row.kind === 'Marketing')
-    .reduce((sum, row) => sum + row.amount, 0);
-  const expensesComplete = facts.missingMonths.length === 0;
+    .reduce((sum, row) => sum - row.amount, 0);
+  const unmappedSpend = facts.expenses
+    .filter((row) => row.kind === 'Unmapped spend')
+    .reduce((sum, row) => sum - row.amount, 0);
+  const expensesComplete = facts.missingMonths.length === 0 && unmappedSpend === 0;
   const net =
     !narrowed && total.gross !== null && !total.missingCount && expensesComplete
       ? total.gross + facts.expenses.reduce((sum, row) => sum + row.amount, 0)
@@ -140,6 +153,7 @@ export function calculateProfit(
     newCount: acquired.length,
     lifetime,
     spend,
+    unmappedSpend,
     net,
     ltv,
     cac,
@@ -151,6 +165,8 @@ export type EvidenceRow = {
   day: string;
   ref: string;
   category: string;
+  basis?: string;
+  costEntry?: { appointmentId: Id<'appointments'>; version: number; costs: DirectCosts | null };
   service: string;
   amount: number | null;
   customer: string;
@@ -166,7 +182,9 @@ export function profitEvidence(
 ): EvidenceRow[] {
   const names = new Map(result.customers.map((c) => [c.id, c.name]));
   const expenses = facts.expenses
-    .filter((e) => metric === 'net' || (metric === 'cac' && e.kind === 'Marketing'))
+    .filter(
+      (e) => metric === 'net' || (metric === 'cac' && (e.kind === 'Marketing' || e.kind === 'Unmapped spend')),
+    )
     .map((e) => ({
       id: e.id,
       day: e.day,
@@ -195,6 +213,7 @@ export function profitEvidence(
   for (const line of lines) {
     const base = {
       day: line.day,
+      ...(line.cost && line.costBasis && { basis: line.costBasis }),
       ref: line.ref,
       service: line.service,
       customer: names.get(line.customerId ?? '') ?? '',
@@ -203,6 +222,10 @@ export function profitEvidence(
     rows.push({
       ...base,
       id: line.id,
+      ...(line.appointmentId &&
+        line.actualVersion !== undefined && {
+          costEntry: { appointmentId: line.appointmentId, version: line.actualVersion, costs: line.cost },
+        }),
       ...(line.linkable ? { appointmentId: line.appointmentId, currentCustomer: line.currentCustomer } : {}),
       category: include ? line.kind : 'Awaiting cost',
       amount: include ? line.revenue : null,

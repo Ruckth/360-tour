@@ -12,6 +12,7 @@ export const accessCurrentResult = v.union(v.object({
 "partners": v.boolean(),
 "reviewCredits": v.boolean(),
 "manageAccess": v.boolean(),
+"serviceFinance": v.boolean(),
 }),
 "pendingInvitation": v.null(),
 }), v.object({
@@ -25,6 +26,7 @@ export const accessCurrentResult = v.union(v.object({
 "partners": v.boolean(),
 "reviewCredits": v.boolean(),
 "manageAccess": v.boolean(),
+"serviceFinance": v.boolean(),
 }),
 "pendingInvitation": v.union(v.null(), v.object({
 "role": v.union(v.literal("manager"), v.literal("marketer"), v.literal("finance"), v.literal("viewer")),

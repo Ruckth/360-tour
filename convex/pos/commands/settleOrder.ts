@@ -3,6 +3,7 @@ import { canReadCheckoutOrder, staffMutation, type StaffActor } from '../../auth
 import { markBookingPaid } from '../../bookings/model';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
 import { assertVisitReturnAvailable, recordAppointmentChange } from '../../services/model';
+import { serviceReceiptShares } from '../../shared/serviceVat';
 import { effectiveTime } from '../../shared/bookingMoney';
 import { consumeOrderCoupon } from '../../marketing/model';
 import { DISCARDED_ORDER } from '../private/orderLifecycle';
@@ -113,10 +114,11 @@ type SaleTender = Tender | { method: 'voucher'; voucherId: Doc<'vouchers'>['_id'
 
 async function writeOrderPayment(
   ctx: MutationCtx, order: Doc<'orders'>, cart: Awaited<ReturnType<typeof checkPaymentCart>>,
-  tenders: SaleTender[], admin: StaffActor, options: { key: string; now: number; effectiveAt: number; notifyGuest?: boolean; paidShares?: number[]; settledRevision?: number },
+  tenders: SaleTender[], admin: StaffActor, options: { key: string; now: number; effectiveAt: number; notifyGuest?: boolean; paidShares?: number[]; vatBases?: number[]; settledRevision?: number },
 ) {
     const { key, now, effectiveAt, notifyGuest, paidShares, settledRevision } = options;
     const { lines, totals, customer } = cart;
+    const receiptTax = serviceReceiptShares(options.vatBases ?? lines.map(lineNet));
 		if (order.promotion) await consumeOrderCoupon(ctx, order._id, order.promotion);
 		for (const [index, line] of lines.entries()) {
 			if (!paidShares && isSourceRow(line)) assertCurrentPaymentSource(await sourceIssue(ctx, line), line);
@@ -128,7 +130,7 @@ async function writeOrderPayment(
 				const appointment = (await cart.appointment(line.appointmentId))!;
 				// The appointment keeps what was charged for it, after any discount or price change here.
 				const amount = paidShares?.[index] ?? lineNet(line);
-				await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email }, { actor: admin.email, kind: 'payment', reason: 'Paid at checkout', effectiveAt });
+				await recordAppointmentChange(ctx, appointment, { paymentStatus: 'paid', receiptVatShare: receiptTax[index], price: amount, amountPaid: amount, amountRefunded: 0, paidAt: effectiveAt, paidBy: admin.email }, { actor: admin.email, kind: 'payment', reason: 'Paid at checkout', effectiveAt });
 			}
 		}
 		// The receipt prints each therapist's name as it is now; a later rename doesn't rewrite it.
@@ -220,7 +222,7 @@ export const settlePaymentAttempt = staffMutation({
 
     const { attempt, order, cart, sale, effectiveAt, now } = prepared;
     const result = await writeOrderPayment(ctx, order, cart, sale.payments, ctx.staff, {
-      key: attempt.key, now, effectiveAt, notifyGuest: args.notifyGuest ?? attempt.notifyGuest, paidShares: sale.snapshots.map(snapshot => snapshot.paidShare),
+      key: attempt.key, now, effectiveAt, notifyGuest: args.notifyGuest ?? attempt.notifyGuest, paidShares: sale.snapshots.map(snapshot => snapshot.paidShare), vatBases: sale.snapshots.map(snapshot=>snapshot.vatBase),
     });
     await writeCommercePayment(ctx, sale, ctx.staff.email, now);
     await syncAffiliateCredit(ctx, { orderId: order._id }, ctx.staff.email);

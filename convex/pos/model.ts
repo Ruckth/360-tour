@@ -13,3 +13,4 @@ export {
   linkReceipt, patchDirectPanel, readDirectPanels, receiptRecordsPanel, receiptUsed, registerDirectPanel, settlingPanel, type DirectInstruction, type DirectPanel,
 } from './private/directPanels';
 export { profitFees } from './private/profitFees';
+export { profitReceiptReader } from './private/profitReceipt';
