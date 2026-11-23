@@ -18,6 +18,8 @@ describe('concierge model routing', () => {
     { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: 'z-ai/glm-5.3-flash', complex: '  ', model: 'z-ai/glm-5.3-flash', endpoint: '/chat/completions' },
     { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: '', complex: ' openai/gpt-6.1-sol ', model: 'openai/gpt-6.1-sol', endpoint: '/responses' },
     { message: 'Which villa is best for 4 adults?', simple: '', complex: 'openai/gpt-6.1-sol', model: 'openai/gpt-6-luna', endpoint: '/chat/completions' },
+    { message: 'Compare a 3-night stay for 4 adults under THB 25000 with massage options and recommend the best plan.', simple: 'gpt-6-luna', complex: 'gpt-6.2-sol', model: 'gpt-6.2-sol', endpoint: '/responses' },
+    { message: 'Which villa is best for 4 adults?', simple: 'gpt-6-luna', complex: 'gpt-6.2-sol', model: 'gpt-6-luna', endpoint: '/chat/completions' },
   ])('selects $model with complex override "$complex" for $message', async ({ message, simple, complex, model, endpoint }) => {
     vi.stubEnv('AI_API_KEY', 'test-key');
     vi.stubEnv('AI_API_BASE_URL', 'https://ai.example.test/v1');

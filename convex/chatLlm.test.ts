@@ -68,27 +68,30 @@ const solOutput = [
 	{ type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'list_services', arguments: '{}' }
 ];
 
-test('Sol tools round-trip through Responses while retaining encrypted reasoning and call IDs', async () => {
+test.each([
+	{ model: 'openai/gpt-6.1-sol', apiBase: 'https://openrouter.ai/api/v1' },
+	{ model: 'gpt-6.2-sol', apiBase: 'https://api.openai.com/v1' }
+])('$model tools round-trip through Responses while retaining encrypted reasoning and call IDs', async ({ model, apiBase }) => {
 	const fetchMock = vi.fn()
-		.mockResolvedValueOnce(new Response(JSON.stringify({ model: 'openai/gpt-6.1-sol', status: 'completed', output: solOutput, usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300, output_tokens_details: { reasoning_tokens: 180 }, cost: 0.0022 } })))
+		.mockResolvedValueOnce(new Response(JSON.stringify({ model, status: 'completed', output: solOutput, usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300, output_tokens_details: { reasoning_tokens: 180 }, cost: 0.0022 } })))
 		.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Massage costs THB 2,400.' }] }] })));
 	vi.stubGlobal('fetch', fetchMock);
 	const trace = vi.fn();
 	const messages: ChatMessage[] = [{ role: 'system', content: 'Answer from tools.' }, { role: 'user', content: 'Compare spa packages.' }];
 	const execute = vi.fn(async () => JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }));
 	const result = await runConciergeTurn({ message: 'Compare spa packages.', messages, tools, deadlineAt: Date.now() + 20000,
-		request: (history, offered, timeoutMs) => callAI('https://openrouter.ai/api/v1', 'test-key', 'openai/gpt-6.1-sol', history, offered, trace, { timeoutMs }), execute });
+		request: (history, offered, timeoutMs) => callAI(apiBase, 'test-key', model, history, offered, trace, { timeoutMs }), execute });
 	expect(result).toEqual({ content: 'Massage costs THB 2,400.', failed: false });
 	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {}, '[1,"call-1"]');
-	expect(fetchMock.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/responses');
+	expect(fetchMock.mock.calls[0][0]).toBe(`${apiBase}/responses`);
 	const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-	expect(body).toMatchObject({ model: 'openai/gpt-6.1-sol', reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });
+	expect(body).toMatchObject({ model, reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });
 	expect(body).not.toHaveProperty('temperature');
 	expect(body).not.toHaveProperty('messages');
 	expect(JSON.parse(fetchMock.mock.calls[1][1].body).input).toEqual([
 		...body.input, ...solOutput, { type: 'function_call_output', call_id: 'call-1', output: JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }) }
 	]);
-	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ model: 'openai/gpt-6.1-sol', finishReason: 'tool_calls', usage: expect.objectContaining({ prompt_tokens: 100, completion_tokens: 200, completion_tokens_details: { reasoning_tokens: 180 } }) }));
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ model, finishReason: 'tool_calls', usage: expect.objectContaining({ prompt_tokens: 100, completion_tokens: 200, completion_tokens_details: { reasoning_tokens: 180 } }) }));
 });
 
 test.each([

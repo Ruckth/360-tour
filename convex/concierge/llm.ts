@@ -91,8 +91,9 @@ export async function callAI(
   onResponse?: (trace: LlmCallTrace) => void,
   options: { timeoutMs?: number; maxOutputTokens?: number } = {}
 ): Promise<LlmResponse> {
-  if (model === 'openai/gpt-6.1-sol' || model === 'gpt-6.1-sol') {
-    return callSol(apiBase, apiKey, model, messages, tools, onResponse, options);
+  const modelId = model.replace(/^openai\//, '');
+  if (modelId === 'gpt-6.1-sol' || modelId === 'gpt-6.2-sol') {
+    return callResponses(apiBase, apiKey, model, messages, tools, onResponse, options);
   }
   const body: {
     model: string;
@@ -110,7 +111,7 @@ export async function callAI(
     max_tokens: options.maxOutputTokens ?? 500
   };
   // Luna's Chat Completions function calling requires reasoning to be disabled.
-  if (model === 'gpt-6-luna' || model === 'openai/gpt-6-luna') {
+  if (modelId === 'gpt-6-luna') {
     delete body.temperature;
     delete body.max_tokens;
     body.max_completion_tokens = options.maxOutputTokens ?? 500;
@@ -180,7 +181,7 @@ export function classifyComplexity(message: string): 'simple' | 'complex' {
 }
 
 /** Sol requires Responses for function calling and reasoning across tool rounds. */
-async function callSol(
+async function callResponses(
   apiBase: string, apiKey: string, model: string, messages: ChatMessage[], tools: ToolDef[],
   onResponse: ((trace: LlmCallTrace) => void) | undefined,
   options: { timeoutMs?: number; maxOutputTokens?: number }
