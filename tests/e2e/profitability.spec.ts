@@ -34,7 +34,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
       staffIds: [staff[0]._id],
     });
     // Historical entries can reference an archived service without changing the live catalog under test.
-    await client.mutation(api.services.commands.archiveService.archiveService,{serviceId,expectedRevision:0});
+    await client.mutation(api.services.commands.archiveService.archiveService, { serviceId, expectedRevision: 0 });
     const visit = await client.mutation(api.services.commands.createAppointment.createAppointment, {
       serviceId,
       staffId: staff[0]._id,

@@ -523,3 +523,49 @@ it('permits November net when a zero-value settlement belongs to an uncosted Oct
   await user.mutation(finance.recordMonth, { ...month, overhead: 0 });
   expect((await query()).summary).toMatchObject({ gross: 0, net: 0, missingCount: 0, newCount: 1 });
 });
+it('lets a finance grant enter accounts and export without an operations role', async () => {
+  const { t, ids } = await setup();
+  const email = 'accounts@company.test',
+    tokenIdentifier = 'accounts';
+  const financeUser = t.withIdentity({ email, emailVerified: true, tokenIdentifier });
+  const visit = await t.run(async (ctx) => {
+    await ctx.db.insert('marketingGrants', {
+      email,
+      tokenIdentifier,
+      role: 'finance',
+      createdAt: nov,
+      updatedAt: nov,
+      updatedByEmail: email,
+    });
+    return deliver(ctx, ids, nov, 10700);
+  });
+  expect((await financeUser.query(api.auth.staffAccess.myAccess, {})).role).toBeNull();
+  const inputs = await financeUser.query(finance.financeInputs, { month: month.month, from: base.from });
+  expect(inputs.services.map((service) => service.id)).toContain(ids.serviceId);
+  await financeUser.mutation(finance.recordCosts, {
+    serviceId: ids.serviceId,
+    from: base.from,
+    staff: 10,
+    materials: 0,
+    tools: 0,
+    expected: null,
+  });
+  await financeUser.mutation(finance.recordVisitCosts, {
+    appointmentId: visit,
+    version: 0,
+    staff: 20,
+    materials: 0,
+    tools: 0,
+    reason: 'Payroll record',
+  });
+  await financeUser.mutation(finance.recordMonth, { ...month, overhead: 35 });
+  const viewId = await financeUser.mutation(api.marketing.profitViews.openView, {
+    from: base.from,
+    to: base.to,
+    refresh: false,
+  });
+  const result = await financeUser.query(finance.report, { ...base, viewId, metric: 'net', exportRows: true });
+  expect(result.summary.net).toBe(9945);
+  expect(result.detail?.sum).toBe(9945);
+  expect(result.detail?.rows.some((r) => r.customer === 'Customer One')).toBe(true);
+});
