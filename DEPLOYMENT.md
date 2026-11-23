@@ -73,7 +73,7 @@ Set these in the Convex production deployment:
 | `AI_API_KEY` | No | Enables live AI concierge responses. Use an OpenAI project key for the direct OpenAI endpoint. |
 | `AI_API_BASE_URL` | No | Use `https://api.openai.com/v1` for direct OpenAI. |
 | `AI_SIMPLE_MODEL` | No | Use `gpt-6-luna` for ordinary concierge turns on direct OpenAI. |
-| `AI_COMPLEX_MODEL` | No | Use `gpt-6.2-sol` for complex planning on direct OpenAI after deploying the Responses adapter that supports it. |
+| `AI_COMPLEX_MODEL` | No | Use `gpt-6.2-sol` for complex concierge turns on direct OpenAI. |
 | `RESEND_API_KEY` | Yes for booking and alert email | Resend API key; verify the sending domain before launch. |
 | `EMAIL_FROM` | Yes for booking and alert email | Sender address at a verified Resend domain, for example `Auralis Cove <bookings@your-domain.com>`. |
 | `STRIPE_SECRET_KEY` | Yes for live payments | Stripe secret API key; keep in Convex, never in a public variable. |

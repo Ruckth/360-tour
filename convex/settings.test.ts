@@ -279,3 +279,41 @@ describe('settings in emails', () => {
 		expect(sent[1].html).not.toContain('Spin & Stay');
 	});
 });
+
+describe('Fast replies setting', () => {
+	it('is off by default, sends the Fast tier to OpenAI when on, and is recorded and restorable in history', async () => {
+		const { t, admin } = setup();
+		vi.stubEnv('AI_API_KEY', 'test-key');
+		vi.stubEnv('AI_API_BASE_URL', 'https://api.openai.com/v1');
+		expect((await admin.query(api.settings.settings.get, {})).ai.fastReplies).toBe(false);
+		const tiers: unknown[] = [];
+		vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+			tiers.push(JSON.parse(String(init?.body ?? '{}')).service_tier);
+			return new Response(JSON.stringify({ service_tier: 'fast', choices: [{ finish_reason: 'stop', message: { content: 'Hello!' } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+		}));
+		const ask = async (visitorId: string) => {
+			const sessionId = await t.run(async (ctx) =>
+				await ctx.db.insert('conversations', { guestTokenHash: fixtureGuestTokenHash, channel: 'web', visitorId, lastSeenAt: Date.now(), createdAt: Date.now() })
+			);
+			await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: 'Tell me about the villas.' });
+		};
+		await ask('v-standard');
+		expect(tiers).toEqual([undefined]);
+
+		await admin.mutation(api.settings.settings.update, { ai: { fastReplies: true } });
+		expect((await admin.query(api.settings.settings.get, {})).ai.fastReplies).toBe(true);
+		await ask('v-fast');
+		expect(tiers).toEqual([undefined, 'fast']);
+
+		const change = await t.run(ctx => ctx.db.query('recordChanges').withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'settings').eq('entityId', 'default')).order('desc').first());
+		if (!change) throw new Error('Missing settings history');
+		expect(change).toMatchObject({ before: { ai: { fastReplies: false } }, after: { ai: { fastReplies: true } } });
+		const restored = await admin.mutation(api.settings.settings.restore, { historyId: change._id, expectedRevision: 1, side: 'before' });
+		expect(restored.ai.fastReplies).toBe(false);
+	});
+
+	it('rejects a non-boolean value', async () => {
+		const { admin } = setup();
+		await expect(admin.mutation(api.settings.settings.update, { ai: { fastReplies: 'yes' as unknown as boolean } })).rejects.toThrow();
+	});
+});

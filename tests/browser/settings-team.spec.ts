@@ -156,6 +156,14 @@ test.describe("Settings panels", () => {
       const panel = page.getByRole("region", { name: title });
       await expectAtMostSentences(panel, tab === "business" ? 4 : 1);
       if (tab === "ai") {
+        const fastReplies = panel.getByRole("switch", { name: "Fast replies" });
+        await expect(fastReplies).not.toBeChecked();
+        await expect(fastReplies).toHaveAccessibleDescription("2× OpenAI token rates");
+        await fastReplies.press("Space");
+        const confirm = page.getByRole("alertdialog", { name: "Turn on fast replies?" });
+        await expect(confirm).toContainText("OpenAI charges 2× its standard token rates");
+        await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(fastReplies).not.toBeChecked();
         await expect(panel.getByText("Default total: 2,500 guest messages/hour across five channels", { exact: true })).toBeVisible();
         await panel.getByRole("button", { name: "About reply limits" }).click();
         await expect(page.getByRole("tooltip")).toContainText("The five channel allowances add together");

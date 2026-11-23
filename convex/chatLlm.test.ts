@@ -171,3 +171,36 @@ test('incomplete Sol output with no tool calls fails without another provider re
 	expect(result.failed).toBe(true);
 	expect(fetchMock).toHaveBeenCalledTimes(1);
 });
+
+test.each([
+	['gpt-6-luna', { choices: [{ finish_reason: 'stop', message: { content: 'Hi' } }], service_tier: 'fast' }],
+	['gpt-6.2-sol', { status: 'completed', service_tier: 'default', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Hi' }] }] }]
+])('Fast replies send the Fast tier to OpenAI for %s and trace the tier OpenAI used', async (model, envelope) => {
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope)));
+	vi.stubGlobal('fetch', fetchMock);
+	const trace = vi.fn();
+	await callAI('https://api.openai.com/v1', 'test-key', model, [{ role: 'user', content: 'Hello' }], [], trace, { fast: true });
+	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model, service_tier: 'fast' });
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ serviceTier: envelope.service_tier }));
+});
+
+test.each([
+	['an OpenAI request with Fast replies off', 'https://api.openai.com/v1', false],
+	['another provider with Fast replies on', 'https://openrouter.ai/api/v1', true]
+])('omits the Fast tier for %s', async (_label, apiBase, fast) => {
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'Hi' } }] })));
+	vi.stubGlobal('fetch', fetchMock);
+	await callAI(apiBase, 'test-key', 'gpt-6-luna', [{ role: 'user', content: 'Hello' }], [], undefined, { fast });
+	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('service_tier');
+});
+
+test.each([
+	['gpt-6-luna', { service_tier: 'default', usage: { prompt_tokens: 10 }, choices: [{ finish_reason: 'tool_calls', message: { content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'list_services', arguments: '{broken' } }] } }] }],
+	['gpt-6.2-sol', { service_tier: 'fast', status: 'incomplete', usage: { input_tokens: 10 }, output: [{ type: 'message', role: 'assistant', status: 'incomplete', content: [{ type: 'output_text', text: 'Your booking has been conf' }] }] }]
+])('traces the billed tier and usage once even when %s output is rejected', async (model, envelope) => {
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope))));
+	const trace = vi.fn();
+	await expect(callAI('https://api.openai.com/v1', 'test-key', model, [{ role: 'user', content: 'Hello' }], tools, trace, { fast: true })).rejects.toThrow('Invalid AI response');
+	expect(trace).toHaveBeenCalledTimes(1);
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ serviceTier: envelope.service_tier, usage: expect.anything() }));
+});

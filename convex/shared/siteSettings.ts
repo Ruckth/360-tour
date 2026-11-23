@@ -90,7 +90,7 @@ export const SITE_DEFAULTS = {
 	checkInTime: '14:00',
 	checkOutTime: '11:00',
 	cancellationPolicy: 'Free cancellation up to 48 hours before check-in.',
-	ai: { tone: 'warm, concise, and helpful', extraInstructions: '', maxWords: 150 },
+	ai: { tone: 'warm, concise, and helpful', extraInstructions: '', maxWords: 150, fastReplies: false },
 	email: { fromName: '', ownerNotificationEmail: '', footer: 'Spin & Stay — Spin around every room. Then book your stay.' }
 };
 
@@ -114,7 +114,8 @@ export type BusinessField = (typeof BUSINESS_FIELDS)[number];
 
 export type BusinessSettings = Record<BusinessField, string>;
 
-export type AiSettings = { tone: string; extraInstructions: string; maxWords: number };
+/** `fastReplies` opts this account into OpenAI Fast mode: quicker replies at twice the per-token price. */
+export type AiSettings = { tone: string; extraInstructions: string; maxWords: number; fastReplies: boolean };
 
 export type EmailSettings = { fromName: string; ownerNotificationEmail: string; footer: string };
 
@@ -140,7 +141,8 @@ export function mergeSiteSettings(row: Doc<'siteSettings'> | null): EffectiveSet
 		ai: {
 			tone: row?.ai?.tone || SITE_DEFAULTS.ai.tone,
 			extraInstructions: row?.ai?.extraInstructions ?? SITE_DEFAULTS.ai.extraInstructions,
-			maxWords: row?.ai?.maxWords ?? SITE_DEFAULTS.ai.maxWords
+			maxWords: row?.ai?.maxWords ?? SITE_DEFAULTS.ai.maxWords,
+			fastReplies: row?.ai?.fastReplies ?? SITE_DEFAULTS.ai.fastReplies
 		},
 		email: {
 			fromName: row?.email?.fromName ?? SITE_DEFAULTS.email.fromName,
@@ -258,8 +260,12 @@ export function validateSettingsInput(input: SettingsInput) {
 	const business = input.business ? cleanText(input.business, BUSINESS_RULES, '', errors) : undefined;
 	let ai: Partial<AiSettings> | undefined;
 	if (input.ai) {
-		const { maxWords, ...text } = input.ai;
+		const { maxWords, fastReplies, ...text } = input.ai;
 		ai = cleanText(text, AI_RULES, 'ai.', errors);
+		if (fastReplies !== undefined) {
+			if (typeof fastReplies !== 'boolean') errors['ai.fastReplies'] = 'Fast replies must be on or off.';
+			ai.fastReplies = fastReplies;
+		}
 		if (maxWords !== undefined) {
 			if (!Number.isInteger(maxWords) || maxWords < MAX_WORDS_RANGE.min || maxWords > MAX_WORDS_RANGE.max) {
 				errors['ai.maxWords'] =

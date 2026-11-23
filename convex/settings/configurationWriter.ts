@@ -11,7 +11,7 @@ export function settingsSnapshot(settings: EffectiveSettings) {
 		...business,
 		bookingRules: settings.bookingRules,
 		chatReplyLimits: settings.chatReplyLimits,
-		ai: { tone: settings.ai.tone, maxWords: settings.ai.maxWords },
+		ai: { tone: settings.ai.tone, maxWords: settings.ai.maxWords, fastReplies: settings.ai.fastReplies },
 		email: {
 			fromName: settings.email.fromName,
 			ownerNotificationEmail: settings.email.ownerNotificationEmail,

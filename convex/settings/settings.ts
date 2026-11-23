@@ -71,7 +71,7 @@ export const update = staffMutation({
 				cancellationPolicy: text
 			})
 		),
-		ai: v.optional(v.object({ tone: text, extraInstructions: text, maxWords: v.optional(v.number()) })),
+		ai: v.optional(v.object({ tone: text, extraInstructions: text, maxWords: v.optional(v.number()), fastReplies: v.optional(v.boolean()) })),
 		email: v.optional(v.object({ fromName: text, ownerNotificationEmail: text, footer: text }))
 	},
 	handler: async (ctx, args) => {
@@ -160,7 +160,8 @@ export const restore = staffMutation({
 			// History predating booking rules restores their built-in defaults.
 			bookingRules: source.bookingRules ? rules : resolveBookingRules(null),
 			business,
-			ai: { tone: ai.tone, maxWords: ai.maxWords },
+			// Snapshots from before Fast replies existed restore its default (off).
+			ai: { tone: ai.tone, maxWords: ai.maxWords, fastReplies: typeof ai.fastReplies === 'boolean' ? ai.fastReplies : false },
 			email: {
 				fromName: email.fromName as string,
 				ownerNotificationEmail: email.ownerNotificationEmail as string,

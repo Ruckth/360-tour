@@ -56,6 +56,7 @@ const LABELS: Record<string, string> = {
   ai: "AI preferences",
   tone: "Tone",
   maxWords: "Maximum words",
+  fastReplies: "Fast replies",
   email: "Email preferences",
   fromName: "Sender name",
   ownerNotificationEmail: "Notification email",
