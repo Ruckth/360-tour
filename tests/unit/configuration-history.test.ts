@@ -259,6 +259,36 @@ it("edits reply limits in the AI form, validates, saves all channels and discard
   expect(field("perChat").value).toBe("20");
   expect(field("web").value).toBe("7");
 });
+it("asks before turning on fast replies, explains the cost, and saves the choice", async () => {
+  state.tab = "ai";
+  await render(createElement(AdminSettingsView));
+  const toggle = () => document.querySelector<HTMLInputElement>("#settings-ai-fastReplies")!;
+  expect(toggle().checked).toBe(false);
+  expect(document.body.textContent).toContain("2× OpenAI token rates");
+  state.confirm.mockResolvedValueOnce(false);
+  await act(async () => toggle().click());
+  expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Turn on fast replies?", description: expect.stringContaining("up to 5×") }));
+  expect(toggle().checked).toBe(false);
+  state.confirm.mockResolvedValueOnce(true);
+  await act(async () => toggle().click());
+  expect(toggle().checked).toBe(true);
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(state.update).toHaveBeenCalledWith(expect.objectContaining({ ai: { ...mergeSiteSettings(null).ai, fastReplies: true } }));
+  state.confirm.mockClear();
+  await act(async () => toggle().click());
+  expect(state.confirm).not.toHaveBeenCalled();
+  expect(toggle().checked).toBe(false);
+});
+it("warns about the cost when restoring settings would turn fast replies back on", async () => {
+  state.tab = "ai";
+  state.history = [{ ...event, before: { ai: { tone: "Calm", maxWords: 80, fastReplies: true } }, after: { ai: { tone: "Calm", maxWords: 80, fastReplies: false } } }];
+  state.confirm.mockResolvedValueOnce(false);
+  await render(createElement(AdminSettingsView));
+  await openHistory();
+  await click(RESTORE);
+  expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ description: expect.stringContaining("This turns fast replies back on. OpenAI charges 2×") }));
+  expect(state.restore).not.toHaveBeenCalled();
+});
 it("shows readable per-channel reply limit changes in history", async () => {
   state.history = [{ ...event, before: { chatReplyLimits: { web: 500, line: 500, perChat: 20 } }, after: { chatReplyLimits: { web: 7, line: 3, perChat: 2 } } }];
   await render(createElement(RecordHistoryPanel, { entityType: "settings", entityId: "default" }));

@@ -220,7 +220,7 @@ const SECTIONS: Record<
         wide: true,
       },
     ],
-    values: (s) => ({ tone: s.ai.tone, maxWords: String(s.ai.maxWords), extraInstructions: s.ai.extraInstructions,
+    values: (s) => ({ tone: s.ai.tone, maxWords: String(s.ai.maxWords), extraInstructions: s.ai.extraInstructions, fastReplies: String(s.ai.fastReplies),
       ...Object.fromEntries(Object.entries(s.chatReplyLimits).map(([key, value]) => [`chatReplyLimits.${key}`, String(value)])),
     }),
   },
@@ -247,6 +247,27 @@ const SECTIONS: Record<
   },
 };
 
+const FAST_REPLIES_COST = "OpenAI charges 2× its standard token rates for fast replies. In our tests, the first replies after switching cost up to 5× as the prompt cache warmed up.";
+
+function FastRepliesCard({ checked, disabled, onChange }: { checked: boolean; disabled: boolean; onChange: (on: boolean) => void }) {
+  const id = "settings-ai-fastReplies";
+  return (
+    <Card className="p-5 lg:p-6">
+      <label htmlFor={id} className="flex min-h-11 items-center justify-between gap-4">
+        <span className="grid gap-1">
+          <span id={`${id}-label`} className="text-[15px] font-semibold">Fast replies</span>
+          <span id={`${id}-cost`} className="text-[13px] leading-5 text-muted-foreground">2× OpenAI token rates</span>
+        </span>
+        <span className="relative inline-flex h-6 w-10 shrink-0">
+          <input id={id} type="checkbox" role="switch" aria-labelledby={`${id}-label`} aria-describedby={`${id}-cost`} className="peer absolute inset-0 z-10 cursor-pointer opacity-0 disabled:cursor-not-allowed" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+          <span aria-hidden className="absolute inset-0 rounded-full bg-muted-foreground/70 peer-checked:bg-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-disabled:opacity-50" />
+          <span aria-hidden className="pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-full bg-background shadow-sm transition-transform peer-checked:translate-x-4" />
+        </span>
+      </label>
+    </Card>
+  );
+}
+
 function toInput(section: Section, values: Record<string, string>): SettingsInput {
   if (section === "bookingRules") {
     return { bookingRules: {
@@ -256,7 +277,7 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   }
   if (section === "ai") {
     const maxWords = values.maxWords.trim() === "" ? NaN : Number(values.maxWords);
-    return { ai: { tone: values.tone, extraInstructions: values.extraInstructions, maxWords },
+    return { ai: { tone: values.tone, extraInstructions: values.extraInstructions, maxWords, fastReplies: values.fastReplies === "true" },
       chatReplyLimits: Object.fromEntries(Object.keys(CHAT_REPLY_LIMIT_RANGES).map(key => {
         const value = values[`chatReplyLimits.${key}`];
         return [key, value.trim() === "" ? NaN : Number(value)];
@@ -320,9 +341,12 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   }, [state.saved]);
   async function applyHistory(entry: HistoryEntry, side: "before" | "after") {
     if (pending.current || dirty) return;
+    const snapshot: unknown = entry[side];
+    const restoresFast = !settings.ai.fastReplies && typeof snapshot === "object" && snapshot !== null
+      && (snapshot as { ai?: { fastReplies?: unknown } }).ai?.fastReplies === true;
     const ok = await confirm({
       title: "Restore settings to before this change?",
-      description: "This puts every settings tab back as it was before this change: business, booking rules, AI assistant and email, not just this tab. Extra AI instructions stay as they are.",
+      description: `This puts every settings tab back as it was before this change: business, booking rules, AI assistant and email, not just this tab. Extra AI instructions stay as they are.${restoresFast ? ` This turns fast replies back on. ${FAST_REPLIES_COST}` : ""}`,
       confirmLabel: "Restore settings",
     });
     if (!ok || pending.current) return;
@@ -339,6 +363,12 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
     } finally {
       pending.current = false;
     }
+  }
+
+  async function toggleFastReplies(on: boolean) {
+    if (on && !(await confirm({ title: "Turn on fast replies?", description: FAST_REPLIES_COST, confirmLabel: "Turn on fast replies" }))) return;
+    setValues((current) => ({ ...current, fastReplies: String(on) }));
+    setState((current) => ({ ...current, saved: false }));
   }
 
   const fields = config.fields(settings);
@@ -452,6 +482,11 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
               <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
           )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
+          {section === "ai" ? <FastRepliesCard
+            checked={values.fastReplies === "true"}
+            disabled={state.saving || readOnly}
+            onChange={(on) => { void toggleFastReplies(on); }}
+          /> : null}
           {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid gap-5 p-5 lg:p-6">
             <header>
               <div className="flex items-center gap-2">

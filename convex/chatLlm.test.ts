@@ -68,27 +68,30 @@ const solOutput = [
 	{ type: 'function_call', id: 'fc-1', call_id: 'call-1', name: 'list_services', arguments: '{}' }
 ];
 
-test('Sol tools round-trip through Responses while retaining encrypted reasoning and call IDs', async () => {
+test.each([
+	{ model: 'openai/gpt-6.1-sol', apiBase: 'https://openrouter.ai/api/v1' },
+	{ model: 'gpt-6.2-sol', apiBase: 'https://api.openai.com/v1' }
+])('$model tools round-trip through Responses while retaining encrypted reasoning and call IDs', async ({ model, apiBase }) => {
 	const fetchMock = vi.fn()
-		.mockResolvedValueOnce(new Response(JSON.stringify({ model: 'openai/gpt-6.1-sol', status: 'completed', output: solOutput, usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300, output_tokens_details: { reasoning_tokens: 180 }, cost: 0.0022 } })))
+		.mockResolvedValueOnce(new Response(JSON.stringify({ model, status: 'completed', output: solOutput, usage: { input_tokens: 100, output_tokens: 200, total_tokens: 300, output_tokens_details: { reasoning_tokens: 180 }, cost: 0.0022 } })))
 		.mockResolvedValueOnce(new Response(JSON.stringify({ status: 'completed', output: [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Massage costs THB 2,400.' }] }] })));
 	vi.stubGlobal('fetch', fetchMock);
 	const trace = vi.fn();
 	const messages: ChatMessage[] = [{ role: 'system', content: 'Answer from tools.' }, { role: 'user', content: 'Compare spa packages.' }];
 	const execute = vi.fn(async () => JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }));
 	const result = await runConciergeTurn({ message: 'Compare spa packages.', messages, tools, deadlineAt: Date.now() + 20000,
-		request: (history, offered, timeoutMs) => callAI('https://openrouter.ai/api/v1', 'test-key', 'openai/gpt-6.1-sol', history, offered, trace, { timeoutMs }), execute });
+		request: (history, offered, timeoutMs) => callAI(apiBase, 'test-key', model, history, offered, trace, { timeoutMs }), execute });
 	expect(result).toEqual({ content: 'Massage costs THB 2,400.', failed: false });
 	expect(execute).toHaveBeenCalledExactlyOnceWith('list_services', {}, '[1,"call-1"]');
-	expect(fetchMock.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/responses');
+	expect(fetchMock.mock.calls[0][0]).toBe(`${apiBase}/responses`);
 	const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-	expect(body).toMatchObject({ model: 'openai/gpt-6.1-sol', reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });
+	expect(body).toMatchObject({ model, reasoning: { effort: 'low' }, max_output_tokens: 4096, store: false, include: ['reasoning.encrypted_content'], tools: [{ type: 'function', name: 'list_services', strict: false }] });
 	expect(body).not.toHaveProperty('temperature');
 	expect(body).not.toHaveProperty('messages');
 	expect(JSON.parse(fetchMock.mock.calls[1][1].body).input).toEqual([
 		...body.input, ...solOutput, { type: 'function_call_output', call_id: 'call-1', output: JSON.stringify({ services: [{ name: 'Massage', price: 240000 }] }) }
 	]);
-	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ model: 'openai/gpt-6.1-sol', finishReason: 'tool_calls', usage: expect.objectContaining({ prompt_tokens: 100, completion_tokens: 200, completion_tokens_details: { reasoning_tokens: 180 } }) }));
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ model, finishReason: 'tool_calls', usage: expect.objectContaining({ prompt_tokens: 100, completion_tokens: 200, completion_tokens_details: { reasoning_tokens: 180 } }) }));
 });
 
 test.each([
@@ -167,4 +170,37 @@ test('incomplete Sol output with no tool calls fails without another provider re
 	});
 	expect(result.failed).toBe(true);
 	expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+	['gpt-6-luna', { choices: [{ finish_reason: 'stop', message: { content: 'Hi' } }], service_tier: 'fast' }],
+	['gpt-6.2-sol', { status: 'completed', service_tier: 'default', output: [{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Hi' }] }] }]
+])('Fast replies send the Fast tier to OpenAI for %s and trace the tier OpenAI used', async (model, envelope) => {
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope)));
+	vi.stubGlobal('fetch', fetchMock);
+	const trace = vi.fn();
+	await callAI('https://api.openai.com/v1', 'test-key', model, [{ role: 'user', content: 'Hello' }], [], trace, { fast: true });
+	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model, service_tier: 'fast' });
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ serviceTier: envelope.service_tier }));
+});
+
+test.each([
+	['an OpenAI request with Fast replies off', 'https://api.openai.com/v1', false],
+	['another provider with Fast replies on', 'https://openrouter.ai/api/v1', true]
+])('omits the Fast tier for %s', async (_label, apiBase, fast) => {
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: 'Hi' } }] })));
+	vi.stubGlobal('fetch', fetchMock);
+	await callAI(apiBase, 'test-key', 'gpt-6-luna', [{ role: 'user', content: 'Hello' }], [], undefined, { fast });
+	expect(JSON.parse(fetchMock.mock.calls[0][1].body)).not.toHaveProperty('service_tier');
+});
+
+test.each([
+	['gpt-6-luna', { service_tier: 'default', usage: { prompt_tokens: 10 }, choices: [{ finish_reason: 'tool_calls', message: { content: null, tool_calls: [{ id: 't1', type: 'function', function: { name: 'list_services', arguments: '{broken' } }] } }] }],
+	['gpt-6.2-sol', { service_tier: 'fast', status: 'incomplete', usage: { input_tokens: 10 }, output: [{ type: 'message', role: 'assistant', status: 'incomplete', content: [{ type: 'output_text', text: 'Your booking has been conf' }] }] }]
+])('traces the billed tier and usage once even when %s output is rejected', async (model, envelope) => {
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope))));
+	const trace = vi.fn();
+	await expect(callAI('https://api.openai.com/v1', 'test-key', model, [{ role: 'user', content: 'Hello' }], tools, trace, { fast: true })).rejects.toThrow('Invalid AI response');
+	expect(trace).toHaveBeenCalledTimes(1);
+	expect(trace).toHaveBeenCalledWith(expect.objectContaining({ serviceTier: envelope.service_tier, usage: expect.anything() }));
 });

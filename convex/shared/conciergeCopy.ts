@@ -639,9 +639,23 @@ export function bookingStatusReply(result: Record<string, unknown>, message: str
 }
 
 
+const COMPLETION_VERB = String.raw`(?:booked|confirmed|cancelled|canceled|rescheduled|refunded|created|made|reserved)`;
+/** Honest English negatives such as "Nothing has been booked" or "the booking wasn't confirmed". */
+const NEGATED_COMPLETION = new RegExp([
+	String.raw`\b(?:nothing|none)\b(?:\s+(?:else|yet))?\s+(?:(?:has|have|is|was|were|will|had)\s+)?(?:(?:yet|been|be)\s+)*${COMPLETION_VERB}\b`,
+	String.raw`\bno\s+(?:booking|reservation|appointment|payment|refund|cancellation|changes?)\s+(?:(?:has|have|is|was|were|will|had)\s+)?(?:(?:yet|been|be)\s+)*${COMPLETION_VERB}\b`,
+	String.raw`\b(?:has|have|had|is|are|was|were|did|do|does)\s*(?:not|n['’]t)\s+(?:(?:yet|been|be|already)\s+)*${COMPLETION_VERB}\b`,
+	String.raw`\b(?:isn|aren|wasn|weren|hasn|haven|hadn|didn|won)['’]t\s+(?:(?:yet|been|be|already)\s+)*${COMPLETION_VERB}\b`,
+	String.raw`\b(?:not|never)\s+(?:(?:yet|been|be|already)\s+)*${COMPLETION_VERB}\b`
+].join('|'), 'giu');
+
+const COMPLETION_REVERSAL = /\b(?:except|besides|other\s+than|apart\s+from|aside\s+from|save\s+for|false|untrue|incorrect|wrong|not\s+true)\b/iu;
+
 /** Detect positive completion assertions, preserving guidance and honest negatives. */
 export function hasTransactionCompletionClaim(content: string) {
-	return content.split(/[.!?;\n]+|\b(?:but|and)\b|แต่|และ|하지만/iu).some(clause => {
+	return content.split(/[.!?;\n]+|\b(?:but|and)\b|แต่|และ|하지만/iu).some(rawClause => {
+		// "No booking has been confirmed except yours" or "It is false that nothing was booked" reverse the negative: keep them whole.
+		const clause = COMPLETION_REVERSAL.test(rawClause) ? rawClause : rawClause.replace(NEGATED_COMPLETION, ' ');
 		if (/(?:^|[,])\s*(?:booked|confirmed|cancelled|canceled|rescheduled|refunded|success)\s*$|\b(?:is|are|was|were|has|have|already|successfully|now|just)\s+(?:been\s+)?(?:booked|confirmed|cancelled|canceled|rescheduled|refunded|created)\b|\b(?:I|we)\s+(?:booked|confirmed|cancelled|canceled|rescheduled|refunded)\b|\b(?:booking|reservation|appointment|payment)\s+(?:booked|confirmed|cancelled|canceled|rescheduled|refunded|created)\b/iu.test(clause)) return true;
 		return !/ไม่|ยังไม่|않|아직/iu.test(clause) && /ยืนยัน.*แล้ว|จอง.*แล้ว|ยกเลิก.*แล้ว|예약.*(?:완료|확정되었습니다)|취소.*(?:완료|되었습니다)/iu.test(clause);
 	});

@@ -187,7 +187,7 @@ export async function generateConciergeReply(
     messages: apiMessages,
     tools,
     deadlineAt,
-    request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => { calls.push(trace); args.llmTrace?.push(trace); }, { timeoutMs }),
+    request: (messages, requestTools, timeoutMs) => callAI(apiBase, apiKey, selectedModel, messages, requestTools, trace => { calls.push(trace); args.llmTrace?.push(trace); }, { timeoutMs, fast: settings.ai.fastReplies }),
     invalidateProposal: async (name, key) => { await ctx.runMutation(internal.bookings.bookings.invalidateChatProposal, { sessionId: args.sessionId, kind: name === 'prepare_booking' ? 'villa' : 'service', deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}) }); },
     execute: (name, toolArgs, key) => executeTool(ctx, name, toolArgs, properties, { sessionId: args.sessionId, siteUrl: args.siteUrl, turnStartedAt, deadlineAt, ...(args.durableTurn ? { durableTool: { ...args.durableTurn, key, name } } : {}), bookingProposal: proposalIdentity(session.pendingBookingQuote), serviceProposal: proposalIdentity(session.pendingServiceQuote) }),
     metrics: {
@@ -226,6 +226,7 @@ export async function generateConciergeReply(
           : "answered",
       calls: calls.map((call) => ({
         model: call.model,
+        serviceTier: call.serviceTier,
         latencyMs: call.latencyMs,
         promptTokens: call.usage?.prompt_tokens,
         completionTokens: call.usage?.completion_tokens,

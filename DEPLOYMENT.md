@@ -70,10 +70,10 @@ Set these in the Convex production deployment:
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
 | `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
 | `MESSAGING_IMAGE_SECRET` | For social card images | Match the Vercel image-conversion signing key. No public event mutation accepts a shared secret. |
-| `AI_API_KEY` | No | Enables live AI concierge responses. |
-| `AI_API_BASE_URL` | No | Use `https://api.x.ai/v1` for xAI. |
-| `AI_SIMPLE_MODEL` | No | Current expected value is `grok-4.3`. |
-| `AI_COMPLEX_MODEL` | No | Current expected value is `grok-4.3`. |
+| `AI_API_KEY` | No | Enables live AI concierge responses. Use an OpenAI project key for the direct OpenAI endpoint. |
+| `AI_API_BASE_URL` | No | Use `https://api.openai.com/v1` for direct OpenAI. |
+| `AI_SIMPLE_MODEL` | No | Use `gpt-6-luna` for ordinary concierge turns on direct OpenAI. |
+| `AI_COMPLEX_MODEL` | No | Use `gpt-6.2-sol` for complex concierge turns on direct OpenAI. |
 | `RESEND_API_KEY` | Yes for booking and alert email | Resend API key; verify the sending domain before launch. |
 | `EMAIL_FROM` | Yes for booking and alert email | Sender address at a verified Resend domain, for example `Auralis Cove <bookings@your-domain.com>`. |
 | `STRIPE_SECRET_KEY` | Yes for live payments | Stripe secret API key; keep in Convex, never in a public variable. |

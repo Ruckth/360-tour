@@ -43,6 +43,8 @@ export type LlmResponse = {
 
 export type LlmCallTrace = {
   model: string;
+  /** The tier OpenAI actually used; a Fast request may run, and is billed, as `default`. */
+  serviceTier?: string;
   latencyMs: number;
   finishReason?: string;
   usage?: {
@@ -82,6 +84,26 @@ function validateToolCalls(calls: ToolCall[], invalid: () => InvalidAiResponseEr
   }
 }
 
+export type CallOptions = {
+  timeoutMs?: number;
+  maxOutputTokens?: number;
+  /** The account's Fast replies setting. Sent only to OpenAI, which bills Fast mode at 2x. */
+  fast?: boolean;
+};
+
+function fastTier(apiBase: string, options: CallOptions): 'fast' | undefined {
+  if (!options.fast) return undefined;
+  try {
+    return new URL(apiBase).hostname === 'api.openai.com' ? 'fast' : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function tierTrace(data: { service_tier?: unknown }) {
+  return typeof data?.service_tier === 'string' ? { serviceTier: data.service_tier } : {};
+}
+
 export async function callAI(
   apiBase: string,
   apiKey: string,
@@ -89,11 +111,13 @@ export async function callAI(
   messages: ChatMessage[],
   tools: ToolDef[],
   onResponse?: (trace: LlmCallTrace) => void,
-  options: { timeoutMs?: number; maxOutputTokens?: number } = {}
+  options: CallOptions = {}
 ): Promise<LlmResponse> {
-  if (model === 'openai/gpt-6.1-sol' || model === 'gpt-6.1-sol') {
-    return callSol(apiBase, apiKey, model, messages, tools, onResponse, options);
+  const modelId = model.replace(/^openai\//, '');
+  if (modelId === 'gpt-6.1-sol' || modelId === 'gpt-6.2-sol') {
+    return callResponses(apiBase, apiKey, model, messages, tools, onResponse, options);
   }
+  const serviceTier = fastTier(apiBase, options);
   const body: {
     model: string;
     messages: ChatMessage[];
@@ -103,14 +127,16 @@ export async function callAI(
     reasoning_effort?: 'none';
     tools?: ToolDef[];
     tool_choice?: 'auto';
+    service_tier?: 'fast';
   } = {
     model,
     messages,
     temperature: 0.7,
-    max_tokens: options.maxOutputTokens ?? 500
+    max_tokens: options.maxOutputTokens ?? 500,
+    ...(serviceTier ? { service_tier: serviceTier } : {})
   };
   // Luna's Chat Completions function calling requires reasoning to be disabled.
-  if (model === 'gpt-6-luna' || model === 'openai/gpt-6-luna') {
+  if (modelId === 'gpt-6-luna') {
     delete body.temperature;
     delete body.max_tokens;
     body.max_completion_tokens = options.maxOutputTokens ?? 500;
@@ -142,16 +168,22 @@ export async function callAI(
 
     const data = await res.json();
     const message = data?.choices?.[0]?.message;
-    const invalid = () => new InvalidAiResponseError(Array.isArray(message?.tool_calls)
-      ? message.tool_calls.map((call: ToolCall | null) => call?.function?.name) : []);
+    const trace = (finishReason: string | undefined) => {
+      onResponse?.({ model: data?.model ?? model, ...tierTrace(data), latencyMs: Date.now() - startedAt, finishReason, usage: data?.usage });
+    };
+    const invalid = () => {
+      trace(data?.choices?.[0]?.finish_reason ?? 'invalid');
+      return new InvalidAiResponseError(Array.isArray(message?.tool_calls)
+        ? message.tool_calls.map((call: ToolCall | null) => call?.function?.name) : []);
+    };
     if (!message || typeof message !== 'object' || (message.content != null && typeof message.content !== 'string') ||
       (message.tool_calls !== undefined && (!Array.isArray(message.tool_calls) || message.tool_calls.some((call: ToolCall) =>
         !call || typeof call.id !== 'string' || call.type !== 'function' || typeof call.function?.name !== 'string' || typeof call.function?.arguments !== 'string')))) {
       throw invalid();
     }
     validateToolCalls(message.tool_calls ?? [], invalid);
-    onResponse?.({ model: data.model ?? model, latencyMs: Date.now() - startedAt, finishReason: data.choices?.[0]?.finish_reason, usage: data.usage });
     if (['length', 'content_filter'].includes(data.choices?.[0]?.finish_reason)) throw invalid();
+    trace(data.choices?.[0]?.finish_reason);
     const choice = data.choices?.[0]?.message;
 
     return {
@@ -180,11 +212,12 @@ export function classifyComplexity(message: string): 'simple' | 'complex' {
 }
 
 /** Sol requires Responses for function calling and reasoning across tool rounds. */
-async function callSol(
+async function callResponses(
   apiBase: string, apiKey: string, model: string, messages: ChatMessage[], tools: ToolDef[],
   onResponse: ((trace: LlmCallTrace) => void) | undefined,
-  options: { timeoutMs?: number; maxOutputTokens?: number }
+  options: CallOptions
 ): Promise<LlmResponse> {
+  const serviceTier = fastTier(apiBase, options);
   const input: Record<string, unknown>[] = [];
   for (const message of messages) {
     if (message.role === 'tool') {
@@ -202,6 +235,7 @@ async function callSol(
     model, input, store: false, include: ['reasoning.encrypted_content'], reasoning: { effort: 'low' },
     // This budget includes reasoning tokens as well as the visible reply.
     max_output_tokens: options.maxOutputTokens ?? 4096,
+    ...(serviceTier ? { service_tier: serviceTier } : {}),
     ...(tools.length ? {
       tools: tools.map(tool => ({ type: 'function', ...tool.function, strict: false })),
       tool_choice: 'auto'
@@ -217,8 +251,21 @@ async function callSol(
     });
     if (!res.ok) throw new Error(`AI API error (${res.status})`);
     const data = await res.json();
-    const invalid = () => new InvalidAiResponseError(Array.isArray(data?.output)
-      ? data.output.map((item: { type?: unknown; name?: unknown } | null) => item?.type === 'function_call' ? item.name : undefined) : []);
+    const trace = (finishReason: string) => {
+      onResponse?.({
+        model: data?.model ?? model, ...tierTrace(data), latencyMs: Date.now() - startedAt, finishReason, usage: data?.usage ? {
+          prompt_tokens: data.usage.input_tokens, completion_tokens: data.usage.output_tokens,
+          total_tokens: data.usage.total_tokens, cost: data.usage.cost,
+          prompt_tokens_details: data.usage.input_tokens_details,
+          completion_tokens_details: data.usage.output_tokens_details
+        } : undefined
+      });
+    };
+    const invalid = () => {
+      trace(data?.status === 'incomplete' ? 'length' : 'invalid');
+      return new InvalidAiResponseError(Array.isArray(data?.output)
+        ? data.output.map((item: { type?: unknown; name?: unknown } | null) => item?.type === 'function_call' ? item.name : undefined) : []);
+    };
     if (!data || !Array.isArray(data.output) || !['completed', 'incomplete'].includes(data.status) || data.error) throw invalid();
     const toolCalls: ToolCall[] = [];
     const text: string[] = [];
@@ -243,16 +290,9 @@ async function callSol(
     }
     validateToolCalls(toolCalls, invalid);
     // All incomplete output is unsafe for tools, even if the partial arguments parse.
-    const finishReason = data.status === 'incomplete' ? 'length' : toolCalls.length ? 'tool_calls' : 'stop';
-    onResponse?.({
-      model: data.model ?? model, latencyMs: Date.now() - startedAt, finishReason, usage: data.usage ? {
-        prompt_tokens: data.usage.input_tokens, completion_tokens: data.usage.output_tokens,
-        total_tokens: data.usage.total_tokens, cost: data.usage.cost,
-        prompt_tokens_details: data.usage.input_tokens_details,
-        completion_tokens_details: data.usage.output_tokens_details
-      } : undefined
-    });
     if (data.status === 'incomplete') throw invalid();
+    const finishReason = toolCalls.length ? 'tool_calls' : 'stop';
+    trace(finishReason);
     return { content: text.join('\n') || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}), finishReason, responsesOutput: data.output };
   } finally {
     clearTimeout(timeout);

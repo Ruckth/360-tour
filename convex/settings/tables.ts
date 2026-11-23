@@ -55,7 +55,8 @@ export const settingsTables = {
 			v.object({
 				tone: v.optional(v.string()),
 				extraInstructions: v.optional(v.string()),
-				maxWords: v.optional(v.number())
+				maxWords: v.optional(v.number()),
+				fastReplies: v.optional(v.boolean())
 			})
 		),
 		email: v.optional(
