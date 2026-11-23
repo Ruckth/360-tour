@@ -212,7 +212,6 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
         cost: await directCosts(visit, day),
       });
     if (
-      !timeline &&
       paidAt !== undefined &&
       paidAt >= start &&
       paidAt < end &&

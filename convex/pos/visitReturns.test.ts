@@ -8,6 +8,7 @@ import { resolveCommerceSettings } from '../commerce/model';
 import * as budgets from '../lib/readBudget';
 import schema from '../schema';
 import { profitVisits, recordReturnDestination } from '../services/model';
+import { calculateProfit } from '../shared/profitability';
 import { projectTender } from '../shared/tenderProjection';
 import { termsOf } from './private/paymentCommerce';
 import type { ReturnPart } from './private/returnPlan';
@@ -615,4 +616,21 @@ it('keeps both grant values and both dated restorations when a completed visit i
   expect(await report(now+2*day,now+3*day)).toBe(20000);
   expect(await report(now+3*day,now+4*day)).toBe(-20000);
   expect(await report(now-day,now+4*day)).toBe(0);
+});
+it('includes the first paid package settlement after delivery in the paying month customer cohort',async()=>{
+  const {t}=setup();
+  const start=Date.UTC(2026,9,31,5), paid=Date.UTC(2026,10,1,5);
+  await t.run(async ctx=>{
+    const order=await receipt(ctx,1,0), c=await coveredVisit(ctx,order);
+    const grant=(await ctx.db.get(c.grantId))!;
+    const sold=await receipt(ctx,1,10700);
+    const issued=await line(ctx,sold,'package',10700,{saleSnapshot:snapshot('Session',10700,[{...allocation(10700),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1}])});
+    await ctx.db.patch(grant._id,{lineId:issued,orderId:sold,paidShare:10700});
+    await ctx.db.patch(c.appointmentId,{start:start-3600000,end:start,paidAt:paid});
+    await ctx.db.patch(c.useId,{createdAt:paid});
+  });
+  const {lines,customers}=await t.run(ctx=>profitVisits(ctx,paid-4*3600000,paid+day));
+  expect(lines).toMatchObject([{kind:'Settlement',revenue:0,cost:{staff:0,tools:0,materials:0}}]);
+  const result=calculateProfit({lines,customers,expenses:[],missingMonths:[]},lines,'2026-11-01','2026-11-02',false);
+  expect(result).toMatchObject({newCount:1,customerCount:1,ltv:10000,cac:0,revenue:0});
 });
