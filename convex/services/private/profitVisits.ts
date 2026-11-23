@@ -30,7 +30,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     return doc;
   }
   const visits = new Map<Id<'appointments'>, Visit>();
-  const [delivered, adjustments, legacyRefunds, restores, collections, legacyReturns, redemptions] =
+  const [delivered, adjustments, refundedVisits, restores, collections, completedReturns, redemptions] =
     await Promise.all([
       readRangeWithinBudget(
         ctx,
@@ -81,7 +81,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
   for (const visit of [...delivered, ...collections])
     if (visit.status === 'completed' && visit.end < end) visits.set(visit._id, visit);
   const adjustmentVisitIds = new Set([
-    ...legacyReturns.flatMap((r) => (r.visitReturns ?? []).filter((v) => v.restore).map((v) => v.appointmentId)),
+    ...completedReturns.flatMap((r) => (r.visitReturns ?? []).filter((v) => v.restore).map((v) => v.appointmentId)),
   ]);
   for (const use of redemptions) {
     const id = use.activeAppointmentId ?? (use.lineId ? (await get(use.lineId))?.appointmentId : undefined);
@@ -92,7 +92,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     const visit = await get(id);
     if (visit?.status === 'completed' && visit.end < end) visits.set(id, visit);
   }
-  for (const visit of legacyRefunds)
+  for (const visit of refundedVisits)
     if (visit.status === 'completed' && visit.end < end) visits.set(visit._id, visit);
   for (const refund of adjustments) {
     if (visits.has(refund.appointmentId)) continue;
@@ -251,8 +251,14 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
         .withIndex('by_appointmentId_and_recordedAt', (q) => q.eq('appointmentId', visit._id)),
     );
     const events = refunds.map((row) => ({ id: String(row._id), at: row.effectiveAt, amount: row.amount }));
-    const legacy = visit.amountRefunded - events.reduce((sum, row) => sum + row.amount, 0);
-    if (legacy > 0) events.push({ id: 'legacy-' + visit._id, at: visit.refundedAt ?? visit.end, amount: legacy });
+    const unitemizedRefund = visit.amountRefunded - events.reduce((sum, row) => sum + row.amount, 0);
+    if (unitemizedRefund > 0) {
+      events.push({
+        id: 'unitemized-refund-' + visit._id,
+        at: visit.refundedAt ?? visit.end,
+        amount: unitemizedRefund,
+      });
+    }
     events.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
     let balance = visit.price;
     for (const event of events) {
