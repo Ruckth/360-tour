@@ -206,7 +206,7 @@ async function restoreVisit(
     before, after, actor, createdAt: now, guestFact: 'Session restored from a visit return',
   });
   await recordAppointmentChange(ctx, visit, {
-    coverage: undefined, ...(visit.status === 'completed' && { restoredCoverage: { useId: use._id, grantId: grant._id, at: now }, restoredCoverageAt: now }), pendingReturn: undefined, paymentStatus: 'unpaid', price, amountPaid: 0, amountRefunded: 0,
+    coverage: undefined, ...(visit.status === 'completed' && { restoredCoverageAt: now }), pendingReturn: undefined, paymentStatus: 'unpaid', price, amountPaid: 0, amountRefunded: 0,
     paidAt: undefined, paidBy: undefined, refundedAt: undefined, financialRevision: (visit.financialRevision ?? 0) + 1,
   }, { actor, kind: 'payment', reason: row.reason, effectiveAt: now, details: [
     { field: 'returnId', from: null, to: row._id }, { field: 'sessionUseId', from: use._id, to: null },

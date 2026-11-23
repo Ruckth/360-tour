@@ -155,7 +155,6 @@ export const servicesTables = {
 		actualCosts: v.optional(v.object({ staff: v.number(), materials: v.number(), tools: v.number(), version: v.number() })),
 		receiptVatShare: v.optional(v.number()),
 		costScheduleId: v.optional(v.id('serviceCostSchedules')),
-		restoredCoverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), at: v.number() })),
 		restoredCoverageAt: v.optional(v.number()),
 		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
 		pendingReturn: v.optional(v.object({ returnId: v.id('orderReturns'), remaining: v.number() })),

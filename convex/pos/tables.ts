@@ -204,6 +204,7 @@ export const posTables = {
 		revision: v.optional(v.number()),
 		archivedAt: v.optional(v.number()),
 		mergedInto: v.optional(v.id('customers')),
+		mergedAt: v.optional(v.number()),
 		mergeKey: v.optional(v.string()),
 		mergeReason: v.optional(v.string()),
 		name: v.string(),

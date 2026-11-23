@@ -18,13 +18,15 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
             ? 'Complete service costs below'
             : 'After acquisition spend, expenses and tax',
     ltv: s.customerCount
-      ? 'Lifetime service revenue ÷ ' + s.customerCount + ' identified customers'
+      ? 'Lifetime service revenue ÷ ' +
+        s.customerCount +
+        (s.customerCount === 1 ? ' identified customer' : ' identified customers')
       : 'Requires an identified attendee',
     cac: narrowed
       ? 'Spend applies to the full service business'
       : report.missingMonths.length
         ? 'Confirm monthly campaign spend'
-        : thb(s.spend) + ' spend ÷ ' + s.newCount + ' new customers',
+        : thb(s.spend) + ' spend ÷ ' + s.newCount + (s.newCount === 1 ? ' new customer' : ' new customers'),
   };
   return (
     <>
@@ -59,8 +61,9 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
         <header className="border-b border-border p-4 sm:p-5">
           <h2 className="text-lg font-semibold">Revenue and costs by service</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {s.count} financial rows · {s.customerCount} identified customers · {s.anonymous} rows without an
-            attendee
+            {s.count} financial {s.count === 1 ? 'row' : 'rows'} · {s.customerCount} identified{' '}
+            {s.customerCount === 1 ? 'customer' : 'customers'} · {s.anonymous} {s.anonymous === 1 ? 'row' : 'rows'}{' '}
+            without an attendee
           </p>
         </header>
         {!report.breakdown.length ? (

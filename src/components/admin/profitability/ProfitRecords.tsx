@@ -236,7 +236,19 @@ export function Details({
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-sm">
         <span aria-live="polite">
           {detail.count} matching records · {thb(detail.sum)} subtotal
-          {(metric === 'ltv' || metric === 'cac') && ' · ' + detail.people + ' customers'}
+          {(metric === 'ltv' || metric === 'cac') &&
+            ' · ' + detail.people + (detail.people === 1 ? ' customer' : ' customers')}
+          {detail.displayedRatio !== null && (
+            <>
+              {' '}
+              · {metricNames[metric]} {money(detail.displayedRatio)}
+            </>
+          )}
+          {metric === 'cac' && (request.search || category) && (
+            <span className="block text-xs text-muted-foreground">
+              CAC uses the full period’s spend and new customers. This subtotal shows the matching records.
+            </span>
+          )}
         </span>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" disabled={!detail.page} onClick={() => setPage(detail.page - 1)}>

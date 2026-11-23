@@ -578,3 +578,41 @@ it('recognizes a paid package unit on delivery, reverses it on restoration and c
   });
   expect(await revenue(now-day,now+day)).toBe(price-Math.round(price*7/107));
 });
+it('keeps both grant values and both dated restorations when a completed visit is redeemed twice', async()=>{
+  const {t,owner}=setup();
+  async function redeem(amount:number,at:number,existing?:Id<'appointments'>) {
+    return t.run(async ctx=>{
+      const orderId=await receipt(ctx,1,0), covered=await coveredVisit(ctx,orderId);
+      const grant=(await ctx.db.get(covered.grantId))!;
+      const sold=await receipt(ctx,1,amount);
+      const packageLine=await line(ctx,sold,'package',amount,{saleSnapshot:snapshot('Package',amount,[{
+        ...allocation(amount),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1
+      }])});
+      await ctx.db.patch(grant._id,{lineId:packageLine,orderId:sold,paidShare:amount});
+      const id=existing??covered.appointmentId;
+      await ctx.db.patch(covered.useId,{activeAppointmentId:id,createdAt:at,lineId:covered.part.lineId});
+      if(existing) {
+        const template=(await ctx.db.get(covered.appointmentId))!;
+        const delivered=(await ctx.db.get(existing))!;
+        await ctx.db.patch(covered.useId,{serviceId:delivered.serviceId,beneficiaryId:delivered.attendeeId});
+        await ctx.db.patch(grant._id,{ownerId:delivered.attendeeId!});
+        await ctx.db.patch(covered.part.lineId,{appointmentId:existing});
+        await ctx.db.patch(existing,{coverage:template.coverage,price:0,paymentStatus:'paid',amountPaid:0,paidAt:at});
+        await ctx.db.delete(covered.appointmentId);
+      }
+      return {id,args:{...selection(orderId,[covered.part]),clientKey:'report-return-'+covered.useId}};
+    });
+  }
+  const report=(from:number,to:number)=>t.run(async ctx=>(await profitVisits(ctx,from,to)).lines.reduce((n,row)=>n+row.revenue,0));
+  const a=await redeem(10700,now-day);
+  await owner.mutation(command.authorize,a.args);
+  vi.spyOn(Date,'now').mockReturnValue(now+3*day);
+  const b=await redeem(21400,now+2*day,a.id);
+  expect(await report(now-day,now)).toBe(10000);
+  expect(await report(now,now+day)).toBe(-10000);
+  expect(await report(now+2*day,now+3*day)).toBe(20000);
+  await owner.mutation(command.authorize,b.args);
+  expect(await report(now+2*day,now+3*day)).toBe(20000);
+  expect(await report(now+3*day,now+4*day)).toBe(-20000);
+  expect(await report(now-day,now+4*day)).toBe(0);
+});

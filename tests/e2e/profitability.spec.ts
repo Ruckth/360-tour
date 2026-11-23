@@ -21,7 +21,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     const client = new ConvexHttpClient(url);
     client.setAuth(session!);
     const { staff } = await client.query(api.pos.catalog.stableCatalog, {});
-    const service = 'Finance QA ' + Date.now();
+    const service = 'Traditional Thai massage · นวดแผนไทยและประคบสมุนไพร ' + Date.now();
     const serviceId = await client.mutation(api.services.commands.createService.createService, {
       name: service,
       slug: 'finance-' + Date.now(),
@@ -98,11 +98,30 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await expect(card('Net profit')).toContainText('฿455');
     await expect(card('Revenue LTV')).toContainText('฿1,000');
     await expect(card('Acquisition cost')).toContainText('฿0');
-    for (const width of [360, 820, 1180, 1440]) {
-      await page.setViewportSize({ width, height: 900 });
+    const dimensions = [
+      [360, 800],
+      [820, 1180],
+      [1180, 820],
+      [1440, 900],
+    ];
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    for (const [width, height] of dimensions) {
+      await page.setViewportSize({ width, height });
       await expect(card('Net profit')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       await page.screenshot({ path: info.outputPath('overview-' + width + '.png') });
+      const trigger = page.getByRole('button', { name: 'Add filter' });
+      await trigger.scrollIntoViewIfNeeded();
+      const bounds = await trigger.boundingBox();
+      if (!bounds) throw new Error('Filter trigger is outside the viewport');
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }],
+      });
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await expect(page.getByRole('button', { name: 'Apply rule' })).toBeVisible();
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
     await page.getByRole('button', { name: 'Add filter' }).click();
     await page.getByLabel('Filter values').selectOption(serviceId);
@@ -123,8 +142,8 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Export CSV' }).click();
     expect((await download).suggestedFilename()).toBe('service-revenue-' + from + '-' + to + '.csv');
-    for (const width of [360, 820, 1180, 1440]) {
-      await page.setViewportSize({ width, height: 900 });
+    for (const [width, height] of dimensions) {
+      await page.setViewportSize({ width, height });
       await expect(page.getByRole('table')).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       await page.screenshot({ path: info.outputPath('records-' + width + '.png') });

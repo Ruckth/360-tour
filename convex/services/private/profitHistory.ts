@@ -2,12 +2,31 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { readBudget, readRangeWithinBudget, ReadBudgetExceeded } from '../../lib/readBudget';
 
+// Historical customers merged before this field existed retain their immutable merge job.
+export function mergeEligibility(ctx: QueryCtx, end: number) {
+  const dates = new Map<Id<'customers'>, number>();
+  return async (row: Doc<'customers'>) => {
+    if (!row.mergedInto) return false;
+    let at = row.mergedAt ?? dates.get(row._id);
+    if (at === undefined) {
+      const jobs = await readRangeWithinBudget(
+        ctx,
+        ctx.db.query('customerMergeJobs').withIndex('by_sourceId', (q) => q.eq('sourceId', row._id)),
+      );
+      at = jobs.find((j) => j.destinationId === row.mergedInto)?.createdAt ?? row.updatedAt;
+      dates.set(row._id, at);
+    }
+    return at < end;
+  };
+}
+
 // Small cohorts use attendee indexes. For large cohorts with short histories, one bounded probe
 // replaces hundreds of empty range reads. If the probe fills, revert to targeted history.
 export async function periodCustomerHistory(
   ctx: QueryCtx,
   ids: Set<Id<'customers'>>,
   before: number,
+  mergedBy: ReturnType<typeof mergeEligibility>,
   people: Map<Id<'customers'>, Doc<'customers'>>,
 ) {
   const visits = new Map<Id<'appointments'>, Doc<'appointments'>>();
@@ -40,7 +59,7 @@ export async function periodCustomerHistory(
     );
     const children = new Map<Id<'customers'>, Id<'customers'>[]>();
     for (const row of merged) {
-      if (!row.mergedInto) continue;
+      if (!row.mergedInto || !(await mergedBy(row))) continue;
       people.set(row._id, row);
       const group = children.get(row.mergedInto) ?? [];
       group.push(row._id);
@@ -68,6 +87,7 @@ export async function periodCustomerHistory(
         ctx.db.query('customers').withIndex('by_mergedInto', (q) => q.eq('mergedInto', id)),
       );
       for (const row of merged) {
+        if (!(await mergedBy(row))) continue;
         people.set(row._id, row);
         aliases.add(row._id);
       }

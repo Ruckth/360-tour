@@ -138,6 +138,7 @@ import type * as marketing_maintenance from "../marketing/maintenance.js";
 import type * as marketing_model from "../marketing/model.js";
 import type * as marketing_private_profitViews from "../marketing/private/profitViews.js";
 import type * as marketing_private_serviceFinanceFacts from "../marketing/private/serviceFinanceFacts.js";
+import type * as marketing_profitValidators from "../marketing/profitValidators.js";
 import type * as marketing_profitViews from "../marketing/profitViews.js";
 import type * as marketing_profitability from "../marketing/profitability.js";
 import type * as marketing_public from "../marketing/public.js";
@@ -295,6 +296,7 @@ import type * as services_private_appointmentReturns from "../services/private/a
 import type * as services_private_costSchedule from "../services/private/costSchedule.js";
 import type * as services_private_photos from "../services/private/photos.js";
 import type * as services_private_profitHistory from "../services/private/profitHistory.js";
+import type * as services_private_profitPackages from "../services/private/profitPackages.js";
 import type * as services_private_profitVisits from "../services/private/profitVisits.js";
 import type * as services_private_rosterHistory from "../services/private/rosterHistory.js";
 import type * as services_private_serviceCatalog from "../services/private/serviceCatalog.js";
@@ -526,6 +528,7 @@ declare const fullApi: ApiFromModules<{
   "marketing/model": typeof marketing_model;
   "marketing/private/profitViews": typeof marketing_private_profitViews;
   "marketing/private/serviceFinanceFacts": typeof marketing_private_serviceFinanceFacts;
+  "marketing/profitValidators": typeof marketing_profitValidators;
   "marketing/profitViews": typeof marketing_profitViews;
   "marketing/profitability": typeof marketing_profitability;
   "marketing/public": typeof marketing_public;
@@ -683,6 +686,7 @@ declare const fullApi: ApiFromModules<{
   "services/private/costSchedule": typeof services_private_costSchedule;
   "services/private/photos": typeof services_private_photos;
   "services/private/profitHistory": typeof services_private_profitHistory;
+  "services/private/profitPackages": typeof services_private_profitPackages;
   "services/private/profitVisits": typeof services_private_profitVisits;
   "services/private/rosterHistory": typeof services_private_rosterHistory;
   "services/private/serviceCatalog": typeof services_private_serviceCatalog;

@@ -1,11 +1,12 @@
 import { ConvexError, v } from 'convex/values';
 import { marketingMutation, marketingQuery } from '../auth/model';
 import { ReadBudgetExceeded, readRangeWithinBudget } from '../lib/readBudget';
+import { profitReportResult } from './profitValidators';
 import { latestMonth, readServiceFinanceFacts } from './private/serviceFinanceFacts';
 import { readView } from './private/profitViews';
 import { recordAppointmentChange } from '../services/model';
 import { isIsoDate } from '../shared/dates';
-import { assertMoney } from '../shared/money';
+import { assertMoney, roundRatio } from '../shared/money';
 import { MAX_REPORT_DAYS, reportDayCount } from '../shared/marketingReport';
 import {
   calculateProfit,
@@ -115,7 +116,7 @@ export const recordMonth = marketingMutation({
     for (const value of Object.values(amounts)) assertMoney(value, 'Monthly amount', { allowZero: true });
     const classified = [...campaignIds, ...excludedCampaignIds];
     if (classified.length > 200 || new Set(classified).size !== classified.length)
-      throw new ConvexError('Choose up to 100 distinct campaigns.');
+      throw new ConvexError('Choose up to 200 distinct campaigns.');
     for (const id of classified) if (!(await ctx.db.get(id))) throw new ConvexError('Campaign no longer exists.');
     const current = await latestMonth(ctx, month);
     const ids = [...campaignIds].sort();
@@ -144,6 +145,7 @@ export const recordMonth = marketingMutation({
 });
 
 export const report = marketingQuery({
+  returns: profitReportResult,
   permission: 'spend',
   args: {
     from: v.string(),
@@ -221,6 +223,7 @@ export const report = marketingQuery({
         .map(([id, rows]) => ({ id, name: services.get(id)!, ...profitTotals(rows) }))
         .sort((a, b) => b.revenue - a.revenue || a.name.localeCompare(b.name));
       const common = {
+        asOf: facts.asOf,
         summary,
         breakdown,
         expenses: narrowed
@@ -248,6 +251,16 @@ export const report = marketingQuery({
       rows.sort((a, b) => (a.day.localeCompare(b.day) || a.id.localeCompare(b.id)) * (args.descending ? -1 : 1));
       if (args.exportRows && JSON.stringify(rows).length * 4 > 2_000_000)
         throw new ConvexError('Choose a shorter period or apply a filter before exporting.');
+      const sum = rows.reduce((n, row) => n + (row.amount ?? 0), 0);
+      const people = rows.filter(
+        (row) => row.category === 'New customer' || row.category === 'Lifetime revenue',
+      ).length;
+      const displayedRatio =
+        args.metric === 'ltv' && people
+          ? roundRatio(sum, people)
+          : args.metric === 'cac' && !query && !category
+            ? filtered.cac
+            : null;
       const pageSize = 25,
         page = Math.min(args.page, Math.max(0, Math.ceil(rows.length / pageSize) - 1));
       return {
@@ -255,8 +268,9 @@ export const report = marketingQuery({
         detail: {
           value: filtered[args.metric],
           categories: [...new Set(evidence.map((r) => r.category))].sort(),
-          sum: rows.reduce((sum, row) => sum + (row.amount ?? 0), 0),
-          people: rows.filter((r) => r.category === 'New customer' || r.category === 'Lifetime revenue').length,
+          sum,
+          people,
+          displayedRatio,
           count: rows.length,
           page,
           pageSize,
@@ -308,7 +322,12 @@ export const identifyCustomer = marketingMutation({
       ctx,
       visit,
       { reportCustomerId: customerId ?? undefined },
-      { actor: ctx.marketing.email, kind: 'details', reason: 'Verified service reporting customer' },
+      {
+        actor: ctx.marketing.email,
+        kind: 'details',
+        effectiveAt: visit.end,
+        reason: 'Finance verified the attendee effective on the delivery date',
+      },
     );
     return null;
   },

@@ -63,6 +63,8 @@ const SCOPED_START_ROUTES: Record<string, string> = {
   "admin.index.tsx": "/admin redirect to the first permitted section",
   "admin.$.tsx": "legacy and unknown /admin sections",
   "admin.marketing.tsx": "marketing layout (Next src/app/admin/marketing/layout.tsx)",
+  "admin.marketing.profitability.index.tsx": "Service profitability overview",
+  "admin.marketing.profitability.transactions.tsx": "Service profitability supporting records",
   "admin.marketing.index.tsx": "/admin/marketing default section",
   "admin.staff.tsx": "staff layout (Next src/app/admin/staff/layout.tsx)",
   "admin.staff.index.tsx": "/admin/staff default tab",

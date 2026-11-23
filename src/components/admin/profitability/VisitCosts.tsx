@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { EvidenceRow } from 'convex/shared/profitability';
@@ -18,11 +18,16 @@ export function VisitCosts({
   saved: () => void;
   close: () => void;
 }) {
+  const form = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    form.current?.querySelector('input')?.focus();
+  }, []);
   const save = useMutation(api.marketing.profitability.recordVisitCosts);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   return (
     <form
+      ref={form}
       className="grid gap-3 border-y border-border bg-muted/40 p-4"
       onSubmit={async (e) => {
         e.preventDefault();

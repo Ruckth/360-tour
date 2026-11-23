@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import ts from 'typescript';
 import { afterEach, expect, it } from 'vitest';
 import schema from '../../convex/schema';
-import { COMMERCE_TABLE_NAMES, inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-schema.mjs';
+import { COMMERCE_TABLE_NAMES, PROFITABILITY_TABLE_NAMES, inspectSchema, schemaSourceReader } from '../../scripts/lib/convex-schema.mjs';
 
 const scratch: string[] = [];
 afterEach(() => { for (const dir of scratch.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -79,7 +79,7 @@ it('discovers historical 91/74-table monoliths and matches the assembled runtime
   const base = inspectSchema(schemaSourceReader('.', 'f2482a0237e28a82c71b0557ea9422f61233845a'));
   const current = inspectSchema(schemaSourceReader('.'));
   expect(base.tables).toHaveLength(74);
-  expect(current.tables.map(t => t.name).sort()).toEqual([...base.tables.map(t => t.name), ...COMMERCE_TABLE_NAMES].sort());
+  expect(current.tables.map(t => t.name).sort()).toEqual([...base.tables.map(t => t.name), ...COMMERCE_TABLE_NAMES, ...PROFITABILITY_TABLE_NAMES].sort());
   expect(current.tables.map(t => t.name).sort()).toEqual(Object.keys(schema.tables).sort());
 }, 30_000);
 
@@ -87,7 +87,7 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
   const out = mkdtempSync(join(tmpdir(), 'schema-reset-')); scratch.push(out);
   const result = spawnSync(process.execPath, ['scripts/architecture-reset.mjs', '--old-ref', '72a657f', '--out', out], { encoding: 'utf8' });
   expect(result.stderr).toBe(''); expect(result.status).toBe(0);
-  for (const [name, count] of [['old', 91], ['new', 97]] as const) {
+  for (const [name, count] of [['old', 91], ['new', 101]] as const) {
     const tables = JSON.parse(readFileSync(join(out, `${name}-tables.json`), 'utf8')) as string[];
     expect(tables).toHaveLength(count);
     const zip = name === 'old' ? 'empty-root.zip' : 'empty-new-root.zip';
@@ -97,7 +97,7 @@ it('creates complete reset/rollback ZIPs and hashes the composed schema source g
     expect(snapshot.tables.map(t => t.name).sort()).toEqual(tables.sort());
   }
   const manifest = JSON.parse(readFileSync(join(out, 'manifest.json'), 'utf8'));
-  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 97 });
+  expect(manifest).toMatchObject({ oldTableCount: 91, newTableCount: 101 });
   const current = inspectSchema(schemaSourceReader('.'));
   expect(JSON.parse(readFileSync(join(out, 'new-tables.json'), 'utf8')).sort()).toEqual(current.tables.map(table => table.name).sort());
   expect(Object.keys(manifest.schemaSources.new).sort()).toEqual(Object.keys(current.sources).sort());

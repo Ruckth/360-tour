@@ -1,11 +1,18 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
-import { readRangeWithinBudget } from '../../lib/readBudget';
+import { readRangeWithinBudget, readBudget, ReadBudgetExceeded } from '../../lib/readBudget';
 import { lineNet } from '../../shared/orderMath';
 import { serviceReceiptShares } from '../../shared/serviceVat';
 
 export function profitReceiptReader(ctx: QueryCtx) {
   const cache = new Map<Id<'orders'>, Map<Id<'orderLines'>, number>>();
+  async function one<T>(read: () => Promise<T | null>) {
+    const budget = readBudget(ctx);
+    if (!budget.range()) throw new ReadBudgetExceeded();
+    const row = await read();
+    if (row && !budget.document(row)) throw new ReadBudgetExceeded();
+    return row;
+  }
   async function tax(line: Doc<'orderLines'>) {
     let table = cache.get(line.orderId);
     if (!table) {
@@ -27,7 +34,7 @@ export function profitReceiptReader(ctx: QueryCtx) {
       ctx.db.query('orderLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', visit._id)),
     );
     for (const line of direct) {
-      const order = await ctx.db.get(line.orderId);
+      const order = await one(() => ctx.db.get(line.orderId));
       if (
         order &&
         (order.status === 'paid' || (order.status === 'void' && !order.voidUnreceived)) &&
@@ -36,11 +43,13 @@ export function profitReceiptReader(ctx: QueryCtx) {
       )
         return tax(line);
     }
-    const link = await ctx.db
-      .query('orderLineLinks')
-      .withIndex('by_appointmentId_and_status', (q) => q.eq('appointmentId', visit._id).eq('status', 'active'))
-      .first();
-    const line = link ? await ctx.db.get(link.lineId) : null;
+    const link = await one(() =>
+      ctx.db
+        .query('orderLineLinks')
+        .withIndex('by_appointmentId_and_status', (q) => q.eq('appointmentId', visit._id).eq('status', 'active'))
+        .first(),
+    );
+    const line = link ? await one(() => ctx.db.get(link.lineId)) : null;
     return line ? tax(line) : null;
   }
   return { tax, visitTax };

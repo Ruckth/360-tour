@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Id } from 'convex/_generated/dataModel';
@@ -17,6 +17,10 @@ export function CustomerAssignment({
   reference: string;
   done: () => void;
 }) {
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    field.current?.focus();
+  }, []);
   const [name, setName] = useState(''),
     [selected, setSelected] = useState<Id<'customers'> | null>(null);
   const [busy, setBusy] = useState(false),
@@ -39,14 +43,15 @@ export function CustomerAssignment({
     <div className="grid gap-3 border-y border-border bg-muted/40 p-4">
       <h3 className="font-semibold">Identify customer for {reference}</h3>
       <p className="text-sm text-muted-foreground">
-        Select the verified attendee for lifetime value and acquisition reporting. This assignment is recorded in
-        the visit history.
+        Confirm who received this service. This correction applies on the delivery date and recalculates historical
+        LTV and CAC. The visit history records who made the change.
       </p>
       <label className="grid gap-1 text-sm">
         Find customer
         <input
           className={inputStyle}
           type="search"
+          ref={field}
           maxLength={100}
           value={name}
           onChange={(e) => {

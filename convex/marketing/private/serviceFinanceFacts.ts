@@ -68,7 +68,7 @@ async function expensesFor(ctx: QueryCtx, from: string, to: string) {
   return { expenses, missingMonths };
 }
 
-export type ReportFacts = ProfitFacts & { excludedCurrency: number };
+export type ReportFacts = ProfitFacts & { excludedCurrency: number; asOf: number };
 export async function readServiceFinanceFacts(
   ctx: QueryCtx,
   from: string,
@@ -92,5 +92,5 @@ export async function readServiceFinanceFacts(
     }
   }
   lines.push(...(await profitFees(ctx, start, end)));
-  return { lines, customers, excludedCurrency, ...(await expensesFor(ctx, from, to)) };
+  return { lines, customers, excludedCurrency, asOf: Date.now(), ...(await expensesFor(ctx, from, to)) };
 }

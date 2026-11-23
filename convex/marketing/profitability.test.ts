@@ -329,8 +329,7 @@ it('keeps a 92-day report with 100 customers and 1000 deliveries within the shar
     times.push(performance.now() - begin);
   }
   const p95 = Math.ceil(times.sort((a, b) => a - b)[9]);
-  if (process.env.PROFIT_REPORT_BENCH)
-    console.info('Profitability fixture', JSON.stringify({ ...metrics, openMs, warmPageP95Ms: p95 }));
+  console.info('Profitability fixture', JSON.stringify({ ...metrics, openMs, warmPageP95Ms: p95 }));
   expect(p95).toBeLessThan(1500);
   const result = await query({ viewId, metric: 'revenue', page: 2 });
   expect(result.detail).toMatchObject({ page: 2, count: 1000, sum: 10_000_000 });
@@ -495,4 +494,32 @@ it('supports any-of values within an AND rule group and allocates receipt VAT to
   });
   expect(report.summary.count).toBe(1);
   expect(serviceReceiptShares([8, 8, 0])).toEqual([1, 0, 0]);
+});
+it('preserves ratios before a merge and combines lifetime history after its effective day', async () => {
+  const { t, ids, query } = await setup();
+  await t.run(async (ctx) => {
+    const source = await ctx.db.insert('customers', {
+      name: 'Merged attendee',
+      createdBy: email,
+      createdAt: nov,
+      updatedAt: nov,
+      mergedInto: ids.attendeeId,
+      mergedAt: nov + day * 34,
+    });
+    await deliver(ctx, ids, nov, 10700);
+    await deliver(ctx, { ...ids, attendeeId: source }, nov + day, 21400);
+    await deliver(ctx, ids, nov + day * 38, 10700);
+  });
+  expect((await query()).summary).toMatchObject({ customerCount: 2, ltv: 15000, newCount: 2 });
+  expect((await query({ from: '2026-12-01', to: '2026-12-31' })).summary).toMatchObject({
+    customerCount: 1,
+    ltv: 40000,
+    newCount: 0,
+  });
+});
+it('permits November net when a zero-value settlement belongs to an uncosted October delivery', async () => {
+  const { t, user, ids, query } = await setup();
+  await t.run((ctx) => deliver(ctx, ids, nov - day * 5, 10700, { paidAt: nov }));
+  await user.mutation(finance.recordMonth, { ...month, overhead: 0 });
+  expect((await query()).summary).toMatchObject({ gross: 0, net: 0, missingCount: 0, newCount: 1 });
 });

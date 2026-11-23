@@ -143,7 +143,7 @@ export async function mergeCustomerRecords(ctx: MutationCtx, args: {
     const now = Date.now();
     const before = { sourceId: source._id, destinationId: destination._id, source: customerValues(source), destination: customerValues(destination) };
     // Freeze before moving any references. Concurrent links/payment must observe this revision or conflict.
-    await ctx.db.patch(source._id, { mergedInto: destination._id, mergeKey: args.idempotencyKey, mergeReason: reason, archivedAt: source.archivedAt ?? now, revision: (source.revision ?? 0) + 1, updatedAt: now });
+    await ctx.db.patch(source._id, { mergedInto: destination._id, mergedAt: now, mergeKey: args.idempotencyKey, mergeReason: reason, archivedAt: source.archivedAt ?? now, revision: (source.revision ?? 0) + 1, updatedAt: now });
     await ctx.db.patch(destination._id, { revision: (destination.revision ?? 0) + 1, updatedAt: now });
     const jobId = await ctx.db.insert('customerMergeJobs', { sourceId: source._id, destinationId: destination._id, reason, actor: admin.email, status: 'running', movedOrders: 0, before, createdAt: now, updatedAt: now });
     for (const entityId of [source._id, destination._id]) await appendRecordHistory(ctx, { entityType: 'customer', entityId, actor: admin.email, kind: 'merge_started', reason, before, after: { sourceId: source._id, destinationId: destination._id } });

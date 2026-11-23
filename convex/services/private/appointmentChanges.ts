@@ -33,7 +33,7 @@ const TRACKED = [
 
 type Tracked = (typeof TRACKED)[number];
 
-export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'receiptVatShare' | 'actualCosts' | 'coverage' | 'pendingReturn' | 'restoredCoverage' | 'restoredCoverageAt'>>;
+export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'receiptVatShare' | 'actualCosts' | 'coverage' | 'pendingReturn' | 'restoredCoverageAt'>>;
 
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
@@ -64,8 +64,13 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 		guestEmail: 'guestEmail' in patch ? patch.guestEmail : appointment.guestEmail
 	});
 	// Bind a delivered visit to the immutable finance entry that was available at completion.
-	const schedule = patch.status === 'completed' && appointment.status !== 'completed' && !appointment.costScheduleId
-		? await deliveryCostVersion(ctx, patch.serviceId ?? appointment.serviceId, patch.end ?? appointment.end) : {};
+	const deliveryChanged = (patch.status !== undefined && patch.status !== appointment.status)
+		|| (patch.serviceId !== undefined && patch.serviceId !== appointment.serviceId)
+		|| (patch.end !== undefined && patch.end !== appointment.end);
+	const schedule = deliveryChanged
+		? {costScheduleId: undefined, ...((patch.status ?? appointment.status) === 'completed'
+			? await deliveryCostVersion(ctx, patch.serviceId ?? appointment.serviceId, patch.end ?? appointment.end) : {})}
+		: {};
 	await ctx.db.patch(appointment._id, { ...patch, ...lookup, ...schedule, ...(patch.paymentStatus === 'unpaid' && {receiptVatShare: undefined}), revision: appointmentRevision(appointment) + 1 });
 	const audit = {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,

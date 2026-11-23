@@ -1,9 +1,8 @@
-import { periodCustomerHistory } from './profitHistory';
+import { mergeEligibility, periodCustomerHistory } from './profitHistory';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { ReadBudgetExceeded, readBudget, readRangeWithinBudget } from '../../lib/readBudget';
-import { incrementalShare } from '../../shared/commerce/returns';
-import { apportionMoney } from '../../shared/commerce/allocation';
+import { packageTimeline } from './profitPackages';
 import { includedServiceVat, revenueRemaining } from '../../shared/serviceVat';
 import { profitReceiptReader } from '../../pos/model';
 import type { CustomerHistory, DirectCosts, ProfitLine } from '../../shared/profitability';
@@ -11,7 +10,6 @@ import { resortTodayIso } from '../../shared/time';
 
 type Visit = Doc<'appointments'>;
 const zeroCosts = { staff: 0, materials: 0, tools: 0 };
-const exVat = (amount: number) => amount - includedServiceVat(amount);
 
 // Share single gets and index ranges across the period and the histories of its active customers.
 export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
@@ -32,50 +30,63 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     return doc;
   }
   const visits = new Map<Id<'appointments'>, Visit>();
-  const [delivered, adjustments, legacyRefunds, restores, collections, legacyReturns] = await Promise.all([
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('appointments')
-        .withIndex('by_status_and_end', (q) => q.eq('status', 'completed').gte('end', start).lt('end', end)),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('appointmentRefunds')
-        .withIndex('by_effectiveAt', (q) => q.gte('effectiveAt', start).lt('effectiveAt', end)),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('appointments')
-        .withIndex('by_refundedAt', (q) => q.gte('refundedAt', start).lt('refundedAt', end)),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('appointments')
-        .withIndex('by_restoredCoverageAt', (q) =>
-          q.gte('restoredCoverageAt', start).lt('restoredCoverageAt', end),
-        ),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db.query('appointments').withIndex('by_paidAt', (q) => q.gte('paidAt', start).lt('paidAt', end)),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('orderReturns')
-        .withIndex('by_completedAt', (q) => q.gte('completedAt', start).lt('completedAt', end)),
-    ),
-  ]);
+  const [delivered, adjustments, legacyRefunds, restores, collections, legacyReturns, redemptions] =
+    await Promise.all([
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('appointments')
+          .withIndex('by_status_and_end', (q) => q.eq('status', 'completed').gte('end', start).lt('end', end)),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('appointmentRefunds')
+          .withIndex('by_effectiveAt', (q) => q.gte('effectiveAt', start).lt('effectiveAt', end)),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('appointments')
+          .withIndex('by_refundedAt', (q) => q.gte('refundedAt', start).lt('refundedAt', end)),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('appointments')
+          .withIndex('by_restoredCoverageAt', (q) =>
+            q.gte('restoredCoverageAt', start).lt('restoredCoverageAt', end),
+          ),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db.query('appointments').withIndex('by_paidAt', (q) => q.gte('paidAt', start).lt('paidAt', end)),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('orderReturns')
+          .withIndex('by_completedAt', (q) => q.gte('completedAt', start).lt('completedAt', end)),
+      ),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db
+          .query('sessionUses')
+          .withIndex('by_kind_and_createdAt', (q) =>
+            q.eq('kind', 'use').gte('createdAt', start).lt('createdAt', end),
+          ),
+      ),
+    ]);
   for (const visit of restores) if (visit.status === 'completed' && visit.end < end) visits.set(visit._id, visit);
   for (const visit of [...delivered, ...collections])
     if (visit.status === 'completed' && visit.end < end) visits.set(visit._id, visit);
   const adjustmentVisitIds = new Set([
     ...legacyReturns.flatMap((r) => (r.visitReturns ?? []).filter((v) => v.restore).map((v) => v.appointmentId)),
   ]);
+  for (const use of redemptions) {
+    const id = use.activeAppointmentId ?? (use.lineId ? (await get(use.lineId))?.appointmentId : undefined);
+    if (id) adjustmentVisitIds.add(id);
+  }
   for (const id of adjustmentVisitIds) {
     if (visits.has(id)) continue;
     const visit = await get(id);
@@ -98,10 +109,11 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     people.set(id, doc);
     return doc;
   }
+  const mergedBy = mergeEligibility(ctx, end);
   async function canonical(id: Id<'customers'>) {
     const seen = new Set<Id<'customers'>>();
     let doc = await person(id);
-    while (doc.mergedInto) {
+    while (doc.mergedInto && (await mergedBy(doc))) {
       if (seen.has(doc._id)) throw new Error('Review the customer merge history.');
       seen.add(doc._id);
       doc = await person(doc.mergedInto);
@@ -119,7 +131,8 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
   for (const id of customerIds) {
     histories.set(id, { id, name: (await person(id)).name, lifetime: 0, firstDay: null });
   }
-  for (const visit of await periodCustomerHistory(ctx, customerIds, start, people)) visits.set(visit._id, visit);
+  for (const visit of await periodCustomerHistory(ctx, customerIds, start, mergedBy, people))
+    visits.set(visit._id, visit);
   const schedules = new Map<string, Doc<'serviceCostSchedules'>[]>();
   const frozen = new Map<string, Doc<'serviceCostSchedules'>>();
   async function directCosts(visit: Visit, day: string): Promise<DirectCosts | null> {
@@ -159,63 +172,10 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
       continue;
     }
     const day = resortTodayIso(visit.end);
-    const tax =
-      visit.coverage || visit.restoredCoverage
-        ? 0
-        : ((await receipt.visitTax(visit)) ?? includedServiceVat(visit.price));
-    let earned = visit.price - tax;
-    let paidAt = visit.amountPaid > 0 ? visit.paidAt : undefined;
-    let restoration = visit.restoredCoverage;
-    // Older completed returns predate the indexed restoration fields. Their receipt retains the original use.
-    if (!restoration && !visit.coverage && visit.attendeeId && visit.financialRevision) {
-      const receipts = await readRangeWithinBudget(
-        ctx,
-        ctx.db.query('orderLines').withIndex('by_appointmentId', (q) => q.eq('appointmentId', visit._id)),
-      );
-      for (const id of new Set(receipts.map((r) => r.orderId))) {
-        const returns = await readRangeWithinBudget(
-          ctx,
-          ctx.db
-            .query('orderReturns')
-            .withIndex('by_orderId_and_status', (q) => q.eq('orderId', id).eq('status', 'completed')),
-        );
-        for (const row of returns) {
-          const restore = row.visitReturns?.find((r) => r.appointmentId === visit._id && r.restore)?.restore;
-          if (restore && row.completedAt)
-            restoration = { useId: restore.useId, grantId: restore.grantId, at: row.completedAt };
-        }
-      }
-    }
-    const coverage = visit.coverage ?? restoration;
-    if (coverage) {
-      const use = await get(coverage.useId);
-      const grant = await get(coverage.grantId);
-      if (!grant || !use || use.grantId !== grant._id || !use.bucket)
-        throw new Error('Review the package use for ' + visit.confirmationCode);
-      const original = await get(grant.lineId);
-      const part = original?.saleSnapshot?.contents.find((item) => item.contentKey === grant.contentKey);
-      if (!part) throw new Error('Missing package sale allocation for ' + visit.confirmationCode);
-      const parts = original!.saleSnapshot!.contents;
-      const allocated = part.vatBase
-        ? apportionMoney(
-            await receipt.tax(original!),
-            parts.map((p) => p.vatBase),
-          )[parts.indexOf(part)]
-        : 0;
-      const value =
-        part.paidShare -
-        (part.vatProfile === 'standard' && !part.vatBase ? includedServiceVat(part.paidShare) : allocated);
-      // Difference of cumulative shares allocates every satang once over paid units.
-      earned =
-        use.bucket === 'goodwill'
-          ? 0
-          : incrementalShare(value, {
-              unitsSold: part.units,
-              unitsBefore: part.units - use.before.paid,
-              unitsThrough: part.units - use.after.paid,
-            }).amount;
-      paidAt = earned > 0 ? use.createdAt : undefined;
-    }
+    const timeline = await packageTimeline(ctx, visit, receipt);
+    const tax = (await receipt.visitTax(visit)) ?? includedServiceVat(visit.price);
+    const earned = timeline?.earned ?? visit.price - tax;
+    const paidAt = timeline ? timeline.paidAt : visit.amountPaid > 0 ? visit.paidAt : undefined;
     const attendee = visit.attendeeId ?? visit.reportCustomerId;
     const customerId = attendee ? (await canonical(attendee))._id : null;
     const history = customerId ? histories.get(customerId) : undefined;
@@ -252,7 +212,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
         cost: await directCosts(visit, day),
       });
     if (
-      !coverage &&
+      !timeline &&
       paidAt !== undefined &&
       paidAt >= start &&
       paidAt < end &&
@@ -265,33 +225,24 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
         day: resortTodayIso(paidAt),
         kind: 'Settlement',
         revenue: 0,
-        cost: (await directCosts(visit, day)) ? zeroCosts : null,
+        cost: zeroCosts,
       });
-    if (restoration && restoration.at < end) {
-      const at = Math.max(visit.end, restoration.at);
-      if (history) history.lifetime -= earned;
-      if (at >= start && earned)
+    for (const event of timeline?.events ?? []) {
+      if (event.at >= end) continue;
+      if (history) {
+        history.lifetime += event.revenue;
+        if (event.revenue > 0 && (!history.firstDay || resortTodayIso(event.at) < history.firstDay))
+          history.firstDay = resortTodayIso(event.at);
+      }
+      if (event.at >= start && event.revenue)
         lines.push({
           ...base,
-          id: 'restore-' + restoration.useId,
-          day: resortTodayIso(at),
-          kind: 'Refund',
-          revenue: -earned,
+          id: event.id,
+          day: resortTodayIso(event.at),
+          kind: event.kind,
+          revenue: event.revenue,
           cost: (await directCosts(visit, day)) ? zeroCosts : null,
         });
-      if (visit.paidAt && visit.paidAt >= at && visit.paidAt < end && visit.amountPaid > 0) {
-        const replacement = exVat(visit.amountPaid);
-        if (history) history.lifetime += replacement;
-        if (visit.paidAt >= start)
-          lines.push({
-            ...base,
-            id: 'recollection-' + visit._id,
-            day: resortTodayIso(visit.paidAt),
-            kind: 'Service',
-            revenue: replacement,
-            cost: (await directCosts(visit, day)) ? zeroCosts : null,
-          });
-      }
     }
     if (visit.amountRefunded <= 0) continue;
     const refunds = await readRangeWithinBudget(
@@ -308,7 +259,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     for (const event of events) {
       const at = Math.max(visit.end, event.at);
       if (at >= end) continue;
-      const refundVat = restoration ? includedServiceVat(visit.price) : tax;
+      const refundVat = tax;
       const revenue =
         revenueRemaining(balance - event.amount, visit.price, refundVat) -
         revenueRemaining(balance, visit.price, refundVat);

@@ -28,7 +28,8 @@ it('keeps scenario fixture writes in the caller transaction and refuses even a n
   const t = createHarness(convexTest);
   await expect(t.run(async ctx => { await seedScenario(ctx, 'demo-resort'); throw new Error('caller rollback'); })).rejects.toThrow('caller rollback');
   const empty = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'empty' });
-  expect(Object.keys(empty.counts)).toHaveLength(97);
+  expect(Object.keys(empty.counts)).toHaveLength(101);
+  expect(empty.counts).toMatchObject({serviceCostSchedules:0,serviceFinanceMonths:0,serviceProfitViews:0,serviceProfitViewChunks:0});
   expect(empty.counts.directPaymentPanels).toBe(0);
   expect(Object.values(empty.counts).every(count => count === 0)).toBe(true);
   const sessionId = await t.mutation(internal.maintenance.chatEval.createSession, { channel: 'line' });

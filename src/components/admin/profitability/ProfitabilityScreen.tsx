@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, CalendarRange, SlidersHorizontal } from 'lucide-react';
 import { useRouter as useStartRouter, useRouterState } from '@tanstack/react-router';
 import { Overview } from './ProfitOverview';
 import { Details } from './ProfitRecords';
-import { endpoint, box, path, type Href, type Report, type Request } from './report-model';
+import { box, path, type Href, type Report, type Request } from './report-model';
 import { useConvex, useMutation } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import { metricNames, profitMetrics } from 'convex/shared/profitability';
@@ -11,6 +11,7 @@ import { resortTodayIso } from 'convex/shared/time';
 import { MAX_REPORT_DAYS, reportDayCount } from 'convex/shared/marketingReport';
 import Link from '@/platform/link';
 import { usePathname, useSearchParams } from '@/platform/navigation';
+import { staffDateTime } from '@/lib/staff-time';
 import { Button } from '@/components/ui/button';
 import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
@@ -45,6 +46,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const descending = params.get('sort') !== 'asc';
   const [open, setOpen] = useState(false),
     [revision, setRevision] = useState(0);
+  const expiredView = useRef<string | null>(null);
   const openView = useMutation(api.marketing.profitViews.openView);
   const viewKey = JSON.stringify([access.email, canWrite, from, to, revision]);
   const [view, setView] = useState<{ key: string; id?: Request['viewId']; error?: string }>();
@@ -87,12 +89,17 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   useEffect(() => {
     if (!valid || !viewId) return;
     let active = true;
-    convex.query(endpoint, request).then(
+    convex.query(api.marketing.profitability.report, request).then(
       (data) => {
         if (active) setState({ key, data });
       },
       (err) => {
-        if (active) setState({ key, error: marketingErrorText(err, 'The report could not be loaded.') });
+        if (!active) return;
+        const message = marketingErrorText(err, 'The report could not be loaded.');
+        if (message.includes('view expired') && expiredView.current !== viewId) {
+          expiredView.current = viewId;
+          setRevision((n) => n + 1);
+        } else setState({ key, error: message });
       },
     );
     return () => {
@@ -145,12 +152,24 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             Delivered services and fees · THB excluding VAT · Bangkok time
           </p>
         </div>
-        {!detailPage && canWrite && (
-          <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
-            <SlidersHorizontal size={16} />
-            Finance inputs
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {report && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setRevision((n) => n + 1)}
+              title={'Report opened ' + staffDateTime(report.asOf)}
+            >
+              Refresh report
+            </Button>
+          )}
+          {!detailPage && canWrite && (
+            <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
+              <SlidersHorizontal size={16} />
+              Finance inputs
+            </Button>
+          )}
+        </div>
       </header>
       {open && !detailPage && canWrite && (
         <section className={box}>
@@ -208,7 +227,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
       )}
       {((view?.key === viewKey && view.error) || (state?.key === key && state.error)) && (
         <div role="alert" className={box + ' p-4'}>
-          {view?.error ?? state?.error}{' '}
+          {(view?.key === viewKey && view.error) || (state?.key === key && state.error)}{' '}
           <Button size="sm" variant="outline" onClick={() => setRevision((v) => v + 1)}>
             Retry
           </Button>
@@ -267,8 +286,9 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           </p>
           <p>
             LTV uses the full recorded service history of matching identified attendees through the last selected
-            day. CAC uses the first paid delivery recorded for each attendee and the acquisition campaigns finance
-            selected for the service business. Anonymous services still count toward revenue.
+            day. Customer merges take effect on their recorded date. Finance corrections to the attendee apply on
+            the delivery date. CAC uses the first paid delivery recorded for each attendee and the acquisition
+            campaigns finance selected for the service business. Anonymous services still count toward revenue.
           </p>
           <p>
             Net profit requires complete service costs and monthly accounts. Monthly overhead, other expenses, tax,
