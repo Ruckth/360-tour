@@ -136,6 +136,7 @@ import type * as marketing_commands_setLinkStatus from "../marketing/commands/se
 import type * as marketing_couponRedemptions from "../marketing/couponRedemptions.js";
 import type * as marketing_maintenance from "../marketing/maintenance.js";
 import type * as marketing_model from "../marketing/model.js";
+import type * as marketing_profitability from "../marketing/profitability.js";
 import type * as marketing_public from "../marketing/public.js";
 import type * as marketing_queries from "../marketing/queries.js";
 import type * as marketing_report from "../marketing/report.js";
@@ -244,6 +245,7 @@ import type * as pos_private_paymentCommerce from "../pos/private/paymentCommerc
 import type * as pos_private_paymentCorrections from "../pos/private/paymentCorrections.js";
 import type * as pos_private_paymentRecovery from "../pos/private/paymentRecovery.js";
 import type * as pos_private_paymentReview from "../pos/private/paymentReview.js";
+import type * as pos_private_profitFees from "../pos/private/profitFees.js";
 import type * as pos_private_returnEffects from "../pos/private/returnEffects.js";
 import type * as pos_private_returnGuards from "../pos/private/returnGuards.js";
 import type * as pos_private_returnModel from "../pos/private/returnModel.js";
@@ -287,6 +289,7 @@ import type * as services_private_appointmentChanges from "../services/private/a
 import type * as services_private_appointmentFinance from "../services/private/appointmentFinance.js";
 import type * as services_private_appointmentReturns from "../services/private/appointmentReturns.js";
 import type * as services_private_photos from "../services/private/photos.js";
+import type * as services_private_profitVisits from "../services/private/profitVisits.js";
 import type * as services_private_rosterHistory from "../services/private/rosterHistory.js";
 import type * as services_private_serviceCatalog from "../services/private/serviceCatalog.js";
 import type * as services_private_serviceEdits from "../services/private/serviceEdits.js";
@@ -361,6 +364,7 @@ import type * as shared_overlap from "../shared/overlap.js";
 import type * as shared_phone from "../shared/phone.js";
 import type * as shared_posCoupons from "../shared/posCoupons.js";
 import type * as shared_pricing from "../shared/pricing.js";
+import type * as shared_profitability from "../shared/profitability.js";
 import type * as shared_replyCards from "../shared/replyCards.js";
 import type * as shared_richMessages from "../shared/richMessages.js";
 import type * as shared_schedule from "../shared/schedule.js";
@@ -513,6 +517,7 @@ declare const fullApi: ApiFromModules<{
   "marketing/couponRedemptions": typeof marketing_couponRedemptions;
   "marketing/maintenance": typeof marketing_maintenance;
   "marketing/model": typeof marketing_model;
+  "marketing/profitability": typeof marketing_profitability;
   "marketing/public": typeof marketing_public;
   "marketing/queries": typeof marketing_queries;
   "marketing/report": typeof marketing_report;
@@ -621,6 +626,7 @@ declare const fullApi: ApiFromModules<{
   "pos/private/paymentCorrections": typeof pos_private_paymentCorrections;
   "pos/private/paymentRecovery": typeof pos_private_paymentRecovery;
   "pos/private/paymentReview": typeof pos_private_paymentReview;
+  "pos/private/profitFees": typeof pos_private_profitFees;
   "pos/private/returnEffects": typeof pos_private_returnEffects;
   "pos/private/returnGuards": typeof pos_private_returnGuards;
   "pos/private/returnModel": typeof pos_private_returnModel;
@@ -664,6 +670,7 @@ declare const fullApi: ApiFromModules<{
   "services/private/appointmentFinance": typeof services_private_appointmentFinance;
   "services/private/appointmentReturns": typeof services_private_appointmentReturns;
   "services/private/photos": typeof services_private_photos;
+  "services/private/profitVisits": typeof services_private_profitVisits;
   "services/private/rosterHistory": typeof services_private_rosterHistory;
   "services/private/serviceCatalog": typeof services_private_serviceCatalog;
   "services/private/serviceEdits": typeof services_private_serviceEdits;
@@ -738,6 +745,7 @@ declare const fullApi: ApiFromModules<{
   "shared/phone": typeof shared_phone;
   "shared/posCoupons": typeof shared_posCoupons;
   "shared/pricing": typeof shared_pricing;
+  "shared/profitability": typeof shared_profitability;
   "shared/replyCards": typeof shared_replyCards;
   "shared/richMessages": typeof shared_richMessages;
   "shared/schedule": typeof shared_schedule;

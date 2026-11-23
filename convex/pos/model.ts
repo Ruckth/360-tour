@@ -12,3 +12,4 @@ export {
   directPanelSettled, directPanelTill, findDirectPanel, matchesInstruction, orderDirectPanels, ownsPanel, panelInstanceId, panelOwner, panelRevision,
   linkReceipt, patchDirectPanel, readDirectPanels, receiptRecordsPanel, receiptUsed, registerDirectPanel, settlingPanel, type DirectInstruction, type DirectPanel,
 } from './private/directPanels';
+export { profitFees } from './private/profitFees';

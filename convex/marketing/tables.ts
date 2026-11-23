@@ -9,6 +9,16 @@ export const marketingTables = {
 	// Marketing release 1: campaigns, short links and coupon catalog (see convex/marketing.ts).
 
 	// Marketing R4: grants bind an explicit email invitation to the authenticated canonical identity.
+  serviceCostSchedules: defineTable({
+    serviceId: v.id('services'), from: v.string(), staff: v.number(),
+    materials: v.number(), tools: v.number(), actor: v.string(), recordedAt: v.number(),
+  }).index('by_serviceId_and_from', ['serviceId', 'from']),
+
+  serviceFinanceMonths: defineTable({
+    month: v.string(), campaignIds: v.array(v.id('marketingCampaigns')), overhead: v.number(), otherExpenses: v.number(), tax: v.number(),
+    otherIncome: v.number(), actor: v.string(), recordedAt: v.number(),
+  }).index('by_month', ['month']),
+
 	marketingGrants: defineTable({
 		email: v.string(),
 		role: marketingRole,

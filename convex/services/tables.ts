@@ -34,7 +34,7 @@ export const servicesTables = {
 	}).index('by_appointmentId_and_recordedAt', ['appointmentId', 'recordedAt'])
 		.index('by_orderId', ['orderId']).index('by_orderId_and_effectiveAt', ['orderId', 'effectiveAt'])
 		.index('by_idempotencyKey', ['idempotencyKey'])
-		.index('by_recordedAt', ['recordedAt']),
+		.index('by_recordedAt', ['recordedAt']).index('by_effectiveAt', ['effectiveAt']),
 
 	staff: defineTable({
 		name: v.string(),
@@ -150,6 +150,8 @@ export const servicesTables = {
 
 	appointments: defineTable({
 		attendeeId: v.optional(v.id('customers')),
+		/** Finance-verified identity for reports. Operational package attendance takes precedence. */
+		reportCustomerId: v.optional(v.id('customers')),
 		coverage: v.optional(v.object({ grantId: v.id('sessionGrants'), useId: v.id('sessionUses'), priceBefore: v.optional(v.number()) })),
 		pendingReturn: v.optional(v.object({ returnId: v.id('orderReturns'), remaining: v.number() })),
 		serviceId: v.id('services'),
@@ -211,6 +213,10 @@ export const servicesTables = {
 		rebookedFromId: v.optional(v.id('appointments'))
 	})
 		.index('by_attendeeId_and_start', ['attendeeId', 'start'])
+		.index('by_status_and_end', ['status', 'end'])
+		.index('by_reportCustomerId_and_status_and_end', ['reportCustomerId', 'status', 'end'])
+		.index('by_refundedAt', ['refundedAt'])
+		.index('by_attendeeId_and_status_and_end', ['attendeeId', 'status', 'end'])
 		.index('by_staff_start', ['staffId', 'start'])
 		.index('by_service_start', ['serviceId', 'start'])
 		.index('by_start', ['start'])

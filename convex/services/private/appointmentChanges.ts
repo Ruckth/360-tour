@@ -25,7 +25,7 @@ const REASON_MAX = 500;
 
 /** Fields whose old and new values are kept in the history. */
 const TRACKED = [
-	'staffId', 'serviceId', 'start', 'end', 'blockedUntil', 'price', 'currency',
+	'reportCustomerId', 'staffId', 'serviceId', 'start', 'end', 'blockedUntil', 'price', 'currency',
 	'amountPaid', 'amountRefunded', 'financialRevision', 'status', 'paymentStatus', 'guestName', 'guestPhone', 'guestEmail', 'notes',
 	'staffNameSnapshot', 'serviceNameSnapshot', 'paidAt', 'paidBy', 'refundedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason'
 ] as const;

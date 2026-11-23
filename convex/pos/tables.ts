@@ -218,6 +218,7 @@ export const posTables = {
 		createdAt: v.number(),
 		updatedAt: v.number()
 	})
+		.index('by_mergedInto', ['mergedInto'])
 		.index('by_phoneDigits', ['phoneDigits'])
 		.index('by_emailNormalized', ['emailNormalized'])
 		.index('by_archivedAt', ['archivedAt'])

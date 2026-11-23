@@ -80,6 +80,7 @@ describe("admin routes", () => {
     expect(marketing.href).toBe("/admin/marketing/dashboard");
     expect(marketing.children?.map((child) => [child.label, child.href])).toEqual([
       ["Dashboard", "/admin/marketing/dashboard"],
+      ["Profitability", "/admin/marketing/profitability"],
       ["Campaigns", "/admin/marketing/campaigns"],
       ["Links & QR", "/admin/marketing/links"],
       ["Coupons", "/admin/marketing/coupons"],
