@@ -58,7 +58,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - run: bun run test:booking-ui --shard=${{ matrix.shard }}/8
+      - run: node .github/scripts/booking-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }}
 
   integration_start:
     # TanStack Start build, E2E, route tree check and initial JS budgets.

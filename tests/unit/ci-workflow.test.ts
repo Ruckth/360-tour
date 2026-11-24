@@ -76,7 +76,7 @@ it("runs only the Start frontend: E2E, route tree, all four budgets and the pers
   expect(start).toMatch(/uses: actions\/cache@v4\n        with:\n          # Only binaries/);
   expect(job("devcheck")).toContain("run: bun run test:dev");
   expect(job("devcheck")).toContain("LOCAL_DEV_SKIP_TYPECHECK: '1'");
-  expect(job("components")).toContain("run: bun run test:booking-ui --shard=${{ matrix.shard }}/8");
+  expect(job("components")).toContain("run: node .github/scripts/booking-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }}");
   // Checkpoint history readers run in guards (scripts/vitest-projects.mjs), the only full-history checkout.
   expect(job("guards")).toContain("fetch-depth: 0");
   expect(job("guards")).toContain("run: bun run test:guards");
