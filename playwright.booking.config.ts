@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 import { bookingUIPort } from './scripts/worktree-ports.mjs';
 
 const port = bookingUIPort(process.cwd());
+const viteConfig = "tests/browser/vite.config.ts";
 const baseURL = `http://127.0.0.1:${port}`;
 // Screenshot capture specs skip themselves unless a CAPTURE_* variable is set.
 // Leave them out of normal runs so they do not pile into one CI shard.
@@ -21,7 +22,7 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `bun run vite --config tests/browser/vite.config.ts --port ${port} --strictPort`,
+    command: `bun run vite build --config ${viteConfig} && bun run vite preview --config ${viteConfig} --host 127.0.0.1 --port ${port} --strictPort`,
     url: `${baseURL}/tests/browser/index.html`,
     reuseExistingServer: false,
   },

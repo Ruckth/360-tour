@@ -6,7 +6,7 @@ test("a cached panorama keeps the bottom image row first for WebGL upload", asyn
   );
   await page.goto("/panorama-pixel-fixture");
   const rows = await page.evaluate(async (moduleUrl) => {
-    const { browserCaptureDeps } = await import(moduleUrl) as typeof import("@/lib/tour/first-panorama-cache");
+    const { browserCaptureDeps } = await import(moduleUrl) as typeof import("./fixture-modules");
     const source = document.createElement("canvas");
     source.width = 4;
     source.height = 2;
@@ -26,6 +26,6 @@ test("a cached panorama keeps the bottom image row first for WebGL upload", asyn
     } finally {
       bitmap.close();
     }
-  }, "/src/lib/tour/first-panorama-cache.ts");
+  }, "/assets/fixture-modules.js");
   expect(rows).toEqual([[0, 0, 255, 255], [255, 0, 0, 255]]);
 });

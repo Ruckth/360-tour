@@ -1,10 +1,24 @@
+import { globSync } from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vite";
+import { createServer, defineConfig } from "vite";
 import { bookingUIPort } from '../../scripts/worktree-ports.mjs';
 
 export default defineConfig({
   plugins: [{
     name: 'checkout-real-function-fixtures',
+    async configurePreviewServer(preview) {
+      // Only the test database RPC needs Vite's SSR loader. Chromium receives
+      // built files from the preview server for the lifetime of the suite.
+      const backend = await createServer({
+        configFile: "tests/browser/vite.config.ts",
+        server: { middlewareMode: true, watch: null, hmr: false },
+      });
+      preview.httpServer.once("close", () => { void backend.close(); });
+      preview.middlewares.use((req, res, next) => {
+        if (req.url === "/__checkout-fixture") backend.middlewares(req, res, next);
+        else next();
+      });
+    },
     configureServer(server) {
       const sessions = new Map<string, Awaited<ReturnType<typeof import('../support/checkout-backend').createFixtureBackend>>>();
       server.middlewares.use('/__checkout-fixture', async (req, res) => {
@@ -32,6 +46,15 @@ export default defineConfig({
       });
     },
   }],
+  build: {
+    outDir: "node_modules/.cache/360-tour/booking-ui",
+    target: "esnext",
+    rolldownOptions: {
+      input: [...globSync("tests/browser/**/*.html"), "tests/browser/fixture-modules.ts"],
+      preserveEntrySignatures: "strict",
+      output: { entryFileNames: "assets/[name].js" },
+    },
+  },
   define: { "process.env": "{}" },
   optimizeDeps: {
     entries: ["tests/browser/*.html"],
@@ -57,8 +80,8 @@ export default defineConfig({
       { find: /^@\/platform\/link$/, replacement: path.resolve("tests/browser/link-mock.tsx") },
       { find: "@", replacement: path.resolve("src") },
       {
-        find: /^convex\/(?!server$|values$|browser$|react$)(.*)$/,
-        replacement: path.resolve("convex/$1"),
+        find: /^convex\/(?!server$|values$|browser$|react$)/,
+        replacement: `${path.resolve("convex")}/`,
       },
     ],
   },
