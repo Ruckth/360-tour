@@ -456,6 +456,12 @@ it('protects names, entry, profile changes, exports and snapshots on direct call
   const detail = await manager.query(finance.report, { ...base, viewId: privateView, metric: 'ltv' });
   expect(JSON.stringify(detail)).not.toContain('Customer One');
   expect(detail.detail?.rows[0].ref).toBe('Attendee 1');
+  const managerRows = await manager.query(finance.report, { ...base, viewId: privateView, metric: 'revenue' });
+  expect(managerRows.detail?.rows[0]).toMatchObject({ id: 'record-1', ref: 'Record 1', customer: 'Attendee 1' });
+  expect(JSON.stringify(managerRows)).not.toContain(id);
+  expect(JSON.stringify(managerRows)).not.toContain('SVC-' + nov);
+  const financeRows = await user.query(finance.report, { ...base, viewId: namedView, metric: 'revenue' });
+  expect(financeRows.detail?.rows[0]).toMatchObject({ id, ref: 'SVC-' + nov });
   await expect(manager.query(finance.report, { ...base, viewId: namedView })).rejects.toThrow('access');
   await expect(manager.query(finance.report, { ...base, viewId: privateView, exportRows: true })).rejects.toThrow(
     'export',

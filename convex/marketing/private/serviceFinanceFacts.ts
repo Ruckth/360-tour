@@ -4,7 +4,7 @@ import { readRangeWithinBudget } from '../../lib/readBudget';
 import { profitFees } from '../../pos/model';
 import { profitVisits } from '../../services/model';
 import { addDays } from '../../shared/dates';
-import { reportRangeBounds, spendInRange } from '../../shared/marketingReport';
+import { MAX_SPEND_DAYS, reportRangeBounds, spendInRange } from '../../shared/marketingReport';
 import type { Expense, ProfitFacts } from '../../shared/profitability';
 function endOfMonth(month: string) {
   const date = new Date(month + '-01T00:00:00Z');
@@ -24,7 +24,9 @@ async function expensesFor(ctx: QueryCtx, from: string, to: string) {
   const names = new Map<Id<'marketingCampaigns'>, string>();
   const entries = await readRangeWithinBudget(
     ctx,
-    ctx.db.query('marketingSpend').withIndex('by_to', (q) => q.gte('to', from).lte('to', addDays(to, 365))),
+    ctx.db.query('marketingSpend').withIndex('by_to', (q) =>
+      q.gte('to', from).lte('to', addDays(to, MAX_SPEND_DAYS - 1)),
+    ),
   );
   for (let first = from.slice(0, 7) + '-01'; first <= to; ) {
     const month = first.slice(0, 7),
@@ -77,13 +79,16 @@ export async function readServiceFinanceFacts(
 ): Promise<ReportFacts> {
   const { start, end } = reportRangeBounds(from, to);
   const { lines, customers, excludedCurrency } = await profitVisits(ctx, start, end);
+  lines.push(...(await profitFees(ctx, start, end)));
   if (!named) {
     const tokens = new Map(customers.map((c, i) => [c.id, 'Attendee ' + (i + 1)]));
     for (const c of customers) {
       c.id = tokens.get(c.id)!;
       c.name = c.id;
     }
-    for (const row of lines) {
+    for (const [index, row] of lines.entries()) {
+      row.id = 'record-' + (index + 1);
+      row.ref = 'Record ' + (index + 1);
       row.customerId = row.customerId ? (tokens.get(row.customerId) ?? null) : null;
       delete row.appointmentId;
       delete row.currentCustomer;
@@ -91,6 +96,5 @@ export async function readServiceFinanceFacts(
       delete row.linkable;
     }
   }
-  lines.push(...(await profitFees(ctx, start, end)));
   return { lines, customers, excludedCurrency, asOf: Date.now(), ...(await expensesFor(ctx, from, to)) };
 }

@@ -5,18 +5,17 @@ import { thb } from '../marketing/marketing-format';
 import { box, money, type Report, type Href } from './report-model';
 export function Overview({ report, href, narrowed }: { report: Report; href: Href; narrowed: boolean }) {
   const s = report.summary;
+  const financeCoverage = s.unmappedSpend
+    ? thb(s.unmappedSpend) + ' in campaign spend awaits classification'
+    : report.missingMonths.length
+      ? 'Awaiting monthly accounts'
+      : null;
   const note: Record<ProfitMetric, string> = {
     revenue: 'Delivered services and fees, after VAT and refunds',
     gross: s.missingCount ? s.missingCount + ' rows awaiting costs' : 'After staff, materials and tools',
     net: narrowed
       ? 'Shared expenses apply to all services'
-      : s.unmappedSpend
-        ? 'Classify ' + thb(s.unmappedSpend) + ' of campaign spend'
-        : report.missingMonths.length
-          ? 'Enter monthly accounts below'
-          : s.missingCount
-            ? 'Complete service costs below'
-            : 'After acquisition spend, expenses and tax',
+      : financeCoverage ?? (s.missingCount ? 'Awaiting service costs' : 'After acquisition spend, expenses and tax'),
     ltv: s.customerCount
       ? 'Lifetime service revenue ÷ ' +
         s.customerCount +
@@ -24,9 +23,10 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
       : 'Requires an identified attendee',
     cac: narrowed
       ? 'Spend applies to the full service business'
-      : report.missingMonths.length
-        ? 'Confirm monthly campaign spend'
-        : thb(s.spend) + ' spend ÷ ' + s.newCount + (s.newCount === 1 ? ' new customer' : ' new customers'),
+      : financeCoverage ??
+        (s.newCount
+          ? thb(s.spend) + ' spend ÷ ' + s.newCount + (s.newCount === 1 ? ' new customer' : ' new customers')
+          : 'No identified new customers in this period'),
   };
   return (
     <>
