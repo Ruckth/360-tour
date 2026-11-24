@@ -1,0 +1,18 @@
+name: Check payment fixture bootstrap
+on:
+  push:
+    branches: [perf/ci-parallel-verification]
+permissions:
+  contents: read
+jobs:
+  bootstrap:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - run: node .github/scripts/booking-shard.mjs 7 8
