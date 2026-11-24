@@ -49,7 +49,11 @@ export default defineConfig({
   build: {
     outDir: "node_modules/.cache/360-tour/booking-ui",
     target: "esnext",
-    rolldownOptions: { input: globSync("tests/browser/**/*.html") },
+    rolldownOptions: {
+      input: [...globSync("tests/browser/**/*.html"), "tests/browser/fixture-modules.ts"],
+      preserveEntrySignatures: "strict",
+      output: { entryFileNames: "assets/[name].js" },
+    },
   },
   define: { "process.env": "{}" },
   optimizeDeps: {
