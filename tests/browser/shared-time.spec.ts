@@ -20,6 +20,7 @@ for (const timezoneId of ['America/Los_Angeles', 'Pacific/Auckland']) {
           const { isoToDate, dateToIso, resortTodayIso, nightsBetweenIso, resortDateTime } =
             await import(moduleUrl) as typeof import('./fixture-modules');
           const picker = isoToDate('2030-01-10');
+          if (!picker) throw new Error('Expected the picker to parse 2030-01-10');
           return {
             today: resortTodayIso(),
             pickerDay: picker.getDate(),
