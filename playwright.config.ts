@@ -2,6 +2,11 @@ import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL;
 const ci = Boolean(process.env.CI);
+const setup = /auth\.setup\.ts$/;
+const desktop = { ...devices["Desktop Chrome"] };
+// These specs use seeded inventory or their own browser/guest state. A new spec
+// stays in the serial project until its Clerk and Convex usage has been checked.
+const anonymousSpecs = /\/(chat-launcher|hero-reduced-motion|home-money|service-catalog|tour-loading|villa-tour)\.spec\.ts$/;
 
 export default defineConfig({
   outputDir: "test-results/integration",
@@ -22,15 +27,24 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
   },
-  // CI E2E signs into the shared Clerk test tenant, which other runners also use.
-  workers: ci ? 1 : 2,
+  workers: ci ? 3 : 2,
   projects: [
-    { name: "clerk-setup", testMatch: /auth.setup.ts/ },
+    { name: "clerk-setup", testMatch: setup },
     {
       name: "chromium",
       dependencies: ["clerk-setup"],
-      testIgnore: /auth.setup.ts/,
-      use: { ...devices["Desktop Chrome"] },
+      testIgnore: ci ? [setup, anonymousSpecs] : [setup],
+      use: desktop,
+      // CI signs into the shared Clerk test tenant, which other runners also use.
+      workers: ci ? 1 : undefined,
     },
+    ...(ci ? [{
+      name: "chromium-anonymous",
+      // Both Chromium projects start in the same phase after the one setup test.
+      dependencies: ["clerk-setup"],
+      testMatch: anonymousSpecs,
+      use: desktop,
+      workers: 2,
+    }] : []),
   ],
 });

@@ -8,7 +8,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 const capturing = Object.keys(process.env).some((name) => name.startsWith("CAPTURE_") && name !== "CAPTURE_SCREENSHOTS");
 
 export default defineConfig({
-  // Shard by test, not by file, so CI shards finish together.
+  // Independent component cases can run concurrently within each CI shard.
   fullyParallel: true,
   workers: process.env.CI ? 4 : 2,
   outputDir: "test-results/components",

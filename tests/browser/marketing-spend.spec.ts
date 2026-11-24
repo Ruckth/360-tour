@@ -43,8 +43,7 @@ for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440
     await trigger.click(); await amount.fill("12000");
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(dialog).toBeHidden();
-    const saved = JSON.parse((await page.locator("body").getAttribute("data-spend"))!);
-    expect(saved[0]).toMatchObject({ amount: 1200000, from: "2026-10-08", to: "2026-11-06" });
+    await expect.poll(async () => JSON.parse((await page.locator("body").getAttribute("data-spend")) ?? "[]")[0]).toMatchObject({ amount: 1200000, from: "2026-10-08", to: "2026-11-06" });
   });
   for (const scenario of ["normal", "empty"]) test(`sections ${scenario} ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -64,6 +63,6 @@ for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440
     await dialog.getByPlaceholder("12,000").fill("500");
     await dialog.getByRole("button", { name: "Add spend", exact: true }).click();
     await expect(dialog).toBeHidden(); await expect(add).toBeFocused();
-    expect(JSON.parse((await page.locator("body").getAttribute("data-spend"))!)).toMatchObject({ campaignId: "c1", amount: 50000, from: "2026-11-01", to: "2026-11-09" });
+    await expect.poll(async () => JSON.parse((await page.locator("body").getAttribute("data-spend")) ?? "null")).toMatchObject({ campaignId: "c1", amount: 50000, from: "2026-11-01", to: "2026-11-09" });
   });
 }
