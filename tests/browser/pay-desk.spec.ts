@@ -898,17 +898,3 @@ for (const width of Object.keys(WIDTHS) as Width[]) test.describe(`round 5 at ${
     expect(await directPanels(page)).toEqual([]);
   });
 });
-
-test.afterEach(async ({ page }, info) => {
-  if (info.status === info.expectedStatus || page.isClosed()) return;
-  console.log("Pay desk fixture at failure", {
-    url: page.url(),
-    errors: (await page.pageErrors()).map(error => error.message),
-    console: (await page.consoleMessages()).filter(message => message.type() === "error").slice(-6).map(message => message.text().slice(0, 300)),
-    requests: (await page.requests()).filter(request => request.url().includes("/__checkout-fixture") || !request.existingResponse()?.ok()).slice(-12).map(request => ({
-      path: new URL(request.url()).pathname,
-      status: request.existingResponse()?.status() ?? request.failure()?.errorText ?? "pending",
-      operation: request.postDataJSON()?.method ?? request.postDataJSON()?.kind,
-    })),
-  });
-});
