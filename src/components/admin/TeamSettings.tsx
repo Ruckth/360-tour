@@ -269,7 +269,7 @@ function PeoplePanel({
     }
     const existingIds = (person.branchIds ?? []).filter((id) => {
       const branch = branchById.get(id);
-      return !branch || branch.state !== "archived";
+      return branch !== undefined && branch.state !== "archived";
     });
     const branchIds = uniqueBranchIds(person.staffGrant ? (existingIds.length > 0 ? existingIds : [...defaultBranchIds]) : [...defaultBranchIds]);
     if (branchIds.length === 0) {

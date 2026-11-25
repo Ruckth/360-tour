@@ -1,6 +1,6 @@
 import type { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
-import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, adminSettingsTab, type AdminNavItem } from "./admin-routes";
+import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, adminSettingsTab, isOwnerOnlySettingsTab, type AdminNavItem } from "./admin-routes";
 
 /** auth/staffAccess.myAccess: the signed-in person's role, capabilities and the cashier rules. */
 export type StaffAccessView = FunctionReturnType<typeof api.auth.staffAccess.myAccess>;
@@ -26,7 +26,7 @@ export function adminPageAllowed(pathname: string, tab: string | null, caps: Sta
   if (!section) return true;
   if (section === "/admin/checkout") return caps.checkout;
   if (section.startsWith("/admin/marketing")) return caps.marketing;
-  if (section === "/admin/settings") return caps.operations && (adminSettingsTab(tab) !== "team" || caps.manageTeam);
+  if (section === "/admin/settings") return caps.operations && (!isOwnerOnlySettingsTab(adminSettingsTab(tab)) || caps.manageTeam);
   return caps.operations;
 }
 

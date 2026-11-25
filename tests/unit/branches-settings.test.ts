@@ -185,7 +185,7 @@ describe("Settings › Branches", () => {
     expect(dialog.textContent).toContain("Archive Phuket?");
     const submit = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Archive Phuket")!;
     await act(async () => submit.click());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, state: "archived" }]]);
+    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, revision: phuket.revision, state: "archived" }]]);
   });
 
   it("requires a reason before suspending an Active branch and shows what stops and continues", async () => {
@@ -206,7 +206,7 @@ describe("Settings › Branches", () => {
     await setInputValue(textarea, "Scheduled maintenance closure");
     await act(async () => form.requestSubmit());
     expect(mocks.calls).toEqual([
-      ["branches/branches:setState", { branchId: samui._id, state: "suspended", reason: "Scheduled maintenance closure" }],
+      ["branches/branches:setState", { branchId: samui._id, revision: samui.revision, state: "suspended", reason: "Scheduled maintenance closure" }],
     ]);
   });
 
@@ -216,14 +216,14 @@ describe("Settings › Branches", () => {
     let dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.textContent).toContain("Activate Phuket?");
     await act(async () => dialog.querySelector<HTMLFormElement>("form")!.requestSubmit());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, state: "active" }]]);
+    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, revision: phuket.revision, state: "active" }]]);
 
     mocks.calls = [];
     await act(async () => cardFor("krabi").querySelector<HTMLButtonElement>('button[aria-label="Activate Krabi"]')!.click());
     dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     expect(dialog.textContent).toContain("Activate Krabi?");
     await act(async () => dialog.querySelector<HTMLFormElement>("form")!.requestSubmit());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: krabi._id, state: "active" }]]);
+    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: krabi._id, revision: krabi.revision, state: "active" }]]);
   });
 
   it("creates a new branch in Setup and validates issuer fields", async () => {

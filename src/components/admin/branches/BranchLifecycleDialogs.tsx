@@ -76,13 +76,13 @@ function BranchLifecycleDialogBody({
     setError("");
     try {
       if (action.kind === "activate") {
-        await setState({ branchId: branch._id, state: "active" });
+        await setState({ branchId: branch._id, revision: branch.revision, state: "active" });
         onDone(`${branch.name} is now active.`);
       } else if (action.kind === "suspend") {
-        await setState({ branchId: branch._id, state: "suspended", reason: reason.trim() });
+        await setState({ branchId: branch._id, revision: branch.revision, state: "suspended", reason: reason.trim() });
         onDone(`${branch.name} is now suspended.`);
       } else {
-        await setState({ branchId: branch._id, state: "archived" });
+        await setState({ branchId: branch._id, revision: branch.revision, state: "archived" });
         onDone(`${branch.name} is now archived and read only.`);
       }
       onClose();
