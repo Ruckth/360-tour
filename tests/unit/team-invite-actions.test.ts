@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   branches: [] as unknown[],
   confirm: vi.fn(),
   mutationError: null as Error | null,
+  working: null as null | { id: string; name: string },
 }));
 vi.mock("convex/react", async () => {
   const { getFunctionName } = await import("convex/server");
@@ -32,6 +33,7 @@ vi.mock("convex/react", async () => {
   };
 });
 vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => mocks.confirm }));
+vi.mock("@/components/admin/branch/branch-context", () => ({ useAdminBranch: () => ({ current: mocks.working }) }));
 import { TeamSettings, marketingSignInLink, staffSignInLink } from "@/components/admin/TeamSettings";
 
 const now = Date.now();
@@ -62,6 +64,7 @@ beforeEach(() => {
   mocks.calls = [];
   mocks.mutationError = null;
   mocks.confirm.mockReset().mockResolvedValue(true);
+  mocks.working = null;
   mocks.branches = [...defaultBranches];
   mocks.people = [pending, expired, active, dual, marketer, owner, secondOwner];
   host = document.createElement("div");
@@ -232,6 +235,68 @@ it("validates branch removal in row edit and keeps existing assignment and invit
   expect(mocks.calls).toEqual([
     ["auth/staffAccess:setGrant", { email: pending.email, role: "manager", branchIds: [phuketId] }],
   ]);
+});
+
+it("ignores an archived branch inside a grant: no pill, no raw id, and edits still save", async () => {
+  const stuck = { email: "fah@auraliscove.co", role: "cashier", branchIds: [archivedId, phuketId], staffGrant: grant("grant-fah", "cashier", true), marketingGrant: null };
+  mocks.people = [stuck];
+  await render();
+  const fah = row(stuck.email);
+  const chips = fah.querySelector('[data-testid="person-branch-chips"]')!;
+  expect(chips.textContent).toBe("Phuket");
+  expect(fah.textContent).not.toContain(archivedId);
+  expect(fah.textContent).not.toContain("Hua Hin");
+
+  await change(fah);
+  expect(chipIn(fah, "Hua Hin")).toBeUndefined();
+  expect(chipIn(fah, "Phuket")!.getAttribute("aria-checked")).toBe("true");
+  // Adding a branch sends only live ids, so the server accepts it.
+  await act(async () => chipIn(fah, "Koh Samui")!.click());
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: stuck.email, role: "cashier", branchIds: [phuketId, samuiId] }]]);
+});
+
+it("counts a grant left with only archived branches as having none", async () => {
+  const stuck = { email: "fah@auraliscove.co", role: "cashier", branchIds: [archivedId, phuketId], staffGrant: grant("grant-fah", "cashier", true), marketingGrant: null };
+  mocks.people = [stuck];
+  await render();
+  const fah = row(stuck.email);
+  await change(fah);
+  await act(async () => chipIn(fah, "Phuket")!.click());
+  expect(fah.querySelector('[role="alert"]')!.textContent).toBe("Select at least one branch.");
+  expect(mocks.calls).toEqual([]);
+});
+
+it("never flashes raw branch ids while the branch list loads", async () => {
+  mocks.branches = undefined as unknown as unknown[];
+  await render();
+  expect(row(dual.email).textContent).not.toContain(samuiId);
+  expect(row(dual.email).textContent).not.toContain(phuketId);
+});
+
+it("shows the branch chips before a marketing-only person's first desk save", async () => {
+  await render();
+  const sun = row(marketer.email);
+  await change(sun);
+  await pick(select(sun, "Desk role"), "manager");
+  // Nothing is saved yet: the chips show with the default branch, ready to change.
+  expect(mocks.calls).toEqual([]);
+  expect(chipIn(sun, "Koh Samui")!.getAttribute("aria-checked")).toBe("true");
+  await act(async () => chipIn(sun, "Koh Samui")!.click());
+  await act(async () => [...sun.querySelectorAll("button")].find((b) => b.textContent === "Add desk access")!.click());
+  expect(sun.querySelector('[role="alert"]')!.textContent).toBe("Select at least one branch.");
+  expect(mocks.calls).toEqual([]);
+  await act(async () => chipIn(sun, "Phuket")!.click());
+  await act(async () => [...sun.querySelectorAll("button")].find((b) => b.textContent === "Add desk access")!.click());
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: marketer.email, role: "manager", branchIds: [phuketId] }]]);
+});
+
+it("starts an invite at the branch the owner is working in", async () => {
+  mocks.working = { id: phuketId, name: "Phuket" };
+  await render();
+  await act(async () => [...host.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Invite")!.click());
+  const form = host.querySelector<HTMLFormElement>('form[aria-label="Invite"]')!;
+  expect(chipIn(form, "Phuket")!.getAttribute("aria-checked")).toBe("true");
+  expect(chipIn(form, "Koh Samui")!.getAttribute("aria-checked")).toBe("false");
 });
 
 it("signs desk invites in at /admin and Marketing-only invites at /admin/marketing", () => {

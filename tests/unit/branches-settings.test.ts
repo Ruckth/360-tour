@@ -41,7 +41,7 @@ vi.mock("@/platform/navigation", () => ({
 vi.mock("@/components/admin/SetupChecklist", () => ({ SetupChecklistCard: () => null }));
 
 import { AdminSettingsView } from "@/components/admin/AdminSettingsView";
-import { BranchesSettings } from "@/components/admin/branches/BranchesSettings";
+import { BranchesSettings } from "@/components/admin/branch/BranchesSettings";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 
@@ -134,6 +134,7 @@ afterEach(async () => {
 });
 
 const renderBranches = () => act(async () => root.render(createElement(BranchesSettings)));
+const buttonsIn = (el: HTMLElement) => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent?.trim());
 const cardFor = (key: string) => host.querySelector<HTMLElement>(`[data-testid="branch-card"][data-branch-key="${key}"]`)!;
 const setInputValue = async (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
@@ -150,6 +151,7 @@ describe("Settings › Branches", () => {
     const activeCard = cardFor("koh-samui");
     expect(activeCard.textContent).toContain("Koh Samui");
     expect(activeCard.textContent).toContain("Active");
+    expect(activeCard.innerHTML).toContain("emerald");
     expect(activeCard.textContent).toContain("360 Tour Co., Ltd.");
     expect(activeCard.textContent).toContain("00000");
 
@@ -168,62 +170,21 @@ describe("Settings › Branches", () => {
     expect(archivedCard.querySelectorAll("button")).toHaveLength(0);
   });
 
-  it("keeps Archive disabled while Active and explains why", async () => {
+  it("shows each state read-only, with no lifecycle actions until bookings and checkout enforce them", async () => {
     await renderBranches();
-    const activeCard = cardFor("koh-samui");
-    const archiveButton = activeCard.querySelector<HTMLButtonElement>('button[aria-label="Archive Koh Samui"]')!;
-    expect(archiveButton.disabled).toBe(true);
-    expect(activeCard.textContent).toContain("Suspend this branch before archiving it.");
-    const hintId = archiveButton.getAttribute("aria-describedby")!;
-    expect(document.getElementById(hintId)?.textContent).toContain("Suspend this branch before archiving it.");
-
-    // Setup and Suspended branches can open the Archive dialog.
-    const setupArchive = cardFor("phuket").querySelector<HTMLButtonElement>('button[aria-label="Archive Phuket"]')!;
-    expect(setupArchive.disabled).toBe(false);
-    await act(async () => setupArchive.click());
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Archive Phuket?");
-    const submit = [...dialog.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.trim() === "Archive Phuket")!;
-    await act(async () => submit.click());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, revision: phuket.revision, state: "archived" }]]);
-  });
-
-  it("requires a reason before suspending an Active branch and shows what stops and continues", async () => {
-    await renderBranches();
-    await act(async () => cardFor("koh-samui").querySelector<HTMLButtonElement>('button[aria-label="Suspend Koh Samui"]')!.click());
-
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Suspend Koh Samui?");
-    expect(dialog.textContent).toContain("Stops now");
-    expect(dialog.textContent).toContain("Continues");
-
-    const form = dialog.querySelector<HTMLFormElement>("form")!;
-    await act(async () => form.requestSubmit());
-    expect(dialog.querySelector('[role="alert"]')!.textContent).toBe("Enter a reason for suspending this branch.");
+    expect(host.textContent).toContain("State changes open with the Phuket launch, when bookings and checkout enforce them.");
+    for (const key of ["koh-samui", "phuket", "krabi"]) {
+      expect(buttonsIn(cardFor(key)), key).toEqual([`Edit profile for ${cardFor(key).querySelector("h3 span")!.textContent}`]);
+    }
+    expect(host.textContent).not.toMatch(/\b(Activate|Suspend|Archive)\b/);
     expect(mocks.calls).toEqual([]);
-
-    const textarea = dialog.querySelector<HTMLTextAreaElement>("textarea")!;
-    await setInputValue(textarea, "Scheduled maintenance closure");
-    await act(async () => form.requestSubmit());
-    expect(mocks.calls).toEqual([
-      ["branches/branches:setState", { branchId: samui._id, revision: samui.revision, state: "suspended", reason: "Scheduled maintenance closure" }],
-    ]);
   });
 
-  it("activates a branch from Setup or Suspended via confirm dialog", async () => {
+  it("names the seed as System, not its raw actor id", async () => {
+    mocks.branches = [{ ...samui, stateChangedByEmail: "system:seed" }];
     await renderBranches();
-    await act(async () => cardFor("phuket").querySelector<HTMLButtonElement>('button[aria-label="Activate Phuket"]')!.click());
-    let dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Activate Phuket?");
-    await act(async () => dialog.querySelector<HTMLFormElement>("form")!.requestSubmit());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: phuket._id, revision: phuket.revision, state: "active" }]]);
-
-    mocks.calls = [];
-    await act(async () => cardFor("krabi").querySelector<HTMLButtonElement>('button[aria-label="Activate Krabi"]')!.click());
-    dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    expect(dialog.textContent).toContain("Activate Krabi?");
-    await act(async () => dialog.querySelector<HTMLFormElement>("form")!.requestSubmit());
-    expect(mocks.calls).toEqual([["branches/branches:setState", { branchId: krabi._id, revision: krabi.revision, state: "active" }]]);
+    expect(cardFor("koh-samui").textContent).toContain("· System");
+    expect(cardFor("koh-samui").textContent).not.toContain("system:seed");
   });
 
   it("creates a new branch in Setup and validates issuer fields", async () => {
@@ -233,10 +194,12 @@ describe("Settings › Branches", () => {
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     const form = dialog.querySelector<HTMLFormElement>("form")!;
     const inputs = [...dialog.querySelectorAll<HTMLInputElement>("input")];
-    const [nameInput, keyInput, slugInput, legalInput, taxInput, codeInput, addressInput] = inputs;
+    // Name and URL slug, then the issuer: no separate key.
+    expect(inputs).toHaveLength(6);
+    expect(dialog.textContent).not.toContain("Branch key");
+    const [nameInput, slugInput, legalInput, taxInput, codeInput, addressInput] = inputs;
 
     await setInputValue(nameInput, "Chiang Mai");
-    expect(keyInput.value).toBe("chiang-mai");
     expect(slugInput.value).toBe("chiang-mai");
     await setInputValue(legalInput, "360 Tour Co., Ltd.");
     await setInputValue(taxInput, "0105560000000");
@@ -244,7 +207,12 @@ describe("Settings › Branches", () => {
     await setInputValue(addressInput, "10 Nimman Rd, Chiang Mai 50200");
 
     await act(async () => form.requestSubmit());
-    expect(dialog.querySelector('[role="alert"]')!.textContent).toBe("Enter a five-digit issuer branch code.");
+    const alert = dialog.querySelector('[role="alert"]')!;
+    expect(alert.textContent).toBe("Enter a five-digit issuer branch code.");
+    // The field with the problem is marked and points at the message.
+    expect(codeInput.getAttribute("aria-invalid")).toBe("true");
+    expect(codeInput.getAttribute("aria-describedby")).toBe(alert.id);
+    expect(nameInput.hasAttribute("aria-invalid")).toBe(false);
     expect(mocks.calls).toEqual([]);
 
     await setInputValue(codeInput, "00004");
@@ -271,9 +239,7 @@ describe("Settings › Branches", () => {
     await renderBranches();
     await act(async () => cardFor("koh-samui").querySelector<HTMLButtonElement>('button[aria-label="Edit profile for Koh Samui"]')!.click());
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
-    // Key is read-only during edit.
-    expect(dialog.textContent).toContain("koh-samui");
-    expect(dialog.querySelector('input[placeholder="phuket"]')).not.toBeNull();
+    expect(dialog.querySelector<HTMLInputElement>('input[placeholder="phuket"]')!.value).toBe("koh-samui");
     expect(dialog.querySelectorAll("input")).toHaveLength(6);
 
     mocks.mutationError = new ConvexError("This branch changed. Reload it and try again.");

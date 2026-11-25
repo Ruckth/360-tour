@@ -40,7 +40,7 @@ import { StatusBadge } from "./StatusBadge";
 import { useStaffAccess } from "./staff-access";
 import { NumberField } from "./marketing/MarketingBits";
 import { TeamSettings } from "./TeamSettings";
-import { BranchesSettings } from "./branches/BranchesSettings";
+import { BranchesSettings } from "./branch/BranchesSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
 import { statusMeta, TONES, type StatusMeta } from "./status-tones";
@@ -63,8 +63,8 @@ export function AdminSettingsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const access = useStaffAccess();
-  // Managers read settings; only owners change them or see Team and Branches. Others see them as before.
-  const readOnly = access.role === "manager" || access.role === "cashier";
+  // Changing settings needs the settings capability; Team and Branches need manageTeam (owners).
+  const readOnly = !access.capabilities.settings;
   // Team and Branches sit near the front so on a phone they start on screen instead of past the edge.
   const tabs = [...TABS]
     .sort(
@@ -73,7 +73,7 @@ export function AdminSettingsView() {
         Number(b.id === "team") - Number(a.id === "team") ||
         Number(b.id === "branches") - Number(a.id === "branches"),
     )
-    .filter(({ id }) => !isOwnerOnlySettingsTab(id) || !readOnly);
+    .filter(({ id }) => !isOwnerOnlySettingsTab(id) || access.capabilities.manageTeam);
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const requested = adminSettingsTab(searchParams.get("tab"));
   const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";

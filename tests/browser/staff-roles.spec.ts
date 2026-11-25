@@ -199,17 +199,24 @@ test.describe("Settings › Team", () => {
     await people.getByRole("textbox", { name: "Email" }).fill("Fon@AuralisCove.co");
     await people.getByRole("combobox", { name: "Desk", exact: true }).click();
     await page.getByRole("option", { name: "Manager", exact: true }).click();
+    // A desk role needs a branch: the first one is preselected, and the invite carries it.
+    const branches = people.getByRole("group", { name: "Branches" });
+    await expect(branches.getByRole("checkbox", { name: /Koh Samui/ })).toBeChecked();
+    await expect(branches.getByRole("checkbox", { name: /Phuket/ })).not.toBeChecked();
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "fon@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
     await expect(fon).toContainText(/Invited · expires/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
+    await expect(fon.getByTestId("person-branch-chips")).toHaveText("Koh Samui");
 
     await people.getByRole("button", { name: "Change roles for Mint" }).click();
     await people.getByRole("combobox", { name: "Desk role for Mint" }).click();
     await page.getByRole("option", { name: "Manager", exact: true }).click();
     await expect(people.getByRole("status")).toHaveText("Mint is now Manager.");
-    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "manager" });
+    // A role change keeps the person's branches.
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
     // The change shows as text again.
     await expect(people.getByRole("combobox")).toHaveCount(0);
     await expect(people.getByTestId("team-person").filter({ hasText: "mint@" }).getByTestId("team-roles")).toHaveText("Manager");

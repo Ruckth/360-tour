@@ -2,7 +2,7 @@
 
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type ComponentProps, type FormEvent } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,28 +17,21 @@ import { Input } from "@/components/ui/input";
 import { FieldLabel as Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
+import { cn } from "@/lib/utils";
 import {
   slugifyBranchValue,
   validateBranchProfile,
   type BranchProfileDraft,
+  type BranchProfileProblem,
   type BranchRow,
-} from "./branch-status";
+} from "./branch-profile";
 
 function emptyDraft(defaultLegalName = "", defaultTaxId = ""): BranchProfileDraft {
-  return {
-    key: "",
-    name: "",
-    slug: "",
-    legalName: defaultLegalName,
-    taxId: defaultTaxId,
-    branchCode: "",
-    address: "",
-  };
+  return { name: "", slug: "", legalName: defaultLegalName, taxId: defaultTaxId, branchCode: "", address: "" };
 }
 
 function draftFromBranch(branch: BranchRow): BranchProfileDraft {
   return {
-    key: branch.key,
     name: branch.name,
     slug: branch.slug,
     legalName: branch.issuer.legalName,
@@ -100,26 +93,47 @@ function BranchProfileDialogBody({
   const [draft, setDraft] = useState<BranchProfileDraft>(() =>
     branch ? draftFromBranch(branch) : emptyDraft(defaultIssuer?.legalName ?? "", defaultIssuer?.taxId ?? ""),
   );
-  const [keyTouched, setKeyTouched] = useState(isEdit);
   const [slugTouched, setSlugTouched] = useState(isEdit);
   const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<BranchProfileProblem | null>(null);
   const [error, setError] = useState("");
   const [staleError, setStaleError] = useState(false);
 
   const hasNewerRevision = isEdit && branch.revision > loadedRevision;
   const showReloadHint = staleError || hasNewerRevision;
+  const errorId = `${id}-error`;
 
   function updateField<K extends keyof BranchProfileDraft>(field: K, value: BranchProfileDraft[K]) {
     setDraft((current) => {
       const next = { ...current, [field]: value };
-      if (!isEdit && field === "name") {
-        const suggested = slugifyBranchValue(value);
-        if (!keyTouched) next.key = suggested;
-        if (!slugTouched) next.slug = suggested;
-      }
+      if (!isEdit && field === "name" && !slugTouched) next.slug = slugifyBranchValue(value);
       return next;
     });
+    setProblem(null);
     setError("");
+  }
+
+  /** Label, input and the error wiring for one profile field. */
+  function field(name: keyof BranchProfileDraft, label: string, props: ComponentProps<typeof Input> & { wrapperClassName?: string } = {}) {
+    const { wrapperClassName, onChange, ...rest } = props;
+    const invalid = problem?.field === name;
+    return (
+      <div className={cn("grid gap-1.5", wrapperClassName)}>
+        <Label htmlFor={`${id}-${name}`} className="text-xs font-normal text-muted-foreground">
+          {label}
+        </Label>
+        <Input
+          id={`${id}-${name}`}
+          required
+          disabled={saving}
+          value={draft[name]}
+          aria-invalid={invalid ? true : undefined}
+          aria-describedby={invalid ? errorId : undefined}
+          onChange={onChange ?? ((event) => updateField(name, event.target.value))}
+          {...rest}
+        />
+      </div>
+    );
   }
 
   function reloadLatest() {
@@ -127,15 +141,17 @@ function BranchProfileDialogBody({
     setDraft(draftFromBranch(branch));
     setLoadedRevision(branch.revision);
     setStaleError(false);
+    setProblem(null);
     setError("");
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
-    const problem = validateBranchProfile(draft, { requireKey: !isEdit });
-    if (problem) {
-      setError(problem);
+    const found = validateBranchProfile(draft);
+    if (found) {
+      setProblem(found);
+      setError("");
       return;
     }
     const issuer = {
@@ -144,27 +160,19 @@ function BranchProfileDialogBody({
       branchCode: draft.branchCode.trim(),
       address: draft.address.trim(),
     };
+    const name = draft.name.trim();
+    const slug = draft.slug.trim().toLowerCase();
     setSaving(true);
     setError("");
     setStaleError(false);
     try {
       if (isEdit) {
-        await updateBranch({
-          branchId: branch._id,
-          revision: loadedRevision,
-          name: draft.name.trim(),
-          slug: draft.slug.trim().toLowerCase(),
-          issuer,
-        });
-        onSaved(`Saved changes to ${draft.name.trim()}.`);
+        await updateBranch({ branchId: branch._id, revision: loadedRevision, name, slug, issuer });
+        onSaved(`Saved changes to ${name}.`);
       } else {
-        await createBranch({
-          key: draft.key.trim().toLowerCase(),
-          name: draft.name.trim(),
-          slug: draft.slug.trim().toLowerCase(),
-          issuer,
-        });
-        onSaved(`Created ${draft.name.trim()} in Setup.`);
+        // The key is internal: it follows the slug the owner chose.
+        await createBranch({ key: slug, name, slug, issuer });
+        onSaved(`Created ${name} in Setup.`);
       }
       onClose();
     } catch (err) {
@@ -176,13 +184,15 @@ function BranchProfileDialogBody({
     }
   }
 
+  const message = problem?.message ?? (staleError ? "" : error);
+
   return (
     <DialogContent className="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>{isEdit ? `Edit ${branch.name}` : "Add branch"}</DialogTitle>
         <DialogDescription>
           {isEdit
-            ? "Update this branch’s profile and receipt issuer details. The branch key can’t be changed."
+            ? "Update this branch’s profile and receipt issuer details."
             : "It starts in Setup: hidden from guests, with sales off. Assigned people can configure and preview it."}
         </DialogDescription>
       </DialogHeader>
@@ -199,121 +209,22 @@ function BranchProfileDialogBody({
         ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor={`${id}-name`} className="text-xs font-normal text-muted-foreground">
-              Branch name
-            </Label>
-            <Input
-              id={`${id}-name`}
-              required
-              autoFocus
-              disabled={saving}
-              value={draft.name}
-              onChange={(event) => updateField("name", event.target.value)}
-              placeholder="Phuket"
-            />
-          </div>
-
-          {isEdit ? (
-            <div className="grid gap-1.5">
-              <span className="text-xs font-normal text-muted-foreground">Branch key</span>
-              <p className="flex h-10 items-center rounded-lg border border-border bg-muted/40 px-3 font-mono text-sm text-muted-foreground">
-                {branch.key}
-              </p>
-            </div>
-          ) : (
-            <div className="grid gap-1.5">
-              <Label htmlFor={`${id}-key`} className="text-xs font-normal text-muted-foreground">
-                Branch key
-              </Label>
-              <Input
-                id={`${id}-key`}
-                required
-                disabled={saving}
-                value={draft.key}
-                onChange={(event) => {
-                  setKeyTouched(true);
-                  updateField("key", event.target.value);
-                }}
-                placeholder="phuket"
-              />
-            </div>
-          )}
-
-          <div className="grid gap-1.5">
-            <Label htmlFor={`${id}-slug`} className="text-xs font-normal text-muted-foreground">
-              URL slug
-            </Label>
-            <Input
-              id={`${id}-slug`}
-              required
-              disabled={saving}
-              value={draft.slug}
-              onChange={(event) => {
-                setSlugTouched(true);
-                updateField("slug", event.target.value);
-              }}
-              placeholder="phuket"
-            />
-          </div>
+          {field("name", "Branch name", { autoFocus: true, placeholder: "Phuket" })}
+          {field("slug", "URL slug", {
+            placeholder: "phuket",
+            onChange: (event) => {
+              setSlugTouched(true);
+              updateField("slug", event.target.value);
+            },
+          })}
         </div>
 
         <fieldset className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-2">
           <legend className="px-1 text-xs font-medium text-muted-foreground">Receipt issuer</legend>
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor={`${id}-legalName`} className="text-xs font-normal text-muted-foreground">
-              Issuer legal name
-            </Label>
-            <Input
-              id={`${id}-legalName`}
-              required
-              disabled={saving}
-              value={draft.legalName}
-              onChange={(event) => updateField("legalName", event.target.value)}
-              placeholder="360 Tour Co., Ltd."
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`${id}-taxId`} className="text-xs font-normal text-muted-foreground">
-              Tax ID
-            </Label>
-            <Input
-              id={`${id}-taxId`}
-              required
-              disabled={saving}
-              value={draft.taxId}
-              onChange={(event) => updateField("taxId", event.target.value)}
-              placeholder="0105560000000"
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor={`${id}-branchCode`} className="text-xs font-normal text-muted-foreground">
-              Issuer branch code (5 digits)
-            </Label>
-            <Input
-              id={`${id}-branchCode`}
-              required
-              inputMode="numeric"
-              maxLength={5}
-              disabled={saving}
-              value={draft.branchCode}
-              onChange={(event) => updateField("branchCode", event.target.value)}
-              placeholder="00001"
-            />
-          </div>
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor={`${id}-address`} className="text-xs font-normal text-muted-foreground">
-              Issuer address
-            </Label>
-            <Input
-              id={`${id}-address`}
-              required
-              disabled={saving}
-              value={draft.address}
-              onChange={(event) => updateField("address", event.target.value)}
-              placeholder="88 Rawai Rd, Phuket 83130"
-            />
-          </div>
+          {field("legalName", "Issuer legal name", { placeholder: "360 Tour Co., Ltd.", wrapperClassName: "sm:col-span-2" })}
+          {field("taxId", "Tax ID", { placeholder: "0105560000000" })}
+          {field("branchCode", "Issuer branch code (5 digits)", { inputMode: "numeric", maxLength: 5, placeholder: "00001" })}
+          {field("address", "Issuer address", { placeholder: "88 Rawai Rd, Phuket 83130", wrapperClassName: "sm:col-span-2" })}
         </fieldset>
 
         {!isEdit ? (
@@ -322,9 +233,9 @@ function BranchProfileDialogBody({
           </p>
         ) : null}
 
-        {error && !staleError ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
+        {message ? (
+          <p id={errorId} role="alert" className="text-sm text-destructive">
+            {message}
           </p>
         ) : null}
 

@@ -5,7 +5,7 @@ import type { BranchState } from "convex/shared/branchTypes";
 import { Check, MapPin } from "lucide-react";
 import { useId } from "react";
 import { cn } from "@/lib/utils";
-import { BranchStatePill } from "./branch-status";
+import { BranchStatePill } from "./branch-pills";
 
 export type SelectableBranch = {
   id: Id<"branches">;

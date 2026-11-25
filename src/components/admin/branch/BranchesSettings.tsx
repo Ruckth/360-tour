@@ -11,9 +11,9 @@ import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { staffDate } from "@/lib/staff-time";
 import { personLabel } from "../person-label";
-import { BranchLifecycleDialogs, type BranchLifecycleAction } from "./BranchLifecycleDialogs";
 import { BranchProfileDialog } from "./BranchProfileDialog";
-import { BranchStatePill, type BranchRow } from "./branch-status";
+import { BranchStatePill } from "./branch-pills";
+import type { BranchRow } from "./branch-profile";
 
 const STATE_ORDER: Record<BranchState, number> = {
   active: 0,
@@ -28,8 +28,13 @@ function sortBranches(rows: readonly BranchRow[]): BranchRow[] {
   );
 }
 
+/** Who changed the state: a person's name, or "System" for the seed and server jobs. */
+function actorLabel(value: string): string {
+  return value.startsWith("system") ? "System" : personLabel(value);
+}
+
 function branchMetaLine(branch: BranchRow): string {
-  const actor = personLabel(branch.stateChangedByEmail);
+  const actor = actorLabel(branch.stateChangedByEmail);
   const when = staffDate(branch.stateChangedAt);
   switch (branch.state) {
     case "active":
@@ -47,7 +52,6 @@ export function BranchesSettings() {
   const branches = useQuery(api.branches.branches.list, {});
   const [addOpen, setAddOpen] = useState(false);
   const [editingBranchId, setEditingBranchId] = useState<Id<"branches"> | null>(null);
-  const [lifecycleAction, setLifecycleAction] = useState<BranchLifecycleAction | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
 
   const sorted = branches ? sortBranches(branches) : undefined;
@@ -64,6 +68,9 @@ export function BranchesSettings() {
           <h2 className="font-serif text-3xl text-foreground">Branches</h2>
           <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
             Every location your company operates. Guests only see Active branches. Only company owners change this page.
+          </p>
+          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+            State changes open with the Phuket launch, when bookings and checkout enforce them.
           </p>
         </div>
         <Button type="button" onClick={() => setAddOpen(true)}>
@@ -90,8 +97,6 @@ export function BranchesSettings() {
         <div className="grid gap-4">
           {sorted.map((branch) => {
             const isArchived = branch.state === "archived";
-            const isActive = branch.state === "active";
-            const archiveHintId = `branch-archive-hint-${branch._id}`;
             return (
               <Card
                 key={branch._id}
@@ -111,62 +116,18 @@ export function BranchesSettings() {
                   </div>
 
                   {!isArchived ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        aria-label={`Edit profile for ${branch.name}`}
-                        onClick={() => setEditingBranchId(branch._id)}
-                      >
-                        <Pencil aria-hidden className="size-3.5" />
-                        Edit profile
-                      </Button>
-
-                      {branch.state === "setup" || branch.state === "suspended" ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          aria-label={`Activate ${branch.name}`}
-                          onClick={() => setLifecycleAction({ kind: "activate", branch })}
-                        >
-                          Activate
-                        </Button>
-                      ) : null}
-
-                      {isActive ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          aria-label={`Suspend ${branch.name}`}
-                          onClick={() => setLifecycleAction({ kind: "suspend", branch })}
-                        >
-                          Suspend
-                        </Button>
-                      ) : null}
-
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={isActive}
-                        aria-label={`Archive ${branch.name}`}
-                        aria-describedby={isActive ? archiveHintId : undefined}
-                        title={isActive ? "Suspend the branch before archiving it." : undefined}
-                        onClick={() => setLifecycleAction({ kind: "archive", branch })}
-                      >
-                        Archive
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Edit profile for ${branch.name}`}
+                      onClick={() => setEditingBranchId(branch._id)}
+                    >
+                      <Pencil aria-hidden className="size-3.5" />
+                      Edit profile
+                    </Button>
                   ) : null}
                 </div>
-
-                {isActive ? (
-                  <p id={archiveHintId} className="mt-2 text-xs text-muted-foreground">
-                    Suspend this branch before archiving it.
-                  </p>
-                ) : null}
 
                 {branch.state === "setup" ? (
                   <p className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-[13px] text-muted-foreground">
@@ -176,16 +137,14 @@ export function BranchesSettings() {
 
                 {isArchived ? (
                   <p className="mt-3 text-xs text-muted-foreground">
-                    Archived branches are read-only. Profile and state can’t be changed.
+                    Archived branches are read-only. Their profile can’t be changed.
                   </p>
                 ) : null}
 
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
                   <div>
-                    <dt className="text-xs text-muted-foreground">Key &amp; slug</dt>
-                    <dd className="font-mono text-[13px] font-medium text-foreground">
-                      {branch.key} · /{branch.slug}
-                    </dd>
+                    <dt className="text-xs text-muted-foreground">URL slug</dt>
+                    <dd className="font-mono text-[13px] font-medium text-foreground">/{branch.slug}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Receipt issuer</dt>
@@ -227,12 +186,6 @@ export function BranchesSettings() {
           if (!open) setEditingBranchId(null);
         }}
         onSaved={setStatusMessage}
-      />
-
-      <BranchLifecycleDialogs
-        action={lifecycleAction}
-        onClose={() => setLifecycleAction(null)}
-        onDone={setStatusMessage}
       />
     </section>
   );

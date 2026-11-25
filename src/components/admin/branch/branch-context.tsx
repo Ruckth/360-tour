@@ -1,17 +1,20 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { hasDirtyUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
-import { usePathname } from "@/platform/navigation";
+import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import {
   branchReadOnlyRoute,
+  branchRouteScope,
   branchStorageKeys,
+  branchSwitchHref,
   resolveWorkingBranch,
   type AdminBranchId,
   type AdminBranchOption,
+  type AdminBranchScope,
 } from "./branch-selection";
 
 export type AdminBranch = {
@@ -26,12 +29,17 @@ export type AdminBranch = {
   select: (id: AdminBranchId) => Promise<boolean>;
   /** Changes on every switch. The shell remounts the page with it; key filters, selection and search on it. */
   scopeKey: string;
-  /** Checkout and receipts: the branch is shown, never switched. */
+  /** Checkout and receipts: no branch control, and the branch is never switched there. */
   readOnly: boolean;
-  /** A first-time person with two or more branches hasn't chosen yet (list routes only). */
+  /** "company" on Settings and Marketing: the shell shows "Company" and never asks to choose. */
+  scope: AdminBranchScope;
+  /** A first-time person with two or more branches hasn't chosen yet (branch routes only). */
   needsChoice: boolean;
-  /** Set when the working branch was removed mid-session and the shell moved to another. */
-  revoked: { from: string; to: string } | null;
+  /**
+   * Set when the working branch was removed mid-session and the shell moved to another.
+   * `discarded`: a form had unsaved changes, which the move threw away.
+   */
+  revoked: { from: string; to: string; discarded: boolean } | null;
   dismissRevoked: () => void;
 };
 
@@ -64,10 +72,14 @@ const local = () => window.localStorage;
 export function AdminBranchProvider({ children }: { children: ReactNode }) {
   const access = useStaffAccess();
   const confirm = useConfirm();
-  const readOnly = branchReadOnlyRoute(usePathname());
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const router = useRouter();
+  const readOnly = branchReadOnlyRoute(pathname);
+  const scope = branchRouteScope(pathname);
   const branches = access.branches;
   const keys = useMemo(() => branchStorageKeys(access.email), [access.email]);
-  const [remembered] = useState(() =>
+  const [remembered, setRemembered] = useState<{ session: string | null; device: string | null }>(() =>
     typeof window === "undefined" ? { session: null, device: null } : { session: readStorage(session, keys.session), device: readStorage(local, keys.device) },
   );
   const [currentId, setCurrentId] = useState<AdminBranchId | null>(null);
@@ -82,9 +94,12 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     setCurrentId(resolvedId);
     if (working.kind === "selected" && working.revokedId) {
       const from = seen.find((branch) => branch.id === working.revokedId)?.name ?? "a branch";
-      setRevoked({ from, to: branches.find((branch) => branch.id === resolvedId)?.name ?? "" });
+      const discarded = hasDirtyUnsavedGuard() || hasUnsavedChanges();
+      setRevoked({ from, to: branches.find((branch) => branch.id === resolvedId)?.name ?? "", discarded });
     }
   }
+  // Nothing left to work in: forget the old branch, so its return isn't later read as a removal.
+  if (working.kind === "none" && currentId !== null) setCurrentId(null);
   if (branchListKey(seen) !== branchListKey(branches)) setSeen(branches);
 
   // Read-only routes never ask: they show the first branch until the person picks one elsewhere.
@@ -96,6 +111,17 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     if (resolvedId) writeStorage(session, keys.session, resolvedId);
   }, [resolvedId, keys]);
 
+  // The old branch's URL state (open record, search, filters) goes with it. `select` drops it
+  // before switching; a removal is only seen while rendering, so it is dropped here.
+  const cleanedFor = useRef<AdminBranch["revoked"]>(null);
+  useEffect(() => {
+    // Once per removal, not on every later navigation.
+    if (!revoked || cleanedFor.current === revoked) return;
+    cleanedFor.current = revoked;
+    const href = branchSwitchHref(pathname, search);
+    if (href) router.replace(href);
+  }, [revoked, pathname, search, router]);
+
   const select = useCallback(
     async (id: AdminBranchId) => {
       const target = branches.find((branch) => branch.id === id);
@@ -104,20 +130,23 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       if (hasDirtyUnsavedGuard() || hasUnsavedChanges()) {
         const discard = await confirm({
           title: `Discard unsaved changes and switch to ${target.name}?`,
-          description: `Your changes${currentBranch ? ` for ${currentBranch.name}` : ""} haven’t been saved. Switching also clears filters, search and selection.`,
+          description: `Your changes${currentBranch ? ` for ${currentBranch.name}` : ""} haven’t been saved. Switching also closes the open record and clears filters, search and selection.`,
           cancelLabel: "Stay here",
           confirmLabel: "Discard and switch",
           destructive: true,
         });
         if (!discard) return false;
       }
+      const href = branchSwitchHref(pathname, search);
+      if (href) router.replace(href);
       setRevoked(null);
       setCurrentId(id);
+      setRemembered({ session: id, device: id });
       writeStorage(session, keys.session, id);
       writeStorage(local, keys.device, id);
       return true;
     },
-    [branches, currentBranch, readOnly, confirm, keys],
+    [branches, currentBranch, readOnly, confirm, keys, pathname, search, router],
   );
 
   const dismissRevoked = useCallback(() => setRevoked(null), []);
@@ -128,11 +157,12 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       select,
       scopeKey: currentBranch?.id ?? "none",
       readOnly,
-      needsChoice: working.kind === "choose" && !readOnly,
+      scope,
+      needsChoice: working.kind === "choose" && !readOnly && scope === "branch",
       revoked,
       dismissRevoked,
     }),
-    [branches, currentBranch, select, readOnly, working.kind, revoked, dismissRevoked],
+    [branches, currentBranch, select, readOnly, scope, working.kind, revoked, dismissRevoked],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
@@ -143,6 +173,7 @@ const NO_BRANCH: AdminBranch = {
   select: async () => false,
   scopeKey: "none",
   readOnly: true,
+  scope: "branch",
   needsChoice: false,
   revoked: null,
   dismissRevoked: () => {},

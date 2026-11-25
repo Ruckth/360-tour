@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { SignOutButton } from "@/platform/auth";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { useAdminBranch } from "./branch-context";
-import { BranchStatePill } from "./BranchSwitcher";
+import { BranchStatePill } from "./branch-pills";
 
 /** The full-page card the access gate shows instead of the admin. */
 export function GateCard({ title, children }: { title: string; children: ReactNode }) {
@@ -85,8 +85,8 @@ export function BranchRevokedBanner() {
       <div role="status" className="relative flex w-full flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-foreground">
         <Info aria-hidden className="size-4 shrink-0 text-gold-text" />
         <p className="min-w-0 flex-1 basis-60 leading-relaxed">
-          <strong className="font-semibold">Your access to {revoked.from} ended.</strong> You’re now working in {revoked.to}. Unsaved
-          changes for {revoked.from} were discarded.
+          <strong className="font-semibold">Your access to {revoked.from} ended.</strong> You’re now working in {revoked.to}.
+          {revoked.discarded ? ` Unsaved changes for ${revoked.from} were discarded.` : null}
         </p>
         <Button type="button" variant="ghost" size="sm" onClick={dismissRevoked}>
           Dismiss

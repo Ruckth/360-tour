@@ -31,8 +31,9 @@ import { ROLE_LABELS, useStaffAccess } from "./staff-access";
 import { StatusBadge } from "./StatusBadge";
 import { TONES } from "./status-tones";
 import { NumberField } from "./marketing/MarketingBits";
-import { BranchMultiSelect, type SelectableBranch } from "./branches/BranchMultiSelect";
-import { BranchPill } from "./branches/branch-status";
+import { useAdminBranch } from "./branch/branch-context";
+import { BranchMultiSelect, type SelectableBranch } from "./branch/BranchMultiSelect";
+import { BranchPill } from "./branch/branch-pills";
 
 type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
 type StaffRole = "manager" | "cashier";
@@ -89,6 +90,17 @@ function sameBranchSelection(a: readonly Id<"branches">[], b: readonly Id<"branc
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+/**
+ * The assignments that still count: branches that exist and aren't archived. Archived ones are
+ * never offered, shown or sent back (the server rejects them), so they can't lock a person's edits.
+ */
+function liveBranchIds(ids: readonly Id<"branches">[] | undefined, branchById: ReadonlyMap<Id<"branches">, SelectableBranch>): Id<"branches">[] {
+  return uniqueBranchIds((ids ?? []).filter((id) => {
+    const branch = branchById.get(id);
+    return branch !== undefined && branch.state !== "archived";
+  }));
+}
+
 /** Settings › Team: everyone with a Desk or Marketing role, owners & recovery, and cashier rules. */
 export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?: (dirty: boolean) => void; confirmDiscard?: () => Promise<boolean> } = {}) {
   const [inviteDirty, setInviteDirty] = useState(false);
@@ -99,19 +111,21 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
   const people = useQuery(api.auth.staffAccess.listPeople, {});
   const branchRows = useQuery(api.branches.branches.list, {});
   const { branches: accessBranches } = useStaffAccess();
+  const workingBranchId = useAdminBranch().current?.id ?? null;
 
   const { assignableBranches, branchById, defaultBranchIds } = useMemo(() => {
-    const all: Array<SelectableBranch & { key: string }> = branchRows
-      ? branchRows.map((row) => ({ id: row._id, key: row.key, name: row.name, state: row.state }))
-      : accessBranches.map((row) => ({ id: row.id, key: row.key, name: row.name, state: row.state }));
+    const all: SelectableBranch[] = branchRows
+      ? branchRows.map((row) => ({ id: row._id, name: row.name, state: row.state }))
+      : accessBranches.map((row) => ({ id: row.id, name: row.name, state: row.state }));
     const assignable = all.filter((branch) => branch.state !== "archived");
-    const preferred = assignable.find((branch) => branch.key === "koh-samui") ?? assignable.find((branch) => branch.state === "active") ?? assignable[0];
+    // New desk access starts at the branch the owner is working in, else the first one listed.
+    const preferred = assignable.find((branch) => branch.id === workingBranchId) ?? assignable[0];
     return {
       assignableBranches: assignable,
       branchById: new Map(all.map((branch) => [branch.id, branch])),
       defaultBranchIds: preferred ? [preferred.id] : [],
     };
-  }, [branchRows, accessBranches]);
+  }, [branchRows, accessBranches, workingBranchId]);
 
   const owners = useMemo(() => people?.filter((person) => person.role === "owner") ?? [], [people]);
 
@@ -130,8 +144,9 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
         onDirtyChange={setInviteDirty}
         confirmDiscard={confirmDiscard ?? localGuard.confirmDiscard}
       />
-      <OwnersRecoveryPanel owners={people === undefined ? undefined : owners} />
       <CashierRulesPanel onDirtyChange={setRulesDirty} hasCashiers={people === undefined ? undefined : people.some((person) => person.role === "cashier")} />
+      {/* Below the rules, so the discount limit starts on screen on phones and iPads. */}
+      <OwnersRecoveryPanel owners={people === undefined ? undefined : owners} />
     </div>
   );
 }
@@ -161,7 +176,7 @@ function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
     >
       <div className="grid gap-4">
         <p className="text-sm text-muted-foreground">
-          Company owners open every branch, assign access and run branch setup, activation and suspension. Branch managers can’t invite.
+          Company owners open every branch, assign access and add branches. Branch managers can’t invite.
         </p>
         {owners === undefined ? (
           <div className="grid place-items-center py-6"><Spinner label="Loading company owners" /></div>
@@ -259,19 +274,16 @@ function PeoplePanel({
     return branchIds.map((id) => branchById.get(id)?.name).filter((name): name is string => Boolean(name)).join(", ");
   }
 
-  async function setDesk(person: Person, role: StaffRole | null) {
+  async function setDesk(person: Person, role: StaffRole | null, chosenBranchIds?: readonly Id<"branches">[]) {
     const name = personLabel(person.email);
+    const existingIds = liveBranchIds(person.branchIds, branchById);
     if (role === null) {
-      const places = branchNamesFor(person.branchIds ?? []);
+      const places = branchNamesFor(existingIds);
       const description = `${name} loses desk access${places ? ` at ${places}` : ""} now, on every device. Open sessions lose access within seconds, and unsent work there isn’t submitted. Marketing access, if any, stays.`;
       if (!(await confirm({ title: `Remove ${name} from the desk?`, description, confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
       return save(person.email, () => setStaffGrant({ email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
     }
-    const existingIds = (person.branchIds ?? []).filter((id) => {
-      const branch = branchById.get(id);
-      return branch !== undefined && branch.state !== "archived";
-    });
-    const branchIds = uniqueBranchIds(person.staffGrant ? (existingIds.length > 0 ? existingIds : [...defaultBranchIds]) : [...defaultBranchIds]);
+    const branchIds = uniqueBranchIds(chosenBranchIds ?? (existingIds.length > 0 ? existingIds : defaultBranchIds));
     if (branchIds.length === 0) {
       setMessage({ text: "Select at least one branch.", error: true, email: person.email });
       return false;
@@ -351,10 +363,11 @@ function PeoplePanel({
               person={person}
               assignableBranches={assignableBranches}
               branchById={branchById}
+              defaultBranchIds={defaultBranchIds}
               busy={busy !== null}
               saving={busy === person.email}
               message={message?.email === person.email ? message : null}
-              onDesk={(role) => setDesk(person, role)}
+              onDesk={(role, branchIds) => setDesk(person, role, branchIds)}
               onBranches={(branchIds) => setBranches(person, branchIds)}
               onRoleSaved={() => restoreRoleFocus(person.email)}
               onMarketing={(role) => setMarketing(person, role)}
@@ -503,6 +516,7 @@ function PersonRow({
   person,
   assignableBranches,
   branchById,
+  defaultBranchIds,
   busy,
   saving,
   message,
@@ -516,10 +530,11 @@ function PersonRow({
   person: Person;
   assignableBranches: readonly SelectableBranch[];
   branchById: ReadonlyMap<Id<"branches">, SelectableBranch>;
+  defaultBranchIds: readonly Id<"branches">[];
   busy: boolean;
   saving: boolean;
   message: { text: string; error?: boolean } | null;
-  onDesk: (role: StaffRole | null) => Promise<boolean>;
+  onDesk: (role: StaffRole | null, branchIds?: readonly Id<"branches">[]) => Promise<boolean>;
   onBranches: (branchIds: Id<"branches">[]) => Promise<boolean>;
   onMarketing: (role: MarketingRole | null) => Promise<boolean>;
   onRoleSaved: () => void;
@@ -535,6 +550,8 @@ function PersonRow({
   }
   const [changing, setChanging] = useState(false);
   const [branchError, setBranchError] = useState("");
+  // A first desk role waits for its branches: the chips show before anything is saved.
+  const [newDesk, setNewDesk] = useState<{ role: StaffRole; branchIds: Id<"branches">[] } | null>(null);
   const grant = person.staffGrant;
   const marketing = person.marketingGrant;
   const owner = person.role === "owner";
@@ -543,7 +560,7 @@ function PersonRow({
   const states = owner ? [] : [inviteState(grant), inviteState(marketing, "Marketing: ")].filter(Boolean);
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
-  const personBranchIds = person.branchIds ?? [];
+  const personBranchIds = liveBranchIds(person.branchIds, branchById);
 
   async function toggleAssignedBranch(branchId: Id<"branches">) {
     setBranchError("");
@@ -559,10 +576,22 @@ function PersonRow({
   }
 
   return (
-    <li className="grid gap-2 py-2 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
+    <li className="grid gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0">
         <div className="min-w-0">
-          <p className="text-[15px] font-medium text-foreground">{name}</p>
+          {/* Who, then where: the branch pills sit on the name's line, so rows keep their height. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="text-[15px] font-medium text-foreground">{name}</p>
+            {/* Owners' badge already reads "Owner · Company". */}
+            {!owner && (personBranchIds.length > 0 || marketing) ? (
+              <span className="contents" data-testid="person-branch-chips">
+                {personBranchIds.flatMap((branchId) => branchById.get(branchId) ?? []).map((branch) => (
+                  <BranchPill key={branch.id} name={branch.name} />
+                ))}
+                {!grant && marketing ? <BranchPill name="Company" company /> : null}
+              </span>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <p className="text-[13px] break-all text-muted-foreground">
               {person.email}
@@ -573,26 +602,12 @@ function PersonRow({
               return <Badge key={state} variant="muted" className={cn("rounded-full text-xs font-medium", tone.bg, tone.text, tone.border)}>{state}</Badge>;
             })}
           </div>
-          {owner || personBranchIds.length > 0 || marketing ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid="person-branch-chips">
-              {owner ? (
-                <BranchPill name="Company" company />
-              ) : (
-                <>
-                  {personBranchIds.map((branchId) => (
-                    <BranchPill key={branchId} name={branchById.get(branchId)?.name ?? branchId} />
-                  ))}
-                  {!grant && marketing ? <BranchPill name="Company" company /> : null}
-                </>
-              )}
-            </div>
-          ) : null}
         </div>
         <div className="flex min-h-11 flex-wrap items-center gap-2 max-sm:col-span-2">
           <Badge variant="muted" className="max-sm:mr-auto max-w-full rounded-full text-xs font-medium" data-testid="team-roles">{owner ? "Owner · Company" : rolesText(person)}</Badge>
           {owner ? <span aria-hidden className="h-11 w-32 shrink-0" /> : (
             <div className="flex w-32 shrink-0 flex-nowrap items-center justify-end gap-1">
-              <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => { setBranchError(""); setChanging(!changing); }}>
+              <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => { setBranchError(""); setNewDesk(null); setChanging(!changing); }}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
               {allExpired ? <TooltipProvider><Tooltip>
@@ -621,8 +636,57 @@ function PersonRow({
           <p className="w-full text-[13px] text-muted-foreground">Role and branch changes apply immediately.</p>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
-            <RoleSelect id={`${id}-desk`} label={`Desk role for ${name}`} value={(grant?.role ?? "") as StaffRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onDesk(value || null))} options={DESK_OPTIONS} empty="None" />
+            <RoleSelect
+              id={`${id}-desk`}
+              label={`Desk role for ${name}`}
+              value={(newDesk?.role ?? grant?.role ?? "") as StaffRole | ""}
+              disabled={busy}
+              onChange={(value) => {
+                setBranchError("");
+                if (!grant) setNewDesk(value ? { role: value, branchIds: newDesk?.branchIds ?? [...defaultBranchIds] } : null);
+                else void changeRole(() => onDesk(value || null));
+              }}
+              options={DESK_OPTIONS}
+              empty="None"
+            />
           </div>
+          {newDesk ? (
+            <div className="grid w-full gap-2">
+              <BranchMultiSelect
+                branches={assignableBranches}
+                selectedIds={newDesk.branchIds}
+                disabled={busy}
+                error={branchError}
+                onToggle={(branchId) => {
+                  setBranchError("");
+                  setNewDesk({ ...newDesk, branchIds: newDesk.branchIds.includes(branchId) ? newDesk.branchIds.filter((entry) => entry !== branchId) : [...newDesk.branchIds, branchId] });
+                }}
+              />
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => {
+                    if (newDesk.branchIds.length === 0) {
+                      setBranchError("Select at least one branch.");
+                      return;
+                    }
+                    void changeRole(async () => {
+                      const ok = await onDesk(newDesk.role, newDesk.branchIds);
+                      if (ok) setNewDesk(null);
+                      return ok;
+                    });
+                  }}
+                >
+                  Add desk access
+                </Button>
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => { setNewDesk(null); setBranchError(""); }}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {grant && grant.role !== "owner" ? (
             <BranchMultiSelect
               branches={assignableBranches}

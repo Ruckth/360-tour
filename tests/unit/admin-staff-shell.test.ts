@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { AdminShell } from '@/components/admin/AdminShell';
-import { staffAccessFor, type ShellRole } from './admin-shell-convex';
+import { KOH_SAMUI, staffAccessFor, type ShellRole } from './admin-shell-convex';
 
 const state = vi.hoisted(() => ({
   pathname: '/admin/chats',
@@ -103,6 +103,20 @@ it('sends a manager from Settings › Team to Settings, with Approvals and the c
   expect(document.querySelector('header')?.textContent).not.toContain('Sign out');
 });
 
+it('opens Settings › Branches to owners only: a manager is sent to Settings', async () => {
+  state.pathname = '/admin/settings';
+  state.tab = 'branches';
+  as('manager');
+  await render();
+  expect(state.replace).toHaveBeenCalledWith('/admin/settings');
+  expect(document.getElementById('page')).toBeNull();
+  state.replace.mockClear();
+  as('owner');
+  await render();
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(document.getElementById('page')).not.toBeNull();
+});
+
 it('shows a manager Approvals on every page, not only checkout', async () => {
   as('manager');
   for (const path of ['/admin/chats', '/admin/hotel', '/admin/questions']) {
@@ -143,7 +157,7 @@ it('says access changed when a member is removed mid-session', async () => {
 });
 
 it('lets an invited person activate their access explicitly', async () => {
-  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000 } };
+  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000, branchIds: [KOH_SAMUI.id] } };
   await render();
   expect(document.body.textContent).toContain('lek@example.com is invited as Cashier.');
   expect(document.getElementById('page')).toBeNull();

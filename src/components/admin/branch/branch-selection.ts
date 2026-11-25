@@ -1,17 +1,9 @@
 import type { StaffAccessView } from "../admin-access";
-import type { Tone } from "../status-tones";
 
 /** A branch the signed-in person may work in, from `auth/staffAccess.myAccess`. */
 export type AdminBranchOption = StaffAccessView["branches"][number];
 export type AdminBranchId = AdminBranchOption["id"];
 type Branch = Pick<AdminBranchOption, "id">;
-
-/** The state pill beside a branch name. Active branches show none. */
-export const BRANCH_STATE_PILLS: Partial<Record<AdminBranchOption["state"], { tone: Tone; label: string }>> = {
-  setup: { tone: "warning", label: "Setup · hidden from guests" },
-  suspended: { tone: "danger", label: "Suspended · no new sales" },
-  archived: { tone: "muted", label: "Archived · read only" },
-};
 
 /**
  * The working branch, from what this tab and this device remember. A remembered id counts only
@@ -45,11 +37,39 @@ export function resolveWorkingBranch(
 }
 
 /**
- * Checkout and receipts show the branch read-only: checkout follows the till (step 4) and a
- * receipt its order. They never switch it, and never ask a first-time person to choose.
+ * Checkout and receipts show no branch control: checkout sells for the till's branch (step 4) and
+ * a receipt belongs to its order. They never switch it, and never ask a first-time person to choose.
  */
 export function branchReadOnlyRoute(pathname: string): boolean {
   return /^\/admin\/(checkout|receipt)(\/|$)/.test(pathname);
+}
+
+/**
+ * Whose data a route shows. Settings and Marketing are company-wide: they show "Company" instead
+ * of the working branch and never ask a first-time person to choose. Every other route is a branch's.
+ */
+export type AdminBranchScope = "company" | "branch";
+
+export function branchRouteScope(pathname: string): AdminBranchScope {
+  return /^\/admin\/(settings|marketing)(\/|$)/.test(pathname) ? "company" : "branch";
+}
+
+/** URL parameters that survive a branch switch; the rest (open record, search, filters) belong to the old branch. */
+const SWITCH_KEPT_PARAMS = ["tab"] as const;
+
+/**
+ * The same page without the old branch's URL state, or null when nothing needs dropping. A switch
+ * replaces the URL with it, so `?session=`, `?q=` or a `?booking=` from the old branch never loads.
+ */
+export function branchSwitchHref(pathname: string, search: URLSearchParams): string | null {
+  const kept = new URLSearchParams();
+  for (const key of SWITCH_KEPT_PARAMS) {
+    const value = search.get(key);
+    if (value !== null) kept.set(key, value);
+  }
+  if (kept.toString() === search.toString()) return null;
+  const query = kept.toString();
+  return query ? `${pathname}?${query}` : pathname;
 }
 
 /** Per-person storage keys: this tab's working branch, and the last one used on this device. */

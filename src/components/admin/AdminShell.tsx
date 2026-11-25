@@ -45,8 +45,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-4xl font-semibold text-foreground">Admin</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Sign in with an allowlisted admin account to view visitor chat activity and
-            transcripts.
+            Sign in with an admin account to view visitor chat activity and transcripts.
           </p>
           <SignInButton mode="modal">
             <Button className="mt-6 w-full">Sign in</Button>

@@ -7,7 +7,7 @@ import { DEFAULT_CASHIER_RULES } from 'convex/shared/staffTypes';
 export type ShellRole = 'owner' | 'manager' | 'cashier' | null;
 
 type ShellBranch = { id: Id<'branches'>; key: string; name: string; slug: string; state: 'setup' | 'active' | 'suspended' | 'archived' };
-export const KOH_SAMUI: ShellBranch = { id: 'branch_samui' as Id<'branches'>, key: 'default', name: 'Koh Samui', slug: 'koh-samui', state: 'active' };
+export const KOH_SAMUI: ShellBranch = { id: 'branch_samui' as Id<'branches'>, key: 'koh-samui', name: 'Koh Samui', slug: 'koh-samui', state: 'active' };
 export const PHUKET: ShellBranch = { id: 'branch_phuket' as Id<'branches'>, key: 'phuket', name: 'Phuket', slug: 'phuket', state: 'setup' };
 
 /** myAccess for a role. Desk roles always hold a branch (Koh Samui unless given); owners are company scope. */
