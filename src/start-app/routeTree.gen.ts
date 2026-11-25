@@ -54,6 +54,8 @@ import { Route as Char123LocaleChar125BookingSuccessRouteImport } from './routes
 import { Route as Char123LocaleChar125RoomsIdRouteImport } from './routes/{-$locale}.rooms.$id'
 import { Route as AdminMarketingCouponsIndexRouteImport } from './routes/admin.marketing.coupons.index'
 import { Route as AdminMarketingCouponsIdRouteImport } from './routes/admin.marketing.coupons.$id'
+import { Route as AdminMarketingProfitabilityIndexRouteImport } from './routes/admin.marketing.profitability.index'
+import { Route as AdminMarketingProfitabilityTransactionsRouteImport } from './routes/admin.marketing.profitability.transactions'
 import { Route as ApiAdminChatReplyRouteImport } from './routes/api.admin.chat.reply'
 
 const AdminRoute = AdminRouteImport.update({
@@ -293,6 +295,18 @@ const AdminMarketingCouponsIdRoute = AdminMarketingCouponsIdRouteImport.update({
   path: '/coupons/$id',
   getParentRoute: () => AdminMarketingRoute,
 } as any)
+const AdminMarketingProfitabilityIndexRoute =
+  AdminMarketingProfitabilityIndexRouteImport.update({
+    id: '/profitability/',
+    path: '/profitability/',
+    getParentRoute: () => AdminMarketingRoute,
+  } as any)
+const AdminMarketingProfitabilityTransactionsRoute =
+  AdminMarketingProfitabilityTransactionsRouteImport.update({
+    id: '/profitability/transactions',
+    path: '/profitability/transactions',
+    getParentRoute: () => AdminMarketingRoute,
+  } as any)
 const ApiAdminChatReplyRoute = ApiAdminChatReplyRouteImport.update({
   id: '/api/admin/chat/reply',
   path: '/api/admin/chat/reply',
@@ -344,8 +358,10 @@ export interface FileRoutesByFullPath {
   '/admin/staff/': typeof AdminStaffIndexRoute
   '/{-$locale}/booking/': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
+  '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons/': typeof AdminMarketingCouponsIndexRoute
+  '/admin/marketing/profitability/': typeof AdminMarketingProfitabilityIndexRoute
 }
 export interface FileRoutesByTo {
   '/display': typeof DisplayRoute
@@ -389,8 +405,10 @@ export interface FileRoutesByTo {
   '/admin/staff': typeof AdminStaffIndexRoute
   '/{-$locale}/booking': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
+  '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons': typeof AdminMarketingCouponsIndexRoute
+  '/admin/marketing/profitability': typeof AdminMarketingProfitabilityIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -438,8 +456,10 @@ export interface FileRoutesById {
   '/admin/staff/': typeof AdminStaffIndexRoute
   '/{-$locale}/booking/': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
+  '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons/': typeof AdminMarketingCouponsIndexRoute
+  '/admin/marketing/profitability/': typeof AdminMarketingProfitabilityIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -488,8 +508,10 @@ export interface FileRouteTypes {
     | '/admin/staff/'
     | '/{-$locale}/booking/'
     | '/admin/marketing/coupons/$id'
+    | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons/'
+    | '/admin/marketing/profitability/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/display'
@@ -533,8 +555,10 @@ export interface FileRouteTypes {
     | '/admin/staff'
     | '/{-$locale}/booking'
     | '/admin/marketing/coupons/$id'
+    | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons'
+    | '/admin/marketing/profitability'
   id:
     | '__root__'
     | '/admin'
@@ -581,8 +605,10 @@ export interface FileRouteTypes {
     | '/admin/staff/'
     | '/{-$locale}/booking/'
     | '/admin/marketing/coupons/$id'
+    | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons/'
+    | '/admin/marketing/profitability/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -926,6 +952,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMarketingCouponsIdRouteImport
       parentRoute: typeof AdminMarketingRoute
     }
+    '/admin/marketing/profitability/': {
+      id: '/admin/marketing/profitability/'
+      path: '/profitability'
+      fullPath: '/admin/marketing/profitability/'
+      preLoaderRoute: typeof AdminMarketingProfitabilityIndexRouteImport
+      parentRoute: typeof AdminMarketingRoute
+    }
+    '/admin/marketing/profitability/transactions': {
+      id: '/admin/marketing/profitability/transactions'
+      path: '/profitability/transactions'
+      fullPath: '/admin/marketing/profitability/transactions'
+      preLoaderRoute: typeof AdminMarketingProfitabilityTransactionsRouteImport
+      parentRoute: typeof AdminMarketingRoute
+    }
     '/api/admin/chat/reply': {
       id: '/api/admin/chat/reply'
       path: '/api/admin/chat/reply'
@@ -944,7 +984,9 @@ interface AdminMarketingRouteChildren {
   AdminMarketingLinksRoute: typeof AdminMarketingLinksRoute
   AdminMarketingIndexRoute: typeof AdminMarketingIndexRoute
   AdminMarketingCouponsIdRoute: typeof AdminMarketingCouponsIdRoute
+  AdminMarketingProfitabilityTransactionsRoute: typeof AdminMarketingProfitabilityTransactionsRoute
   AdminMarketingCouponsIndexRoute: typeof AdminMarketingCouponsIndexRoute
+  AdminMarketingProfitabilityIndexRoute: typeof AdminMarketingProfitabilityIndexRoute
 }
 
 const AdminMarketingRouteChildren: AdminMarketingRouteChildren = {
@@ -955,7 +997,10 @@ const AdminMarketingRouteChildren: AdminMarketingRouteChildren = {
   AdminMarketingLinksRoute: AdminMarketingLinksRoute,
   AdminMarketingIndexRoute: AdminMarketingIndexRoute,
   AdminMarketingCouponsIdRoute: AdminMarketingCouponsIdRoute,
+  AdminMarketingProfitabilityTransactionsRoute:
+    AdminMarketingProfitabilityTransactionsRoute,
   AdminMarketingCouponsIndexRoute: AdminMarketingCouponsIndexRoute,
+  AdminMarketingProfitabilityIndexRoute: AdminMarketingProfitabilityIndexRoute,
 }
 
 const AdminMarketingRouteWithChildren = AdminMarketingRoute._addFileChildren(

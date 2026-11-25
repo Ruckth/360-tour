@@ -3,6 +3,7 @@ import type { PaginationOptions } from 'convex/server';
 import schema from '../../schema';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { deliveryCostVersion } from './costSchedule';
 import { appointmentRevision } from '../../shared/appointmentWindow';
 import { appendRecordHistory } from '../../settings/model';
 import { appointmentLookupFields } from './serviceSlots';
@@ -25,14 +26,14 @@ const REASON_MAX = 500;
 
 /** Fields whose old and new values are kept in the history. */
 const TRACKED = [
-	'staffId', 'serviceId', 'start', 'end', 'blockedUntil', 'price', 'currency',
+	'reportCustomerId', 'staffId', 'serviceId', 'start', 'end', 'blockedUntil', 'price', 'currency',
 	'amountPaid', 'amountRefunded', 'financialRevision', 'status', 'paymentStatus', 'guestName', 'guestPhone', 'guestEmail', 'notes',
 	'staffNameSnapshot', 'serviceNameSnapshot', 'paidAt', 'paidBy', 'refundedAt', 'cancelledAt', 'cancelledBy', 'cancellationReason'
 ] as const;
 
 type Tracked = (typeof TRACKED)[number];
 
-export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'coverage' | 'pendingReturn'>>;
+export type AppointmentPatch = Partial<Pick<Appointment, Tracked | 'receiptVatShare' | 'actualCosts' | 'coverage' | 'pendingReturn' | 'restoredCoverageAt'>>;
 
 export type ChangeEntry = { actor: string; kind: ChangeKind; reason?: string; effectiveAt?: number; warnings?: string[]; details?: Array<{ field: string; from: string | number | null; to: string | number | null }> };
 
@@ -62,7 +63,15 @@ export async function recordAppointmentChange(ctx: MutationCtx, appointment: App
 		guestPhone: 'guestPhone' in patch ? patch.guestPhone ?? '' : appointment.guestPhone,
 		guestEmail: 'guestEmail' in patch ? patch.guestEmail : appointment.guestEmail
 	});
-	await ctx.db.patch(appointment._id, { ...patch, ...lookup, revision: appointmentRevision(appointment) + 1 });
+	// Bind a delivered visit to the immutable finance entry that was available at completion.
+	const deliveryChanged = (patch.status !== undefined && patch.status !== appointment.status)
+		|| (patch.serviceId !== undefined && patch.serviceId !== appointment.serviceId)
+		|| (patch.end !== undefined && patch.end !== appointment.end);
+	const schedule = deliveryChanged
+		? {costScheduleId: undefined, ...((patch.status ?? appointment.status) === 'completed'
+			? await deliveryCostVersion(ctx, patch.serviceId ?? appointment.serviceId, patch.end ?? appointment.end) : {})}
+		: {};
+	await ctx.db.patch(appointment._id, { ...patch, ...lookup, ...schedule, ...(patch.paymentStatus === 'unpaid' && {receiptVatShare: undefined}), revision: appointmentRevision(appointment) + 1 });
 	const audit = {
 		appointmentId: appointment._id, at: Date.now(), actor: entry.actor, kind: entry.kind,
 		currencyBefore: appointment.currency, currencyAfter: patch.currency ?? appointment.currency,

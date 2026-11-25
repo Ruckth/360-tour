@@ -7,7 +7,8 @@ import type { MutationCtx } from '../_generated/server';
 import { resolveCommerceSettings } from '../commerce/model';
 import * as budgets from '../lib/readBudget';
 import schema from '../schema';
-import { recordReturnDestination } from '../services/model';
+import { profitVisits, recordReturnDestination } from '../services/model';
+import { calculateProfit } from '../shared/profitability';
 import { projectTender } from '../shared/tenderProjection';
 import { termsOf } from './private/paymentCommerce';
 import type { ReturnPart } from './private/returnPlan';
@@ -554,4 +555,82 @@ it('leaves a performed covered visit and its use in place when the mistaken rece
   expect(await t.run(ctx => ctx.db.get(orderId))).toMatchObject({ status: 'void', commerceRevision: 1 });
   expect(await t.run(ctx => ctx.db.get(appointmentId))).toMatchObject({ paymentStatus: 'paid', coverage: { useId } });
   expect(await t.run(ctx => ctx.db.get(useId))).toMatchObject({ activeAppointmentId: appointmentId });
+});
+it('recognizes a paid package unit on delivery, reverses it on restoration and counts its replacement payment once',async()=>{
+  const {t,owner}=setup();
+  const {args,appointmentId}=await t.run(async ctx=>{
+    const orderId=await receipt(ctx,1,0);
+    const covered=await coveredVisit(ctx,orderId);
+    const grant=(await ctx.db.get(covered.grantId))!;
+    const saleOrder=await receipt(ctx,1,10700);
+    const packageLine=await line(ctx,saleOrder,'package',10700,{saleSnapshot:snapshot('Service package',10700,[{
+      ...allocation(10700),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1,
+    }])});
+    await ctx.db.patch(grant._id,{lineId:packageLine,orderId:saleOrder,paidShare:10700});
+    return {args:selection(orderId,[covered.part]),appointmentId:covered.appointmentId};
+  });
+  const revenue=async(start:number,end:number)=>t.run(async ctx=>(await profitVisits(ctx,start,end)).lines.reduce((sum,row)=>sum+row.revenue,0));
+  expect(await revenue(now-day,now)).toBe(10000);
+  await owner.mutation(command.authorize,args);
+  expect(await revenue(now-day,now)).toBe(10000);
+  expect(await revenue(now,now+day)).toBe(-10000);
+  await owner.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid,{
+    appointmentId,expectedRevision:6,method:'cash',idempotencyKey:'recollect-for-report'
+  });
+  expect(await revenue(now-day,now+day)).toBe(price-Math.round(price*7/107));
+});
+it('keeps both grant values and both dated restorations when a completed visit is redeemed twice', async()=>{
+  const {t,owner}=setup();
+  async function redeem(amount:number,at:number,existing?:Id<'appointments'>) {
+    return t.run(async ctx=>{
+      const orderId=await receipt(ctx,1,0), covered=await coveredVisit(ctx,orderId);
+      const grant=(await ctx.db.get(covered.grantId))!;
+      const sold=await receipt(ctx,1,amount);
+      const packageLine=await line(ctx,sold,'package',amount,{saleSnapshot:snapshot('Package',amount,[{
+        ...allocation(amount),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1
+      }])});
+      await ctx.db.patch(grant._id,{lineId:packageLine,orderId:sold,paidShare:amount});
+      const id=existing??covered.appointmentId;
+      await ctx.db.patch(covered.useId,{activeAppointmentId:id,createdAt:at,lineId:covered.part.lineId});
+      if(existing) {
+        const template=(await ctx.db.get(covered.appointmentId))!;
+        const delivered=(await ctx.db.get(existing))!;
+        await ctx.db.patch(covered.useId,{serviceId:delivered.serviceId,beneficiaryId:delivered.attendeeId});
+        await ctx.db.patch(grant._id,{ownerId:delivered.attendeeId!});
+        await ctx.db.patch(covered.part.lineId,{appointmentId:existing});
+        await ctx.db.patch(existing,{coverage:template.coverage,price:0,paymentStatus:'paid',amountPaid:0,paidAt:at});
+        await ctx.db.delete(covered.appointmentId);
+      }
+      return {id,args:{...selection(orderId,[covered.part]),clientKey:'report-return-'+covered.useId}};
+    });
+  }
+  const report=(from:number,to:number)=>t.run(async ctx=>(await profitVisits(ctx,from,to)).lines.reduce((n,row)=>n+row.revenue,0));
+  const a=await redeem(10700,now-day);
+  await owner.mutation(command.authorize,a.args);
+  vi.spyOn(Date,'now').mockReturnValue(now+3*day);
+  const b=await redeem(21400,now+2*day,a.id);
+  expect(await report(now-day,now)).toBe(10000);
+  expect(await report(now,now+day)).toBe(-10000);
+  expect(await report(now+2*day,now+3*day)).toBe(20000);
+  await owner.mutation(command.authorize,b.args);
+  expect(await report(now+2*day,now+3*day)).toBe(20000);
+  expect(await report(now+3*day,now+4*day)).toBe(-20000);
+  expect(await report(now-day,now+4*day)).toBe(0);
+});
+it('includes the first paid package settlement after delivery in the paying month customer cohort',async()=>{
+  const {t}=setup();
+  const start=Date.UTC(2026,9,31,5), paid=Date.UTC(2026,10,1,5);
+  await t.run(async ctx=>{
+    const order=await receipt(ctx,1,0), c=await coveredVisit(ctx,order);
+    const grant=(await ctx.db.get(c.grantId))!;
+    const sold=await receipt(ctx,1,10700);
+    const issued=await line(ctx,sold,'package',10700,{saleSnapshot:snapshot('Session',10700,[{...allocation(10700),contentKey:grant.contentKey,grantId:grant._id,vatProfile:'standard',label:'Session',units:1}])});
+    await ctx.db.patch(grant._id,{lineId:issued,orderId:sold,paidShare:10700});
+    await ctx.db.patch(c.appointmentId,{start:start-3600000,end:start,paidAt:paid});
+    await ctx.db.patch(c.useId,{createdAt:paid});
+  });
+  const {lines,customers}=await t.run(ctx=>profitVisits(ctx,paid-4*3600000,paid+day));
+  expect(lines).toMatchObject([{kind:'Settlement',revenue:0,cost:{staff:0,tools:0,materials:0}}]);
+  const result=calculateProfit({lines,customers,expenses:[],missingMonths:[]},lines,'2026-11-01','2026-11-02',false);
+  expect(result).toMatchObject({newCount:1,customerCount:1,ltv:10000,cac:0,revenue:0});
 });

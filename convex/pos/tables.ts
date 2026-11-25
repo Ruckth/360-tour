@@ -204,6 +204,7 @@ export const posTables = {
 		revision: v.optional(v.number()),
 		archivedAt: v.optional(v.number()),
 		mergedInto: v.optional(v.id('customers')),
+		mergedAt: v.optional(v.number()),
 		mergeKey: v.optional(v.string()),
 		mergeReason: v.optional(v.string()),
 		name: v.string(),
@@ -218,10 +219,11 @@ export const posTables = {
 		createdAt: v.number(),
 		updatedAt: v.number()
 	})
+		.index('by_mergedInto', ['mergedInto'])
 		.index('by_phoneDigits', ['phoneDigits'])
 		.index('by_emailNormalized', ['emailNormalized'])
 		.index('by_archivedAt', ['archivedAt'])
-		.searchIndex('search_name', { searchField: 'name' }),
+		.searchIndex('search_name', { searchField: 'name', filterFields: ['archivedAt'] }),
 
 
     /** Durable, bounded customer reference migration. Original identities and receipt snapshots remain. */
@@ -347,6 +349,7 @@ export const posTables = {
     reason: v.string(), createdAt: v.number(), completedAt: v.optional(v.number()),
     hasReplacementSlips: v.optional(v.boolean()),
   }).index('by_key', ['key']).index('by_orderId_and_status', ['orderId', 'status'])
+    .index('by_completedAt', ['completedAt'])
     .index('by_orderId_and_hasReplacementSlips', ['orderId', 'hasReplacementSlips'])
     .index('by_status_and_createdAt', ['status', 'createdAt']),
 

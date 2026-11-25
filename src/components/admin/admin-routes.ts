@@ -47,6 +47,7 @@ export function adminSettingsTab(value: string | null): AdminSettingsTab {
 /** Marketing sub-pages, in sidebar order. `/admin/marketing` opens the dashboard. */
 export const ADMIN_MARKETING_PAGES = [
   { id: "dashboard", label: "Dashboard", keywords: ["report", "ROAS", "conversion", "attribution", "spend", "export"] },
+  { id: "profitability", label: "Profitability", keywords: ["profit", "LTV", "CAC", "costs", "transactions"] },
   { id: "campaigns", label: "Campaigns", keywords: ["utm", "source", "medium", "budget"] },
   { id: "links", label: "Links & QR", keywords: ["short links", "QR code", "tracking"] },
   { id: "coupons", label: "Coupons", keywords: ["discount", "promo code", "offers"] },

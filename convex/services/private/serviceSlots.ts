@@ -1,3 +1,4 @@
+import { deliveryCostVersion } from './costSchedule';
 import { MAX_TIME_OFF_DAYS } from '../../shared/timeOff';
 import type { DayPlan } from '../../shared/serviceScheduleTypes';
 import { type Range, localDayRange, mergeRanges, effectivePlan, planBusy, blocksTime } from '../../shared/schedule';
@@ -250,6 +251,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
 	const status = policy && input.source === 'admin' && input.start + service.durationMin * MINUTE < Date.now() ? 'completed' as const : 'booked' as const;
 	const appointmentId = await ctx.db.insert('appointments', {
+		...(status === 'completed' ? await deliveryCostVersion(ctx,service._id,input.start + service.durationMin * MINUTE) : {}),
 		serviceId: service._id,
 		staffId: chosen._id,
 		staffNameSnapshot: chosen.name, serviceNameSnapshot: service.name, createdBy: actor,

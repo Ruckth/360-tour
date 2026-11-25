@@ -1,0 +1,10 @@
+import type { FunctionArgs, FunctionReturnType } from 'convex/server';
+import { api } from 'convex/_generated/api';
+import { thb } from '../marketing/marketing-format';
+export const path = '/admin/marketing/profitability';
+export const endpoint = api.marketing.profitability.report;
+export type Report = FunctionReturnType<typeof endpoint>;
+export type Request = FunctionArgs<typeof endpoint>;
+export const money = (n: number | null) => (n === null ? 'Unavailable' : thb(n));
+export const box = 'rounded-xl border border-border bg-card';
+export type Href = (detail: boolean, updates: Record<string, string | null>) => string;

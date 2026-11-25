@@ -1,5 +1,6 @@
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { includedServiceVat } from '../../shared/serviceVat';
 import { attemptKey, cleanReason, effectiveTime } from '../../shared/bookingMoney';
 import { MANUAL_PAYMENT_METHODS } from '../../shared/financeValidators';
 import { sourceLineLinks, assertExistingMoneyFlow, assertNotOnOpenOrder } from '../../pos/model';
@@ -74,7 +75,7 @@ export async function recordAppointmentPayment(ctx: MutationCtx, a: Appointment,
   assertMoney(a.price);
   const effectiveAt = effectiveTime(input.effectiveAt);
   const paymentId = await ctx.db.insert('appointmentPayments', { appointmentId: a._id, amount: a.price, currency: a.currency, method: input.method ?? 'unrecorded', effectiveAt, recordedAt: Date.now(), recordedBy: actor, idempotencyKey: key, status: 'recorded', refunded: 0 });
-  await write(ctx, a, { paymentStatus: 'paid', amountPaid: a.price, amountRefunded: 0, paidAt: effectiveAt, paidBy: actor, refundedAt: undefined }, actor, 'Payment recorded at the desk', effectiveAt, [{ field: 'paymentId', from: null, to: paymentId }, { field: 'method', from: null, to: input.method ?? 'unrecorded' }]);
+  await write(ctx, a, { paymentStatus: 'paid', receiptVatShare: includedServiceVat(a.price), amountPaid: a.price, amountRefunded: 0, paidAt: effectiveAt, paidBy: actor, refundedAt: undefined }, actor, 'Payment recorded at the desk', effectiveAt, [{ field: 'paymentId', from: null, to: paymentId }, { field: 'method', from: null, to: input.method ?? 'unrecorded' }]);
   return { paymentId, replayed: false };
 }
 

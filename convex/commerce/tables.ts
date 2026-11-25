@@ -165,6 +165,7 @@ export const commerceTables = {
     ...editChanges,
   }).index('by_grantId_and_createdAt', ['grantId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
     .index('by_grantId_and_kind_and_createdAt', ['grantId', 'kind', 'createdAt'])
+    .index('by_kind_and_createdAt', ['kind','createdAt'])
     .index('by_activeAppointmentId', ['activeAppointmentId']),
 
   grantServices: defineTable({

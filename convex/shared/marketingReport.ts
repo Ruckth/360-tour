@@ -99,7 +99,7 @@ export type ReportMoneyEvent = { saleId: string; kind: 'payment' | 'refund'; day
 export type ReportSpend = {
 	id: Id<'marketingSpend'>;
 	campaignId: Id<'marketingCampaigns'>;
-	/** Whole baht for the whole entry, spread evenly over its days. */
+	/** Integer satang for the whole entry, spread evenly over its days. */
 	amount: number;
 	from: string;
 	to: string;
