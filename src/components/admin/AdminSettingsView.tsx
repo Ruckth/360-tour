@@ -34,12 +34,13 @@ import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
-import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
+import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, isOwnerOnlySettingsTab, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
 import { StatusBadge } from "./StatusBadge";
 import { useStaffAccess } from "./staff-access";
 import { NumberField } from "./marketing/MarketingBits";
 import { TeamSettings } from "./TeamSettings";
+import { BranchesSettings } from "./branches/BranchesSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
 import { statusMeta, TONES, type StatusMeta } from "./status-tones";
@@ -62,12 +63,17 @@ export function AdminSettingsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const access = useStaffAccess();
-  // Managers read settings; only owners change them or see Team. Others see them as before.
+  // Managers read settings; only owners change them or see Team and Branches. Others see them as before.
   const readOnly = access.role === "manager" || access.role === "cashier";
-  // Team comes second, so on a phone it starts on screen instead of past the edge.
+  // Team and Branches sit near the front so on a phone they start on screen instead of past the edge.
   const tabs = [...TABS]
-    .sort((a, b) => Number(b.id === "business") - Number(a.id === "business") || Number(b.id === "team") - Number(a.id === "team"))
-    .filter(({ id }) => id !== "team" || !readOnly);
+    .sort(
+      (a, b) =>
+        Number(b.id === "business") - Number(a.id === "business") ||
+        Number(b.id === "team") - Number(a.id === "team") ||
+        Number(b.id === "branches") - Number(a.id === "branches"),
+    )
+    .filter(({ id }) => !isOwnerOnlySettingsTab(id) || !readOnly);
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const requested = adminSettingsTab(searchParams.get("tab"));
   const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";
@@ -110,6 +116,8 @@ export function AdminSettingsView() {
           <Suspense fallback={<PanelSpinner label="Loading checkout rules" />}><CheckoutRulesPanel onDirtyChange={setDirty} /></Suspense>
         ) : tab === "team" ? (
           <TeamSettings onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
+        ) : tab === "branches" ? (
+          <BranchesSettings />
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
