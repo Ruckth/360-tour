@@ -7,7 +7,7 @@ import { readFile, lstat, open } from "node:fs/promises";
 import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
-import { chromium, expect, type Browser, type BrowserContext, type Page, type WebSocketRoute } from "@playwright/test";
+import { chromium, expect, type Browser, type BrowserContext, type Locator, type Page, type WebSocketRoute } from "@playwright/test";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api.js";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -179,12 +179,23 @@ async function signIn(page: Page, target: Target, role: Role) {
   return client;
 }
 
+async function chooseBranchIfPrompted(page: Page, target: Locator) {
+  const chooser = page.getByRole("heading", { name: "Choose a branch to start", exact: true });
+  await target.or(chooser).first().waitFor({ state: "visible" });
+  if (await chooser.isVisible()) {
+    await page.getByRole("listitem").getByRole("button").first().click();
+    await chooser.waitFor({ state: "hidden" });
+  }
+}
+
 async function checkAuth(browser: Browser, target: Target, ownerSession: BrowserContext) {
   const ownerPage = await ownerSession.newPage();
   const owner = await signIn(ownerPage, target, "owner");
   assert((await owner.query(api.pos.catalog.stableCatalog, {})).services.length > 0);
   await ownerPage.goto("/admin/settings?tab=team");
-  await expect(ownerPage.getByRole("button", { name: "Invite", exact: true })).toBeVisible();
+  const invite = ownerPage.getByRole("button", { name: "Invite", exact: true });
+  await chooseBranchIfPrompted(ownerPage, invite);
+  await expect(invite).toBeVisible();
   const anonymous = new ConvexHttpClient(target.backend, { logger: false });
   await assert.rejects(anonymous.query(api.pos.catalog.stableCatalog, {}));
 
@@ -205,14 +216,19 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
         const client = await signIn(page, target, role);
         if (role === "cashier") {
           await page.goto("/admin/checkout");
-          await expect(page.getByRole("complementary", { name: "Order", exact: true })).toBeVisible();
+          const order = page.getByRole("complementary", { name: "Order", exact: true });
+          await chooseBranchIfPrompted(page, order);
+          await expect(order).toBeVisible();
           await expect(page.getByRole("link", { name: "Settings", exact: true })).toHaveCount(0);
           await assert.rejects(client.query(api.auth.staffAccess.listPeople, {}));
           await page.getByRole("button", { name: "Sign out", exact: true }).last().click();
         } else {
           await assert.rejects(client.query(api.pos.catalog.stableCatalog, {}));
           await page.goto("/admin/checkout");
-          await expect(page.getByRole("heading", { name: "This view could not load" })).toBeVisible();
+          await expect(page.getByRole("heading", { name: "No access", exact: true })).toBeVisible();
+          await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+          await expect(page.getByRole("complementary", { name: "Order", exact: true })).toHaveCount(0);
+          await expect(page.getByRole("heading", { name: "Checkout", exact: true })).toHaveCount(0);
           await clerk.signOut({ page });
         }
         await page.waitForFunction(() => Boolean(window.Clerk?.loaded) && !window.Clerk?.session);

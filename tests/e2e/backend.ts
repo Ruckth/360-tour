@@ -1,8 +1,21 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { clerk } from "@clerk/testing/playwright";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+
+/** If a multi-branch session shows the first-visit branch chooser, pick the first branch and continue. */
+export async function chooseBranchIfPrompted(page: Page, target: Locator) {
+  const chooser = page.getByRole("heading", {
+    name: "Choose a branch to start",
+    exact: true,
+  });
+  await target.or(chooser).first().waitFor({ state: "visible" });
+  if (await chooser.isVisible()) {
+    await page.getByRole("listitem").getByRole("button").first().click();
+    await chooser.waitFor({ state: "hidden" });
+  }
+}
 
 export function localBackend() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
