@@ -12,7 +12,6 @@ import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/c
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
-import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { ServiceThumbZoom } from "@/components/admin/ServicePhoto";
 import { StaffAvatarPhotoButton, StaffListPhotoButton } from "@/components/admin/StaffAvatarPhoto";
 import { HistoryDisclosure, RecordHistoryPanel } from "@/components/admin/RecordHistoryPanel";
