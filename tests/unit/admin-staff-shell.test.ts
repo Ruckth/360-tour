@@ -121,11 +121,25 @@ it('shows owners every section and Approvals without a count when nothing waits'
   expect(document.querySelector('[data-approval-count]')).toBeNull();
 });
 
-it('keeps the existing experience for a signed-in person without a role', async () => {
+it('shows a signed-in person without a role "No access" with Sign out, never the owner navigation', async () => {
   as(null);
   await render();
   expect(state.replace).not.toHaveBeenCalled();
+  expect(document.getElementById('page')).toBeNull();
+  expect(navs()).toHaveLength(0);
+  expect(document.querySelector('h1')?.textContent).toBe('No access');
+  expect(button('Sign out')).toBeDefined();
+});
+
+it('says access changed when a member is removed mid-session', async () => {
+  state.access = staffAccessFor('manager', 'lek@example.com');
+  await render();
   expect(document.getElementById('page')).not.toBeNull();
+  state.access = staffAccessFor(null, 'lek@example.com');
+  await render();
+  expect(document.getElementById('page')).toBeNull();
+  expect(document.querySelector('h1')?.textContent).toBe('Your access has changed');
+  expect(document.body.textContent).toContain('lek@example.com no longer has desk access.');
 });
 
 it('lets an invited person activate their access explicitly', async () => {
