@@ -21,7 +21,7 @@ const sdk = new Set(['convex/server', 'convex/values', 'convex/browser', 'convex
 const roots = new Set(['schema', 'http', 'crons', 'auth.config', 'convex.config'].map(p => `convex/${p}`));
 // Invocation accounting and backend configuration, not homes for business ctx implementations.
 const forbiddenGlobals = new Set(['ctx', 'process', 'fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'Deno', 'Bun', 'window', 'document', 'navigator', 'localStorage', 'sessionStorage', 'eval', 'Function']);
-const infrastructure = new Set(['adminEmails', 'maintenance', 'readBudget'].map(p => `convex/lib/${p}`));
+const infrastructure = new Set(['maintenance', 'readBudget'].map(p => `convex/lib/${p}`));
 /** @param {string} path */
 export const domainOf = path => SCHEMA_DOMAINS.find(d => path === `convex/${d}` || path.startsWith(`convex/${d}/`));
 /** @param {string} path @param {string} specifier */

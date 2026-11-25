@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 import { acceptTestEvent, completeTestEvent } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
@@ -12,8 +13,8 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 
-function adminTest(t: ReturnType<typeof convexTest>) {
-  return t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+async function adminTest(t: ReturnType<typeof convexTest>) {
+  return await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
 async function insertAdminSession(
@@ -90,7 +91,6 @@ async function insertAdminSession(
 
 describe("adminChat.listSessions", () => {
   it("requires admin identity", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
 
     await expect(
@@ -102,9 +102,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("defaults to non-empty sessions ordered by latest message time", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Recent empty activity",
@@ -139,9 +138,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("returns 10 sessions per cursor page", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     for (let index = 0; index < 12; index++) {
       await insertAdminSession(t, {
@@ -172,9 +170,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("filters empty sessions using messageCount", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Empty visitor",
@@ -200,9 +197,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("keeps legacy empty sessions visible without including stale zero-count sessions", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "True empty visitor",
@@ -249,9 +245,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("filters by latest message date range", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Too early",
@@ -285,9 +280,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("filters sessions by channel in normal and search results", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Website guest",
@@ -372,9 +366,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("includes sessions at the exact latest-message end timestamp", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "End inclusive",
@@ -402,9 +395,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("excludes sessions without latest-message metadata from date filters", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Message without metadata",
@@ -431,9 +423,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("fills status-filtered pages when matching sessions are beyond the first raw page", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const now = 1_700_000_000_000;
 
     for (let index = 0; index < 12; index++) {
@@ -469,9 +460,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("returns a continuation cursor for sparse filtered pages", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const now = 1_700_000_000_000;
 
     for (let index = 0; index < 100; index++) {
@@ -514,9 +504,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("fills date-filtered active pages when inactive sessions are newer", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const now = 1_700_000_000_000;
 
     for (let index = 0; index < 12; index++) {
@@ -554,9 +543,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("keeps combined date and status cursors stable without skipping overflow matches", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const now = 1_700_000_000_000;
 
     for (let index = 0; index < 12; index++) {
@@ -603,9 +591,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("searches visitor contact and context with light typo tolerance", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Maya Chen",
@@ -644,9 +631,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("sorts equal-score search results by latest message time", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     await insertAdminSession(t, {
       visitorName: "Older same match",
@@ -676,9 +662,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("searches message transcript content", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
 
     const matchingSessionId = await insertAdminSession(t, {
       visitorName: "Transcript match",
@@ -711,9 +696,8 @@ describe("adminChat.listSessions", () => {
   });
 
   it("paginates transcript messages from newest to older", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const sessionId = await insertAdminSession(t, {
       visitorName: "Long transcript",
       messageCount: 45,
@@ -865,9 +849,8 @@ describe("admin chat metadata writes", () => {
 
 describe("admin chat unanswered warning", () => {
   it("flags the latest guest message until a reply or settle, then re-flags new guest messages", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const sessionId = await insertAdminSession(t, {
       visitorName: "Warning guest",
       messageCount: 1,
@@ -908,7 +891,6 @@ describe("admin chat unanswered warning", () => {
   });
 
   it("requires admin identity to settle", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
     const sessionId = await insertAdminSession(t);
     const messageId = await t.run(async (ctx) =>
@@ -972,9 +954,8 @@ describe("adminChat inbox lifecycle", () => {
   }
 
   it("filters by admin status and needs reply", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const base = 1_700_000_000_000;
     const waiting = await insertAdminSession(t, { visitorName: "Waiting", messageCount: 1, latestMessageAt: base + 3 });
     const answered = await insertAdminSession(t, { visitorName: "Answered", messageCount: 2, latestMessageAt: base + 2 });
@@ -1010,9 +991,8 @@ describe("adminChat inbox lifecycle", () => {
   });
 
   it("paginates resolved and archived chats together in Done without including open chats", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const base = 1_700_000_000_000;
     for (let index = 0; index < 12; index++) {
       const sessionId = await insertAdminSession(t, { visitorName: `Completed ${index}`, messageCount: 1, latestMessageAt: base + index, channel: index % 2 ? "line" : "web" });
@@ -1035,9 +1015,8 @@ describe("adminChat inbox lifecycle", () => {
   });
 
   it("resolves a staff reply automatically and reopens when the guest writes again", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const sessionId = await insertAdminSession(t, { visitorName: "Guest" });
 
     await admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId, status: "archived" });
@@ -1052,9 +1031,8 @@ describe("adminChat inbox lifecycle", () => {
   });
 
   it("pauses and resumes the AI with the assigned admin", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const sessionId = await insertAdminSession(t);
 
     await expect(t.mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true })).rejects.toThrow(
@@ -1075,9 +1053,8 @@ describe("adminChat inbox lifecycle", () => {
   });
 
   it("returns the 24-hour reply window for Meta channels", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const web = await insertAdminSession(t, { channel: "web" });
     const whatsapp = await insertAdminSession(t, { channel: "whatsapp" });
     const guestAt = 1_700_000_000_000;
@@ -1097,7 +1074,6 @@ describe("adminChat inbox lifecycle", () => {
 
 describe("adminChat.listSessions with sparse filters", () => {
   async function seed() {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
     // 150 newer web chats bury a few older LINE / resolved chats well past one 100-row source page.
     for (let index = 0; index < 150; index++) {
@@ -1122,7 +1098,7 @@ describe("adminChat.listSessions with sparse filters", () => {
       await ctx.db.patch(line[0], { adminStatus: "resolved" });
       await ctx.db.patch(line[1], { adminStatus: "archived" });
     });
-    return { t, admin: adminTest(t), line };
+    return { t, admin: await adminTest(t), line };
   }
 
   it("finds every chat of a quiet channel on the first page", async () => {
@@ -1211,9 +1187,8 @@ describe("chat.touchSession heartbeat", () => {
 });
 
 it("returns the same Waiting eligibility in a deep-linked detail as in the queue", async () => {
-  vi.stubEnv("ADMIN_EMAILS", adminEmail);
   const t = convexTest(schema, modules);
-  const admin = adminTest(t);
+  const admin = await adminTest(t);
   const sessionId = await insertAdminSession(t, { visitorName: "Older waiting guest", messageCount: 1 });
   const messageId = await t.run(async (ctx) =>
     ctx.db.insert("messages", {
@@ -1287,9 +1262,8 @@ describe("adminChat read optimizations", () => {
   it.each(eventChannels)(
     "getSessionDetail returns only the newest %s event and leaves other channels and the reply window unchanged",
     async (channel) => {
-      vi.stubEnv("ADMIN_EMAILS", adminEmail);
       const t = convexTest(schema, modules);
-      const admin = adminTest(t);
+      const admin = await adminTest(t);
       const guestAt = 1_700_000_000_000;
       const sessionId = await insertAdminSession(t, { channel, messageCount: 2, latestMessageAt: guestAt + 5 });
       await insertMessage(t, sessionId, "user", guestAt);
@@ -1314,9 +1288,8 @@ describe("adminChat read optimizations", () => {
   );
 
   it("keeps source order and overflow across filtered pages, and dedupes a chat that moved", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const base = 1_700_000_000_000;
     // 105 chats, newest first; the Waiting matches are spread over the first 100-row source page
     // so page 1 overflows, and one more match sits in the second source page.
@@ -1357,9 +1330,8 @@ describe("adminChat read optimizations", () => {
   });
 
   it("serves overflow-only pages in order until the overflow drains", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const base = 1_700_000_000_000;
     for (let index = 0; index < 30; index++) {
       const latestMessageAt = base + 1_000 - index;
@@ -1392,9 +1364,8 @@ describe("adminChat read optimizations", () => {
   });
 
   it("keeps filtered search pages in score and recency order across offset cursors", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = adminTest(t);
+    const admin = await adminTest(t);
     const base = 1_700_000_000_000;
     for (let index = 0; index < 14; index++) {
       const latestMessageAt = base + 1_000 - index;

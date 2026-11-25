@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -17,11 +18,10 @@ afterEach(() => {
 
 async function setup() {
   vi.useFakeTimers();
-  vi.stubEnv('ADMIN_EMAILS', 'villa-cache-admin@example.com');
   vi.stubEnv('START_VILLA_INVALIDATION_ORIGIN', '');
   vi.stubEnv('START_VILLA_INVALIDATION_SECRET', '');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ email: 'villa-cache-admin@example.com', emailVerified: true });
+  const admin = await asTestOwner(t, { email: 'villa-cache-admin@example.com', emailVerified: true });
   const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Old Villa' });
   await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 15_000, status: 'active' });
   return { t, admin, propertyId };

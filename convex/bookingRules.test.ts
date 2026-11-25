@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -22,7 +23,6 @@ const webStay = { ...stay, guestEmail: 'guest@example.com' };
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(now);
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 });
 afterEach(() => {
 	vi.useRealTimers();
@@ -32,7 +32,7 @@ afterEach(() => {
 
 async function setup(rules?: Partial<BookingRules>) {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { propertyId, sessionId } = await t.run(async (ctx) => ({
 		propertyId: await ctx.db.insert('properties', {
 			slug: 'villa',

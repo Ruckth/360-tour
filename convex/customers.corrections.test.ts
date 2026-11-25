@@ -1,7 +1,8 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { assertCustomerCanLink, assertCustomerReviewed, mergeCustomerRecords } from './pos/private/customerModel';
@@ -10,9 +11,9 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 const firstPage = { numItems: 20, cursor: null };
-function setup() {
+async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
   const create = (name = 'Ann Lee') => admin.mutation(api.pos.customers.createCustomer, { name });
   const profile = (customerId: Id<'customers'>) => admin.query(api.pos.customers.getCustomer, { customerId });
@@ -25,12 +26,11 @@ function setup() {
   const mergeArgs = (sourceId: Id<'customers'>, destinationId: Id<'customers'>) => ({ sourceId, destinationId, sourceRevision: 0, destinationRevision: 0, reason: 'Confirmed same guest by phone', idempotencyKey: 'merge-attempt-01' });
   return { t, admin, stranger, create, profile, history, orders, mergeArgs };
 }
-beforeEach(() => { vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe('customer corrections', () => {
   it('supplies POS guards that reject archived/merged links and require the exact reviewed revision', async () => {
-    const { t, create } = setup();
+    const { t, create } = await setup();
     const id = await create(); const other = await create();
     const customer = (await t.run(ctx => ctx.db.get(id)))!;
     expect(assertCustomerCanLink(customer)).toEqual(customer);
@@ -48,7 +48,7 @@ describe('customer corrections', () => {
     expect(() => assertCustomerReviewed({ ...customer, archivedAt: 1, revision: 1 }, 1)).not.toThrow();
   });
   it('records business before/after and actor atomically, checks revisions, and skips no-ops', async () => {
-    const { admin, create, profile, history } = setup();
+    const { admin, create, profile, history } = await setup();
     const customerId = await create('An Lee');
     await admin.mutation(api.pos.customers.updateCustomer, { customerId, name: 'Ann Lee', notes: 'Prefers email', expectedRevision: 0 });
     expect(await profile(customerId)).toMatchObject({ name: 'Ann Lee', revision: 1, notes: 'Prefers email' });
@@ -62,14 +62,14 @@ describe('customer corrections', () => {
   });
 
   it('allows correction of legacy invalid contact data and treats absent revisions as zero', async () => {
-    const { t, admin, profile } = setup();
+    const { t, admin, profile } = await setup();
     const customerId = await t.run(ctx => ctx.db.insert('customers', { name: 'Legacy', phone: 'old text', email: 'invalid', createdBy: 'old', createdAt: 1, updatedAt: 1 }));
     await admin.mutation(api.pos.customers.updateCustomer, { customerId, expectedRevision: 0, name: 'Legacy corrected', phone: 'old text', email: 'valid@example.com' });
     expect(await profile(customerId)).toMatchObject({ revision: 1, phone: 'old text', email: 'valid@example.com' });
   });
 
   it('archives and restores with discoverable paginated access and retains linked orders and receipt snapshots', async () => {
-    const { t, admin, create, profile, history, orders } = setup();
+    const { t, admin, create, profile, history, orders } = await setup();
     const customerId = await create();
     const [orderId] = await orders(customerId, 1, { status: 'paid', customerSnapshot: { name: 'Issued spelling' }, receiptNumber: 52 });
     await admin.mutation(api.pos.customers.setCustomerArchived, { customerId, archived: true, expectedRevision: 0 });
@@ -85,7 +85,7 @@ describe('customer corrections', () => {
   });
 
   it('paginates beyond 20 namesakes without merging or dropping identities', async () => {
-    const { admin, create } = setup();
+    const { admin, create } = await setup();
     const ids = await Promise.all(Array.from({ length: 25 }, () => create()));
     const first = await admin.query(api.pos.customers.browseCustomers, { query: 'Ann', archived: false, paginationOpts: firstPage });
     expect(first.page).toHaveLength(20); expect(first.isDone).toBe(false);
@@ -95,7 +95,7 @@ describe('customer corrections', () => {
   });
 
   it('retains a continuation through hidden search pages and supports exact contact search', async () => {
-    const { admin } = setup();
+    const { admin } = await setup();
     const ids = [];
     for (let i = 0; i < 4; i++) ids.push(await admin.mutation(api.pos.customers.createCustomer, { name: 'Ann Lee', phone: '0812345678', email: 'ANN@example.com' }));
     for (const customerId of ids.slice(0, 3)) await admin.mutation(api.pos.customers.setCustomerArchived, { customerId, archived: true, expectedRevision: 0 });
@@ -112,7 +112,7 @@ describe('customer corrections', () => {
   });
 
   it('changes only the customer revision, preserving order revisions, timestamps and paid receipts', async () => {
-    const { t, admin, create, orders } = setup();
+    const { t, admin, create, orders } = await setup();
     const customerId = await create();
     const [active] = await orders(customerId, 1);
     const [empty] = await orders(customerId, 1, { hasItems: false, itemCount: 0 });
@@ -126,7 +126,7 @@ describe('customer corrections', () => {
   });
 
   it('corrects a customer with more than 100 empty linked orders', async () => {
-    const { t, admin, create, profile, orders } = setup();
+    const { t, admin, create, profile, orders } = await setup();
     const customerId = await create();
     await orders(customerId, 150, { hasItems: false, itemCount: 0 });
     const [active] = await orders(customerId, 1);
@@ -136,7 +136,7 @@ describe('customer corrections', () => {
   });
 
   it('edits more than 100 active and 1000 empty references without scanning or invalidating their orders', async () => {
-    const { t, admin, create, profile, history, orders } = setup();
+    const { t, admin, create, profile, history, orders } = await setup();
     const customerId = await create();
     const active = await orders(customerId, 151);
     await orders(customerId, 1001, { hasItems: false, itemCount: 0 });
@@ -147,7 +147,7 @@ describe('customer corrections', () => {
   });
 
   it('rejects stale payment review after customer correction without accepting stale checkout', async () => {
-    const { admin, create } = setup();
+    const { admin, create } = await setup();
     const customerId = await create();
     const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
     await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId });
@@ -157,7 +157,7 @@ describe('customer corrections', () => {
   });
 
   it('paginates order and history readers, with truthful recent-orders metadata', async () => {
-    const { admin, create, orders, profile } = setup();
+    const { admin, create, orders, profile } = await setup();
     const customerId = await create();
     const ids = await orders(customerId, 12);
     expect(await profile(customerId)).toMatchObject({ ordersHasMore: true });
@@ -174,7 +174,7 @@ describe('customer corrections', () => {
 
 describe('reviewed duplicate merge and bounded durable continuation', () => {
   it('preserves stable order/payment/line links and issued receipt snapshots, retains identities and logs both sides', async () => {
-    const { t, admin, create, orders, history, profile, mergeArgs } = setup();
+    const { t, admin, create, orders, history, profile, mergeArgs } = await setup();
     const sourceId = await create('An Lee'); const destinationId = await create('Ann Lee');
     const [draft] = await orders(sourceId, 1);
     const [paid] = await orders(sourceId, 1, { status: 'paid', receiptNumber: 73, customerSnapshot: { name: 'An Lee' }, settleKey: 'paid-before' });
@@ -198,7 +198,7 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
   });
 
   it('rejects stale source/destination and archive conflicts, preventing ambiguous or cyclic merges', async () => {
-    const { admin, create, mergeArgs } = setup();
+    const { admin, create, mergeArgs } = await setup();
     const sourceId = await create(); const destinationId = await create(); const args = mergeArgs(sourceId, destinationId);
     await expect(admin.run(ctx => mergeCustomerRecords(ctx, { ...args, destinationId: sourceId }))).rejects.toThrow('different');
     await expect(admin.run(ctx => mergeCustomerRecords(ctx, { ...args, reason: '' }))).rejects.toThrow('reason');
@@ -210,7 +210,7 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
 
   it('freezes a huge source, resumes partial runs safely, and records completion only after every reference moved', async () => {
     vi.useFakeTimers();
-    const { t, admin, create, orders, mergeArgs, profile, history } = setup();
+    const { t, admin, create, orders, mergeArgs, profile, history } = await setup();
     const sourceId = await create('Source'); const destinationId = await create('Kept');
     const ids = await orders(sourceId, 351);
     const args = mergeArgs(sourceId, destinationId);
@@ -252,7 +252,7 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
   });
 
   it('enables public merge and rejects archived/merged new links while allowing reviewed archived existing links', async () => {
-    const { admin, create, mergeArgs } = setup();
+    const { admin, create, mergeArgs } = await setup();
     const sourceId = await create(); const destinationId = await create();
     const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Water', price: 10000 } });
     await admin.mutation(api.pos.commands.linkCustomer.linkCustomer, { orderId, customerId: sourceId });
@@ -269,7 +269,7 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
   });
 
   it('denies all customer reads/mutations and the merge helper to non-admins', async () => {
-    const { admin, stranger, create, mergeArgs } = setup();
+    const { admin, stranger, create, mergeArgs } = await setup();
     const sourceId = await create(); const destinationId = await create();
     const mutationCases = [
       stranger.mutation(api.pos.customers.createCustomer, { name: 'No' }),
@@ -291,7 +291,7 @@ describe('reviewed duplicate merge and bounded durable continuation', () => {
 
 it('allows independent large merges into one destination while protecting its reviewed revision and preventing merge chains', async () => {
   vi.useFakeTimers();
-  const { t, admin, create, orders, mergeArgs, profile } = setup();
+  const { t, admin, create, orders, mergeArgs, profile } = await setup();
   const first = await create('First source'); const second = await create('Second source'); const kept = await create('Kept');
   await orders(first, 151); await orders(second, 151);
   await admin.mutation(api.pos.customers.mergeCustomers, mergeArgs(first, kept));

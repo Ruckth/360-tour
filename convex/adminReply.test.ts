@@ -1,7 +1,8 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
@@ -21,7 +22,6 @@ async function insertSession(t: ReturnType<typeof convexTest>, channel: "web" | 
 
 describe("admin replies", () => {
   it("requires an allowlisted admin before claiming a reply", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
     const sessionId = await insertSession(t, "web");
 
@@ -35,9 +35,8 @@ describe("admin replies", () => {
   });
 
   it("records one admin message after delivery and updates the session", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "web");
 
     const claim = await admin.mutation(api.messaging.adminReply.claim, {
@@ -65,9 +64,8 @@ describe("admin replies", () => {
   });
 
   it("allows a Facebook reply inside the 24-hour window", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await t.run((ctx) =>
       ctx.db.insert("messages", {
@@ -83,9 +81,8 @@ describe("admin replies", () => {
   });
 
   it("uses the saved LINE recipient and refuses duplicate claims", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "line");
     const args = { sessionId, requestId: "reply-3", content: "LINE reply" };
 
@@ -100,9 +97,8 @@ describe("admin replies", () => {
   });
 
   it("rejects a Facebook reply outside the visitor response window", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+    const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
     const sessionId = await insertSession(t, "facebook");
     await expect(
       admin.mutation(api.messaging.adminReply.claim, {

@@ -56,7 +56,7 @@ const rules: CashierRules = {
 function accessFor(who: typeof role): StaffAccessView {
   const operations = who !== "cashier";
   return {
-    email: EMAILS[who], role: who, pendingInvitation: null, marketingRole: null, cashierRules: rules,
+    email: EMAILS[who], role: who, pendingInvitation: null, companyScope: who === "owner", branches: [], marketingRole: null, cashierRules: rules,
     capabilities: {
       checkout: true, approve: operations, operations, manageTeam: who === "owner", settings: who === "owner",
       bookings: operations, services: operations, customers: operations, orders: operations, chats: operations,

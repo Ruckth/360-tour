@@ -1,11 +1,13 @@
-import { staffAccessMyAccessResult } from './validators';
+import { staffAccessListPeopleResult, staffAccessMyAccessResult } from './validators';
 import { ConvexError, v } from 'convex/values';
-import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from '../auth/model';
-import { adminEmails } from '../lib/adminEmails';
+import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './model';
+import { listBranchesForAccess, readBranch } from '../branches/model';
 import { STAFF_INVITATION_TTL_MS, staffRole } from '../shared/staffTypes';
-import { marketingAccess, marketingInvitationExpiry } from '../marketing/model';
+import { marketingInvitationExpiry } from '../marketing/model';
+import { marketingAccess } from './private/marketingAccess';
 import { appendRecordHistory, cashierRules } from '../settings/model';
-import { staffAccess, staffInvitationExpiry } from './private/staffAccess';
+import { boundStaffGrant, findStaffGrantByEmail, staffAccess, staffInvitationExpiry, validStaffEmail } from './private/staffAccess';
+import { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
 
 export const currentInternal = internalQuery({ args: {}, handler: staffAccess });
 
@@ -13,8 +15,9 @@ export const myAccess = publicQuery({
   returns: staffAccessMyAccessResult,
   reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
   const [access, rules, marketing] = await Promise.all([staffAccess(ctx), cashierRules(ctx), marketingAccess(ctx)]);
-  const { email, role, pendingInvitation } = access;
-  const publicAccess = { email, role, pendingInvitation };
+  const { email, role, pendingInvitation, companyScope } = access;
+  const branches = (await listBranchesForAccess(ctx, access)).map(({ _id: id, key, name, slug, state }) => ({ id, key, name, slug, state }));
+  const publicAccess = { email, role, pendingInvitation, companyScope, branches };
   return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingRole: marketing.role };
 } });
 
@@ -23,60 +26,70 @@ export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx 
   const email = identity?.email?.trim().toLowerCase();
   if (!identity || !email) throw new Error('Not authenticated');
   if (identity.emailVerified !== true) throw new ConvexError('Verify your email before claiming a staff invitation');
-  if (adminEmails().has(email)) return null;
-  const bound = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', identity.tokenIdentifier)).unique();
-  if (bound) return null;
-  const invite = await ctx.db.query('staffGrants').withIndex('by_email', q => q.eq('email', email)).unique();
+  if (await boundStaffGrant(ctx, identity)) return null;
+  const invite = await findStaffGrantByEmail(ctx, email);
   if (!invite || invite.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
-  if ((staffInvitationExpiry(invite) ?? 0) <= Date.now()) throw new ConvexError('Invitation expired. Ask an owner to resend it.');
+  const expiresAt = staffInvitationExpiry(invite);
+  if (expiresAt !== null && expiresAt <= Date.now()) throw new ConvexError('Invitation expired. Ask an owner to resend it.');
+  if (invite.role !== 'owner' && !(await listBranchesForAccess(ctx, { companyScope: false, branchIds: invite.branchIds })).length) {
+    throw new ConvexError('This invitation has no available branches. Ask an owner to update it.');
+  }
   await ctx.db.patch(invite._id, { tokenIdentifier: identity.tokenIdentifier, revision: (invite.revision ?? 0) + 1, updatedAt: Date.now() });
-  await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: invite._id, actor: email, kind: 'claimed', after: { role: invite.role } });
+  await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: invite._id, actor: email, kind: 'claimed', after: { role: invite.role, branchIds: invite.branchIds } });
   return null;
 } });
 
 /** Combined by email, with independent staff and marketing grants (never copied/merged). */
 export const listPeople = staffQuery({
-  capability: 'manageTeam', args: {}, handler: async ctx => {
+  capability: 'manageTeam', args: {}, returns: staffAccessListPeopleResult, handler: async ctx => {
   const staff = await ctx.db.query('staffGrants').take(501);
   const marketing = await ctx.db.query('marketingGrants').take(501);
   if (staff.length > 500 || marketing.length > 500) throw new ConvexError('Team is too large for this view. Contact support.');
-  const owners = adminEmails();
-  const emails = new Set([...owners, ...staff.map(g => g.email), ...marketing.map(g => g.email)]);
+  const staffByEmail = new Map(staff.map(grant => [grant.email, grant]));
+  const marketingByEmail = new Map(marketing.map(grant => [grant.email, grant]));
+  const emails = new Set([...staffByEmail.keys(), ...marketingByEmail.keys()]);
+  const now = Date.now();
+  const status = (row: { tokenIdentifier?: string; updatedAt: number }, expiresAt: number | null) => ({
+    claimed: Boolean(row.tokenIdentifier), expiresAt, expired: expiresAt !== null && expiresAt <= now, updatedAt: row.updatedAt,
+  });
   return [...emails].sort().map(email => {
-    const grant = staff.find(g => g.email === email);
-    const marketingGrant = marketing.find(g => g.email === email);
-    const describe = (row: typeof grant | typeof marketingGrant, expiresAt: number | null) => row ? {
-      id: row._id, role: row.role, claimed: Boolean(row.tokenIdentifier), expiresAt,
-      expired: expiresAt !== null && expiresAt <= Date.now(), updatedAt: row.updatedAt,
-    } : null;
+    const grant = staffByEmail.get(email);
+    const marketingGrant = marketingByEmail.get(email);
     return {
-      email, role: owners.has(email) ? 'owner' as const : grant?.role ?? null,
-      staffGrant: describe(grant, grant ? staffInvitationExpiry(grant) : null),
-      marketingGrant: describe(marketingGrant, marketingGrant ? marketingInvitationExpiry(marketingGrant) : null),
+      email, role: grant?.role ?? null, branchIds: grant?.branchIds ?? [],
+      staffGrant: grant ? { id: grant._id, role: grant.role, ...status(grant, staffInvitationExpiry(grant)) } : null,
+      marketingGrant: marketingGrant ? {
+        id: marketingGrant._id, role: marketingGrant.role, ...status(marketingGrant, marketingInvitationExpiry(marketingGrant)),
+      } : null,
     };
   });
 } });
 
 /** Invite, change a claimed role, or revoke. Updating an unclaimed invite never renews its deadline. */
 export const setGrant = staffMutation({
-  capability: 'manageTeam', args: { email: v.string(), role: v.union(staffRole, v.null()) }, handler: async (ctx, args) => {
+  capability: 'manageTeam', args: { email: v.string(), role: v.union(staffRole, v.null()), branchIds: v.array(v.id('branches')) },
+  returns: v.union(v.id('staffGrants'), v.null()), handler: async (ctx, args) => {
   const actor = ctx.staff;
-  const email = args.email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) throw new ConvexError('Enter a valid email');
-  if (adminEmails().has(email)) throw new ConvexError('Owners are managed through ADMIN_EMAILS and cannot be downgraded.');
-  const old = await ctx.db.query('staffGrants').withIndex('by_email', q => q.eq('email', email)).unique();
+  const email = validStaffEmail(args.email);
+  const old = await findStaffGrantByEmail(ctx, email);
+  if (old?.role === 'owner') throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
   if (args.role === null) {
     if (old) {
-      await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: old._id, actor: actor.email, kind: 'revoked', before: { email, role: old.role } });
+      await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: old._id, actor: actor.email, kind: 'revoked', before: { email, role: old.role, branchIds: old.branchIds } });
       await ctx.db.delete(old._id);
     }
     return null;
   }
+  const { branchIds } = args;
+  if (branchIds.length === 0) throw new ConvexError('Select at least one branch.');
+  if (new Set(branchIds).size !== branchIds.length) throw new ConvexError('Select each branch only once.');
+  const branches = await Promise.all(branchIds.map(id => readBranch(ctx, id)));
+  if (branches.some(branch => !branch || branch.state === 'archived')) throw new ConvexError('Select existing branches that are not archived.');
   const now = Date.now();
-  const fields = { email, role: args.role, revision: (old?.revision ?? 0) + 1, updatedAt: now, updatedByEmail: actor.email };
+  const fields = { email, role: args.role, branchIds, revision: (old?.revision ?? 0) + 1, updatedAt: now, updatedByEmail: actor.email };
   const id = old ? old._id : await ctx.db.insert('staffGrants', { ...fields, inviteExpiresAt: now + STAFF_INVITATION_TTL_MS, createdAt: now });
   if (old) await ctx.db.patch(id, fields);
-  await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: id, actor: actor.email, kind: old ? 'updated' : 'invited', ...(old ? { before: { role: old.role } } : {}), after: { email, role: args.role } });
+  await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: id, actor: actor.email, kind: old ? 'updated' : 'invited', ...(old ? { before: { role: old.role, branchIds: old.branchIds } } : {}), after: { email, role: args.role, branchIds } });
   return id;
 } });
 
@@ -85,6 +98,7 @@ export const updateInvitation = staffMutation({
   capability: 'manageTeam', args: { grantId: v.id('staffGrants'), action: v.union(v.literal('resend'), v.literal('expire')) }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const grant = await ctx.db.get(args.grantId);
+  if (grant?.role === 'owner') throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
   if (!grant || grant.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
   const expiresAt = Date.now() + (args.action === 'resend' ? STAFF_INVITATION_TTL_MS : 0);
   await ctx.db.patch(grant._id, { inviteExpiresAt: expiresAt, revision: (grant.revision ?? 0) + 1, updatedAt: Date.now(), updatedByEmail: actor.email });

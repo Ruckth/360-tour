@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { asTestOwner } from '../../convex/testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { StrictMode, act, createElement } from "react";
@@ -85,9 +86,8 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   vi.setSystemTime(new Date("2026-11-01T03:00:00.000Z"));
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   backend.call = (ref, args) => admin.mutation(ref, args as Record<string, unknown>);
   backend.calls = [];
   backend.mutations.clear();

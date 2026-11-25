@@ -1,38 +1,55 @@
 import { v } from 'convex/values';
-import { resolvedCashierRulesValidator } from '../shared/staffTypes';
+import { branchState } from '../shared/branchTypes';
+import { marketingRole } from '../shared/affiliateTypes';
+import { resolvedCashierRulesValidator, staffRole } from '../shared/staffTypes';
 
 export const usersFields = {
-		clerkId: v.string(),
-		tokenIdentifier: v.string(),
-		email: v.string(),
-		name: v.optional(v.string()),
-		imageUrl: v.optional(v.string())
-	};
+  clerkId: v.string(),
+  tokenIdentifier: v.string(),
+  email: v.string(),
+  name: v.optional(v.string()),
+  imageUrl: v.optional(v.string()),
+};
 
-// Published no-login response contracts. Fields are selected by each owning endpoint.
+export const grantRole = v.union(v.literal('owner'), staffRole);
+const branchIds = v.array(v.id('branches'));
+const expiry = v.union(v.null(), v.number());
+
 export const staffAccessMyAccessResult = v.object({
-"capabilities": v.object({
-"marketing": v.boolean(),
-"checkout": v.boolean(),
-"approve": v.boolean(),
-"operations": v.boolean(),
-"manageTeam": v.boolean(),
-"settings": v.boolean(),
-"bookings": v.boolean(),
-"services": v.boolean(),
-"customers": v.boolean(),
-"orders": v.boolean(),
-"chats": v.boolean(),
-"properties": v.boolean(),
-"roster": v.boolean(),
-"reports": v.boolean(),
-}),
-"cashierRules": resolvedCashierRulesValidator,
-"marketingRole": v.union(v.null(), v.literal("manager"), v.literal("admin"), v.literal("marketer"), v.literal("finance"), v.literal("viewer")),
-"email": v.union(v.null(), v.string()),
-"role": v.union(v.null(), v.literal("manager"), v.literal("cashier"), v.literal("owner")),
-"pendingInvitation": v.union(v.null(), v.object({
-"role": v.union(v.literal("manager"), v.literal("cashier")),
-"expiresAt": v.number(),
-})),
+  email: v.union(v.null(), v.string()),
+  role: v.union(v.null(), grantRole),
+  companyScope: v.boolean(),
+  branches: v.array(v.object({ id: v.id('branches'), key: v.string(), name: v.string(), slug: v.string(), state: branchState })),
+  pendingInvitation: v.union(
+    v.null(),
+    v.object({ role: v.literal('owner'), expiresAt: v.null(), branchIds }),
+    v.object({ role: staffRole, expiresAt: v.number(), branchIds }),
+  ),
+  capabilities: v.object({
+    marketing: v.boolean(),
+    checkout: v.boolean(),
+    approve: v.boolean(),
+    operations: v.boolean(),
+    manageTeam: v.boolean(),
+    settings: v.boolean(),
+    bookings: v.boolean(),
+    services: v.boolean(),
+    customers: v.boolean(),
+    orders: v.boolean(),
+    chats: v.boolean(),
+    properties: v.boolean(),
+    roster: v.boolean(),
+    reports: v.boolean(),
+  }),
+  cashierRules: resolvedCashierRulesValidator,
+  marketingRole: v.union(v.null(), v.literal('admin'), marketingRole),
 });
+
+const grantStatus = { claimed: v.boolean(), expiresAt: expiry, expired: v.boolean(), updatedAt: v.number() };
+export const staffAccessListPeopleResult = v.array(v.object({
+  email: v.string(),
+  role: v.union(v.null(), grantRole),
+  branchIds,
+  staffGrant: v.union(v.null(), v.object({ id: v.id('staffGrants'), role: grantRole, ...grantStatus })),
+  marketingGrant: v.union(v.null(), v.object({ id: v.id('marketingGrants'), role: marketingRole, ...grantStatus })),
+}));

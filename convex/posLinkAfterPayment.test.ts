@@ -1,8 +1,9 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
@@ -16,12 +17,11 @@ import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
-beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'desk@example.com'));
 afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const service = (slug: string, name: string, price: number) => admin.mutation(api.services.commands.createService.createService, {

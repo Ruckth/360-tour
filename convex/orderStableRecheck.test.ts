@@ -7,7 +7,6 @@ import { seedStaffServicesData } from './maintenance/seeds/staffServices';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => {
-  vi.stubEnv('ADMIN_EMAILS', 'stable@example.com');
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-29T01:00:00Z'));
 });

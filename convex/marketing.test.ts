@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -9,7 +10,7 @@ const rules = { benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'ac
 const quote = { code: 'dcnt-f1-20 ', propertySlug: 'mossbell', checkIn: '2026-11-10', checkOut: '2026-11-12' };
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'Admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'Admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
     maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active',
@@ -20,7 +21,6 @@ async function setup() {
   return { t, admin, campaignId, couponId, propertyId, link };
 }
 beforeEach(() => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   vi.useFakeTimers();
   // UTC date is Nov 6, Bangkok date is Nov 7.
   vi.setSystemTime(new Date('2026-11-06T18:00:00Z'));

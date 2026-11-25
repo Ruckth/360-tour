@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -14,8 +15,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 it('rolls back the caller order counter and source link, then reuses one committed source order', async () => {
   const t = convexTest(schema, modules);
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
-  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
+  const owner = await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
   const staffId = await owner.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [], breaks: [] });
   const serviceId = await owner.mutation(api.services.commands.createService.createService, { slug: 'massage', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0, price: 10000, currency: 'THB', staffIds: [staffId] });
   const appointmentId = await t.run(ctx => ctx.db.insert('appointments', {
@@ -34,9 +34,8 @@ it('rolls back the caller order counter and source link, then reuses one committ
 });
 
 it('rolls back refund money, order revision and both audits when the outer caller fails; replay writes once', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
+  const owner = await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
   const { orderId } = await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 10000 } });
   await owner.mutation(api.pos.commands.settleOrder.settleOrder, { orderId, expectedRevision: 1, expectedDue: 10000, idempotencyKey: 'settle-model-test', tenders: [{ method: 'cash', amount: 10000 }] });
   const [line] = await t.run(ctx => orderLines(ctx, orderId));
@@ -59,7 +58,7 @@ it('rolls back refund money, order revision and both audits when the outer calle
 
 it('retires lib implementations without compatibility registrations for anonymous and owner clients', async () => {
   const t = convexTest(schema, modules);
-  for (const client of [t, t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' })]) {
+  for (const client of [t, await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' })]) {
     for (const [module, name] of Object.entries({ orderLines: 'orderLines', orderRefunds: 'executeOrderRefund', lineLinks: 'activeSourceLink',
       orderLinks: 'ensureLinkedOrder', displayView: 'displayOrderState', orderLifecycle: 'liveFees', staffApprovalState: 'assertNoPendingApprovals' })) {
       await expect(client.mutation(makeFunctionReference<'mutation'>(`lib/${module}:${name}`), {})).rejects.toThrow(`Could not find module for: "lib/${module}"`);

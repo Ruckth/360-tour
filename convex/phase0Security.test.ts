@@ -79,8 +79,7 @@ it('rejects respond for a session the caller does not own', async () => {
 
 it('hides rooms and reviews of draft properties', async () => {
 	const t = createHarness(convexTest);
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-	const admin = asAdmin(t);
+	const admin = await asAdmin(t);
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Draft Villa' });
 	await t.run(async ctx => {
 		await ctx.db.insert('tourScenes', { propertyId, slug: 'room', name: 'Room', imagePath: '/room.webp', hotspots: [] });

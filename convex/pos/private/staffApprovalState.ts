@@ -42,7 +42,7 @@ export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string
   // was created by a verified cashier; like authentication, bind by account,
   // since its verified primary email may have changed after accepting the invite.
   const role = grant?.role ?? null;
-  return { role, fingerprint: canonical({ role, grant }) };
+  return { role, branchIds: grant?.branchIds ?? [], fingerprint: canonical({ role, grant }) };
 }
 
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */

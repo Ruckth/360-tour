@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -13,9 +14,8 @@ const at = (time: string) => localDateTimeUtc(date, time);
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const staffIds = [];
 	for (const name of ['Mali', 'Nok']) {
 		staffIds.push(await admin.mutation(api.services.commands.createStaff.createStaff, {

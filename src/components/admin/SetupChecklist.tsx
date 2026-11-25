@@ -63,7 +63,7 @@ export function useSetupChecklist(): { items: Item[]; loading: boolean } {
   const items: Item[] = [
     {
       id: "admins",
-      label: "Admin sign-in (Clerk and ADMIN_EMAILS)",
+      label: "Admin sign-in (Clerk and owner grant)",
       done: true,
       href: "/admin/settings?tab=team",
       linkLabel: "Team",

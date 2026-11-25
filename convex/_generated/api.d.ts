@@ -9,7 +9,10 @@
  */
 
 import type * as auth_model from "../auth/model.js";
+import type * as auth_owners from "../auth/owners.js";
 import type * as auth_private_adminAuth from "../auth/private/adminAuth.js";
+import type * as auth_private_marketingAccess from "../auth/private/marketingAccess.js";
+import type * as auth_private_owners from "../auth/private/owners.js";
 import type * as auth_private_staffAccess from "../auth/private/staffAccess.js";
 import type * as auth_staffAccess from "../auth/staffAccess.js";
 import type * as auth_tables from "../auth/tables.js";
@@ -50,6 +53,11 @@ import type * as bookings_private_stayOverlap from "../bookings/private/stayOver
 import type * as bookings_private_stays from "../bookings/private/stays.js";
 import type * as bookings_tables from "../bookings/tables.js";
 import type * as bookings_validators from "../bookings/validators.js";
+import type * as branches_branches from "../branches/branches.js";
+import type * as branches_model from "../branches/model.js";
+import type * as branches_private_branches from "../branches/private/branches.js";
+import type * as branches_tables from "../branches/tables.js";
+import type * as branches_validators from "../branches/validators.js";
 import type * as catalog_adminProperties from "../catalog/adminProperties.js";
 import type * as catalog_adminReviews from "../catalog/adminReviews.js";
 import type * as catalog_model from "../catalog/model.js";
@@ -101,7 +109,6 @@ import type * as concierge_tools_validation from "../concierge/tools/validation.
 import type * as concierge_turn from "../concierge/turn.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
-import type * as lib_adminEmails from "../lib/adminEmails.js";
 import type * as lib_maintenance from "../lib/maintenance.js";
 import type * as lib_readBudget from "../lib/readBudget.js";
 import type * as maintenance_aiEval from "../maintenance/aiEval.js";
@@ -326,8 +333,10 @@ import type * as shared_affiliateTypes from "../shared/affiliateTypes.js";
 import type * as shared_appointmentAudit from "../shared/appointmentAudit.js";
 import type * as shared_appointmentWindow from "../shared/appointmentWindow.js";
 import type * as shared_bookingMoney from "../shared/bookingMoney.js";
+import type * as shared_branchTypes from "../shared/branchTypes.js";
 import type * as shared_calendar from "../shared/calendar.js";
 import type * as shared_chatCouponCopy from "../shared/chatCouponCopy.js";
+import type * as shared_chatCouponTypes from "../shared/chatCouponTypes.js";
 import type * as shared_chatPresence from "../shared/chatPresence.js";
 import type * as shared_chatReuse from "../shared/chatReuse.js";
 import type * as shared_chatSuggestions from "../shared/chatSuggestions.js";
@@ -376,6 +385,7 @@ import type * as shared_profitability from "../shared/profitability.js";
 import type * as shared_replyCards from "../shared/replyCards.js";
 import type * as shared_richMessages from "../shared/richMessages.js";
 import type * as shared_schedule from "../shared/schedule.js";
+import type * as shared_serviceOptions from "../shared/serviceOptions.js";
 import type * as shared_serviceSchedule from "../shared/serviceSchedule.js";
 import type * as shared_serviceScheduleTypes from "../shared/serviceScheduleTypes.js";
 import type * as shared_serviceVat from "../shared/serviceVat.js";
@@ -399,7 +409,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "auth/model": typeof auth_model;
+  "auth/owners": typeof auth_owners;
   "auth/private/adminAuth": typeof auth_private_adminAuth;
+  "auth/private/marketingAccess": typeof auth_private_marketingAccess;
+  "auth/private/owners": typeof auth_private_owners;
   "auth/private/staffAccess": typeof auth_private_staffAccess;
   "auth/staffAccess": typeof auth_staffAccess;
   "auth/tables": typeof auth_tables;
@@ -440,6 +453,11 @@ declare const fullApi: ApiFromModules<{
   "bookings/private/stays": typeof bookings_private_stays;
   "bookings/tables": typeof bookings_tables;
   "bookings/validators": typeof bookings_validators;
+  "branches/branches": typeof branches_branches;
+  "branches/model": typeof branches_model;
+  "branches/private/branches": typeof branches_private_branches;
+  "branches/tables": typeof branches_tables;
+  "branches/validators": typeof branches_validators;
   "catalog/adminProperties": typeof catalog_adminProperties;
   "catalog/adminReviews": typeof catalog_adminReviews;
   "catalog/model": typeof catalog_model;
@@ -491,7 +509,6 @@ declare const fullApi: ApiFromModules<{
   "concierge/turn": typeof concierge_turn;
   crons: typeof crons;
   http: typeof http;
-  "lib/adminEmails": typeof lib_adminEmails;
   "lib/maintenance": typeof lib_maintenance;
   "lib/readBudget": typeof lib_readBudget;
   "maintenance/aiEval": typeof maintenance_aiEval;
@@ -716,8 +733,10 @@ declare const fullApi: ApiFromModules<{
   "shared/appointmentAudit": typeof shared_appointmentAudit;
   "shared/appointmentWindow": typeof shared_appointmentWindow;
   "shared/bookingMoney": typeof shared_bookingMoney;
+  "shared/branchTypes": typeof shared_branchTypes;
   "shared/calendar": typeof shared_calendar;
   "shared/chatCouponCopy": typeof shared_chatCouponCopy;
+  "shared/chatCouponTypes": typeof shared_chatCouponTypes;
   "shared/chatPresence": typeof shared_chatPresence;
   "shared/chatReuse": typeof shared_chatReuse;
   "shared/chatSuggestions": typeof shared_chatSuggestions;
@@ -766,6 +785,7 @@ declare const fullApi: ApiFromModules<{
   "shared/replyCards": typeof shared_replyCards;
   "shared/richMessages": typeof shared_richMessages;
   "shared/schedule": typeof shared_schedule;
+  "shared/serviceOptions": typeof shared_serviceOptions;
   "shared/serviceSchedule": typeof shared_serviceSchedule;
   "shared/serviceScheduleTypes": typeof shared_serviceScheduleTypes;
   "shared/serviceVat": typeof shared_serviceVat;

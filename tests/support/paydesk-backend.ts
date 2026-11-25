@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { seedTestBranch } from '../../convex/testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { useEffect, useSyncExternalStore } from "react";
 import { getFunctionName, type FunctionArgs, type FunctionReference, type FunctionReturnType } from "convex/server";
@@ -27,7 +28,7 @@ export async function createPayDeskBackend(options: { mode?: "direct" | "attempt
   async function grant() {
     await t.run(async (ctx) => {
       const old = await ctx.db.query("staffGrants").withIndex("by_email", (q) => q.eq("email", staff.email)).unique();
-      const fields = { email: staff.email, tokenIdentifier: identity().tokenIdentifier, role: staff.role, revision: 1, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: "system:seed" };
+      const fields = { branchIds: [await seedTestBranch(ctx)], email: staff.email, tokenIdentifier: identity().tokenIdentifier, role: staff.role, revision: 1, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: "system:seed" };
       if (old) await ctx.db.patch(old._id, fields);
       else await ctx.db.insert("staffGrants", fields);
     });

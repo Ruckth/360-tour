@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -26,9 +27,8 @@ const pendingOf = <T extends { status: string }>(result: T) => {
 };
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const displays = () => t.run((ctx) => ctx.db.query('displays').collect());
 	const list = (clientId = HERE) => admin.query(api.pos.displays.listDisplays, { clientId });

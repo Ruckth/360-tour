@@ -12,9 +12,11 @@ import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking
 
 import { insertOrder } from '../pos/model';
 import { createGuestToken, hashGuestToken, initialInboxProjection, inboxProjection } from '../messaging/model';
-import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
+import { grantCompanyOwner } from '../auth/model';
+import { insertBranch, PRIMARY_BRANCH } from '../branches/model';
+import { DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS } from '../shared/staffTypes';
 
-export type ScenarioName = 'empty' | 'demo-resort' | 'busy-weekend';
+export type ScenarioName = 'empty' | 'demo-resort' | 'busy-weekend' | 'two-branch';
 const tables = Object.keys(schema.tables) as TableNames[];
 export async function scenarioCounts(ctx: MutationCtx) {
   const counts = {} as Record<TableNames, number>;
@@ -25,11 +27,33 @@ export async function scenarioCounts(ctx: MutationCtx) {
   }
   return counts;
 }
+async function seedTwoBranchAccess(ctx: MutationCtx, samui: Id<'branches'>, now: number) {
+  const phuket = await insertBranch(ctx, {
+    key: 'phuket', slug: 'phuket', name: 'Phuket', state: 'setup',
+    issuer: { ...PRIMARY_BRANCH.issuer, branchCode: '00001', address: '21 Moo 5, Kamala, Kathu, Phuket 83150' },
+  }, 'system:seed');
+  await grantCompanyOwner(ctx, 'owner@example.com');
+  await grantCompanyOwner(ctx, 'recovery@example.com');
+  const invites = [
+    { email: 'niran@example.com', role: 'manager', branchIds: [samui, phuket] },
+    { email: 'ploy@example.com', role: 'cashier', branchIds: [samui] },
+    { email: 'kanya@example.com', role: 'manager', branchIds: [phuket] },
+  ] as const;
+  for (const { branchIds, ...invite } of invites) {
+    await ctx.db.insert('staffGrants', {
+      ...invite, branchIds: [...branchIds], revision: 1, inviteExpiresAt: now + STAFF_INVITATION_TTL_MS,
+      createdAt: now, updatedAt: now, updatedByEmail: 'system:seed',
+    });
+  }
+}
+
 /** Atomic, bounded sample data. Refuses any nonempty database; it never clears or partially repairs one. */
 export async function seedScenario(ctx: MutationCtx, name: ScenarioName) {
   for (const table of tables) if (await ctx.db.query(table).first()) throw new Error(`Seed requires an empty database; ${table} is not empty`);
   if (name === 'empty') return { scenario: name, counts: await scenarioCounts(ctx), bookings: [], conversation: null };
   const now = Date.now();
+  const samui = await insertBranch(ctx, PRIMARY_BRANCH, 'system:seed');
+  if (name === 'two-branch') await seedTwoBranchAccess(ctx, samui, now);
   const properties = await seedProperties(ctx);
   await seedRooms(ctx, properties);
   await seedReviews(ctx, properties);

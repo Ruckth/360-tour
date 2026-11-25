@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import type { AppointmentHistoryEntry } from './services/private/appointmentChanges';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -18,7 +19,7 @@ const future = at('2026-11-02');
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Mali', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
@@ -34,7 +35,7 @@ async function setup() {
   return { t, admin, staffId, serviceId, book, get, history };
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('admin appointment corrections', () => {

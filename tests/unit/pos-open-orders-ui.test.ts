@@ -17,7 +17,7 @@ import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
  */
 
 const CASHIER: StaffAccessView = {
-  email: "mint@example.com", role: "cashier", pendingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+  email: "mint@example.com", role: "cashier", pendingInvitation: null, companyScope: false, branches: [], marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: false, operations: false, manageTeam: false, settings: false, bookings: false, services: false,
     customers: false, orders: false, chats: false, properties: false, roster: false, reports: false, marketing: false,

@@ -1,3 +1,4 @@
+import { seedTestBranch } from '../../convex/testing/staff.test-support';
 import { act } from "../support/checkout-act";
 // @vitest-environment happy-dom
 import { createElement, type ComponentProps } from "react";
@@ -97,7 +98,7 @@ async function productOrder(desk: Desk, price: number) {
   await productSales(desk, "everyone");
   const orderId = await desk.order([{ name: "Tote", price }]);
   await desk.t.run(async (ctx) => {
-    const branchId = await ctx.db.insert("branches", { key: "default" });
+    const branchId = await seedTestBranch(ctx);
     const productId = await ctx.db.insert("products", { categoryId: await ctx.db.insert("productCategories", { name: "Shop", sort: 0 }), name: "Tote", status: "active", vatProfile: "standard", options: [], minPrice: price, maxPrice: price, variantCount: 1, sort: 0, revision: 0 });
     const variantId = await ctx.db.insert("productVariants", { productId, optionValueIds: [], label: "Tote", price, status: "active", revision: 0 });
     await ctx.db.insert("stockLevels", { branchId, productId, variantId, onHand: 5, revision: 0 });
@@ -327,7 +328,7 @@ describe("pay desk on attempts", () => {
     const desk = await createPayDeskBackend({ role: "manager" });
     const orderId = await desk.order([{ name: "Tea", price: 260000 }]);
     const other = desk.otherTill("nok@example.com");
-    await desk.t.run((ctx) => ctx.db.insert("staffGrants", { email: "nok@example.com", tokenIdentifier: "https://test.clerk.dev|nok@example.com", role: "cashier", revision: 1, createdAt: 0, updatedAt: 0, updatedByEmail: "system:seed" }));
+    await desk.t.run(async (ctx) => ctx.db.insert("staffGrants", { branchIds: [await seedTestBranch(ctx)], email: "nok@example.com", tokenIdentifier: "https://test.clerk.dev|nok@example.com", role: "cashier", revision: 1, createdAt: 0, updatedAt: 0, updatedByEmail: "system:seed" }));
     const order = (await desk.orderDoc(orderId))!;
     const till2 = await desk.otherAcknowledgedTill();
     const started = await other.mutation(api.pos.commands.startPaymentAttempt.startPaymentAttempt, {

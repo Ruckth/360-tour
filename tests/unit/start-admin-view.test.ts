@@ -47,7 +47,7 @@ describe("Start admin boundary components", () => {
     expect(html).toContain("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY");
     expect(html).toContain("CLERK_SECRET_KEY");
     expect(html).toContain("CLERK_JWT_ISSUER_DOMAIN");
-    expect(html).toContain("ADMIN_EMAILS");
+    expect(html).toContain("company owner grant");
   });
 
   it("renders AdminViewErrorCard with alert semantics, fallback copy, and retry action", async () => {

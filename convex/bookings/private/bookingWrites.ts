@@ -5,6 +5,7 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { nightsBetween } from '../../shared/dates';
 import { resortTodayIso } from '../../shared/time';
 import { evaluateOffer, normalizeCouponCode } from '../../shared/offers';
+import { findStaffGrantByEmail } from '../../auth/model';
 import { ensureLinkedOrder } from '../../pos/model';
 import { calculateDirectQuote } from '../../shared/pricing';
 import { assertPositiveInt, assertValidEmail, assertValidIsoDate } from '../../shared/validation';
@@ -217,7 +218,11 @@ export async function createBookingRecord(ctx: MutationCtx, input: BookingInput,
 		const redemptionId = await holdCouponRedemption(ctx, { coupon, couponVersion: coupon.currentVersion, discount: offer.discount, bookingId });
 		await ctx.db.patch(bookingId, { promotion: { couponId: coupon._id, couponVersion: coupon.currentVersion, code: coupon.code, discount: offer.discount, redemptionId } });
 	}
-	const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {linkId: marketingAttribution?.last?.linkId, marketing: input.source !== 'admin' ? input.marketing : undefined, couponId: coupon && offer?.couponStatus === 'applied' ? coupon._id : undefined, propertySlug: property.slug, guestEmail, staff: input.source === 'admin'});
+	const staffOrder = input.source === 'admin' || Boolean(guestEmail && (await findStaffGrantByEmail(ctx, guestEmail.toLowerCase()))?.role === 'owner');
+	const affiliateSnapshot = await captureAffiliateSnapshot(ctx, {
+		linkId: marketingAttribution?.last?.linkId, marketing: input.source !== 'admin' ? input.marketing : undefined,
+		couponId: coupon && offer?.couponStatus === 'applied' ? coupon._id : undefined, propertySlug: property.slug, guestEmail, staff: staffOrder,
+	});
 	await ctx.db.patch(bookingId, {affiliateSnapshot});
 	await syncAffiliateCredit(ctx, {bookingId}, actor);
 	const created = (await ctx.db.get(bookingId))!;

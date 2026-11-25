@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
@@ -8,14 +9,13 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 const now = Date.parse("2026-11-07T10:00:00Z");
 beforeEach(() => {
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   vi.spyOn(Date, "now").mockReturnValue(now);
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 it.each([false, true])("refuses expired invitations (explicit expiry: %s), then refreshes and claims the same row", async explicitExpiry => {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   const user = t.withIdentity({ emailVerified: true, email: "friend@example.com", tokenIdentifier: "issuer|friend" });
   const id = await t.run(ctx => ctx.db.insert("marketingGrants", {
     email: "friend@example.com", role: "viewer",
@@ -39,7 +39,7 @@ it.each([false, true])("refuses expired invitations (explicit expiry: %s), then 
 
 it("sets a 14-day deadline on new invitations and accepts one just before expiry", async () => {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   const user = t.withIdentity({ emailVerified: true, email: "friend@example.com", tokenIdentifier: "friend" });
   await admin.mutation(api.marketing.access.setGrant, { email: "friend@example.com", role: "finance" });
   expect(await t.run(async ctx => (await ctx.db.query('marketingGrants').take(10)).map(grant => ({ ...grant, expiresAt: marketingInvitationExpiry(grant), expired: marketingInvitationExpired(grant) })))).toMatchObject([{ expiresAt: now + MARKETING_INVITATION_TTL_MS, expired: false }]);

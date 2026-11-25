@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch } from '../../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import { ConvexError } from 'convex/values';
@@ -29,11 +30,11 @@ async function fixture() {
   const cashier = t.withIdentity({ email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
   const ids = await t.run(async ctx => {
     for (const role of ['cashier', 'manager'] as const) {
-      await ctx.db.insert('staffGrants', {
+      await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
         role, email: `${role}@example.com`, tokenIdentifier: role, createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
       });
     }
-    const branchId = await ctx.db.insert('branches', { key: 'main' });
+    const branchId = await seedTestBranch(ctx, 'main');
     const orderId = await ctx.db.insert('orders', {
       status: 'paid', orderNumber: 1, currency: 'THB', itemCount: 1, hasItems: true,
       total: 50_000, due: 0, revision: 1, paidAt: Date.now(), createdBy: 'cashier', createdAt: 1, updatedAt: 1,

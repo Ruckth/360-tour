@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch, asTestOwner } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
@@ -19,13 +20,13 @@ afterEach(() => {
 });
 
 async function setup() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   vi.spyOn(Date, 'now').mockReturnValue(now);
   const t = convexTest(schema, modules);
-  const as = (who: string) => t.withIdentity({ email: `${who}@example.com`, emailVerified: true, tokenIdentifier: who });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' });
+  const as = (who: string) => who === 'owner' ? owner : t.withIdentity({ email: `${who}@example.com`, emailVerified: true, tokenIdentifier: who });
   const ids = await t.run(async ctx => {
     for (const role of ['cashier', 'manager'] as const) {
-      await ctx.db.insert('staffGrants', { role, email: `${role}@example.com`, tokenIdentifier: role, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' });
+      await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)], role, email: `${role}@example.com`, tokenIdentifier: role, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' });
     }
     const order = (orderNumber: number, paidAt: number) => ctx.db.insert('orders', {
       orderNumber, receiptNumber: orderNumber, status: 'paid', paidAt, itemCount: 1, hasItems: true,
@@ -36,7 +37,7 @@ async function setup() {
     const lineId = await ctx.db.insert('orderLines', {
       orderId: today, kind: 'voucher', name: 'Gift voucher', qty: 1, unitPrice: 60000, catalogUnitPrice: 60000, currency: 'THB', createdAt: now,
     });
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const voucherId = await ctx.db.insert('vouchers', {
       faceValue: 60000, paidBalance: 40000, goodwillBalance: 10000, status: 'active', branchId,
       source: { kind: 'sale', orderId: today, lineId }, issuedExpiresAt: now + DAY, effectiveExpiresAt: now + DAY,
@@ -253,7 +254,7 @@ it('reads one branch\'s stock History through its own index', async () => {
       categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [], minPrice: 129000, maxPrice: 129000, variantCount: 1, sort: 1, revision: 0,
     });
     const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'M', price: 129000, status: 'active', revision: 0 });
-    const [here, there] = [await ctx.db.insert('branches', { key: 'beach' }), await ctx.db.insert('branches', { key: 'town' })];
+    const [here, there] = [await seedTestBranch(ctx, 'beach'), await seedTestBranch(ctx, 'town')];
     for (const [branchId, createdAt] of [[here, 1], [there, 2], [here, 3]] as const) {
       await ctx.db.insert('stockMovements', { branchId, variantId, delta: -1, before: 3, after: 2, kind: 'sale', sourceKey: `s${createdAt}`, actor: 'ploy', createdAt });
     }

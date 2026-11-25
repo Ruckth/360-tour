@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
@@ -27,16 +28,15 @@ function allocation(paidShare: number): Pick<Snapshot, 'paidShare' | 'vatBase' |
 it.each([[50000, 479300], [20000, 449300]])(
   'quotes each Gold Wellness part with %s satang left on the issued voucher',
   async (paidBalance, total) => {
-    vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
     vi.spyOn(Date, 'now').mockReturnValue(now);
     const t = convexTest(schema, modules);
-    const owner = t.withIdentity({ tokenIdentifier: 'owner', email: 'owner@example.com', emailVerified: true });
+    const owner = await asTestOwner(t, { tokenIdentifier: 'owner', email: 'owner@example.com', emailVerified: true });
     const { orderId, lineId } = await t.run(async ctx => {
       const orderId = await ctx.db.insert('orders', {
         orderNumber: 1, receiptNumber: 100, currency: 'THB', status: 'paid', itemCount: 1, hasItems: true,
         total: 690000, due: 0, revision: 1, paidAt: now, createdBy: 'owner', createdAt: now, updatedAt: now, vatVersion: 2,
       });
-      const branchId = await ctx.db.insert('branches', { key: 'default' });
+      const branchId = await seedTestBranch(ctx);
       const ownerId = await ctx.db.insert('customers', { name: 'Guest', createdAt: now, updatedAt: now, createdBy: 'owner' });
       const categoryId = await ctx.db.insert('productCategories', { name: 'Gifts', sort: 0 });
       const productId = await ctx.db.insert('products', {

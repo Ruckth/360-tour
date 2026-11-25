@@ -20,6 +20,7 @@
  * cheaper no-op-write avoidance that was actually shipped.
  */
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -186,9 +187,8 @@ describe("chat.touchSession presence writes", () => {
 
 describe("admin readers do not rerun on a presence-only heartbeat", () => {
   it("listTranscriptMessages reads no session document, so a heartbeat cannot change its result", async () => {
-    vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
     const t = convexTest(schema, modules);
-    const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
+    const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
     const sessionId = await newWebSession(t);
     const base = (await t.run((ctx) => ctx.db.get(sessionId)))?.lastSeenAt ?? 0;
     await giveMessage(t, sessionId, base);

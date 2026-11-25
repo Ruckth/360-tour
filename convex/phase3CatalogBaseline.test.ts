@@ -3,6 +3,7 @@
 // Measures real public/admin Convex registrations with ctx.meta.getTransactionMetrics(),
 // interval counters, and UTF-8 JSON serialized response bytes. No production behavior changes.
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import type { FunctionArgs, FunctionReference, FunctionReturnType } from 'convex/server';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -53,6 +54,7 @@ function record(
 	observations.push({ group, scenario, endpoint, rowsReturned, serializedBytes, metrics, notes });
 }
 
+// These end-to-end measurements include one indexed grant read on each owner-authorized call.
 function diffMetrics(before: TxMetrics, after: TxMetrics): MetricsDelta {
 	return {
 		documentsRead: after.documentsRead.used - before.documentsRead.used,
@@ -106,10 +108,9 @@ async function measureMutation<Ref extends FunctionReference<'mutation', 'public
 	});
 }
 
-function setupHarness() {
-	vi.stubEnv('ADMIN_EMAILS', ADMIN_EMAIL);
+async function setupHarness() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: ADMIN_EMAIL, tokenIdentifier: 'admin-baseline' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: ADMIN_EMAIL, tokenIdentifier: 'admin-baseline' });
 	return { t, admin };
 }
 
@@ -264,7 +265,7 @@ describe('Catalog cost measurements: tour scenes (1 / 10 / 50 scenes and 10x unr
 		{ label: '50 scenes (4 hotspots/scene)', count: 50, hotspots: 4 },
 		{ label: '50 scenes (20 hotspots/scene, MAX_HOTSPOTS)', count: 50, hotspots: 20 }
 	])('measures catalog/properties:getTourRooms at $label', async ({ label, count, hotspots }) => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		await t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', makeProperty('target-villa', 'active'));
 			await seedScenesForProperty(ctx, propertyId, count, hotspots);
@@ -300,7 +301,7 @@ describe('Catalog cost measurements: tour scenes (1 / 10 / 50 scenes and 10x unr
 	});
 
 	it('keeps getTourRooms constant when unrelated villas and scenes grow 10x', async () => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		await t.run(async (ctx) => {
 			const targetId = await ctx.db.insert('properties', makeProperty('target-villa', 'active'));
 			await seedScenesForProperty(ctx, targetId, 10, 4);
@@ -354,7 +355,7 @@ describe('Catalog cost measurements: single-villa detail & OTA (0 / 20 reviews a
 		{ label: '20 reviews', storedReviews: 20, expectedReturned: 20, expectedDocsRead: 22 },
 		{ label: '50 stored reviews (capped at 20)', storedReviews: 50, expectedReturned: 20, expectedDocsRead: 22 }
 	])('measures catalog/publicProperties:getBySlug at $label', async ({ label, storedReviews, expectedReturned, expectedDocsRead }) => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		await t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', makeProperty('target-villa', 'active', ['scene-01', 'scene-02']));
 			await seedReviewsForProperty(ctx, propertyId, storedReviews, 5);
@@ -381,7 +382,7 @@ describe('Catalog cost measurements: single-villa detail & OTA (0 / 20 reviews a
 	});
 
 	it('keeps getBySlug and getOtaComparison constant under 10x unrelated villas, reviews and OTA rates', async () => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		const platforms = ['booking_com', 'agoda', 'airbnb', 'expedia'] as const;
 
 		await t.run(async (ctx) => {
@@ -480,7 +481,7 @@ describe('Catalog cost measurements: catalogue listing (1 / 100 active villas an
 		{ activeCount: 100, inactiveCount: 0, label: '100 active villas (0 inactive)' },
 		{ activeCount: 100, inactiveCount: 100, label: '100 active villas + 100 inactive (draft/archived)' }
 	])('measures publicProperties:list, properties:list and listSlugs at $label', async ({ activeCount, inactiveCount, label }) => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < activeCount; i++) {
 				const slug = `active-${String(i).padStart(3, '0')}`;
@@ -532,7 +533,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 	it('benchmarks ranked reviews on all-active, realistic mixed active/archived, archived-top, bounded-200, and 10x total rows', async () => {
 		// Scenario A: 200 reviews, all on 5 active villas (best case for active match density).
 		{
-			const { t } = setupHarness();
+			const { t } = await setupHarness();
 			await t.run(async (ctx) => {
 				const activeIds: Id<'properties'>[] = [];
 				for (let v = 0; v < 5; v++) {
@@ -556,7 +557,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 
 		// Scenario B: Realistic mixed 200 reviews (60% active across 6 villas, 40% archived/draft across 4 villas, interleaved).
 		{
-			const { t } = setupHarness();
+			const { t } = await setupHarness();
 			await t.run(async (ctx) => {
 				const villas: Id<'properties'>[] = [];
 				for (let v = 0; v < 6; v++) {
@@ -586,7 +587,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 
 		// Scenario C: Realistic mixed 200 reviews with 80 newest 5-star reviews on 8 archived/draft villas ahead of 120 active reviews.
 		{
-			const { t } = setupHarness();
+			const { t } = await setupHarness();
 			await t.run(async (ctx) => {
 				const activeIds: Id<'properties'>[] = [];
 				const inactiveIds: Id<'properties'>[] = [];
@@ -620,7 +621,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 
 		// Scenario D: Original bounded-200 behavior (201 archived/draft 5-star reviews ahead of 20 active reviews).
 		{
-			const { t } = setupHarness();
+			const { t } = await setupHarness();
 			await t.run(async (ctx) => {
 				const activeId = await ctx.db.insert('properties', makeProperty('bound-active', 'active'));
 				const archivedId = await ctx.db.insert('properties', makeProperty('bound-archived', 'archived'));
@@ -647,7 +648,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 
 		// Scenario E: 10x total reviews (2,000 mixed reviews vs 200) verifies take(200) stays bounded at 200 review reads.
 		{
-			const { t } = setupHarness();
+			const { t } = await setupHarness();
 			await t.run(async (ctx) => {
 				const villas: Id<'properties'>[] = [];
 				for (let v = 0; v < 6; v++) {
@@ -675,7 +676,7 @@ describe('Catalog cost measurements: secondary candidate catalog/publicPropertie
 
 describe('Catalog cost measurements: existing booking overlap and initialized inbox scale controls', () => {
 	it('measures booking overlap availability controls at 1x and 10x unrelated rows', async () => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		const targetId = await t.run(async (ctx) => {
 			const id = await ctx.db.insert('properties', makeProperty('booking-target', 'active'));
 			for (let i = 0; i < 10; i++) {
@@ -804,7 +805,7 @@ describe('Catalog cost measurements: existing booking overlap and initialized in
 	});
 
 	it('measures initialized inbox scale control at pre-init, 1x (60 unrelated), and 10x (600 unrelated)', async () => {
-		const { t, admin } = setupHarness();
+		const { t, admin } = await setupHarness();
 		await t.run(async (ctx) => {
 			for (let i = 0; i < 10; i++) {
 				const propertyId = await ctx.db.insert('properties', makeProperty(`inbox-villa-${i}`, 'active'));
@@ -838,7 +839,7 @@ describe('Catalog cost measurements: existing booking overlap and initialized in
 			(res) => res.sessions.length
 		);
 		expect(beforeInit.rowsReturned).toBe(10);
-		expect(beforeInit.metrics.documentsRead).toBe(41);
+		expect(beforeInit.metrics.documentsRead).toBe(1 + 41);
 
 		await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
 
@@ -889,7 +890,7 @@ describe('Catalog cost measurements: existing booking overlap and initialized in
 		);
 
 		expect(afterInit1x.rowsReturned).toBe(10);
-		expect(afterInit1x.metrics.documentsRead).toBe(20);
+		expect(afterInit1x.metrics.documentsRead).toBe(1 + 20);
 		expect(afterInit10x.metrics).toEqual(afterInit1x.metrics);
 		expect(afterInit10x.serializedBytes).toBe(afterInit1x.serializedBytes);
 
@@ -911,7 +912,7 @@ describe('Catalog cost measurements: existing booking overlap and initialized in
 
 describe('Catalog cost measurements: catalog write-path amplification on 10 / 50 scenes', () => {
 	it('measures scene edit, hotspot edit, reorder, create, delete, and property update mutations', async () => {
-		const { t, admin } = setupHarness();
+		const { t, admin } = await setupHarness();
 		const { propertyId, firstRoomId, lastRoomId, slugs } = await t.run(async (ctx) => {
 			const id = await ctx.db.insert('properties', makeProperty('write-villa', 'active'));
 			const createdSlugs = await seedScenesForProperty(ctx, id, 49, 4);
@@ -975,10 +976,10 @@ describe('Catalog cost measurements: catalog write-path amplification on 10 / 50
 		expect(setHotspots.metrics.documentsRead).toBeGreaterThanOrEqual(50);
 		expect(reorder.metrics.documentsRead).toBeGreaterThanOrEqual(50);
 		expect(deleteRoom.metrics.documentsRead).toBeGreaterThanOrEqual(50);
-		expect(updateRoom.metrics.documentsRead).toBe(2);
-		expect(updateRoom.metrics.databaseQueries).toBe(2);
-		expect(shrinkRoom.metrics.documentsRead).toBe(4);
-		expect(shrinkRoom.metrics.databaseQueries).toBe(2);
+		expect(updateRoom.metrics.documentsRead).toBe(1 + 2);
+		expect(updateRoom.metrics.databaseQueries).toBe(1 + 2);
+		expect(shrinkRoom.metrics.documentsRead).toBe(1 + 4);
+		expect(shrinkRoom.metrics.databaseQueries).toBe(1 + 2);
 		expect(priceUpdate.metrics.documentsRead).toBeLessThan(10);
 
 		record(
@@ -1021,7 +1022,7 @@ describe('Catalog cost measurements: catalog write-path amplification on 10 / 50
 
 describe('Catalog cost measurements: a growing two-room rename', () => {
 	it('certifies a complete older scene range once and skips it on later edits', async () => {
-		const { t, admin } = setupHarness();
+		const { t, admin } = await setupHarness();
 		const { roomId, otherId } = await t.run(async ctx => {
 			const propertyId = await ctx.db.insert('properties', makeProperty('two-room-villa', 'active'));
 			const roomId = await ctx.db.insert('tourScenes', makeScene(propertyId, 1, 2, 4, 'room'));
@@ -1031,13 +1032,13 @@ describe('Catalog cost measurements: a growing two-room rename', () => {
 		const first = await measureMutation(admin, api.catalog.properties.updateRoom, {
 			roomId, name: 'Room one with a longer name'
 		});
-		expect(first.metrics).toMatchObject({ documentsRead: 4, databaseQueries: 3, documentsWritten: 3 });
+		expect(first.metrics).toMatchObject({ documentsRead: 1 + 4, databaseQueries: 1 + 3, documentsWritten: 3 });
 		expect(await t.run(ctx => ctx.db.get(roomId))).toMatchObject({ ordinaryTourCertified: true });
 		expect((await t.run(ctx => ctx.db.get(otherId)))?.ordinaryTourCertified).toBeUndefined();
 		const steady = await measureMutation(admin, api.catalog.properties.updateRoom, {
 			roomId, name: 'Room one with an even longer name'
 		});
-		expect(steady.metrics).toMatchObject({ documentsRead: 4, databaseQueries: 2, documentsWritten: 3 });
+		expect(steady.metrics).toMatchObject({ documentsRead: 1 + 4, databaseQueries: 1 + 2, documentsWritten: 3 });
 		record('catalog-writes', 'updateRoom (first uncertified two-scene rename)', 'catalog/properties:updateRoom', first);
 		record('catalog-writes', 'updateRoom (steady certified two-scene rename)', 'catalog/properties:updateRoom', steady);
 	});
@@ -1045,7 +1046,7 @@ describe('Catalog cost measurements: a growing two-room rename', () => {
 
 describe('Catalog cost measurements: oversize scene fixture (51 scenes) & writer validation coverage', () => {
 	it('measures the read cost of preserving the configured first scene at 51 rooms', async () => {
-		const { t } = setupHarness();
+		const { t } = await setupHarness();
 		await t.run(async (ctx) => {
 			const propertyId = await ctx.db.insert('properties', makeProperty('oversize-villa', 'active'));
 			for (let i = 1; i <= 51; i++) {

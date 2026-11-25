@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import schema from './schema';
@@ -9,19 +10,18 @@ const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-12T03:00:00Z');
 const paginationOpts = { numItems: 20, cursor: null };
 
-beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'owner@example.com'));
 afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
+	const owner = await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'issuer|owner' });
 	const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'issuer|manager' });
 	const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'issuer|cashier' });
 	for (const [email, role, tokenIdentifier] of [
 		['manager@example.com', 'manager', 'issuer|manager'],
 		['cashier@example.com', 'cashier', 'issuer|cashier']
 	] as const) {
-		await t.run(ctx => ctx.db.insert('staffGrants', { email, role, tokenIdentifier, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
+		await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)], email, role, tokenIdentifier, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com' }));
 	}
 	let number = 0;
 	const order = (patch: Partial<Doc<'orders'>> = {}) => t.run(ctx => ctx.db.insert('orders', {
@@ -64,7 +64,7 @@ describe('checkout open orders', () => {
 		await order({ status: 'draft', createdBy: 'other@example.com' });
 		await order({ status: 'paid' });
 		await order({ status: 'discarded' });
-		const client = fixture[role];
+		const client: typeof fixture.owner = fixture[role];
 		const page = await client.query(api.pos.orders.listOpenOrders, { paginationOpts });
 		expect(page).toEqual(await client.query(api.pos.orders.listOrders, { filter: 'unpaid', paginationOpts }));
 		expect(page.page).toHaveLength(2);
@@ -91,7 +91,7 @@ describe('checkout open orders', () => {
 		const held2 = await order({ status: 'draft' });
 		await order({ status: 'paid' });
 		await order({ hasItems: false });
-		const client = fixture[role];
+		const client: typeof fixture.owner = fixture[role];
 		const first = await client.query(api.pos.orders.listOpenOrders, { paginationOpts: { numItems: 2, cursor: null } });
 		expect(first.isDone).toBe(false);
 		expect(first.page.map(row => row._id)).toEqual([held2, held1]);

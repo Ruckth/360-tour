@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import { convexToJson } from 'convex/values';
@@ -31,19 +32,18 @@ afterEach(() => {
 });
 
 async function setup() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   vi.spyOn(Date, 'now').mockReturnValue(now);
   const t = convexTest(schema, modules);
   const cashier = t.withIdentity({ email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
   const manager = t.withIdentity({ email: 'manager@example.com', emailVerified: true, tokenIdentifier: 'manager' });
-  const owner = t.withIdentity({ email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' });
   const guest = t.withIdentity({ email: 'guest@example.com', emailVerified: true, tokenIdentifier: 'guest' });
   const fixture = await t.run(async ctx => {
-    const grantId = await ctx.db.insert('staffGrants', {
+    const grantId = await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       role: 'cashier', email: 'cashier@example.com', tokenIdentifier: 'cashier',
       createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
     });
-    await ctx.db.insert('staffGrants', {
+    await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       role: 'manager', email: 'manager@example.com', tokenIdentifier: 'manager',
       createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
     });
@@ -54,7 +54,7 @@ async function setup() {
     const lineId = await ctx.db.insert('orderLines', {
       orderId, kind: 'voucher', name: 'Gift voucher', qty: 1, unitPrice: 60000, catalogUnitPrice: 60000, currency: 'THB', createdAt: now,
     });
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const voucherId = await ctx.db.insert('vouchers', {
       faceValue: 60000, paidBalance: 60000, goodwillBalance: 0, status: 'active', branchId,
       source: { kind: 'sale', orderId, lineId }, issuedExpiresAt: now + 86400000, effectiveExpiresAt: now + 86400000,

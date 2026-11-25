@@ -3,20 +3,20 @@
 // auth), permanent deletes refuse, but unknown-question review, archival, and the read-only
 // archive/list queries stay available.
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 const adminEmail = "admin@example.com";
 
-beforeEach(() => vi.stubEnv("ADMIN_EMAILS", adminEmail));
 afterEach(() => vi.unstubAllEnvs());
 
-function setup() {
+async function setup() {
   const t = convexTest(schema, modules);
-  return { t, admin: t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" }) };
+  return { t, admin: await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" }) };
 }
 
 async function createSession(t: ReturnType<typeof convexTest>, channel: "web" | "line" = "web") {
@@ -35,7 +35,7 @@ async function createSession(t: ReturnType<typeof convexTest>, channel: "web" | 
 describe("unknown-question review stays available", () => {
 
   it("groups and searches unknown questions by status", async () => {
-    const { t, admin } = setup();
+    const { t, admin } = await setup();
     const sessionId = await createSession(t);
     for (const question of ["Is there parking?", "Can I park a bus?", "Do you have a gym?", "Do you have a gym?"]) {
       // Distinct sessions preserve separate reports in the same normalized group.
@@ -62,7 +62,7 @@ describe("unknown-question review stays available", () => {
 describe("grouped unknown questions", () => {
 
   it("bounds Ignore and Reopen across groups and rejects oversized Undo lists", async () => {
-    const { t, admin } = setup();
+    const { t, admin } = await setup();
     const keys = Array.from({ length: 100 }, (_, index) => `report-${index}`);
     await t.run(async (ctx) => {
       for (const key of keys) {

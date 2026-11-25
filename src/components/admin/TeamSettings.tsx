@@ -4,7 +4,6 @@ import { basisPointsToPercent, percentToBasisPoints } from 'convex/shared/money'
 
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
 import type { CashierRules } from "convex/shared/staffTypes";
 import { Check, RotateCw, UserPlus } from "lucide-react";
@@ -27,7 +26,7 @@ import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { personLabel } from "./person-label";
-import { ROLE_LABELS } from "./staff-access";
+import { ROLE_LABELS, useStaffAccess } from "./staff-access";
 import { TONES } from "./status-tones";
 import { NumberField } from "./marketing/MarketingBits";
 
@@ -119,6 +118,9 @@ const ROLES_TIP = (
 
 function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { people: Person[] | undefined; inviteDirty: boolean; onDirtyChange: (dirty: boolean) => void; confirmDiscard: () => Promise<boolean> }) {
   const setStaffGrant = useMutation(api.auth.staffAccess.setGrant);
+  const { branches } = useStaffAccess();
+  const defaultBranch = branches.find((branch) => branch.key === "koh-samui") ?? branches[0];
+  const defaultBranchIds = defaultBranch ? [defaultBranch.id] : [];
   const updateInvitation = useMutation(api.auth.staffAccess.updateInvitation);
   const setMarketingGrant = useMutation(api.marketing.access.setGrant);
   const confirm = useConfirm();
@@ -158,10 +160,11 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
     const name = personLabel(person.email);
     if (role === null) {
       if (!(await confirm({ title: `Remove ${name} from the desk?`, description: "Their desk access ends now. Marketing access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
-      return save(person.email, () => setStaffGrant({ email: person.email, role: null }), `Removed ${name} from the desk.`);
+      return save(person.email, () => setStaffGrant({ email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
     }
     const done = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
-    return save(person.email, () => setStaffGrant({ email: person.email, role }), done);
+    const branchIds = person.staffGrant ? person.branchIds : defaultBranchIds;
+    return save(person.email, () => setStaffGrant({ email: person.email, role, branchIds }), done);
   }
 
   async function setMarketing(person: Person, role: MarketingRole | null) {
@@ -195,7 +198,7 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
             const ok = await save(
               email,
               async () => {
-                if (desk) await setStaffGrant({ email, role: desk });
+                if (desk) await setStaffGrant({ email, role: desk, branchIds: defaultBranchIds });
                 if (marketing) await setMarketingGrant({ email, role: marketing });
               },
               `Invited ${personLabel(email)}. They sign in with ${email} to activate it.`,
@@ -230,8 +233,8 @@ function PeoplePanel({ people, inviteDirty, onDirtyChange, confirmDiscard }: { p
                 void save(
                   person.email,
                   async () => {
-                    if (staff) await updateInvitation({ grantId: staff.id as Id<"staffGrants">, action: "resend" });
-                    if (marketing) await setMarketingGrant({ email: person.email, role: marketing.role as MarketingRole });
+                    if (staff) await updateInvitation({ grantId: staff.id, action: "resend" });
+                    if (marketing) await setMarketingGrant({ email: person.email, role: marketing.role });
                   },
                   `Invite renewed for ${personLabel(person.email)}.`,
                 );
@@ -303,7 +306,7 @@ function InviteForm({ busy, onInvite, onCancel, onDirtyChange }: {
   );
 }
 
-type Grant = NonNullable<Person["staffGrant"]>;
+type Grant = NonNullable<Person["staffGrant"] | Person["marketingGrant"]>;
 function inviteState(grant: Grant | null, prefix = "") {
   if (!grant || grant.claimed) return null;
   if (grant.expired) return `${prefix}Invite expired`;
@@ -312,8 +315,8 @@ function inviteState(grant: Grant | null, prefix = "") {
 
 /** "Cashier · Marketing Viewer": a person's roles as one line of text. */
 function rolesText(person: Person) {
-  const desk = person.staffGrant ? ROLE_LABELS[person.staffGrant.role as StaffRole] : null;
-  const marketing = person.marketingGrant ? `Marketing ${MARKETING_ROLE_LABELS[person.marketingGrant.role as MarketingRole]}` : null;
+  const desk = person.staffGrant ? ROLE_LABELS[person.staffGrant.role] : null;
+  const marketing = person.marketingGrant ? `Marketing ${MARKETING_ROLE_LABELS[person.marketingGrant.role]}` : null;
   return [desk, marketing].filter(Boolean).join(" · ") || "No access";
 }
 

@@ -7,11 +7,11 @@ import { asAdmin, createHarness, guestSession } from './testing/harness';
 import { channelLimitConfig, consumeChatAdmission } from './messaging/chatAdmission';
 import { CHAT_REPLY_LIMIT_DEFAULTS } from './shared/siteSettings';
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-13T06:00:00Z')); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-13T06:00:00Z')); });
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 it('saves separate web and LINE allowances, enforcing them across chats without sharing with WhatsApp', async () => {
-  const t = createHarness(convexTest), admin = asAdmin(t);
+  const t = createHarness(convexTest), admin = await asAdmin(t);
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 1, line: 2 }, expectedRevision: 0 });
   const web = await guestSession(t), otherWeb = await guestSession(t);
   const send = (guest: typeof web) => t.mutation(api.messaging.chat.sendMessage, { ...guest, clientMessageId: crypto.randomUUID(), content: 'Hello' });
@@ -35,7 +35,7 @@ it('saves separate web and LINE allowances, enforcing them across chats without 
 });
 
 it('applies saved per-chat limits independently across conversations', async () => {
-  const t = createHarness(convexTest), admin = asAdmin(t);
+  const t = createHarness(convexTest), admin = await asAdmin(t);
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { perChat: 1 } });
   const one = await guestSession(t), two = await guestSession(t);
   await t.run(ctx => consumeChatAdmission(ctx, one.sessionId));
@@ -44,7 +44,7 @@ it('applies saved per-chat limits independently across conversations', async () 
 });
 
 it('gives each limit its own hourly count, including shard transitions and returning to an earlier value', async () => {
-  const t = createHarness(convexTest), admin = asAdmin(t), guest = await guestSession(t);
+  const t = createHarness(convexTest), admin = await asAdmin(t), guest = await guestSession(t);
   const admit = () => t.run(ctx => consumeChatAdmission(ctx, guest.sessionId));
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 1, perChat: 100 } });
   await admit(); await expect(admit()).rejects.toThrow();
@@ -62,7 +62,7 @@ it('gives each limit its own hourly count, including shard transitions and retur
 });
 
 it('retains unrelated per-chat usage and refreshes a changed per-chat allowance immediately', async () => {
-  const t = createHarness(convexTest), admin = asAdmin(t), guest = await guestSession(t);
+  const t = createHarness(convexTest), admin = await asAdmin(t), guest = await guestSession(t);
   const admit = () => t.run(ctx => consumeChatAdmission(ctx, guest.sessionId));
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { perChat: 1 } });
   await admit(); await expect(admit()).rejects.toThrow();
@@ -73,7 +73,7 @@ it('retains unrelated per-chat usage and refreshes a changed per-chat allowance 
 });
 
 it('records and restores reply limits, and restores defaults from older history', async () => {
-  const t = createHarness(convexTest), admin = asAdmin(t);
+  const t = createHarness(convexTest), admin = await asAdmin(t);
   expect((await admin.query(api.settings.settings.get, {})).chatReplyLimits).toEqual(CHAT_REPLY_LIMIT_DEFAULTS);
   await admin.mutation(api.settings.settings.update, { chatReplyLimits: { web: 2, line: 3 } });
   const entry = (await t.run(ctx => ctx.db.query('recordChanges').first()))!;
@@ -91,6 +91,6 @@ it('records and restores reply limits, and restores defaults from older history'
 
 it.each([{ web: 0 }, { line: 10001 }, { perChat: 1001 }, { whatsapp: 1.5 }, { instagram: NaN }])('rejects invalid settings %j before writing', async chatReplyLimits => {
   const t = createHarness(convexTest);
-  await expect(asAdmin(t).mutation(api.settings.settings.update, { chatReplyLimits })).rejects.toThrow('whole number');
+  await expect((await asAdmin(t)).mutation(api.settings.settings.update, { chatReplyLimits })).rejects.toThrow('whole number');
   expect(await t.run(ctx => ctx.db.query('siteSettings').first())).toBeNull();
 });

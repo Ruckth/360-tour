@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -8,9 +9,8 @@ const modules = import.meta.glob('./**/*.ts');
 afterEach(() => vi.unstubAllEnvs());
 
 it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protects live partner notes and credit history for %s', async role => {
-  vi.stubEnv('ADMIN_EMAILS', 'private-actor@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'private-actor@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'private-actor@example.com', tokenIdentifier: 'admin' });
   const reader = role === 'admin' ? admin : t.withIdentity({ emailVerified: true, email: 'reader@example.com', tokenIdentifier: 'reader' });
   const full = ['admin', 'finance', 'manager'].includes(role);
   if (role !== 'admin') await t.run(ctx => ctx.db.insert('marketingGrants', {

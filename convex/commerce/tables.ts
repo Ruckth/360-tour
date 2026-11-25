@@ -39,7 +39,6 @@ const adjustmentLogFields = {
 };
 
 export const commerceTables = {
-  branches: defineTable({ key: v.string() }).index('by_key', ['key']),
 
   productCategories: defineTable({
     name: v.string(), parentId: v.optional(v.id('productCategories')), sort: v.number(),

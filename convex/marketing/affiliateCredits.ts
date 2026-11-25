@@ -1,7 +1,6 @@
 import type { Infer } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { adminEmails } from '../lib/adminEmails';
 import { readBudget, ReadBudgetExceeded } from '../lib/readBudget';
 import { affiliateSnapshot } from '../shared/affiliateTypes';
 import { resortTodayIso } from '../shared/time';
@@ -144,7 +143,7 @@ export async function captureAffiliateSnapshot(
   const email = input.guestEmail?.trim().toLowerCase();
   if (email && candidates.some((c) => c.contactEmail === email))
     flags.push("self_referral");
-  if (input.staff || (email && adminEmails().has(email)))
+  if (input.staff)
     flags.push("staff_order");
   const linkCandidate = candidates.find(c => c.origin === "link");
   // Flags are review warnings; a recorded visit is the normal case and stays on the candidate only.

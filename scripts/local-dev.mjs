@@ -102,9 +102,9 @@ try {
     secrets.push(backend.adminKey);
     const response = await localFetch(url + '/api/update_environment_variables', {
       method: 'POST', headers: { Authorization: `Convex ${backend.adminKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ changes: [{ name: 'CLERK_JWT_ISSUER_DOMAIN', value: config.CLERK_JWT_ISSUER_DOMAIN }, { name: 'ADMIN_EMAILS', value: config.LOCAL_DEV_OWNER_EMAILS }] }),
+      body: JSON.stringify({ changes: [{ name: 'CLERK_JWT_ISSUER_DOMAIN', value: config.CLERK_JWT_ISSUER_DOMAIN }] }),
     });
-    if (!response.ok) throw new Error('Failed to configure local Clerk issuer/owner allowlist');
+    if (!response.ok) throw new Error('Failed to configure local Clerk issuer');
     await response.body?.cancel();
     const client = new ConvexHttpClient(url, { logger: false, fetch: localFetch });
     client.setAdminAuth(backend.adminKey);
@@ -114,6 +114,9 @@ try {
       try { result = await seedEmpty(() => client.mutation(makeFunctionReference('maintenance/seed:seedAll'), { scenario: 'demo-resort' })); return true; }
       catch (error) { if (/Could not find (?:public )?function|No functions found/.test(error.message)) return false; throw error; }
     }, 'backend deployment and empty-only seed');
+    for (const email of config.LOCAL_DEV_OWNER_EMAILS.split(',')) {
+      await client.mutation(makeFunctionReference('auth/owners:grantOwner'), { email });
+    }
     console.log(result === 'seeded' ? 'Local backend seeded from empty.' : 'Local backend data preserved; seed refused nonempty database.');
     processes.launch(process.execPath, devFrontendCommand(root, config.port), root, env);
     await wait(async () => { try { const response = await localFetch(`http://localhost:${config.port}/admin/chats`); await response.body?.cancel(); return response.ok; } catch { return false; } }, 'TanStack Start development server');

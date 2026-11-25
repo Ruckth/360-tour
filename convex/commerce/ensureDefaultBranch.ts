@@ -1,13 +1,13 @@
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { readBudget, reserveWrites } from '../lib/readBudget';
 
-const DEFAULT_BRANCH_KEY = 'default';
+import { insertBranch, PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
 
 export async function readDefaultBranch(ctx: QueryCtx) {
   const budget = readBudget(ctx);
   budget.range();
   budget.assert();
-  const branch = await ctx.db.query('branches').withIndex('by_key', q => q.eq('key', DEFAULT_BRANCH_KEY)).unique();
+  const branch = await readBranchByKey(ctx, PRIMARY_BRANCH.key);
   if (branch) budget.document(branch);
   budget.assert();
   return branch;
@@ -18,5 +18,5 @@ export async function ensureDefaultBranch(ctx: MutationCtx) {
   const branch = await readDefaultBranch(ctx);
   if (branch) return branch._id;
   reserveWrites(ctx, 1);
-  return await ctx.db.insert('branches', { key: DEFAULT_BRANCH_KEY });
+  return await insertBranch(ctx, PRIMARY_BRANCH, 'system:commerce');
 }

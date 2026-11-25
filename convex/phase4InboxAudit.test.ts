@@ -1,15 +1,16 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import { inboxProjectionReady, insertChannelEvent, patchChannelEvent } from './messaging/inboxProjection';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
-beforeEach(() => { vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); vi.useFakeTimers(); });
+beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 it('keeps internal inbox snapshots and web tool capabilities out of list, search and detail responses', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const { sessionId } = await t.mutation(api.messaging.chat.createSession, { channel: 'web', visitorId: 'audit-searchable' });
   const secrets = { accessToken: 'audit-booking-capability', confirmToken: 'audit-confirm-capability', guestPhone: 'audit-private-phone' };
   await t.run(async ctx => {
@@ -74,7 +75,7 @@ it('keeps projection readiness after eval creation and seeded scenario creation'
 });
 
 it('preserves absent historical inbox state for empty or already-answered chats during initialization', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const ids = await t.run(async ctx => {
     const ids = [];
     for (const kind of ['empty', 'answered']) {

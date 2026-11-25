@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent read-side photo regressions. All records exist only in convex-test.
@@ -9,9 +10,8 @@ const modules = import.meta.glob('./**/*.ts');
 afterEach(() => vi.unstubAllEnvs());
 
 it('keeps photo reads safe after deleted service, property and booking sources, without writing financial records', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'audit@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'audit@example.com', tokenIdentifier: 'audit' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'audit@example.com', tokenIdentifier: 'audit' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [],

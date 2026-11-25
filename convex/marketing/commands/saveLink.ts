@@ -1,8 +1,8 @@
 import { ConvexError, v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
-import { marketingMutation } from '../../auth/model';
+import { marketingMutation, requireMarketingPermission } from '../../auth/model';
 import { isMarketingLocale } from '../../shared/marketingSlugs';
-import { requireEditableDraft, requireMarketingPermission } from '../accessPolicy';
+import { requireEditableDraft } from '../accessPolicy';
 import { auditFields, destination, getOrThrow, recordChanges, slugCheck, validateLinkDestination } from '../catalogModel';
 
 export const saveLink = marketingMutation({

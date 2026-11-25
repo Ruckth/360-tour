@@ -13,9 +13,8 @@ export function AdminClerkSetupRequired() {
           Clerk is required for admin
         </h1>
         <p className="mt-4 text-sm leading-6 text-muted-foreground">
-          Add `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and
-          configure the Convex `CLERK_JWT_ISSUER_DOMAIN` plus `ADMIN_EMAILS`
-          environment variables before opening the dashboard.
+          Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`, then configure
+          `CLERK_JWT_ISSUER_DOMAIN` in Convex. Create a company owner grant before opening the dashboard.
         </p>
       </section>
     </main>

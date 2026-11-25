@@ -1,4 +1,3 @@
-import { type Infer } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { resortTodayIso } from '../../shared/time';
@@ -7,10 +6,7 @@ import { evaluateOffer, normalizeCouponCode, type OfferResult } from '../../shar
 import { couponVersion } from '../../marketing/model';
 import { quoteBookableStay, type StayInput } from './bookingWrites';
 
-export { chatCouponValidator } from '../validators';
-import { chatCouponValidator } from '../validators';
-
-export type ChatCouponSnapshot = Infer<typeof chatCouponValidator>;
+import type { ChatCouponSnapshot } from '../../shared/chatCouponTypes';
 
 /** Latest explicit guest choice, with withdrawals and replacements applied in transcript order. */
 export async function activeGuestCoupon(ctx: QueryCtx | MutationCtx, sessionId: Id<'conversations'>) {

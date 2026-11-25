@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -27,7 +28,6 @@ const stay = {
 };
 
 async function setup() {
-  vi.stubEnv("ADMIN_EMAILS", adminEmail);
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     await ctx.db.insert("properties", {
@@ -48,7 +48,7 @@ async function setup() {
       status: "active",
     });
   });
-  const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
   return { t, admin };
 }
 

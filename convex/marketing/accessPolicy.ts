@@ -1,8 +1,8 @@
+import type { UserIdentity } from 'convex/server';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { adminEmails } from '../lib/adminEmails';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
-import type { MarketingPermission, MarketingRole } from '../shared/marketingAccess';
+import type { MarketingRole } from '../shared/marketingAccess';
 import { marketingCapabilities } from '../shared/marketingAccess';
 
 export function marketingInvitationExpiry(grant: Doc<"marketingGrants">) {
@@ -14,15 +14,14 @@ export function marketingInvitationExpired(grant: Doc<"marketingGrants">, now = 
   return expiresAt !== null && expiresAt <= now;
 }
 
-export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
+export async function marketingAccessForIdentity(ctx: QueryCtx | MutationCtx, identity: UserIdentity | null, isOwner: boolean) {
   const email = identity?.email?.trim().toLowerCase() ?? null;
   // Same policy as staff access: an email without explicit verification grants no marketing authority.
   if (identity?.emailVerified !== true)
     return { email, role: null, capabilities: marketingCapabilities(null), pendingInvitation: null };
-  if (email && adminEmails().has(email))
+  if (isOwner)
     return {
-      email: identity!.email!,
+      email: identity.email!,
       role: "admin" as const,
       capabilities: marketingCapabilities("admin"),
       pendingInvitation: null,
@@ -51,16 +50,6 @@ export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
       invite && !invite.tokenIdentifier && !marketingInvitationExpired(invite)
         ? { role: invite.role } : null,
   };
-}
-
-export async function requireMarketingPermission(
-  ctx: QueryCtx | MutationCtx,
-  permission: MarketingPermission,
-) {
-  const access = await marketingAccess(ctx);
-  if (!access.email) throw new Error("Not authenticated");
-  if (!access.capabilities[permission]) throw new Error("Not authorized");
-  return { ...access, email: access.email };
 }
 
 export function requireEditableDraft(

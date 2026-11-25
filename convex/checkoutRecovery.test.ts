@@ -1,34 +1,34 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
-function setup() {
+async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   return { t, admin };
 }
-beforeEach(() => vi.stubEnv("ADMIN_EMAILS", "admin@example.com"));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("customer phone validation", () => {
   it.each(["not-a-phone", "call0812345678", "abc+66812345678", "0812345678abc"])("rejects supplied non-phone text %s on create", async (phone) => {
-    const { admin } = setup();
+    const { admin } = await setup();
     await expect(admin.mutation(api.pos.customers.createCustomer, { name: "Payer", phone })).rejects.toThrow(/valid phone/i);
   });
 
   it("rejects a supplied non-phone on update without changing the saved profile", async () => {
-    const { admin } = setup();
+    const { admin } = await setup();
     const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: "Payer", phone: "0812345678" });
     await expect(admin.mutation(api.pos.customers.updateCustomer, { customerId, name: "Payer", phone: "not-a-phone" })).rejects.toThrow(/valid phone/i);
     expect(await admin.query(api.pos.customers.getCustomer, { customerId })).toMatchObject({ phone: "0812345678" });
   });
 
   it.each([undefined, "", "  ", "081-234-5678", "812345678", "+66 81 234 5678", "66812345678", "66-81-234-5678", "44 7700 900123", "+44 7700 900123", "0044 7700 900123", "+1 (202) 555-0123"])("allows optional and supported local/international phone %s", async (phone) => {
-    const { admin } = setup();
+    const { admin } = await setup();
     const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: "Payer", phone });
     const saved = await admin.query(api.pos.customers.getCustomer, { customerId });
     expect(saved?.name).toBe("Payer");
@@ -36,7 +36,7 @@ describe("customer phone validation", () => {
   });
 
   it("allows unrelated updates with an unchanged legacy phone, correction, and removal", async () => {
-    const { t, admin } = setup();
+    const { t, admin } = await setup();
     const customerId = await t.run(ctx => ctx.db.insert("customers", {
       name: "Legacy payer", phone: "old contact note", createdBy: "admin@example.com", createdAt: 1, updatedAt: 1,
     }));
@@ -50,12 +50,12 @@ describe("customer phone validation", () => {
 
 describe("checkout source boundaries", () => {
   it.each(["aaaaaaaa", "bbbbbbbb", "bad!"])("returns a recoverable missing order for malformed link %s", async (orderId) => {
-    const { admin } = setup();
+    const { admin } = await setup();
     await expect(admin.query(api.pos.orders.getOrder, { orderId })).resolves.toBeNull();
   });
 
   it("opens valid order IDs and safely handles missing and wrong-table IDs", async () => {
-    const { t, admin } = setup();
+    const { t, admin } = await setup();
     const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: "extra", name: "Water", price: 10000 } });
     expect(await admin.query(api.pos.orders.getOrder, { orderId })).toMatchObject({ order: { _id: orderId }, lines: [{ name: "Water" }] });
     const customerId = await admin.mutation(api.pos.customers.createCustomer, { name: "Payer" });
@@ -65,12 +65,12 @@ describe("checkout source boundaries", () => {
   });
 
   it.each(["bookingId", "appointmentId"] as const)("refuses a malformed %s with a readable source error", async (key) => {
-    const { admin } = setup();
+    const { admin } = await setup();
     await expect(admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { [key]: "aaaaaaaa" })).rejects.toThrow(/(booking|appointment).*not found/i);
   });
 
   it("opens valid booking and appointment links, reuses their orders, and reports deleted sources", async () => {
-    const { t, admin } = setup();
+    const { t, admin } = await setup();
     const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
       name: "Therapist", role: "Therapist", color: "#abc", workingHours: [], breaks: [],
     });
@@ -117,7 +117,7 @@ describe("checkout source boundaries", () => {
   });
 
   it("keeps authentication ahead of source lookup", async () => {
-    const { t } = setup();
+    const { t } = await setup();
     await expect(t.query(api.pos.orders.getOrder, { orderId: "aaaaaaaa" })).rejects.toThrow(/not authenticated/i);
     await expect(t.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId: "aaaaaaaa" })).rejects.toThrow(/not authenticated/i);
   });

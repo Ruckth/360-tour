@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { makeFunctionReference } from 'convex/server';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -11,13 +12,13 @@ import { inboxProjection } from './messaging/inboxProjection';
 import { insertFixture } from './testing/completeFixture.test-support';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
-beforeEach(() => { vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); vi.useFakeTimers(); });
+beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 const property = { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 20, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' as const };
 const review = { authorName: 'Guest', authorCity: '', authorCountry: '', rating: 4, title: '', body: 'Great stay', date: '2030-01-01', verified: true };
 
 it('updates exact review totals with bounded reads, edits, concurrent creates, final deletion and rollback', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', property));
   const ids = await Promise.all([1, 2, 5].map(rating => admin.mutation(api.catalog.adminReviews.create, { propertyId, ...review, rating })));
   const stats = () => t.run(ctx => ctx.db.query('reviewStats').withIndex('by_property', q => q.eq('propertyId', propertyId)).unique());
@@ -44,7 +45,7 @@ it('updates exact review totals with bounded reads, edits, concurrent creates, f
     await Reflect.get(create, '_handler')(ctx, { propertyId, ...review });
     return (await ctx.meta.getTransactionMetrics()).documentsRead.used - before.documentsRead.used;
   });
-  expect(reads).toBe(3);
+  expect(reads).toBe(1 + 3); // Owner grant + review writes and aggregation.
   // Each writer serializes on the same exact aggregate; repeat remove is a no-op.
   for (const id of ids) await admin.mutation(api.catalog.adminReviews.remove, { reviewId: id });
   await admin.mutation(api.catalog.adminReviews.remove, { reviewId: ids[0] });
@@ -77,7 +78,7 @@ it('releases only booking-owned availability rows, with bounded reads and atomic
 });
 
 it('keeps inbox snapshots exact through durable retries, failure, profile changes, staff reply and newer ingress', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const accepted = await acceptTestEvent(t, 'line', { eventKey: 'one', recipient: 'phase4-guest', eventType: 'message', messageText: 'Hello' });
   const sessionId = accepted.sessionId!;
   const check = () => t.run(async ctx => {
@@ -112,7 +113,7 @@ it('keeps inbox snapshots exact through durable retries, failure, profile change
 });
 
 it('refuses oversized uninitialized aggregates atomically and verifies small-table dry runs', async () => {
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => {
     const id = await ctx.db.insert('properties', property);
     for (let i = 0; i < 1001; i++) await ctx.db.insert('reviews', { propertyId: id, authorAvatarUrl: '', ...review });

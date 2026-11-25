@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -190,9 +191,8 @@ describe('public villa queries', () => {
 	});
 
 	it('marks content as edited only when guest-facing copy changes', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, active } = await setup();
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const editedAt = async () => (await t.run((ctx) => ctx.db.get(active)))?.contentEditedAt;
 
 		await admin.mutation(api.catalog.properties.update, { propertyId: active, pricePerNight: 600000, tagline: 'Tagline', amenities: ['WiFi'] });

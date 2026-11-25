@@ -8,7 +8,7 @@ This project deploys as a TanStack Start app (Nitro Build Output API) on Vercel 
 - Booking funnel with Convex-backed live inventory when production Convex is configured and seeded.
 - Live Convex bookings start pending. Stripe Checkout creates a hosted payment session; only the signed Stripe webhook confirms a paid booking. Unpaid requests expire after 24 hours.
 - Concierge chat uses Convex. If AI env vars are present, responses use the configured xAI/OpenAI-compatible endpoint; otherwise the app falls back to static localized replies.
-- Admin chat dashboard uses Clerk plus Convex JWT validation and `ADMIN_EMAILS` allowlisting.
+- Admin chat dashboard uses Clerk plus Convex JWT validation and staff grants.
 
 ## Vercel Project Settings
 
@@ -68,7 +68,6 @@ Set these in the Convex production deployment:
 | Name | Required | Notes |
 | --- | --- | --- |
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
-| `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
 | `MESSAGING_IMAGE_SECRET` | For social card images | Match the Vercel image-conversion signing key. No public event mutation accepts a shared secret. |
 | `AI_API_KEY` | No | Enables live AI concierge responses. Use an OpenAI project key for the direct OpenAI endpoint. |
 | `AI_API_BASE_URL` | No | Use `https://api.openai.com/v1` for direct OpenAI. |
@@ -108,7 +107,7 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 Seed scenarios are for a deliberately fresh, isolated deployment. They are **not** an upgrade or repair step for a nonempty production, development or Preview database. `maintenance/seed:seedAll` checks every application table and throws `Seed requires an empty database; <table> is not empty` if any contains a record, including when the requested scenario is `empty`. It never clears data or returns `already_seeded`.
 
-After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default) or `busy-weekend`:
+After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default), `busy-weekend` or `two-branch`:
 
 ```sh
 bun run convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
@@ -125,6 +124,8 @@ Current local/CI integration and guarded per-PR Preview initialization use the u
 
 Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
+`two-branch` includes example owner and recovery grants for the demo. Grant access to the approved Clerk accounts in the target deployment via the CLI.
+
 ## Admin Setup
 
 To enable `/admin`:
@@ -133,7 +134,7 @@ To enable `/admin`:
 2. Configure the Clerk `convex` JWT template.
    The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
-4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
+4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` for each approved company owner. Use the exact Clerk account email. On first verified sign-in, each owner activates their grant.
 
 Missing Clerk or Convex configuration refuses app initialization. Configure a matching Clerk issuer and `convex` JWT template with audience `convex`; a signed-in user without a staff grant must still be refused protected operations.
 

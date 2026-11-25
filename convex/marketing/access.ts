@@ -1,11 +1,10 @@
 import { accessCurrentResult } from './validators';
 import { ConvexError, v } from 'convex/values';
-import { authenticatedMutation, marketingMutation, publicQuery } from '../auth/model';
-import { adminEmails } from '../lib/adminEmails';
+import { authenticatedMutation, findStaffGrantByEmail, marketingAccess, marketingMutation, publicQuery } from '../auth/model';
 import { marketingRole } from '../shared/affiliateTypes';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import { appendRecordHistory } from '../settings/model';
-import { marketingAccess, marketingInvitationExpired } from './accessPolicy';
+import { marketingInvitationExpired } from './accessPolicy';
 
 export const current = publicQuery({
   returns: accessCurrentResult,
@@ -58,7 +57,7 @@ export const setGrant = marketingMutation({
     const email = args.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       throw new Error("Enter a valid email");
-    if (adminEmails().has(email)) throw new ConvexError("System administrator access is managed through ADMIN_EMAILS, not Marketing invitations.");
+    if ((await findStaffGrantByEmail(ctx, email))?.role === "owner") throw new ConvexError("Owners are managed by the deployment admin");
     const old = await ctx.db
       .query("marketingGrants")
       .withIndex("by_email", (q) => q.eq("email", email))

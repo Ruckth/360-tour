@@ -98,7 +98,7 @@ it("asks before removing either role, and leaves the other alone", async () => {
   await change(row(active.email));
   await pick(select(row(active.email), "Desk role"), "");
   expect(mocks.confirm).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Remove Mint from the desk?", cancelLabel: "Keep access", destructive: true }));
-  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: active.email, role: null }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: active.email, role: null, branchIds: [] }]]);
 });
 
 it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
@@ -128,7 +128,7 @@ it("invites with a Desk role, a Marketing role, or both", async () => {
   await pick(marketing, "viewer");
   await act(async () => form.requestSubmit());
   expect(mocks.calls).toEqual([
-    ["auth/staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager" }],
+    ["auth/staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager", branchIds: [] }],
     ["marketing/access:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
   ]);
 });

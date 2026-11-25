@@ -170,7 +170,8 @@ async function signIn(page: Page, target: Target, role: Role) {
   await clerk.signIn({ page, emailAddress: target.emails[role] });
   const client = await refreshAuthorization(page, new ConvexHttpClient(target.backend, { logger: false }));
   let access = await client.query(api.auth.staffAccess.myAccess, {});
-  if (role === "cashier" && process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1" && access.pendingInvitation?.role === "cashier") {
+  if (access.pendingInvitation?.role === "owner" && role === "owner" ||
+      access.pendingInvitation?.role === "cashier" && role === "cashier" && process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1") {
     await client.mutation(api.auth.staffAccess.claimInvite, {});
     access = await client.query(api.auth.staffAccess.myAccess, {});
   }
@@ -191,7 +192,10 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
   if (provisionCashier) {
     const grants = await owner.query(api.auth.staffAccess.listPeople, {});
     assert(!grants.some(({ email }) => email === target.emails.cashier));
-    await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: "cashier" });
+    const { branches } = await owner.query(api.auth.staffAccess.myAccess, {});
+    const branch = branches.find(({ key }) => key === "koh-samui");
+    if (!branch) throw new Error("Koh Samui branch was not seeded");
+    await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: "cashier", branchIds: [branch.id] });
   }
   try {
     for (const role of ["cashier", "nonstaff"] as const) {
@@ -222,7 +226,7 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
   } finally {
     if (provisionCashier) {
       await refreshAuthorization(ownerPage, owner);
-      await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: null });
+      await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: null, branchIds: [] });
       const grants = await owner.query(api.auth.staffAccess.listPeople, {});
       assert(!grants.some(({ email }) => email === target.emails.cashier));
     }

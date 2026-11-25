@@ -3,6 +3,7 @@ import type { convexTest } from 'convex-test';
 import type { vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
+import { asTestOwner } from './staff.test-support';
 import type { FunctionArgs } from 'convex/server';
 
 // Match the existing suites' ImportMeta declaration without loading Vite globals.
@@ -14,7 +15,7 @@ export function createHarness(test: typeof convexTest) {
 }
 export const adminIdentity = { email: 'admin@example.com', emailVerified: true, tokenIdentifier: 'https://test.clerk.dev|admin' };
 export function asAdmin(t: ReturnType<typeof createHarness>) {
-	return t.withIdentity(adminIdentity);
+	return asTestOwner(t, adminIdentity);
 }
 export function guestSession(t: ReturnType<typeof createHarness>, args: Omit<FunctionArgs<typeof api.messaging.chat.createSession>, 'channel'> = {}) {
 	return t.mutation(api.messaging.chat.createSession, { ...args, channel: 'web' });

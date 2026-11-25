@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
@@ -14,7 +15,6 @@ afterEach(() => {
 async function setup(now: string) {
   vi.useFakeTimers();
   vi.setSystemTime(new Date(now));
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     await ctx.db.insert("properties", {
@@ -25,7 +25,7 @@ async function setup(now: string) {
   const book = (checkIn: string, checkOut: string) => t.mutation(api.bookings.bookings.create, {
     propertySlug: "villa", guestName: "Guest", guestEmail: "guest@example.com", guestPhone: "+66911111111", checkIn, checkOut, guests: 2,
   });
-  return { t, book, admin: t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" }) };
+  return { t, book, admin: await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" }) };
 }
 
 describe("public booking uses the resort day (Asia/Bangkok)", () => {

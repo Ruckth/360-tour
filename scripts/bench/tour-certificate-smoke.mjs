@@ -96,13 +96,15 @@ try {
     const res = await fetch(url + "/api/update_environment_variables", { method: "POST", headers, body: JSON.stringify({ changes }) });
     return res.ok;
   }
-  await waitFor(() => vars([{ name: "CLERK_JWT_ISSUER_DOMAIN", value: issuer }, { name: "ADMIN_EMAILS", value: owner }]));
+  await waitFor(() => vars([{ name: "CLERK_JWT_ISSUER_DOMAIN", value: issuer }]));
   await waitFor(async () => (await fs.readFile(backend.log, "utf8")).includes("Convex functions ready"));
   const operator = new ConvexHttpClient(url);
   operator.setAdminAuth(config.adminKey);
   await operator.mutation(makeFunctionReference("maintenance/seed:seedAll"), { scenario: "demo-resort" });
+  await operator.mutation(makeFunctionReference("auth/owners:grantOwner"), { email: owner });
   const admin = new ConvexHttpClient(url);
   admin.setAdminAuth(config.adminKey, { issuer, subject: "room-certificate-smoke", email: owner, emailVerified: true });
+  await admin.mutation(makeFunctionReference("auth/staffAccess:claimInvite"), {});
   const anonymous = new ConvexHttpClient(url);
   const detail = (slug) => anonymous.query(makeFunctionReference("catalog/publicProperties:getBySlug"), { slug });
   const read = (propertyId) => admin.query(makeFunctionReference("catalog/adminProperties:get"), { propertyId });

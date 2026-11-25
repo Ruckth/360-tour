@@ -1,8 +1,9 @@
 // @vitest-environment edge-runtime
 /// <reference types="vite/client" />
+import { seedTestBranch, asTestOwner } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference, type FunctionType } from 'convex/server';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { hashGuestToken } from '../messaging/guestToken';
@@ -51,7 +52,6 @@ function invoke(client: Pick<ReturnType<typeof setup>['t'], 'query' | 'mutation'
   }
 }
 const ref = <T extends FunctionType>(name: string) => makeFunctionReference<T>(`accessProbes:${name}`);
-beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'owner@example.com'));
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 it('requires explicit public reasons and permits anonymous query, mutation and action handlers', async () => {
@@ -72,7 +72,7 @@ it('admits signed-in nonstaff to authenticated builders and derives action ident
 
 it('uses authoritative staff and operations policies for all three function kinds, including action grant revocation', async () => {
   const { t, signed } = setup();
-  for (const role of ['manager', 'cashier'] as const) await t.run(ctx => ctx.db.insert('staffGrants', {
+  for (const role of ['manager', 'cashier'] as const) await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
     role, email: `${role}@example.com`, tokenIdentifier: `issuer|${role}`, createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'owner@example.com',
   }));
   for (const kind of ['query', 'mutation', 'action'] as const) {
@@ -81,12 +81,12 @@ it('uses authoritative staff and operations policies for all three function kind
     await expect(invoke(signed('visitor'), kind, `admin${suffix}`, {})).rejects.toThrow('Not authorized');
     await expect(invoke(signed('cashier'), kind, `admin${suffix}`, {})).rejects.toThrow('Not authorized');
     expect(await invoke(signed('manager'), kind, `admin${suffix}`, {})).toBe('manager@example.com');
-    expect(await invoke(signed('owner'), kind, `admin${suffix}`, {})).toBe('owner@example.com');
+    expect(await invoke(await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' }), kind, `admin${suffix}`, {})).toBe('owner@example.com');
     expect(await invoke(signed('cashier'), kind, `staff${suffix}`, {})).toBe('cashier');
     await expect(invoke(signed('visitor'), kind, `staff${suffix}`, {})).rejects.toThrow('Not authorized');
   }
   await expect(signed('manager').query(ref<'query'>('ownerQuery'), {})).rejects.toThrow('Not authorized');
-  expect(await signed('owner').query(ref<'query'>('ownerQuery'), {})).toBe('owner');
+  expect(await (await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' })).query(ref<'query'>('ownerQuery'), {})).toBe('owner');
   await t.run(async ctx => {
     const grant = await ctx.db.query('staffGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', 'issuer|manager')).unique();
     await ctx.db.delete(grant!._id);
@@ -154,7 +154,7 @@ it('runs maintenance before every public trust policy and handler, while interna
 it('preserves public booking record capabilities without granting nonstaff fallback access', async () => {
   vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2099-01-01T03:00:00Z'));
   const { t, signed } = setup();
-  const propertyId = await signed('owner').mutation(api.catalog.adminProperties.create, { name: 'Access villa', slug: 'access-villa' });
+  const propertyId = await (await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' })).mutation(api.catalog.adminProperties.create, { name: 'Access villa', slug: 'access-villa' });
   await t.run(ctx => ctx.db.patch(propertyId, { status: 'active', pricePerNight: 100000 }));
   const stay = { propertySlug: 'access-villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '0812345678', checkIn: '2099-01-10', checkOut: '2099-01-12', guests: 2 };
   const first = await t.mutation(api.bookings.bookings.create, stay);
@@ -163,15 +163,15 @@ it('preserves public booking record capabilities without granting nonstaff fallb
   await expect(t.query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: second.accessToken })).rejects.toThrow('Booking access denied');
   await expect(signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId })).rejects.toThrow('Not authorized');
   expect(await signed('visitor').query(api.bookings.bookings.getById, { id: first.bookingId, accessToken: first.accessToken })).toMatchObject({ total: 200000 });
-  expect(await signed('owner').query(api.bookings.bookings.getById, { id: first.bookingId })).toMatchObject({ total: 200000 });
+  expect(await (await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' })).query(api.bookings.bookings.getById, { id: first.bookingId })).toMatchObject({ total: 200000 });
 });
 
 // Exercise the real action -> internal query identity hop after the path cutover.
 it('preserves actor email spelling and tokenIdentifier across relocated action authorization', async () => {
   const { t } = setup();
-  const owner = t.withIdentity({ emailVerified: true, email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner' });
+  const owner = await asTestOwner(t, { emailVerified: true, email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner' });
   expect(await owner.action(ref<'action'>('adminAction'), {})).toBe('Owner@Example.com');
-  await t.run(ctx => ctx.db.insert('staffGrants', {
+  await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
     email: 'manager@example.com', tokenIdentifier: 'issuer-a|manager', role: 'manager',
     createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'owner@example.com',
   }));
@@ -184,6 +184,6 @@ it('preserves actor email spelling and tokenIdentifier across relocated action a
 
 it.each([false, undefined])('denies owner action authority without explicit verification (%s)', async emailVerified => {
   const { t } = setup();
-  const owner = t.withIdentity({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });
   await expect(owner.action(ref<'action'>('adminAction'), {})).rejects.toThrow('Not authorized');
 });

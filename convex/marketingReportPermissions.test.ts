@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -11,9 +12,8 @@ const claimInvite = makeFunctionReference<'mutation', Record<string, never>, nul
 afterEach(() => vi.unstubAllEnvs());
 
 it.each(['manager', 'marketer', 'finance', 'viewer'] as const)('allows %s report reads, limits spend writes, and keeps operational data admin-only', async role => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const member = t.withIdentity({ emailVerified: true, email: 'member@example.com', tokenIdentifier: 'member' });
   const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'Campaign', source: 'print', medium: 'qr' });
   await admin.mutation(setGrant, { email: 'member@example.com', role });

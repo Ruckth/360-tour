@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -12,15 +13,14 @@ const modules = import.meta.glob('./**/*.ts');
 
 afterEach(() => vi.unstubAllEnvs());
 
-function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+async function setup() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	return { t, admin, stranger };
 }
 
-async function insertBooking(t: ReturnType<typeof setup>['t'], propertyId: Id<'properties'>) {
+async function insertBooking(t: Awaited<ReturnType<typeof setup>>['t'], propertyId: Id<'properties'>) {
 	await t.run(async (ctx) => {
 		await insertFixture(ctx, 'bookings', {
 			propertyId, guestName: 'Guest', guestPhone: '123', checkIn: '2026-10-01', checkOut: '2026-10-03', guests: 1,
@@ -38,13 +38,13 @@ describe('slugify', () => {
 
 describe('villa create, slug and delete', () => {
 	it('requires an admin', async () => {
-		const { t, stranger } = setup();
+		const { t, stranger } = await setup();
 		await expect(t.mutation(api.catalog.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authenticated');
 		await expect(stranger.mutation(api.catalog.adminProperties.create, { name: 'Villa' })).rejects.toThrow('Not authorized');
 	});
 
 	it('creates drafts with unique auto slugs and validates manual slugs', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const first = await admin.mutation(api.catalog.adminProperties.create, { name: 'Sea Breeze Villa' });
 		const second = await admin.mutation(api.catalog.adminProperties.create, { name: 'Sea breeze villa' });
 		const thai = await admin.mutation(api.catalog.adminProperties.create, { name: 'บ้านริมทะเล' });
@@ -62,7 +62,7 @@ describe('villa create, slug and delete', () => {
 	});
 
 	it('changes the slug until the villa has bookings', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa One' });
 		const other = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa Two' });
 		expect(await admin.mutation(api.catalog.adminProperties.setSlug, { propertyId, slug: 'first-villa' })).toBe('first-villa');
@@ -76,7 +76,7 @@ describe('villa create, slug and delete', () => {
 	});
 
 	it('publishes only priced villas and archives or restores them', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		await expect(admin.mutation(api.catalog.adminProperties.setStatus, { propertyId, status: 'active' })).rejects.toThrow('price');
 		await admin.mutation(api.catalog.properties.update, { propertyId, pricePerNight: 500000 });
@@ -87,7 +87,7 @@ describe('villa create, slug and delete', () => {
 	});
 
 	it('deletes only unused drafts and cascades their content', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		await admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name: 'Living', imagePath: '/living.webp' });
 		await admin.mutation(api.catalog.adminReviews.create, {
@@ -114,7 +114,7 @@ describe('villa create, slug and delete', () => {
 	});
 
 	it('refuses to delete drafts with bookings, calendar entries or chats', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const booked = await admin.mutation(api.catalog.adminProperties.create, { name: 'Booked' });
 		await insertBooking(t, booked);
 		await expect(admin.mutation(api.catalog.adminProperties.deleteDraft, { propertyId: booked })).rejects.toThrow('bookings');
@@ -134,7 +134,7 @@ describe('villa create, slug and delete', () => {
 	});
 
 	it('refuses draft deletion when a child table exceeds its deletion batch', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Many Reviews' });
 		await t.run(async ctx => {
 			for (let i = 0; i < 501; i++) await ctx.db.insert('reviews', { propertyId, authorName: 'Guest', authorCity: '', authorCountry: '', authorAvatarUrl: '', rating: 5, title: '', body: 'Good', date: '2026-01-01', verified: true });
@@ -146,7 +146,7 @@ describe('villa create, slug and delete', () => {
 });
 
 describe('image uploads', () => {
-	async function storeFile(t: ReturnType<typeof setup>['t'], contentType: string, size: number) {
+	async function storeFile(t: Awaited<ReturnType<typeof setup>>['t'], contentType: string, size: number) {
 		return await t.run(async (ctx) => {
 			const storageId = await ctx.storage.store(new Blob(['image-bytes']));
 			// convex-test doesn't record these; patch them to stand in for a real upload.
@@ -157,7 +157,7 @@ describe('image uploads', () => {
 	}
 
 	it('requires an admin for upload URLs and saving uploads', async () => {
-		const { t, admin, stranger } = setup();
+		const { t, admin, stranger } = await setup();
 		await expect(t.mutation(api.catalog.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authenticated');
 		await expect(stranger.mutation(api.catalog.adminProperties.generateUploadUrl, {})).rejects.toThrow('Not authorized');
 		expect(await admin.mutation(api.catalog.adminProperties.generateUploadUrl, {})).toMatch(/^https:\/\//);
@@ -166,7 +166,7 @@ describe('image uploads', () => {
 	});
 
 	it('returns a URL for valid images and deletes rejected ones', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const good = await storeFile(t, 'image/jpeg', 7 * 1024 * 1024);
 		const result = await admin.mutation(api.catalog.adminProperties.saveUploadedImage, { storageId: good, kind: 'photo' });
 		expect(result).toEqual({ url: expect.stringMatching(/^https:\/\/.+\.convex\.cloud\//) });
@@ -194,7 +194,7 @@ describe('image uploads', () => {
 
 describe('360 rooms', () => {
 	async function villaWithRooms() {
-		const env = setup();
+		const env = await setup();
 		const propertyId = await env.admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		const add = (name: string, slug?: string) =>
 			env.admin.mutation(api.catalog.adminProperties.createRoom, { propertyId, name, slug, imagePath: 'https://images.unsplash.com/pano.webp' });

@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { generateTestReply, respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
@@ -11,9 +12,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 async function setup() {
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true,
+  const admin = await asTestOwner(t, { emailVerified: true,
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });

@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { generateTestReply, respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
@@ -42,8 +43,8 @@ describe('concierge model routing', () => {
   });
 });
 
-function adminTest(t: ReturnType<typeof convexTest>) {
-  return t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+async function adminTest(t: ReturnType<typeof convexTest>) {
+  return await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
 }
 
 async function createWebSession(t: ReturnType<typeof convexTest>, propertySlug?: string) {
@@ -218,7 +219,6 @@ describe("retired question-bank routing", () => {
   });
 
   it("records a question when the concierge has no supporting facts", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     vi.stubEnv("AI_API_KEY", "test-key");
     vi.stubEnv("AI_API_BASE_URL", "https://ai.example.test/v1");
     try {
@@ -229,7 +229,7 @@ describe("retired question-bank routing", () => {
       const sessionId = await createWebSession(t);
 
       const result = await respondTest(t, { guestToken: fixtureGuestToken, sessionId, userMessage: "Is helicopter transfer included?" });
-      const unknownRows = await adminTest(t).query(api.concierge.knowledge.adminListUnknownGroups, {
+      const unknownRows = await (await adminTest(t)).query(api.concierge.knowledge.adminListUnknownGroups, {
         status: "new",
       });
 
@@ -244,11 +244,10 @@ describe("retired question-bank routing", () => {
 
 describe("AI takeover", () => {
   it("records the guest message but skips the AI reply while staff has paused the AI", async () => {
-    vi.stubEnv("ADMIN_EMAILS", adminEmail);
     try {
       const t = convexTest(schema, modules);
       const sessionId = await createWebSession(t);
-      await adminTest(t).mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true });
+      await (await adminTest(t)).mutation(api.messaging.adminChat.setAiPaused, { sessionId, paused: true });
 
       const result = await respondTest(t, { guestToken: fixtureGuestToken,
         sessionId,

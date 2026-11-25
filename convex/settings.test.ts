@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { respondTest } from './testing/turn.test-support';
 // @vitest-environment edge-runtime
 
@@ -17,15 +18,14 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com, second@example.com');
+async function setup() {
 	const t = convexTest(schema, modules);
-	return { t, admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }) };
+	return { t, admin: await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }) };
 }
 
 describe('settings get/update', () => {
 	it('returns defaults until saved, then merges saved values', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const initial = await admin.query(api.settings.settings.get, {});
 		expect(initial.businessName).toBe(SITE_DEFAULTS.businessName);
 		expect(initial.checkInTime).toBe('14:00');
@@ -56,7 +56,7 @@ describe('settings get/update', () => {
 	});
 
 	it('exposes only non-sensitive fields publicly', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Sea Breeze' },
 			ai: { extraInstructions: 'secret prompt' },
@@ -85,12 +85,12 @@ describe('settings get/update', () => {
 		[{ email: { ownerNotificationEmail: 'owner@' } }, 'Enter a valid email address.'],
 		[{ email: { fromName: 'Evil <x@y.z>' } }, 'Remove < > "']
 	])('rejects invalid input %j', async (input, message) => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		await expect(admin.mutation(api.settings.settings.update, input)).rejects.toThrow(message);
 	});
 
 	it('requires an admin for get, update, channelHealth and serverConfig', async () => {
-		const { t } = setup();
+		const { t } = await setup();
 		const other = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(t.query(api.settings.settings.get, {})).rejects.toThrow('Not authenticated');
 		await expect(other.query(api.settings.settings.get, {})).rejects.toThrow('Not authorized');
@@ -100,7 +100,7 @@ describe('settings get/update', () => {
 	});
 
 	it('reports env presence as booleans', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		vi.stubEnv('RESEND_API_KEY', 're_secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', '');
 		const config = await admin.query(api.settings.settings.serverConfig, {});
@@ -112,7 +112,7 @@ describe('settings get/update', () => {
 
 describe('settings.channelHealth', () => {
 	it('summarises webhook events and iCal sources per channel', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const now = Date.now();
 		await t.run(async (ctx) => {
 			const base = { eventType: 'message' as const, processingStartedAt: now };
@@ -155,7 +155,7 @@ describe('settings.channelHealth', () => {
 
 describe('setup checklist', () => {
 	it('reports env keys, villa readiness, iCal sync, saved profile and replied channels', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		expect(await admin.query(api.settings.settings.setupChecklist, {})).toMatchObject({
 			aiKey: false, email: false, stripe: false, messagingImageSecret: false, villaReady: false, icalSynced: false, profileSaved: false,
 			channelsReplied: { line: false, facebook: false, instagram: false, whatsapp: false }
@@ -185,7 +185,7 @@ describe('setup checklist', () => {
 	});
 
 	it('sends a test email to the owner address, or explains what is missing', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		expect(await admin.action(api.settings.emails.sendTestEmail, {})).toMatchObject({ ok: false, to: 'admin@example.com' });
 
 		vi.stubEnv('RESEND_API_KEY', 're_test');
@@ -205,7 +205,7 @@ describe('setup checklist', () => {
 describe('settings in the AI prompt', () => {
 	it('uses saved business name, policy, times, tone and word limit, and per-villa discounts', async () => {
 		vi.useFakeTimers();
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		vi.stubEnv('AI_API_KEY', 'test-key');
 		vi.stubEnv('AI_API_BASE_URL', 'https://ai.example.test/v1');
 		await admin.mutation(api.settings.settings.update, {
@@ -253,7 +253,7 @@ describe('settings in the AI prompt', () => {
 
 describe('settings in emails', () => {
 	it('uses the sender name, owner email and footer from settings with the EMAIL_FROM address', async () => {
-		const { admin, t } = setup();
+		const { admin, t } = await setup();
 		vi.stubEnv('RESEND_API_KEY', 're_test');
 		vi.stubEnv('EMAIL_FROM', 'Old Name <bookings@example.com>');
 		vi.stubEnv('OWNER_NOTIFICATION_EMAIL', 'env-owner@example.com');
@@ -282,7 +282,7 @@ describe('settings in emails', () => {
 
 describe('Fast replies setting', () => {
 	it('is off by default, sends the Fast tier to OpenAI when on, and is recorded and restorable in history', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		vi.stubEnv('AI_API_KEY', 'test-key');
 		vi.stubEnv('AI_API_BASE_URL', 'https://api.openai.com/v1');
 		expect((await admin.query(api.settings.settings.get, {})).ai.fastReplies).toBe(false);
@@ -313,7 +313,7 @@ describe('Fast replies setting', () => {
 	});
 
 	it('rejects a non-boolean value', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		await expect(admin.mutation(api.settings.settings.update, { ai: { fastReplies: 'yes' as unknown as boolean } })).rejects.toThrow();
 	});
 });

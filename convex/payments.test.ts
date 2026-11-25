@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -37,9 +38,8 @@ it('requires the booking token before creating a Stripe session', async () => {
 });
 
 it('lets host-confirmed unpaid bookings pay online with an attempt idempotency key', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });
@@ -61,11 +61,10 @@ it('lets host-confirmed unpaid bookings pay online with an attempt idempotency k
 });
 
 it.each([false, true])('renews an expired checkout for a %s admin booking without changing its quote', async (confirmed) => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   vi.stubEnv('STRIPE_SECRET_KEY', 'sk_test_test');
   vi.stubEnv('SITE_URL', 'https://example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(async ctx => {
     await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
   });

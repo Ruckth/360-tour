@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -10,8 +11,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 it('removes every root auth registration independently of authentication or argument validation', async () => {
   const t = convexTest(schema, modules);
-  const clients = [t, t.withIdentity({ email: 'Owner@Example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' })];
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
+  const clients = [t, await asTestOwner(t, { email: 'Owner@Example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' })];
   for (const client of clients) {
     for (const [module, endpoint] of [['users', 'current'], ['staffAccess', 'myAccess'], ['staffAccess', 'currentInternal'], ['staffAccess', 'listPeople'], ['lib/adminAuth', 'requireAdmin'], ['lib/adminAuth', 'requireOwner'], ['lib/staffAccess', 'requireStaff'], ['lib/staffAccess', 'staffAccess']]) {
       await expect(client.query(makeFunctionReference<'query'>([module, endpoint].join(':')), {}))
@@ -29,7 +29,6 @@ it('removes every root auth registration independently of authentication or argu
 it('exposes the relocated internal identity query without granting anonymous staff authority', async () => {
   const t = convexTest(schema, modules);
   expect(await t.query(internal.auth.staffAccess.currentInternal, {})).toMatchObject({ email: null, tokenIdentifier: null, role: null });
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
-  const owner = t.withIdentity({ email: 'Owner@Example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' });
+  const owner = await asTestOwner(t, { email: 'Owner@Example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' });
   expect(await owner.query(internal.auth.staffAccess.currentInternal, {})).toMatchObject({ email: 'owner@example.com', tokenIdentifier: 'issuer|owner', role: 'owner' });
 });

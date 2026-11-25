@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch } from '../testing/staff.test-support';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
@@ -233,7 +234,7 @@ it('reconciles unselected returned siblings and keeps receipt-order satang ties 
   const { t, owner } = await setup();
   const { orderId, first, second, third, filler, voucherId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 4, 24);
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const first = await line(ctx, orderId, 'service', 2);
     const second = await line(ctx, orderId, 'service', 1, { saleSnapshot: snapshot('Second', 1) });
     const third = await line(ctx, orderId, 'service', 1, { saleSnapshot: snapshot('Third', 1) });

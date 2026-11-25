@@ -13,6 +13,8 @@ import { adminNavFor, type StaffAccessView } from "./admin-access";
 const OWNER_VIEW: StaffAccessView = {
   email: null,
   role: "owner",
+  companyScope: true,
+  branches: [],
   pendingInvitation: null,
   marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,

@@ -488,7 +488,7 @@ export async function executeApprovedAdjustment(
     return { status: 'stale' };
   }
   const requester: StaffActor = {
-    role: 'cashier', capabilities: staffCapabilities('cashier'), pendingInvitation: null,
+    role: 'cashier', companyScope: false, branchIds: grant.branchIds, capabilities: staffCapabilities('cashier'), pendingInvitation: null,
     email: request.requesterEmail, tokenIdentifier: requesterKey,
   };
   adjustmentPermission(requester, command);

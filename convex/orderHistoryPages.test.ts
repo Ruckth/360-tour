@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -9,8 +10,7 @@ const modules = import.meta.glob('./**/*.ts');
 const readers = api.pos.orderHistoryPages;
 afterEach(() => vi.unstubAllEnvs());
 it('authenticates every financial stream and rejects oversized or invalid pages', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
   for (const reader of Object.values(readers)) {
     const args = { orderId, paginationOpts: { numItems: 20, cursor: null } };
@@ -21,8 +21,7 @@ it('authenticates every financial stream and rejects oversized or invalid pages'
   }
 });
 it('pages past the getOrder 20/50 windows in all five independent ledgers without cross-order leakage', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-  const t = convexTest(schema, modules), admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
+  const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
   const { orderId: other } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Other', price: 1000 } });
   await t.run(async ctx => {
