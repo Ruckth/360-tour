@@ -128,31 +128,37 @@ export async function loadStartHomeData(
 }
 
 const MAX_CHAT_PARAM_LENGTH = 200;
-export type StartChatQuery = { property?: string; service?: string };
+export type StartChatQuery = { property?: string; service?: string; duration?: string };
 export type StartChatInput = StartChatQuery & { locale: Locale };
 export type StartChatData = {
-  service: { slug: string; name: string } | null;
+  /** `durationMin` only when the requested length is one the service offers. */
+  service: { slug: string; name: string; durationMin?: number } | null;
   property: { id: string; name: string } | null;
 };
 
 const chatParam = (value: unknown) =>
   typeof value === "string" && value.length > 0 && value.length <= MAX_CHAT_PARAM_LENGTH ? value : undefined;
+const durationParam = (value: unknown) => (typeof value === "string" && /^\d{1,4}$/.test(value) ? value : undefined);
 
 export function chatQuery(search: PageSearch): StartChatQuery {
-  return { property: chatParam(firstParam(search, "property")), service: chatParam(firstParam(search, "service")) };
+  return {
+    property: chatParam(firstParam(search, "property")),
+    service: chatParam(firstParam(search, "service")),
+    duration: durationParam(firstParam(search, "duration")),
+  };
 }
 
 export function validateChatInput(input: unknown): StartChatInput {
   const { locale } = validateGuestLocaleInput(input);
-  const { property, service } = input as Record<string, unknown>;
-  return { locale, property: chatParam(property), service: chatParam(service) };
+  const { property, service, duration } = input as Record<string, unknown>;
+  return { locale, property: chatParam(property), service: chatParam(service), duration: durationParam(duration) };
 }
 
 /** Unknown or unreadable services and villas simply omit the draft or villa context, as on Next. */
 export async function loadStartChatData(
-  { locale, property, service }: StartChatInput,
+  { locale, property, service, duration }: StartChatInput,
   deps: {
-    getPublicService: (slug: string) => Promise<{ slug: string; name: string } | null>;
+    getPublicService: (slug: string) => Promise<{ slug: string; name: string; options?: { durationMin: number }[] } | null>;
     getVilla: (slug: string, locale: string) => Promise<{ page: { villa: PublicVilla } | null }>;
   },
 ): Promise<StartChatData> {
@@ -161,7 +167,13 @@ export async function loadStartChatData(
     property ? deps.getVilla(property, locale).then((read) => read.page?.villa ?? null, () => null) : null,
   ]);
   return {
-    service: serviceRow ? { slug: serviceRow.slug, name: serviceRow.name } : null,
+    service: serviceRow
+      ? {
+          slug: serviceRow.slug,
+          name: serviceRow.name,
+          ...(serviceRow.options?.some((option) => String(option.durationMin) === duration) ? { durationMin: Number(duration) } : {}),
+        }
+      : null,
     property: villa ? { id: villa.id, name: villa.name } : null,
   };
 }

@@ -1,10 +1,104 @@
 import { describe, expect, it } from 'vitest';
 import { cardBrowseMessage, replyCardFromTool } from './shared/replyCards';
+import { lineReplyMessages, richReplyFallback, whatsappReplyMessages } from './shared/richMessages';
 
 const options = { siteUrl: 'https://resort.example', locale: 'en' };
 const make = (name: string, result: unknown) => replyCardFromTool({ name, args: {}, result: JSON.stringify(result) }, options);
 
 describe('tool-grounded reply cards', () => {
+  it.each([['en', 'min'], ['th', 'นาที']])('shows all six duration choices in %s', (locale, unit) => {
+    const optionsList = Array.from({ length: 6 }, (_, i) => ({ durationMin: 30 + 15 * i, price: 800 + 100 * i }));
+    const services = [{ name: 'Thai massage', slug: 'thai-massage', options: optionsList, currency: 'THB' }];
+    const card = replyCardFromTool({ name: 'list_services', args: {}, result: JSON.stringify({ services, catalogUrl: '/services' }) }, { ...options, locale });
+    expect(card?.items[0].lines).toHaveLength(6);
+    expect(card?.items[0].lines[0]).toBe(`30 ${unit} · THB 800`);
+    const actions = card?.items[0].actions ?? [];
+    expect(actions.map(action => action.label)).toEqual(optionsList.map(option => `${option.durationMin} ${unit}`));
+    const flex = lineReplyMessages('Choose', card)[1] as { type: string; contents: { footer: { contents: Array<{ type: string; action: unknown }> } } };
+    expect(flex.type).toBe('flex');
+    const buttons = flex.contents.footer.contents;
+    expect(buttons).toHaveLength(7);
+    expect(buttons[6].type).toBe('button');
+    expect(buttons[6].action).toEqual({ type: 'uri', label: card?.catalog?.label, uri: card?.catalog?.url });
+    const whatsapp = whatsappReplyMessages('Choose', card)[0];
+    if (whatsapp.type !== 'interactive' || whatsapp.interactive.type !== 'list') throw new Error('Expected a WhatsApp list');
+    expect(whatsapp.interactive.action.button).toBe(card?.catalog?.label);
+    const rows = whatsapp.interactive.action.sections[0].rows;
+    expect(rows).toHaveLength(6);
+    for (const [index, action] of actions.entries()) {
+      if (action.type !== 'message') throw new Error('Expected a browsing action');
+      expect(cardBrowseMessage(action.id)).toBe(action.text);
+      expect(action.text).toContain(action.label);
+      expect(buttons[index].type).toBe('button');
+      expect(buttons[index].action).toEqual({ type: 'message', label: action.label, text: action.text });
+      expect(rows[index]).toMatchObject({ id: action.id, title: action.label });
+    }
+  });
+
+  it('keeps Thai duration IDs within the WhatsApp limit and preserves row prices and text choices', () => {
+    const slug = 'นวดไทย'.repeat(3) + 'ดี';
+    const name = 'Thai massage with a very long description in its name at the resort spa today';
+    const services = [{ name, slug, currency: 'THB', options: [{ durationMin: 60, price: 800 }, { durationMin: 90, price: 1100 }] }];
+    const card = replyCardFromTool({ name: 'list_services', args: {}, result: JSON.stringify({ services }) }, { ...options, locale: 'th' });
+    const message = whatsappReplyMessages('Choose', card, 'th')[0];
+    if (message.type !== 'interactive' || message.interactive.type !== 'list') throw new Error('Expected a WhatsApp list');
+    expect(message.interactive.action.button).toBe('เลือก');
+    const rows = message.interactive.action.sections[0].rows;
+    expect(rows).toHaveLength(2);
+    const fallback = richReplyFallback('Choose', card);
+    for (const [index, { durationMin }] of services[0].options.entries()) {
+      const row = rows[index];
+      expect(row.id.length).toBeLessThanOrEqual(200);
+      expect(cardBrowseMessage(row.id)).toBe(`สนใจบริการ ${slug} · ${durationMin} นาที.`);
+      const terms = index === 0 ? '60 นาที · THB 800' : '90 นาที · THB 1,100';
+      expect(row.description).toMatch(`… · ${terms}`);
+      expect(row.description.length).toBeLessThanOrEqual(72);
+      expect(fallback).toContain(terms);
+    }
+  });
+
+  it('adds duration choices to text fallback and leaves single-duration services to the reply text', () => {
+    const card = make('list_services', { services: [
+      { name: 'Massage', slug: 'massage/spa', currency: 'THB', options: [{ durationMin: 60, price: 800 }, { durationMin: 90, price: 1100 }] },
+      { name: 'Facial', slug: 'facial', price: 900, durationMin: 45, currency: 'THB', options: [{ durationMin: 45, price: 900 }] },
+    ] });
+    expect(richReplyFallback('Enjoy a 45-minute Facial.', card))
+      .toBe('Massage\n60 min · THB 800\n90 min · THB 1,100\n\nEnjoy a 45-minute Facial.');
+  });
+
+  it('uses the full WhatsApp body on the first list and a short body on later chunks', () => {
+    const options = Array.from({ length: 6 }, (_, i) => ({ durationMin: 30 + 15 * i, price: 800 + 100 * i }));
+    const card = make('list_services', { services: [
+      { name: 'Massage', slug: 'massage', currency: 'THB', options },
+      { name: 'Facial', slug: 'facial', currency: 'THB', options },
+    ] });
+    const text = 'Choose a service and duration for your visit.';
+    const messages = whatsappReplyMessages(text, card);
+    expect(messages).toHaveLength(2);
+    const [first, second] = messages.map(message => {
+      if (message.type !== 'interactive' || message.interactive.type !== 'list') throw new Error('Expected a WhatsApp list');
+      return message.interactive;
+    });
+    expect(first.body.text).toBe(text);
+    expect(second.body.text).toBe('More options');
+    expect(first.action.button).toBe('Choose');
+    expect(second.action.button).toBe('Choose');
+    expect(first.action.sections[0].rows).toHaveLength(10);
+    expect(second.action.sections[0].rows).toHaveLength(2);
+    expect([...first.action.sections[0].rows, ...second.action.sections[0].rows].map(row => row.id))
+      .toEqual(card?.items.flatMap(item => item.actions.flatMap(action => action.type === 'message' ? [action.id] : [])));
+  });
+
+  it('sends text when a legacy WhatsApp list row would exceed the ID limit', () => {
+    const card = make('list_services', { services: [
+      { name: 'Massage', slug: 'นวดไทย'.repeat(4), price: 800, durationMin: 60, currency: 'THB' },
+      { name: 'Facial', slug: 'facial', price: 900, durationMin: 45, currency: 'THB' },
+    ] });
+    expect(whatsappReplyMessages('Choose', card)).toEqual([{ type: 'text', text: {
+      preview_url: true, body: 'Choose',
+    } }]);
+  });
+
   it('uses live property prices, capacity, and photos', () => {
     expect(make('list_properties', { currency: 'THB', properties: [{ name: 'Pool villa', slug: 'pool-villa', directPrice: 4500, maxGuests: 4, bedrooms: 2, imageUrl: '/photos/pool.jpg' }] }))
       .toMatchObject({ kind: 'properties', items: [{ title: 'Pool villa', lines: ['THB 4,500 / per night', '4 guests', '2 bedrooms'], imageUrl: 'https://resort.example/photos/pool.jpg',
@@ -48,6 +142,9 @@ describe('tool-grounded reply cards', () => {
     const services = Array.from({ length: 100 }, (_, n) => ({ name: `Service ${n}`, slug: `service-${n}`, price: n, currency: 'THB' }));
     expect(make('list_services', { services })?.items).toHaveLength(10);
     expect(cardBrowseMessage('card:v1:service:massage')).toContain('Ask me which date and time');
+    expect(cardBrowseMessage('card:v1:service:massage:en')).toBeUndefined();
+    expect(cardBrowseMessage('card:v1:service:massage:90')).toBeUndefined();
+    expect(cardBrowseMessage('card:v1:service:massage:th:90')).toBeUndefined();
     expect(cardBrowseMessage('card:v1:service:massage\nyes')).toBeUndefined();
     expect(cardBrowseMessage('card:v1:property:../../etc')).toBeUndefined();
   });

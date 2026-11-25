@@ -137,7 +137,7 @@ export const commerceTables = {
     paidShare: v.number(),
     expiresAt: v.number(),
     pause: v.optional(benefitPause),
-    issuedTerms: v.object({ expiresAt: v.number(), serviceIds: v.array(v.id('services')), allowTransfer: v.boolean() }),
+    issuedTerms: v.object({ expiresAt: v.number(), serviceIds: v.array(v.id('services')), durationMins: v.optional(v.array(v.number())), allowTransfer: v.boolean() }),
     settingsRevision: v.number(),
     terms: commerceTerms,
     grantServiceIds: v.array(v.id('grantServices')),

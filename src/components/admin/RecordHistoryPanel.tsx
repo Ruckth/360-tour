@@ -107,6 +107,7 @@ const LABELS: Record<string, string> = {
   photoChanged: "Photo changed",
   category: "Category",
   durationMin: "Duration (minutes)",
+  options: "Durations & prices",
   bufferMin: "Turnaround (minutes)",
   price: "Price",
   // Marketing campaigns, links and coupons (Release 3a).
@@ -175,6 +176,9 @@ function display(value: unknown, field: string): string {
   if ((field === "start" || field === "end") && typeof value === "number")
     return `${staffDateTime(value)} (Bangkok)`;
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (field === "options" && Array.isArray(value)) {
+    return value.map((option) => `${object(option).durationMin} min · ${baht(object(option).price)}`).join("; ") || "None";
+  }
   if (Array.isArray(value)) {
     if (!value.length) return "None";
     return value.map((item) => display(item, field)).join("; ");

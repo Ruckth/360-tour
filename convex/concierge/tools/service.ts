@@ -15,11 +15,21 @@ export async function listServices(ctx: ActionCtx, fnArgs: ToolArgs, toolContext
   return humanToolResult({ ...result, catalogUrl: `${toolContext.siteUrl?.replace(/\/+$/, '') ?? ''}/services${search.size ? `?${search}` : ''}` });
 }
 
-export async function checkServiceAvailability(ctx: ActionCtx, fnArgs: ToolArgs): Promise<string> {
-  return humanToolResult(await ctx.runQuery(internal.services.serviceBookings.checkServiceAvailability, {
+export async function checkServiceAvailability(ctx: ActionCtx, fnArgs: ToolArgs, toolContext: ToolContext): Promise<string> {
+  const result = await ctx.runQuery(internal.services.serviceBookings.checkServiceAvailability, {
     serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
+    ...(typeof fnArgs.durationMin === 'number' ? { durationMin: fnArgs.durationMin } : {}),
     ...(typeof fnArgs.time === 'string' ? { time: fnArgs.time } : {})
-  }));
+  });
+  if ('needsDuration' in result) {
+    const { sessionId, deadlineAt, durableTool } = toolContext;
+    await ctx.runMutation(internal.bookings.bookings.invalidateChatProposal, {
+      sessionId, kind: 'service',
+      ...(deadlineAt !== undefined ? { deadlineAt } : {}),
+      ...(durableTool ? { durableTurn: { eventId: durableTool.eventId, claimToken: durableTool.claimToken } } : {}),
+    });
+  }
+  return humanToolResult(result);
 }
 
 export async function prepareServiceBooking(ctx: ActionCtx, fnName: 'prepare_service_booking', fnArgs: ToolArgs, toolContext: ToolContext): Promise<string> {
@@ -28,6 +38,7 @@ export async function prepareServiceBooking(ctx: ActionCtx, fnName: 'prepare_ser
     ...(toolContext.durableTool ? { durableTool: toolContext.durableTool } : {}),
     ...(toolContext.deadlineAt !== undefined ? { deadlineAt: toolContext.deadlineAt } : {}),
     serviceSlug: String(fnArgs.serviceSlug ?? ''), date: String(fnArgs.date ?? ''),
+    ...(typeof fnArgs.durationMin === 'number' ? { durationMin: fnArgs.durationMin } : {}),
     time: String(fnArgs.time ?? ''), guestName: String(fnArgs.guestName ?? ''),
     ...(typeof fnArgs.guestPhone === 'string' ? { guestPhone: fnArgs.guestPhone } : {}),
     ...(typeof fnArgs.staffPreference === 'string' ? { staffPreference: fnArgs.staffPreference } : {})

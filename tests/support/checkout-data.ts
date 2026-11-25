@@ -144,6 +144,7 @@ export const CATALOG: Catalog = {
       description,
       durationMin,
       price: price * 100,
+      options: [{ durationMin, price: price * 100 }],
       currency: "THB",
       staffIds: staff.map(staffId),
       imageUrl,

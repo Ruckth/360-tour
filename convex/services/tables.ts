@@ -69,6 +69,7 @@ export const servicesTables = {
 		durationMin: publicServiceFields.durationMin,
 		bufferMin: v.number(),
 		price: publicServiceFields.price,
+		options: v.optional(publicServiceFields.options),
 		currency: publicServiceFields.currency,
 		staffIds: v.array(v.id('staff')),
 		/** Optional photo shown in the admin service picker; `imageStorageId` is set when it was uploaded here. */

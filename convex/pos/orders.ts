@@ -19,7 +19,7 @@ import { canReadCheckoutOrder } from '../auth/model';
 import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
-import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
+import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, lineDuration, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
 
 import { publicReturnClaim } from './private/returnModel';
 import { receiptVisitReturnParts } from './private/returnPlan';
@@ -222,8 +222,10 @@ export const getOrder = staffQuery({
 			};
 			const goodwillDiscount = lineGoodwillDiscount(line);
 			const draftPackage = !line.saleSnapshot && line.packageVersionId ? draftPackages?.get(line.packageVersionId) : undefined;
+			const durationMin = lineDuration(line);
 			rows.push({
 				...line,
+				...(durationMin === undefined ? {} : { durationMin }),
 				name: line.saleSnapshot?.label ?? line.name,
 				net: lineNet(line) - goodwillDiscount,
 				...(goodwillDiscount ? { goodwillDiscount } : {}),

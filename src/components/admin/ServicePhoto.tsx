@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { durationSpan, priceFrom } from "@/lib/service-options";
 import { initials } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 
@@ -42,8 +43,9 @@ export function ServiceThumb({ service, className }: { service: ServiceLike; cla
   );
 }
 
-export function serviceSummary(service: Pick<Doc<"services">, "durationMin" | "price" | "currency">) {
-  return `${service.durationMin} min · ${formatMoney(service.price, service.currency)}`;
+/** "60 min · ฿800", or "60–120 min · from ฿800" for a service with several lengths. */
+export function serviceSummary(service: Pick<Doc<"services">, "durationMin" | "price" | "currency" | "options">) {
+  return `${durationSpan(service)} · ${priceFrom(service, (amount) => formatMoney(amount, service.currency))}`;
 }
 
 /** A service photo shown large, so staff can see what they are booking. */
@@ -52,7 +54,7 @@ export function ServicePhotoLightbox({
   onClose,
   onCloseAutoFocus,
 }: {
-  service: (ServiceLike & Pick<Doc<"services">, "durationMin" | "price" | "currency" | "description">) | null;
+  service: (ServiceLike & Pick<Doc<"services">, "durationMin" | "price" | "currency" | "options" | "description">) | null;
   onClose: () => void;
   /** Where focus goes on close: Radix can't return it on its own, as no `DialogTrigger` opened it. */
   onCloseAutoFocus: (event: Event) => void;

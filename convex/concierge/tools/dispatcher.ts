@@ -30,7 +30,7 @@ async function executeValidatedTool(ctx: ActionCtx, fnName: string, fnArgs: Tool
   switch (fnName) {
     case 'search_business_facts': return searchBusinessFacts(ctx, fnArgs, toolContext);
     case 'list_services': return listServices(ctx, fnArgs, toolContext);
-    case 'check_service_availability': return checkServiceAvailability(ctx, fnArgs);
+    case 'check_service_availability': return checkServiceAvailability(ctx, fnArgs, toolContext);
     case 'prepare_service_booking': return prepareServiceBooking(ctx, fnName, fnArgs, toolContext);
     case 'confirm_service_booking': return confirmServiceBooking(ctx, fnName, toolContext);
     case 'check_availability': return checkAvailability(ctx, fnArgs, properties);

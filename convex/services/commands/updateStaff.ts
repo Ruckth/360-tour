@@ -57,8 +57,9 @@ export const updateStaff = adminMutation({
 				const service = await ctx.db.get(serviceId);
 				if (!service || service.staffIds.includes(staffId)) continue;
 				if (service.staffIds.length >= 200) throw new Error('Too many service assignments to restore safely');
-				await ctx.db.patch(serviceId, { staffIds: [...service.staffIds, staffId], updatedAt: Date.now() });
-				await logService(ctx, service, (await ctx.db.get(serviceId))!, admin.email, 'staff_restored');
+				const assignments = { staffIds: [...service.staffIds, staffId], revision: (service.revision ?? 0) + 1, updatedAt: Date.now() };
+				await ctx.db.patch(serviceId, assignments);
+				await logService(ctx, service, { ...service, ...assignments }, admin.email, 'staff_restored');
 			}
 			await ctx.db.patch(staffId, { archivedServiceIds: undefined });
 		}

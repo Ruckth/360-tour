@@ -703,6 +703,8 @@
     "unavailable": "El catálogo no está disponible temporalmente. Inténtalo de nuevo más tarde.",
     "ask": "Consultar este servicio",
     "minutes": "min",
+    "fromPrice": "desde {price}",
+    "chooseDuration": "Elige la duración",
     "next": "Servicios siguientes",
     "first": "Primera página",
     "moreCategories": "Más categorías",

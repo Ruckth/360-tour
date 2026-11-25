@@ -5,7 +5,7 @@ import { allowedImageUrl } from './imageUrls';
 export type ReplyCardAction =
   | { type: 'uri'; label: string; url: string }
   | { type: 'message'; label: string; id: string; text: string };
-export type ReplyCardItem = { title: string; lines: string[]; imageUrl?: string; actions: ReplyCardAction[] };
+export type ReplyCardItem = { title: string; lines: string[]; imageUrl?: string; actions: ReplyCardAction[]; hasDurationChoices?: true };
 export type ReplyCard = { kind: 'properties' | 'property' | 'quote' | 'booking' | 'services' | 'service'; items: ReplyCardItem[]; catalog?: { label: string; url: string } };
 export type ReplyToolTrace = { name: string; args: Record<string, unknown>; result: string };
 
@@ -80,27 +80,42 @@ const categoryBrowseCopy: Record<string, string> = {
   hi: 'इस श्रेणी की सेवाएँ दिखाएँ:',
 };
 
-export function cardBrowseAction(kind: 'property' | 'service' | 'category', slug: string, label: string, locale = 'en'): ReplyCardAction | undefined {
+function validServiceDuration(durationMin: unknown): durationMin is number {
+  return typeof durationMin === 'number' && durationMin > 0 && durationMin <= 1440 && durationMin % 15 === 0;
+}
+
+export function cardBrowseAction(kind: 'property' | 'service' | 'category', slug: string, label: string, locale = 'en', durationMin?: number): ReplyCardAction | undefined {
   if (!slug || slug.length > 100 || /[\u0000-\u001f]/.test(slug) || (kind !== 'category' && !/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug))) return;
-  const id = `card:v1:${kind}:${encodeURIComponent(slug)}${locale !== 'en' && browseCopy[locale] ? `:${locale}` : ''}`;
+  if (durationMin !== undefined && (kind !== 'service' || !validServiceDuration(durationMin))) return;
+  const language = Object.prototype.hasOwnProperty.call(browseCopy, locale) ? locale : 'en';
+  // Service slugs cannot contain colons, so the duration ID can carry the slug without percent encoding.
+  const id = durationMin === undefined
+    ? `card:v1:${kind}:${encodeURIComponent(slug)}${language === 'en' ? '' : `:${language}`}`
+    : `card:v2:s:${slug}:${language}:${durationMin}`;
   if (id.length > 256) return;
   return { type: 'message', id, label, text: cardBrowseMessage(id)! };
 }
 export function cardBrowseMessage(id: unknown): string | undefined {
   if (typeof id !== 'string') return;
   if (id.length > 256) return;
-  const match = /^card:v1:(property|service|category):([a-zA-Z0-9_%~.!*'()-]+)(?::([a-zA-Z-]+))?$/.exec(id);
-  if (!match) return;
+  const compact = /^card:v2:(s):([^:]+):([a-zA-Z-]+):([1-9][0-9]{0,3})$/.exec(id);
+  const match = compact ?? /^card:v1:(property|service|category):([a-zA-Z0-9_%~.!*'()-]+)(?::([a-zA-Z-]+))?$/.exec(id);
+  if (!match || match[0] !== id) return;
+  if (!compact && match[3] === 'en') return;
+  const kind = compact ? 'service' : match[1];
   let slug: string;
-  try { slug = decodeURIComponent(match[2]); } catch { return; }
-  if (!slug || slug.length > 100 || /[\u0000-\u001f]/.test(slug) || (match[1] !== 'category' && !/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug))) return;
+  try { slug = compact ? match[2] : decodeURIComponent(match[2]); } catch { return; }
+  if (!slug || slug.length > 100 || /[\u0000-\u001f]/.test(slug) || (kind !== 'category' && !/^[\p{L}\p{N}\p{M}_ -]{1,100}$/u.test(slug))) return;
   const locale = match[3] ?? 'en';
+  if (!Object.prototype.hasOwnProperty.call(browseCopy, locale)) return;
   const phrases = browseCopy[locale];
-  if (!phrases) return;
-  if (match[1] === 'category') return `${categoryBrowseCopy[locale]} ${JSON.stringify(slug)}.`;
-  return match[1] === 'property'
+  const durationMin = compact ? Number(compact[4]) : undefined;
+  if (durationMin !== undefined && !validServiceDuration(durationMin)) return;
+  const duration = durationMin === undefined ? '' : ` · ${durationMin} ${(copy[locale as keyof typeof copy] ?? copy.en)[15]}`;
+  if (kind === 'category') return `${categoryBrowseCopy[locale]} ${JSON.stringify(slug)}.`;
+  return kind === 'property'
     ? `${phrases[0]} ${slug}.`
-    : `${phrases[1]} ${slug}.${locale === 'en' ? ' Ask me which date and time I would like.' : ''}`;
+    : `${phrases[1]} ${slug}${duration}.${locale === 'en' ? ' Ask me which date and time I would like.' : ''}`;
 }
 
 export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: string; locale?: string }): ReplyCard | undefined {
@@ -110,11 +125,11 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
   const labels = copy[options.locale as keyof typeof copy] ?? copy.en;
   const [details, view, times, confirm, pay, night, guests, bedrooms, total, proposal, pending, paid, confirmed, yes, atResort, minutes] = labels;
   const items: ReplyCardItem[] = [];
-  const add = (title: unknown, lines: string[], actions: Array<ReplyCardAction | undefined>, photo?: unknown) => {
+  const add = (title: unknown, lines: string[], actions: Array<ReplyCardAction | undefined>, photo?: unknown, presentation?: Pick<ReplyCardItem, 'hasDurationChoices'>) => {
     if (!str(title)) return;
     const photoUrl = image(photo, options.siteUrl);
     items.push({ title: cardText(str(title).replace(/\s+/g, ' '), 80), lines: lines.filter(Boolean).map(line => cardText(line, 200)).slice(0, 6),
-      actions: actions.filter((a): a is ReplyCardAction => !!a).slice(0, 2), ...(photoUrl ? { imageUrl: photoUrl } : {}) });
+      actions: actions.filter((a): a is ReplyCardAction => !!a).slice(0, 6), ...(photoUrl ? { imageUrl: photoUrl } : {}), ...presentation });
   };
   const uri = (label: string, value: string): ReplyCardAction | undefined => {
     const url = siteLink(value, options.siteUrl);
@@ -147,8 +162,17 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
         for (const category of rows(result.categories)) add(category.name, [], [cardBrowseAction('category', str(category.name), details, options.locale)], category.imageUrl);
         break;
       }
-      for (const s of rows(result.services)) add(s.name, [money(s.price, s.currency), typeof s.durationMin === 'number' ? `${s.durationMin} ${minutes}` : '', str(s.category)],
-        [cardBrowseAction('service', str(s.slug), times, options.locale)], s.imageUrl);
+      for (const s of rows(result.services)) {
+        const choices = rows(s.options).flatMap(({ durationMin, price }) =>
+          validServiceDuration(durationMin) ? [{ durationMin, price, label: `${durationMin} ${minutes}` }] : []);
+        if (choices.length > 1) {
+          add(s.name, choices.map(choice => `${choice.label} · ${money(choice.price, s.currency)}`),
+            choices.map(choice => cardBrowseAction('service', str(s.slug), choice.label, options.locale, choice.durationMin)), s.imageUrl, { hasDurationChoices: true });
+        } else {
+          add(s.name, [money(s.price, s.currency), typeof s.durationMin === 'number' ? `${s.durationMin} ${minutes}` : '', str(s.category)],
+            [cardBrowseAction('service', str(s.slug), times, options.locale)], s.imageUrl);
+        }
+      }
       break;
     }
     case 'prepare_booking':
@@ -181,7 +205,8 @@ export function replyCardFromTool(trace: ReplyToolTrace, options: { siteUrl?: st
       const amount = money(result.price, result.currency);
       if (!amount) return;
       // No generic yes button: an old card must never confirm a newer proposal.
-      add(result.service, [preparing ? proposal : confirmed, `${str(result.date)} ${str(result.time)}`, `${total}: ${amount}`, atResort,
+      const duration = validServiceDuration(result.durationMin) ? `${result.durationMin} ${minutes}` : '';
+      add(result.service, [preparing ? proposal : confirmed, `${str(result.date)} ${str(result.time)}`, duration, `${total}: ${amount}`, atResort,
         preparing ? yes : str(result.confirmationCode)], []);
       break;
     }

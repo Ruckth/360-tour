@@ -6,7 +6,8 @@ import { createAppointmentRecord } from '../private/serviceSlots';
 
 export const createAppointment = adminMutation({
 	args: {
-		serviceId: v.id('services'), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
+		serviceId: v.id('services'), durationMin: v.optional(v.number()), start: v.number(), staffId: v.optional(v.id('staff')), guestName: v.string(), guestPhone: v.string(),
+		expectedPrice: v.optional(v.number()),
 		guestEmail: v.optional(v.string()), bookingId: v.optional(v.id('bookings')), chatSessionId: v.optional(v.id('conversations')),
 		rebookedFromId: v.optional(v.id('appointments')), historicalReason: v.optional(v.string())
 	},

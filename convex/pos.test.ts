@@ -489,6 +489,26 @@ describe('save, list and resume', () => {
 });
 
 describe('source changes', () => {
+	it('requires a one-time duration review before settling a legacy appointment row', async () => {
+		const { t, admin, appointment, order, settle } = await setup();
+		const id = await appointment();
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { appointmentId: id });
+		const [line] = (await order(orderId)).lines;
+		await t.run(async ctx => {
+			await ctx.db.patch(line._id, { durationMin: undefined, detail: '2026-10-02 11:00 · SVC-1' });
+			await ctx.db.patch(id, { end: line.startAt! + 90 * 60_000 });
+		});
+		expect((await order(orderId)).lines[0].sourceIssue).toMatchObject({ kind: 'changed', message: expect.stringContaining('confirm the appointment duration') });
+		const payment = { orderId, idempotencyKey: 'legacy-duration', expectedDue: 120000, tenders: [{ method: 'cash' as const, amount: 120000 }] };
+		await expect(settle(payment)).rejects.toThrow('Update the row and review the total');
+		const refresh = () => admin.mutation(api.pos.commands.updateSourceLine.updateSourceLine, { lineId: line._id });
+		await expect(refresh()).resolves.toEqual({ result: 'updated' });
+		expect((await order(orderId)).lines[0]).toMatchObject({ durationMin: 90, sourceIssue: null });
+		await expect(refresh()).resolves.toEqual({ result: 'current' });
+		await settle(payment);
+		expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ paymentStatus: 'paid' });
+	});
+
 	it('refuses to settle a stay that moved dates, then charges it after the row is updated (K5-01)', async () => {
 		const { t, admin, bookingId, order, settle } = await setup();
 		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
@@ -749,6 +769,20 @@ describe('settlement', () => {
 });
 
 describe('order rows', () => {
+	it('checks the reviewed price before adding a service duration to the order', async () => {
+		const { t, admin, serviceId, order, extra } = await setup();
+		const { orderId } = await extra();
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, defaultDurationMin: 60,
+			options: [{ durationMin: 60, price: 120000 }, { durationMin: 90, price: 170050 }] });
+		const add = (expectedPrice: number) => admin.mutation(api.pos.commands.addItem.addItem, {
+			orderId, item: { kind: 'service', serviceId, durationMin: 90, expectedPrice },
+		});
+		await expect(add(120000)).rejects.toThrow(/SERVICE_PRICE_CHANGED.*The price changed to ฿1,700\.5\. Review and try again\./);
+		expect((await order(orderId)).lines.map(line => line.kind)).toEqual(['extra']);
+		const { lineId } = await add(170050);
+		expect(await t.run(ctx => ctx.db.get(lineId))).toMatchObject({ durationMin: 90, unitPrice: 170050 });
+	});
+
 	it('keeps each service its own row and stacks nights into a quantity', async () => {
 		const { admin, serviceId, propertyId, order } = await setup();
 		const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });

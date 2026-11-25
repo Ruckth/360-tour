@@ -24,6 +24,9 @@ import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { formatMoney, sourceLabel } from "@/components/admin/labels";
+import { serviceSummary } from "@/components/admin/ServicePhoto";
+import { DurationChoice } from "@/components/services/DurationChoice";
+import { hasDurations, serviceOption, serviceOptions } from "@/lib/service-options";
 import { staffLabel } from "@/components/admin/admin-bookings-shared";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -379,8 +382,11 @@ function AppointmentEditForm({
   const revision = appointmentRevision(original);
   const confirm = useConfirm();
   const [serviceId, setServiceId] = useState<Id<"services">>(appointment.serviceId);
+  const originalDuration = (original.end - original.start) / 60_000;
+  const [durationMin, setDurationMin] = useState(originalDuration);
   const [detailsDirty, setDetailsDirty] = useState(false);
-  const dirty = detailsDirty || serviceId !== original.serviceId;
+  const serviceChanged = serviceId !== original.serviceId || durationMin !== originalDuration;
+  const dirty = detailsDirty || serviceChanged;
   useEffect(() => { onDirtyChange(dirty); return () => onDirtyChange(false); }, [dirty, onDirtyChange]);
   const [saving, setSaving] = useState(false);
   useEffect(() => { onBusyChange(saving); return () => onBusyChange(false); }, [saving, onBusyChange]);
@@ -390,6 +396,7 @@ function AppointmentEditForm({
   // Services this staff member performs, plus the current one so the select shows it.
   const options = services.filter((s) => s.staffIds.includes(appointment.staffId) && s._id !== appointment.serviceId);
   if (service) options.unshift(service);
+  const selected = options.find((s) => s._id === serviceId);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -397,16 +404,17 @@ function AppointmentEditForm({
     const text = (name: string) => String(form.get(name) ?? "").trim();
     if (saving) return;
     const chosen = options.find((s) => s._id === serviceId);
+    const option = chosen && serviceOption(chosen, durationMin);
     setSaving(true);
     setError("");
     try {
-      if (serviceId !== original.serviceId) {
-        if (!chosen) throw new Error("This service is no longer available. Choose another service.");
-        const end = original.start + chosen.durationMin * 60_000;
+      if (serviceChanged) {
+        if (!chosen || !option) throw new Error("This service is no longer available. Choose another service.");
+        const end = original.start + option.durationMin * 60_000;
         const blockedUntil = end + chosen.bufferMin * 60_000;
         if (!(await confirm({
           title: "Confirm service change?",
-          description: <>From: {service?.name ?? "Service"} · {timeRange(original.start, original.end)} · {turnaroundMinutes(original)} min turnaround · available again {endTime(original.start, original.blockedUntil)} · {formatMoney(original.price, original.currency)}.<br />To: {chosen.name} · {timeRange(original.start, end)} · {chosen.bufferMin} min turnaround · available again {endTime(original.start, blockedUntil)} · {formatMoney(chosen.price, chosen.currency)}. Staff and start time stay the same. Guest is not notified automatically.</>,
+          description: <>From: {service?.name ?? "Service"}{service && hasDurations(service) ? ` · ${originalDuration} min` : ""} · {timeRange(original.start, original.end)} · {turnaroundMinutes(original)} min turnaround · available again {endTime(original.start, original.blockedUntil)} · {formatMoney(original.price, original.currency)}.<br />To: {chosen.name}{hasDurations(chosen) ? ` · ${option.durationMin} min` : ""} · {timeRange(original.start, end)} · {chosen.bufferMin} min turnaround · available again {endTime(original.start, blockedUntil)} · {formatMoney(option.price, chosen.currency)}. Staff and start time stay the same. Guest is not notified automatically.</>,
           confirmLabel: "Change service",
           cancelLabel: "Keep editing",
         }))) return;
@@ -418,7 +426,7 @@ function AppointmentEditForm({
         guestPhone: text("guestPhone"),
         guestEmail: text("guestEmail"),
         notes: text("notes"),
-        ...(serviceId !== original.serviceId && chosen ? { serviceId, expectedService: { durationMin: chosen.durationMin, bufferMin: chosen.bufferMin, price: chosen.price, currency: chosen.currency } } : {}),
+        ...(serviceChanged && chosen && option ? { serviceId, durationMin: option.durationMin, expectedService: { durationMin: option.durationMin, bufferMin: chosen.bufferMin, price: option.price, currency: chosen.currency } } : {}),
       });
       onDone();
     } catch (err) {
@@ -436,18 +444,37 @@ function AppointmentEditForm({
       <fieldset disabled={saving} className="grid gap-4">
         <div className="grid gap-2">
           <Label>Service</Label>
-          <Select value={serviceId} onValueChange={(value) => setServiceId(value as Id<"services">)} disabled={!canChangeService}>
+          <Select
+            value={serviceId}
+            onValueChange={(value) => {
+              const next = options.find((s) => s._id === value);
+              setServiceId(value as Id<"services">);
+              // Back to the booked service keeps the booked length; another starts on its default.
+              setDurationMin(value === original.serviceId ? originalDuration : next?.durationMin ?? originalDuration);
+            }}
+            disabled={!canChangeService}
+          >
             <SelectTrigger className="rounded-lg" aria-label="Service">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {options.map((s) => (
                 <SelectItem key={s._id} value={s._id}>
-                  {s.name} · {s.durationMin} min · {formatMoney(s.price, s.currency)}
+                  {s.name} · {serviceSummary(s)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          {selected && hasDurations(selected) ? (
+            <DurationChoice
+              legend="Duration"
+              options={serviceOptions(selected)}
+              value={durationMin}
+              onChange={setDurationMin}
+              formatPrice={(amount) => formatMoney(amount, selected.currency)}
+              disabled={!canChangeService}
+            />
+          ) : null}
           <p className="text-xs text-muted-foreground">
             {canChangeService
               ? "Same staff member and start time. The length, turnaround and price follow the new service."

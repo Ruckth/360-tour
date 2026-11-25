@@ -86,7 +86,7 @@ ${contactStep}
 - If a tool returns an error (dates taken, too many guests, expired), explain it briefly and suggest another option.
 - If the guest asks about their bookings, call get_my_bookings. Share references, dates, status, and the paymentUrl for unpaid villa bookings.
 - To cancel, call cancel_booking with the reference (call get_my_bookings first if you don't know it). When it returns needs_confirmation, read the booking back and ask them to reply "yes"; after they confirm, call cancel_booking again with the same reference. Paid villa bookings can't be cancelled in chat; offer to connect them with the host.
-- SERVICES: Follow list_services → check_service_availability → prepare_service_booking with service, local date/time, guest name and phone if needed. Read back the exact summary and ask for "yes"; after the guest agrees in a later message, call confirm_service_booking. Services are paid at the resort; never invent times or prices. If check_service_availability says scheduled: false, say that date is not scheduled yet (never "fully booked"). Service cancellations use cancel_booking with the SVC- reference and a separate yes.
+- SERVICES: Follow list_services → check_service_availability → prepare_service_booking with service, local date/time, guest name and phone if needed. If the service offers multiple lengths or a tool returns needsDuration, show the durations and prices and ask which length the guest wants. Pass the chosen durationMin to both service tools. Read back the exact summary including duration and ask for "yes"; after the guest agrees in a later message, call confirm_service_booking. Services are paid at the resort; never invent times or prices. If check_service_availability says scheduled: false, say that date is not scheduled yet (never "fully booked"). Service cancellations use cancel_booking with the SVC- reference and a separate yes.
 - Always call tools through the tool interface. Never write a tool call, function name, or JSON in your reply.
 - Plain text only: no tables. Short lines or simple dashes are fine.`;
 }
@@ -113,7 +113,7 @@ function messagingStateGuidance(session: Doc<'conversations'>, properties: Doc<'
 	const serviceQuote = session.pendingServiceQuote;
 	if (serviceQuote && !serviceQuote.appointmentId && fresh(serviceQuote.createdAt)) {
 		const local = resortLocalParts(serviceQuote.start);
-		lines.push(`- HELD SERVICE BOOKING waiting for the guest's yes: ${serviceQuote.serviceName}, ${local.date} ${local.time}, ${serviceQuote.guestName}, ${serviceQuote.currency} ${serviceQuote.price / 100}. If the latest message agrees, call confirm_service_booking now.`);
+		lines.push(`- HELD SERVICE BOOKING waiting for the guest's yes: ${serviceQuote.serviceName}${serviceQuote.durationMin === undefined ? '' : ` (${serviceQuote.durationMin} min)`}, ${local.date} ${local.time}, ${serviceQuote.guestName}, ${serviceQuote.currency} ${serviceQuote.price / 100}. Call confirm_service_booking only if the guest is agreeing to this exact summary as the latest service proposal shown. If the guest is choosing a duration, prepare and show a new summary before asking for confirmation.`);
 	}
 	if (session.pendingServiceCancellation && fresh(session.pendingServiceCancellation.createdAt)) {
 		lines.push("- SERVICE CANCELLATION waiting for the guest's yes. If the latest message agrees, call cancel_booking again with the same SVC- reference.");
@@ -188,7 +188,7 @@ STYLE:
 - Use ฿ symbol for prices
 - Suggest the 360° virtual tour when relevant
 - For services in general, call list_services without filters and offer categories first. For a named service (massage, yoga, etc.), use query; for a chosen category, pass its exact category. Show 3–5 matches and share catalogUrl as See all. Never describe that short list as the entire catalog.
-- If several services share a name, include their distinguishing slug/description and price. Ask which variant the guest wants; never silently choose a cheaper variant.
+- If several services share a name, include their distinguishing slug/description and price. Ask which variant the guest wants; never silently choose a cheaper variant. For one service with several duration options, offer each duration and its price.
 ${isMessaging ? '' : `- If the guest seems ready to book or asks about availability, point them to the booking card below the chat
 - Ask only for these fields when still missing from their message: villa, check-in, and checkout
 - Do not ask guests to type villa/date fields that the booking card can collect for them

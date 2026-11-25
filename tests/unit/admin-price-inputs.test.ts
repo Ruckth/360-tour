@@ -68,14 +68,19 @@ it('shows a villa price error for three decimals, then saves an exact two-decima
 it('shows a service price error for three decimals, then saves an exact two-decimal price', async () => {
   await render(createElement(AdminStaffServicesManager, { section: 'services' }));
   await act(async () => [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === 'Add service')!.click());
-  const price = document.querySelector<HTMLInputElement>('#sv-price')!;
-  document.querySelector<HTMLInputElement>('#sv-name')!.value = 'Massage';
-  document.querySelector<HTMLInputElement>('#sv-category')!.value = 'Wellness';
-  price.value = '100.505';
+  const price = document.querySelector<HTMLInputElement>('input[aria-label="Price for 60 min (THB)"]')!;
+  const setValue = (input: HTMLInputElement, value: string) => act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const setPrice = (value: string) => setValue(price, value);
+  await setValue(document.querySelector<HTMLInputElement>('#sv-name')!, 'Massage');
+  await setValue(document.querySelector<HTMLInputElement>('#sv-category')!, 'Wellness');
+  await setPrice('100.505');
   await submit(price.form!);
-  expect(document.querySelector('[role="alert"]')?.textContent).toBe('Enter a price with at most 2 decimals.');
+  expect(document.getElementById(price.getAttribute('aria-describedby')!)?.textContent).toBe('Enter a price with at most 2 decimals.');
   expect(state.save).not.toHaveBeenCalled();
-  price.value = '100.51';
+  await setPrice('100.51');
   await submit(price.form!);
-  expect(state.save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: 'Massage', price: 10051 }));
+  expect(state.save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ name: 'Massage', category: 'Wellness', options: [{ durationMin: 60, price: 10051 }], defaultDurationMin: 60 }));
 });

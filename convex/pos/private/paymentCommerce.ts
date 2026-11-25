@@ -8,7 +8,7 @@ import {
   benefitExpiresAt, COMMERCE_LIMITS, DEFAULT_COMMERCE_SETTINGS, freezePackageVatBases, freezeRowVatBase,
   quotePackageVoucherReturn, splitBenefitUse, splitPackagePrice, type PackageContent, type TenderCells,
 } from '../../shared/commerce';
-import { recordAppointmentChange } from '../../services/model';
+import { recordAppointmentChange, serviceOptions } from '../../services/model';
 import { sha256 } from '../../shared/displayTokens';
 import { lineNet, linePrice, type Tender } from '../../shared/orderMath';
 import { checkFundingVouchers, defaultPaymentBranch, paymentError, paymentGet, paymentRange, type FundingVoucher, type PaymentCtx } from './paymentAttempt';
@@ -21,7 +21,7 @@ type Part = Snapshot['contents'][number];
 type Variant = { id: Id<'productVariants'>; productId: Id<'products'>; label: string; price: number; exempt: boolean; active: boolean };
 type IssuedBenefit =
   | { kind: 'voucher'; face: number; expiresAt: number; packageVersionId?: Id<'packageVersions'> }
-  | { kind: 'sessions'; ownerId: Id<'customers'>; serviceIds: Id<'services'>[]; expiresAt: number; allowTransfer: boolean; packageVersionId: Id<'packageVersions'> };
+  | { kind: 'sessions'; ownerId: Id<'customers'>; serviceIds: Id<'services'>[]; durationMins?: number[]; expiresAt: number; allowTransfer: boolean; packageVersionId: Id<'packageVersions'> };
 type DraftPart = Pick<Part, 'contentKey' | 'label' | 'units' | 'vatProfile'> & {
   paidShare: number; vatBase: number; variant?: Variant; benefit?: IssuedBenefit;
 };
@@ -57,6 +57,7 @@ export type FrozenCatalogue = {
   variants: Variant[];
   versions: Doc<'packageVersions'>[];
   servicePrices: [Id<'services'>, number][];
+  sessionPrices?: [string, number][];
 };
 
 type SaleRow = {
@@ -94,7 +95,7 @@ export async function prepareCommercePayment(
     packageValidityDays: terms.packageValidityDays, voucherValidityDays: terms.voucherValidityDays,
   };
   const hasGoods = lines.some(isCommerceLine);
-  const branch = hasGoods || vouchers.length ? await defaultPaymentBranch(ctx) : null;
+  const branch = hasGoods || vouchers.length || lines.some(line => line.coverage) ? await defaultPaymentBranch(ctx) : null;
   const handovers = hasGoods ? await openHandoversForOrder(ctx, order) : [];
   const handoverByLine = new Map(handovers.map(handover => [
     // A recollection names its new row; a handover moved with its row (Pay the room first) keeps the line.
@@ -132,6 +133,8 @@ export async function prepareCommercePayment(
   const rows: SaleRow[] = [];
   const versions = new Map(frozen?.versions.map(version => [version._id, version] as const));
   const servicePrices = new Map(frozen?.servicePrices);
+  const sessionPrices = new Map(frozen?.sessionPrices);
+  const sessionServices = new Map<Id<'services'>, Doc<'services'> | null>();
   let coveredRows = 0;
   for (const line of lines) {
     const handover = handoverByLine.get(line._id);
@@ -200,8 +203,25 @@ export async function prepareCommercePayment(
         if (content.kind === 'session') {
           const first = content.serviceIds[0];
           if (!first) paymentError('package_review_required', 'The package has no service for its sessions.');
-          let price = servicePrices.get(first);
-          if (price === undefined) {
+          const { durationMins } = content;
+          const sessionKey = `${version._id}:${content.contentKey}`;
+          let price = durationMins ? sessionPrices.get(sessionKey) : servicePrices.get(first);
+          if (price === undefined && durationMins) {
+            for (const serviceId of content.serviceIds) {
+              let service = sessionServices.get(serviceId);
+              if (service === undefined) {
+                service = await paymentGet(ctx, serviceId);
+                sessionServices.set(serviceId, service);
+              }
+              if (!service) continue;
+              const shortest = serviceOptions(service).find(option => durationMins.includes(option.durationMin));
+              if (!shortest) continue;
+              price = durationMins.includes(service.durationMin) ? service.price : shortest.price;
+              break;
+            }
+            if (price === undefined) paymentError('catalogue_changed', 'None of the package services offers a covered duration.');
+            sessionPrices.set(sessionKey, price);
+          } else if (price === undefined) {
             const service = await paymentGet(ctx, first);
             if (!service) paymentError('catalogue_changed', 'A package service was removed.');
             price = service.price;
@@ -209,7 +229,8 @@ export async function prepareCommercePayment(
           }
           items.push({ kind: 'sessions', contentKey: content.contentKey, units: content.units, serviceUnitPrices: content.serviceIds.map(() => price) });
           parts.push({ ...common, label: version.name, units: content.units, benefit: { kind: 'sessions', packageVersionId: version._id,
-            ownerId: order.customerId, serviceIds: content.serviceIds, allowTransfer: version.allowTransfer && terms.allowSessionTransfer,
+            ownerId: order.customerId, serviceIds: content.serviceIds, ...(durationMins ? { durationMins } : {}),
+            allowTransfer: version.allowTransfer && terms.allowSessionTransfer,
             expiresAt: benefitExpiresAt(now, 'sessions', rules, version.validityDays)! } });
         } else if (content.kind === 'voucher') {
           items.push({ kind: 'voucher', contentKey: content.contentKey, face: content.faceValue });
@@ -292,7 +313,8 @@ export async function prepareCommercePayment(
     const grant = usedGrants.get(grantId)?.grant ?? await paymentGet(ctx, grantId);
     if (!visit || priorUse || !grant || visit.attendeeId !== attendeeId || visit.coverage || grant.ownerId !== attendeeId ||
         grant.branchId !== branch!._id || grant.grantServiceIds.length > COMMERCE_LIMITS.servicesPerGrant || grant.pause || grant.pendingReturnId || now >= grant.expiresAt ||
-        !grant.issuedTerms.serviceIds.includes(visit.serviceId)) {
+        !grant.issuedTerms.serviceIds.includes(visit.serviceId) ||
+        (grant.issuedTerms.durationMins && !grant.issuedTerms.durationMins.includes((visit.end - visit.start) / 60_000))) {
       paymentError('coverage_changed', 'The session is no longer available for this attendee and visit.');
     }
     const state = usedGrants.get(grantId) ?? { grant, paid: grant.paidUnits, goodwill: grant.goodwillUnits, uses: [] };
@@ -352,6 +374,7 @@ export async function prepareCommercePayment(
   ])));
   const frozenCatalogue: FrozenCatalogue = {
     terms, settingsRevision, variants: [...variants.values()], versions: [...versions.values()], servicePrices: [...servicePrices],
+    ...(sessionPrices.size ? { sessionPrices: [...sessionPrices] } : {}),
   };
   return { rows, snapshots, terms, payments, funding, restock, stockShortages, usedGrants, branch, catalogFingerprint, frozenCatalogue };
 }
@@ -422,11 +445,11 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
           : movementIds.get(part.variant.id);
       }
       if (part.benefit?.kind === 'sessions') {
-        const { packageVersionId, ownerId, expiresAt, allowTransfer, serviceIds } = part.benefit;
+        const { packageVersionId, ownerId, expiresAt, allowTransfer, serviceIds, durationMins } = part.benefit;
         reserveWrites(ctx, 3 + serviceIds.length);
         const grantId = await ctx.db.insert('sessionGrants', {
           ...source, packageVersionId, ownerId, branchId: branchId!, total: part.units, used: 0, paidUnits: part.units, goodwillUnits: 0,
-          returnedUnits: 0, paidShare: record.paidShare, expiresAt, issuedTerms: { expiresAt, serviceIds, allowTransfer },
+          returnedUnits: 0, paidShare: record.paidShare, expiresAt, issuedTerms: { expiresAt, serviceIds, allowTransfer, ...(durationMins ? { durationMins } : {}) },
           terms, settingsRevision, grantServiceIds: [], revision: 0,
         });
         const grantServiceIds = [];

@@ -703,6 +703,8 @@
     "unavailable": "現在サービス一覧を表示できません。しばらくしてから再度お試しください。",
     "ask": "このサービスを相談",
     "minutes": "分",
+    "fromPrice": "{price}から",
+    "chooseDuration": "時間を選択",
     "next": "次のサービス",
     "first": "最初のページへ",
     "moreCategories": "他のカテゴリー",

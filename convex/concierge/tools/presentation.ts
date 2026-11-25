@@ -46,6 +46,7 @@ export function presentMutationToolResult(write: MutationToolResult, siteUrl?: s
       });
     }
     case 'prepare_service_booking':
+      if ('needsDuration' in write.result) return humanToolResult({ ...write.result, next: 'Ask the guest which duration they would like.' });
       return humanToolResult('error' in write.result ? write.result : { ...write.result, next: 'Ask the guest to reply "yes" to confirm.' });
     case 'confirm_service_booking':
       return humanToolResult(write.result);
@@ -81,10 +82,11 @@ export function storedProposalIsCurrent(write: { name: string; resultJson: strin
   }
   if (write.name === 'prepare_service_booking') {
     const pending = session.pendingServiceQuote;
+    if (result.needsDuration === true) return !pending;
     if (!pending) return false;
     const { date, time } = resortLocalParts(pending.start);
     return result.service === pending.serviceName && result.date === date && result.time === time &&
-      result.price === pending.price && result.currency === pending.currency && result.guestName === pending.guestName && result.guestPhone === pending.guestPhone;
+      result.durationMin === pending.durationMin && result.price === pending.price && result.currency === pending.currency && result.guestName === pending.guestName && result.guestPhone === pending.guestPhone;
   }
   return true;
 }

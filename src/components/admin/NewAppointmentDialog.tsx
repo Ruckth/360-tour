@@ -7,6 +7,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { appointmentEntrySlot, appointmentEntryStatus, isPastEntry } from "@/components/admin/appointment-entry";
 import { ServicePicker } from "@/components/admin/ServicePicker";
 import { formatMoney } from "@/components/admin/labels";
+import { DurationChoice } from "@/components/services/DurationChoice";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { hasDurations, priceFrom, serviceOption, serviceOptions } from "@/lib/service-options";
 import {
   DAY_MS,
   errorText,
@@ -54,6 +56,8 @@ export type AppointmentDraft = {
 };
 
 const LAST_SERVICE_KEY = "admin.staff.lastServiceId";
+/** The last booked length per service, as `{ [serviceId]: minutes }`. */
+const LAST_DURATIONS_KEY = "admin.staff.lastDurations";
 /** Up to this many services show as one-tap chips; more get the searchable picker. */
 const SERVICE_CHIPS = 6;
 
@@ -65,9 +69,19 @@ function readLastService() {
   }
 }
 
-function rememberService(serviceId: string) {
+function readLastDurations(): Record<string, number> {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(LAST_DURATIONS_KEY) ?? "{}");
+    return value && typeof value === "object" ? (value as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function rememberService(serviceId: string, durationMin: number) {
   try {
     window.localStorage.setItem(LAST_SERVICE_KEY, serviceId);
+    window.localStorage.setItem(LAST_DURATIONS_KEY, JSON.stringify({ ...readLastDurations(), [serviceId]: durationMin }));
   } catch {
     // Private mode or full storage: remembering is only a convenience.
   }
@@ -103,9 +117,23 @@ export function NewAppointmentDialog({
   const fits = (s: Service) => !draft.staffId || s.staffIds.includes(draft.staffId);
   const serviceId = pickedServiceId ?? (services.find((s) => s._id === wanted && fits(s)) ?? services.find(fits) ?? services[0])?._id;
   const service = services.find((s) => s._id === serviceId);
+  const [lastDurations] = useState(readLastDurations);
+  const [pickedDuration, setDuration] = useState<number | undefined>();
+  // The picked length, else the rebooked one, else the last booked for this service, else the default.
+  const option = service
+    ? serviceOption(service, pickedDuration ?? (rebook?.serviceId === service._id ? (rebook.end - rebook.start) / 60_000 : undefined) ?? lastDurations[service._id])
+    : undefined;
+  const multiple = service ? hasDurations(service) : false;
+  // Only a service with several lengths names one, so a single-length service books as before.
+  const durationArg = multiple && option ? { durationMin: option.durationMin } : {};
   const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
+  const [startChange, setStartChange] = useState<"duration" | "staff" | null>(null);
+  const clearStart = () => {
+    setStart(null);
+    setStartChange(null);
+  };
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
@@ -113,7 +141,7 @@ export function NewAppointmentDialog({
   const [otherTime, setOtherTime] = useState(false);
   const now = useNow();
   const today = resortIsoDate(now);
-  const historicalDate = isPastEntry(date, start, now, service ? service.durationMin + (service.bufferMin ?? 0) : 0);
+  const historicalDate = isPastEntry(date, start, now, service && option ? option.durationMin + (service.bufferMin ?? 0) : 0);
   const qualified = staff.filter(person => historicalDate || (person.status === "active" && service?.staffIds.includes(person._id)));
   const staffId = qualified.some(person => person._id === staffChoice) ? staffChoice as Id<"staff"> : undefined;
   const [historicalReason, setHistoricalReason] = useState("");
@@ -121,17 +149,26 @@ export function NewAppointmentDialog({
 
   const slots = useQuery(
     api.services.admin.findOpenSlots,
-    serviceId ? { serviceId, date, staffId } : "skip",
+    serviceId ? { serviceId, ...durationArg, date, staffId } : "skip",
   );
   // A time that has already started is past work, never a new booking's default.
   const openSlots = slots?.filter((slot) => slot.start >= now);
-  // Fall back to the next open time (or the first), so the form is always one click from booking.
-  const selectedSlot = appointmentEntrySlot(openSlots, start, staffId, now);
+  // Keep the chosen time after a duration change, including subsequent staff changes.
+  const exact = startChange !== null && start !== null && start >= now && !otherTime;
+  const selectedSlot = exact ? openSlots?.find((slot) => slot.start === start) : appointmentEntrySlot(openSlots, start, staffId, now);
+  const closedStart = exact && openSlots !== undefined && !selectedSlot ? start : null;
   const assignedId = staffId ?? selectedSlot?.autoStaffId;
-  const review = useQuery(api.services.admin.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, staffId: assignedId, start: selectedSlot.start } : "skip");
+  const review = useQuery(api.services.admin.previewAppointmentTime, serviceId && assignedId && selectedSlot ? { serviceId, ...durationArg, staffId: assignedId, start: selectedSlot.start } : "skip");
   const assigned = staff.find((person) => person._id === assignedId);
+  let closedStartMessage = "";
+  if (closedStart !== null && option) {
+    const time = resortTime24(closedStart);
+    closedStartMessage = startChange === "staff"
+      ? assigned ? `${assigned.name} isn't available at ${time}. Pick another time.` : `No qualified staff are available at ${time}. Pick another time.`
+      : `${time} isn't open for ${option.durationMin} min. Pick another time.`;
+  }
   const entryStart = selectedSlot?.start ?? start;
-  const completed = entryStart !== null && service !== undefined && appointmentEntryStatus(entryStart, service.durationMin, now) === "completed";
+  const completed = entryStart !== null && service !== undefined && appointmentEntryStatus(entryStart, option?.durationMin ?? service.durationMin, now) === "completed";
   const inProgress = entryStart !== null && !completed && entryStart <= now;
   // Chips or the typed time, never both: earlier days and "Other time…" type it.
   const typedTime = date < today || otherTime || (start !== null && start < now);
@@ -147,6 +184,9 @@ export function NewAppointmentDialog({
     try {
       const result = await createAppointment({
         serviceId,
+        ...durationArg,
+        // The server refuses the booking if this price changed since staff saw it.
+        expectedPrice: option?.price ?? service?.price,
         start: selectedSlot.start,
         historicalReason: historicalReason.trim() || undefined,
         // Book exactly who the preview showed.
@@ -156,7 +196,7 @@ export function NewAppointmentDialog({
           : { guestName: text("guestName"), guestPhone: text("guestPhone"), guestEmail: text("guestEmail") || undefined }),
         ...(rebook ? { rebookedFromId: rebook._id } : {}),
       });
-      rememberService(serviceId);
+      rememberService(serviceId, option?.durationMin ?? service?.durationMin ?? 0);
       onCreated(result.appointmentId, selectedSlot.start);
     } catch (err) {
       setError(errorText(err, "Could not create the appointment."));
@@ -239,10 +279,11 @@ export function NewAppointmentDialog({
                           aria-pressed={s._id === serviceId}
                           onClick={() => {
                             setServiceId(s._id);
-                            setStart(null);
+                            setDuration(undefined);
+                            clearStart();
                           }}
                         >
-                          {s.name} · {formatMoney(s.price, s.currency)}
+                          {s.name} · {priceFrom(s, (amount) => formatMoney(amount, s.currency))}
                         </Button>
                       ))}
                     </div>
@@ -258,14 +299,29 @@ export function NewAppointmentDialog({
                       disabled={saving}
                       onChange={(value) => {
                         setServiceId(value);
-                        setStart(null);
+                        setDuration(undefined);
+                        clearStart();
                       }}
                     />
                   </>
                 )}
-                {service ? (
+                {service && option && multiple ? (
+                  <DurationChoice
+                    legend="Duration"
+                    options={serviceOptions(service)}
+                    value={option.durationMin}
+                    onChange={(minutes) => {
+                      setDuration(minutes);
+                      setStart(selectedSlot?.start ?? start);
+                      setStartChange("duration");
+                    }}
+                    formatPrice={(amount) => formatMoney(amount, service.currency)}
+                    className="mt-2"
+                  />
+                ) : null}
+                {service && option ? (
                   <p className="text-xs text-muted-foreground">
-                    {service.durationMin} min · {formatMoney(service.price, service.currency)}
+                    {option.durationMin} min · {formatMoney(option.price, service.currency)}
                     {service.bufferMin ? ` · ${service.bufferMin} min turnaround` : ""}
                   </p>
                 ) : null}
@@ -280,7 +336,7 @@ export function NewAppointmentDialog({
                     required
                     onValueChange={(next) => {
                       setDate(next);
-                      setStart(null);
+                      clearStart();
                       setOtherTime(false);
                     }}
                   />
@@ -290,7 +346,10 @@ export function NewAppointmentDialog({
                   <Select
                     value={staffId ?? (historicalDate ? "" : "auto")}
                     disabled={saving}
-                    onValueChange={setStaffChoice}
+                    onValueChange={(choice) => {
+                      setStaffChoice(choice);
+                      if (startChange !== null) setStartChange("staff");
+                    }}
                   >
                     <SelectTrigger id="na-staff" className="rounded-lg">
                       <SelectValue placeholder="Choose who did the work" />
@@ -333,7 +392,7 @@ export function NewAppointmentDialog({
                         className="min-h-10 px-1"
                         onClick={() => {
                           setOtherTime(false);
-                          setStart(null);
+                          clearStart();
                         }}
                       >
                         Open times
@@ -359,7 +418,7 @@ export function NewAppointmentDialog({
                         variant="outline"
                         onClick={() => {
                           setDate(resortIsoDate(resortMidnight(date) + DAY_MS));
-                          setStart(null);
+                          clearStart();
                         }}
                       >
                         Next day
@@ -374,6 +433,9 @@ export function NewAppointmentDialog({
                   )}
                 </fieldset>
               )}
+              <p role="status" className={closedStart === null ? "sr-only" : "text-sm text-destructive"}>
+                {closedStartMessage}
+              </p>
               {start !== null && selectedSlot && selectedSlot.start !== start ? (
                 <p className="text-sm text-destructive">
                   {selectedSlot.start > start
@@ -414,7 +476,7 @@ export function NewAppointmentDialog({
           <DialogFooter className="shrink-0 border-t border-border bg-card pt-3">
             <Button type="submit" disabled={saving || !selectedSlot || review === undefined || Boolean(review.problem) || Boolean(review.needsReason && !historicalReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
-              {service && selectedSlot ? `Book ${service.name} · ${resortTime24(selectedSlot.start)}` : rebook ? "Book again" : "Book appointment"}
+              {service && selectedSlot ? `Book ${service.name}${multiple && option ? ` · ${option.durationMin} min` : ""} · ${resortTime24(selectedSlot.start)}` : rebook ? "Book again" : "Book appointment"}
             </Button>
           </DialogFooter>
         </form>

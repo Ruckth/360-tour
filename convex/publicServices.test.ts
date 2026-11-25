@@ -21,6 +21,27 @@ function service(index: number, overrides: Partial<ServiceInput> = {}): ServiceI
 }
 
 describe('public service catalog', () => {
+  it('uses the stored duration and price when options are empty', async () => {
+    const t = convexTest(schema, modules);
+    await t.run(ctx => ctx.db.insert('services', service(1, { options: [] })));
+    const detail = await t.query(api.services.publicServices.getBySlug, { slug: 'service-1' });
+    expect(detail?.options).toEqual([{ durationMin: 60, price: 100100 }]);
+  });
+
+  it('exposes sorted duration options while preserving default terms on public and chat reads', async () => {
+    const t = convexTest(schema, modules);
+    const options = [{ durationMin: 60, price: 80000 }, { durationMin: 90, price: 110000 }];
+    await t.run(ctx => ctx.db.insert('services', service(1, {
+      options: [...options].reverse(), durationMin: 90, price: 110000,
+    })));
+    const detail = await t.query(api.services.publicServices.getBySlug, { slug: 'service-1' });
+    expect(detail).toMatchObject({ durationMin: 90, price: 110000, options });
+    const list = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
+    const chat = await t.query(internal.services.publicServices.browseForChat, { category: 'Wellness' });
+    expect(list.page).toEqual([detail]);
+    expect(chat.services).toEqual([detail]);
+  });
+
   it('exposes only guest-facing fields, without staff IDs or internal timing metadata', async () => {
     const t = convexTest(schema, modules);
     await t.run(async ctx => {
@@ -35,7 +56,7 @@ describe('public service catalog', () => {
     const detail = await t.query(api.services.publicServices.getBySlug, { slug: 'service-1' });
     expect(detail).toEqual({
       slug: 'service-1', name: 'Service 1', description: 'x'.repeat(1000), category: 'Wellness',
-      durationMin: 60, price: 100100, currency: 'THB', imageUrl: 'https://example.convex.cloud/api/storage/photo',
+      durationMin: 60, price: 100100, options: [{ durationMin: 60, price: 100100 }], currency: 'THB', imageUrl: 'https://example.convex.cloud/api/storage/photo',
     });
     const list = await t.query(api.services.publicServices.list, { paginationOpts: { numItems: 20, cursor: null } });
     expect(list.page).toEqual([detail]);

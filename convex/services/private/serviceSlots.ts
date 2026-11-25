@@ -12,6 +12,7 @@ import { assertValidEmail } from '../../shared/validation';
 import { appendRecordHistory } from '../../settings/model';
 import { resortLocalParts } from '../../shared/time';
 import { patternForDate, patternsForRange } from './rosterHistory';
+import { assertServicePrice, resolveServiceOption } from './serviceCatalog';
 
 const MINUTE = 60_000;
 
@@ -174,6 +175,8 @@ export async function serviceRostered(ctx: ReadCtx, staff: Doc<'staff'>[], date:
 
 export type AppointmentInput = {
 	serviceId: Id<'services'>;
+	durationMin?: number;
+	expectedPrice?: number;
 	start: number;
 	staffId?: Id<'staff'>;
 	guestName: string;
@@ -218,7 +221,10 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const { guestName, guestPhone, guestEmail } = guestDetails(input, { requireContact: input.source !== 'admin' || Boolean(input.chatSessionId) });
 	const service = await ctx.db.get(input.serviceId);
 	if (!service) throw new Error('Service unavailable');
-	const blockedUntil = input.start + (service.durationMin + service.bufferMin) * MINUTE;
+	const option = resolveServiceOption(service, input.durationMin);
+	assertServicePrice(option.price, service.currency, input.expectedPrice);
+	const end = input.start + option.durationMin * MINUTE;
+	const blockedUntil = end + service.bufferMin * MINUTE;
 	const historical = Boolean(policy && blockedUntil <= Date.now());
 	if (!historical && service.status !== 'active') throw new Error('Service unavailable');
 	if (historical && !input.staffId) throw new Error('Choose the staff member who actually performed the historical service');
@@ -249,14 +255,14 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	const actor = admin?.email ?? input.actor ?? `system:${input.source}`;
 	const accessToken = crypto.randomUUID();
 	const lookup = appointmentLookupFields({ guestPhone, guestEmail });
-	const status = policy && input.source === 'admin' && input.start + service.durationMin * MINUTE < Date.now() ? 'completed' as const : 'booked' as const;
+	const status = policy && input.source === 'admin' && end < Date.now() ? 'completed' as const : 'booked' as const;
 	const appointmentId = await ctx.db.insert('appointments', {
-		...(status === 'completed' ? await deliveryCostVersion(ctx,service._id,input.start + service.durationMin * MINUTE) : {}),
+		...(status === 'completed' ? await deliveryCostVersion(ctx, service._id, end) : {}),
 		serviceId: service._id,
 		staffId: chosen._id,
 		staffNameSnapshot: chosen.name, serviceNameSnapshot: service.name, createdBy: actor,
 		start: input.start,
-		end: input.start + service.durationMin * MINUTE,
+		end,
 		blockedUntil,
 		guestName,
 		guestPhone,
@@ -270,7 +276,7 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 		status,
 		amountPaid: 0, amountRefunded: 0,
 		paymentStatus: 'unpaid',
-		price: service.price,
+		price: option.price,
 		currency: service.currency,
 		confirmationCode: '',
 		accessToken,
@@ -278,14 +284,14 @@ export async function createAppointmentRecord(ctx: MutationCtx, input: Appointme
 	});
 	const confirmationCode = demoCode('SVC', appointmentId);
 	await ctx.db.patch(appointmentId, { confirmationCode });
-	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end: input.start + service.durationMin * MINUTE, blockedUntil, status, paymentStatus: 'unpaid', price: service.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
+	const snapshot = { staffId: chosen._id, staffName: chosen.name, serviceId: service._id, serviceName: service.name, start: input.start, end, blockedUntil, status, paymentStatus: 'unpaid', price: option.price, currency: service.currency, guestName, guestPhone, guestEmail: guestEmail ?? null, warnings: review.warnings };
 	const audit = { appointmentId, at: Date.now(), actor, kind: 'details' as const, currencyBefore: service.currency, currencyAfter: service.currency,
 		...(reason ? { reason } : {}), changes: [
 			{ field: 'created', from: null, to: confirmationCode }, { field: 'staffName', from: null, to: chosen.name }, { field: 'serviceName', from: null, to: service.name },
 			{ field: 'start', from: null, to: input.start }, { field: 'effectiveAt', from: null, to: input.start },
-			{ field: 'end', from: null, to: input.start + service.durationMin * MINUTE }, { field: 'blockedUntil', from: null, to: blockedUntil },
+			{ field: 'end', from: null, to: end }, { field: 'blockedUntil', from: null, to: blockedUntil },
 			{ field: 'status', from: null, to: status }, { field: 'paymentStatus', from: null, to: 'unpaid' },
-			{ field: 'price', from: null, to: service.price }, { field: 'currency', from: null, to: service.currency },
+			{ field: 'price', from: null, to: option.price }, { field: 'currency', from: null, to: service.currency },
 			{ field: 'guestName', from: null, to: guestName }, { field: 'guestPhone', from: null, to: guestPhone }, { field: 'guestEmail', from: null, to: guestEmail ?? null },
 			...review.warnings.map(warning => ({ field: 'warning', from: null, to: warning }))
 		] };

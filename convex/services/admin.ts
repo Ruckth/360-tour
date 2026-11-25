@@ -4,8 +4,10 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
 import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
+import { findServiceOption } from './private/serviceCatalog';
 import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, openStarts, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
+import { serviceOptions } from '../shared/serviceOptions';
 import { resortLocalParts } from '../shared/time';
 import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './private/administration';
 
@@ -30,6 +32,22 @@ export const countUpcomingAppointments = adminQuery({
 	}
 });
 
+export const upcomingOptionUsage = adminQuery({
+	args: { serviceId: v.id('services') },
+	returns: v.array(v.object({ durationMin: v.number(), count: v.number() })),
+	handler: async (ctx, { serviceId }) => {
+		const now = Date.now();
+		const rows = ctx.db.query('appointments').withIndex('by_service_start', q => q.eq('serviceId', serviceId).gt('start', now));
+		const counts = new Map<number, number>();
+		for await (const appointment of boundedIntegrityRows(rows)) {
+			if (appointment.status !== 'booked' && appointment.status !== 'arrived') continue;
+			const durationMin = (appointment.end - appointment.start) / MINUTE;
+			counts.set(durationMin, (counts.get(durationMin) ?? 0) + 1);
+		}
+		return [...counts].sort(([a], [b]) => a - b).map(([durationMin, count]) => ({ durationMin, count }));
+	}
+});
+
 export const listServices = adminQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
@@ -37,7 +55,7 @@ export const listServices = adminQuery({
 			? await ctx.db.query('services').take(201)
 			: await ctx.db.query('services').withIndex('by_status', q => q.eq('status', 'active')).take(201);
 		if (rows.length > 200) throw new Error('Too many services to show safely. Narrow the list or contact support.');
-		return rows;
+		return rows.map(service => ({ ...service, options: serviceOptions(service) }));
 	}
 });
 
@@ -108,12 +126,14 @@ export const listSchedule = adminQuery({
  * (least appointments that day, then by name), so the dialog can preview the assignment.
  */
 export const findOpenSlots = adminQuery({
-	args: { serviceId: v.id('services'), date: v.string(), staffId: v.optional(v.id('staff')) },
+	args: { serviceId: v.id('services'), durationMin: v.optional(v.number()), date: v.string(), staffId: v.optional(v.id('staff')) },
 	handler: async (ctx, args) => {
-		const [dayStart, dayEnd] = localDayRange(args.date);
 		const service = await ctx.db.get(args.serviceId);
 		if (!service) return [];
-		const occupyMs = (service.durationMin + service.bufferMin) * MINUTE;
+		const option = findServiceOption(service, args.durationMin);
+		if (!option) return [];
+		const [dayStart, dayEnd] = localDayRange(args.date);
+		const occupyMs = (option.durationMin + service.bufferMin) * MINUTE;
 		const staffId = args.staffId;
 		if (staffId && args.date <= resortLocalParts(Date.now()).date) {
 			const person = await ctx.db.get(staffId);
@@ -159,7 +179,7 @@ export const getAppointmentReference = adminQuery({
 });
 
 export const previewAppointmentTime = adminQuery({
-	args: { serviceId: v.id('services'), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('appointments')) },
+	args: { serviceId: v.id('services'), durationMin: v.optional(v.number()), staffId: v.id('staff'), start: v.number(), appointmentId: v.optional(v.id('appointments')) },
 	handler: async (ctx, args) => {
 		try { assertAppointmentStart(args.start, { kind: 'admin_historical' }); }
 		catch (error) { return { warnings: [], needsReason: false, problem: error instanceof Error ? error.message : 'Choose a valid service time' }; }
@@ -167,7 +187,14 @@ export const previewAppointmentTime = adminQuery({
 		const person = await ctx.db.get(args.staffId);
 		if (!service || !person) throw new Error('Staff or service not found');
 		const appointment = args.appointmentId ? await loadAppointment(ctx, args.appointmentId) : null;
-		const occupied = appointment ? appointment.blockedUntil - appointment.start : (service.durationMin + service.bufferMin) * MINUTE;
+		let occupied;
+		if (appointment?.serviceId === args.serviceId && args.durationMin === undefined) {
+			occupied = appointment.blockedUntil - appointment.start;
+		} else {
+			const option = findServiceOption(service, args.durationMin);
+			if (!option) return { warnings: [], needsReason: false, problem: 'This duration is no longer offered. Choose another length.' };
+			occupied = (option.durationMin + service.bufferMin) * MINUTE;
+		}
 		if (args.start + occupied > Date.now()) {
 			let problem: string | null = null;
 			if ((!appointment || args.staffId !== appointment.staffId) && (service.status !== 'active' || !service.staffIds.includes(args.staffId))) problem = 'Choose an active service and a currently assigned staff member for current or future work.';
