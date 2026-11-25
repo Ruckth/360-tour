@@ -588,6 +588,10 @@ export function toolFailureReply(message: string) {
 	}[replyLocale(message)];
 }
 
+function serviceDurationLabel(durationMin: unknown, locale: 'en' | 'th' | 'ko') {
+	return typeof durationMin === 'number' ? `${durationMin} ${{ en: 'min', th: 'นาที', ko: '분' }[locale]}` : '';
+}
+
 /** Only committed tool results may supply transaction acknowledgements. */
 export function committedReply(name: string, result: Record<string, unknown>, message: string): string | null {
 	if (result.error || result.ok === false) return null;
@@ -598,7 +602,8 @@ export function committedReply(name: string, result: Record<string, unknown>, me
 	}
 	if (name === 'confirm_service_booking' && typeof result.confirmationCode === 'string') {
 		const title = { en: 'Service booking confirmed. Payment is at the resort.', th: 'ยืนยันการจองบริการแล้วครับ ชำระเงินที่รีสอร์ต', ko: '서비스 예약이 확정되었습니다. 리조트에서 결제해 주세요.' }[locale];
-		return `${title}\n${result.confirmationCode}\n${result.service} · ${result.date} ${result.time}\n${result.staff}\n${result.currency} ${Number(result.price).toLocaleString('en-US')}`;
+		const duration = serviceDurationLabel(result.durationMin, locale);
+		return `${title}\n${result.confirmationCode}\n${result.service} · ${result.date} ${result.time}\n${duration ? `${duration} · ` : ''}${result.staff}\n${result.currency} ${Number(result.price).toLocaleString('en-US')}`;
 	}
 	if (name === 'cancel_booking' && ['cancelled', 'already_cancelled'].includes(String(result.state))) {
 		return `${{ en: 'Booking cancelled.', th: 'ยกเลิกการจองแล้วครับ', ko: '예약이 취소되었습니다.' }[locale]}\n${result.reference}`;
@@ -617,9 +622,15 @@ export function proposalReply(name: string, result: Record<string, unknown>, mes
   if (name === 'preview_coupon' && typeof result.total === 'number') {
     return `${result.property} · ${result.checkIn} → ${result.checkOut}\n${chatCouponSummary(result.coupon, result.currency, locale)}\n${result.currency} ${result.total.toLocaleString('en-US')}\n${typeof result.bookingUrl === 'string' ? result.bookingUrl : ''}\n${{ en: 'No booking or hold yet. Review the final price in checkout.', th: 'ยังไม่ได้จองหรือกันวัน กรุณาตรวจราคาสุดท้ายก่อนยืนยันครับ', ko: '아직 예약되지 않았습니다. 결제 단계에서 최종 요금을 확인해 주세요.' }[locale]}`;
   }
+	if ((name === 'check_service_availability' || name === 'prepare_service_booking') && result.needsDuration === true && Array.isArray(result.options)) {
+		const question = { en: 'Which duration would you like?', th: 'สะดวกเลือกบริการกี่นาทีครับ', ko: '어느 이용 시간을 원하시나요?' }[locale];
+		const options = (result.options as Array<{ durationMin: number; price: number }>).map(({ durationMin, price }) =>
+			`${serviceDurationLabel(durationMin, locale)} · ${result.currency} ${price.toLocaleString('en-US')}`);
+		return [result.service, ...options, question].join('\n');
+	}
 	if (name === 'prepare_service_booking' && typeof result.price === 'number') {
 		const title = { en: 'Service booking proposal — not confirmed yet.', th: 'รายละเอียดที่เตรียมไว้ ยังไม่ได้ยืนยันการจองบริการครับ', ko: '서비스 예약 제안입니다. 아직 확정되지 않았습니다.' }[locale];
-		return `${title}\n${result.service} · ${result.date} ${result.time}\n${result.durationMin} min · ${result.staff}\n${result.currency} ${result.price.toLocaleString('en-US')}${typeof result.staffPreferenceIgnored === 'string' ? `\n${result.staffPreferenceIgnored}` : ''}\n${confirm}`;
+		return `${title}\n${result.service} · ${result.date} ${result.time}\n${serviceDurationLabel(result.durationMin, locale)} · ${result.staff}\n${result.currency} ${result.price.toLocaleString('en-US')}${typeof result.staffPreferenceIgnored === 'string' ? `\n${result.staffPreferenceIgnored}` : ''}\n${confirm}`;
 	}
 	if (name === 'cancel_booking' && result.state === 'needs_confirmation') {
 		const title = { en: 'Cancel this booking? It has not been cancelled yet.', th: 'ต้องการยกเลิกการจองนี้ใช่ไหมครับ ตอนนี้ยังไม่ได้ยกเลิก', ko: '이 예약을 취소할까요? 아직 취소되지 않았습니다.' }[locale];

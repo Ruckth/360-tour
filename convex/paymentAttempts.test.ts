@@ -173,15 +173,23 @@ it('keeps paid voucher value outside cash and freezes goodwill as a discount', a
   expect(await t.run(ctx => ctx.db.get(request.orderId))).toMatchObject({ commerceRevision: 1 });
 }, 30000);
 
-it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness receipt (%s)', async scenario => {
+it.each(['freeze', 'switch-off', 'duration'] as const)('checks the armed Gold Wellness receipt (%s)', async scenario => {
   const { t, owner, request, settingsId } = await fixture();
-  const { customerId, variantId, lineId } = await t.run(async ctx => {
+  const { customerId, serviceId, variantId, lineId } = await t.run(async ctx => {
     const branchId = await ctx.db.insert('branches', { key: 'default' });
     const customerId = await ctx.db.insert('customers', { name: 'Guest', createdBy: 'owner@example.com', createdAt: Date.now(), updatedAt: Date.now() });
     const serviceId = await ctx.db.insert('services', {
       slug: 'massage', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
       price: 120000, currency: 'THB', staffIds: [], status: 'active', createdAt: Date.now(), updatedAt: Date.now(),
+      ...(scenario === 'duration' ? { options: [{ durationMin: 60, price: 120000 }, { durationMin: 90, price: 180000 }] } : {}),
     });
+    const serviceIds = [serviceId];
+    if (scenario === 'duration') {
+      serviceIds.unshift(await ctx.db.insert('services', {
+        slug: 'short-massage', name: 'Short massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
+        price: 100000, currency: 'THB', staffIds: [], status: 'active', createdAt: Date.now(), updatedAt: Date.now(),
+      }));
+    }
     const categoryId = await ctx.db.insert('productCategories', { name: 'Shop', sort: 0 });
     const productId = await ctx.db.insert('products', {
       categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [],
@@ -193,7 +201,7 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
     const packageVersionId = await ctx.db.insert('packageVersions', {
       packageId, version: 1, name: 'Gold Wellness', price: 690000, validityDays: 180, allowTransfer: true,
       contents: [
-        { kind: 'session', contentKey: 'massage', serviceIds: [serviceId], units: 5 },
+        { kind: 'session', contentKey: 'massage', serviceIds, units: 5, ...(scenario === 'duration' ? { durationMins: [90] } : {}) },
         { kind: 'product', contentKey: 'robe', variantId, units: 1 },
         { kind: 'voucher', contentKey: 'gift', faceValue: 50000 },
       ], estimatedSplit: [],
@@ -203,7 +211,7 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
     const line = await ctx.db.query('orderLines').first();
     if (!line) throw new Error('Missing fixture row');
     await ctx.db.patch(line._id, { kind: 'package', name: 'Gold Wellness', unitPrice: 690000, catalogUnitPrice: 690000, packageVersionId });
-    return { customerId, variantId, lineId: line._id };
+    return { customerId, serviceId, variantId, lineId: line._id };
   });
   const gold = { ...request, customers: [{ customerId, revision: 0 }], expectedDue: 690000,
     legs: [{ key: 'card-1', method: 'card' as const, amount: 690000 }] };
@@ -224,6 +232,9 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
     await ctx.db.patch(settingsId, { revision: 1, packageVatTiming: 'atUse',
       ...(scenario === 'switch-off' ? { saleSwitches: settings.saleSwitches } : {}) });
     await ctx.db.patch(variantId, { price: 150000, revision: 1 });
+    if (scenario === 'duration') {
+      await ctx.db.patch(serviceId, { options: [{ durationMin: 60, price: 120000 }] });
+    }
   });
   await owner.mutation(record, { ...attempt, legKey: 'card-1', outcome: 'taken' });
   if (scenario === 'switch-off') {
@@ -237,7 +248,9 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
   const snapshot = (await t.run(ctx => ctx.db.get(lineId)))?.saleSnapshot;
   expect(snapshot?.settingsRevision).toBe(0);
   expect(snapshot?.chosenVariants).toEqual([{ contentKey: 'robe', variantId }]);
-  expect(snapshot?.contents.map(({ paidShare, vatBase }) => [paidShare, vatBase])).toEqual([[526749, 526749], [113251, 113251], [50000, 0]]);
+  const expectedSessionShare = scenario === 'duration' ? 559767 : 526749;
+  expect(snapshot?.contents.map(({ paidShare, vatBase }) => [paidShare, vatBase]))
+    .toEqual([[expectedSessionShare, expectedSessionShare], [640000 - expectedSessionShare, 640000 - expectedSessionShare], [50000, 0]]);
   expect(receiptVat({ vatVersion: 2, lines: [snapshot!] })).toEqual({ vatBase: 640000, vat: 41869 });
   expect(await t.run(ctx => ctx.db.query('stockMovements').take(2))).toHaveLength(1);
   expect(await t.run(ctx => ctx.db.query('sessionGrants').take(2))).toHaveLength(1);
@@ -246,6 +259,40 @@ it.each(['freeze', 'switch-off'] as const)('checks the armed Gold Wellness recei
   const [issued] = await t.run(ctx => ctx.db.query('voucherCodes').take(2));
   expect(normalizeVoucherCode(issued.code)).toBe(issued.code);
   expect(issued.mask).toBe(voucherCodeMask(issued.code));
+
+  if (scenario === 'duration') {
+    const grant = (await t.run(ctx => ctx.db.query('sessionGrants').first()))!;
+    expect(grant.issuedTerms.durationMins).toEqual([90]);
+    const { orderId: visitOrderId, lineId: visitLineId } = await owner.mutation(api.pos.commands.addItem.addItem, {
+      item: { kind: 'extra', name: 'Tea', price: 1000 },
+    });
+    const now = Date.now();
+    const [appointmentId, visitRevision] = await t.run(async ctx => {
+      const staffId = await ctx.db.insert('staff', { name: 'Nok', role: 'Therapist', color: '#abc', workingHours: [], breaks: [],
+        status: 'active', createdAt: now, updatedAt: now });
+      const appointmentId = await ctx.db.insert('appointments', { attendeeId: customerId, serviceId, staffId, guestName: 'Guest',
+        guestPhone: '', guestPhoneDigits: '', status: 'booked', paymentStatus: 'unpaid', serviceNameSnapshot: 'Massage',
+        staffNameSnapshot: 'Nok', start: now, end: now + 60 * 60_000, blockedUntil: now + 60 * 60_000,
+        source: 'admin', price: 180000, currency: 'THB', confirmationCode: 'VISIT-1', accessToken: 'test-only',
+        createdAt: now, amountPaid: 0, amountRefunded: 0 });
+      await ctx.db.patch(visitLineId, { kind: 'appointment', appointmentId, staffId, serviceId, startAt: now, durationMin: 60,
+        name: 'Massage', unitPrice: 180000, catalogUnitPrice: 180000, discount: { type: 'amount', value: 180000 },
+        coverage: { grantId: grant._id, attendeeId: customerId, priceBefore: 180000 } });
+      await ctx.db.patch(visitOrderId, { customerId, total: 0, due: 0 });
+      return [appointmentId, (await ctx.db.get(visitOrderId))!.revision] as const;
+    });
+    await t.run(ctx => ctx.db.patch(settingsId, { revision: 0 }));
+    const redemption = { ...request, orderId: visitOrderId, expectedRevision: visitRevision, expectedDue: 0,
+      clientKey: 'redeem-session', customers: [{ customerId, revision: 0 }], legs: [] };
+    await expect(owner.mutation(start, redemption)).resolves.toMatchObject({ status: 'refused', code: 'coverage_changed' });
+    await t.run(async ctx => {
+      await ctx.db.patch(appointmentId, { end: now + 90 * 60_000, blockedUntil: now + 90 * 60_000 });
+      await ctx.db.patch(visitLineId, { durationMin: 90 });
+    });
+    const visitAttempt = await claim(owner, redemption);
+    await expect(owner.mutation(settle, visitAttempt)).resolves.toMatchObject({ status: 'settled' });
+    expect(await t.run(ctx => ctx.db.get(grant._id))).toMatchObject({ used: 1, paidUnits: 4 });
+  }
 }, 30000);
 
 const resume = api.pos.commands.resumePaymentAttempt.resumePaymentAttempt;
@@ -523,7 +570,7 @@ for (const scenario of ['stock', 'recollections', 'fee history'] as const) it(`m
         guestPhone: '', guestPhoneDigits: '', status: 'booked', paymentStatus: 'unpaid', serviceNameSnapshot: 'Massage', staffNameSnapshot: 'Nok',
         start: now, end: now + 3600000, blockedUntil: now + 3600000, source: 'admin', price: 1000, currency: 'THB',
         confirmationCode: `SPA${index}`, accessToken: 'test-only', createdAt: now, amountPaid: 0, amountRefunded: 0 });
-      await ctx.db.insert('orderLines', { ...common, kind: 'appointment', appointmentId, serviceId: serviceIds[0], staffId, startAt: now, name: 'Massage',
+      await ctx.db.insert('orderLines', { ...common, kind: 'appointment', appointmentId, serviceId: serviceIds[0], staffId, startAt: now, durationMin: 60, name: 'Massage',
         unitPrice: 1000, catalogUnitPrice: 1000, discount: { type: 'amount', value: 1000 }, coverage: { attendeeId, grantId, priceBefore: 1000 } });
     }
     if (feeLines.length) {

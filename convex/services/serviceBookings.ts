@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation, internalQuery } from '../_generated/server';
@@ -15,6 +15,8 @@ import { assertValidIsoDate } from '../shared/validation';
 import { getEffectiveSettings } from '../settings/model';
 import { durableToolValidator, withDurableTool } from '../messaging/model';
 import { MINUTE, NOT_SCHEDULED } from './private/administration';
+import { serviceOptions } from '../shared/serviceOptions';
+import { resolveServiceOption } from './private/serviceCatalog';
 
 type ReadCtx = QueryCtx | MutationCtx;
 
@@ -30,6 +32,14 @@ async function activeService(ctx: ReadCtx, slug: string) {
 	return service;
 }
 
+function chatServiceOption(service: Doc<'services'>, durationMin?: number) {
+	const options = serviceOptions(service);
+	const requested = durationMin ?? (options.length === 1 ? service.durationMin : undefined);
+	const option = options.find(option => option.durationMin === requested);
+	if (option) return { option };
+	return { needsDuration: true as const, service: service.name, serviceSlug: service.slug, currency: service.currency, options };
+}
+
 function firstName(name: string) {
 	return name.trim().split(/\s+/)[0];
 }
@@ -40,12 +50,15 @@ function nearestTimes(slots: Slot[], start: number) {
 }
 
 export const checkServiceAvailability = internalQuery({
-	args: { serviceSlug: v.string(), date: v.string(), time: v.optional(v.string()) },
+	args: { serviceSlug: v.string(), durationMin: v.optional(v.number()), date: v.string(), time: v.optional(v.string()) },
 	handler: async (ctx, args) => {
 		const service = await activeService(ctx, args.serviceSlug);
+		const choice = chatServiceOption(service, args.durationMin);
+		if ('needsDuration' in choice) return choice;
+		const { option } = choice;
 		assertValidIsoDate(args.date, 'Date');
 		const staff = await activeServiceStaff(ctx, service);
-		const slots = await openStarts(ctx, staff, args.date, (service.durationMin + service.bufferMin) * MINUTE);
+		const slots = await openStarts(ctx, staff, args.date, (option.durationMin + service.bufferMin) * MINUTE);
 		const openTimes = slots.map((slot) => resortLocalParts(slot.start).time);
 		// Nobody rostered yet is not the same as fully booked.
 		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) {
@@ -65,7 +78,7 @@ export const checkServiceAvailability = internalQuery({
 
 export const prepareChatServiceBooking = internalMutation({
 	args: { durableTool: v.optional(durableToolValidator),
-		sessionId: v.id('conversations'), serviceSlug: v.string(), date: v.string(), time: v.string(),
+		sessionId: v.id('conversations'), serviceSlug: v.string(), durationMin: v.optional(v.number()), date: v.string(), time: v.string(),
 		guestName: v.string(), guestPhone: v.optional(v.string()), staffPreference: v.optional(v.string()), deadlineAt: v.optional(v.number())
 	},
 	handler: async (ctx, args) => withDurableTool(ctx, args.sessionId, args.durableTool, async () => {
@@ -84,13 +97,19 @@ export const prepareChatServiceBooking = internalMutation({
 async function prepareQuote(
 	ctx: MutationCtx,
 	session: Doc<'conversations'>,
-	args: { sessionId: Id<'conversations'>; serviceSlug: string; date: string; time: string; guestName: string; guestPhone?: string; staffPreference?: string }
+	args: { sessionId: Id<'conversations'>; serviceSlug: string; durationMin?: number; date: string; time: string; guestName: string; guestPhone?: string; staffPreference?: string }
 ) {
+	const service = await activeService(ctx, args.serviceSlug);
+	const choice = chatServiceOption(service, args.durationMin);
+	if ('needsDuration' in choice) {
+		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
+		return choice;
+	}
+	const { option } = choice;
 	const guestPhone = (session.channel === 'whatsapp' ? session.visitorPhone : args.guestPhone ?? session.visitorPhone)?.trim();
 	if (!guestPhone) throw new Error('Ask the guest for their phone number before preparing the booking.');
 	const guestName = args.guestName.trim() || session.visitorName?.trim();
 	if (!guestName) throw new Error('Ask the guest for their name before preparing the booking.');
-	const service = await activeService(ctx, args.serviceSlug);
 	const start = localDateTimeUtc(args.date, args.time);
 	if (resortLocalParts(start).date !== args.date || resortLocalParts(start).time !== args.time) {
 		throw new Error('Choose a future local date and time in HH:mm format.');
@@ -99,7 +118,7 @@ async function prepareQuote(
 	const staff = await activeServiceStaff(ctx, service);
 	const requestedName = args.staffPreference?.trim();
 	const preferred = requestedName ? staff.find((person) => firstName(person.name).toLowerCase() === requestedName.toLowerCase()) : undefined;
-	const slots = await openStarts(ctx, preferred ? [preferred] : staff, args.date, (service.durationMin + service.bufferMin) * MINUTE);
+	const slots = await openStarts(ctx, preferred ? [preferred] : staff, args.date, (option.durationMin + service.bufferMin) * MINUTE);
 	if (!slots.some((slot) => slot.start === start)) {
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
 		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) return { error: NOT_SCHEDULED, alternatives: [] };
@@ -109,15 +128,15 @@ async function prepareQuote(
 	await ctx.db.patch(args.sessionId, {
 		bookingFlowAt: now,
 		pendingServiceQuote: {
-			serviceSlug: service.slug, serviceName: service.name, durationMin: service.durationMin, ...(preferred ? { staffId: preferred._id } : {}),
-			start, guestName, guestPhone, price: service.price, currency: service.currency, createdAt: now
+			serviceSlug: service.slug, serviceName: service.name, durationMin: option.durationMin, ...(preferred ? { staffId: preferred._id } : {}),
+			start, guestName, guestPhone, price: option.price, currency: service.currency, createdAt: now
 		}
 	});
 	return {
-		service: service.name, date: args.date, time: args.time, durationMin: service.durationMin,
+		service: service.name, date: args.date, time: args.time, durationMin: option.durationMin,
 		staff: preferred ? firstName(preferred.name) : 'any available therapist/staff',
 		...(requestedName && !preferred ? { staffPreferenceIgnored: `No active ${requestedName} offers this service; any available staff member will be assigned.` } : {}),
-		guestName, guestPhone, price: service.price, currency: service.currency
+		guestName, guestPhone, price: option.price, currency: service.currency
 	};
 }
 
@@ -134,7 +153,7 @@ export const confirmChatServiceBooking = internalMutation({
 			if (existing.status === 'cancelled') throw new Error('That appointment has been cancelled. Prepare a new booking if the guest requests one.');
 			return {
 				appointmentId: existing._id, confirmationCode: existing.confirmationCode,
-				service: quote.serviceName, price: existing.price, currency: existing.currency, ...resortLocalParts(existing.start),
+				service: quote.serviceName, durationMin: quote.durationMin ?? (existing.end - existing.start) / MINUTE, price: existing.price, currency: existing.currency, ...resortLocalParts(existing.start),
 				staff: firstName((await ctx.db.get(existing.staffId))?.name ?? 'Staff'), alreadyConfirmed: true
 			};
 		}
@@ -142,9 +161,15 @@ export const confirmChatServiceBooking = internalMutation({
 			throw new Error('The prepared service booking expired. Call prepare_service_booking again.');
 		}
 		const service = await activeService(ctx, quote.serviceSlug);
-		if (service.price !== quote.price || service.currency !== quote.currency || (quote.durationMin !== undefined && service.durationMin !== quote.durationMin)) {
-			return { error: 'The service details changed. Call prepare_service_booking again.', alternatives: [] };
+		const stale = { error: 'The service details changed. Call prepare_service_booking again.', alternatives: [] };
+		let option;
+		try {
+			option = resolveServiceOption(service, quote.durationMin);
+		} catch (error) {
+			if (!(error instanceof ConvexError)) throw error;
+			return stale;
 		}
+		if (option.price !== quote.price || service.currency !== quote.currency) return stale;
 		const date = resortLocalParts(quote.start).date;
 		const stays = await bookingsByPhone(ctx, quote.guestPhone, 100);
 		// Link only a stay that covers the service date (arrival and departure days included).
@@ -155,7 +180,7 @@ export const confirmChatServiceBooking = internalMutation({
 		let created: Awaited<ReturnType<typeof createAppointmentRecord>>;
 		try {
 			created = await createAppointmentRecord(ctx, {
-				serviceId: service._id, start: quote.start, ...(quote.staffId ? { staffId: quote.staffId } : {}),
+				serviceId: service._id, durationMin: option.durationMin, start: quote.start, ...(quote.staffId ? { staffId: quote.staffId } : {}),
 				guestName: quote.guestName, guestPhone: quote.guestPhone,
 				...(session.visitorEmail ? { guestEmail: session.visitorEmail } : {}),
 				...(stay ? { bookingId: stay._id } : {}), chatSessionId: args.sessionId,
@@ -164,13 +189,13 @@ export const confirmChatServiceBooking = internalMutation({
 		} catch (error) {
 			if (!(error instanceof Error) || error.message !== SLOT_CONFLICT) throw error;
 			const staff = await activeServiceStaff(ctx, service, quote.staffId);
-			const slots = await openStarts(ctx, staff, date, (service.durationMin + service.bufferMin) * MINUTE);
+			const slots = await openStarts(ctx, staff, date, (option.durationMin + service.bufferMin) * MINUTE);
 			return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, quote.start) };
 		}
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: { ...quote, appointmentId: created.appointmentId } });
 		return {
 			appointmentId: created.appointmentId, confirmationCode: created.confirmationCode,
-			service: service.name, price: service.price, currency: service.currency, ...resortLocalParts(quote.start),
+			service: service.name, durationMin: option.durationMin, price: option.price, currency: service.currency, ...resortLocalParts(quote.start),
 			staff: firstName((await ctx.db.get(created.staffId))?.name ?? 'Staff'), alreadyConfirmed: false
 		};
 	})

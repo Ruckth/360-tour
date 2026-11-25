@@ -9,6 +9,8 @@ import { type DayPlan, type RosterBreak } from '../../shared/serviceScheduleType
 import { initializeWeeklyPattern } from './rosterHistory';
 import { APPOINTMENT_LOOKBACK, boundedIntegrityRows, openStarts, staffBusyRanges } from './serviceSlots';
 import { assertValidTime, blocksTime, localDayRange } from '../../shared/schedule';
+import { serviceOptions } from '../../shared/serviceOptions';
+import { resolveServiceOption } from './serviceCatalog';
 
 export const DAY = 86_400_000;
 
@@ -43,11 +45,26 @@ export function validateHours(rows: Array<{ weekday: number; start: string; end:
 	}
 }
 
-export function validateService(input: Pick<Doc<'services'>, 'durationMin' | 'bufferMin' | 'price'>) {
-	if (!Number.isInteger(input.durationMin) || input.durationMin <= 0 || input.durationMin % 15 !== 0) throw new Error('Duration must be a positive multiple of 15 minutes');
-	const turnaround = turnaroundProblem(input.bufferMin, input.durationMin);
-	if (turnaround) throw new Error(turnaround);
-	if (!Number.isSafeInteger(input.price) || input.price < 0) throw new Error('Price must be nonnegative');
+export function validateService(input: Pick<Doc<'services'>, 'options' | 'bufferMin'> & {
+	durationMin?: number; price?: number; defaultDurationMin?: number;
+}) {
+	const options = input.options;
+	if (options && (options.length < 1 || options.length > 6 || new Set(options.map(option => option.durationMin)).size !== options.length)) {
+		throw new Error('Choose 1–6 distinct service durations');
+	}
+	const durations = options ?? [{ durationMin: input.durationMin, price: input.price }];
+	for (const { durationMin, price } of durations) {
+		if (durationMin === undefined || !Number.isInteger(durationMin) || durationMin <= 0 || durationMin % 15 !== 0) {
+			throw new Error('Duration must be a positive multiple of 15 minutes');
+		}
+		const turnaround = turnaroundProblem(input.bufferMin, durationMin);
+		if (turnaround) throw new Error(turnaround);
+		if (price === undefined || !Number.isSafeInteger(price) || price < 0) throw new Error('Price must be a nonnegative integer in satang');
+	}
+	const selected = durations.find(option => option.durationMin === (input.defaultDurationMin ?? input.durationMin));
+	if (selected?.durationMin === undefined || selected.price === undefined) throw new Error('Choose a default duration from the service options');
+	const terms = { durationMin: selected.durationMin, price: selected.price, options };
+	return { ...terms, options: options && serviceOptions(terms) };
 }
 
 export async function validateStaffIds(ctx: MutationCtx, staffIds: Id<'staff'>[]) {
@@ -63,7 +80,7 @@ export const appointmentCount = (n: number) => (n === 1 ? '1 upcoming appointmen
 
 export const staffSnapshot = (row: Doc<'staff'>) => ({ name: row.name, role: row.role, color: row.color, status: row.status, workingHours: row.workingHours, breaks: row.breaks, archivedServiceIds: row.archivedServiceIds ?? [], hasPhoto: Boolean(row.avatarUrl) });
 
-export const serviceSnapshot = (row: Doc<'services'>) => ({ slug: row.slug, name: row.name, description: row.description, category: row.category, durationMin: row.durationMin, bufferMin: row.bufferMin, price: row.price, currency: row.currency, staffIds: row.staffIds, status: row.status, hasPhoto: Boolean(row.imageUrl) });
+export const serviceSnapshot = (row: Doc<'services'>) => ({ slug: row.slug, name: row.name, description: row.description, category: row.category, durationMin: row.durationMin, bufferMin: row.bufferMin, price: row.price, options: serviceOptions(row), currency: row.currency, staffIds: row.staffIds, status: row.status, hasPhoto: Boolean(row.imageUrl) });
 
 export const timeOffSnapshot = (row: Doc<'staffTimeOff'>) => ({ staffId: row.staffId, start: row.start, end: row.end, label: row.label });
 
@@ -103,9 +120,10 @@ export async function archiveStaffRecord(ctx: MutationCtx, staff: Doc<'staff'>, 
 	if (services.length > 200) throw new Error('Too many services to archive assignments safely. Contact support.');
 	for (const service of services) {
 		if (!service.staffIds.includes(staff._id)) continue;
-		await ctx.db.patch(service._id, { staffIds: service.staffIds.filter((id) => id !== staff._id), updatedAt: Date.now() });
+		const changes = { staffIds: service.staffIds.filter((id) => id !== staff._id), revision: (service.revision ?? 0) + 1, updatedAt: Date.now() };
+		await ctx.db.patch(service._id, changes);
 		archivedServiceIds.push(service._id);
-		await logService(ctx, service, (await ctx.db.get(service._id))!, actor, 'staff_archived');
+		await logService(ctx, service, { ...service, ...changes }, actor, 'staff_archived');
 		servicesUpdated++;
 	}
 	await ctx.db.patch(staff._id, { status: 'archived', archivedServiceIds: [...new Set([...(staff.archivedServiceIds ?? []), ...archivedServiceIds])], updatedAt: Date.now() });
@@ -183,24 +201,25 @@ export const transitions: Record<Doc<'appointments'>['status'], Doc<'appointment
 export type ServiceTerms = Pick<Doc<'services'>, 'durationMin' | 'bufferMin' | 'price' | 'currency'>;
 
 /** Same staff and start time; the length, turnaround and price follow the reviewed service. */
-export async function serviceChange(ctx: MutationCtx, appointment: Doc<'appointments'>, serviceId: Id<'services'>, expected?: ServiceTerms) {
+export async function serviceChange(ctx: MutationCtx, appointment: Doc<'appointments'>, serviceId: Id<'services'>, expected?: ServiceTerms, durationMin?: number) {
 	if (appointment.status !== 'booked' && appointment.status !== 'arrived') throw new Error('Only booked or arrived appointments can change service');
 	if (appointment.paymentStatus !== 'unpaid') throw new Error('Paid appointments cannot change service');
 	const service = await ctx.db.get(serviceId);
 	if (!service || service.status !== 'active') throw new Error('Service unavailable');
-	if (expected && (service.durationMin !== expected.durationMin || service.bufferMin !== expected.bufferMin || service.price !== expected.price || service.currency !== expected.currency)) {
+	const option = resolveServiceOption(service, durationMin);
+	if (expected && (option.durationMin !== expected.durationMin || service.bufferMin !== expected.bufferMin || option.price !== expected.price || service.currency !== expected.currency)) {
 		throw new Error('The service changed since you reviewed it. Review the latest service and try again.');
 	}
 	const staff = await ctx.db.get(appointment.staffId);
 	if (!staff || staff.status !== 'active' || !service.staffIds.includes(staff._id)) {
 		throw new Error(`${staff?.name ?? 'This staff member'} doesn't perform ${service.name}`);
 	}
-	const end = appointment.start + service.durationMin * MINUTE;
+	const end = appointment.start + option.durationMin * MINUTE;
 	const blockedUntil = end + service.bufferMin * MINUTE;
 	if ((await staffBusyRanges(ctx, staff, appointment.start, blockedUntil, appointment._id)).length) {
-		throw new Error(`${staff.name} isn't free for the full ${service.durationMin + service.bufferMin} minutes this service needs`);
+		throw new Error(`${staff.name} isn't free for the full ${option.durationMin + service.bufferMin} minutes this service needs`);
 	}
-	return { serviceId: service._id, serviceNameSnapshot: service.name, end, blockedUntil, price: service.price, currency: service.currency };
+	return { serviceId: service._id, serviceNameSnapshot: service.name, end, blockedUntil, price: option.price, currency: service.currency };
 }
 
 export type RosterConflict = {

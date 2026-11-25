@@ -126,6 +126,38 @@ describe('optional service date and time', () => {
 });
 
 describe('linking a paid service row to an appointment', () => {
+	it('charges the selected option and only links a visit of the same duration', async () => {
+		const { admin, t, massage, appointment, order, pay, link, getAppointment } = await setup();
+		const options = [{ durationMin: 60, price: 120000 }, { durationMin: 90, price: 160000 }];
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId: massage, options, defaultDurationMin: 60 });
+		const { orderId, lineId } = await admin.mutation(api.pos.commands.addItem.addItem, {
+			item: { kind: 'service', serviceId: massage, durationMin: 90 },
+		});
+		expect((await order(orderId)).lines[0]).toMatchObject({ durationMin: 90, detail: '90 min', unitPrice: 160000 });
+		expect((await admin.query(api.pos.catalog.stableCatalog, {})).services.find(row => row._id === massage)?.options).toEqual(options);
+		expect(await admin.query(api.pos.catalog.recentCatalogRanking, {})).toEqual([`service:${massage}:90`]);
+		await pay(orderId);
+		const appointmentId = await appointment();
+		await expect(link(orderId, lineId, { appointmentId })).rejects.toThrow('different duration');
+		// Older walk-in purchases saved the selected length in detail only.
+		await t.run(ctx => ctx.db.patch(lineId, { durationMin: undefined }));
+		expect((await order(orderId)).lines[0].durationMin).toBe(90);
+		await expect(link(orderId, lineId, { appointmentId })).rejects.toThrow('different duration');
+		const visit = await getAppointment(appointmentId);
+		await t.run(ctx => ctx.db.patch(appointmentId, { end: visit.start + 90 * 60_000, blockedUntil: visit.start + 105 * 60_000 }));
+		await expect(link(orderId, lineId, { appointmentId })).resolves.toMatchObject({ replayed: false });
+	});
+
+	it('flags an attached visit whose duration changed while the price and start stayed the same', async () => {
+		const { admin, t, appointment, getAppointment, order } = await setup();
+		const appointmentId = await appointment();
+		const { orderId } = await admin.mutation(api.pos.commands.attach.attach, { appointmentId });
+		expect((await order(orderId)).lines[0]).toMatchObject({ durationMin: 60, sourceIssue: null });
+		const visit = await getAppointment(appointmentId);
+		await t.run(ctx => ctx.db.patch(appointmentId, { end: visit.start + 90 * 60_000, blockedUntil: visit.start + 105 * 60_000 }));
+		expect((await order(orderId)).lines[0]).toMatchObject({ sourceIssue: { kind: 'changed' } });
+	});
+
 	it('records the appointment as paid by the order without touching the receipt, and lists the order on the appointment', async () => {
 		const { admin, massage, appointment, paidRow, getAppointment, link, order, receipt } = await setup();
 		const { orderId, lineId } = await paidRow({ kind: 'service', serviceId: massage });

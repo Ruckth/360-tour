@@ -30,7 +30,7 @@ const staffSeeds = [
 ] as const;
 
 const serviceSeeds = [
-	{ slug: 'thai-massage', name: 'Traditional Thai Massage', description: 'Classic 60-minute Thai massage in your villa or the garden sala.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1500, staff: ['nok', 'mali'] },
+	{ slug: 'thai-massage', name: 'Traditional Thai Massage', description: 'Classic Thai massage in your villa or the garden sala.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1500, options: [{ durationMin: 60, price: 1500 }, { durationMin: 90, price: 2100 }, { durationMin: 120, price: 2700 }], staff: ['nok', 'mali'] },
 	{ slug: 'aroma-massage', name: 'Aromatherapy Oil Massage', description: '90-minute oil massage with coconut and lemongrass oils.', category: 'Wellness', durationMin: 90, bufferMin: 15, price: 2400, staff: ['nok', 'mali'] },
 	{ slug: 'sunrise-yoga', name: 'Sunrise Yoga', description: 'Private beach or garden yoga session for up to 4 guests.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 900, staff: ['arun'] },
 	{ slug: 'chef-bbq', name: 'Private Chef Seafood BBQ', description: 'Seafood BBQ dinner cooked on your terrace, for up to 6 guests.', category: 'Dining', durationMin: 180, bufferMin: 30, price: 6500, staff: ['somchai'] },
@@ -112,6 +112,7 @@ export async function seedAiEvalData(ctx: MutationCtx) {
 		serviceIds[seed.slug] = found?._id ?? await ctx.db.insert('services', {
 			slug, name: seed.name, description: seed.description, category: seed.category,
 			durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: bahtToSatang(seed.price), currency: 'THB',
+			...('options' in seed ? { options: seed.options.map(({ durationMin, price }) => ({ durationMin, price: bahtToSatang(price) })) } : {}),
 			staffIds: seed.staff.map((key) => staffIds[key]), status: 'active', createdAt: now, updatedAt: now
 		});
 		if (!found) counts.services++;

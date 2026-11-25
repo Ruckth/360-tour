@@ -36,6 +36,6 @@ export const Route = createFileRoute("/{-$locale}/chat")({
 
 function StartChat() {
   const { service, property } = Route.useLoaderData();
-  const draftTemplate = usePublicMessages().ServiceCatalog.draft;
-  return <GuestChatPage service={service} property={property} draftTemplate={draftTemplate} />;
+  const { draft, minutes } = usePublicMessages().ServiceCatalog;
+  return <GuestChatPage service={service} property={property} draftTemplate={draft} minutesLabel={minutes} />;
 }

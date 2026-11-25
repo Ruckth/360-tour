@@ -13,7 +13,7 @@ import { isOpenOrder } from './orderLinks';
 import { assertOrderSize, bookingBalance, bookingChargeTotal, orderTitle, orderTotals } from '../../shared/orderMath';
 import { evaluateOrderCoupon, posCouponMessage, type OrderCouponResult, type PosCouponProblem } from '../../shared/posCoupons';
 import { appendRecordHistory } from '../../settings/model';
-import { assertVisitReturnAvailable } from '../../services/model';
+import { assertVisitReturnAvailable, serviceOptions } from '../../services/model';
 import { resortLocalParts } from '../../shared/time';
 import { assertCashierDiscount, type StaffActor } from '../../auth/model';
 import { lineDiscountValidator } from '../../shared/staffTypes';
@@ -52,7 +52,7 @@ export const tenderValidator = v.object({
 });
 
 export const itemValidator = v.union(
-	v.object({ kind: v.literal('service'), serviceId: v.id('services') }),
+	v.object({ kind: v.literal('service'), serviceId: v.id('services'), durationMin: v.optional(v.number()), expectedPrice: v.optional(v.number()) }),
 	v.object({ kind: v.literal('room'), propertyId: v.id('properties') }),
 	v.object({ kind: v.literal('extra'), name: v.string(), price: v.number() })
 );
@@ -231,7 +231,7 @@ export function lineSnapshot(line: LineFields | Line) {
 		kind: line.kind, name: line.name, detail: line.detail, unitPrice: line.unitPrice, currency: line.currency, qty: line.qty,
 		discount: line.discount, priceOverride: line.priceOverride ? { price: line.priceOverride.price, note: line.priceOverride.note } : undefined,
 		staffId: line.staffId, startAt: line.startAt, serviceDate: line.schedule?.date, serviceTime: line.schedule?.time,
-		serviceId: line.serviceId, propertyId: line.propertyId,
+		serviceId: line.serviceId, durationMin: line.durationMin, propertyId: line.propertyId,
 		bookingId: line.bookingId, appointmentId: line.appointmentId, deposit: line.deposit,
 		feeAppointmentId: line.feeAppointmentId, feeKind: line.fee?.kind,
 		...('_id' in line ? { lineId: line._id } : {})
@@ -292,15 +292,24 @@ export async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads:
 	};
 }
 
+export function lineDuration(line: Pick<Line, 'durationMin' | 'kind' | 'detail'>) {
+	if (line.durationMin !== undefined) return line.durationMin;
+	// Walk-in lines already saved the purchased duration in their catalogue detail.
+	const detailDuration = line.kind === 'service' && /^(\d+) min$/.exec(line.detail ?? '');
+	return detailDuration ? Number(detailDuration[1]) : undefined;
+}
+
 export async function appointmentLine(ctx: ReadCtx, appointment: Doc<'appointments'>) {
 	const service = await ctx.db.get(appointment.serviceId);
 	const { date, time } = resortLocalParts(appointment.start);
+	const durationMin = (appointment.end - appointment.start) / 60_000;
 	return {
 		kind: 'appointment' as const,
 		appointmentId: appointment._id,
 		serviceId: appointment.serviceId,
+		durationMin,
 		name: service?.name ?? 'Appointment',
-		detail: `${date} ${time} · ${appointment.confirmationCode}`,
+		detail: `${date} ${time} · ${durationMin} min · ${appointment.confirmationCode}`,
 		unitPrice: appointment.price,
 		catalogUnitPrice: appointment.price,
 		currency: appointment.currency,
@@ -336,11 +345,15 @@ export async function sourceIssue(ctx: ReadCtx, line: Line, reads: OrderReads = 
 		const appointment = await reads.appointment(line.appointmentId);
 		if (!appointment) return { kind: 'gone', message: 'This appointment no longer exists. Remove it from the order.' };
 		if (!appointmentAttachable(appointment)) return { kind: 'settled', message: 'This appointment was paid or cancelled since it was added. Remove it from the order.' };
+		if (line.durationMin === undefined) {
+			return { kind: 'changed', message: 'Update the row to confirm the appointment duration and review the total.' };
+		}
 		if (
 			appointment.currency !== line.currency || appointment.price !== (line.coverage?.priceBefore ?? line.unitPrice) || appointment.serviceId !== line.serviceId ||
-			appointment.staffId !== line.staffId || appointment.start !== line.startAt
+			appointment.staffId !== line.staffId || appointment.start !== line.startAt ||
+			appointment.end - appointment.start !== line.durationMin * 60_000
 		) {
-			return { kind: 'changed', message: 'The appointment changed since it was added (service, therapist, time or price). Update the row and review the total.' };
+			return { kind: 'changed', message: 'The appointment changed since it was added (service, therapist, time, duration or price). Update the row and review the total.' };
 		}
 	}
 	if (line.feeAppointmentId && line.fee) {
@@ -536,7 +549,7 @@ export async function catalogItems(ctx: QueryCtx) {
 	]);
 	// Only baht prices can go on an order (see assertBaht).
 	return {
-		services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, currency: s.currency, staffIds: s.staffIds, imageUrl: s.imageUrl })),
+		services: services.filter((s) => s.currency === CURRENCY).map((s) => ({ _id: s._id, name: s.name, category: s.category, description: s.description, durationMin: s.durationMin, price: s.price, options: serviceOptions(s), currency: s.currency, staffIds: s.staffIds, imageUrl: s.imageUrl })),
 		rooms: properties.filter((p) => p.currency === CURRENCY).map((p) => ({ _id: p._id, name: p.name, tagline: p.tagline, price: p.pricePerNight, currency: p.currency, maxGuests: p.maxGuests, imageUrl: villaPhoto(p) })),
 		/** No extras catalog exists yet; the Extras tab offers custom items. */
 		extras: [] as Array<{ name: string; price: number; category: string }>,
@@ -550,7 +563,8 @@ export async function catalogRanking(ctx: QueryCtx) {
 	const counts = new Map<string, number>();
 	for (const line of recent) {
 		if (line.fee) continue;
-		const key = line.kind === 'service' ? `service:${line.serviceId}` : line.kind === 'room' ? `room:${line.propertyId}` : line.kind === 'extra' ? `extra:${line.name}` : null;
+		const durationMin = lineDuration(line);
+		const key = line.kind === 'service' ? `service:${line.serviceId}${durationMin === undefined ? '' : `:${durationMin}`}` : line.kind === 'room' ? `room:${line.propertyId}` : line.kind === 'extra' ? `extra:${line.name}` : null;
 		if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
 	}
 	return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, FREQUENT_COUNT).map(([key]) => key);

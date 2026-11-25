@@ -1,5 +1,13 @@
 import { v } from 'convex/values';
 
+export const serviceOption = v.object({ durationMin: v.number(), price: v.number() });
+export const serviceOptionArgs = {
+  durationMin: v.optional(v.number()),
+  price: v.optional(v.number()),
+  options: v.optional(v.array(serviceOption)),
+  defaultDurationMin: v.optional(v.number()),
+};
+
 export const publicServiceFields = {
 "imageUrl": v.optional(v.string()),
 "slug": v.string(),
@@ -8,6 +16,7 @@ export const publicServiceFields = {
 "category": v.string(),
 "durationMin": v.number(),
 "price": v.number(),
+"options": v.array(serviceOption),
 "currency": v.string(),
 };
 const publicService = v.object(publicServiceFields);

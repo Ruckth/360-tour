@@ -7,6 +7,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { localizeHref, type Locale } from "@/i18n/routing";
 import type { PublicMessages } from "@/lib/i18n/public-content";
 import type { ServicesQuery } from "@/lib/services-query";
+import { ServiceCardBooking } from "./ServiceCardBooking";
 
 export type ServiceDirectory = FunctionReturnType<typeof api.services.publicServices.categories> | null;
 export type ServiceResults = FunctionReturnType<typeof api.services.publicServices.list> | null;
@@ -142,24 +143,7 @@ export function ServicesView({
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   {service.description}
                 </p>
-                <p className="text-sm">
-                  {service.durationMin} {t.minutes}
-                </p>
-                <p className="text-lg font-semibold">
-                  {service.currency}{" "}
-                  {(service.price / 100).toLocaleString(locale, {
-                    maximumFractionDigits: 2,
-                  })}
-                </p>
-                <ButtonLink
-                  href={localizeHref(
-                    `/chat?service=${encodeURIComponent(service.slug)}`,
-                    locale,
-                  )}
-                  variant="outline"
-                >
-                  {t.ask}
-                </ButtonLink>
+                <ServiceCardBooking service={service} locale={locale} t={t} />
               </div>
             </article>
           ))}

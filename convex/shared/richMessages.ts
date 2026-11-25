@@ -1,12 +1,13 @@
 import { cardText, type ReplyCard, type ReplyCardAction, type ReplyCardItem } from './replyCards';
-import type { LineQuickReplyItem } from './conciergeCopy';
+import { normalizeQuickAnswerLocale, type LineQuickReplyItem } from './conciergeCopy';
 
 /** Put capability URLs first so long model prose cannot clip them off a fallback. */
 export function richReplyFallback(text: string, card?: ReplyCard): string {
   if (!card) return text;
   const urls = card.items.flatMap(item => item.actions.filter(action => action.type === 'uri').map(action => `${action.label}: ${action.url}`));
   if (card.catalog) urls.push(`${card.catalog.label}: ${card.catalog.url}`);
-  return [...urls, text].join('\n\n');
+  const services = card.kind === 'services' ? card.items.filter(item => item.hasDurationChoices).map(itemText) : [];
+  return [...urls, ...services, text].join('\n\n');
 }
 
 function lineAction(action: ReplyCardAction) {
@@ -33,7 +34,7 @@ export function lineReplyMessages(text: string, card?: ReplyCard, quickReplyItem
   const messages: object[] = [{ type: 'text', text: cardText(text || '…', 5000),
     ...(quickReplyItems.length ? { quickReply: { items: quickReplyItems } } : {}) }];
   if (card?.items.length) {
-    const items = card.items.slice(0, 10).map(item => card.catalog ? { ...item, actions: [...item.actions.slice(0, 1), { type: 'uri' as const, label: card.catalog.label, url: card.catalog.url }] } : item);
+    const items = card.items.slice(0, 10).map(item => card.catalog ? { ...item, actions: [...item.actions.slice(0, card.kind === 'services' ? 6 : 1), { type: 'uri' as const, label: card.catalog.label, url: card.catalog.url }] } : item);
     messages.push({ type: 'flex', altText: cardText(items.map(item => item.title).join(' · '), 400),
       contents: items.length === 1 ? bubble(items[0]) : { type: 'carousel', contents: items.map(bubble) } });
   }
@@ -60,13 +61,33 @@ export function whatsappText(text: string): WhatsAppContent {
   return { type: 'text', text: { preview_url: true, body: cardText(text || '…', 4096) } };
 }
 function itemText(item: ReplyCardItem): string { return [item.title, ...item.lines].join('\n'); }
+const WHATSAPP_ROW_ID_LIMIT = 200;
+const durationListCopy = {
+  en: ['Choose', 'More options'],
+  th: ['เลือก', 'ตัวเลือกเพิ่มเติม'],
+  ko: ['선택', '더 많은 옵션'],
+  'zh-CN': ['选择', '更多选项'],
+  ja: ['選択', 'その他の選択肢'],
+  fr: ['Choisir', 'Autres options'],
+  de: ['Auswählen', 'Weitere Optionen'],
+  es: ['Elegir', 'Más opciones'],
+  ru: ['Выбрать', 'Другие варианты'],
+  it: ['Scegli', 'Altre opzioni'],
+  hi: ['चुनें', 'और विकल्प'],
+} satisfies Record<ReturnType<typeof normalizeQuickAnswerLocale>, [string, string]>;
+
+function serviceRowDescription(name: string, details?: string): string {
+  if (!details) return cardText(name, 72);
+  const nameLimit = 72 - details.length - ' · '.length;
+  return nameLimit > 0 ? `${cardText(name, nameLimit)} · ${details}` : cardText(details, 72);
+}
 function header(item: ReplyCardItem): ImageHeader | undefined { return item.imageUrl ? { type: 'image', image: { link: item.imageUrl } } : undefined; }
 function urlAction(action: Extract<ReplyCardAction, { type: 'uri' }>): UrlAction {
   return { name: 'cta_url', parameters: { display_text: cardText(action.label, 20), url: action.url } };
 }
 
 /** Keep the complete AI reply in a preceding text message if it cannot fit the card body. */
-function whatsappCardMessages(text: string, card?: ReplyCard): WhatsAppContent[] {
+function whatsappCardMessages(text: string, card?: ReplyCard, locale?: string): WhatsAppContent[] {
   if (!card?.items.length) return [whatsappText(text)];
   const items = card.items.slice(0, 10);
   const first = items[0];
@@ -75,6 +96,20 @@ function whatsappCardMessages(text: string, card?: ReplyCard): WhatsAppContent[]
   const bodyText = items.length > 1 ? text : singleBody;
   const preceding = bodyText.length > 1024 ? [whatsappText(text)] : [];
   const body = { text: cardText(bodyText.length > 1024 ? (items.length > 1 ? items.map(item => item.title).join(' · ') : itemText(first)) : bodyText, 1024) };
+  if (card.kind === 'services' && items.some(item => item.actions.length > 1)) {
+    const choices = items.flatMap(item => item.actions.flatMap((action, index) => action.type === 'message'
+      ? [{ id: action.id, title: cardText(action.label, 24), description: serviceRowDescription(item.title, item.lines[index]) }] : []));
+    if (choices.some(row => row.id.length > WHATSAPP_ROW_ID_LIMIT)) return [whatsappText(richReplyFallback(text, card))];
+    const [choose, moreOptions] = durationListCopy[normalizeQuickAnswerLocale(locale)];
+    const button = cardText(card.catalog?.label ?? choose, 20);
+    const lists: WhatsAppContent[] = [];
+    // A list message permits ten rows, including across sections.
+    for (let offset = 0; offset < choices.length; offset += 10) {
+      lists.push({ type: 'interactive', interactive: { type: 'list', body: offset === 0 ? body : { text: moreOptions },
+        action: { button, sections: [{ rows: choices.slice(offset, offset + 10) }] } } });
+    }
+    return [...preceding, ...lists];
+  }
   if (items.length >= 2 && items.every(item => item.imageUrl && item.actions[0]?.type === action?.type) && action) {
     return [...preceding, { type: 'interactive', interactive: { type: 'carousel', body, action: { cards: items.map((item, index) => {
       const primary = item.actions[0];
@@ -89,7 +124,10 @@ function whatsappCardMessages(text: string, card?: ReplyCard): WhatsAppContent[]
       const primary = item.actions.find(a => a.type === 'message');
       return primary?.type === 'message' ? [{ id: primary.id, title: cardText(item.title, 24), description: cardText(item.lines.join(' · '), 72) }] : [];
     });
-    if (rows.length !== items.length) return [whatsappText([...items.map(itemText), text].join('\n\n'))];
+    if (rows.length !== items.length || rows.some(row => row.id.length > WHATSAPP_ROW_ID_LIMIT)) {
+      if (card.kind === 'services') return [whatsappText(richReplyFallback(text, card))];
+      return [whatsappText([...items.map(itemText), text].join('\n\n'))];
+    }
     return [...preceding, { type: 'interactive', interactive: { type: 'list', body,
       action: { button: cardText(action?.label ?? first.title, 20), sections: [{ rows }] } } }];
   }
@@ -105,8 +143,8 @@ function whatsappCardMessages(text: string, card?: ReplyCard): WhatsAppContent[]
 }
 
 /** A separate catalogue CTA remains visible even when every carousel card uses reply buttons. */
-export function whatsappReplyMessages(text: string, card?: ReplyCard): WhatsAppContent[] {
-  const messages = whatsappCardMessages(text, card);
+export function whatsappReplyMessages(text: string, card?: ReplyCard, locale?: string): WhatsAppContent[] {
+  const messages = whatsappCardMessages(text, card, locale);
   if (card?.catalog) messages.push({ type: 'interactive', interactive: { type: 'cta_url',
     body: { text: card.catalog.label }, action: { name: 'cta_url', parameters: { display_text: cardText(card.catalog.label, 20), url: card.catalog.url } } } });
   return messages;

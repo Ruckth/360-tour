@@ -1,23 +1,19 @@
 "use client";
 
-import { satangToBaht } from 'convex/shared/money';
-
 import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import { parseMoneyInput } from "@/lib/money-input";
 import { useRouter } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { Archive, ArchiveRestore, CalendarOff, Pencil, PlusIcon, Trash2 } from "lucide-react";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { ServiceDialog } from "@/components/admin/ServiceDialog";
 import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
 import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
-import { StaffAvatar } from "@/components/admin/StaffAvatar";
-import { ServiceThumb, ServiceThumbZoom } from "@/components/admin/ServicePhoto";
+import { ServiceThumbZoom } from "@/components/admin/ServicePhoto";
 import { StaffAvatarPhotoButton, StaffListPhotoButton } from "@/components/admin/StaffAvatarPhoto";
-import { PhotoPickerButton } from "@/components/admin/PhotoPickerButton";
 import { HistoryDisclosure, RecordHistoryPanel } from "@/components/admin/RecordHistoryPanel";
 import { usePhotoDraft } from "@/components/admin/usePhotoDraft";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -45,6 +41,7 @@ import {
   timeOffRangeProblem,
 } from "@/lib/staff-bookings";
 import { UNSAVED_CHANGES_MESSAGE, useUnsavedChangesGuard } from "@/lib/react/use-unsaved-changes";
+import { durationList, hasDurations, priceSpan, serviceOptions } from "@/lib/service-options";
 import { cn } from "@/lib/utils";
 
 type Staff = Doc<"staff">;
@@ -52,15 +49,6 @@ type Service = Doc<"services">;
 type TimeOff = Doc<"staffTimeOff">;
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
-function slugify(value: string) {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  // Names with no Latin letters or digits (e.g. Thai-only) would give an empty slug.
-  return slug || `service-${Math.random().toString(36).slice(2, 8).padEnd(6, "0")}`;
-}
 
 /** Hours as one line, e.g. "Mon–Fri 09:00–18:00". Mixed schedules list each shift. */
 function hoursSummary(staff: Staff) {
@@ -275,7 +263,11 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                     archived={s.status === "archived"}
                     leading={<ServiceThumbZoom service={s} className="size-10" />}
                     title={s.name}
-                    subtitle={`${s.category} · ${s.durationMin} min${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${formatMoney(s.price, s.currency)} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
+                    subtitle={`${s.category} · ${durationList(s)}${s.bufferMin ? ` + ${s.bufferMin} min turnaround` : ""} · ${priceSpan(s, (amount) => formatMoney(amount, s.currency))} · ${s.staffIds.map((id) => staffNames.get(id) ?? "?").join(", ") || "No staff"}`}
+                    {...(hasDurations(s) ? {
+                      badge: <StatusBadge tone="neutral" label={`${serviceOptions(s).length} durations`} />,
+                      extra: <ServiceOptionPills service={s} />,
+                    } : {})}
                     onEdit={() => setEditing({ kind: "service", service: s })}
                     onArchive={() => archiveOffering(s)}
                     onRestore={() => run(() => updateService({ serviceId: s._id, status: "active" }), "Could not restore.")}
@@ -308,6 +300,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
         <ServiceDialog
           key={editing.service?._id ?? "new"}
           service={editing.service}
+          latest={services.find((s) => s._id === editing.service?._id)}
           staff={staff.filter((s) => s.status === "active")}
           onClose={() => setEditing(null)}
         />
@@ -320,6 +313,8 @@ function Row({
   leading,
   title,
   subtitle,
+  badge,
+  extra,
   archived,
   onEdit,
   onArchive,
@@ -328,6 +323,8 @@ function Row({
   leading: ReactNode;
   title: string;
   subtitle: string;
+  badge?: ReactNode;
+  extra?: ReactNode;
   archived: boolean;
   onEdit: () => void;
   onArchive: () => void;
@@ -338,11 +335,14 @@ function Row({
       {/* Only the picture fades: faded text would fail contrast. The badge says it's archived. */}
       <span className={cn("shrink-0", archived && "opacity-50 grayscale")}>{leading}</span>
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
-          {title}
+        {/* On a phone the badges and details wrap below the name rather than cutting it short. */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-foreground sm:flex-nowrap">
+          <span className="min-w-0 [overflow-wrap:anywhere] sm:truncate">{title}</span>
+          {badge}
           {archived ? <StatusBadge tone="muted" label="Archived" /> : null}
         </p>
-        <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+        <p className="text-xs text-muted-foreground break-words sm:truncate">{subtitle}</p>
+        {extra}
       </div>
       <Button size="icon" variant="ghost" className="size-9" onClick={onEdit} aria-label={`Edit ${title}`}>
         <Pencil aria-hidden className="size-4" />
@@ -358,6 +358,20 @@ function Row({
         </Button>
       )}
     </li>
+  );
+}
+
+/** Each length and price of a service with several, the default marked. */
+function ServiceOptionPills({ service }: { service: Service }) {
+  return (
+    <ul aria-label={`${service.name} durations`} className="mt-1.5 flex flex-wrap gap-1.5">
+      {serviceOptions(service).map((option) => (
+        <li key={option.durationMin} className="rounded-full border border-border px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">{option.durationMin} min</span> {formatMoney(option.price, service.currency)}
+          {option.durationMin === service.durationMin ? " · default" : ""}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -582,178 +596,6 @@ function StaffDialog({ staff, onClose }: { staff?: Staff; onClose: () => void })
               Cancel
             </Button>
             <Button type="submit" disabled={busy || (simpleSchedule && days.size === 0)}>
-              {saving ? <Spinner className="text-current" /> : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function ServiceDialog({ service, staff, onClose }: { service?: Service; staff: Staff[]; onClose: () => void }) {
-  const createService = useMutation(api.services.commands.createService.createService);
-  const updateService = useMutation(api.services.commands.updateService.updateService);
-  const upcoming = useQuery(api.services.admin.countUpcomingAppointments, service ? { serviceId: service._id } : "skip");
-  const confirm = useConfirm();
-  // Only active staff can be assigned; archived ones already left the service.
-  const [staffIds, setStaffIds] = useState<Set<Id<"staff">>>(
-    () => new Set(service?.staffIds.filter((id) => staff.some((person) => person._id === id)) ?? []),
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const photo = usePhotoDraft(service?.imageUrl);
-  const [photoBusy, setPhotoBusy] = useState(false);
-  const [photoError, setPhotoError] = useState("");
-  const busy = saving || photoBusy;
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => String(form.get(name) ?? "").trim();
-    const name = text("name");
-    const price = parseMoneyInput(text("price"));
-    if (!Number.isFinite(price)) {
-      setError("Enter a price with at most 2 decimals.");
-      return;
-    }
-    const fields = {
-      name,
-      slug: service?.slug ?? slugify(name),
-      description: text("description"),
-      category: text("category"),
-      durationMin: Number(text("durationMin")),
-      bufferMin: Number(text("bufferMin")),
-      price,
-      currency: service?.currency ?? "THB",
-      staffIds: [...staffIds],
-    };
-    // A new default turnaround is for new bookings; booked appointments keep their own.
-    if (
-      service &&
-      fields.bufferMin !== service.bufferMin &&
-      !(await confirm({
-        title: `Change the default turnaround from ${service.bufferMin} to ${fields.bufferMin} min?`,
-        description: `Applies to new bookings only. ${
-          upcoming === undefined
-            ? "Upcoming appointments"
-            : upcoming === 1
-              ? "The 1 upcoming appointment"
-              : `The ${upcoming} upcoming appointments`
-        } keep their current turnaround; change one from its details on the calendar.`,
-        confirmLabel: "Change default",
-        cancelLabel: "Keep current default",
-      }))
-    ) {
-      return;
-    }
-    setSaving(true);
-    setError("");
-    try {
-      const save = (imageStorageId?: Id<"_storage"> | null) =>
-        service
-          ? updateService({ serviceId: service._id, ...fields, imageStorageId })
-          : createService({ ...fields, imageStorageId: imageStorageId ?? undefined });
-      await photo.save(save);
-      onClose();
-    } catch (err) {
-      setError(errorText(err, "Could not save."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{service ? `Edit ${service.name}` : "Add service"}</DialogTitle>
-          <DialogDescription>Turnaround is cleanup or travel time after the service. The staff member stays blocked for it.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit} className="grid gap-4">
-          <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-3">
-            <Field label="Name" htmlFor="sv-name">
-              <Input id="sv-name" name="name" defaultValue={service?.name} required />
-            </Field>
-            <Field label="Category" htmlFor="sv-category">
-              <Input id="sv-category" name="category" defaultValue={service?.category} placeholder="Wellness" required />
-            </Field>
-          </div>
-          <Field label="Description" htmlFor="sv-description">
-            <Input id="sv-description" name="description" defaultValue={service?.description} />
-          </Field>
-          <div className="grid justify-items-start gap-2">
-            <p className="text-sm font-medium">Photo (optional)</p>
-            <PhotoPickerButton
-              label
-              shape="rounded-lg"
-              photoUrl={photo.url}
-              name={service?.name ?? ""}
-              unnamed="new service"
-              thumb={<ServiceThumb service={{ name: service?.name ?? "", category: service?.category ?? "", imageUrl: photo.url }} className="size-14" />}
-              title={service ? `${service.name} photo` : "Service photo"}
-              description="Shown in the service picker when booking. Tap it there to see it large."
-              disabled={saving}
-              onPhoto={photo.choose}
-              onRemove={photo.remove}
-              onError={setPhotoError}
-              onBusyChange={setPhotoBusy}
-            />
-            {photoError ? (
-              <p role="alert" className="text-sm text-destructive">{photoError}</p>
-            ) : photo.changed ? (
-              <p className="text-xs text-muted-foreground">
-                {photo.removing ? "The photo is removed when you save." : "The new photo is saved when you save."}
-              </p>
-            ) : null}
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Duration (min)" htmlFor="sv-duration">
-              <Input id="sv-duration" name="durationMin" type="number" min={15} step={15} defaultValue={service?.durationMin ?? 60} required />
-            </Field>
-            <Field label="Turnaround (min)" htmlFor="sv-buffer">
-              <Input id="sv-buffer" name="bufferMin" type="number" min={0} step={5} defaultValue={service?.bufferMin ?? 15} required />
-            </Field>
-            <Field label={`Price (${service?.currency ?? "THB"})`} htmlFor="sv-price">
-              <Input id="sv-price" name="price" type="number" step="0.01" min={0} defaultValue={service ? satangToBaht(service.price) : undefined} required />
-            </Field>
-          </div>
-          <fieldset>
-            <legend className="mb-2 text-sm font-medium">Who can perform it</legend>
-            <div className="grid gap-1 sm:grid-cols-2">
-              {staff.map((person) => (
-                <label key={person._id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-foreground"
-                    checked={staffIds.has(person._id)}
-                    onChange={(event) =>
-                      setStaffIds((current) => {
-                        const next = new Set(current);
-                        if (event.target.checked) next.add(person._id);
-                        else next.delete(person._id);
-                        return next;
-                      })
-                    }
-                  />
-                  <StaffAvatar staff={person} className="size-6" />
-                  <span className="truncate">{person.name}</span>
-                  <span className="truncate text-xs text-muted-foreground">{person.role}</span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {service ? <HistoryDisclosure>
-            <RecordHistoryPanel entityType="service" entityId={service._id} title={`${service.name} history`} />
-          </HistoryDisclosure> : null}
-          {staffIds.size === 0 ? <p className="text-sm text-muted-foreground">Pick at least one person to save.</p> : null}
-          {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={busy || staffIds.size === 0}>
               {saving ? <Spinner className="text-current" /> : null}
               Save
             </Button>

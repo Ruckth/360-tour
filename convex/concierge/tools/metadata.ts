@@ -49,6 +49,7 @@ export const TOOLS: ToolDef[] = [
         type: 'object',
         properties: {
           serviceSlug: { type: 'string', description: 'Service slug from list_services' },
+          durationMin: { type: 'integer', description: 'Chosen duration in minutes from the service options. Ask the guest to choose if several durations are offered.' },
           date: { type: 'string', format: 'date', description: 'Resort local date, YYYY-MM-DD' },
           time: { type: 'string', pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$', description: 'Optional resort local time, HH:mm' }
         },
@@ -150,6 +151,7 @@ export const BOOKING_TOOLS: ToolDef[] = [
         type: 'object',
         properties: {
           serviceSlug: { type: 'string', description: 'Service slug from list_services' },
+          durationMin: { type: 'integer', description: 'Chosen duration in minutes from the service options. Ask the guest to choose if several durations are offered.' },
           date: { type: 'string', format: 'date', description: 'Resort local date, YYYY-MM-DD' },
           time: { type: 'string', pattern: '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$', description: 'Resort local time, HH:mm' },
           guestName: { type: 'string', description: 'Guest full name' },

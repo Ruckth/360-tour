@@ -75,6 +75,77 @@ function mockAi(calls: Array<{ name: string; args?: Record<string, unknown> }>, 
 }
 
 describe('AI service booking', () => {
+	it.each([false, true])('returns available choices for a removed duration (multiple options: %s)', async multipleOptions => {
+		const s = await setup();
+		const standard = { durationMin: 60, price: 200000 };
+		const removed = { durationMin: 90, price: 260000 };
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options: [standard, removed] }));
+		expect(await prepare(s, { durationMin: 90 })).toMatchObject(removed);
+		const options = multipleOptions ? [standard, { durationMin: 120, price: 320000 }] : [standard];
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options }));
+		const { serviceSlug, date, time } = request;
+		const choice = { needsDuration: true, service: 'Thai massage', serviceSlug, currency: 'THB', options };
+		expect(await s.t.query(internal.services.serviceBookings.checkServiceAvailability, { serviceSlug, date, time, durationMin: 90 })).toEqual(choice);
+		expect(await prepare(s, { durationMin: 90 })).toEqual(choice);
+		const session = await s.t.run(ctx => ctx.db.get(s.sessionId));
+		expect(session?.pendingServiceQuote).toBeUndefined();
+	});
+
+	it('asks for a duration, then quotes and confirms the chosen option', async () => {
+		const s = await setup();
+		const options = [{ durationMin: 60, price: 200000 }, { durationMin: 90, price: 260000 }];
+		await prepare(s);
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options }));
+		const check = internal.services.serviceBookings.checkServiceAvailability;
+		const time = { serviceSlug: request.serviceSlug, date, time: '10:45' };
+		expect(await s.t.query(check, time)).toMatchObject({ needsDuration: true, options, currency: 'THB' });
+		expect(await s.t.query(check, { ...time, durationMin: 90 })).toMatchObject({ available: false });
+		expect(await prepare(s)).toMatchObject({ needsDuration: true, options });
+		const confirm = internal.services.serviceBookings.confirmChatServiceBooking;
+		await expect(s.t.mutation(confirm, { sessionId: s.sessionId })).rejects.toThrow('No prepared service booking');
+
+		expect(await prepare(s, { durationMin: 90 })).toMatchObject({ durationMin: 90, price: 260000 });
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options: [options[0], { durationMin: 90, price: 270000 }] }));
+		expect(await s.t.mutation(confirm, { sessionId: s.sessionId })).toMatchObject({ error: expect.stringContaining('service details changed') });
+		expect(await appointments(s.t)).toEqual([]);
+
+		expect(await prepare(s, { durationMin: 90 })).toMatchObject({ durationMin: 90, price: 270000 });
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options: [options[0]] }));
+		expect(await s.t.mutation(confirm, { sessionId: s.sessionId })).toMatchObject({ error: expect.stringContaining('service details changed') });
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { options, durationMin: 90, price: 260000 }));
+		await prepare(s, { durationMin: 90 });
+		// Moving the default back leaves the quoted option valid.
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, { durationMin: 60, price: 200000 }));
+		expect(await s.t.mutation(confirm, { sessionId: s.sessionId })).toMatchObject({ durationMin: 90, price: 260000, alreadyConfirmed: false });
+		expect(await s.t.mutation(confirm, { sessionId: s.sessionId })).toMatchObject({ durationMin: 90, alreadyConfirmed: true });
+		expect(await appointments(s.t)).toMatchObject([{ start: at('14:00'), end: at('15:30'), blockedUntil: at('15:45'), price: 260000 }]);
+	});
+
+	it('passes the selected duration through the concierge and localizes quote and confirmation text', async () => {
+		const s = await setup();
+		await s.t.run(ctx => ctx.db.patch(s.serviceId, {
+			options: [{ durationMin: 60, price: 200000 }, { durationMin: 90, price: 260000 }],
+		}));
+		const turn = (userMessage: string) => generateTestReply(s.t, {
+			sessionId: s.sessionId, userMessage, channel: 'whatsapp', bookingFlow: true,
+		});
+		mockAi([{ name: 'check_service_availability', args: { serviceSlug: request.serviceSlug, date, time: request.time } }], []);
+		const choice = await turn('ขอจองนวดไทย');
+		expect(choice.response).toContain('สะดวกเลือกบริการกี่นาทีครับ');
+		expect(choice.response).toContain('90 นาที · THB 2,600');
+
+		mockAi([{ name: 'prepare_service_booking', args: { ...request, durationMin: 90 } }], []);
+		const quote = await turn('ขอจองนวดไทย 90 นาที');
+		expect(quote.response).toContain('90 นาที');
+		expect(quote.response).toContain('THB 2,600');
+		vi.advanceTimersByTime(1000);
+		mockAi([{ name: 'confirm_service_booking' }], []);
+		const booked = await turn('ใช่');
+		expect(booked.response).toContain('90 นาที');
+		expect(booked.response).toContain('THB 2,600');
+		expect(await appointments(s.t)).toHaveLength(1);
+	});
+
 	it('reads one selected therapist and reuses the eligible roster when preparing a quote', async () => {
 		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, staffId, serviceId, sessionId } = await setup();

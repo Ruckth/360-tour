@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { createElement, type ReactElement } from "react";
+import { act, createElement, type ReactElement } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GuestChatPage } from "@/components/chat/GuestChatPage";
@@ -26,6 +27,7 @@ const service = {
   price: 240000,
   currency: "THB",
   durationMin: 60,
+  options: [{ durationMin: 60, price: 240000 }],
 };
 /** The Start /services route: search validation, loader deps, server-function input, then the view. */
 async function ServicesPage({ searchParams }: { searchParams: Promise<PageSearch> }) {
@@ -45,8 +47,8 @@ async function chatElement(params: Record<string, string>) {
     { locale: state.locale, ...chatQuery(guestSearch(params)) },
     { getPublicService, getVilla: async () => ({ page: null }) },
   );
-  const draftTemplate = getPublicMessages(state.locale).ServiceCatalog.draft;
-  const page = createElement(GuestChatPage, { service, property, draftTemplate });
+  const { draft: draftTemplate, minutes: minutesLabel } = getPublicMessages(state.locale).ServiceCatalog;
+  const page = createElement(GuestChatPage, { service, property, draftTemplate, minutesLabel });
   return (page.type as (props: typeof page.props) => ReactElement<{ initialDraft?: string }>)(page.props);
 }
 function link(label: string) {
@@ -132,7 +134,60 @@ describe("public service catalog", () => {
   });
 });
 
+const thai = {
+  ...service,
+  slug: "thai-massage",
+  durationMin: 60,
+  price: 80000,
+  options: [{ durationMin: 60, price: 80000 }, { durationMin: 90, price: 110000 }, { durationMin: 120, price: 140000 }],
+};
+
+describe("service durations on the catalog", () => {
+  it("lists the lengths with a from-price and links the default length to chat", async () => {
+    vi.mocked(getServiceCatalog).mockResolvedValue([{ categories: [], nextCategory: null }, { page: [thai], continueCursor: "", isDone: true }]);
+    await render();
+    const card = document.querySelector("article")!;
+    expect(card.textContent).toContain("60 / 90 / 120 min · from THB 800");
+    expect(card.querySelector("fieldset legend")?.textContent).toBe("Choose a duration");
+    expect([...card.querySelectorAll<HTMLInputElement>("input[type=radio]")].map((radio) => [radio.value, radio.checked])).toEqual([["60", true], ["90", false], ["120", false]]);
+    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=60");
+  });
+
+  it("keeps a one-length service as it was: no chips and no duration in the link", async () => {
+    await render();
+    expect(document.querySelectorAll("input[type=radio]")).toHaveLength(0);
+    expect(document.querySelector("article")?.textContent).not.toContain("from");
+    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai%20massage");
+  });
+
+  it("a duration chip updates the price and the chat link", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.mocked(getServiceCatalog).mockResolvedValue([{ categories: [], nextCategory: null }, { page: [thai], continueCursor: "", isDone: true }]);
+    const view = await ServicesPage({ searchParams: Promise.resolve({}) });
+    document.body.innerHTML = "";
+    const root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root.render(view));
+    const ninety = [...document.querySelectorAll<HTMLInputElement>("input[type=radio]")].find((radio) => radio.value === "90")!;
+    await act(async () => ninety.click());
+    expect(ninety.checked).toBe(true);
+    expect(document.querySelector("article")?.textContent).toContain("THB 1,100");
+    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=90");
+    await act(async () => root.unmount());
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("catalog to chat", () => {
+  it("forwards an offered duration into the draft and ignores one the service doesn't offer", async () => {
+    vi.mocked(getPublicService).mockResolvedValue(thai);
+    const element = await chatElement({ service: thai.slug, duration: "90" });
+    expect(element.props.initialDraft).toBe("I am interested in Thai Massage (90 min). Please help me choose a date and time.");
+    expect(element.key).toBe("thai-massage:90");
+    const unknown = await chatElement({ service: thai.slug, duration: "45" });
+    expect(unknown.props.initialDraft).toBe("I am interested in Thai Massage. Please help me choose a date and time.");
+    expect((await chatElement({ service: thai.slug, duration: "90; drop" })).props.initialDraft).not.toContain("90");
+  });
+
   it("prefills only the verified active service in the guest language", async () => {
     state.locale = "th";
     vi.mocked(getPublicService).mockResolvedValue(service);

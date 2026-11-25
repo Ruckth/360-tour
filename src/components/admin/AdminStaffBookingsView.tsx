@@ -58,6 +58,7 @@ import {
 } from "@/lib/staff-bookings";
 import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
+import { appointmentServiceLabel } from "@/lib/service-options";
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
 
@@ -268,7 +269,7 @@ function StaffCalendar() {
       const staff = staffById.get(ghost?.staffId ?? appointment.staffId);
       return {
         id: appointment._id,
-        title: `${appointmentGuestLabel(appointment)} · ${service?.name ?? "Service"}${staff ? ` · ${staff.name}` : ""}`,
+        title: `${appointmentGuestLabel(appointment)} · ${appointmentServiceLabel(service, appointment)}${staff ? ` · ${staff.name}` : ""}`,
         start: new Date(ghost?.start ?? appointment.start),
         end: new Date(ghost?.end ?? appointment.end),
         resourceId: ghost?.staffId ?? appointment.staffId,
@@ -386,7 +387,7 @@ function StaffCalendar() {
           <span className="grid min-w-0 gap-1 text-left">
             <span className={cn("text-[15px] font-medium", appointment.status === "cancelled" && "line-through")}>{appointment.guestName || "Unnamed guest"}</span>
             {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground">Ref {appointment.confirmationCode.slice(-6)}</span> : null}
-            <span className="text-xs text-muted-foreground">{staffTime(occurrence.event.start.getTime())}–{staffTime(occurrence.event.end.getTime())} · {service?.name ?? "Service"}{staffName ? ` · ${staffName}` : ""}</span>
+            <span className="text-xs text-muted-foreground">{staffTime(occurrence.event.start.getTime())}–{staffTime(occurrence.event.end.getTime())} · {appointmentServiceLabel(service, appointment)}{staffName ? ` · ${staffName}` : ""}</span>
           </span>
           <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /></span>
         </span>
@@ -402,7 +403,7 @@ function StaffCalendar() {
           </span>
           {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground" title={appointment.confirmationCode}>Ref {appointment.confirmationCode.slice(-6)}</span> : null}
           <span className="truncate text-xs text-muted-foreground">
-            {staffTime(occurrence.event.start.getTime())} · {service?.name ?? "Service"}
+            {staffTime(occurrence.event.start.getTime())} · {appointmentServiceLabel(service, appointment)}
             {staffName ? ` · ${staffName}` : ""}
           </span>
         </span>

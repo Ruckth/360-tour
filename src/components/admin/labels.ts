@@ -107,6 +107,9 @@ export function paymentLabel(status: PaymentStatus | undefined, method?: string 
 
 const CURRENCY_SYMBOLS: Record<string, string> = { THB: "฿", USD: "$", EUR: "€", GBP: "£" };
 
+/** "฿" for THB; a currency without a symbol is shown by its code ("SGD"). */
+export const currencySymbol = (currency: string) => CURRENCY_SYMBOLS[currency] ?? currency;
+
 const integerMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const decimalMoney = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

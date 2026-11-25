@@ -3,13 +3,14 @@ import { parseMoneyInput } from "@/lib/money-input";
 
 
 import { ChevronDown, Plus, Search } from "lucide-react";
-import { useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { durationList, hasDurations, priceFrom, serviceOptions, type ServiceOption } from "@/lib/service-options";
 import { cn } from "@/lib/utils";
 import { MAX_PRICE } from "convex/shared/orderMath";
 import type { Catalog, CatalogItem, OrderLine } from "./backend";
@@ -28,6 +29,8 @@ type Tile = {
   currency: string;
   imageUrl?: string;
   item: CatalogItem;
+  /** Several lengths: the tile opens a picker instead of adding. */
+  options?: ServiceOption[];
 };
 
 const TABS: { value: Tab; label: string }[] = [
@@ -48,9 +51,15 @@ export function sectionCount(tiles: readonly Pick<Tile, "kind">[]) {
 
 function catalogTiles(catalog: Catalog) {
   const services: Tile[] = catalog.services.map((s) => ({
-    key: `service:${s._id}`, kind: "service", name: s.name, group: s.category || "Services", meta: `${s.durationMin} min`,
-    price: s.price, currency: s.currency, imageUrl: s.imageUrl, item: { kind: "service", serviceId: s._id },
+    key: `service:${s._id}`, kind: "service", name: s.name, group: s.category || "Services", meta: durationList(s),
+    price: s.price, currency: s.currency, imageUrl: s.imageUrl, item: { kind: "service", serviceId: s._id, expectedPrice: s.price },
+    ...(hasDurations(s) ? { options: serviceOptions(s), price: Math.min(...serviceOptions(s).map((o) => o.price)) } : {}),
   }));
+  // Frequent ranks each length on its own ("service:id:90"), and such a tile adds that length in one tap.
+  const lengths: Tile[] = catalog.services.flatMap((s) => serviceOptions(s).map((o): Tile => ({
+    key: `service:${s._id}:${o.durationMin}`, kind: "service", name: s.name, group: s.category || "Services", meta: `${o.durationMin} min`,
+    price: o.price, currency: s.currency, imageUrl: s.imageUrl, item: { kind: "service", serviceId: s._id, durationMin: o.durationMin, expectedPrice: o.price },
+  })));
   const rooms: Tile[] = catalog.rooms.map((r) => ({
     key: `room:${r._id}`, kind: "room", name: r.name, group: "Villas", meta: `per night · up to ${r.maxGuests} guests`,
     price: r.price, currency: r.currency, imageUrl: r.imageUrl, item: { kind: "room", propertyId: r._id },
@@ -59,7 +68,7 @@ function catalogTiles(catalog: Catalog) {
     key: `extra:${x.name}`, kind: "extra", name: x.name, group: x.category, meta: "each",
     price: x.price, currency: "THB", item: { kind: "extra", name: x.name, price: x.price },
   }));
-  const all = new Map([...services, ...rooms, ...extras].map((tile) => [tile.key, tile]));
+  const all = new Map([...services, ...lengths, ...rooms, ...extras].map((tile) => [tile.key, tile]));
   const ranked = catalog.frequent.flatMap((key) => all.get(key) ?? []);
   // Until something has been sold, Frequent shows the first services.
   const frequent = (ranked.length ? ranked : services.slice(0, 8)).map((tile) => ({ ...tile, group: "Frequent" }));
@@ -97,6 +106,8 @@ export function CatalogPane({
   const [search, setSearch] = useState("");
   // Groups folded by hand, per tab ("services:Massage").
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
+  // The tile whose duration picker is open; one at a time.
+  const [picking, setPicking] = useState<string | null>(null);
   const ids = useId();
 
   const all = useMemo(() => (catalog ? catalogTiles(catalog) : null), [catalog]);
@@ -113,7 +124,8 @@ export function CatalogPane({
     const counts = new Map<string, number>();
     for (const line of lines) {
       const key = line.kind === "service" ? `service:${line.serviceId}` : line.kind === "room" ? `room:${line.propertyId}` : line.kind === "extra" ? `extra:${line.name}` : "";
-      if (key) counts.set(key, (counts.get(key) ?? 0) + line.qty);
+      const keys = line.kind === "service" && line.durationMin !== undefined ? [key, `${key}:${line.durationMin}`] : [key];
+      for (const each of keys) if (each) counts.set(each, (counts.get(each) ?? 0) + line.qty);
     }
     return counts;
   }, [lines]);
@@ -123,6 +135,18 @@ export function CatalogPane({
     if (!next.delete(key)) next.add(key);
     return next;
   });
+
+  const renderTile = (tile: Tile) => (
+    <CatalogTile
+      key={tile.key}
+      tile={tile}
+      count={onOrder.get(tile.key) ?? 0}
+      onAdd={onAdd}
+      picking={picking === tile.key}
+      onPick={(open) => setPicking(open ? tile.key : null)}
+      pickerId={`${ids}-picker`}
+    />
+  );
 
   const grid = "grid-cols-1 gap-2.5 @min-[34rem]:grid-cols-2 @min-[52rem]:grid-cols-3 @min-[84rem]:grid-cols-4";
 
@@ -164,7 +188,7 @@ export function CatalogPane({
           <>
             {flat && tiles.length ? (
               <div className={cn("grid", grid)} aria-label={searching ? `Results for ${query}` : undefined} role={searching ? "group" : undefined}>
-                {tiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onOrder.get(tile.key) ?? 0} onAdd={onAdd} />)}
+                {tiles.map(renderTile)}
               </div>
             ) : null}
             {flat ? null : sections.map(({ group, tiles: groupTiles }, index) => {
@@ -189,7 +213,7 @@ export function CatalogPane({
                     </button>
                   </h3>
                   <div id={panelId} hidden={!open} className={cn("mt-1", grid, open ? "grid" : "hidden")}>
-                    {groupTiles.map((tile) => <CatalogTile key={tile.key} tile={tile} count={onOrder.get(tile.key) ?? 0} onAdd={onAdd} />)}
+                    {groupTiles.map(renderTile)}
                   </div>
                 </div>
               );
@@ -211,35 +235,94 @@ export function CatalogPane({
   );
 }
 
-function CatalogTile({ tile, count, onAdd }: { tile: Tile; count: number; onAdd: (item: CatalogItem) => void }) {
-  const price = formatMoney(tile.price, tile.currency);
+function CatalogTile({ tile, count, onAdd, picking, onPick, pickerId }: {
+  tile: Tile; count: number; onAdd: (item: CatalogItem) => void; picking: boolean; onPick: (open: boolean) => void; pickerId: string;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const firstOption = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (picking) firstOption.current?.focus();
+  }, [picking]);
+  const options = tile.options;
+  const format = (amount: number) => formatMoney(amount, tile.currency);
+  const price = options ? priceFrom({ durationMin: options[0].durationMin, price: tile.price, options }, format) : format(tile.price);
+  const close = () => {
+    onPick(false);
+    trigger.current?.focus();
+  };
   return (
-    <button
-      type="button"
-      onClick={() => onAdd(tile.item)}
-      className="group flex h-full min-h-[72px] w-full flex-nowrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100"
-    >
-      <span className="relative shrink-0">
-        <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
-        {count ? (
-          <span className="absolute top-1 left-1 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
-            {count}<span className="sr-only"> on the order</span>
-          </span>
-        ) : null}
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col py-0.5">
-        <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
-        <span className="mt-0.5 line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
-        <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
-          <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
-          {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
-          <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
-            <Plus aria-hidden className="size-4" />
-            <span className="sr-only">Add to order</span>
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => (options ? onPick(!picking) : onAdd(tile.item))}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || !picking) return;
+          event.stopPropagation();
+          close();
+        }}
+        aria-expanded={options ? picking : undefined}
+        aria-controls={options && picking ? pickerId : undefined}
+        className="group flex h-full min-h-[72px] w-full flex-nowrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 aria-expanded:border-gold/70"
+      >
+        <span className="relative shrink-0">
+          <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
+          {count ? (
+            <span className="absolute top-1 left-1 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
+              {count}<span className="sr-only"> on the order</span>
+            </span>
+          ) : null}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col py-0.5">
+          <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
+          <span className="mt-0.5 line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
+          <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
+            <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
+            {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
+            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
+              {options ? <ChevronDown aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", picking && "rotate-180")} /> : <Plus aria-hidden className="size-4" />}
+              <span className="sr-only">{options ? "Choose a duration" : "Add to order"}</span>
+            </span>
           </span>
         </span>
-      </span>
-    </button>
+      </button>
+      {options && picking ? (
+        <div
+          id={pickerId}
+          role="group"
+          aria-label={`${tile.name} duration`}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            event.stopPropagation();
+            close();
+          }}
+          className="col-span-full grid gap-2 rounded-xl border border-gold/50 bg-card p-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">{tile.name}: how long?</p>
+            <Button type="button" size="sm" variant="ghost" onClick={close}>Cancel</Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {options.map((option, index) => (
+              <Button
+                key={option.durationMin}
+                type="button"
+                variant="outline"
+                ref={index === 0 ? firstOption : undefined}
+                className="h-auto min-h-11 flex-col gap-0 px-4 py-1.5 tabular-nums"
+                onClick={() => {
+                  if (tile.item.kind === "service") onAdd({ ...tile.item, durationMin: option.durationMin, expectedPrice: option.price });
+                  close();
+                }}
+              >
+                <span className="font-semibold">{option.durationMin} min</span>
+                <span className="text-xs font-normal text-muted-foreground">{formatMoney(option.price, tile.currency)}</span>
+              </Button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 

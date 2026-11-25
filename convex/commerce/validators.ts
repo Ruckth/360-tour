@@ -32,7 +32,7 @@ export const handoverContent = v.object({
 });
 
 export const packageContent = v.union(
-  v.object({ kind: v.literal('session'), contentKey: v.string(), units: v.number(), serviceIds: v.array(v.id('services')) }),
+  v.object({ kind: v.literal('session'), contentKey: v.string(), units: v.number(), serviceIds: v.array(v.id('services')), durationMins: v.optional(v.array(v.number())) }),
   v.object({ kind: v.literal('product'), contentKey: v.string(), units: v.number(), variantId: v.id('productVariants') }),
   v.object({ kind: v.literal('chooseProduct'), contentKey: v.string(), units: v.number(), productId: v.id('products') }),
   v.object({ kind: v.literal('voucher'), contentKey: v.string(), faceValue: v.number() }),

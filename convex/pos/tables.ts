@@ -246,6 +246,7 @@ export const posTables = {
 		coverage: v.optional(orderLineCoverage),
 		saleSnapshot: v.optional(orderLineSaleSnapshot),
 		serviceId: v.optional(v.id('services')),
+		durationMin: v.optional(v.number()),
 		propertyId: v.optional(v.id('properties')),
 		bookingId: v.optional(v.id('bookings')),
 		appointmentId: v.optional(v.id('appointments')),

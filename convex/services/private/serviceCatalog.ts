@@ -1,5 +1,26 @@
+import { ConvexError } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
+import { satangToBaht } from '../../shared/money';
+import { serviceOptions } from '../../shared/serviceOptions';
+
+type Service = Pick<Doc<'services'>, 'options' | 'durationMin' | 'price'>;
+
+export function findServiceOption(service: Service, durationMin = service.durationMin) {
+	return serviceOptions(service).find(option => option.durationMin === durationMin);
+}
+
+export function resolveServiceOption(service: Service, durationMin?: number) {
+	const option = findServiceOption(service, durationMin);
+	if (!option) throw new ConvexError({ code: 'UNKNOWN_DURATION', message: 'This duration is unavailable for the service.' });
+	return option;
+}
+
+export function assertServicePrice(price: number, currency: string, expectedPrice?: number) {
+	if (expectedPrice === undefined || expectedPrice === price) return;
+	const amount = satangToBaht(price).toLocaleString('en-US', { maximumFractionDigits: 2 });
+	throw new ConvexError({ code: 'SERVICE_PRICE_CHANGED', message: `The price changed to ${currency === 'THB' ? '฿' : `${currency} `}${amount}. Review and try again.` });
+}
 
 export function publicService(service: Doc<"services">) {
   return {
@@ -9,6 +30,7 @@ export function publicService(service: Doc<"services">) {
     category: service.category,
     durationMin: service.durationMin,
     price: service.price,
+    options: serviceOptions(service),
     currency: service.currency,
     ...(service.imageUrl ? { imageUrl: service.imageUrl } : {}),
   };

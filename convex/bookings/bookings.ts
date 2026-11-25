@@ -152,7 +152,7 @@ export const touchChatBookingFlow = internalMutation({
 
 /** Invalidate the old draft even when a replacement tool call later fails parsing or validation. */
 export const invalidateChatProposal = internalMutation({
-	args: { durableTool: v.optional(durableToolValidator), durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.number() },
+	args: { durableTool: v.optional(durableToolValidator), durableTurn: v.optional(durableTurnValidator), sessionId: v.id('conversations'), kind: v.union(v.literal('villa'), v.literal('service')), deadlineAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
     if (args.durableTurn) {
       const event = await currentClaim(ctx, args.durableTurn.eventId, args.durableTurn.claimToken);

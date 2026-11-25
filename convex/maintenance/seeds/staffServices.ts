@@ -32,7 +32,7 @@ export async function seedStaffServicesData(ctx: MutationCtx) {
 		staffIds.push(staff._id);
 	}
 	const serviceSeeds = [
-		{ slug: 'thai-massage', name: 'Traditional Thai Massage', description: 'Restorative Thai massage in your villa.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 2400, staff: [0, 1] },
+		{ slug: 'thai-massage', name: 'Traditional Thai Massage', description: 'Restorative Thai massage in your villa.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 2400, options: [{ durationMin: 60, price: 2400 }, { durationMin: 90, price: 3200 }, { durationMin: 120, price: 4000 }], staff: [0, 1] },
 		{ slug: 'aromatherapy', name: 'Aromatherapy Massage', description: 'A calming oil massage with local botanicals.', category: 'Wellness', durationMin: 90, bufferMin: 15, price: 3200, staff: [0, 1] },
 		{ slug: 'private-yoga', name: 'Private Yoga', description: 'A personal yoga session in the garden or on the beach.', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 1800, staff: [2] },
 		{ slug: 'private-chef-dinner', name: 'Private Chef Dinner', description: 'A tailored Thai dinner prepared in your villa.', category: 'Dining', durationMin: 180, bufferMin: 30, price: 8500, staff: [3] },
@@ -46,6 +46,7 @@ export async function seedStaffServicesData(ctx: MutationCtx) {
 			const id = await ctx.db.insert('services', {
 				slug: seed.slug, name: seed.name, description: seed.description, category: seed.category,
 				durationMin: seed.durationMin, bufferMin: seed.bufferMin, price: bahtToSatang(seed.price), currency: 'THB',
+				...('options' in seed ? { options: seed.options.map(({ durationMin, price }) => ({ durationMin, price: bahtToSatang(price) })) } : {}),
 				staffIds: seed.staff.map((index) => staffIds[index]), status: 'active', createdAt: now, updatedAt: now
 			});
 			service = await ctx.db.get(id);

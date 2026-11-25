@@ -8,7 +8,7 @@ import { stayMoney } from '../../shared/stayMoney';
 import { activeSourceLink } from './lineLinks';
 import { openOrderCharging } from './orderLinks';
 import { bookingBalance, lineNet, orderTitle, roundMoney } from '../../shared/orderMath';
-import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, sourceRows } from './orderModel';
+import { CURRENCY, LINK_TARGET, Line, Order, ReadCtx, appointmentAttachable, bookingCheckoutBlock, bookingClosedReason, lineDuration, sourceRows } from './orderModel';
 
 /** The paid row to link, or why it can't be. */
 export function linkableRow(order: Order, line: Line | null) {
@@ -24,6 +24,10 @@ export function linkableRow(order: Order, line: Line | null) {
 export async function appointmentLinkProblem(ctx: ReadCtx, line: Line, appointment: Doc<'appointments'>) {
 	if (!appointmentAttachable(appointment)) return 'This appointment is already paid, cancelled or a no-show.';
 	if (appointment.serviceId !== line.serviceId) return 'This is a different service. Only an appointment for the same service can take this payment.';
+	const durationMin = lineDuration(line);
+	if (durationMin !== undefined && appointment.end - appointment.start !== durationMin * 60_000) {
+		return 'This appointment has a different duration. Choose an appointment for the purchased duration.';
+	}
 	if (appointment.currency !== CURRENCY) return `This appointment is priced in ${appointment.currency}.`;
 	if (await activeSourceLink(ctx, { appointmentId: appointment._id })) return 'This appointment is already linked to another paid row.';
 	const open = await openOrderCharging(ctx, { appointmentId: appointment._id });

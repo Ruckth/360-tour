@@ -89,7 +89,7 @@ it('prepares changed villa dates twice in one real model response and confirms o
 
 it('does not reuse a failed service preparation for a corrected invocation in the same model response', async () => {
   const { t, event, args } = await setup();
-  const serviceArgs = { serviceSlug: 'thai-massage', date: '2026-11-14', guestName: 'Test Guest' };
+  const serviceArgs = { serviceSlug: 'thai-massage', durationMin: 60, date: '2026-11-14', guestName: 'Test Guest' };
   const transport = mockModel([
     { name: 'prepare_service_booking', args: { ...serviceArgs, time: '03:00' } },
     { name: 'prepare_service_booking', args: { ...serviceArgs, time: '14:00' } },
@@ -209,7 +209,7 @@ it('does not render a stored legacy proposal after its live quote was independen
 
 it('never recovers an earlier success after a failed service replacement', async () => {
   const { t, args, event } = await setup();
-  const input = { serviceSlug: 'thai-massage', date: '2026-11-14', guestName: 'Test Guest', time: '14:00' };
+  const input = { serviceSlug: 'thai-massage', durationMin: 60, date: '2026-11-14', guestName: 'Test Guest', time: '14:00' };
   await t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { ...input, sessionId: event.sessionId!, durableTool: { ...args, key: 'first', name: 'prepare_service_booking' } });
   const failure = await t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { ...input, time: '03:00', sessionId: event.sessionId!, durableTool: { ...args, key: 'replacement', name: 'prepare_service_booking' } });
   expect(failure).toHaveProperty('error');
@@ -220,20 +220,55 @@ it('never recovers an earlier success after a failed service replacement', async
   expect(recovered.response).not.toContain('14:00');
 });
 
+it('recovers a service duration question without preparing a new quote', async () => {
+  const { t, args, event } = await setup();
+  const input = { serviceSlug: 'thai-massage', date: '2026-11-14', time: '14:00', guestName: 'Test Guest' };
+  await t.mutation(internal.services.serviceBookings.prepareChatServiceBooking, { ...input, sessionId: event.sessionId!, durationMin: 60 });
+  mockModel([{ name: 'prepare_service_booking', args: input }]);
+  const choice = await t.action(ctx => runTurnHandler(ctx, args));
+  expect(choice).toMatchObject({ outcome: 'awaiting_guest' });
+  expect(choice.response).toContain('Which duration would you like?');
+  expect(choice.response).toContain('90 min · THB 3,200');
+  expect((await t.run(ctx => ctx.db.get(event.sessionId!)))?.pendingServiceQuote).toBeUndefined();
+  expect(await recover(t, args)).toMatchObject({ response: choice.response, outcome: 'awaiting_guest' });
+});
+
+it.each([undefined, 45])('cannot confirm a held service quote after availability asks the guest to choose a duration (requested: %s)', async durationMin => {
+  const { t, args, event } = await setup();
+  const input = { serviceSlug: 'thai-massage', date: '2026-11-14', time: '14:00' };
+  mockModel([{ name: 'prepare_service_booking', args: { ...input, durationMin: 60, guestName: 'Test Guest' } }]);
+  const proposal = await t.action(ctx => runTurnHandler(ctx, args));
+  expect(proposal.response).toContain('60 min');
+  await complete(t, args);
+
+  const chooseAgain = await claim(t, 'choose-again', 'What lengths are available?');
+  mockModel([{ name: 'check_service_availability', args: { ...input, durationMin } }]);
+  const choice = await t.action(ctx => runTurnHandler(ctx, chooseAgain.args));
+  expect(choice.response).toContain('Which duration would you like?');
+  expect((await t.run(ctx => ctx.db.get(event.sessionId!)))?.pendingServiceQuote).toBeUndefined();
+  await complete(t, chooseAgain.args);
+
+  const yes = await claim(t, 'yes', 'yes');
+  mockModel([{ name: 'confirm_service_booking' }]);
+  await t.action(ctx => runTurnHandler(ctx, yes.args));
+  expect(await t.run(ctx => ctx.db.query('appointments').withIndex('by_chatSession', q => q.eq('chatSessionId', event.sessionId!)).take(1))).toEqual([]);
+});
+
 it('presents real service confirmations and both cancellation steps identically live and after crashes', async () => {
   const { t, args, event } = await setup();
-  mockModel([{ name: 'prepare_service_booking', args: { serviceSlug: 'thai-massage', date: '2026-11-14', time: '14:00', guestName: 'Test Guest' } }]);
+  mockModel([{ name: 'prepare_service_booking', args: { serviceSlug: 'thai-massage', durationMin: 90, date: '2026-11-14', time: '14:00', guestName: 'Test Guest' } }]);
   const proposal = await t.action(ctx => runTurnHandler(ctx, args));
   expect(proposal.outcome).toBe('awaiting_guest');
   await complete(t, args);
   const yes = await claim(t, 'service-yes', 'yes');
   mockModel([{ name: 'confirm_service_booking' }]);
   const confirmed = await t.action(ctx => runTurnHandler(ctx, yes.args));
-  expect(confirmed.response).toContain('THB 2,400');
+  expect(confirmed.response).toContain('THB 3,200');
+  expect(confirmed.response).toContain('90 min');
   expect(confirmed.response).toContain('Payment is at the resort');
   expect(await recover(t, yes.args)).toMatchObject({ response: confirmed.response, outcome: 'answered' });
   const appointment = (await t.run(ctx => ctx.db.query('appointments').withIndex('by_chatSession', q => q.eq('chatSessionId', event.sessionId!)).take(10)))[0];
-  expect(appointment.price).toBe(240000);
+  expect(appointment.price).toBe(320000);
   await complete(t, { eventId: yes.args.eventId, claimToken: 'recovery' });
   const cancel = await claim(t, 'cancel', 'Cancel my service booking');
   mockModel([{ name: 'cancel_booking', args: { reference: appointment.confirmationCode } }]);

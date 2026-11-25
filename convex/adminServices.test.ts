@@ -4,7 +4,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { createAppointmentRecord, localDateTimeUtc } from './services/model';
+import { createAppointmentRecord, localDateTimeUtc, validateService } from './services/model';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -36,6 +36,128 @@ beforeEach(() => {
 	vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+const durationOptions = [{ durationMin: 60, price: 80000 }, { durationMin: 90, price: 110000 }, { durationMin: 120, price: 140000 }];
+
+describe('service duration options', () => {
+	it.each([
+		{ options: [], message: 'distinct' },
+		{ options: Array.from({ length: 7 }, (_, i) => ({ durationMin: (i + 1) * 15, price: 0 })), message: 'distinct' },
+		{ options: [durationOptions[0], durationOptions[0]], message: 'distinct' },
+		{ options: [{ durationMin: 80, price: 1 }], message: 'multiple of 15' },
+		{ options: [{ durationMin: 0, price: 1 }], message: 'positive' },
+		{ options: [durationOptions[0], { durationMin: 1440, price: 1 }], message: '24 hours' },
+		{ options: [{ durationMin: 60, price: -1 }], message: 'satang' },
+		{ options: [{ durationMin: 60, price: 8.5 }], message: 'satang' },
+		{ options: [{ durationMin: 60, price: Number.MAX_SAFE_INTEGER + 1 }], message: 'satang' },
+		{ options: [durationOptions[1]], message: 'default duration' },
+	])('validates option sets ($message)', ({ options, message }) => {
+		expect(() => validateService({ options, defaultDurationMin: 60, bufferMin: 15 })).toThrow(message);
+	});
+
+	it('sorts options, mirrors the chosen default and audits both catalogue edit paths', async () => {
+		const { t, admin, staffId } = await setup();
+		const serviceId = await admin.mutation(api.services.commands.createService.createService, {
+			slug: 'massage-options', name: 'Massage', description: '', category: 'Wellness',
+			options: [...durationOptions].reverse(), defaultDurationMin: 90, bufferMin: 15, currency: 'THB', staffIds: [staffId],
+		});
+		const service = () => t.run(ctx => ctx.db.get(serviceId));
+		expect(await service()).toMatchObject({ durationMin: 90, price: 110000, options: durationOptions });
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, defaultDurationMin: 120, expectedRevision: 0 });
+		await expect(admin.mutation(api.services.commands.updateService.updateService, { serviceId, defaultDurationMin: 60, expectedRevision: 0 }))
+			.rejects.toThrow('STALE_ADJUSTMENT_REVISION');
+		const adjusted = await admin.mutation(api.pos.commands.adjust.adjust, {
+			target: { targetType: 'service', targetId: serviceId }, kind: 'editCatalogue',
+			input: { price: 145000 }, expectedRevision: 1, clientKey: 'edit-default-price',
+		});
+		if (adjusted.status !== 'applied') throw new Error('Expected an authorized catalogue edit');
+		const changed = [...durationOptions.slice(0, 2), { durationMin: 120, price: 145000 }];
+		expect(await service()).toMatchObject({ durationMin: 120, price: 145000, options: changed, revision: 2 });
+		expect(await t.run(ctx => ctx.db.get(adjusted.adjustmentId))).toMatchObject({ before: { options: durationOptions }, after: { options: changed } });
+		expect(await t.run(ctx => ctx.db.query('recordChanges')
+			.withIndex('by_entityType_and_entityId_and_recordedAt', q => q.eq('entityType', 'service').eq('entityId', serviceId)).take(5)))
+			.toEqual(expect.arrayContaining([expect.objectContaining({ after: expect.objectContaining({ options: changed }) })]));
+		const update = api.services.commands.updateService.updateService;
+		await admin.mutation(update, { serviceId, price: 150000 });
+		expect(await service()).toMatchObject({ durationMin: 120, price: 150000, options: [...durationOptions.slice(0, 2), { durationMin: 120, price: 150000 }] });
+		await expect(admin.mutation(update, { serviceId, durationMin: 60 })).rejects.toThrow('distinct service durations');
+		await admin.mutation(update, { serviceId, durationMin: 45 });
+		expect((await admin.query(api.services.admin.listServices, {})).find(row => row._id === serviceId))
+			.toMatchObject({ durationMin: 45, price: 150000, options: [{ durationMin: 45, price: 150000 }, ...durationOptions.slice(0, 2)] });
+		await admin.mutation(update, { serviceId, options: [durationOptions[0]], defaultDurationMin: 60 });
+		expect(await service()).toMatchObject({ ...durationOptions[0], options: [durationOptions[0]] });
+	});
+
+	it('uses the chosen duration to date the cost schedule of completed work', async () => {
+		const { t, admin, serviceId, booking, appointment } = await setup();
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, options: durationOptions, defaultDurationMin: 60 });
+		const costScheduleId = await t.run(ctx => ctx.db.insert('serviceCostSchedules', {
+			serviceId, from: '2026-09-26', staff: 1000, materials: 0, tools: 0, actor: 'admin@example.com', recordedAt: Date.now(),
+		}));
+		vi.setSystemTime(new Date('2026-09-27T00:00:00.000Z'));
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
+			...booking, durationMin: 90, start: at('22:45'),
+		});
+		expect(await appointment(appointmentId)).toMatchObject({
+			status: 'completed', end: localDateTimeUtc('2026-09-26', '00:15'), costScheduleId,
+		});
+	});
+
+	it('requires a fresh price review before creating an appointment for the chosen duration', async () => {
+		const { t, admin, serviceId, booking, appointment } = await setup();
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, options: durationOptions, defaultDurationMin: 60 });
+		const create = api.services.commands.createAppointment.createAppointment;
+		const args = { ...booking, durationMin: 90, start: at('09:00') };
+		await expect(admin.mutation(create, { ...args, expectedPrice: 80000 })).rejects.toThrow(/SERVICE_PRICE_CHANGED.*The price changed to ฿1,100\. Review and try again\./);
+		expect(await t.run(ctx => ctx.db.query('appointments').take(1))).toEqual([]);
+		const { appointmentId } = await admin.mutation(create, { ...args, expectedPrice: 110000 });
+		expect(await appointment(appointmentId)).toMatchObject({ end: at('10:30'), price: 110000 });
+	});
+
+	it('uses the chosen option for availability, appointment terms and upcoming usage', async () => {
+		const { t, admin, serviceId, staffId, booking, appointment } = await setup();
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, options: durationOptions, defaultDurationMin: 60 });
+		const slotArgs = { serviceId, staffId, date };
+		const starts = async (durationMin?: number) => (await admin.query(api.services.admin.findOpenSlots, { ...slotArgs, durationMin })).map(slot => slot.start);
+		expect(await starts()).toContain(at('10:45'));
+		expect(await starts(90)).not.toContain(at('10:45'));
+		await expect(starts(45)).resolves.toEqual([]);
+		await expect(admin.query(api.services.admin.previewAppointmentTime, { serviceId, staffId, durationMin: 45, start: at('10:45') }))
+			.resolves.toEqual({ warnings: [], needsReason: false, problem: 'This duration is no longer offered. Choose another length.' });
+		await expect(admin.query(api.services.admin.previewAppointmentTime, { serviceId, staffId, durationMin: 90, start: at('10:45') }))
+			.resolves.toMatchObject({ problem: expect.stringContaining('full service and turnaround') });
+		const create = (time: string, durationMin?: number) =>
+			admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, durationMin, start: at(time) });
+		const long = await create('09:00', 90);
+		expect(await appointment(long.appointmentId)).toMatchObject({ end: at('10:30'), blockedUntil: at('10:45'), price: 110000 });
+		const standard = await create('13:00');
+		expect(await appointment(standard.appointmentId)).toMatchObject({ end: at('14:00'), blockedUntil: at('14:15'), price: 80000 });
+		const arrived = await create('14:30', 90);
+		const cancelled = await create('16:30');
+		await t.run(async ctx => {
+			await ctx.db.patch(arrived.appointmentId, { status: 'arrived' });
+			await ctx.db.patch(cancelled.appointmentId, { status: 'cancelled' });
+		});
+		const usage = () => admin.query(api.services.admin.upcomingOptionUsage, { serviceId });
+		expect(await usage()).toEqual([{ durationMin: 60, count: 1 }, { durationMin: 90, count: 2 }]);
+		vi.setSystemTime(at('11:00'));
+		expect(await usage()).toEqual([{ durationMin: 60, count: 1 }, { durationMin: 90, count: 1 }]);
+		await expect(t.query(api.services.admin.upcomingOptionUsage, { serviceId })).rejects.toThrow('Not authenticated');
+	});
+
+	it('checks the reviewed terms when changing only the duration of an appointment', async () => {
+		const { admin, serviceId, booking, appointment } = await setup();
+		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, options: durationOptions, defaultDurationMin: 60 });
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
+		const change = { appointmentId, expectedRevision: 0, serviceId, durationMin: 90, guestName: booking.guestName, guestPhone: booking.guestPhone };
+		const expectedService = { ...durationOptions[1], bufferMin: 15, currency: 'THB' };
+		const update = api.services.commands.updateAppointmentDetails.updateAppointmentDetails;
+		await expect(admin.mutation(update, { ...change, expectedService: { ...expectedService, price: 80000 } }))
+			.rejects.toThrow('changed since you reviewed');
+		await admin.mutation(update, { ...change, expectedService });
+		expect(await appointment(appointmentId)).toMatchObject({ serviceId, end: at('10:30'), blockedUntil: at('10:45'), price: 110000, revision: 1 });
+	});
+});
 
 describe('admin services', () => {
 	it.each([
@@ -245,6 +367,23 @@ describe('admin services', () => {
 		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, staffIds: [nokId], status: 'active' });
 		expect(await admin.query(api.services.admin.listServices, {})).toMatchObject([{ status: 'active', staffIds: [nokId] }]);
 		expect((await admin.query(api.services.admin.listStaff, {})).map((person) => person.name)).toEqual(['Nok']);
+	});
+
+	it('invalidates open service edits when staff assignments are archived or restored', async () => {
+		const { admin, staffId, serviceId } = await setup();
+		const current = async () => (await admin.query(api.services.admin.listServices, {}))[0];
+		const revision = (await current()).revision ?? 0;
+		await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
+		const archived = await current();
+		expect(archived).toMatchObject({ staffIds: [], revision: revision + 1 });
+		await expect(admin.mutation(api.services.commands.updateService.updateService, {
+			serviceId, staffIds: [staffId], expectedRevision: revision,
+		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, status: 'active' });
+		expect(await current()).toMatchObject({ staffIds: [staffId], revision: revision + 2 });
+		await expect(admin.mutation(api.services.commands.updateService.updateService, {
+			serviceId, name: 'Traditional massage', expectedRevision: archived.revision,
+		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
 	});
 
 	it('warns how many upcoming appointments stay booked when a service is archived', async () => {

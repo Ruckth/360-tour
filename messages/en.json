@@ -703,6 +703,8 @@
     "unavailable": "The service catalog is temporarily unavailable. Please try again shortly.",
     "ask": "Ask about this service",
     "minutes": "min",
+    "fromPrice": "from {price}",
+    "chooseDuration": "Choose a duration",
     "next": "Next services",
     "first": "Back to first page",
     "moreCategories": "More categories",

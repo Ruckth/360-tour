@@ -3,6 +3,7 @@ import { assertHandoverEditable } from './handoverCustody';
 import { assertExistingMoneyFlow } from './returnGuards';
 import type { Infer } from 'convex/values';
 import { ConvexError } from 'convex/values';
+import { assertServicePrice, resolveServiceOption } from '../../services/model';
 import type { MutationCtx } from '../../_generated/server';
 import { syncAffiliateCredit } from '../../marketing/model';
 import { appendBookingHistory } from '../../bookings/model';
@@ -26,7 +27,9 @@ export async function executeAddItem(ctx: MutationCtx, args: Infer<typeof addIte
 			if (!service || service.status !== 'active') throw new ConvexError('This service is no longer offered');
 			assertBaht(service.currency, service.name);
 			// Not scheduled until staff set a date or time (lib/serviceSchedule.ts); never "now".
-			line = { kind: 'service', serviceId: service._id, name: service.name, detail: `${service.durationMin} min`, unitPrice: service.price, currency: CURRENCY, qty: 1, schedule: {} };
+			const option = resolveServiceOption(service, item.durationMin);
+			assertServicePrice(option.price, service.currency, item.expectedPrice);
+			line = { kind: 'service', serviceId: service._id, name: service.name, durationMin: option.durationMin, detail: `${option.durationMin} min`, unitPrice: option.price, currency: CURRENCY, qty: 1, schedule: {} };
 		} else if (item.kind === 'room') {
 			const property = await ctx.db.get(item.propertyId);
 			if (!property || property.status !== 'active') throw new ConvexError('This villa is not available');

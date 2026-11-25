@@ -1,5 +1,6 @@
 import { richCardsEnabled } from './richCardsEnabled';
 import { array, eventDigest, graphVersion, object, providerRequest, string, verifyHmac, type ChannelAdapter, type InboundEvent } from './adapter';
+import { detectReplyLocale } from '../../shared/conciergeCopy';
 import { cardBrowseMessage } from '../../shared/replyCards';
 import { richReplyFallback, whatsappReplyMessages, whatsappText } from '../../shared/richMessages';
 
@@ -28,12 +29,12 @@ export const whatsapp: ChannelAdapter = {
     }
     return events;
   },
-  async send({ event, text, card, transport }) {
+  async send({ event, text, card, locale, transport }) {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const account = event.accountId ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
     if (!token || !account || !event.recipient) return { state: 'rejected', reason: 'WhatsApp replies are not configured' };
     const url = `https://graph.facebook.com/${graphVersion(process.env.WHATSAPP_GRAPH_API_VERSION)}/${encodeURIComponent(account)}/messages`;
-    const messages = richCardsEnabled('whatsapp') ? whatsappReplyMessages(text, card) : [whatsappText(richReplyFallback(text, card))];
+    const messages = richCardsEnabled('whatsapp') ? whatsappReplyMessages(text, card, locale ?? detectReplyLocale(event.messageText)) : [whatsappText(richReplyFallback(text, card))];
     let accepted = false;
     for (const content of messages) {
       const result = await providerRequest(url, token, { messaging_product: 'whatsapp', to: event.recipient, ...content }, transport);
