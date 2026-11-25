@@ -1,6 +1,6 @@
 import { accessCurrentResult } from './validators';
 import { ConvexError, v } from 'convex/values';
-import { authenticatedMutation, findStaffGrantByEmail, marketingAccess, marketingMutation, publicQuery } from '../auth/model';
+import { authenticatedMutation, findStaffGrantByEmail, marketingAccess, marketingMutation, OWNER_MANAGEMENT_MESSAGE, publicQuery } from '../auth/model';
 import { marketingRole } from '../shared/affiliateTypes';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import { appendRecordHistory } from '../settings/model';
@@ -57,7 +57,7 @@ export const setGrant = marketingMutation({
     const email = args.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       throw new Error("Enter a valid email");
-    if ((await findStaffGrantByEmail(ctx, email))?.role === "owner") throw new ConvexError("Owners are managed by the deployment admin");
+    if ((await findStaffGrantByEmail(ctx, email))?.role === "owner") throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
     const old = await ctx.db
       .query("marketingGrants")
       .withIndex("by_email", (q) => q.eq("email", email))

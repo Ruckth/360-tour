@@ -108,7 +108,7 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
     "node_modules/convex/bin/main.js", ...args, "--env-file", selector, "--preview-name", previewName,
   ], isolated)).stdout;
   const getEnv = async () => parseEnv(await convex(["env", "list", "--include-values"]));
-  const ownerGrants = async (): Promise<Array<{ email: string }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
+  const ownerGrants = async (): Promise<Array<{ email: string; claimed: boolean }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
   const vercelRun = async (args: string[]) => (await run(vercel, args, { ...isolated, cwd: work })).stdout;
 
   let jwt = "";
@@ -205,7 +205,7 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
   // Without push invalidation, visibility measures the real TTL and no edit reaches another origin.
   assert(!runtime.START_VILLA_INVALIDATION_ORIGIN && !runtime.START_VILLA_INVALIDATION_SECRET, "push invalidation must be off");
   const existingOwners = await ownerGrants();
-  assert(existingOwners.length > 0, "Provision a Preview owner before running temporary owner QA");
+  assert(existingOwners.some((grant) => grant.claimed), "Claim a Preview owner grant before running temporary owner QA");
 
   const inert = await get(`/rooms/villa-acceptance-${runId}-inert`);
   assert(inert.status === 404 && !inert.faultActive && inert.process, "fault fixture must be present and inert without its token");

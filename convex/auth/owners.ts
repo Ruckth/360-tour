@@ -19,7 +19,11 @@ export const revokeOwner = internalMutation({
     const email = validStaffEmail(args.email);
     const grant = await findStaffGrantByEmail(ctx, email);
     if (grant?.role !== 'owner') return null;
-    if ((await ownerGrants(ctx).take(2)).length < 2) throw new ConvexError('Cannot revoke the last owner.');
+    if (grant.tokenIdentifier) {
+      const claimed = await ctx.db.query('staffGrants')
+        .withIndex('by_role_and_tokenIdentifier', q => q.eq('role', 'owner').gt('tokenIdentifier', '')).take(2);
+      if (claimed.length < 2) throw new ConvexError('Cannot revoke the last owner.');
+    }
     await appendRecordHistory(ctx, {
       entityType: 'staffGrant', entityId: grant._id, actor: 'system:deployment-admin', kind: 'revoked', before: { email, role: grant.role },
     });
@@ -32,5 +36,9 @@ export const revokeOwner = internalMutation({
 export const listOwners = internalQuery({
   args: {},
   returns: v.array(v.object({ email: v.string(), claimed: v.boolean() })),
-  handler: async ctx => (await ownerGrants(ctx).collect()).map(grant => ({ email: grant.email, claimed: Boolean(grant.tokenIdentifier) })),
+  handler: async ctx => {
+    const grants = await ownerGrants(ctx).take(501);
+    if (grants.length > 500) throw new ConvexError('There are more than 500 owner grants. Contact support.');
+    return grants.map(grant => ({ email: grant.email, claimed: Boolean(grant.tokenIdentifier) }));
+  },
 });

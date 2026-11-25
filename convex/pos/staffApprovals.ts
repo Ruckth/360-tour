@@ -248,7 +248,7 @@ export const detail = staffQuery({
       const { target, adjustmentKind, input, reasonCode } = request.payload;
       return {
         kind: request.kind,
-        ...(await adjustmentApprovalDetail(ctx, ctx.staff, request, true)),
+        ...(await adjustmentApprovalDetail(ctx, ctx.staff.accessReads, request, true)),
         request: { _id: request._id, requesterEmail: request.requesterEmail, createdAt: request.createdAt, expiresAt: request.expiresAt,
           resolvedAt: request.resolvedAt, approverEmail: request.approverEmail, reason: request.reason,
           payload: { target, adjustmentKind, input, reasonCode },
@@ -258,7 +258,7 @@ export const detail = staffQuery({
     if (request.kind === 'returnItems') {
       return {
         kind: request.kind,
-        ...(await returnApprovalDetail(ctx, ctx.staff, request, true)),
+        ...(await returnApprovalDetail(ctx, ctx.staff.accessReads, request, true)),
         request: { _id: request._id, requesterEmail: request.requesterEmail, createdAt: request.createdAt, expiresAt: request.expiresAt,
           resolvedAt: request.resolvedAt, approverEmail: request.approverEmail, reason: request.reason, parts: request.payload.parts.slice(0, 20),
           orderId: request.orderId, amount: request.amount, totalBefore: request.totalBefore, totalAfter: request.totalAfter,

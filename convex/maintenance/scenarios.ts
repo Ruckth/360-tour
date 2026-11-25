@@ -12,7 +12,6 @@ import { createBookingRecord, recordStayPayment, blockBookingDates, writeBooking
 
 import { insertOrder } from '../pos/model';
 import { createGuestToken, hashGuestToken, initialInboxProjection, inboxProjection } from '../messaging/model';
-import { grantCompanyOwner } from '../auth/model';
 import { insertBranch, PRIMARY_BRANCH } from '../branches/model';
 import { DEFAULT_CASHIER_RULES, STAFF_INVITATION_TTL_MS } from '../shared/staffTypes';
 
@@ -27,13 +26,12 @@ export async function scenarioCounts(ctx: MutationCtx) {
   }
   return counts;
 }
-async function seedTwoBranchAccess(ctx: MutationCtx, samui: Id<'branches'>, now: number) {
+async function seedSecondBranch(ctx: MutationCtx, samui: Id<'branches'>, now: number, demoAccess: boolean) {
   const phuket = await insertBranch(ctx, {
     key: 'phuket', slug: 'phuket', name: 'Phuket', state: 'setup',
     issuer: { ...PRIMARY_BRANCH.issuer, branchCode: '00001', address: '21 Moo 5, Kamala, Kathu, Phuket 83150' },
   }, 'system:seed');
-  await grantCompanyOwner(ctx, 'owner@example.com');
-  await grantCompanyOwner(ctx, 'recovery@example.com');
+  if (!demoAccess) return;
   const invites = [
     { email: 'niran@example.com', role: 'manager', branchIds: [samui, phuket] },
     { email: 'ploy@example.com', role: 'cashier', branchIds: [samui] },
@@ -48,12 +46,12 @@ async function seedTwoBranchAccess(ctx: MutationCtx, samui: Id<'branches'>, now:
 }
 
 /** Atomic, bounded sample data. Refuses any nonempty database; it never clears or partially repairs one. */
-export async function seedScenario(ctx: MutationCtx, name: ScenarioName) {
+export async function seedScenario(ctx: MutationCtx, name: ScenarioName, demoAccess = false) {
   for (const table of tables) if (await ctx.db.query(table).first()) throw new Error(`Seed requires an empty database; ${table} is not empty`);
   if (name === 'empty') return { scenario: name, counts: await scenarioCounts(ctx), bookings: [], conversation: null };
   const now = Date.now();
   const samui = await insertBranch(ctx, PRIMARY_BRANCH, 'system:seed');
-  if (name === 'two-branch') await seedTwoBranchAccess(ctx, samui, now);
+  if (name === 'two-branch') await seedSecondBranch(ctx, samui, now, demoAccess);
   const properties = await seedProperties(ctx);
   await seedRooms(ctx, properties);
   await seedReviews(ctx, properties);

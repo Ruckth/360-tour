@@ -1,3 +1,3 @@
 export {
-  insertBranch, listBranchesForAccess, PRIMARY_BRANCH, readBranch, readBranchByKey, requireBranchAccess,
+  insertBranch, listAssignedBranches, listBranchesForAccess, PRIMARY_BRANCH, readBranch, readBranchByKey, requireBranchAccess,
 } from './private/branches';

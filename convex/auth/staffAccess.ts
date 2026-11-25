@@ -1,12 +1,11 @@
 import { staffAccessListPeopleResult, staffAccessMyAccessResult } from './validators';
 import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './model';
-import { listBranchesForAccess, readBranch } from '../branches/model';
+import { listAssignedBranches, listBranchesForAccess, readBranch } from '../branches/model';
 import { STAFF_INVITATION_TTL_MS, staffRole } from '../shared/staffTypes';
-import { marketingInvitationExpiry } from '../marketing/model';
-import { marketingAccess } from './private/marketingAccess';
+import { marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
 import { appendRecordHistory, cashierRules } from '../settings/model';
-import { boundStaffGrant, findStaffGrantByEmail, staffAccess, staffInvitationExpiry, validStaffEmail } from './private/staffAccess';
+import { boundStaffGrant, findStaffGrantByEmail, resolveStaffAccess, staffAccess, staffInvitationExpiry, validStaffEmail } from './private/staffAccess';
 import { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
 
 export const currentInternal = internalQuery({ args: {}, handler: staffAccess });
@@ -14,9 +13,14 @@ export const currentInternal = internalQuery({ args: {}, handler: staffAccess })
 export const myAccess = publicQuery({
   returns: staffAccessMyAccessResult,
   reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
-  const [access, rules, marketing] = await Promise.all([staffAccess(ctx), cashierRules(ctx), marketingAccess(ctx)]);
+  const identity = await ctx.auth.getUserIdentity();
+  const [{ access, branches: assigned }, rules] = await Promise.all([resolveStaffAccess(ctx, identity), cashierRules(ctx)]);
   const { email, role, pendingInvitation, companyScope } = access;
-  const branches = (await listBranchesForAccess(ctx, access)).map(({ _id: id, key, name, slug, state }) => ({ id, key, name, slug, state }));
+  const [currentBranches, marketing] = await Promise.all([
+    companyScope ? listBranchesForAccess(ctx, access) : assigned,
+    marketingAccessForIdentity(ctx, identity, companyScope),
+  ]);
+  const branches = currentBranches.map(({ _id: id, key, name, slug, state }) => ({ id, key, name, slug, state }));
   const publicAccess = { email, role, pendingInvitation, companyScope, branches };
   return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingRole: marketing.role };
 } });
@@ -31,7 +35,7 @@ export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx 
   if (!invite || invite.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
   const expiresAt = staffInvitationExpiry(invite);
   if (expiresAt !== null && expiresAt <= Date.now()) throw new ConvexError('Invitation expired. Ask an owner to resend it.');
-  if (invite.role !== 'owner' && !(await listBranchesForAccess(ctx, { companyScope: false, branchIds: invite.branchIds })).length) {
+  if (invite.role !== 'owner' && !(await listAssignedBranches(ctx, invite.branchIds)).length) {
     throw new ConvexError('This invitation has no available branches. Ask an owner to update it.');
   }
   await ctx.db.patch(invite._id, { tokenIdentifier: identity.tokenIdentifier, revision: (invite.revision ?? 0) + 1, updatedAt: Date.now() });

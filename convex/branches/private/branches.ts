@@ -1,9 +1,12 @@
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import type { ReadBudget } from '../../lib/readBudget';
 
 type Branch = Doc<'branches'>;
 type BranchScope = { companyScope: boolean; branchIds: Id<'branches'>[] };
+const BRANCH_LIST_LIMIT = 500;
+const BRANCH_LIST_LIMIT_MESSAGE = 'There are more than 500 branches to list. Contact support.';
 
 export const PRIMARY_BRANCH = {
   key: 'koh-samui',
@@ -26,16 +29,34 @@ export function readBranchByKey(ctx: QueryCtx, key: string) {
   return ctx.db.query('branches').withIndex('by_key', q => q.eq('key', key)).unique();
 }
 
-export async function listBranchesForAccess(ctx: QueryCtx, access: BranchScope): Promise<Branch[]> {
-  if (access.companyScope) {
-    const [beforeArchived, afterArchived] = await Promise.all([
-      ctx.db.query('branches').withIndex('by_state', q => q.lt('state', 'archived')).collect(),
-      ctx.db.query('branches').withIndex('by_state', q => q.gt('state', 'archived')).collect(),
-    ]);
-    return [...beforeArchived, ...afterArchived];
-  }
-  const assigned = await Promise.all(access.branchIds.map(id => readBranch(ctx, id)));
+export async function listBranches(ctx: QueryCtx): Promise<Branch[]> {
+  const branches = await ctx.db.query('branches').take(BRANCH_LIST_LIMIT + 1);
+  if (branches.length > BRANCH_LIST_LIMIT) throw new ConvexError(BRANCH_LIST_LIMIT_MESSAGE);
+  return branches;
+}
+
+export async function listAssignedBranches(ctx: QueryCtx, branchIds: Id<'branches'>[], budget?: ReadBudget): Promise<Branch[]> {
+  const assigned = await Promise.all(branchIds.map(async id => {
+    budget?.range();
+    budget?.assert();
+    const branch = await readBranch(ctx, id);
+    if (branch) budget?.document(branch);
+    budget?.assert();
+    return branch;
+  }));
   return assigned.filter((branch): branch is Branch => branch !== null && branch.state !== 'archived');
+}
+
+export async function listBranchesForAccess(ctx: QueryCtx, access: BranchScope): Promise<Branch[]> {
+  if (!access.companyScope) return listAssignedBranches(ctx, access.branchIds);
+  const beforeArchived = await ctx.db.query('branches')
+    .withIndex('by_state', q => q.lt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1);
+  if (beforeArchived.length > BRANCH_LIST_LIMIT) throw new ConvexError(BRANCH_LIST_LIMIT_MESSAGE);
+  const afterArchived = await ctx.db.query('branches')
+    .withIndex('by_state', q => q.gt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1 - beforeArchived.length);
+  const branches = [...beforeArchived, ...afterArchived];
+  if (branches.length > BRANCH_LIST_LIMIT) throw new ConvexError(BRANCH_LIST_LIMIT_MESSAGE);
+  return branches;
 }
 
 export async function requireBranchAccess(ctx: QueryCtx, actor: BranchScope, branchId: Id<'branches'>): Promise<Branch> {

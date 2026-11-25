@@ -3,11 +3,12 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
-import { assertUniqueBranchSlug, insertBranch, readBranch } from './private/branches';
+import { assertUniqueBranchSlug, insertBranch, listBranches, readBranch } from './private/branches';
 import { branchState, type BranchState } from '../shared/branchTypes';
 import { branchDocument, branchProfileFields } from './validators';
 
 type Profile = Pick<Doc<'branches'>, 'name' | 'slug' | 'issuer'>;
+const BRANCH_CHANGED = 'This branch changed. Reload it and try again.';
 const transitions: Record<BranchState, readonly BranchState[]> = {
   setup: ['active', 'archived'],
   active: ['suspended'],
@@ -24,11 +25,16 @@ function slugValue(raw: string, label: string) {
 }
 
 function cleanProfile({ name, slug, issuer }: Profile): Profile {
+  const branchName = name.trim();
   const clean = { legalName: issuer.legalName.trim(), taxId: issuer.taxId.trim(), branchCode: issuer.branchCode.trim(), address: issuer.address.trim() };
-  if (!name.trim()) throw new ConvexError('Enter a branch name.');
+  if (!branchName) throw new ConvexError('Enter a branch name.');
+  if (branchName.length > 120) throw new ConvexError('Enter a branch name of at most 120 characters.');
   if (!clean.legalName || !clean.taxId || !clean.address) throw new ConvexError('Enter the issuer legal name, tax ID and address.');
+  if (clean.legalName.length > 120) throw new ConvexError('Enter an issuer legal name of at most 120 characters.');
+  if (clean.taxId.length > 32) throw new ConvexError('Enter an issuer tax ID of at most 32 characters.');
+  if (clean.address.length > 500) throw new ConvexError('Enter an issuer address of at most 500 characters.');
   if (!/^[0-9]{5}$/.test(clean.branchCode)) throw new ConvexError('Enter a five-digit issuer branch code.');
-  return { name: name.trim(), slug: slugValue(slug, 'slug'), issuer: clean };
+  return { name: branchName, slug: slugValue(slug, 'slug'), issuer: clean };
 }
 
 async function existingBranch(ctx: QueryCtx, branchId: Id<'branches'>) {
@@ -41,7 +47,7 @@ export const list = staffQuery({
   capability: 'manageTeam',
   args: {},
   returns: v.array(branchDocument),
-  handler: ctx => ctx.db.query('branches').collect(),
+  handler: listBranches,
 });
 
 export const create = staffMutation({
@@ -63,7 +69,7 @@ export const update = staffMutation({
   handler: async (ctx, { branchId, revision, ...profile }) => {
     const branch = await existingBranch(ctx, branchId);
     if (branch.state === 'archived') throw new ConvexError('Archived branches are read-only.');
-    if (branch.revision !== revision) throw new ConvexError('This branch changed. Reload it and try again.');
+    if (branch.revision !== revision) throw new ConvexError(BRANCH_CHANGED);
     const next = cleanProfile(profile);
     await assertUniqueBranchSlug(ctx, next.slug, branchId);
     const patch = { ...next, revision: revision + 1, updatedAt: Date.now() };
@@ -78,22 +84,24 @@ export const update = staffMutation({
 
 export const setState = staffMutation({
   capability: 'manageTeam',
-  args: { branchId: v.id('branches'), state: branchState, reason: v.optional(v.string()) },
+  args: { branchId: v.id('branches'), state: branchState, revision: v.number(), reason: v.optional(v.string()) },
   returns: v.object({ revision: v.number() }),
-  handler: async (ctx, { branchId, state, reason }) => {
+  handler: async (ctx, { branchId, state, revision, reason }) => {
     const branch = await existingBranch(ctx, branchId);
+    if (branch.revision !== revision) throw new ConvexError(BRANCH_CHANGED);
     if (branch.state === 'active' && state === 'archived') throw new ConvexError('Suspend the branch before archiving it.');
     if (!transitions[branch.state].includes(state)) throw new ConvexError('This branch state transition is not allowed.');
     const stateReason = reason?.trim() || undefined;
     if (state === 'suspended' && !stateReason) throw new ConvexError('Enter a reason for suspending this branch.');
+    if (stateReason && stateReason.length > 500) throw new ConvexError('Enter a reason of at most 500 characters.');
     const now = Date.now();
-    const revision = branch.revision + 1;
-    await ctx.db.patch(branchId, { state, stateReason, stateChangedAt: now, stateChangedByEmail: ctx.staff.email, revision, updatedAt: now });
+    const nextRevision = revision + 1;
+    await ctx.db.patch(branchId, { state, stateReason, stateChangedAt: now, stateChangedByEmail: ctx.staff.email, revision: nextRevision, updatedAt: now });
     await appendRecordHistory(ctx, {
       entityType: 'branch', entityId: branchId, actor: ctx.staff.email, kind: 'state_changed', reason: stateReason,
       before: { state: branch.state, ...(branch.stateReason ? { stateReason: branch.stateReason } : {}) },
       after: { state, ...(stateReason ? { stateReason } : {}) },
     });
-    return { revision };
+    return { revision: nextRevision };
   },
 });

@@ -268,7 +268,7 @@ The inventory test compares every source registration with this table and requir
 | `branches/branches.list` | `staffQuery` | Owner-only `manageTeam` capability. | Includes archived branches. |
 | `branches/branches.create` | `staffMutation` | Owner-only `manageTeam` capability. | Validates issuer and unique key/slug; creates in Setup. |
 | `branches/branches.update` | `staffMutation` | Owner-only `manageTeam` capability. | Validates revision, profile, and unique slug. Archived branches are read-only. |
-| `branches/branches.setState` | `staffMutation` | Owner-only `manageTeam` capability. | Enforces lifecycle transitions and audits changes. |
+| `branches/branches.setState` | `staffMutation` | Owner-only `manageTeam` capability. | Requires the current branch revision, enforces lifecycle transitions and audits changes. |
 | `commerce/history.staffPage` | `staffQuery` | Staff capability 'checkout'. | Per-target read policy (receipt and room charge follow the receipt rule, catalogue and checkout rules need operations); ≤ 20 rows and ≤ 160 KiB a page. |
 | `commerce/history.guestPage` | `staffQuery` | Staff capability 'checkout'. | Voucher or grant only; server-shaped guest rows from the current owner's transfer-in entry, without staff, notes or full codes. |
 | `catalog/properties.list` | `publicQuery` | Anonymous catalogue/availability read; existing active-status checks and public projection remain. | Existing entity existence, validation, state/revision and record checks remain in handlers/helpers. |

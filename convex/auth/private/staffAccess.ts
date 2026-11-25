@@ -4,7 +4,7 @@ import { ConvexError } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
-import { listBranchesForAccess } from '../../branches/model';
+import { listAssignedBranches } from '../../branches/model';
 import { resortTodayIso } from '../../shared/time';
 import { isOpenOrder, isSettledOrder } from '../../pos/model';
 import { type PricedLine } from '../../shared/orderMath';
@@ -66,26 +66,42 @@ export async function pendingStaffInvitation(ctx: QueryCtx, grant: Doc<'staffGra
   if (grant.role === 'owner') return { role: 'owner', expiresAt: null, branchIds: [] };
   const expiresAt = staffInvitationExpiry(grant);
   if (expiresAt === null || expiresAt <= Date.now()) return null;
-  const branches = await listBranchesForAccess(ctx, { companyScope: false, branchIds: grant.branchIds });
+  const branches = await listAssignedBranches(ctx, grant.branchIds);
   return branches.length ? { role: grant.role, expiresAt, branchIds: branches.map(branch => branch._id) } : null;
 }
 
-export async function accessForIdentity(ctx: QueryCtx | MutationCtx, identity: StaffIdentity | null): Promise<StaffAccess> {
+type AccessResolution = { access: StaffAccess; branches: Doc<'branches'>[]; branchReads: number };
+
+export async function resolveStaffAccess(ctx: QueryCtx, identity: StaffIdentity | null): Promise<AccessResolution> {
   const email = identity?.email?.trim().toLowerCase() || null;
   const tokenIdentifier = identity?.tokenIdentifier ?? null;
-  const denied = { email, tokenIdentifier, role: null, capabilities: staffCapabilities(null), branchIds: [], companyScope: false, pendingInvitation: null };
+  const denied: AccessResolution = {
+    access: { email, tokenIdentifier, role: null, capabilities: staffCapabilities(null), branchIds: [], companyScope: false, pendingInvitation: null },
+    branches: [], branchReads: 0,
+  };
   if (identity?.emailVerified !== true || !email) return denied;
 
   const grant = await boundStaffGrant(ctx, identity);
   if (!grant) {
     const invite = await findStaffGrantByEmail(ctx, email);
-    return { ...denied, pendingInvitation: invite && await pendingStaffInvitation(ctx, invite) };
+    return { ...denied, access: { ...denied.access, pendingInvitation: invite && await pendingStaffInvitation(ctx, invite) } };
   }
 
   const companyScope = grant.role === 'owner';
-  const branchIds = grant.branchIds;
-  if (!companyScope && !(await listBranchesForAccess(ctx, { companyScope, branchIds })).length) return denied;
-  return { ...denied, role: grant.role, capabilities: staffCapabilities(grant.role), companyScope, branchIds };
+  const branches = companyScope ? [] : await listAssignedBranches(ctx, grant.branchIds);
+  if (!companyScope && !branches.length) return denied;
+  return {
+    access: {
+      ...denied.access, role: grant.role, capabilities: staffCapabilities(grant.role), companyScope,
+      branchIds: branches.map(branch => branch._id),
+    },
+    branches,
+    branchReads: companyScope ? 0 : grant.branchIds.length,
+  };
+}
+
+export async function accessForIdentity(ctx: QueryCtx, identity: StaffIdentity | null): Promise<StaffAccess> {
+  return (await resolveStaffAccess(ctx, identity)).access;
 }
 
 export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<StaffAccess> {
@@ -93,11 +109,13 @@ export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Prom
   return await accessForIdentity(ctx, await ctx.auth.getUserIdentity());
 }
 
-export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability): Promise<StaffActor> {
-  const access = await staffAccess(ctx);
+export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability): Promise<StaffActor & { accessReads: number }> {
+  const { access, branchReads } = 'db' in ctx
+    ? await resolveStaffAccess(ctx, await ctx.auth.getUserIdentity())
+    : { access: await staffAccess(ctx), branchReads: 0 };
   if (!access.email || !access.tokenIdentifier) throw new Error('Not authenticated');
   if (!access.capabilities[capability]) throw new Error('Not authorized');
-  return { ...access, email: access.email, tokenIdentifier: access.tokenIdentifier };
+  return { ...access, email: access.email, tokenIdentifier: access.tokenIdentifier, accessReads: 'db' in ctx ? 1 + branchReads : 0 };
 }
 
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {

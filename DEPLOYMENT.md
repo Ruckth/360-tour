@@ -124,7 +124,9 @@ Current local/CI integration and guarded per-PR Preview initialization use the u
 
 Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
-`two-branch` includes example owner and recovery grants for the demo. Grant access to the approved Clerk accounts in the target deployment via the CLI.
+`two-branch` creates Koh Samui in Active and Phuket in Setup. Seed scenarios create no owner grants. To include the three example desk invitations in a disposable demo, pass `{"scenario":"two-branch","demoAccess":true}`. The default is `false`.
+
+After an authorized multi-branch reset and backend deploy, run `maintenance/seed:seedAll` with `{"scenario":"two-branch"}`. Then grant the real owner and the designated recovery owner, in that order, using the procedure below. Have both owners sign in and claim their grants. Use `auth/owners:listOwners` to confirm both are claimed. The revoke command preserves at least one claimed owner.
 
 ## Admin Setup
 
@@ -134,7 +136,7 @@ To enable `/admin`:
 2. Configure the Clerk `convex` JWT template.
    The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
-4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` for each approved company owner. Use the exact Clerk account email. On first verified sign-in, each owner activates their grant.
+4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` once for the real owner and again for the recovery owner. Replace the example address with each account's verified Clerk email. Each owner signs in and activates their grant.
 
 Missing Clerk or Convex configuration refuses app initialization. Configure a matching Clerk issuer and `convex` JWT template with audience `convex`; a signed-in user without a staff grant must still be refused protected operations.
 
@@ -192,7 +194,7 @@ After an authorized deployment, root owns live acceptance. Coordinate any extern
 - Live Convex booking redirects to Stripe Checkout; a signed test webhook marks it paid and queues both emails.
 - Invalid Stripe and Meta webhook signatures are rejected.
 - OTA imports block dates and the export feed includes confirmed bookings.
-- `/admin` requires Clerk sign-in and only allowlisted admin emails can load chat sessions.
+- `/admin` requires Clerk sign-in. Loading chat sessions requires a claimed owner or a claimed manager with a current branch assignment.
 - Chat opens and returns either AI or fallback content.
 - Mobile layout has no visible overlap in hero, booking, chat, or 360 tour views.
 

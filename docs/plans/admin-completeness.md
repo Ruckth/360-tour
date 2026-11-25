@@ -93,8 +93,8 @@ New `siteSettings` single row. The code falls back to `resort-config.ts` when it
 - **AI:** tone, extra instructions, max words. The prompt reads discount and policy from data instead of hardcoded "15%" / "48 h" (`chatAi.ts:458-485`).
 - **Email:** sender display name, owner notification email, footer.
 - **Channels (read-only):** for each of LINE, Facebook, Instagram, WhatsApp — configured? (a server-side env presence check, a Next route for Vercel vars), last event, last reply, failures in 24 h / 7 d + latest error. Also Stripe/Resend configured, and iCal last sync.
-- **Admins (read-only):** from `ADMIN_EMAILS`.
-- **Stays in env:** all secrets, `EMAIL_FROM` address, `SITE_URL`, Clerk, `ADMIN_EMAILS`.
+- **Owners (read-only):** claimed staff grants managed through `auth/owners:grantOwner` and the companion owner commands.
+- **Stays in env:** all secrets, `EMAIL_FROM` address, `SITE_URL` and Clerk configuration.
 
 ### 1.7 Properties (largest item)
 > **Update (2026-09-28):** PRs #17–#18 already added a Properties view with these edits: villa details, status and image URLs; room name and image; OTA rates (the `pricing` table is now legacy). The Leads view (list plus source filter) also exists. What's still missing: creating a villa, photo upload, creating, deleting and reordering rooms, hotspots, reviews, and public pages that read villa details from the DB.

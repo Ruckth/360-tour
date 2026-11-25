@@ -4,6 +4,7 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import { staffCapabilities, type StaffActor } from '../../auth/model';
+import { listAssignedBranches } from '../../branches/model';
 import { readBudget, reserveWrites } from '../../lib/readBudget';
 import { cashierRules } from '../../settings/model';
 import { editReasons, stockReasons } from '../../shared/commerce/reasons';
@@ -481,14 +482,17 @@ export async function executeApprovedAdjustment(
   }
 
   const [rules, grant] = await Promise.all([approvalRules(ctx), requesterGrant(ctx, requesterKey)]);
-  if (grant?.role !== 'cashier' || await sha256(JSON.stringify(convexToJson(grant))) !== request.requesterAccessFingerprint ||
-    rules.revision !== request.rulesRevision || await sha256(JSON.stringify(convexToJson(rules))) !== request.rulesFingerprint) {
+  const current = grant?.role === 'cashier' &&
+    await sha256(JSON.stringify(convexToJson(grant))) === request.requesterAccessFingerprint &&
+    rules.revision === request.rulesRevision && await sha256(JSON.stringify(convexToJson(rules))) === request.rulesFingerprint;
+  const branches = current ? await listAssignedBranches(ctx, grant.branchIds, readBudget(ctx)) : [];
+  if (!branches.length) {
     reserveWrites(ctx, 1);
     await ctx.db.patch(request._id, { status: 'stale', resolvedAt: Date.now() });
     return { status: 'stale' };
   }
   const requester: StaffActor = {
-    role: 'cashier', companyScope: false, branchIds: grant.branchIds, capabilities: staffCapabilities('cashier'), pendingInvitation: null,
+    role: 'cashier', companyScope: false, branchIds: branches.map(branch => branch._id), capabilities: staffCapabilities('cashier'), pendingInvitation: null,
     email: request.requesterEmail, tokenIdentifier: requesterKey,
   };
   adjustmentPermission(requester, command);

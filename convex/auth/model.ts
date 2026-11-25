@@ -106,5 +106,5 @@ export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, findSta
 
 export { manualReduction } from '../shared/staffDiscount';
 
-export { grantCompanyOwner } from './private/owners';
+export { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
 export { marketingAccess, requireMarketingPermission } from './private/marketingAccess';

@@ -91,6 +91,17 @@ it('binds approval to the cashier and serializes four competing tills', async ()
   expect(await cashier.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId })).toMatchObject({ status: 'applied' });
 });
 
+it('cannot authorize a cashier return after their last assigned branch is archived', async () => {
+  const { t, cashier, owner } = await setup();
+  const { args } = await t.run(ctx => soldProduct(ctx));
+  const { requestId } = await cashier.mutation(command.askManager, args);
+  const [branch] = await owner.query(api.branches.branches.list, {});
+  await owner.mutation(api.branches.branches.setState, { branchId: branch._id, revision: branch.revision, state: 'suspended', reason: 'Closing' });
+  await owner.mutation(api.branches.branches.setState, { branchId: branch._id, revision: branch.revision + 1, state: 'archived' });
+  await expect(owner.mutation(command.decideApproval, { requestId, decision: 'approve' })).resolves.toMatchObject({ status: 'stale' });
+  expect(await t.run(ctx => ctx.db.query('orderReturns').first())).toBeNull();
+});
+
 it('authorizes at a cashier till only under the current Refund rule, including on replay', async () => {
   const { t, cashier, owner } = await setup();
   const { args } = await t.run(ctx => soldProduct(ctx));

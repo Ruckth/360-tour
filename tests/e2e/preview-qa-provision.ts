@@ -81,7 +81,7 @@ async function main() {
     "node_modules/convex/bin/main.js", ...args, "--env-file", selector, "--preview-name", previewName,
   ], isolated)).stdout;
   const getEnv = async () => parseEnv(await convex(["env", "list", "--include-values"]));
-  const ownerGrants = async (): Promise<Array<{ email: string }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
+  const ownerGrants = async (): Promise<Array<{ email: string; claimed: boolean }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
   const vercelRun = async (args: string[]) => (await run(vercel, args, { ...isolated, cwd: work })).stdout;
   const curl = async (route: string, options: string[] = []) => vercelRun([
     "curl", route, "--deployment", staging.deploymentId, "--scope", staging.scope,
@@ -145,7 +145,7 @@ async function main() {
     provisioned = await testUsers(clerkEnv);
     const emails = Object.fromEntries(roles.map((role) => [role, provisioned!.users[role].email]));
     const existingOwners = await ownerGrants();
-    assert(existingOwners.length > 0, "Provision a Preview owner before running temporary owner QA");
+    assert(existingOwners.some((grant) => grant.claimed), "Claim a Preview owner grant before running temporary owner QA");
     assert(!existingOwners.some((grant) => grant.email === emails.owner));
     const journal = path.join(work, "recovery.json");
     await writeFile(journal, JSON.stringify({ addedOwner: emails.owner }), { flag: "wx", mode: 0o600 });

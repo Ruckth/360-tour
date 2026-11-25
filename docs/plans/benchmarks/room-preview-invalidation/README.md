@@ -35,7 +35,7 @@ All three were written from private files and never printed. All three started u
 Cleanup:
 
 - The three invalidation variables were removed from the Convex Preview.
-- `ADMIN_EMAILS` was restored to its prior value.
+- The legacy environment allowlist was restored. Current Preview owners are provisioned through `auth/owners:grantOwner` and sign in to claim.
 - The run-owned Clerk users were deleted and the villa keeps its seeded name.
 - The Vercel deployment was removed by exact name. The Convex Preview follows its normal expiry.
 
