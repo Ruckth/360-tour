@@ -1,6 +1,9 @@
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import { RotateCw, TriangleAlert } from "lucide-react";
+import { BranchForbiddenCard, isBranchForbidden } from "@/components/admin/branch/BranchScreens";
+import { adminNavItem } from "@/components/admin/admin-routes";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { usePathname } from "@/platform/navigation";
 
 export function AdminClerkSetupRequired() {
   return (
@@ -24,14 +27,21 @@ export function AdminClerkSetupRequired() {
 /**
  * Admin error boundary presentation: wraps each admin view inside
  * the layout so a failing view keeps the sidebar and can be retried.
+ * A branch denial gets its own fixed card, with one link back to the section's list.
  */
 export function AdminViewErrorCard({
   error,
   onRetry,
+  pathname = "/admin/chats",
 }: {
   error: unknown;
   onRetry: () => void;
+  pathname?: string;
 }) {
+  if (isBranchForbidden(error)) {
+    const section = adminNavItem(pathname) ?? { href: "/admin/chats", label: "Chats" };
+    return <BranchForbiddenCard backHref={section.href} backLabel={`Back to ${section.label}`} />;
+  }
   const message =
     error instanceof Error && error.message
       ? error.message
@@ -54,9 +64,11 @@ export function AdminViewErrorCard({
 
 export function StartAdminViewError({ error, reset }: ErrorComponentProps) {
   const router = useRouter();
+  const pathname = usePathname();
   return (
     <AdminViewErrorCard
       error={error}
+      pathname={pathname}
       onRetry={() => {
         reset();
         void router.invalidate();

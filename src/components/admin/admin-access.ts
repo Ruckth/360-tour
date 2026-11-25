@@ -6,15 +6,17 @@ import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, adminSettingsTab, type AdminNav
 export type StaffAccessView = FunctionReturnType<typeof api.auth.staffAccess.myAccess>;
 export type StaffCapabilities = StaffAccessView["capabilities"];
 type Access = Pick<StaffAccessView, "role" | "capabilities">;
+type AccessWithBranches = Access & Pick<StaffAccessView, "branches">;
 
 export const CASHIER_HOME = "/admin/checkout";
 
 /**
- * Only a staff grant narrows the admin. Owners, and signed-in people without a role (who get the
- * server's "Not authorized" as before), see the same navigation as before staff roles existed.
+ * Only owners see everything. Managers and cashiers get their role's sections; a signed-in person
+ * without a role gets only what their capabilities open (Marketing for a marketing-only grant),
+ * never the owner's navigation. Without access data (isolated fixtures) the admin reads as an owner.
  */
 function restricted(access: Access | null | undefined): access is Access {
-  return access?.role === "manager" || access?.role === "cashier";
+  return access != null && access.role !== "owner";
 }
 
 /** Whether these capabilities open a page: its section's area, and Settings › Team for owners only. */
@@ -59,13 +61,24 @@ export function adminTabBarFor(nav: readonly AdminNavItem[]): AdminNavItem[] {
 }
 
 /**
+ * Whether this signed-in person has no admin at all: no section opens for them (no role and no
+ * Marketing grant), or a desk role with no branch left. The shell shows "No access" instead.
+ */
+export function adminNoAccess(access: AccessWithBranches): boolean {
+  if (access.role === "owner") return false;
+  if (access.role !== null && access.branches.length === 0) return true;
+  return adminNavFor(access).length === 0;
+}
+
+/**
  * Where to send someone from a page their role doesn't open, or null to render it. Cashiers go to
  * checkout, which is also where `/admin` lands for them (the proxy sends it to Chats first). A
  * manager on Settings › Team goes to Settings. A manager without Marketing access stays, so the
- * Marketing gate can say why.
+ * Marketing gate can say why. A marketing-only person goes to Marketing.
  */
 export function adminAccessRedirect(pathname: string, tab: string | null, access: Access | null | undefined): string | null {
   if (!restricted(access) || adminPageAllowed(pathname, tab, access.capabilities)) return null;
   if (access.role === "cashier") return CASHIER_HOME;
+  if (access.role === null) return adminNavFor(access)[0]?.href ?? null;
   return adminNavItem(pathname)?.href === "/admin/settings" ? "/admin/settings" : null;
 }

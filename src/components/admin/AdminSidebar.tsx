@@ -8,6 +8,7 @@ import Link from "@/platform/link";
 import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
+import { SidebarBranchSwitcher } from "@/components/admin/branch/BranchSwitcher";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";
 import {
@@ -125,6 +126,8 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             <span className="block truncate text-xs text-sidebar-foreground/70">Concierge operations</span>
           </span>
         </div>
+        {/* The working branch: a switcher with two or more branches, static text with one. */}
+        <SidebarBranchSwitcher />
         <div role="search" className="relative group-data-[collapsible=icon]:hidden">
           <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-sidebar-foreground/60" />
           <SidebarInput

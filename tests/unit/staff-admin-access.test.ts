@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adminAccessRedirect, adminNavFor, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
+import { adminAccessRedirect, adminNavFor, adminNoAccess, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
 import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
 import { staffAccessFor, type ShellRole } from "./admin-shell-convex";
 
@@ -11,11 +11,27 @@ const hrefs = (items: ReturnType<typeof nav>) => items.map((item) => item.href);
 const settingsLinks = (items: ReturnType<typeof nav>) => items.find((item) => item.href === "/admin/settings")?.children?.map((child) => child.label);
 
 describe("navigation by staff role", () => {
-  it("leaves the navigation as it was for owners and people without a role", () => {
+  it("gives owners, and fixtures without access data, the whole navigation", () => {
     expect(nav("owner")).toEqual([...ADMIN_NAV]);
-    // No role: the server answers "Not authorized" on each page, as before staff roles.
-    expect(nav(null)).toEqual([...ADMIN_NAV]);
     expect(adminNavFor(undefined)).toEqual([...ADMIN_NAV]);
+  });
+
+  it("never gives a person without a role the owner's navigation", () => {
+    expect(nav(null)).toEqual([]);
+    expect(adminNoAccess(staffAccessFor(null))).toBe(true);
+    // A marketing-only grant opens Marketing alone, and other pages send them there.
+    const marketer = { ...staffAccessFor(null), capabilities: { ...staffAccessFor(null).capabilities, marketing: true } };
+    expect(hrefs(adminNavFor(marketer))).toEqual(["/admin/marketing/dashboard"]);
+    expect(adminNoAccess(marketer)).toBe(false);
+    expect(adminAccessRedirect("/admin/chats", null, marketer)).toBe("/admin/marketing/dashboard");
+    expect(adminAccessRedirect("/admin/marketing/coupons", null, marketer)).toBeNull();
+  });
+
+  it("refuses a desk role with no branch left, never an owner", () => {
+    const branch = { id: "b1", key: "samui", name: "Koh Samui", slug: "koh-samui", state: "active" } as never;
+    expect(adminNoAccess({ ...staffAccessFor("manager"), branches: [] })).toBe(true);
+    expect(adminNoAccess({ ...staffAccessFor("manager"), branches: [branch] })).toBe(false);
+    expect(adminNoAccess({ ...staffAccessFor("owner"), branches: [] })).toBe(false);
   });
 
   it("gives a cashier only Checkout, in the sidebar, its search and the phone tab bar", () => {
@@ -81,7 +97,7 @@ describe("redirects by staff role", () => {
     expect(adminAccessRedirect("/admin/marketing/coupons", null, manager)).toBeNull();
   });
 
-  it("never redirects owners or people without a role", () => {
+  it("never redirects owners, nor a person without a role who has nowhere to go", () => {
     for (const role of ["owner", null] as const) {
       expect(adminAccessRedirect("/admin/settings", "team", staffAccessFor(role))).toBeNull();
       expect(adminAccessRedirect("/admin/chats", null, staffAccessFor(role))).toBeNull();

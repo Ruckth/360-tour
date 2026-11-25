@@ -1,0 +1,61 @@
+import type { Id } from "convex/_generated/dataModel";
+import { describe, expect, it } from "vitest";
+import { BRANCH_STATE_PILLS, branchReadOnlyRoute, branchStorageKeys, resolveWorkingBranch } from "@/components/admin/branch/branch-selection";
+
+const branch = (id: string) => ({ id: id as Id<"branches"> });
+const samui = branch("samui");
+const phuket = branch("phuket");
+const both = [samui, phuket];
+
+describe("working branch selection", () => {
+  it("has no branch without assignments", () => {
+    expect(resolveWorkingBranch([], { session: "samui", device: "samui" })).toEqual({ kind: "none" });
+  });
+
+  it("selects the only branch without asking", () => {
+    expect(resolveWorkingBranch([samui], {})).toEqual({ kind: "selected", id: "samui" });
+  });
+
+  it("asks a first-time person with two branches to choose", () => {
+    expect(resolveWorkingBranch(both, {})).toEqual({ kind: "choose" });
+  });
+
+  it("prefers this tab, then the last branch on this device", () => {
+    expect(resolveWorkingBranch(both, { session: "phuket", device: "samui" })).toEqual({ kind: "selected", id: "phuket" });
+    expect(resolveWorkingBranch(both, { device: "phuket" })).toEqual({ kind: "selected", id: "phuket" });
+  });
+
+  it("never lets a stored choice grant access", () => {
+    expect(resolveWorkingBranch(both, { session: "chiang-mai", device: "krabi" })).toEqual({ kind: "choose" });
+    expect(resolveWorkingBranch([samui], { session: "phuket", device: "phuket" })).toEqual({ kind: "selected", id: "samui" });
+  });
+
+  it("keeps the branch this tab is working in", () => {
+    expect(resolveWorkingBranch(both, { current: "phuket", session: "samui", device: "samui" })).toEqual({ kind: "selected", id: "phuket" });
+  });
+
+  it("moves to a remaining branch and names the lost one when access is removed mid-session", () => {
+    expect(resolveWorkingBranch([samui], { current: "phuket", device: "phuket" })).toEqual({ kind: "selected", id: "samui", revokedId: "phuket" });
+    // The device's last branch wins when it is still assigned.
+    const krabi = branch("krabi");
+    expect(resolveWorkingBranch([samui, krabi], { current: "phuket", device: "krabi" })).toEqual({ kind: "selected", id: "krabi", revokedId: "phuket" });
+    expect(resolveWorkingBranch([samui, krabi], { current: "phuket" })).toEqual({ kind: "selected", id: "samui", revokedId: "phuket" });
+  });
+
+  it("makes checkout and receipts read-only, and nothing else", () => {
+    for (const path of ["/admin/checkout", "/admin/checkout/preview", "/admin/receipt", "/admin/receipt/order123"]) expect(branchReadOnlyRoute(path), path).toBe(true);
+    for (const path of ["/admin/chats", "/admin/hotel", "/admin/checkouts", "/admin/settings"]) expect(branchReadOnlyRoute(path), path).toBe(false);
+  });
+
+  it("keeps each person's choice apart on a shared device", () => {
+    expect(branchStorageKeys("niran@example.com")).toEqual({ session: "admin:branch:niran@example.com", device: "admin:last-branch:niran@example.com" });
+    expect(branchStorageKeys(null).session).not.toBe(branchStorageKeys("niran@example.com").session);
+  });
+
+  it("labels every non-active state, and Active not at all", () => {
+    expect(BRANCH_STATE_PILLS.active).toBeUndefined();
+    expect(BRANCH_STATE_PILLS.setup).toEqual({ tone: "warning", label: "Setup · hidden from guests" });
+    expect(BRANCH_STATE_PILLS.suspended).toEqual({ tone: "danger", label: "Suspended · no new sales" });
+    expect(BRANCH_STATE_PILLS.archived).toEqual({ tone: "muted", label: "Archived · read only" });
+  });
+});

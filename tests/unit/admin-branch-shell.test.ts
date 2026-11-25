@@ -1,0 +1,259 @@
+// @vitest-environment happy-dom
+// The real admin shell's working branch: switcher, first-landing chooser, dirty confirm, revocation
+// and the branch-denied card. Auth, transport and router are mocked.
+import type { Window as HappyDOMWindow } from 'happy-dom';
+import { act, createElement, useState, type ReactNode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ConvexError } from 'convex/values';
+import { getFunctionName, type FunctionReference } from 'convex/server';
+import { AdminShell } from '@/components/admin/AdminShell';
+import { useAdminBranch } from '@/components/admin/branch/branch-context';
+import { useUnsavedGuard } from '@/hooks/use-unsaved-guard';
+import { AdminViewErrorCard } from '@/start-app/admin/AdminBoundaries';
+import { KOH_SAMUI, PHUKET, staffAccessFor } from './admin-shell-convex';
+
+const EMAIL = 'niran@example.com';
+const state = vi.hoisted(() => ({ pathname: '/admin/hotel', access: undefined as unknown, dirty: false }));
+vi.mock('@/platform/auth', () => ({
+  useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
+  UserButton: () => null,
+  SignInButton: () => null,
+  SignOutButton: ({ children }: { children: ReactNode }) => children,
+}));
+vi.mock('convex/react', () => ({
+  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useQuery: (ref: FunctionReference<'query'>, args: unknown) => {
+    if (args === 'skip') return undefined;
+    return getFunctionName(ref) === 'auth/staffAccess:myAccess' ? state.access : { businessName: 'Audit resort' };
+  },
+  useMutation: () => async () => null,
+  usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: () => undefined }),
+  useQueries: () => ({}),
+}));
+vi.mock('@/platform/navigation', () => ({
+  usePathname: () => state.pathname,
+  useSearchParams: () => new URLSearchParams(''),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+vi.mock('@/platform/link', () => ({
+  default: ({ href, children, ...rest }: { href: string; children?: ReactNode }) => createElement('a', { href, ...rest }, children),
+}));
+
+/** The page: shows the working branch and a counter that a remount resets. */
+let mounts = 0;
+function Page() {
+  const { current } = useAdminBranch();
+  const [mount] = useState(() => ++mounts);
+  useUnsavedGuard(state.dirty);
+  return createElement('p', { id: 'page', 'data-mount': mount }, current?.name ?? 'none');
+}
+
+let root: Root;
+const render = () => act(async () => root.render(createElement(AdminShell, null, createElement(Page))));
+const manager = (branches = [KOH_SAMUI, PHUKET]) => { state.access = staffAccessFor('manager', EMAIL, branches); };
+const page = () => document.getElementById('page');
+const buttons = () => [...document.querySelectorAll('button')];
+const button = (text: string) => buttons().find((b) => b.textContent?.trim() === text);
+const click = (element: Element | undefined | null) => act(async () => (element as HTMLElement).click());
+const sidebar = () => document.querySelector('[data-sidebar="sidebar"]');
+const headerPill = () => document.querySelector('header [data-branch-switcher]');
+/** The bottom sheet's branch rows (the header pill opens it). */
+const sheetRow = (name: string) => [...document.querySelectorAll('[role="dialog"] [role="group"] button')].find((b) => b.textContent?.includes(name));
+
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  Object.assign(state, { pathname: '/admin/hotel', access: undefined, dirty: false });
+  mounts = 0;
+  sessionStorage.clear();
+  localStorage.clear();
+  (window as unknown as HappyDOMWindow).happyDOM.setWindowSize({ width: 1440, height: 900 });
+  root = createRoot(document.body.appendChild(document.createElement('div')));
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  document.body.innerHTML = '';
+  vi.unstubAllGlobals();
+});
+
+describe('branch switcher', () => {
+  it('shows single-branch staff the branch as static text, with no control', async () => {
+    manager([KOH_SAMUI]);
+    await render();
+    expect(page()?.textContent).toBe('Koh Samui');
+    expect(sidebar()?.querySelector('[data-branch-static]')?.textContent).toBe('BranchKoh Samui');
+    expect(document.querySelector('[data-branch-switcher]')).toBeNull();
+    expect(document.querySelector('header [data-branch-pill]')?.textContent).toBe('Koh Samui');
+    expect(document.body.textContent).not.toContain('Choose a branch');
+  });
+
+  it('gives two-branch staff a switcher in the sidebar and the header, listing each branch with its state', async () => {
+    manager();
+    localStorage.setItem(`admin:last-branch:${EMAIL}`, KOH_SAMUI.id);
+    await render();
+    const trigger = sidebar()?.querySelector('[data-branch-switcher]');
+    expect(trigger?.textContent).toBe('BranchKoh Samui');
+    expect(trigger?.getAttribute('aria-haspopup')).toBe('menu');
+    await click(headerPill());
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Switch branch');
+    expect(sheetRow('Koh Samui')?.getAttribute('aria-current')).toBe('true');
+    expect(sheetRow('Phuket')?.textContent).toBe('PhuketSetup · hidden from guests');
+    expect(sheetRow('Phuket')?.hasAttribute('aria-current')).toBe(false);
+
+    await click(sheetRow('Phuket'));
+    expect(page()?.textContent).toBe('Phuket');
+    // The page remounted, so its filters, selection and search start fresh.
+    expect(page()?.dataset.mount).toBe('2');
+    expect(sessionStorage.getItem(`admin:branch:${EMAIL}`)).toBe(PHUKET.id);
+    expect(localStorage.getItem(`admin:last-branch:${EMAIL}`)).toBe(PHUKET.id);
+    expect(headerPill()?.textContent).toBe('Phuket, Setup · hidden from guests');
+  });
+
+  it('switches from the desktop sidebar popover', async () => {
+    manager();
+    localStorage.setItem(`admin:last-branch:${EMAIL}`, KOH_SAMUI.id);
+    await render();
+    await click(sidebar()?.querySelector('[data-branch-switcher]'));
+    const items = [...document.querySelectorAll('[role="menuitemradio"]')];
+    expect(items.map((item) => [item.textContent, item.getAttribute('aria-checked')])).toEqual([['Koh Samui', 'true'], ['PhuketSetup · hidden from guests', 'false']]);
+    await click(items[1]);
+    expect(page()?.textContent).toBe('Phuket');
+  });
+
+  it('shows the branch read-only on checkout and receipts', async () => {
+    manager();
+    for (const path of ['/admin/checkout', '/admin/receipt/order123']) {
+      state.pathname = path;
+      await render();
+      expect(page()?.textContent, path).toBe('Koh Samui');
+      expect(document.querySelector('[data-branch-switcher]'), path).toBeNull();
+      expect(document.querySelector('header [data-branch-pill]')?.textContent, path).toBe('Koh Samui');
+    }
+    // Nothing was chosen there, so the first list route still asks.
+    expect(localStorage.getItem(`admin:last-branch:${EMAIL}`)).toBeNull();
+  });
+});
+
+describe('unsaved changes', () => {
+  it('asks before switching, naming the target branch: Stay here keeps everything', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+    state.dirty = true;
+    await render();
+    await click(headerPill());
+    await click(sheetRow('Phuket'));
+    const confirm = document.querySelector('[role="alertdialog"]');
+    expect(confirm?.textContent).toContain('Discard unsaved changes and switch to Phuket?');
+    expect(confirm?.textContent).toContain('Your changes for Koh Samui haven’t been saved.');
+    await click(button('Stay here'));
+    expect(page()?.textContent).toBe('Koh Samui');
+    expect(page()?.dataset.mount).toBe('1');
+    expect(sessionStorage.getItem(`admin:branch:${EMAIL}`)).toBe(KOH_SAMUI.id);
+  });
+
+  it('switches after Discard and switch', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+    state.dirty = true;
+    await render();
+    await click(headerPill());
+    await click(sheetRow('Phuket'));
+    state.dirty = false;
+    await click(button('Discard and switch'));
+    expect(page()?.textContent).toBe('Phuket');
+  });
+});
+
+describe('first landing', () => {
+  it('asks a first-time two-branch person to choose once, then restores the choice on this device', async () => {
+    manager();
+    await render();
+    expect(page()).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toBe('Choose a branch to start');
+    expect(document.body.textContent).toContain(`Signed in as ${EMAIL}. We remember your choice on this device only.`);
+    expect(document.body.textContent).toContain('Setup · hidden from guests');
+    await click(buttons().find((b) => b.textContent?.startsWith('Phuket')));
+    expect(page()?.textContent).toBe('Phuket');
+
+    // A new tab: no session choice, the device remembers Phuket.
+    await act(async () => root.unmount());
+    sessionStorage.clear();
+    root = createRoot(document.body.appendChild(document.createElement('div')));
+    await render();
+    expect(page()?.textContent).toBe('Phuket');
+    expect(document.body.textContent).not.toContain('Choose a branch');
+  });
+
+  it('asks again when the stored branch is no longer assigned', async () => {
+    manager();
+    localStorage.setItem(`admin:last-branch:${EMAIL}`, 'branch_chiang_mai');
+    await render();
+    expect(page()).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toBe('Choose a branch to start');
+  });
+});
+
+describe('access changes', () => {
+  it('moves to the remaining branch and says so when a branch is removed mid-session', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, PHUKET.id);
+    await render();
+    expect(page()?.textContent).toBe('Phuket');
+    manager([KOH_SAMUI]);
+    await render();
+    expect(page()?.textContent).toBe('Koh Samui');
+    const banner = [...document.querySelectorAll('[role="status"]')].find((node) => node.textContent?.includes('Your access'));
+    expect(banner?.textContent).toContain('Your access to Phuket ended.');
+    expect(banner?.textContent).toContain('You’re now working in Koh Samui.');
+    expect(document.querySelector('[data-branch-switcher]')).toBeNull();
+    await click(button('Dismiss'));
+    expect(document.body.textContent).not.toContain('Your access to Phuket ended.');
+  });
+
+  it('gives a marketing-only person Marketing with the Company label, not the owner navigation', async () => {
+    const none = staffAccessFor(null, 'dao@example.com');
+    state.access = { ...none, marketingRole: 'admin', capabilities: { ...none.capabilities, marketing: true } };
+    state.pathname = '/admin/marketing/dashboard';
+    await render();
+    expect(page()?.textContent).toBe('none');
+    expect([...sidebar()!.querySelectorAll('a')].map((a) => a.textContent?.trim())).toContain('Marketing');
+    expect([...sidebar()!.querySelectorAll('a')].map((a) => a.textContent?.trim())).not.toContain('Chats');
+    expect(sidebar()?.querySelector('[data-branch-static]')?.textContent).toBe('BranchCompany');
+    expect(document.querySelector('header [data-branch-pill]')?.textContent).toBe('Company');
+    expect(document.body.textContent).not.toContain('Choose a branch');
+  });
+
+  it('shows "Your access has changed" when the last branch goes', async () => {
+    manager([KOH_SAMUI]);
+    await render();
+    state.access = staffAccessFor(null, EMAIL);
+    await render();
+    expect(page()).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toBe('Your access has changed');
+    expect(button('Sign out')).toBeDefined();
+  });
+});
+
+describe('branch-denied record', () => {
+  it('shows the fixed card with one way back to the list, never the server text or record details', async () => {
+    const error = new ConvexError({ code: 'BRANCH_FORBIDDEN', message: "You don't have access to this branch.", guest: 'Maya Lin', amount: 180000 });
+    await act(async () => root.render(createElement(AdminViewErrorCard, { error, onRetry: () => undefined, pathname: '/admin/receipt/order123' })));
+    const alert = document.querySelector('[role="alert"]');
+    expect(alert?.querySelector('h2')?.textContent).toBe('You don’t have access to this branch’s records');
+    expect(alert?.textContent).not.toContain("You don't have access to this branch.");
+    expect(alert?.textContent).not.toContain('Maya Lin');
+    expect(alert?.textContent).not.toContain('Try again');
+    const links = alert?.querySelectorAll('a');
+    expect(links).toHaveLength(1);
+    expect(links?.[0].getAttribute('href')).toBe('/admin/checkout');
+    expect(links?.[0].textContent).toBe('Back to Checkout');
+  });
+
+  it('recognizes the code in a serialized error message too', async () => {
+    const error = new Error('[CONVEX Q(pos/orders:receipt)] Uncaught ConvexError: {"code":"BRANCH_FORBIDDEN","message":"No"}');
+    await act(async () => root.render(createElement(AdminViewErrorCard, { error, onRetry: () => undefined, pathname: '/admin/hotel' })));
+    expect(document.querySelector('[role="alert"] h2')?.textContent).toBe('You don’t have access to this branch’s records');
+    expect(document.querySelector('[role="alert"] a')?.getAttribute('href')).toBe('/admin/hotel');
+  });
+});
