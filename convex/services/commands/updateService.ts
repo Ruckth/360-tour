@@ -21,9 +21,9 @@ export const updateService = adminMutation({
 		const slug = changes.slug !== undefined ? required(changes.slug, 'Slug').toLowerCase() : service.slug;
 		const duplicate = await ctx.db.query('services').withIndex('by_slug', (q) => q.eq('slug', slug)).first();
 		if (duplicate && duplicate._id !== serviceId) throw new Error('Service slug already exists');
-		const legacyTerms = durationMin !== undefined || price !== undefined;
-		const termsChanged = options !== undefined || defaultDurationMin !== undefined || legacyTerms;
-		const currentOptions = legacyTerms ? service.options?.map(option => option.durationMin === service.durationMin
+		const defaultTermsChanged = durationMin !== undefined || price !== undefined;
+		const termsChanged = options !== undefined || defaultDurationMin !== undefined || defaultTermsChanged;
+		const currentOptions = defaultTermsChanged ? service.options?.map(option => option.durationMin === service.durationMin
 			? { durationMin: durationMin ?? option.durationMin, price: price ?? option.price }
 			: option) : service.options;
 		const terms = validateService({

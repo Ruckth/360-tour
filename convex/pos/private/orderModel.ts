@@ -295,8 +295,8 @@ export async function bookingLine(ctx: ReadCtx, booking: Doc<'bookings'>, reads:
 export function lineDuration(line: Pick<Line, 'durationMin' | 'kind' | 'detail'>) {
 	if (line.durationMin !== undefined) return line.durationMin;
 	// Walk-in lines already saved the purchased duration in their catalogue detail.
-	const legacy = line.kind === 'service' && /^(\d+) min$/.exec(line.detail ?? '');
-	return legacy ? Number(legacy[1]) : undefined;
+	const detailDuration = line.kind === 'service' && /^(\d+) min$/.exec(line.detail ?? '');
+	return detailDuration ? Number(detailDuration[1]) : undefined;
 }
 
 export async function appointmentLine(ctx: ReadCtx, appointment: Doc<'appointments'>) {
