@@ -199,10 +199,6 @@ it.each([
 const functionReferenceAllowlist: Record<string, string> = {
   "auth/owners:listOwners": "Deployment CLI enumerates company owner grants.",
   "auth/owners:revokeOwner": "Deployment CLI revokes an owner while retaining another owner grant.",
-  "branches/branches:create": "Backend foundation for the follow-up admin Branches screen.",
-  "branches/branches:list": "Backend foundation for the follow-up admin Branches screen.",
-  "branches/branches:setState": "Backend foundation for the follow-up admin Branches screen.",
-  "branches/branches:update": "Backend foundation for the follow-up admin Branches screen.",
   "pos/commands/adjust:adjust": "Dormant D19 command for the W3+ desk and catalogue edit sheets.",
   "pos/commands/adjust:approve": "Dormant D19 approval command for the W3+ desk approval panel.",
   "catalog/reviewMaintenance:initialize": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
