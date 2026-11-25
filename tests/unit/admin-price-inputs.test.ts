@@ -76,6 +76,7 @@ it('shows a service price error for three decimals, then saves an exact two-deci
   const setPrice = (value: string) => setValue(price, value);
   await setValue(document.querySelector<HTMLInputElement>('#sv-name')!, 'Massage');
   await setValue(document.querySelector<HTMLInputElement>('#sv-category')!, 'Wellness');
+  await act(async () => document.querySelector<HTMLInputElement>('input[type=checkbox]')!.click());
   await setPrice('100.505');
   await submit(price.form!);
   expect(document.getElementById(price.getAttribute('aria-describedby')!)?.textContent).toBe('Enter a price with at most 2 decimals.');
