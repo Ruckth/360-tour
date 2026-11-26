@@ -70,3 +70,16 @@ test("home quick booking still routes selected dates into booking", async ({ pag
 
   await expect(page).toHaveURL(/\/booking\?checkin=\d{4}-\d{2}-\d{2}&checkout=\d{4}-\d{2}-\d{2}/);
 });
+
+test("tablet header keeps the villa booking action visible and secondary navigation reachable", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto("/");
+  const header = page.getByRole("banner");
+  await expect(header.getByRole("link", { name: "Book", exact: true })).toBeInViewport();
+  expect((await header.boundingBox())!.height).toBeLessThan(90);
+  await header.getByRole("button", { name: "Toggle menu" }).click();
+  await expect(header.getByRole("link", { name: "Experiences", exact: true })).toBeVisible();
+  await header.getByRole("link", { name: "Book", exact: true }).click();
+  await expect(page).toHaveURL(/\/booking$/);
+  await expect(header.getByRole("button", { name: "Toggle menu" })).toHaveAttribute("aria-expanded", "false");
+});

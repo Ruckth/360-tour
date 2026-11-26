@@ -72,7 +72,7 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-5 md:flex lg:gap-6">
+        <div className="hidden items-center gap-4 lg:flex xl:gap-6">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -98,7 +98,16 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
           <ThemeToggle solid={solid} />
         </div>
 
-        <div className="flex items-center gap-2 md:hidden">
+        <div className="flex items-center gap-2 lg:hidden">
+          <ButtonLink
+            href={localizeHref("/booking", locale)}
+            size="nav"
+            variant={solid ? "primary" : "glass"}
+            className="hidden sm:inline-flex"
+            onClick={() => setMobileMenuOpen(false)}
+          >
+            {t("book")}
+          </ButtonLink>
           <LanguageSwitcher solid={solid} compact />
           <ThemeToggle solid={solid} />
           <Button
@@ -123,7 +132,7 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
       </nav>
 
       {mobileMenuOpen ? (
-        <div className="border-t border-border bg-background/98 backdrop-blur-md md:hidden">
+        <div className="border-t border-border bg-background/98 backdrop-blur-md lg:hidden">
           <div className="flex flex-col space-y-1 px-5 py-4">
             {links.map((link) => (
               <Link
@@ -138,7 +147,7 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
             <ButtonLink
               href={localizeHref("/booking", locale)}
               size="nav"
-              className="mt-2 w-full justify-center"
+              className="mt-2 w-full justify-center sm:hidden"
               onClick={() => setMobileMenuOpen(false)}
             >
               {t("book")}
