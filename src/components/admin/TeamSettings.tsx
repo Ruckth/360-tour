@@ -175,7 +175,7 @@ function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
     <Section
       title="Owners & recovery"
       label="Owners and recovery"
-      action={owners ? <StatusBadge tone="success" label={`${count} company ${count === 1 ? "owner" : "owners"}`} /> : null}
+      action={owners ? <StatusBadge tone={count >= 2 ? "success" : "warning"} label={`${count} company ${count === 1 ? "owner" : "owners"}`} /> : null}
     >
       <div className="grid gap-4">
         <p className="text-sm text-muted-foreground">
@@ -312,13 +312,18 @@ function PeoplePanel({
   }
 
   async function setMarketing(person: Person, role: MarketingRole | null) {
-    const name = personLabel(person.email);
+    const name = person.separateMarketingAccount ? "the separate account" : personLabel(person.email);
     if (role === null) {
-      if (!(await confirm({ title: `Remove ${name} from Marketing?`, description: "Their Marketing access ends now. Desk access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
+      const description = person.separateMarketingAccount
+        ? `The separate account’s Marketing access at ${person.email} ends now.`
+        : "Their Marketing access ends now. Desk access, if any, stays.";
+      if (!(await confirm({ title: `Remove ${name} from Marketing?`, description, confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
       return save(person.email, () => setMarketingGrant({ expectedGrant: grantVersion(person.marketingGrant), email: person.email, role: null }), `Removed ${name} from Marketing.`);
     }
     const label = MARKETING_ROLE_LABELS[role];
-    const done = person.marketingGrant ? `${name} is now Marketing ${label}.` : `Invited ${name} to Marketing as ${label}.`;
+    const done = person.separateMarketingAccount
+      ? `The separate account is now Marketing ${label}.`
+      : person.marketingGrant ? `${name} is now Marketing ${label}.` : `Invited ${name} to Marketing as ${label}.`;
     return save(person.email, () => setMarketingGrant({ expectedGrant: grantVersion(person.marketingGrant), email: person.email, role }), done);
   }
 
@@ -403,7 +408,7 @@ function PeoplePanel({
                 );
               }}
               onCopyLink={async () => {
-                const staffPending = person.staffGrant && !person.staffGrant.claimed;
+                const staffPending = person.staffGrant && !person.staffGrant.claimed && !person.staffGrant.expired;
                 const link = staffPending ? staffSignInLink() : marketingSignInLink();
                 setMessage(
                   (await copyText(link))
@@ -572,8 +577,10 @@ function PersonRow({
   const grant = person.staffGrant;
   const marketing = person.marketingGrant;
   const owner = person.role === "owner";
+  const separateMarketing = person.separateMarketingAccount ? marketing : null;
+  const canChangeRoles = !owner || Boolean(separateMarketing);
   const name = personLabel(person.email);
-  const pending = [grant, marketing].filter((row): row is Grant => Boolean(row && !row.claimed));
+  const pending = (owner ? [] : [grant, marketing]).filter((row): row is Grant => Boolean(row && !row.claimed));
   const states = owner ? (grant?.claimed ? [] : ["Pending claim"]) : [inviteState(grant), inviteState(marketing, "Marketing: ")].filter(Boolean);
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
@@ -622,9 +629,12 @@ function PersonRow({
         </div>
         <div className="flex min-h-11 flex-wrap items-center gap-2 max-sm:col-span-2">
           <Badge variant="muted" className="max-sm:mr-auto max-w-full rounded-full text-xs font-medium" data-testid="team-roles">{owner ? "Owner · Company" : rolesText(person)}</Badge>
-          {owner ? <span aria-hidden className="h-11 w-32 shrink-0" /> : (
+          {separateMarketing ? (
+            <Badge variant="muted" className="rounded-full text-xs font-medium">Marketing {MARKETING_ROLE_LABELS[separateMarketing.role]} · Separate account</Badge>
+          ) : null}
+          {!canChangeRoles ? <span aria-hidden className="h-11 w-32 shrink-0" /> : (
             <div className="flex w-32 shrink-0 flex-nowrap items-center justify-end gap-1">
-              <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={`Change roles for ${name}`} disabled={busy} onClick={() => { setBranchError(""); setNewDesk(null); setChanging(!changing); }}>
+              <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={separateMarketing ? `Change Marketing role for the separate account at ${person.email}` : `Change roles for ${name}`} disabled={busy} onClick={() => { setBranchError(""); setNewDesk(null); setChanging(!changing); }}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
               {allExpired ? <TooltipProvider><Tooltip>
@@ -648,10 +658,10 @@ function PersonRow({
 
       </div>
       {message ? <p role={message.error ? "alert" : "status"} className={cn("text-[13px]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
-      {changing && !owner ? (
+      {changing && canChangeRoles ? (
         <div id={`${id}-roles`} className="flex flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
-          <p className="w-full text-[13px] text-muted-foreground">Role and branch changes apply immediately.</p>
-          <div className="grid gap-1">
+          <p className="w-full text-[13px] text-muted-foreground">{separateMarketing ? "Changes apply immediately to the separate Marketing account." : "Role and branch changes apply immediately."}</p>
+          {!owner ? <div className="grid gap-1">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
             <RoleSelect
               id={`${id}-desk`}
@@ -666,8 +676,8 @@ function PersonRow({
               options={DESK_OPTIONS}
               empty="None"
             />
-          </div>
-          {newDesk && !grant ? (
+          </div> : null}
+          {!owner && newDesk && !grant ? (
             <div className="grid w-full gap-2">
               <BranchMultiSelect
                 branches={assignableBranches}
@@ -715,7 +725,7 @@ function PersonRow({
           ) : null}
           <div className="grid gap-1">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
-            <RoleSelect id={`${id}-marketing`} label={`Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
+            <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
           </div>
         </div>
       ) : null}

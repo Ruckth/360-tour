@@ -32,6 +32,7 @@ async function fixture(mode: 'direct' | 'attempts' = 'attempts') {
   }));
   const order = await t.run(ctx => ctx.db.get(orderId));
   if (mode === 'direct') {
+    await t.run(ctx => seedTestBranch(ctx));
     await owner.mutation(rollout.setPaused, { expectedRevision: 0, clientKey: 'pause-checkout', reason: 'Announced desk update', paused: true });
     await owner.mutation(rollout.activate, { expectedRevision: 1, clientKey: 'activate-checkout', reason: 'Announced desk update' });
   }

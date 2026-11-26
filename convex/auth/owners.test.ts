@@ -309,6 +309,58 @@ it('retires superseded Marketing access on owner claim and preserves another ide
   expect(await previous.query(staffApi.myAccess, {})).toMatchObject({ marketingRole: 'viewer', role: null });
 });
 
+it('edits and revokes a separate bound Marketing account at an owner address using the displayed revision', async () => {
+  const { t, owner } = await setupWithOwner();
+  const email = 'reassigned@example.com';
+  const marketingApi = api.marketing.access;
+  await owner.mutation(marketingApi.setGrant, { email, role: 'viewer', expectedGrant: null });
+  await t.withIdentity(identity(email, 'issuer|former-address-holder')).mutation(marketingApi.claimInvite, {});
+  const separate = t.withIdentity(identity('moved@example.com', 'issuer|former-address-holder'));
+  const newOwner = t.withIdentity(identity(email, 'issuer|owner-address-holder'));
+  const staffId = await t.mutation(ownerApi.grantOwner, { email });
+  await newOwner.mutation(staffApi.claimInvite, {});
+  const readPerson = async () => (await owner.query(staffApi.listPeople, {})).find(row => row.email === email)!;
+
+  const person = await readPerson();
+  expect(person).toMatchObject({
+    role: 'owner', staffGrant: { id: staffId, claimed: true },
+    separateMarketingAccount: true, marketingGrant: { role: 'viewer', claimed: true },
+  });
+  expect(JSON.stringify(person)).not.toContain('issuer|');
+  const { id, revision } = person.marketingGrant!;
+  const expectedGrant = { id, revision };
+  await expect(owner.mutation(marketingApi.setGrant, { email, role: null, expectedGrant: null })).rejects.toThrow('already has Marketing access');
+  await owner.mutation(marketingApi.setGrant, { email, role: 'finance', expectedGrant });
+  expect(await separate.query(marketingApi.current, {})).toMatchObject({ role: 'finance' });
+  await expect(owner.mutation(marketingApi.setGrant, { email, role: null, expectedGrant })).rejects.toThrow('Marketing access changed');
+  await owner.mutation(marketingApi.setGrant, { email, role: null, expectedGrant: { id, revision: revision + 1 } });
+
+  expect(await separate.query(marketingApi.current, {})).toMatchObject({ role: null });
+  expect(await newOwner.query(marketingApi.current, {})).toMatchObject({ role: 'admin' });
+  expect(await readPerson()).toMatchObject({
+    role: 'owner', staffGrant: person.staffGrant,
+    separateMarketingAccount: false, marketingGrant: null,
+  });
+  await expect(owner.mutation(marketingApi.setGrant, { email, role: 'viewer', expectedGrant: null })).rejects.toThrow('Owners are managed by the deployment admin');
+});
+
+it.each([undefined, 'issuer|owner@example.com'])('protects an owner row from edits to an unclaimed or same-account Marketing grant (%s)', async tokenIdentifier => {
+  const { t, owner } = await setupWithOwner();
+  const email = 'owner@example.com';
+  const id = await t.run(ctx => ctx.db.insert('marketingGrants', {
+    email, role: 'viewer', createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: email,
+    ...(tokenIdentifier ? { tokenIdentifier } : {}),
+  }));
+  const person = (await owner.query(staffApi.listPeople, {})).find(row => row.email === email);
+  expect(person).toMatchObject({ role: 'owner', separateMarketingAccount: false, marketingGrant: null });
+  for (const role of ['finance', null] as const) {
+    await expect(owner.mutation(api.marketing.access.setGrant, { email, role, expectedGrant: { id, revision: 0 } })).rejects.toThrow('Owners are managed by the deployment admin');
+  }
+  if (!tokenIdentifier) {
+    await expect(owner.mutation(api.marketing.access.renewInvitation, { grantId: id, expectedRevision: 0 })).rejects.toThrow('Owners are managed by the deployment admin');
+  }
+});
+
 it('retires an unclaimed Marketing invitation when its verified recipient claims ownership', async () => {
   const { t, owner } = await setupWithOwner();
   const email = 'invitee@example.com';

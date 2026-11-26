@@ -53,5 +53,6 @@ export const staffAccessListPeopleResult = v.array(v.object({
   role: v.union(v.null(), grantRole),
   branchIds,
   staffGrant: v.union(v.null(), v.object({ id: v.id('staffGrants'), revision: v.number(), role: grantRole, ...grantStatus })),
+  separateMarketingAccount: v.boolean(),
   marketingGrant: v.union(v.null(), v.object({ id: v.id('marketingGrants'), revision: v.number(), role: marketingRole, ...grantStatus })),
 }));

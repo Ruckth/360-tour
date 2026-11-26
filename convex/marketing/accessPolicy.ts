@@ -6,6 +6,11 @@ import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import type { MarketingRole } from '../shared/marketingAccess';
 import { marketingCapabilities } from '../shared/marketingAccess';
 
+/** An email can label both an owner record and a grant already bound to another account. */
+export function isSeparateMarketingAccount(owner: Doc<"staffGrants">, grant: Doc<"marketingGrants"> | null) {
+  return Boolean(grant?.tokenIdentifier && grant.tokenIdentifier !== owner.tokenIdentifier);
+}
+
 export function marketingInvitationExpiry(grant: Doc<"marketingGrants">) {
   return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + MARKETING_INVITATION_TTL_MS;
 }

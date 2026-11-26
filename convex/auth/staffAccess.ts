@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './model';
 import { listAssignedBranches, listBranchesForAccess, readBranch } from '../branches/model';
 import { STAFF_INVITATION_TTL_MS, staffRole } from '../shared/staffTypes';
-import { retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
+import { isSeparateMarketingAccount, retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import { boundStaffGrant, findStaffGrantByEmail, resolveStaffAccess, staffAccess, staffInvitationExpiry, validStaffEmail } from './private/staffAccess';
 import { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
@@ -82,9 +82,11 @@ export const listPeople = staffQuery({
   });
   return [...emails].sort().map(email => {
     const grant = staffByEmail.get(email);
-    const marketingGrant = marketingByEmail.get(email);
+    const storedMarketing = marketingByEmail.get(email) ?? null;
+    const separateMarketingAccount = grant?.role === 'owner' && isSeparateMarketingAccount(grant, storedMarketing);
+    const marketingGrant = grant?.role === 'owner' && !separateMarketingAccount ? null : storedMarketing;
     return {
-      email, role: grant?.role ?? null, branchIds: grant?.branchIds ?? [],
+      email, role: grant?.role ?? null, branchIds: grant?.branchIds ?? [], separateMarketingAccount,
       staffGrant: grant ? { id: grant._id, revision: grant.revision ?? 0, role: grant.role, ...status(grant, staffInvitationExpiry(grant)) } : null,
       marketingGrant: marketingGrant ? {
         id: marketingGrant._id, revision: marketingGrant.revision ?? 0, role: marketingGrant.role, ...status(marketingGrant, marketingInvitationExpiry(marketingGrant)),

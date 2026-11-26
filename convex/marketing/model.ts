@@ -1,5 +1,5 @@
 // Backend marketing interface: actual plain helpers, never registrations.
-export { retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry, marketingInvitationExpired, requireEditableDraft } from './accessPolicy';
+export { isSeparateMarketingAccount, retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry, marketingInvitationExpired, requireEditableDraft } from './accessPolicy';
 export { resolveMarketingAttribution } from './attribution';
 export { couponUnavailable, couponVersion, holdCouponRedemption, syncCouponRedemption, quoteCouponBooking, repriceCouponBooking, consumeOrderCoupon, syncOrderCouponRedemption, type HoldInput } from './couponRedemptions';
 export { applyAffiliatePayout, captureAffiliateSnapshot, creditMoney, appendCreditChange, syncAffiliateCredit, type AffiliateSnapshot } from './affiliateCredits';

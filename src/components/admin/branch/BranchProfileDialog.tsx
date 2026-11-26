@@ -221,7 +221,7 @@ function BranchProfileDialogBody({
           {field("legalName", "Issuer legal name", { maxLength: 120, placeholder: "360 Tour Co., Ltd.", wrapperClassName: "sm:col-span-2" })}
           {field("taxId", "Tax ID", { maxLength: 32, placeholder: "0105560000000" })}
           {field("branchCode", "Issuer branch code (5 digits)", { inputMode: "numeric", maxLength: 5, placeholder: "00001" })}
-          {field("address", "Issuer address", { placeholder: "88 Rawai Rd, Phuket 83130", wrapperClassName: "sm:col-span-2" })}
+          {field("address", "Issuer address", { maxLength: 500, placeholder: "88 Rawai Rd, Phuket 83130", wrapperClassName: "sm:col-span-2" })}
         </fieldset>
 
         {!isEdit ? (

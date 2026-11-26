@@ -4,7 +4,7 @@ import { authenticatedMutation, findStaffGrantByEmail, marketingAccess, marketin
 import { marketingRole } from '../shared/affiliateTypes';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import { appendRecordHistory } from '../settings/model';
-import { marketingInvitationExpired } from './accessPolicy';
+import { isSeparateMarketingAccount, marketingInvitationExpired } from './accessPolicy';
 
 export const current = publicQuery({
   returns: accessCurrentResult,
@@ -63,11 +63,13 @@ export const setGrant = marketingMutation({
     const email = args.email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
       throw new Error("Enter a valid email");
-    if ((await findStaffGrantByEmail(ctx, email))?.role === "owner") throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
+    const staff = await findStaffGrantByEmail(ctx, email);
     const old = await ctx.db
       .query("marketingGrants")
       .withIndex("by_email", (q) => q.eq("email", email))
       .unique();
+    if (staff?.role === "owner" && !isSeparateMarketingAccount(staff, old))
+      throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
     const expected = args.expectedGrant;
     if (expected === null && old) throw new ConvexError("This person already has Marketing access or an invitation. Review their Team entry.");
     if (expected && (old?._id !== expected.id || (old.revision ?? 0) !== expected.revision)) throw new ConvexError(MARKETING_ACCESS_CHANGED);

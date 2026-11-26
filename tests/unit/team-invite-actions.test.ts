@@ -126,6 +126,47 @@ it("renders owner rows as read-only with deployment-admin copy and an Owners & r
   expect(recoverySection.querySelectorAll("button")).toHaveLength(0);
 });
 
+it("shows a recovery warning until two owners have claimed access", async () => {
+  mocks.people = [owner, { ...secondOwner, staffGrant: grant("grant-suda", "owner", false) }];
+  await render();
+  const recovery = host.querySelector<HTMLElement>('[aria-label="Owners and recovery"]')!;
+  const count = [...recovery.querySelectorAll("span")].find(element => element.textContent === "1 company owner");
+  expect(count?.className).toContain("text-amber-800");
+});
+
+it("shows a separate Marketing account at an owner email with its own role controls", async () => {
+  const separateAccount = { ...owner, separateMarketingAccount: true, marketingGrant: grant("mkt-separate", "viewer", true) };
+  mocks.people = [separateAccount];
+  await render();
+  const ownerRow = row(owner.email);
+  expect(ownerRow.querySelector('[data-testid="team-roles"]')!.textContent).toBe("Owner · Company");
+  expect(ownerRow.textContent).toContain("Marketing Viewer · Separate account");
+  const changeButton = ownerRow.querySelector<HTMLButtonElement>('[data-change-role]')!;
+  expect(buttonsIn(ownerRow)).toEqual([`Change Marketing role for the separate account at ${owner.email}`]);
+  await act(async () => changeButton.click());
+  expect(ownerRow.querySelectorAll('[role="combobox"]')).toHaveLength(1);
+  expect(ownerRow.querySelector('[role="checkbox"]')).toBeNull();
+  await pick(select(ownerRow, "Marketing role"), "marketer");
+
+  mocks.people = [{ ...separateAccount, marketingGrant: { ...separateAccount.marketingGrant, role: "marketer", revision: 8 } }];
+  await render();
+  await act(async () => changeButton.click());
+  await pick(select(ownerRow, "Marketing role"), "");
+  expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
+    title: "Remove the separate account from Marketing?",
+    description: `The separate account’s Marketing access at ${owner.email} ends now.`,
+    destructive: true,
+  }));
+  expect(mocks.calls).toEqual([
+    ["marketing/access:setGrant", { expectedGrant: { id: "mkt-separate", revision: 7 }, email: owner.email, role: "marketer" }],
+    ["marketing/access:setGrant", { expectedGrant: { id: "mkt-separate", revision: 8 }, email: owner.email, role: null }],
+  ]);
+  mocks.people = [owner];
+  await render();
+  expect(ownerRow.querySelector('[data-testid="team-roles"]')!.textContent).toBe("Owner · Company");
+  expect(buttonsIn(ownerRow)).toEqual([]);
+});
+
 it("grants Marketing access from the row, through the unchanged Marketing mutation", async () => {
   await render();
   await change(row(active.email));
@@ -165,6 +206,16 @@ it("keeps invite actions in ⋯, and shows Renew only when the invite has expire
   await act(async () => row(expired.email).querySelector<HTMLButtonElement>('button[aria-label="Renew invitation for May"]')!.click());
   expect(mocks.calls).toEqual([["auth/staffAccess:updateInvitation", { grantId: "grant-may", expectedRevision: 7, action: "resend" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for May.");
+});
+
+it("copies the Marketing link when the desk invite has expired", async () => {
+  mocks.people = [{ ...expired, marketingGrant: grant("mkt-may", "viewer", false) }];
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  await render();
+  await act(async () => row(expired.email).querySelector<HTMLButtonElement>('button[aria-label="More for May"]')!.click());
+  const copy = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent === "Copy sign-in link")!;
+  await act(async () => copy.click());
+  expect(writeText).toHaveBeenCalledWith(marketingSignInLink());
 });
 
 it("validates branch multi-select in the invite form and excludes archived branches", async () => {
