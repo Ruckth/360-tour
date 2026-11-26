@@ -88,6 +88,7 @@ const desk = {
   ],
   appointments: [] as Doc<"appointments">[],
   calls: [] as { name: string; args: unknown }[],
+  stayReads: 0,
 };
 
 const paidOf = (s: Stay) => s.payments.reduce((sum, p) => sum + p.amount, 0);
@@ -193,6 +194,7 @@ registerFixtureFunctions({
       complete: true,
     }),
     "bookings/admin:getForAdmin": ({ bookingId }: { bookingId: string }) => {
+      desk.stayReads += 1;
       const s = find(bookingId);
       return s ? detail(s) : null;
     },
@@ -200,7 +202,13 @@ registerFixtureFunctions({
       const s = find(bookingId);
       return s ? financials(s) : null;
     },
-    "bookings/admin:searchBookings": () => [],
+    "bookings/admin:searchBookings": ({ query }: { query: string }) => {
+      desk.stayReads += 1;
+      const text = query.trim().toLowerCase();
+      return desk.stays.filter((s) =>
+        [s.guestName, s.guestPhone, s.guestEmail, s.confirmationCode].some((value) => value?.toLowerCase().includes(text))
+      ).map(toAdmin);
+    },
     "pos/orders:ordersForBooking": (source: { bookingId?: string; appointmentId?: string }) => {
       const s = source.bookingId ? find(source.bookingId) : undefined;
       const a = source.appointmentId ? desk.appointments.find((row) => row._id === source.appointmentId) : undefined;
@@ -354,10 +362,10 @@ function Desk() {
 
 declare global {
   interface Window {
-    desk: { calls: () => { name: string; args: unknown }[]; appointments: () => Doc<"appointments">[] };
+    desk: { calls: () => { name: string; args: unknown }[]; appointments: () => Doc<"appointments">[]; stayReads: () => number };
   }
 }
-window.desk = { calls: () => desk.calls, appointments: () => desk.appointments };
+window.desk = { calls: () => desk.calls, appointments: () => desk.appointments, stayReads: () => desk.stayReads };
 
 createRoot(document.getElementById("root")!).render(
   <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>

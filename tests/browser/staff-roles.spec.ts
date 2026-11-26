@@ -7,6 +7,38 @@ async function open(page: Page, query: string) {
 }
 const orderPanel = (page: Page) => page.getByRole("complementary", { name: "Order", exact: true });
 
+test.describe("checkout order number lookup", () => {
+  test.use({ viewport: { width: 1360, height: 950 } });
+
+  for (const role of ["owner", "manager"] as const) {
+    test(`${role} can open an older paid order by number from the default view`, async ({ page }) => {
+      await open(page, `?role=${role}&scenario=order-lookup`);
+      await page.getByRole("button", { name: "Orders", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByRole("radio", { name: "Unpaid" })).toBeChecked();
+      const lookup = dialog.getByRole("textbox", { name: "Order number" });
+      await lookup.fill("999");
+      await lookup.press("Enter");
+      await expect(dialog.getByText("No order found. Check the number or browse by status.")).toBeVisible();
+      await lookup.fill("Order #1043");
+      await lookup.press("Enter");
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("article", { name: "Receipt" })).toContainText("Order #1043");
+    });
+  }
+
+  test("cashier cannot open the older paid order by number", async ({ page }) => {
+    await open(page, "?role=cashier&scenario=order-lookup");
+    await page.getByRole("button", { name: "Orders", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    const lookup = dialog.getByRole("textbox", { name: "Order number" });
+    await lookup.fill("1043");
+    await lookup.press("Enter");
+    await expect(dialog.getByText("Not available. Check the number or pick an open order above.")).toBeVisible();
+    await expect(dialog.getByRole("radio", { name: "Paid" })).toHaveCount(0);
+  });
+});
+
 test.describe("cashier checkout", () => {
   test.use({ viewport: { width: 1360, height: 950 } });
 

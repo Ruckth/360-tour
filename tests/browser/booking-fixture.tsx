@@ -8,6 +8,9 @@ import { NewAppointmentDialog } from "@/components/admin/NewAppointmentDialog";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "@/platform/intl";
+import { dateToIso } from "@/lib/booking/dates";
+import en from "../../messages/en.json";
+import th from "../../messages/th.json";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 import type { AdminProperty } from "@/components/admin/admin-bookings-shared";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -70,13 +73,25 @@ if (params.get("mode") === "hotel-calendar") registerFixtureFunctions({
   },
 });
 
+function PublicCalendarFixture() {
+  const crossMonth = params.has("crossMonth");
+  const [range, setRange] = useState(crossMonth
+    ? { checkIn: "2025-02-27", checkOut: "2025-03-03" }
+    : { checkIn: "2025-02-14", checkOut: "2025-02-17" });
+  const [requestedMonth, setRequestedMonth] = useState("");
+  return (
+    <div data-testid="public-calendar" data-requested-month={requestedMonth}>
+      <BookingRangePicker {...range} onChange={setRange}
+        unavailableDates={["2025-02-15"]} isDateDisabled={() => !crossMonth}
+        onMonthChange={(month) => setRequestedMonth(dateToIso(month))} />
+    </div>
+  );
+}
+
 function Fixture() {
   const [filter, setFilter] = useState("all");
   if (params.get("mode") === "hotel-calendar") return <ConfirmProvider><AdminBookingsView /></ConfirmProvider>;
-  if (params.get("mode") === "public-calendar") return (
-    <BookingRangePicker checkIn="2025-02-14" checkOut="2025-02-17" onChange={() => {}}
-      unavailableDates={["2025-02-15"]} isDateDisabled={() => true} />
-  );
+  if (params.get("mode") === "public-calendar") return <PublicCalendarFixture />;
   if (params.get("mode") === "filter")
     return (
       <div className="p-8">
@@ -115,11 +130,13 @@ function Fixture() {
   );
 }
 
+const locale = params.get("lang") === "th" ? "th" : "en";
+
 createRoot(document.getElementById("root")!).render(
   <IntlProvider
-    locale="en"
+    locale={locale}
     timeZone="Asia/Bangkok"
-    messages={{ Booking: { checkIn: "Check in", checkOut: "Check out" } }}
+    messages={{ Booking: (locale === "th" ? th : en).Booking }}
   >
     <ConfirmProvider><Fixture /></ConfirmProvider>
   </IntlProvider>,

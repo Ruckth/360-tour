@@ -21,7 +21,7 @@ export function useAdminBookingDates(
 ) {
   const today = resortTodayIso();
   const [visibleMonth, setVisibleMonth] = useState(
-    monthOf(checkOut || checkIn || today),
+    monthOf(checkIn || checkOut || today),
   );
   const nights = nightsBetweenIso(checkIn, checkOut);
   const validStay = nights > 0 && nights <= 365;

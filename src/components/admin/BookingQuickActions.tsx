@@ -16,12 +16,12 @@ import { DisabledReason } from "./DisabledReason";
 import { formatMoney } from "./labels";
 import { useStayCheckout, useStaySpa } from "./stay-spa";
 import {
+  canBookStaySpa,
   canEditBooking,
   cancelConfirmOptions,
   displayDate,
   hotelStatus,
   payLink,
-  serverTodayIso,
   statusKey,
 } from "./admin-bookings-shared";
 
@@ -71,7 +71,7 @@ export function BookingQuickActions({
   const owed = detail && editable && detail.paymentStatus !== "failed" ? detail.money.owed : 0;
   const canPay = owed > 0;
   const due = owed + (spa?.total ?? 0);
-  const canBookSpa = editable && booking.checkOut >= serverTodayIso();
+  const canBookSpa = canBookStaySpa(booking);
 
   async function run(work: () => Promise<unknown>, done: string) {
     onClose();

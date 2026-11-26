@@ -55,6 +55,10 @@ export function canEditBooking(booking: Pick<AdminBooking, "status" | "paymentSt
   return booking.status !== "cancelled";
 }
 
+export function canBookStaySpa(booking: Pick<AdminBooking, "status" | "paymentStatus" | "checkOut">) {
+  return canEditBooking(booking) && booking.checkOut >= serverTodayIso();
+}
+
 /** Net money the guest has paid, or undefined when nothing was ever received (no balance preview then). Deposits count. */
 export function paidForPreview(booking: Parameters<typeof bookingBalance>[0]) {
   const money = bookingBalance(booking);

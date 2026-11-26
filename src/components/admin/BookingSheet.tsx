@@ -8,7 +8,7 @@ import { useMutation, useQueries, useQuery, type RequestForQueries } from "conve
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { BookingRangePicker } from "@/components/booking/BookingDatePicker";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -49,6 +49,7 @@ import { formatMoney, sourceLabel } from "./labels";
 import {
   balanceText,
   paidForPreview,
+  canBookStaySpa,
   canEditBooking,
   displayDate,
   hotelStatus,
@@ -80,16 +81,29 @@ export function BookingSheet({
   initialAction,
   properties,
   onClose,
+  onBookSpa,
 }: {
   bookingId: Id<"bookings"> | null;
   initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onClose: () => void;
+  onBookSpa?: (booking: BookingDetail) => void;
 }) {
   const booking = useQuery(api.bookings.admin.getForAdmin, bookingId ? { bookingId } : "skip");
+  const currentBooking = useRef(booking);
+  useEffect(() => {
+    currentBooking.current = booking;
+    return () => { currentBooking.current = undefined; };
+  }, [booking]);
   const [dirty, setDirty] = useState(false);
   const { confirmDiscard } = useUnsavedGuard(dirty);
   const close = async () => { if (await confirmDiscard()) onClose(); };
+
+  async function bookSpa() {
+    if (!(await confirmDiscard())) return;
+    const latest = currentBooking.current;
+    if (latest && latest._id === bookingId && canBookStaySpa(latest)) onBookSpa?.(latest);
+  }
 
   return (
     <Sheet open={Boolean(bookingId)} onOpenChange={(open) => { if (!open) void close(); }}>
@@ -114,7 +128,16 @@ export function BookingSheet({
             <SheetDescription>It may have been deleted.</SheetDescription>
           </>
         ) : (
-          <BookingDetails key={booking._id} booking={booking} initialAction={initialAction} properties={properties} onDeleted={onClose} onDirtyChange={setDirty} beforeLeave={confirmDiscard} />
+          <BookingDetails
+            key={booking._id}
+            booking={booking}
+            initialAction={initialAction}
+            properties={properties}
+            onDeleted={onClose}
+            onDirtyChange={setDirty}
+            beforeLeave={confirmDiscard}
+            onBookSpa={onBookSpa && canBookStaySpa(booking) ? bookSpa : undefined}
+          />
         )}
       </SheetContent>
     </Sheet>
@@ -130,6 +153,7 @@ function BookingDetails({
   onDeleted,
   onDirtyChange,
   beforeLeave,
+  onBookSpa,
 }: {
   booking: BookingDetail;
   initialAction?: BookingSheetAction;
@@ -137,6 +161,7 @@ function BookingDetails({
   onDeleted: () => void;
   onDirtyChange: (dirty: boolean) => void;
   beforeLeave: () => Promise<boolean>;
+  onBookSpa?: () => Promise<void>;
 }) {
   const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
   const resendBookingEmails = useMutation(api.bookings.commands.resendBookingEmails.resendBookingEmails);
@@ -324,6 +349,11 @@ function BookingDetails({
             {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {booking.guests}{" "}
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
+          {onBookSpa ? (
+            <Button size="sm" variant="outline" className="mt-2" disabled={pending !== null} onClick={() => void onBookSpa()}>
+              Book spa
+            </Button>
+          ) : null}
         </Detail>
         <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">

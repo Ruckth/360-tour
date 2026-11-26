@@ -31,6 +31,10 @@ export function DeskBookingRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<keyof Range>("checkIn");
+  function dateForField(field: keyof Range) {
+    const value = field === "checkIn" ? checkIn : checkOut;
+    return isoToDate(value || checkIn || checkOut || serverTodayIso())!;
+  }
   const unavailable = new Set(unavailableDates);
   const minNights = BOOKING_RULE_DEFAULTS.minNights;
   const disabled = (date: Date) =>
@@ -58,9 +62,7 @@ export function DeskBookingRangePicker({
                   className="h-12 justify-start px-2 text-[13px] font-normal pointer-coarse:text-sm"
                   onClick={() => {
                     setActive(field);
-                    onMonthChange(
-                      isoToDate(checkOut || checkIn || serverTodayIso())!,
-                    );
+                    onMonthChange(dateForField(field));
                   }}
                 >
                   <CalendarDays
@@ -82,7 +84,7 @@ export function DeskBookingRangePicker({
           mode="range"
           appearance="booking"
           initialFocus
-          defaultMonth={isoToDate(checkOut || checkIn) ?? undefined}
+          defaultMonth={dateForField(active)}
           selected={
             checkIn
               ? {
