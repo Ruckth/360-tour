@@ -1,6 +1,6 @@
 import { ArrowUpRight } from 'lucide-react';
 import Link from '@/platform/link';
-import { metricNames, profitMetrics, type ProfitFilters, type ProfitMetric } from 'convex/shared/profitability';
+import { costTotal, metricNames, type ProfitFilters, type ProfitMetric } from 'convex/shared/profitability';
 import { thb } from '../marketing/marketing-format';
 import { box, money, type Report, type Href } from './report-model';
 export function Overview({ report, href, narrowed }: { report: Report; href: Href; narrowed: boolean }) {
@@ -15,7 +15,8 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
     gross: s.missingCount ? s.missingCount + ' rows awaiting costs' : 'After staff, materials and tools',
     net: narrowed
       ? 'Shared expenses apply to all services'
-      : financeCoverage ?? (s.missingCount ? 'Awaiting service costs' : 'After acquisition spend, expenses and tax'),
+      : (financeCoverage ??
+        (s.missingCount ? 'Awaiting service costs' : 'After acquisition spend, expenses and tax')),
     ltv: s.customerCount
       ? 'Lifetime service revenue ÷ ' +
         s.customerCount +
@@ -23,49 +24,77 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
       : 'Requires an identified attendee',
     cac: narrowed
       ? 'Spend applies to the full service business'
-      : financeCoverage ??
+      : (financeCoverage ??
         (s.newCount
           ? thb(s.spend) + ' spend ÷ ' + s.newCount + (s.newCount === 1 ? ' new customer' : ' new customers')
-          : 'No identified new customers in this period'),
+          : 'No identified new customers in this period')),
   };
+  const metricCard = (metric: ProfitMetric) => (
+    <Link
+      key={metric}
+      href={href(true, { metric, additional: null })}
+      className={
+        box +
+        ' group flex min-w-0 flex-col gap-3 p-4 transition-colors hover:border-primary focus-visible:ring-2 focus-visible:ring-ring'
+      }
+    >
+      <div className="flex items-start justify-between gap-3 text-sm font-medium">
+        {metricNames[metric]}
+        <ArrowUpRight aria-hidden="true" size={16} className="shrink-0 text-muted-foreground" />
+      </div>
+      <div className="break-words text-2xl font-semibold tracking-tight tabular-nums">{money(s[metric])}</div>
+      <span className="text-xs leading-relaxed text-muted-foreground">
+        {metric === 'gross' && s.gross !== null && s.missingCount > 0 && <b>Partial · </b>}
+        {note[metric]}
+      </span>
+    </Link>
+  );
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        {profitMetrics.map((metric) => (
-          <Link
-            key={metric}
-            href={href(true, { metric, additional: null })}
-            className={
-              box +
-              ' group flex min-w-0 flex-col gap-3 p-4 transition-colors hover:border-primary focus-visible:ring-2 focus-visible:ring-ring'
-            }
-          >
-            <div className="flex items-start justify-between gap-3 text-sm font-medium">
-              {metricNames[metric]}
-              <ArrowUpRight aria-hidden="true" size={16} className="shrink-0 text-muted-foreground" />
-            </div>
-            <div className="text-2xl font-semibold tracking-tight tabular-nums">{money(s[metric])}</div>
-            <span className="text-xs leading-relaxed text-muted-foreground">
-              {metric === 'gross' && s.gross !== null && s.missingCount > 0 && <b>Partial · </b>}
-              {note[metric]}
-              {(metric === 'cac' || metric === 'ltv') && s.anonymous > 0 && (
-                <span className="block">
-                  {s.anonymous} of {s.count} rows lack a verified attendee.
-                </span>
-              )}
-            </span>
-          </Link>
-        ))}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {metricCard('revenue')}
+        <div className={box + ' grid content-start gap-2 p-4'}>
+          <h2 className="text-sm font-medium">Service COGS</h2>
+          <strong className="break-words text-2xl font-semibold tracking-tight tabular-nums">
+            {money(s.gross === null ? null : costTotal(s.costs))}
+          </strong>
+          <span className="text-xs leading-relaxed text-muted-foreground">
+            Staff, materials and tools{s.missingCount > 0 && s.gross !== null ? ' · partial total' : ''}
+          </span>
+          {s.missingCount > 0 && (
+            <Link
+              className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline"
+              href={href(true, { metric: 'gross', category: 'Awaiting cost', additional: null })}
+            >
+              Review {s.missingCount} {s.missingCount === 1 ? 'record' : 'records'} missing costs
+            </Link>
+          )}
+        </div>
+        {metricCard('gross')}
+        {metricCard('net')}
       </div>
       <section className={box + ' overflow-hidden'}>
         <header className="border-b border-border p-4 sm:p-5">
           <h2 className="text-lg font-semibold">Revenue and costs by service</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {s.count} financial {s.count === 1 ? 'row' : 'rows'} · {s.customerCount} identified{' '}
-            {s.customerCount === 1 ? 'customer' : 'customers'} · {s.anonymous} {s.anonymous === 1 ? 'row' : 'rows'}{' '}
-            without an attendee
+            {s.customerCount === 1 ? 'customer' : 'customers'}
+            {s.missingCount > 0 && ' · Cost totals include only records with complete costs'}
           </p>
         </header>
+        {s.count > 0 && s.gross !== null && (
+          <dl
+            className="grid grid-cols-3 gap-2 border-b border-border bg-muted/30 p-4 text-sm sm:px-5"
+            aria-label="Service COGS breakdown"
+          >
+            {(['staff', 'materials', 'tools'] as const).map((part) => (
+              <div key={part}>
+                <dt className="capitalize text-muted-foreground">{part}</dt>
+                <dd className="break-words font-semibold tabular-nums">{thb(s.costs[part])}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
         {!report.breakdown.length ? (
           <p className="p-5 text-sm">No delivered services, fees or refunds match these filters.</p>
         ) : (
@@ -85,9 +114,16 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
                       className="text-sm font-semibold underline-offset-4 hover:underline"
                       href={url('revenue')}
                     >
-                      {thb(row.revenue)} revenue ↗
+                      {thb(row.revenue)} revenue <span aria-hidden="true">↗</span>
                     </Link>
                   </div>
+                  <p className="text-sm text-muted-foreground">
+                    Service COGS{' '}
+                    <b className="text-foreground tabular-nums">
+                      {money(row.gross === null ? null : costTotal(row.costs))}
+                    </b>
+                    {row.missingCount > 0 && row.gross !== null && ' · Partial costs and gross profit'}
+                  </p>
                   {row.revenue > 0 && row.gross !== null && row.gross >= 0 && !row.missingCount && (
                     <div aria-hidden="true" className="flex h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
@@ -114,14 +150,20 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
                     ))}
                     <Link href={url('gross')} className="grid gap-0.5 rounded-md bg-primary/10 px-3 py-2">
                       <span>Gross profit</span>
-                      <b className="tabular-nums">{money(row.gross)} ↗</b>
+                      <b className="tabular-nums">
+                        {money(row.gross)} <span aria-hidden="true">↗</span>
+                      </b>
                     </Link>
                   </div>
                   {row.missingCount > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {row.missingCount} rows totaling {thb(row.revenue - row.coveredRevenue)} await a cost
-                      schedule.
-                    </p>
+                    <Link
+                      href={url('gross', 'Awaiting cost')}
+                      className="inline-flex min-h-11 w-fit items-center text-sm font-medium text-primary underline"
+                      aria-label={'Review missing costs for ' + row.name}
+                    >
+                      Review missing costs · {row.missingCount} {row.missingCount === 1 ? 'record' : 'records'} ·{' '}
+                      {thb(row.revenue - row.coveredRevenue)} revenue
+                    </Link>
                   )}
                 </article>
               );
@@ -145,7 +187,7 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
                     className="tabular-nums underline-offset-4 hover:underline"
                     href={href(true, { metric: 'net', category: e.kind, additional: null })}
                   >
-                    {thb(e.amount)} ↗
+                    {thb(e.amount)} <span aria-hidden="true">↗</span>
                   </Link>
                 </dd>
               </div>
@@ -157,6 +199,25 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
           </dl>
         </section>
       )}
+      <section aria-label="Customer metrics" className="grid grid-cols-2 gap-2">
+        {metricCard('ltv')}
+        {metricCard('cac')}
+        {s.anonymous > 0 && (
+          <Link
+            className="col-span-2 inline-flex min-h-11 w-fit items-center text-sm text-primary underline"
+            href={href(true, {
+              metric: 'revenue',
+              category: null,
+              additional: JSON.stringify({
+                join: 'and',
+                rules: [{ field: 'attendee', operator: 'is', value: 'Unidentified' }],
+              } satisfies ProfitFilters),
+            })}
+          >
+            Review {s.anonymous} {s.anonymous === 1 ? 'record' : 'records'} without an identified attendee
+          </Link>
+        )}
+      </section>
     </>
   );
 }

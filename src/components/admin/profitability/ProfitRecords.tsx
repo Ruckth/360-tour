@@ -94,7 +94,19 @@ export function Details({
           )}
         </div>
         <p className="text-sm">
-          Overview <b>{money(report.summary[metric])}</b> · After transaction rules <b>{money(detail.value)}</b>
+          {category === 'Awaiting cost' && metric === 'gross' ? (
+            'These records are excluded from gross profit until their service costs are entered.'
+          ) : (
+            <>
+              {metricNames[metric]} <b>{money(report.summary[metric])}</b>
+              {request.additional.rules.length > 0 && (
+                <>
+                  {' '}
+                  · With transaction filters <b>{money(detail.value)}</b>
+                </>
+              )}
+            </>
+          )}
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <form
@@ -176,9 +188,9 @@ export function Details({
       )}
       {detail.count ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
+          <table className="w-full text-left text-sm max-sm:block">
             <caption className="sr-only">{metricNames[metric]} supporting records</caption>
-            <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground">
+            <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground max-sm:sr-only">
               <tr>
                 {['Date', 'Reference', 'Service / customer', 'Category', 'Amount'].map((c) => (
                   <th key={c} scope="col" className="whitespace-nowrap px-4 py-3 last:text-right">
@@ -187,18 +199,20 @@ export function Details({
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-border max-sm:block">
               {detail.rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{r.day || '—'}</td>
-                  <td className="px-4 py-3 font-medium">{r.ref}</td>
-                  <td className="px-4 py-3">
+                <tr key={r.id} className="max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-1 max-sm:p-4">
+                  <td className="text-muted-foreground tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3">
+                    {r.day || '—'}
+                  </td>
+                  <td className="break-words font-medium max-sm:text-right sm:px-4 sm:py-3">{r.ref}</td>
+                  <td className="break-words max-sm:col-span-2 sm:px-4 sm:py-3">
                     {r.service}
                     {r.costEntry && (
                       <button
                         disabled={busy}
                         type="button"
-                        className="block min-h-10 text-xs text-primary underline"
+                        className="block min-h-11 text-sm text-primary underline"
                         onClick={() => setActual(r)}
                       >
                         Record actual costs
@@ -207,7 +221,7 @@ export function Details({
                     {r.appointmentId && (
                       <button
                         type="button"
-                        className="block min-h-10 text-xs text-primary underline"
+                        className="block min-h-11 text-sm text-primary underline"
                         disabled={busy}
                         onClick={() => setAssignment(r)}
                       >
@@ -218,11 +232,11 @@ export function Details({
                       <div className="text-xs text-muted-foreground">{r.customer}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="sm:px-4 sm:py-3">
                     {r.category}
                     {r.basis && <span className="block text-xs text-muted-foreground">{r.basis}</span>}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums">
+                  <td className="break-words text-right font-medium tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3">
                     {r.amount === null ? '—' : thb(r.amount)}
                   </td>
                 </tr>
@@ -235,7 +249,8 @@ export function Details({
       )}
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-sm">
         <span aria-live="polite">
-          {detail.count} matching records · {thb(detail.sum)} subtotal
+          {detail.count} matching {detail.count === 1 ? 'record' : 'records'}
+          {category !== 'Awaiting cost' && <> · {thb(detail.sum)} subtotal</>}
           {(metric === 'ltv' || metric === 'cac') &&
             ' · ' + detail.people + (detail.people === 1 ? ' customer' : ' customers')}
           {detail.displayedRatio !== null && (

@@ -7,6 +7,7 @@ import { box, path, type Href, type Report, type Request } from './report-model'
 import { useConvex, useMutation } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import { metricNames, profitMetrics } from 'convex/shared/profitability';
+import { monthBounds, monthOf, shiftMonth } from 'convex/shared/calendar';
 import { resortTodayIso } from 'convex/shared/time';
 import { MAX_REPORT_DAYS, reportDayCount } from 'convex/shared/marketingReport';
 import Link from '@/platform/link';
@@ -44,8 +45,12 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const setSearch = (text: string) => setDraft({ term: submitted, text });
   const page = Math.max(0, Math.floor(Number(params.get('page')) || 0));
   const descending = params.get('sort') !== 'asc';
-  const [open, setOpen] = useState(false),
-    [revision, setRevision] = useState(0);
+  const [financeEntry, setFinanceEntry] = useState<{ mode: 'cost' | 'month'; date: string } | null>(null);
+  const financeHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (financeEntry) financeHeading.current?.focus();
+  }, [financeEntry]);
+  const [revision, setRevision] = useState(0);
   const expiredView = useRef<string | null>(null);
   const openView = useMutation(api.marketing.profitViews.openView);
   const viewKey = JSON.stringify([access.email, canWrite, from, to, revision]);
@@ -133,10 +138,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   }
   const report = valid && state?.key === key ? state.data : undefined;
   const options = state?.data ?? { services: [], sources: [] };
-  const loading = valid && state?.key !== key;
+  const loading = valid && state?.key !== key && !(view?.key === viewKey && view.error);
   const group = detailPage ? additional : overview;
   return (
-    <main className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 text-foreground sm:px-6">
+    <section
+      aria-label="Service profitability report"
+      className="mx-auto grid w-full max-w-7xl gap-5 px-4 py-6 text-foreground sm:px-6"
+    >
       {detailPage && (
         <Link href={href(false, {})} className="inline-flex w-fit items-center gap-2 text-sm font-medium">
           <ArrowLeft size={16} />
@@ -164,17 +172,27 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             </Button>
           )}
           {!detailPage && canWrite && (
-            <Button variant="outline" aria-expanded={open} onClick={() => setOpen(!open)}>
+            <Button
+              variant="outline"
+              aria-expanded={Boolean(financeEntry)}
+              onClick={() => setFinanceEntry(financeEntry ? null : { mode: 'cost', date: to })}
+            >
               <SlidersHorizontal size={16} />
               Finance inputs
             </Button>
           )}
         </div>
       </header>
-      {open && !detailPage && canWrite && (
+      {financeEntry && !detailPage && canWrite && (
         <section className={box}>
-          <h2 className="px-4 pt-4 text-lg font-semibold sm:px-6">Service finance inputs</h2>
-          <FinanceInputs today={to} onSave={() => setRevision((v) => v + 1)} />
+          <h2 ref={financeHeading} tabIndex={-1} className="px-4 pt-4 text-lg font-semibold sm:px-6">
+            Service finance inputs
+          </h2>
+          <FinanceInputs
+            initialDate={financeEntry.date}
+            initialMode={financeEntry.mode}
+            onSave={() => setRevision((v) => v + 1)}
+          />
         </section>
       )}
       <section className={box + ' grid gap-4 p-4 sm:p-5'} aria-label="Report filters">
@@ -209,6 +227,23 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
                 onChange={(e) => update({ to: e.target.value })}
               />
             </label>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                const { startDate, endDate } = monthBounds(shiftMonth(monthOf(today), -1));
+                update({ from: startDate, to: endDate });
+              }}
+            >
+              Last month
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => update({ from: monthOf(today) + '-01', to: today })}
+            >
+              Month to date
+            </Button>
           </div>
         )}
         <RuleEditor
@@ -234,11 +269,11 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         </div>
       )}
       {valid &&
-        (report || (detailPage && loading && state?.data?.detail)) &&
+        (report || (loading && state?.data && Boolean(state.data.detail) === detailPage)) &&
         (() => {
           const shown = report ?? state!.data!;
           return (
-            <div className={'grid gap-5' + (loading ? ' opacity-65' : '')} aria-busy={loading}>
+            <div className={'grid gap-5' + (loading ? ' opacity-65' : '')} aria-busy={loading} inert={loading}>
               {detailPage ? (
                 <Details
                   key={pathname}
@@ -267,7 +302,24 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               )}
               {!!shown.missingMonths.length && (
                 <p className="text-sm text-muted-foreground">
-                  Monthly accounts awaiting finance confirmation: {shown.missingMonths.join(', ')}.
+                  Monthly accounts awaiting confirmation ·{' '}
+                  {shown.missingMonths.map((month, index) => (
+                    <span key={month}>
+                      {index > 0 && ', '}
+                      {canWrite && !detailPage && !financeEntry ? (
+                        <button
+                          type="button"
+                          className="inline-flex min-h-11 items-center text-primary underline"
+                          onClick={() => setFinanceEntry({ mode: 'month', date: month + '-01' })}
+                          aria-label={'Review monthly accounts for ' + month}
+                        >
+                          {month}
+                        </button>
+                      ) : (
+                        month
+                      )}
+                    </span>
+                  ))}
                 </p>
               )}
               {!!shown.excludedCurrency && (
@@ -281,8 +333,9 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         <div className="mt-2 grid max-w-prose gap-2">
           <p>
             Revenue is earned on the completed appointment’s end date. Prepaid sessions earn their share on
-            delivery. Refunds reduce revenue on their effective day, or on delivery if earlier. Direct cost
-            schedules are estimates per delivery.
+            delivery. Refunds reduce revenue on their effective day, or on delivery if earlier. Service COGS
+            includes staff time and commission, materials consumed and per-use equipment costs. Cost schedules
+            estimate these amounts per delivery.
           </p>
           <p>
             LTV uses the full recorded service history of matching identified attendees through the last selected
@@ -297,7 +350,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           </p>
         </div>
       </details>
-    </main>
+    </section>
   );
 }
 export function ProfitabilityScreen({ detailPage = false }: { detailPage?: boolean }) {

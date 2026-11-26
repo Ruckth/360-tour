@@ -197,9 +197,17 @@ function FinanceForm({
   );
 }
 
-export function FinanceInputs({ today, onSave }: { today: string; onSave: () => void }) {
-  const [mode, setMode] = useState<'cost' | 'month'>('cost');
-  const [date, setDate] = useState(today);
+export function FinanceInputs({
+  initialDate,
+  initialMode,
+  onSave,
+}: {
+  initialDate: string;
+  initialMode: 'cost' | 'month';
+  onSave: () => void;
+}) {
+  const [mode, setMode] = useState(initialMode);
+  const [date, setDate] = useState(initialDate);
   const [id, setId] = useState<Id<'services'> | null>(null);
   const [revision, setRevision] = useState(0),
     [message, setMessage] = useState('');
