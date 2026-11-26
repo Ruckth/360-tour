@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './model';
 import { listAssignedBranches, listBranchesForAccess, readBranch } from '../branches/model';
 import { STAFF_INVITATION_TTL_MS, staffRole } from '../shared/staffTypes';
-import { marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
+import { retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import { boundStaffGrant, findStaffGrantByEmail, resolveStaffAccess, staffAccess, staffInvitationExpiry, validStaffEmail } from './private/staffAccess';
 import { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
@@ -52,6 +52,7 @@ export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx 
       after: { replacedByGrantId: invite._id, replacedByEmail: invite.email, replacedByRole: invite.role },
     });
   }
+  if (invite.role === 'owner') await retireOwnerMarketingGrants(ctx, email, identity.tokenIdentifier, email);
   const branchIds = invite.role === 'owner' ? [] : invite.branchIds;
   await ctx.db.patch(invite._id, {
     tokenIdentifier: identity.tokenIdentifier,

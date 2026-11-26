@@ -20,7 +20,7 @@ import { ROLE_LABELS, StaffAccessProvider, useStaffAccess } from "@/components/a
 import type { CheckoutBackend } from "@/components/checkout/backend";
 import { CheckoutHeaderStaff } from "@/components/checkout/CheckoutHeaderStaff";
 import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { errorText } from "@/lib/staff-bookings";
@@ -130,6 +130,7 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
       <p>{access.email} is invited as {role}{access.pendingInvitation?.branches.length
         ? ` at ${access.pendingInvitation.branches.map(branch => branch.name).join(", ")}`
         : ""}.</p>
+      {access.pendingInvitation?.role === "owner" ? <p>Activating company owner access replaces your previous desk and Marketing grants for this account.</p> : null}
       {error ? <p role="alert" className="text-destructive">{error}</p> : null}
       <Button
         className="w-full"
@@ -148,6 +149,7 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
       >
         {claiming ? "Activating…" : "Activate access"}
       </Button>
+      <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
     </GateCard>
   );
 }
@@ -260,6 +262,12 @@ function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, ch
           ) : null}
         </header>
         <BranchRevokedBanner />
+        {access.marketingInvitation ? (
+          <div className="flex items-center gap-2 px-4 py-2 text-sm">
+            <span>You have a Marketing invitation.</span>
+            <ButtonLink href="/admin/marketing" variant="outline" size="sm">Review invitation</ButtonLink>
+          </div>
+        ) : null}
         {redirect ? (
           <div className="grid flex-1 place-items-center p-10">
             <Spinner label="Loading" className="size-6" />

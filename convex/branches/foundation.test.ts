@@ -281,7 +281,7 @@ it('rejects branch and owner lists over 500 rows', async () => {
 });
 
 it('lists up to 500 company branches without counting or returning archived rows', async () => {
-  const { t } = await setup();
+  const { t, owner } = await setup();
   const now = Date.now();
   const insert = (key: string, state: 'setup' | 'suspended' | 'archived') => t.run(ctx => ctx.db.insert('branches', {
     ...PRIMARY_BRANCH, key, slug: key, state, revision: 1, stateChangedAt: now, stateChangedByEmail: ownerEmail, createdAt: now, updatedAt: now,
@@ -295,6 +295,7 @@ it('lists up to 500 company branches without counting or returning archived rows
       });
     }
   });
+  await expect(owner.mutation(branchApi.create, { ...profile, slug: 'branch-501' })).rejects.toThrow('up to 500 branches');
   for (let index = 0; index < 3; index++) await insert(`archived-${index}`, 'archived');
   const company = { companyScope: true, branchIds: [] };
   const listed = await t.run(ctx => listBranchesForAccess(ctx, company));

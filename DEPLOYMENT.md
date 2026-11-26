@@ -136,7 +136,7 @@ To enable `/admin`:
 2. Configure the Clerk `convex` JWT template.
    The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
-4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` once for the real owner and again for the recovery owner. Replace the example address with each account's verified Clerk email. Each owner signs in and activates their grant.
+4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` once for the real owner and again for the recovery owner. Replace the example address with each account's verified Clerk email. Each owner signs in and activates their grant. Claiming company ownership retires narrower Marketing grants bound to that account and pending Marketing invitations at its verified email. A later owner revocation therefore requires a fresh invitation for Marketing access.
 
 Seed scenarios (`maintenance/seed:seedAll`) never create owner grants; owners are always granted explicitly through the deployment-admin CLI.
 

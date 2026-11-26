@@ -291,3 +291,31 @@ it('does not expose or retire an old desk grant for non-owner, revoked, or alrea
   expect(await t.run(ctx => ctx.db.get(oldDeskId!))).not.toBeNull();
   expect((await t.run(ctx => ctx.db.get(ownerInviteId)))?.tokenIdentifier).toBe('issuer|other-owner');
 });
+
+it('retires superseded Marketing access on owner claim and preserves another identity at a reassigned address', async () => {
+  const { t } = await setupWithOwner();
+  const email = 'next-owner@example.com';
+  const holder = t.withIdentity(identity(email, 'holder'));
+  const previous = t.withIdentity(identity('moved@example.com', 'previous'));
+  await t.run(async ctx => {
+    const fields = { role: 'viewer' as const, createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com' };
+    await ctx.db.insert('marketingGrants', { ...fields, email: 'holder-old@example.com', tokenIdentifier: 'holder' });
+    await ctx.db.insert('marketingGrants', { ...fields, email, tokenIdentifier: 'previous' });
+  });
+  await t.mutation(ownerApi.grantOwner, { email });
+  await holder.mutation(staffApi.claimInvite, {});
+  await t.mutation(ownerApi.revokeOwner, { email });
+  expect(await holder.query(staffApi.myAccess, {})).toMatchObject({ marketingRole: null, role: null, marketingInvitation: null });
+  expect(await previous.query(staffApi.myAccess, {})).toMatchObject({ marketingRole: 'viewer', role: null });
+});
+
+it('retires an unclaimed Marketing invitation when its verified recipient claims ownership', async () => {
+  const { t, owner } = await setupWithOwner();
+  const email = 'invitee@example.com';
+  const invitee = t.withIdentity(identity(email));
+  await owner.mutation(api.marketing.access.setGrant, { email, role: 'viewer', expectedGrant: null });
+  await t.mutation(ownerApi.grantOwner, { email });
+  await invitee.mutation(staffApi.claimInvite, {});
+  await t.mutation(ownerApi.revokeOwner, { email });
+  expect(await invitee.query(staffApi.myAccess, {})).toMatchObject({ role: null, marketingInvitation: null, marketingRole: null });
+});

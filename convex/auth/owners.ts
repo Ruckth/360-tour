@@ -1,3 +1,4 @@
+import { retireOwnerMarketingGrants } from '../marketing/model';
 import { ConvexError, v } from 'convex/values';
 import { internalMutation, internalQuery } from './model';
 import { appendRecordHistory } from '../settings/model';
@@ -23,6 +24,7 @@ export const revokeOwner = internalMutation({
       const claimed = await ctx.db.query('staffGrants')
         .withIndex('by_role_and_tokenIdentifier', q => q.eq('role', 'owner').gt('tokenIdentifier', '')).take(2);
       if (claimed.length < 2) throw new ConvexError('Cannot revoke the last owner.');
+      await retireOwnerMarketingGrants(ctx, email, grant.tokenIdentifier, 'system:deployment-admin');
     }
     await appendRecordHistory(ctx, {
       entityType: 'staffGrant', entityId: grant._id, actor: 'system:deployment-admin', kind: 'revoked', before: { email, role: grant.role },

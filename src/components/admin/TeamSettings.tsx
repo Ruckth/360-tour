@@ -27,7 +27,7 @@ import { staffDate } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { personLabel } from "./person-label";
-import { ROLE_LABELS, useStaffAccess } from "./staff-access";
+import { MARKETING_ROLE_LABELS, ROLE_LABELS, useStaffAccess } from "./staff-access";
 import { StatusBadge } from "./StatusBadge";
 import { TONES } from "./status-tones";
 import { NumberField } from "./marketing/MarketingBits";
@@ -56,7 +56,6 @@ const DESK_OPTIONS: { value: StaffRole; label: string }[] = [
   { value: "manager", label: ROLE_LABELS.manager },
   { value: "cashier", label: ROLE_LABELS.cashier },
 ];
-export const MARKETING_ROLE_LABELS: Record<MarketingRole, string> = { manager: "Lead", marketer: "Editor", finance: "Finance", viewer: "Viewer" };
 const MARKETING_OPTIONS = (Object.keys(MARKETING_ROLE_LABELS) as MarketingRole[]).map((value) => ({ value, label: MARKETING_ROLE_LABELS[value] }));
 
 function RoleSelect<T extends string>({ id, label, value, disabled, onChange, options, empty }: { id: string; label?: string; value: T | ""; disabled: boolean; onChange: (value: T | "") => void; options: { value: T; label: string }[]; empty: string }) {
@@ -171,7 +170,7 @@ function Section({ title, tip, action, children, label }: { title: string; tip?:
 }
 
 function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
-  const count = owners?.length ?? 0;
+  const count = owners?.filter(owner => owner.staffGrant?.claimed).length ?? 0;
   return (
     <Section
       title="Owners & recovery"
@@ -194,7 +193,7 @@ function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
                   <p className="text-[15px] font-medium text-foreground">{personLabel(owner.email)}</p>
                   <p className="text-[13px] break-all text-muted-foreground">{owner.email} · Managed by the deployment admin</p>
                 </div>
-                <StatusBadge tone="success" label="Company owner" />
+                <StatusBadge tone={owner.staffGrant?.claimed ? "success" : "warning"} label={owner.staffGrant?.claimed ? "Company owner" : "Pending claim"} />
               </li>
             ))}
           </ul>
@@ -575,7 +574,7 @@ function PersonRow({
   const owner = person.role === "owner";
   const name = personLabel(person.email);
   const pending = [grant, marketing].filter((row): row is Grant => Boolean(row && !row.claimed));
-  const states = owner ? [] : [inviteState(grant), inviteState(marketing, "Marketing: ")].filter(Boolean);
+  const states = owner ? (grant?.claimed ? [] : ["Pending claim"]) : [inviteState(grant), inviteState(marketing, "Marketing: ")].filter(Boolean);
   const linkWorks = pending.some((row) => !row.expired);
   const allExpired = pending.length > 0 && !linkWorks;
   const personBranchIds = liveBranchIds(person.branchIds, branchById);

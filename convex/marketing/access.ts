@@ -32,7 +32,7 @@ export const claimInvite = authenticatedMutation({
       .withIndex("by_email", (q) => q.eq("email", email))
       .unique();
     if (!invite || invite.tokenIdentifier)
-      throw new Error("No unclaimed invitation");
+      throw new ConvexError("No unclaimed invitation");
     if (marketingInvitationExpired(invite)) throw new ConvexError("Invitation expired. Ask an administrator to renew the invitation.");
     await ctx.db.patch(invite._id, {
       tokenIdentifier: identity.tokenIdentifier,

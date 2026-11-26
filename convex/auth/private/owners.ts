@@ -1,3 +1,4 @@
+import { retireOwnerMarketingGrants } from '../../marketing/model';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { appendRecordHistory } from '../../settings/model';
 import { findStaffGrantByEmail, validStaffEmail } from './staffAccess';
@@ -16,6 +17,7 @@ export async function grantCompanyOwner(ctx: MutationCtx, rawEmail: string, opti
     if (!options?.rebind || (!old.tokenIdentifier && old.branchIds.length === 0 && old.inviteExpiresAt === undefined)) {
       return old._id;
     }
+    if (old.tokenIdentifier) await retireOwnerMarketingGrants(ctx, email, old.tokenIdentifier, deploymentActor);
   }
   const now = Date.now();
   const fields = {

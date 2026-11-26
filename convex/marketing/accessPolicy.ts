@@ -1,6 +1,7 @@
 import type { UserIdentity } from 'convex/server';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { appendRecordHistory } from '../settings/model';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
 import type { MarketingRole } from '../shared/marketingAccess';
 import { marketingCapabilities } from '../shared/marketingAccess';
@@ -59,4 +60,21 @@ export function requireEditableDraft(
 ) {
   if (access.role === "marketer" && existing && existing.status !== "draft")
     throw new Error("Marketers may edit drafts only");
+}
+
+/** Claiming company ownership replaces this identity's narrower Marketing access. */
+export async function retireOwnerMarketingGrants(ctx: MutationCtx, email: string, tokenIdentifier: string, actor: string) {
+  const [bound, byEmail] = await Promise.all([
+    ctx.db.query('marketingGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique(),
+    ctx.db.query('marketingGrants').withIndex('by_email', q => q.eq('email', email)).unique(),
+  ]);
+  // A reassigned email can still label another account's bound grant.
+  for (const grant of [bound, byEmail && !byEmail.tokenIdentifier ? byEmail : null]) {
+    if (!grant) continue;
+    await appendRecordHistory(ctx, {
+      entityType: 'marketingGrant', entityId: grant._id, actor, kind: 'retired',
+      reason: 'Superseded by company ownership', before: { email: grant.email, role: grant.role },
+    });
+    await ctx.db.delete(grant._id);
+  }
 }

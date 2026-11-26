@@ -29,7 +29,7 @@ export function NoAccessCard({ email, changed }: { email: string | null; changed
   return (
     <GateCard title={changed ? "Your access has changed" : "No access"}>
       {changed ? (
-        <p>{who} no longer has desk access. Anything not yet saved on this device was not sent.</p>
+        <p>{who} no longer has admin access. Anything not yet saved on this device was not sent.</p>
       ) : (
         <p>{who} doesn’t have access to the admin.</p>
       )}
@@ -72,6 +72,7 @@ export function BranchChooser({ email }: { email: string | null }) {
         ))}
       </div>
       <p className="text-xs">{email ? `Signed in as ${email}. ` : ""}We remember your choice on this device only.</p>
+      <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
     </GateCard>
   );
 }

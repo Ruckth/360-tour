@@ -5,7 +5,7 @@ import type { ReadBudget } from '../../lib/readBudget';
 
 type Branch = Doc<'branches'>;
 type BranchScope = { companyScope: boolean; branchIds: Id<'branches'>[] };
-const BRANCH_LIST_LIMIT = 500;
+export const BRANCH_LIST_LIMIT = 500;
 const BRANCH_LIST_LIMIT_MESSAGE = 'There are more than 500 branches to list. Contact support.';
 
 export const PRIMARY_BRANCH = {

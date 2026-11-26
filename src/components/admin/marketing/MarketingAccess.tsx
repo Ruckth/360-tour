@@ -1,6 +1,7 @@
 "use client";
 
-import { SignInButton } from "@/platform/auth";
+import { MARKETING_ROLE_LABELS } from "../staff-access";
+import { SignInButton, SignOutButton } from "@/platform/auth";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { Component, createContext, useContext, useState, type ReactNode } from "react";
@@ -59,12 +60,13 @@ export function MarketingInvitation({ email, role }: { email: string | null; rol
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return <AccessState title="Activate your Marketing invitation">
-    <p>{email} has been invited as {role}. Activate access for this signed-in account.</p>
+    <p>{email} has been invited as {MARKETING_ROLE_LABELS[role]}. Activate access for this signed-in account.</p>
     {error ? <p role="alert" className="text-destructive">{error}</p> : null}
     <Button disabled={claiming} onClick={async () => {
       setClaiming(true); setError(null);
       try { await claim({}); } catch (cause) { setError(marketingErrorText(cause, "Couldn’t activate the invitation. Try again.")); } finally { setClaiming(false); }
     }}>{claiming ? "Activating…" : "Activate Marketing access"}</Button>
+    <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
   </AccessState>;
 }
 

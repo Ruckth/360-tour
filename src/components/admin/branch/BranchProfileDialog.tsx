@@ -206,9 +206,9 @@ function BranchProfileDialogBody({
         ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
-          {field("name", "Branch name", { autoFocus: true, placeholder: "Phuket" })}
+          {field("name", "Branch name", { autoFocus: true, maxLength: 120, placeholder: "Phuket" })}
           {field("slug", "URL slug", {
-            placeholder: "phuket",
+            placeholder: "phuket", maxLength: 80,
             onChange: (event) => {
               setSlugTouched(true);
               updateField("slug", event.target.value);
@@ -218,8 +218,8 @@ function BranchProfileDialogBody({
 
         <fieldset className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-2">
           <legend className="px-1 text-xs font-medium text-muted-foreground">Receipt issuer</legend>
-          {field("legalName", "Issuer legal name", { placeholder: "360 Tour Co., Ltd.", wrapperClassName: "sm:col-span-2" })}
-          {field("taxId", "Tax ID", { placeholder: "0105560000000" })}
+          {field("legalName", "Issuer legal name", { maxLength: 120, placeholder: "360 Tour Co., Ltd.", wrapperClassName: "sm:col-span-2" })}
+          {field("taxId", "Tax ID", { maxLength: 32, placeholder: "0105560000000" })}
           {field("branchCode", "Issuer branch code (5 digits)", { inputMode: "numeric", maxLength: 5, placeholder: "00001" })}
           {field("address", "Issuer address", { placeholder: "88 Rawai Rd, Phuket 83130", wrapperClassName: "sm:col-span-2" })}
         </fieldset>

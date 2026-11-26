@@ -3,7 +3,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { internalMutation, requireStaff, staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
-import { assertUniqueBranchSlug, insertBranch, listBranches, readBranch } from './private/branches';
+import { BRANCH_LIST_LIMIT, assertUniqueBranchSlug, insertBranch, listBranches, readBranch } from './private/branches';
 import { branchState, type BranchState } from '../shared/branchTypes';
 import { branchDocument, branchProfileFields } from './validators';
 
@@ -58,6 +58,9 @@ export const create = staffMutation({
   returns: v.id('branches'),
   handler: async (ctx, { key, ...profile }) => {
     const clean = cleanProfile(profile);
+    if ((await listBranches(ctx)).length >= BRANCH_LIST_LIMIT) {
+      throw new ConvexError(`You can create up to ${BRANCH_LIST_LIMIT} branches.`);
+    }
     const branch = { ...clean, key: key === undefined ? clean.slug : slugValue(key, 'key'), state: 'setup' as const };
     const id = await insertBranch(ctx, branch, ctx.staff.email);
     await appendRecordHistory(ctx, { entityType: 'branch', entityId: id, actor: ctx.staff.email, kind: 'created', after: branch });

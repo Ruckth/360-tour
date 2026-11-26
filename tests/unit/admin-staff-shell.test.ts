@@ -154,7 +154,7 @@ it('says access changed when a member is removed mid-session', async () => {
   await render();
   expect(document.getElementById('page')).toBeNull();
   expect(document.querySelector('h1')?.textContent).toBe('Your access has changed');
-  expect(document.body.textContent).toContain('lek@example.com no longer has desk access.');
+  expect(document.body.textContent).toContain('lek@example.com no longer has admin access.');
 });
 
 it('lets an invited person activate their access explicitly', async () => {
@@ -186,4 +186,11 @@ it('offers the pending owner invitation to an existing desk member', async () =>
   expect(document.getElementById('page')).toBeNull();
   await act(async () => button('Activate access')!.click());
   expect(state.claim).toHaveBeenCalledWith({});
+});
+
+it('keeps a pending Marketing invite reachable after a desk invite is claimed', async () => {
+  state.access = { ...staffAccessFor('manager'), marketingInvitation: { role: 'viewer', expiresAt: Date.now() + 60_000 } };
+  await render();
+  expect(document.getElementById('page')).not.toBeNull();
+  expect(document.querySelector('a[href="/admin/marketing"]')?.textContent).toBe('Review invitation');
 });

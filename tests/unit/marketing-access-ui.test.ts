@@ -26,7 +26,7 @@ vi.mock("convex/react", () => ({
     return args === "skip" ? undefined : name === "marketing/access:current" ? mocked.access : name === "marketing/access:listGrants" ? mocked.grants : undefined;
   },
 }));
-vi.mock("@/platform/auth", () => ({ SignInButton: ({ children }: { children: ReactNode }) => children }));
+vi.mock("@/platform/auth", () => ({ SignOutButton: ({ children }: { children: ReactNode }) => children, SignInButton: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/platform/navigation", () => ({ useSelectedLayoutSegment: () => "dashboard", useRouter: () => ({ push: mocked.routerPush, replace: vi.fn() }) }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
