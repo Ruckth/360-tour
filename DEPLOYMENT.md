@@ -128,6 +128,8 @@ Before retiring the old operator CLI namespaces, root must stop/drain actual see
 
 After an authorized multi-branch reset and backend deploy, run `maintenance/seed:seedAll` with `{"scenario":"two-branch"}`. Then grant the real owner and the designated recovery owner, in that order, using the procedure below. Have both owners sign in and claim their grants. Use `auth/owners:listOwners` to confirm both are claimed. The revoke command preserves at least one claimed owner.
 
+During the multi-branch cutover, `vercel.json` sets `git.deploymentEnabled.main` to `false`. Merging to `main` skips the automatic production deployment. Pull request previews still build. Follow the authorized cutover before deploying this revision manually. Remove the hold after verifying the production branch data and both owner claims.
+
 ## Admin Setup
 
 To enable `/admin`:
