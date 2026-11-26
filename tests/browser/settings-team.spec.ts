@@ -62,7 +62,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await run.tap(people.getByRole("button", { name: "Change roles for Mint" }));
       await run.pick(people.getByRole("combobox", { name: "Marketing role for Mint" }), "marketer");
       await expect(people.getByRole("status")).toHaveText("Invited Mint to Marketing as Editor.");
-      expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "marketer" });
+      expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ expectedGrant: null, email: "mint@auraliscove.co", role: "marketer" });
       const mint = people.getByTestId("team-person").filter({ hasText: "mint@" });
       await expect(mint.getByTestId("team-roles")).toHaveText("Cashier · Marketing Editor");
       await expect(mint).toContainText("Marketing: Invited · expires");

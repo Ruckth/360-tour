@@ -134,10 +134,6 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
 
   return (
     <div className="grid max-w-4xl gap-4">
-      <header className="px-1 pt-1">
-        <h2 className="font-serif text-3xl">Team</h2>
-        <p className="mt-1 text-pretty text-[13px] text-muted-foreground">Sign-in access, branches and cashier permissions.</p>
-      </header>
       <PeoplePanel
         people={people}
         assignableBranches={assignableBranches}
