@@ -79,7 +79,7 @@ interface Surface {
 }
 
 /** Module flag so chip onClick can ignore the click that ends a drag. */
-let lastGestureEndedAt = 0
+let lastGestureEndedAt = Number.NEGATIVE_INFINITY
 function wasRecentDrag(): boolean {
   return performance.now() - lastGestureEndedAt < 250
 }
@@ -91,7 +91,7 @@ function wasRecentDrag(): boolean {
  * dialog. Refreshed on release so it covers long presses; the chip's own
  * click-to-edit is unaffected (only grid slot-clicks check it).
  */
-let lastChipPressAt = 0
+let lastChipPressAt = Number.NEGATIVE_INFINITY
 function markChipPress(): void {
   lastChipPressAt = performance.now()
   window.addEventListener(
