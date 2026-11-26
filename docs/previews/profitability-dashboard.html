@@ -93,7 +93,7 @@ html,body{margin:0;padding:0;background:transparent}
 
 /* kpis */
 .kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-@media (min-width:640px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
 @media (min-width:1120px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .kpi{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--pd-border);border-radius:12px;background:var(--pd-card);cursor:pointer;min-width:0;transition:border-color .15s}
 .kpi:hover{border-color:var(--pd-ring)}
@@ -197,10 +197,10 @@ table.g{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 
 .kpi.summary{cursor:default}
 .kpi.summary:hover{border-color:var(--pd-border)}
-.kpi.summary .review{align-self:flex-start;border:0;background:none;padding:0;color:var(--pd-fg);font:inherit;text-decoration:underline;cursor:pointer}
+.kpi.summary .review{text-align:left;align-self:flex-start;border:0;background:none;padding:0;color:var(--pd-fg);font:inherit;text-decoration:underline;cursor:pointer}
 @media (min-width:640px){.kpis.customers{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:639px){
-  .btn,.sel,.preset,.add,.stat,.chip select,.chip .val,.chip .rm,.kpi.summary .review{min-height:44px}
+  .wfr .lab button,.join,.pop label,.search,.g th button,.btn,.sel,.preset,.add,.stat,.chip select,.chip .val,.chip .rm,.kpi.summary .review{min-height:44px}
   .chip .rm{min-width:44px}
 }
 </style>
@@ -406,7 +406,7 @@ function kpiCards(m) {
   const none = m.n === 0;
   return `<div class="kpis">
   ${card('revenue','Revenue', B(m.rev), none ? 'No matching transactions' : m.aw ? `<b>${B(m.cRev)}</b> costed + <b>${B(m.aw)}</b> awaiting costs` : `${m.n} transactions · avg <b>${B(m.rev / m.n)}</b>`)}
-  <div class="kpi summary"><span class="l">Service COGS</span><strong class="v num">${m.n && m.n === m.awN ? 'Unavailable' : B(m.dc)}</strong><span class="fx">${m.n > m.awN ? `Staff ${B(m.st)} · Materials ${B(m.ma)} · Tools ${B(m.to)}` : 'Staff, materials and tools'}${m.awN && m.n > m.awN ? ' · Partial total' : ''}</span>
+  <div class="kpi summary"><span class="l">Service COGS</span><strong class="v ${m.n && m.n === m.awN ? 'na' : 'num'}">${m.n && m.n === m.awN ? 'Unavailable' : B(m.dc)}</strong><span class="fx">${m.n > m.awN ? `Staff ${B(m.st)} · Materials ${B(m.ma)} · Tools ${B(m.to)}` : 'Staff, materials and tools'}${m.awN && m.n > m.awN ? ' · Partial total' : ''}</span>
     ${m.awN ? `<button class="review" data-act="bridgedrill" data-sort="missing" data-fid="review-missing">Review ${m.awN} missing-cost records</button>` : ''}</div>
   ${card('gross','Gross profit', m.gp === null ? null : B(m.gp), none ? ['No data','No matching transactions'] : m.gp === null ? ['Not available','Cost inputs missing for every transaction'] : `<b>${B(m.cRev)}</b> − <b>${B(m.dc)}</b> direct costs · ${PCT(m.gp / m.cRev)} margin`, partial, m.gp < 0 ? 'neg' : '')}
   ${card('net','Net profit', m.net === null ? null : B(m.net), none ? ['No data','No matching transactions'] : m.net === null ? ['Not available','Needs gross profit first'] : `GP − <b>${B(m.mk)}</b> marketing − <b>${B(m.oh)}</b> overhead${m.share < .9995 ? ` · ${PCT(m.share)} revenue share` : ''}`, partial, m.net < 0 ? 'neg' : 'pos')}
@@ -426,6 +426,7 @@ function serviceBreakdown(rows) {
     const stat = (label, val, color, sortKey, extra = '') => `<button class="stat" data-act="svcdrill" data-s="${s || ''}" data-sort="${sortKey}" data-fid="st-${s || 'T'}-${sortKey}${extra}"><small>${color ? `<i style="background:var(${color})"></i>` : ''}${label}</small><b class="num">${val}</b></button>`;
     return `<div class="svc${total ? ' total' : ''}">
       <div class="svch"><span class="nm">${title}${sub ? `<small>${sub}</small>` : ''}</span><span class="num">${B(m.rev)}${m.gp !== null && m.cRev ? ` <span class="sub" style="display:inline">· ${PCT(m.gp / m.cRev)} GM</span>` : ''}</span></div>
+      <span class="sub">Service COGS <b class="num">${m.n && m.awN === m.n ? 'Unavailable' : B(m.dc)}</b>${m.awN && m.n > m.awN ? ' · Partial total' : ''}</span>
       ${bar}
       <div class="stats">
         ${stat('Revenue', B(m.rev), '', 'amount')}
@@ -440,7 +441,7 @@ function serviceBreakdown(rows) {
   const a = per[0].m;
   const ex = S.period === 'nov' && S.branch === 'all' && !S.main.rules.filter(complete).length
     ? `<div class="check"><span class="ok" aria-hidden="true">✓</span><span>Reconciles: Service A ${B(a.rev)} − ${B(a.st)} staff − ${B(a.ma)} materials − ${B(a.to)} tools = <b>${B(a.gp)}</b> gross profit. Total ${B(tot.rev)} = direct costs ${B(tot.dc)} + awaiting ${B(tot.aw)} + gross profit ${B(tot.gp ?? 0)}.</span></div>`
-    : `<div class="check"><span class="ok" aria-hidden="true">✓</span><span>Total ${B(tot.rev)} = direct costs ${B(tot.dc)} + awaiting ${B(tot.aw)} + gross profit ${tot.gp === null ? '(n/a)' : B(tot.gp)}.</span></div>`;
+    : tot.n && tot.n === tot.awN ? '' : `<div class="check"><span class="ok" aria-hidden="true">✓</span><span>Total ${B(tot.rev)} = direct costs ${B(tot.dc)} + awaiting ${B(tot.aw)} + gross profit ${tot.gp === null ? '(n/a)' : B(tot.gp)}.</span></div>`;
   return `<section class="panel" aria-labelledby="h-svc">
     <div class="phead"><h2 id="h-svc">Revenue &amp; cost by service</h2>
       <div class="legend" aria-hidden="true"><span><i style="background:var(--c-staff)"></i>Staff</span><span><i style="background:var(--c-mat)"></i>Materials</span><span><i style="background:var(--c-tool)"></i>Tools</span><span><i class="hatch"></i>Awaiting costs</span><span><i style="background:var(--c-gp)"></i>Gross profit</span></div></div>
@@ -451,7 +452,8 @@ function serviceBreakdown(rows) {
 }
 function bridge(m) {
   if (m.n === 0) return `<section class="panel"><div class="phead"><h2>Profit bridge</h2></div><p class="note">No matching transactions.</p></section>`;
-  const steps = [['Revenue', m.rev, 'sum', 'var(--pd-fg)'], ['Staff', -m.st, '', 'var(--c-staff)', 'sc'], ['Materials', -m.ma, '', 'var(--c-mat)', 'mc'], ['Tools', -m.to, '', 'var(--c-tool)', 'tc']];
+  const steps = [['Revenue', m.rev, 'sum', 'var(--pd-fg)']];
+  if (m.n > m.awN) steps.push(['Staff', -m.st, '', 'var(--c-staff)', 'sc'], ['Materials', -m.ma, '', 'var(--c-mat)', 'mc'], ['Tools', -m.to, '', 'var(--c-tool)', 'tc']);
   if (m.aw) steps.push(['Awaiting costs', -m.aw, 'held', '', 'missing']);
   if (m.gp !== null) {
     steps.push(['Gross profit', m.gp, 'sum', 'var(--c-gp)'], ['Marketing', -m.mk, '', 'var(--c-mk)'], ['Overhead', -m.oh, '', 'var(--c-oh)'], ['Net profit', m.net, 'sum', m.net < 0 ? 'var(--pd-neg)' : 'var(--c-gp)']);
@@ -567,7 +569,7 @@ function recon(key, m, base) {
         + (m.cac === null ? '<p class="note warn">No new customers match. CAC is undefined, not ฿0.</p>' : '')
         + diff(m.cac === null ? 'Undefined' : B(m.cac), base.cac === null ? 'Undefined' : B(base.cac)); break;
     case 'revenue': eq = t(B(m.cRev), 'Costed revenue') + op('+') + t(B(m.aw), 'Awaiting costs') + op('=') + r(B(m.rev), `Revenue · ${m.n} txns`); extra = diff(B(m.rev), B(base.rev)); break;
-    case 'gross': eq = t(B(m.cRev), 'Costed revenue') + op('−') + t(B(m.st), 'Staff') + op('−') + t(B(m.ma), 'Materials') + op('−') + t(B(m.to), 'Tools') + op('=') + r(m.gp === null ? na : B(m.gp), 'Gross profit');
+    case 'gross': if (m.n && m.n === m.awN) { eq = r(na, 'Gross profit'); extra = '<p class="note warn">All matching transactions are awaiting costs.</p>'; break; } eq = t(B(m.cRev), 'Costed revenue') + op('−') + t(B(m.st), 'Staff') + op('−') + t(B(m.ma), 'Materials') + op('−') + t(B(m.to), 'Tools') + op('=') + r(m.gp === null ? na : B(m.gp), 'Gross profit');
       extra = (m.aw ? `<p class="note warn">${B(m.aw)} revenue from ${m.awN} transaction${m.awN > 1 ? 's' : ''} with missing cost inputs is held out. Their recorded partial costs are excluded too.</p>` : '') + diff(m.gp === null ? na : B(m.gp), base.gp === null ? na : B(base.gp)); break;
     case 'net': eq = t(m.gp === null ? na : B(m.gp), 'Gross profit') + op('−') + t(B(m.mk), 'Marketing') + op('−') + t(B(m.oh), 'Overhead') + op('=') + r(m.net === null ? na : B(m.net), 'Net profit');
       extra = `<p class="note">Marketing ${B(m.spendAll)} and overhead ${B(m.ohAll)} for ${esc(P().label)} · ${S.branch === 'all' ? 'all branches' : esc(S.branch)}, allocated at ${PCT(m.share)} revenue share (${B(m.rev)} of ${B(m.scopeRev)}).</p>` + (m.aw ? '<p class="note warn">Partial: transactions awaiting cost inputs are excluded from gross profit.</p>' : '') + diff(m.net === null ? na : B(m.net), base.net === null ? na : B(base.net)); break;
@@ -599,7 +601,7 @@ function renderDrill() {
     if (i === 0) v = cust ? `${N(data.length)} customers` : `${N(data.length)} transactions`;
     else if (!cust) v = {amount:B(fm.rev), sc:B(fm.st), mc:B(fm.ma), tc:B(fm.to), gp:fm.gp === null ? '—' : B(fm.gp), gm:fm.gp === null ? '—' : PCT(fm.gp / fm.cRev)}[c.k] || '';
     else v = {visits:N(fm.n), rev:B(fm.rev), gp:fm.gp === null ? '—' : B(fm.gp), life:`${B(fm.life)}<small>avg ${fm.ltv === null ? '—' : B(fm.ltv)} = LTV</small>`}[c.k] || '';
-    if (!cust && ['sc','mc','tc','gp'].includes(c.k) && fm.awN) v += '<small>costed rows</small>';
+    if (!cust && ['sc','mc','tc','gp'].includes(c.k) && fm.awN) v = fm.n === fm.awN ? 'Awaiting costs' : v + '<small>costed rows</small>';
     return `<td class="${c.n ? 'n' : ''}">${v}</td>`;
   }).join('');
   const minW = COLS.length * (cust ? 104 : 92);

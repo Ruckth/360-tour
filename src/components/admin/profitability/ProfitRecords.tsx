@@ -188,25 +188,42 @@ export function Details({
       )}
       {detail.count ? (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm max-sm:block">
+          <table role="table" className="w-full text-left text-sm max-sm:block">
             <caption className="sr-only">{metricNames[metric]} supporting records</caption>
-            <thead className="border-b border-border bg-muted/40 text-xs text-muted-foreground max-sm:sr-only">
-              <tr>
+            <thead
+              role="rowgroup"
+              className="border-b border-border bg-muted/40 text-xs text-muted-foreground max-sm:sr-only"
+            >
+              <tr role="row">
                 {['Date', 'Reference', 'Service / customer', 'Category', 'Amount'].map((c) => (
-                  <th key={c} scope="col" className="whitespace-nowrap px-4 py-3 last:text-right">
+                  <th
+                    role="columnheader"
+                    key={c}
+                    scope="col"
+                    className="whitespace-nowrap px-4 py-3 last:text-right"
+                  >
                     {c}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border max-sm:block">
+            <tbody role="rowgroup" className="divide-y divide-border max-sm:block">
               {detail.rows.map((r) => (
-                <tr key={r.id} className="max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-1 max-sm:p-4">
-                  <td className="text-muted-foreground tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3">
+                <tr
+                  role="row"
+                  key={r.id}
+                  className="max-sm:grid max-sm:grid-cols-2 max-sm:gap-x-3 max-sm:gap-y-1 max-sm:p-4"
+                >
+                  <td
+                    role="cell"
+                    className="text-muted-foreground tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3"
+                  >
                     {r.day || '—'}
                   </td>
-                  <td className="break-words font-medium max-sm:text-right sm:px-4 sm:py-3">{r.ref}</td>
-                  <td className="break-words max-sm:col-span-2 sm:px-4 sm:py-3">
+                  <td role="cell" className="break-words font-medium max-sm:text-right sm:px-4 sm:py-3">
+                    {r.ref}
+                  </td>
+                  <td role="cell" className="break-words max-sm:col-span-2 sm:px-4 sm:py-3">
                     {r.service}
                     {r.costEntry && (
                       <button
@@ -232,12 +249,22 @@ export function Details({
                       <div className="text-xs text-muted-foreground">{r.customer}</div>
                     )}
                   </td>
-                  <td className="sm:px-4 sm:py-3">
+                  <td role="cell" className="sm:px-4 sm:py-3">
                     {r.category}
                     {r.basis && <span className="block text-xs text-muted-foreground">{r.basis}</span>}
                   </td>
-                  <td className="break-words text-right font-medium tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3">
-                    {r.amount === null ? '—' : thb(r.amount)}
+                  <td
+                    role="cell"
+                    className="break-words text-right font-medium tabular-nums sm:whitespace-nowrap sm:px-4 sm:py-3"
+                  >
+                    {r.amount === null ? (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span className="sr-only">Amount unavailable</span>
+                      </>
+                    ) : (
+                      thb(r.amount)
+                    )}
                   </td>
                 </tr>
               ))}

@@ -84,7 +84,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await page.getByRole('button', { name: 'Save cost schedule' }).click();
     await expect(card('Gross profit')).toContainText('฿500');
     await expect(cogs).toContainText('฿500');
-    await expect(cogs.getByRole('link')).toHaveCount(0);
+    await expect(cogs.getByRole('link', { name: /missing costs/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Finance inputs' }).click();
     await page.getByRole('button', { name: 'Review monthly accounts for 2024-08' }).click();
     await expect(page.getByLabel('Accounting month')).toHaveValue('2024-08');

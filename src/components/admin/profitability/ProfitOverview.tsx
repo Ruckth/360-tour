@@ -11,8 +11,13 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
       ? 'Awaiting monthly accounts'
       : null;
   const note: Record<ProfitMetric, string> = {
-    revenue: 'Delivered services and fees, after VAT and refunds',
-    gross: s.missingCount ? s.missingCount + ' rows awaiting costs' : 'After staff, materials and tools',
+    revenue: s.missingCount
+      ? thb(s.coveredRevenue) + ' with complete costs · ' + thb(s.revenue - s.coveredRevenue) + ' awaiting costs'
+      : 'Delivered services and fees, after VAT and refunds',
+    gross:
+      s.gross === null
+        ? 'Awaiting service costs'
+        : thb(s.coveredRevenue) + ' revenue less ' + thb(costTotal(s.costs)) + ' service COGS',
     net: narrowed
       ? 'Shared expenses apply to all services'
       : (financeCoverage ??
@@ -42,7 +47,13 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
         {metricNames[metric]}
         <ArrowUpRight aria-hidden="true" size={16} className="shrink-0 text-muted-foreground" />
       </div>
-      <div className="break-words text-2xl font-semibold tracking-tight tabular-nums">{money(s[metric])}</div>
+      <div
+        className={
+          'break-words font-semibold tracking-tight tabular-nums ' + (s[metric] === null ? 'text-lg' : 'text-2xl')
+        }
+      >
+        {money(s[metric])}
+      </div>
       <span className="text-xs leading-relaxed text-muted-foreground">
         {metric === 'gross' && s.gross !== null && s.missingCount > 0 && <b>Partial · </b>}
         {note[metric]}
@@ -55,12 +66,39 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
         {metricCard('revenue')}
         <div className={box + ' grid content-start gap-2 p-4'}>
           <h2 className="text-sm font-medium">Service COGS</h2>
-          <strong className="break-words text-2xl font-semibold tracking-tight tabular-nums">
+          <strong
+            className={
+              'break-words font-semibold tracking-tight tabular-nums ' +
+              (s.gross === null ? 'text-lg' : 'text-2xl')
+            }
+          >
             {money(s.gross === null ? null : costTotal(s.costs))}
           </strong>
-          <span className="text-xs leading-relaxed text-muted-foreground">
-            Staff, materials and tools{s.missingCount > 0 && s.gross !== null ? ' · partial total' : ''}
-          </span>
+          {s.count > 0 && s.gross !== null ? (
+            <dl className="text-xs" aria-label="Service COGS breakdown">
+              {(['staff', 'materials', 'tools'] as const).map((part) => (
+                <div key={part} className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <dt className="capitalize">{part}</dt>
+                  <dd>
+                    <Link
+                      href={href(true, {
+                        metric: 'gross',
+                        category: part[0].toUpperCase() + part.slice(1),
+                        additional: null,
+                      })}
+                      aria-label={'Review ' + part + ' costs'}
+                      className="inline-flex min-h-6 items-center font-medium tabular-nums underline decoration-muted-foreground/60 underline-offset-2"
+                    >
+                      {thb(s.costs[part])}
+                    </Link>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <span className="text-xs text-muted-foreground">Staff, materials and tools</span>
+          )}
+          {s.missingCount > 0 && s.gross !== null && <span className="text-xs font-medium">Partial total</span>}
           {s.missingCount > 0 && (
             <Link
               className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline"
@@ -82,19 +120,6 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
             {s.missingCount > 0 && ' · Cost totals include only records with complete costs'}
           </p>
         </header>
-        {s.count > 0 && s.gross !== null && (
-          <dl
-            className="grid grid-cols-3 gap-2 border-b border-border bg-muted/30 p-4 text-sm sm:px-5"
-            aria-label="Service COGS breakdown"
-          >
-            {(['staff', 'materials', 'tools'] as const).map((part) => (
-              <div key={part}>
-                <dt className="capitalize text-muted-foreground">{part}</dt>
-                <dd className="break-words font-semibold tabular-nums">{thb(s.costs[part])}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
         {!report.breakdown.length ? (
           <p className="p-5 text-sm">No delivered services, fees or refunds match these filters.</p>
         ) : (
@@ -139,7 +164,10 @@ export function Overview({ report, href, narrowed }: { report: Report; href: Hre
                     {(['staff', 'materials', 'tools'] as const).map((k) => (
                       <Link
                         key={k}
-                        href={url('gross', k[0].toUpperCase() + k.slice(1))}
+                        href={url(
+                          'gross',
+                          row.count === row.missingCount ? 'Awaiting cost' : k[0].toUpperCase() + k.slice(1),
+                        )}
                         className="grid gap-0.5 rounded-md bg-muted/50 px-3 py-2 hover:bg-muted"
                       >
                         <span className="capitalize text-muted-foreground">{k}</span>
