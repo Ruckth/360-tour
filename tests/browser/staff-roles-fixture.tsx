@@ -32,6 +32,7 @@ import "@/app.css";
  *   scenario=pending             checkout for a manager: two cashier requests waiting
  *   scenario=discounted          checkout: the spa line already carries a 15% discount (as after approval)
  *   scenario=paid                checkout: the spa order paid by cash, on its receipt
+ *   scenario=order-lookup        checkout: paid order #1043 is older than the first Paid page
  *   scenario=refund              checkout: Thai massage 60 + Foot spa 45 (฿1,800) paid by card, on its receipt
  *   scenario=refund-pending      the same, with a cashier's ฿300 refund request on the massage waiting
  *   attached=1                   refund scenarios: also Somchai's attached Thai massage 90 appointment
@@ -87,13 +88,33 @@ const useAccess = () => useSyncExternalStore((fn) => { accessListeners.add(fn); 
 const serverRules = params.has("serverLimit") ? { ...rules, discountLimitPercent: Number(params.get("serverLimit")) * 100 } : rules;
 // Refund receipts are rung up by the owner, then handed to whoever the page is for.
 const refundScenario = scenario.startsWith("refund");
-const backend = await createFixtureBackend({ staff: refundScenario ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
+const seedAsOwner = refundScenario || scenario === "order-lookup";
+const backend = await createFixtureBackend({ staff: seedAsOwner ? { role: "owner", email: EMAILS.owner, rules: serverRules } : { role, email: EMAILS[role], rules: serverRules } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 let spaLineId: Id<"orderLines"> | undefined;
 let spaOrderId: OrderId | undefined;
 
 async function seedCheckout(): Promise<{ orderId: OrderId | null; receipt: boolean }> {
   const actions = backend.useActions();
+  if (scenario === "order-lookup") {
+    const { orderId } = await actions.addItem({ item: service(1) });
+    await actions.settleOrder({ orderId, expectedRevision: 1, expectedDue: 120000, idempotencyKey: "browser-order-lookup", tenders: [{ method: "cash", amount: 120000 }] });
+    const now = Date.now();
+    const older = now - 2 * 86_400_000;
+    await backend.patchFixtureRow("orders", orderId, { paidAt: older, paymentEffectiveAt: older, updatedAt: older });
+    const paid = (await backend.fixtureRows("orders")).find((row) => row._id === orderId)!;
+    const { _id, _creationTime, ...fields } = paid;
+    void _id;
+    void _creationTime;
+    // These rows are only browsed. The actual target has a receipt and tender from settlement.
+    await backend.insertFixtureRows(Array.from({ length: 20 }, (_, i) => ({
+      alias: `lookup-newer-${i}`,
+      table: "orders" as const,
+      fields: { ...fields, orderNumber: 1044 + i, receiptNumber: 100 + i, paidAt: now, paymentEffectiveAt: now, updatedAt: now },
+    })));
+    await backend.setStaff({ role, email: EMAILS[role], rules: serverRules });
+    return { orderId: null, receipt: false };
+  }
   if (scenario === "spa" || scenario === "paid") {
     const { orderId, lineId } = await actions.addItem({ item: service(1) });
     spaLineId = lineId;

@@ -192,7 +192,7 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order number." : "Browse orders on every till, including paid receipts."}</DialogDescription>
+              <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order number." : "Find an order by number or browse by status."}</DialogDescription>
             </DialogHeader>
             {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
@@ -585,7 +585,7 @@ export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefin
       <InlineErrorBoundary message="Couldn't load orders. Check your connection and try again.">
         <OpenOrdersList currentId={currentId} onOpen={onOpen} />
       </InlineErrorBoundary>
-      <OrderNumberLookup onOpen={onOpen} />
+      <OrderNumberLookup cashier onOpen={onOpen} />
     </div>
   );
 }
@@ -637,8 +637,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
   );
 }
 
-/** Today's receipts (and any open order) by number. Older receipts read as not available. */
-function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
+function OrderNumberLookup({ cashier = false, onOpen }: { cashier?: boolean; onOpen: (orderId: OrderId) => void }) {
   const [text, setText] = useState("");
   const [number, setNumber] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -663,20 +662,20 @@ function OrderNumberLookup({ onOpen }: { onOpen: (orderId: OrderId) => void }) {
     setNumber(Number.isSafeInteger(value) && value > 0 ? value : null);
   }
   return (
-    <form onSubmit={submit} className="grid gap-2 border-t border-border pt-3">
+    <form onSubmit={submit} className={cn("grid gap-2", cashier && "border-t border-border pt-3")}>
       <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number</Label>
       <div className="flex gap-2">
         <Input id="order-lookup" inputMode="numeric" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043" />
         <Button type="submit" className="disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground" disabled={!text.trim()}>Go</Button>
       </div>
       {error ? <p id="order-lookup-error" role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {number !== null ? <InlineErrorBoundary resetKey={String(number)} retryLabel="Retry" message="Couldn’t find this order. Try again."><OrderLookupResult number={number} onOpen={onOpen} /></InlineErrorBoundary> : null}
+      {number !== null ? <InlineErrorBoundary resetKey={String(number)} retryLabel="Retry" message="Couldn’t find this order. Try again."><OrderLookupResult number={number} cashier={cashier} onOpen={onOpen} /></InlineErrorBoundary> : null}
     </form>
   );
 }
 
 /** Query failures stay inside the result, preserving the number typed in the form. */
-function OrderLookupResult({ number, onOpen }: { number: number; onOpen: (id: OrderId) => void }) {
+function OrderLookupResult({ number, cashier, onOpen }: { number: number; cashier: boolean; onOpen: (id: OrderId) => void }) {
   const found = useCheckoutBackend().useFindOrder(number);
   const opened = useRef<number | null>(null);
   useEffect(() => {
@@ -685,7 +684,7 @@ function OrderLookupResult({ number, onOpen }: { number: number; onOpen: (id: Or
     onOpen(found);
   }, [number, found, onOpen]);
   if (found === undefined) return <Spinner label="Finding order" />;
-  if (found === null) return <p role="status" className="text-sm text-pretty text-muted-foreground">Not available. Check the number or pick an open order above.</p>;
+  if (found === null) return <p role="status" className="text-sm text-pretty text-muted-foreground">{cashier ? "Not available. Check the number or pick an open order above." : "No order found. Check the number or browse by status."}</p>;
   return null;
 }
 
@@ -705,6 +704,7 @@ export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { cur
       <ToggleGroup variant="segmented" tone="subtle" value={filter} onValueChange={setFilter} aria-label="Show orders" className="flex-wrap justify-self-start">
         {FILTERS.map((f) => <ToggleGroupItem key={f.value} value={f.value} >{f.label}</ToggleGroupItem>)}
       </ToggleGroup>
+      <OrderNumberLookup onOpen={onOpen} />
       {filter === "discarded" ? <p className="text-xs text-muted-foreground">Restore… checks for rows now on another order first.</p> : null}
       <InlineErrorBoundary key={filter} message="Couldn't load orders. Check your connection and try again.">
         <OrdersList filter={filter} currentId={currentId} onOpen={onOpen} onRestore={setRestoring} />
