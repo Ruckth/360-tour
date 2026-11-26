@@ -3,6 +3,7 @@
 import { satangToBaht } from 'convex/shared/money';
 
 import dynamic from "@/platform/dynamic";
+import Link from "@/platform/link";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useState } from "react";
@@ -128,7 +129,13 @@ export function VillaCard({
 
       <div className="p-5 md:p-7">
         <h3 className="font-serif text-xl font-semibold text-card-foreground md:text-2xl">
-          {property.name}
+          <Link
+            href={localizeHref(`/rooms/${property.id}`, locale)}
+            className="inline-flex min-h-11 items-center gap-1 rounded-sm underline decoration-border underline-offset-4 hover:decoration-current focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            {property.name}
+            <ChevronRight className="size-4 shrink-0" aria-hidden="true" />
+          </Link>
         </h3>
         {property.rating ? (
           <div className="mt-1.5">
@@ -163,25 +170,25 @@ export function VillaCard({
           </Badge>
         </div>
 
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+        <div className="mt-5 flex flex-wrap gap-2">
+          <ButtonLink
+            href={localizeHref(`/booking?unit=${encodeURIComponent(property.id)}`, locale)}
+            className="min-h-11 flex-1"
+          >
+            {t("bookDirect")}
+          </ButtonLink>
           <Button
             type="button"
             onClick={() => setShowTour(true)}
             onFocus={preloadTourViewer}
             onPointerEnter={preloadTourViewer}
             onTouchStart={preloadTourViewer}
-            className="w-full sm:flex-1"
+            variant="outline"
+            className="min-h-11 flex-1"
           >
             <Globe2 className="h-4 w-4" />
             {t("explore360")}
           </Button>
-          <ButtonLink
-            href={localizeHref(`/rooms/${property.id}`, locale)}
-            variant="outline"
-            className="w-full sm:flex-1"
-          >
-            {t("viewDetails")}
-          </ButtonLink>
         </div>
       </div>
       {showTour ? <TourViewer property={property} onClose={() => setShowTour(false)} /> : null}
