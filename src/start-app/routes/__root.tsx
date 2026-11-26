@@ -18,13 +18,21 @@ const loadShell = createServerFn({ method: "GET" })
     return value;
   })
   .handler(async ({ data }) => {
-    const { getPublicMessages, getLocalizedResort } = await import("@/lib/i18n/server-content");
-    const { siteUrl } = await import("@/lib/site-url");
-    const { hasStartFeaturedReviews } = await import("../villas.server");
+    const [content, { siteUrl }] = await Promise.all([
+      import("@/lib/i18n/server-content"),
+      import("@/lib/site-url"),
+    ]);
+    let hasReviews = false;
+    if (data.guest) {
+      const [{ hasStartFeaturedReviews }, { getRequest }] = await Promise.all([
+        import("../villas.server"),
+        import("@tanstack/react-start/server"),
+      ]);
+      hasReviews = await hasStartFeaturedReviews(getRequest());
+    }
     return {
-      locale: data.locale, guest: data.guest, messages: getPublicMessages(data.locale),
-      resort: getLocalizedResort(data.locale).name, site: siteUrl(),
-      hasReviews: data.guest && await hasStartFeaturedReviews(),
+      locale: data.locale, guest: data.guest, messages: content.getPublicMessages(data.locale),
+      resort: content.getLocalizedResort(data.locale).name, site: siteUrl(), hasReviews,
     };
   });
 

@@ -49,18 +49,15 @@ export type AdminHistoricalPolicy = { kind: 'admin_historical'; reason?: string 
 
 /** Retrospective evidence is not today's roster. Overlaps need a deliberate, logged explanation. */
 export async function historicalWarnings(ctx: ReadCtx, staff: Doc<'staff'>, service: Doc<'services'>, start: number, blockedUntil: number, ignoreAppointmentId?: Id<'appointments'>) {
+	const { days, busy, appointmentOverlap } = await staffAvailability(ctx, staff, start, blockedUntil, ignoreAppointmentId);
 	const warnings: string[] = [];
-	if ((await scheduleDays(ctx, staff, start, blockedUntil)).some(day => !day.patternHistoryKnown)) warnings.push('The weekly roster for this earlier date is unknown; the earliest observed pattern is shown. Verify the historical schedule.');
+	if (days.some(day => !day.patternHistoryKnown)) warnings.push('The weekly roster for this earlier date is unknown; the earliest observed pattern is shown. Verify the historical schedule.');
 	if (staff.status !== 'active') warnings.push('Staff member is archived.');
 	if (service.status !== 'active') warnings.push('Service is archived.');
 	if (!service.staffIds.includes(staff._id)) warnings.push('Current service assignments do not confirm this historical assignment; verify who actually performed the work.');
-	if ((await staffBusyRanges(ctx, staff, start, blockedUntil, ignoreAppointmentId)).length) warnings.push('The current roster, breaks, time off or appointment records do not show this entire time as available. These are not proof of the historical roster.');
-	let overlap = false;
-	for await (const row of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', q => q.eq('staffId', staff._id).gte('start', start - APPOINTMENT_LOOKBACK).lt('start', blockedUntil)))) {
-		if (row._id !== ignoreAppointmentId && blocksTime(row) && row.blockedUntil > start) overlap = true;
-	}
-	if (overlap) warnings.push('Another appointment overlaps this historical time. Explain the correction before saving.');
-	return { warnings, needsReason: overlap };
+	if (busy.length) warnings.push('The current roster, breaks, time off or appointment records do not show this entire time as available. These are not proof of the historical roster.');
+	if (appointmentOverlap) warnings.push('Another appointment overlaps this historical time. Explain the correction before saving.');
+	return { warnings, needsReason: appointmentOverlap };
 }
 
 /** Roster overrides for one person, keyed by date, in [firstDate, lastDate]. */
@@ -80,8 +77,10 @@ export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: numb
 	if (to <= from) return days;
 	const first = resortLocalParts(from).date;
 	const last = resortLocalParts(to - 1).date;
-	const overrides = await staffDayOverrides(ctx, staff._id, first, last);
-	const patterns = await patternsForRange(ctx, [staff], first, last);
+	const [overrides, patterns] = await Promise.all([
+		staffDayOverrides(ctx, staff._id, first, last),
+		patternsForRange(ctx, [staff], first, last)
+	]);
 	const resolve = patterns.get(staff._id)!;
 	for (let date = first; date <= last; date = nextLocalDate(date)) {
 		const evidence = resolve(date);
@@ -91,18 +90,22 @@ export async function scheduleDays(ctx: ReadCtx, staff: Doc<'staff'>, from: numb
 	return days;
 }
 
-/** All unavailable time within [from, to), including the gaps around working hours. */
-export async function staffBusyRanges(
+/** Gather availability and assignment evidence in one pass over each staff member's schedule. */
+async function staffAvailability(
 		ctx: ReadCtx,
 		staff: Doc<'staff'>,
 		from: number,
 		to: number,
-		ignoreAppointmentId?: Id<'appointments'>
-): Promise<Range[]> {
-	if (to <= from) return [];
+		ignoreAppointmentId?: Id<'appointments'>,
+		countStartsBefore = from
+) {
+	const days = await scheduleDays(ctx, staff, from, to);
 	const busy: Range[] = [];
+	let appointmentCount = 0;
+	let appointmentOverlap = false;
+	if (to <= from) return { days, busy, appointmentCount, appointmentOverlap };
 	// A roster override replaces the weekly pattern for its date.
-	for (const { date, plan } of await scheduleDays(ctx, staff, from, to)) {
+	for (const { date, plan } of days) {
 		for (const [start, end] of planBusy(date, plan)) {
 			if (start < to && end > from) busy.push([Math.max(start, from), Math.min(end, to)]);
 		}
@@ -116,11 +119,19 @@ export async function staffBusyRanges(
 	for await (const row of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
 		q.eq('staffId', staff._id).gte('start', from - APPOINTMENT_LOOKBACK).lt('start', to)
 	))) {
-		if (row._id !== ignoreAppointmentId && row.status !== 'cancelled' && row.status !== 'no_show' && row.blockedUntil > from) {
+		if (row._id === ignoreAppointmentId || !blocksTime(row)) continue;
+		if (row.start >= from && row.start < countStartsBefore) appointmentCount++;
+		if (row.blockedUntil > from) {
+			appointmentOverlap = true;
 			busy.push([Math.max(row.start, from), Math.min(row.blockedUntil, to)]);
 		}
 	}
-	return mergeRanges(busy);
+	return { days, busy: mergeRanges(busy), appointmentCount, appointmentOverlap };
+}
+
+/** All unavailable time within [from, to), including the gaps around working hours. */
+export async function staffBusyRanges(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number, ignoreAppointmentId?: Id<'appointments'>) {
+	return (await staffAvailability(ctx, staff, from, to, ignoreAppointmentId)).busy;
 }
 
 export async function assertStaffFree(
@@ -135,23 +146,33 @@ export async function assertStaffFree(
 	}
 }
 
-/** Future 15-minute starts on a date, each with the people free for `occupyMs` from then. */
-export async function openStarts(
+/** Future 15-minute starts and the same day's roster and assignment counts. */
+export async function serviceDayAvailability(
 		ctx: ReadCtx,
 		staff: Doc<'staff'>[],
-		date: string,
+		[dayStart, dayEnd]: Range,
 		occupyMs: number,
 		ignoreAppointmentId?: Id<'appointments'>
-): Promise<Slot[]> {
-	const [dayStart, dayEnd] = localDayRange(date);
-	const busy = await Promise.all(staff.map((person) => staffBusyRanges(ctx, person, dayStart, dayEnd + DAY, ignoreAppointmentId)));
+) {
+	const interval = 15 * MINUTE;
+	// Only read into the next day as far as the final possible start could occupy.
+	const end = Math.max(dayEnd, dayEnd - interval + occupyMs);
+	const availability = await Promise.all(staff.map(person => staffAvailability(ctx, person, dayStart, end, ignoreAppointmentId, dayEnd)));
 	const slots: Slot[] = [];
-	for (let start = dayStart; start < dayEnd; start += 15 * MINUTE) {
-		if (start < Date.now()) continue;
-		const staffIds = staff.filter((_, i) => !busy[i].some(([a, b]) => start < b && start + occupyMs > a)).map((person) => person._id);
+	const now = Date.now();
+	for (let start = dayStart; start < dayEnd; start += interval) {
+		if (start < now) continue;
+		const staffIds = staff.filter((_, i) => !availability[i].busy.some(([a, b]) => start < b && start + occupyMs > a)).map(person => person._id);
 		if (staffIds.length) slots.push({ start, staffIds });
 	}
-	return slots;
+	const appointmentCounts = new Map(staff.map((person, i) => [person._id, availability[i].appointmentCount]));
+	const rostered = availability.some(({ days }) => days[0]?.plan.shifts.length);
+	return { slots, appointmentCounts, rostered };
+}
+
+/** Future 15-minute starts on a date, each with the people free for `occupyMs` from then. */
+export async function openStarts(ctx: ReadCtx, staff: Doc<'staff'>[], date: string, occupyMs: number, ignoreAppointmentId?: Id<'appointments'>) {
+	return (await serviceDayAvailability(ctx, staff, localDayRange(date), occupyMs, ignoreAppointmentId)).slots;
 }
 
 export async function activeServiceStaff(

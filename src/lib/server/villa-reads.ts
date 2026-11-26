@@ -349,8 +349,6 @@ export function createVillaReader(source: VillaSource, options: VillaReaderOptio
     getSlugs,
     getVilla,
     getFeaturedReviews,
-    /** Whether the home page shows its reviews section (same source). */
-    hasFeaturedReviews: async () => (await getFeaturedReviews()).length > 0,
     /** Per-key ordering records (bounded by MAX_ORDERED_KEYS). For bounded-state tests. */
     orderedKeys: () => applied.size,
   };

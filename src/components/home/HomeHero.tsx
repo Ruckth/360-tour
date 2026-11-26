@@ -5,6 +5,7 @@ import Link from "@/platform/link";
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
+import { preload } from "react-dom";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
@@ -51,7 +52,6 @@ export function HomeHero() {
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const resort = getLocalizedResort(usePublicMessages());
-  const [loaded, setLoaded] = useState(false);
   const [desktopStep, setDesktopStep] = useState(0);
   const [videosEnabled, setVideosEnabled] = useState(false);
   // False for reduced-motion, Save-Data, or a slow connection → poster only. Reduced motion is
@@ -63,6 +63,9 @@ export function HomeHero() {
   const sectionRef = useRef<HTMLElement>(null);
   const video0 = useRef<HTMLVideoElement>(null);
   const video1 = useRef<HTMLVideoElement>(null);
+
+  // The first poster is visible on the server-rendered page, before the video can play.
+  preload(desktopImages.left, { as: "image", fetchPriority: "high" });
 
   // The active video only gets a real source; the inactive one stays at preload="none".
   const playVideo = videoAllowed && videosEnabled;
@@ -93,14 +96,10 @@ export function HomeHero() {
   }, [video1Active]);
 
   useEffect(() => {
-    const loadTimer = window.setTimeout(() => setLoaded(true), 100);
-    return () => window.clearTimeout(loadTimer);
-  }, []);
-
-  useEffect(() => {
+    if (!onscreen || videosEnabled) return;
     const timer = window.setTimeout(() => setVideosEnabled(true), 900);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [onscreen, videosEnabled]);
 
   // Pause the hero videos when the section scrolls offscreen (cheap, best-effort).
   useEffect(() => {
@@ -116,7 +115,7 @@ export function HomeHero() {
 
   // Drive the step cycle. With video, each clip's `onEnded` advances it; the step-1 image pause
   // uses a timer. Without video (poster only), timers advance through the poster frames so the
-  // hero still animates its cross-fades without downloading ~8.48 MiB of video.
+  // hero still animates its cross-fades without downloading video.
   useEffect(() => {
     if (playVideo) {
       const active = desktopStep === 0 ? video0.current : desktopStep === 2 ? video1.current : null;
@@ -126,6 +125,7 @@ export function HomeHero() {
       }
     }
 
+    if (!onscreen) return;
     if (playVideo && desktopStep !== 1) return;
     // Reduced motion: keep the first poster still instead of cycling cross-fades.
     if (reducedMotion) return;
@@ -145,7 +145,7 @@ export function HomeHero() {
       data-hero-motion={reducedMotion ? "reduced" : "full"}
       className="relative h-[100svh] overflow-hidden md:h-screen md:min-h-[520px]"
     >
-      <div className={cn("absolute inset-0 transition-opacity duration-1000 motion-reduce:transition-none", loaded ? "opacity-100" : "opacity-0")}>
+      <div className="absolute inset-0">
         <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 0 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
           <video
             ref={video0}
@@ -156,7 +156,7 @@ export function HomeHero() {
             onEnded={() => setDesktopStep(1)}
             className="h-full w-full object-cover"
           >
-            {video0Active ? <source src="/videos/hero-left.mp4" type="video/mp4" /> : null}
+            {video0Active ? <source src="/videos/hero-left-v2.mp4" type="video/mp4" /> : null}
           </video>
         </div>
         <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 1 ? "z-[1] opacity-100" : "z-0 opacity-0")}>
@@ -191,7 +191,7 @@ export function HomeHero() {
             onEnded={() => setDesktopStep(0)}
             className="h-full w-full object-cover"
           >
-            {video1Active ? <source src="/videos/hero-right.mp4" type="video/mp4" /> : null}
+            {video1Active ? <source src="/videos/hero-right-v2.mp4" type="video/mp4" /> : null}
           </video>
         </div>
       </div>

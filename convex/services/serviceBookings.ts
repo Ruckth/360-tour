@@ -8,8 +8,8 @@ import { bookingsByPhone } from '../bookings/model';
 import { assertChatWriteAllowed } from '../messaging/model';
 import { assertSameProposal } from '../shared/chatWriteGuard';
 import { enforceRateLimit } from '../messaging/model';
-import { SLOT_CONFLICT, activeServiceStaff, assertAppointmentStart, createAppointmentRecord, openStarts, serviceRostered, type Slot } from './private/serviceSlots';
-import { localDateTimeUtc } from '../shared/schedule';
+import { SLOT_CONFLICT, activeServiceStaff, assertAppointmentStart, createAppointmentRecord, openStarts, serviceDayAvailability, serviceRostered, type Slot } from './private/serviceSlots';
+import { localDateTimeUtc, localDayRange } from '../shared/schedule';
 import { resortLocalParts } from '../shared/time';
 import { assertValidIsoDate } from '../shared/validation';
 import { getEffectiveSettings } from '../settings/model';
@@ -58,10 +58,10 @@ export const checkServiceAvailability = internalQuery({
 		const { option } = choice;
 		assertValidIsoDate(args.date, 'Date');
 		const staff = await activeServiceStaff(ctx, service);
-		const slots = await openStarts(ctx, staff, args.date, (option.durationMin + service.bufferMin) * MINUTE);
+		const { slots, rostered } = await serviceDayAvailability(ctx, staff, localDayRange(args.date), (option.durationMin + service.bufferMin) * MINUTE);
 		const openTimes = slots.map((slot) => resortLocalParts(slot.start).time);
 		// Nobody rostered yet is not the same as fully booked.
-		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) {
+		if (!slots.length && !rostered) {
 			return { service: service.name, date: args.date, ...(args.time === undefined ? {} : { time: args.time, available: false, alternatives: [] }), openTimes, scheduled: false, note: NOT_SCHEDULED };
 		}
 		if (args.time === undefined) return { service: service.name, date: args.date, openTimes };
@@ -118,10 +118,15 @@ async function prepareQuote(
 	const staff = await activeServiceStaff(ctx, service);
 	const requestedName = args.staffPreference?.trim();
 	const preferred = requestedName ? staff.find((person) => firstName(person.name).toLowerCase() === requestedName.toLowerCase()) : undefined;
-	const slots = await openStarts(ctx, preferred ? [preferred] : staff, args.date, (option.durationMin + service.bufferMin) * MINUTE);
+	const { slots, rostered } = await serviceDayAvailability(ctx, preferred ? [preferred] : staff, localDayRange(args.date), (option.durationMin + service.bufferMin) * MINUTE);
 	if (!slots.some((slot) => slot.start === start)) {
 		await ctx.db.patch(args.sessionId, { pendingServiceQuote: undefined });
-		if (!slots.length && !(await serviceRostered(ctx, staff, args.date))) return { error: NOT_SCHEDULED, alternatives: [] };
+		if (!slots.length && !rostered) {
+			// A preferred therapist can be off even when another therapist is rostered.
+			if (!preferred || !(await serviceRostered(ctx, staff.filter(person => person._id !== preferred._id), args.date))) {
+				return { error: NOT_SCHEDULED, alternatives: [] };
+			}
+		}
 		return { error: SLOT_CONFLICT, alternatives: nearestTimes(slots, start) };
 	}
 	const now = Date.now();
