@@ -314,11 +314,32 @@ describe("Start villa reads", () => {
         : { page: ["a"], continueCursor: "next", isDone: false };
     });
     expect(await start.getStartVillaSlugs()).toEqual(["a", "b"]);
-    expect(await start.hasStartFeaturedReviews()).toBe(false);
+    expect(await start.hasStartFeaturedReviews(new Request(URL))).toBe(false);
     await settle();
     expect(await start.getStartVillaSlugs()).toEqual(["a", "b"]);
-    expect(await start.getStartFeaturedReviews()).toEqual([]);
+    expect(await start.getStartFeaturedReviews(new Request(URL))).toEqual([]);
     expect(query).toHaveBeenCalledTimes(3);
+  });
+
+  it("shares the warm review cache lookup between loaders for one request only", async () => {
+    const runtime = createBoundedMemoryCache();
+    const get = vi.spyOn(runtime, "get");
+    vercel.getCache.mockReturnValue(runtime);
+    query.mockResolvedValue([]);
+    await start.getStartFeaturedReviews(new Request(URL));
+    await settle();
+
+    get.mockClear();
+    const request = new Request(URL);
+    await expect(Promise.all([
+      start.hasStartFeaturedReviews(request),
+      start.getStartFeaturedReviews(request),
+    ])).resolves.toEqual([false, []]);
+    expect(get).toHaveBeenCalledTimes(3);
+
+    await start.getStartFeaturedReviews(new Request(URL));
+    expect(get).toHaveBeenCalledTimes(6);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 
   it("uses a bounded local cache off Vercel and requires a configured backend", async () => {

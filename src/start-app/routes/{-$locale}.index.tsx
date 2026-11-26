@@ -9,13 +9,13 @@ export const loadStartHomeServerFn = createServerFn({ method: "GET" })
   .validator(validateGuestLocaleInput)
   .handler(async ({ data }) => {
     // Dynamic imports keep Convex reads and response helpers on the server.
-    const [villas, { setResponseHeader, setResponseStatus }] = await Promise.all([
+    const [villas, { getRequest, setResponseHeader, setResponseStatus }] = await Promise.all([
       import("../villas.server"),
       import("@tanstack/react-start/server"),
     ]);
     return loadStartHomeData(data.locale, {
       getCatalog: villas.getStartVillaCatalog,
-      getFeaturedReviews: villas.getStartFeaturedReviews,
+      getFeaturedReviews: () => villas.getStartFeaturedReviews(getRequest()),
       isVillaUnavailableError: (error): error is InstanceType<typeof villas.VillaUnavailableError> =>
         error instanceof villas.VillaUnavailableError,
       setResponseHeader,

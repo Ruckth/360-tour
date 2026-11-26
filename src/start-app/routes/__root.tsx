@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { IntlProvider } from "use-intl";
 import { Providers } from "@/components/global/Providers";
 import { PublicSiteShell, SiteShell } from "@/components/global/SiteShell";
-import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
+import { defaultLocale, isLocale, stripLocalePrefix, type Locale } from "@/i18n/routing";
 import { bypassesI18n } from "@/lib/i18n-exempt";
 import { themeInitScript } from "@/lib/theme";
 import { GLOBAL_NOT_FOUND_MESSAGE, withRootNotFoundHead } from "../not-found";
@@ -13,24 +13,35 @@ import { pathLocale } from "../request-locale";
 import cssUrl from "../start.css?url";
 
 const loadShell = createServerFn({ method: "GET" })
-  .validator((value: { locale: Locale; guest: boolean }) => {
-    if (!value || !isLocale(value.locale) || typeof value.guest !== "boolean") throw new Error("Invalid shell request");
+  .validator((value: { locale: Locale; guest: boolean; showReviewsLink: boolean }) => {
+    if (!value || !isLocale(value.locale) || typeof value.guest !== "boolean" || typeof value.showReviewsLink !== "boolean") {
+      throw new Error("Invalid shell request");
+    }
     return value;
   })
   .handler(async ({ data }) => {
-    const { getPublicMessages, getLocalizedResort } = await import("@/lib/i18n/server-content");
-    const { siteUrl } = await import("@/lib/site-url");
-    const { hasStartFeaturedReviews } = await import("../villas.server");
+    const [content, { siteUrl }] = await Promise.all([
+      import("@/lib/i18n/server-content"),
+      import("@/lib/site-url"),
+    ]);
+    let hasReviews = false;
+    if (data.guest && data.showReviewsLink) {
+      const [{ hasStartFeaturedReviews }, { getRequest }] = await Promise.all([
+        import("../villas.server"),
+        import("@tanstack/react-start/server"),
+      ]);
+      hasReviews = await hasStartFeaturedReviews(getRequest());
+    }
     return {
-      locale: data.locale, guest: data.guest, messages: getPublicMessages(data.locale),
-      resort: getLocalizedResort(data.locale).name, site: siteUrl(),
-      hasReviews: data.guest && await hasStartFeaturedReviews(),
+      locale: data.locale, guest: data.guest, messages: content.getPublicMessages(data.locale),
+      resort: content.getLocalizedResort(data.locale).name, site: siteUrl(), hasReviews,
     };
   });
 
 export const Route = createRootRoute({
   loader: ({ location }) => loadShell({ data: {
     locale: pathLocale(location.pathname), guest: !bypassesI18n(location.pathname),
+    showReviewsLink: stripLocalePrefix(location.pathname) !== "/chat",
   } }),
   head: ({ loaderData, match }) => {
     const seo = loaderData?.messages.SEO;

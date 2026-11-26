@@ -131,8 +131,19 @@ export function villaCacheHeader({ cache: state, recovery }: StartVillaRead) {
 export const getStartVillaCatalog = (locale: string): Promise<VillaCatalog> => reader.getCatalog(locale);
 /** Complete paged sitemap inventory; a failure retains only the last complete list. */
 export const getStartVillaSlugs = (): Promise<string[]> => reader.getSlugs();
-export const getStartFeaturedReviews = (): Promise<Review[]> => reader.getFeaturedReviews();
-export const hasStartFeaturedReviews = (): Promise<boolean> => reader.hasFeaturedReviews();
+// The root and home loaders both need reviews during the same HTML request.
+const featuredReviewsByRequest = new WeakMap<Request, Promise<Review[]>>();
+export function getStartFeaturedReviews(request: Request): Promise<Review[]> {
+  const pending = featuredReviewsByRequest.get(request);
+  if (pending) return pending;
+  const reviews = reader.getFeaturedReviews();
+  featuredReviewsByRequest.set(request, reviews);
+  return reviews;
+}
+
+export async function hasStartFeaturedReviews(request: Request): Promise<boolean> {
+  return (await getStartFeaturedReviews(request)).length > 0;
+}
 
 /**
  * Trusted server callers only (after authenticating the request): expire one villa's cached

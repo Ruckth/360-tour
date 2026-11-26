@@ -4,9 +4,20 @@ const baseURL = process.env.E2E_BASE_URL;
 const ci = Boolean(process.env.CI);
 const setup = /auth\.setup\.ts$/;
 const desktop = { ...devices["Desktop Chrome"] };
-// These specs use seeded inventory or their own browser/guest state. A new spec
-// stays in the serial project until its Clerk and Convex usage has been checked.
-const anonymousSpecs = /\/(chat-launcher|hero-reduced-motion|home-money|service-catalog|tour-loading|villa-tour)\.spec\.ts$/;
+// These specs use seeded inventory or their own browser/guest state. The chat
+// transcript tests stay serial because their fixtures sign in through Clerk.
+const anonymousSpecs = [
+  "admin-chat",
+  "chat-launcher",
+  "chat-server",
+  "hero-reduced-motion",
+  "home-money",
+  "home-quick-booking",
+  "public-chat",
+  "service-catalog",
+  "tour-loading",
+  "villa-tour",
+].map((name) => `**/${name}.spec.ts`);
 
 export default defineConfig({
   outputDir: "test-results/integration",
@@ -33,7 +44,7 @@ export default defineConfig({
     {
       name: "chromium",
       dependencies: ["clerk-setup"],
-      testIgnore: ci ? [setup, anonymousSpecs] : [setup],
+      testIgnore: ci ? [setup, ...anonymousSpecs] : [setup],
       use: desktop,
       // CI signs into the shared Clerk test tenant, which other runners also use.
       workers: ci ? 1 : undefined,

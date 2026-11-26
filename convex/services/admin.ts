@@ -5,7 +5,7 @@ import { adminQuery } from '../auth/model';
 import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
 import { findServiceOption } from './private/serviceCatalog';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, openStarts, scheduleDays, staffBusyRanges } from './private/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, serviceDayAvailability, scheduleDays, staffBusyRanges } from './private/serviceSlots';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
 import { serviceOptions } from '../shared/serviceOptions';
 import { resortLocalParts } from '../shared/time';
@@ -132,7 +132,7 @@ export const findOpenSlots = adminQuery({
 		if (!service) return [];
 		const option = findServiceOption(service, args.durationMin);
 		if (!option) return [];
-		const [dayStart, dayEnd] = localDayRange(args.date);
+		const day = localDayRange(args.date);
 		const occupyMs = (option.durationMin + service.bufferMin) * MINUTE;
 		const staffId = args.staffId;
 		if (staffId && args.date <= resortLocalParts(Date.now()).date) {
@@ -146,26 +146,11 @@ export const findOpenSlots = adminQuery({
 		}
 		if (service.status !== 'active') return [];
 		const staff = await activeServiceStaff(ctx, service, staffId);
-		const slots = await openStarts(ctx, staff, args.date, occupyMs);
+		const { slots, appointmentCounts } = await serviceDayAvailability(ctx, staff, day, occupyMs);
 		if (staffId) return slots.map(slot => ({ ...slot, autoStaffId: staffId }));
-		const ranked = new Map<Id<'staff'>, { name: string; count: number }>();
-		const eligible = new Set(slots.flatMap((slot) => slot.staffIds));
-		for (const person of staff) {
-			const id = person._id;
-			if (!eligible.has(id)) continue;
-			let count = 0;
-			for await (const appointment of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
-				q.eq('staffId', id).gte('start', dayStart).lt('start', dayEnd)
-			))) {
-				if (blocksTime(appointment)) count++;
-			}
-			ranked.set(id, { name: person.name, count });
-		}
-		const order = (a: Id<'staff'>, b: Id<'staff'>) => {
-			const x = ranked.get(a)!;
-			const y = ranked.get(b)!;
-			return x.count - y.count || x.name.localeCompare(y.name) || a.localeCompare(b);
-		};
+		const names = new Map(staff.map(person => [person._id, person.name]));
+		const order = (a: Id<'staff'>, b: Id<'staff'>) => appointmentCounts.get(a)! - appointmentCounts.get(b)!
+			|| names.get(a)!.localeCompare(names.get(b)!) || a.localeCompare(b);
 		return slots.map((slot) => ({ ...slot, autoStaffId: [...slot.staffIds].sort(order)[0] }));
 	}
 });

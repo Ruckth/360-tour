@@ -90,6 +90,8 @@ export default defineConfig(({ mode }) => {
         routeRules: {
           "/display": { headers: { "referrer-policy": "no-referrer", "cache-control": "no-store", "x-robots-tag": "noindex" } },
           "/garden-image.jpg": { redirect: { to: "/garden-image.webp", status: 308 } },
+          "/videos/hero-left.mp4": { redirect: { to: "/videos/hero-left-v2.mp4", status: 308 } },
+          "/videos/hero-right.mp4": { redirect: { to: "/videos/hero-right-v2.mp4", status: 308 } },
           ...Object.fromEntries(["/assets/**", "/videos/**", "/fonts/**", "/contact/**"].map((pattern) =>
             [pattern, { headers: { "cache-control": "public, max-age=31536000, immutable" } }])),
         },

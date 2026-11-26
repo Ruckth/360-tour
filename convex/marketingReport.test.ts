@@ -210,6 +210,29 @@ describe('report attribution and limits', () => {
 		await expect(s.t.query(api.marketing.report.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cash' })).rejects.toThrow('authenticated');
 	});
 
+	it('reads a full report’s daily session rollups in one ordered range', async () => {
+		const s = await setup();
+		const args = { from: '2026-08-10', to: '2026-11-09', basis: 'cash' as const };
+		await s.t.run(async ctx => {
+			for (const date of [args.to, '2026-08-09', '2026-10-01', '2026-11-10', args.from]) {
+				await ctx.db.insert('marketingSessionDays', { day: date, linkId: s.linkId, campaignId: s.campaignId, count: 2 });
+			}
+			await ctx.db.insert('marketingSessionDays', { day: args.from, count: 1 });
+		});
+		const { report, scans } = await s.t.run(async ctx => {
+			const queries = vi.spyOn(ctx.db, 'query');
+			const report = await readMarketingReport(ctx, args);
+			const scans = queries.mock.calls.filter(([table]) => table === 'marketingSessionDays').length;
+			queries.mockRestore();
+			return { report, scans };
+		});
+		expect(report.truncated).toBe(false);
+		expect(report.sessions.map(({ day, count }) => [day, count])).toEqual([
+			[args.from, 1], [args.from, 2], ['2026-10-01', 2], [args.to, 2]
+		]);
+		expect(scans).toBe(1);
+	});
+
 	it('excludes foreign stays and orders once per sale', async () => {
 		const s = await setup();
 		const id = await s.booking({ currency: 'USD', paymentStatus: 'paid', paidAt: now });

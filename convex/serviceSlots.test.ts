@@ -2,11 +2,15 @@
 
 import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
+import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
+import type { QueryCtx } from './_generated/server';
+import { findOpenSlots } from './services/admin';
 import { localDateTimeUtc } from './services/model';
 import { resortLocalParts } from './shared/time';
 import schema from './schema';
+import { insertFixture } from './testing/completeFixture.test-support';
 
 const modules = import.meta.glob('./**/*.ts');
 const date = '2026-09-25';
@@ -14,7 +18,7 @@ const at = (time: string) => localDateTimeUtc(date, time);
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
 async function setup() {
-	const t = convexTest(schema, modules);
+	const t = convexTest({ schema, modules, transactionLimits: {} });
 	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const staffIds = [];
 	for (const name of ['Mali', 'Nok']) {
@@ -86,6 +90,41 @@ describe('service slots', () => {
 		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: second.appointmentId, expectedRevision: 0 });
 		const fourth = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('15:00') });
 		expect(fourth.staffId).toBe(staffIds[1]); // fewer non-cancelled appointments
+	});
+
+	it('ranks staff from the same appointment scan and skips unrelated next-day work', async () => {
+		const { t, admin, staffIds, serviceId } = await setup();
+		await t.run(async ctx => {
+			const bookedStart = at('09:00');
+			const nextMorning = localDateTimeUtc('2026-09-26', '09:00');
+			const starts = [bookedStart, ...Array.from({ length: 12 }, (_, i) => nextMorning + 30 * i * 60_000)];
+			for (const start of starts) {
+				for (const staffId of start === bookedStart ? staffIds.slice(0, 1) : staffIds) {
+					await insertFixture(ctx, 'appointments', {
+						staffId, serviceId, start, end: start + 15 * 60_000, blockedUntil: start + 30 * 60_000,
+						guestName: 'Guest', guestPhone: '', source: 'admin', status: 'booked', paymentStatus: 'unpaid',
+						price: 200000, currency: 'THB', confirmationCode: `SVC-${staffId}-${start}`, accessToken: 'fixture', createdAt: Date.now()
+					});
+				}
+			}
+		});
+		const endpoint = api.services.admin.findOpenSlots;
+		const readSlots: (ctx: QueryCtx, args: FunctionArgs<typeof endpoint>) => Promise<FunctionReturnType<typeof endpoint>> = Reflect.get(findOpenSlots, '_handler');
+		const { slots, documents, bytes, queries } = await admin.run(async ctx => {
+			const before = await ctx.meta.getTransactionMetrics();
+			const slots = await readSlots(ctx, { serviceId, date });
+			const after = await ctx.meta.getTransactionMetrics();
+			return {
+				slots,
+				documents: after.documentsRead.used - before.documentsRead.used,
+				bytes: after.bytesRead.used - before.bytesRead.used,
+				queries: after.databaseQueries.used - before.databaseQueries.used
+			};
+		});
+		expect(slots.find(slot => slot.start === at('14:00'))).toEqual({ start: at('14:00'), staffIds, autoStaffId: staffIds[1] });
+		expect(documents).toBeLessThanOrEqual(7);
+		expect(bytes).toBeLessThan(5000);
+		expect(queries).toBeLessThanOrEqual(14);
 	});
 
 	it('does not offer archived staff or services', async () => {
@@ -172,6 +211,10 @@ describe('service slots', () => {
 			slug: 'transfer', name: 'Transfer', description: '', category: 'Arrival',
 			durationMin: 60, bufferMin: 30, price: 150000, currency: 'THB', staffIds: [staffId]
 		});
+		const nextDay = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: localDateTimeUtc('2026-09-26', '00:45') });
+		const beforeMidnight = await admin.query(api.services.admin.findOpenSlots, { serviceId, date });
+		expect(beforeMidnight[beforeMidnight.length - 1]?.start).toBe(at('23:15')); // back-to-back is allowed
+		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: nextDay.appointmentId, expectedRevision: 0 });
 		await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, guestName: 'Guest', guestPhone: '+66000000000', start: at('23:00') });
 		const slots = await admin.query(api.services.admin.findOpenSlots, { serviceId, date: '2026-09-26' });
 		expect(slots[0].start).toBe(localDateTimeUtc('2026-09-26', '00:30'));

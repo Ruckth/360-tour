@@ -126,9 +126,10 @@ export async function readMarketingReport(
 		for (const status of ['draft', 'active', 'paused'] as const) for await (const row of scan(ctx.db.query('coupons').withIndex('by_status', q => q.eq('status', status)))) addCoupon(row);
 		for await (const row of scan(ctx.db.query('properties'))) append(data.properties, { id: row._id, name: row.name });
 		for await (const row of scan(ctx.db.query('marketingSpend').withIndex('by_to', q => q.gte('to', from)))) if (row.deletedAt === undefined && row.from <= to) append(data.spend, reportSpend(row));
-		for (let at = start; at < end; at += 86_400_000) {
-			const day = dayOf(at);
-			for await (const row of scan(ctx.db.query('marketingSessionDays').withIndex('by_day_and_linkId_and_campaignId', q => q.eq('day', day)))) append(data.sessions, { day, linkId: row.linkId, campaignId: row.campaignId, count: row.count });
+		const sessionDays = ctx.db.query('marketingSessionDays')
+			.withIndex('by_day_and_linkId_and_campaignId', q => q.gte('day', from).lte('day', to));
+		for await (const { day, linkId, campaignId, count } of scan(sessionDays)) {
+			append(data.sessions, { day, linkId, campaignId, count });
 		}
 	}
 

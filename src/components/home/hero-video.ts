@@ -7,8 +7,7 @@
  * - Save-Data: the guest opted into data saving — poster only.
  * - a slow effective connection (2g / slow-2g) — poster only.
  *
- * When video is skipped the inactive AND active sources are never attached, so the ~8.48 MiB of
- * hero video is not downloaded on constrained devices.
+ * When video is skipped, no video source is attached or downloaded.
  */
 export type HeroVideoConditions = {
   reducedMotion?: boolean;

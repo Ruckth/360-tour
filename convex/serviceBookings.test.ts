@@ -233,6 +233,12 @@ describe('AI service booking', () => {
 		expect(await prepare(s)).toMatchObject({ error: expect.stringContaining('just taken') });
 	});
 
+	it('distinguishes a day off for the requested therapist from an unrostered service', async () => {
+		const s = await setup('whatsapp', true);
+		await s.t.run(ctx => ctx.db.insert('staffDays', { staffId: s.staffId, date, shifts: [], breaks: [], updatedAt: Date.now() }));
+		expect(await prepare(s, { staffPreference: 'Mali' })).toEqual({ error: expect.stringContaining('just taken'), alternatives: [] });
+	});
+
 	it('requires a fresh quote and confirms idempotently', async () => {
 		const s = await setup();
 		await expect(s.t.mutation(internal.services.serviceBookings.confirmChatServiceBooking, { sessionId: s.sessionId })).rejects.toThrow('No prepared service booking');

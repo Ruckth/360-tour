@@ -36,6 +36,21 @@ async function expectStillPoster(page: Page) {
   expect(motion.videosPlaying).toBe(false);
 }
 
+test.describe("server-rendered hero", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("shows and prioritizes the first poster before hydration", async ({ page }) => {
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const hero = page.getByTestId("home-hero");
+    const firstVideo = hero.locator("video").first();
+    await expect(firstVideo).toHaveAttribute("poster", /images\.unsplash\.com/);
+    await expect(firstVideo.locator("xpath=../..")).toHaveCSS("opacity", "1");
+    const highPriorityImages = await page.locator('head link[rel="preload"][as="image"][fetchpriority="high"]')
+      .evaluateAll((links) => links.map((link) => link.getAttribute("href")));
+    expect(highPriorityImages).toContain(await firstVideo.getAttribute("poster"));
+    await expect(hero.locator("video source")).toHaveCount(0);
+  });
+});
 
 test("reduced motion from the start: still first poster and no video for over 7s", async ({ page }) => {
   const videoRequests = trackVideoRequests(page);
