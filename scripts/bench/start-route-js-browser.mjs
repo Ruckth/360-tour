@@ -178,6 +178,12 @@ export async function signInOnce(browser, { origin, email, propertyName, env = p
     await clerk.signIn({ page, emailAddress: email });
     await page.goto(new URL("/admin/properties", target).href);
     const link = page.locator('a[href^="/admin/properties/"]').filter({ hasText: propertyName }).first();
+    const chooser = page.getByRole("heading", { name: "Choose a branch to start", exact: true });
+    await link.or(chooser).first().waitFor({ state: "visible" });
+    if (await chooser.isVisible()) {
+      await page.getByRole("listitem").getByRole("button").first().click();
+      await chooser.waitFor({ state: "hidden" });
+    }
     await link.waitFor({ state: "attached" });
     const href = await link.getAttribute("href");
     const propertyId = href?.match(/^\/admin\/properties\/([\w-]+)$/)?.[1];

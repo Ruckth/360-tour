@@ -1,4 +1,5 @@
 import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
+import { chooseBranchIfPrompted } from "./backend";
 import { expect, test, type Page } from "./fixtures";
 
 test.skip(process.env.E2E_START_ADMIN_IDENTITY !== "1", "Requires the isolated Start integration entry");
@@ -48,7 +49,9 @@ test("the same checkout pathname loads commerce on modal sign-in and clears it o
     ]);
     expect(commerce.headers()["cache-control"]).toBe("private, no-store");
     await expect(page).toHaveURL((url) => url.pathname === "/admin/checkout");
-    await expect(page.getByRole("complementary", { name: "Order", exact: true })).toBeVisible();
+    const order = page.getByRole("complementary", { name: "Order", exact: true });
+    await chooseBranchIfPrompted(page, order);
+    await expect(order).toBeVisible();
     await expect(page.getByRole("tab", { name: "Frequent", exact: true })).toBeVisible();
     // Clerk's programmatic fixture sets the session without completing the modal's UI.
     await page.evaluate(() => window.Clerk?.closeSignIn());
@@ -66,7 +69,9 @@ test("legacy Marketing access redirects to Settings Team after the signed-out ga
     await openSignInGate(page, "/admin/marketing/access");
     await clerk.signIn({ page, emailAddress: process.env.E2E_OWNER_EMAIL! });
     await expect(page).toHaveURL((url) => url.pathname === "/admin/settings" && url.searchParams.get("tab") === "team");
-    await expect(page.getByRole("button", { name: "Invite", exact: true })).toBeVisible();
+    const invite = page.getByRole("button", { name: "Invite", exact: true });
+    await chooseBranchIfPrompted(page, invite);
+    await expect(invite).toBeVisible();
   } finally {
     await clerk.signOut({ page }).catch(() => undefined);
   }

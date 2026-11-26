@@ -75,7 +75,7 @@ The scenario refuses every nonempty database, preventing a partial repair or sec
 
 For a current multi-branch reset, use the [Production Data procedure](../../DEPLOYMENT.md#production-data). After the reset and seed, run `auth/owners:grantOwner` for the real owner and then for the recovery owner. Both sign in to claim.
 
-Run `bun run verify`, booking component tests and smoke tests. On the newly seeded backend, sign in through the configured owner allowlist and invite a cashier through Team (the reset clears role grants); verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
+Run `bun run verify`, booking component tests and smoke tests. On the newly seeded backend, sign in as a claimed owner and invite a cashier through Team (the reset clears role grants); verify the cashier cannot read yesterday's/future receipts. Complete a booking and a POS settlement (including a satang amount and percentage discount), apply/refund a coupon sale, review missing information, and send a web/social chat. Check Stripe unit_amount equals stored total, with no further ×100. Check refunded totals and affiliate credits remain integer satang.
 
 ## 5. Restore traffic and observe
 

@@ -1,6 +1,6 @@
 import { clerk } from "@clerk/testing/playwright";
 import { api } from "../../convex/_generated/api";
-import { signedInBackend } from "./backend";
+import { chooseBranchIfPrompted, signedInBackend } from "./backend";
 import { expect, test } from "./fixtures";
 
 test("the visual editor opens from the keyboard, places and moves a hotspot, and reloads the saved marker", async ({ page }) => {
@@ -22,7 +22,9 @@ test("the visual editor opens from the keyboard, places and moves a hotspot, and
     });
 
     await page.goto(`/admin/properties/${propertyId}`);
-    await page.getByRole("tab", { name: "360 rooms" }).click();
+    const roomsTab = page.getByRole("tab", { name: "360 rooms" });
+    await chooseBranchIfPrompted(page, roomsTab);
+    await roomsTab.click();
     const trigger = page.getByRole("listitem").filter({ has: page.getByLabel(/Room name · living/) })
       .getByRole("button", { name: "Edit hotspots" });
     // The production chunk loader remembers a failed import for the life of this document.

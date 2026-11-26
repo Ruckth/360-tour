@@ -1,6 +1,7 @@
 import { clerk } from '@clerk/testing/playwright';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../convex/_generated/api';
+import { chooseBranchIfPrompted } from './backend';
 import { expect, test } from './fixtures';
 
 test('@smoke finance enters historical costs and expenses and reconciles the filtered report', async ({
@@ -60,6 +61,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
         .getByRole('link')
         .filter({ has: page.getByText(text, { exact: true }) })
         .first();
+    await chooseBranchIfPrompted(page, card('Revenue'));
     await expect(card('Revenue')).toContainText('฿1,000');
     await expect(card('Net profit')).toContainText('Unavailable');
     await page.getByRole('button', { name: 'Finance inputs' }).click();
