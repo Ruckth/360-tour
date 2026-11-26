@@ -554,7 +554,7 @@ function cell(col, row) {
 }
 function recon(key, m, base) {
   const t = (v, l) => `<span class="term"><b>${v}</b><small>${l}</small></span>`, op = s => `<span class="op" aria-hidden="true">${s}</span>`, r = (v, l) => `<span class="term res"><b>${v}</b><small>${l}</small></span>`;
-  const diff = (a, b) => S.d.rules.filter(complete).length && a !== b ? `<p class="note">Overview card: <b>${b}</b>. This view adds ${S.d.rules.filter(complete).length} rule${S.d.rules.filter(complete).length > 1 ? 's' : ''}, so it shows <b>${a}</b>.</p>` : `<p class="note">Matches the overview card.</p>`;
+  const diff = (value, overview) => value === overview ? '<p class="note">Matches the overview card.</p>' : `<p class="note">Overview <b>${overview}</b> · Matching records <b>${value}</b></p>`;
   const na = 'Not available';
   let eq = '', extra = '';
   switch (key) {
@@ -620,7 +620,7 @@ function renderDrill() {
       <button class="btn" data-act="csv" data-fid="csv">Export CSV</button>
     </div>
   </div>
-  <div class="gridwrap">${data.length ? `<table class="g" style="min-width:${minW}px"><caption class="sr">${meta.l} drill-through, ${cust ? 'customers' : 'transactions'}, sorted by ${sc0.l} ${S.sort[1] === 'asc' ? 'ascending' : 'descending'}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>` : `<div class="empty">No ${cust ? 'customers' : 'transactions'} match these filters. <button class="btn" data-act="clear" data-k="drill">Clear additional filters</button></div>`}</div>
+  <div class="gridwrap">${data.length ? `<table class="g" style="min-width:${minW}px"><caption class="sr">${meta.l} drill-through, ${cust ? 'customers' : 'transactions'}, sorted by ${sc0.l} ${S.sort[1] === 'asc' ? 'ascending' : 'descending'}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>` : `<div class="empty">No ${cust ? 'customers' : 'transactions'} match this view. ${q ? '<button class="btn" data-act="clearsearch">Clear search</button>' : S.d.rules.length ? '<button class="btn" data-act="clear" data-k="drill">Clear additional filters</button>' : '<button class="btn" data-act="back">Edit overview filters</button>'}</div>`}</div>
   <div class="pager"><span>${data.length ? `${S.page * PS + 1}–${Math.min(data.length, S.page * PS + PS)} of ${N(data.length)}` : '0 results'}${!cust && m.awN ? ' · <span class="miss">Missing</span> = cost input not entered yet' : ''}</span>
     <span class="grp" style="display:flex;gap:6px"><button class="btn" data-act="page" data-d="-1" data-fid="pg-prev"${S.page === 0 ? ' disabled' : ''}>Previous</button><button class="btn" data-act="page" data-d="1" data-fid="pg-next"${S.page >= pages - 1 ? ' disabled' : ''}>Next</button></span></div>`;
   S._csv = {cols:cust ? CCOLS : TCOLS.filter(c => !S.hidden.has(c.k)), data};
@@ -674,6 +674,7 @@ root.addEventListener('click', e => {
     case 'sort': S.sort = [d.c, S.sort[0] === d.c && S.sort[1] === 'desc' ? 'asc' : 'desc']; S.page = 0; S.hl = null; render(); break;
     case 'view': S.view = d.v; S.page = 0; S.q = ''; S.open = null; S.sort = d.v === 'cust' ? ['rev','desc'] : ['date','desc']; S.hl = null; render(); break;
     case 'page': S.page += +d.d; render(); break;
+    case 'clearsearch': S.q = ''; S.page = 0; render(); root.querySelector('[data-fid="q"]').focus(); break;
     case 'csv': exportCsv(); break;
   }
 });
