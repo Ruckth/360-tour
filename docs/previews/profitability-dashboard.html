@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profitability Dashboard</title>
+<style>
+html,body{margin:0;padding:0;background:transparent}
+.pd{
+  --pd-fg:var(--foreground,#18181b);
+  --pd-card:var(--card,#ffffff);
+  --pd-muted:var(--muted,#f4f4f5);
+  --pd-mfg:var(--muted-foreground,#6b6b76);
+  --pd-border:var(--border,#e4e4e7);
+  --pd-primary:var(--primary,#18181b);
+  --pd-pfg:var(--primary-foreground,#fafafa);
+  --pd-ring:var(--ring,#8b8b96);
+  --pd-warn:color-mix(in srgb,#d97706 72%,var(--pd-fg));
+  --pd-warn-bg:color-mix(in srgb,#f59e0b 16%,transparent);
+  --pd-pos:color-mix(in srgb,#16a34a 78%,var(--pd-fg));
+  --pd-neg:color-mix(in srgb,#dc2626 78%,var(--pd-fg));
+  --c-staff:#5b72e0;--c-mat:#de8a3a;--c-tool:#9b6bd3;--c-gp:#2f9e6e;--c-mk:#d0607e;--c-oh:#7b8794;
+  color:var(--pd-fg);
+  font:14px/1.45 var(--font-sans,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Thai",sans-serif);
+  -webkit-font-smoothing:antialiased;
+  display:flex;flex-direction:column;gap:16px;min-width:0;
+}
+@media (prefers-color-scheme:dark){
+  .pd{
+    --pd-fg:var(--foreground,#f4f4f5);--pd-card:var(--card,#18181b);--pd-muted:var(--muted,#232327);
+    --pd-mfg:var(--muted-foreground,#a1a1aa);--pd-border:var(--border,#2f2f35);--pd-primary:var(--primary,#f4f4f5);
+    --pd-pfg:var(--primary-foreground,#18181b);--pd-ring:var(--ring,#71717a);
+    --c-staff:#7b8ff0;--c-mat:#eaa05a;--c-tool:#b48ae6;--c-gp:#43b986;--c-mk:#e07d98;--c-oh:#98a3ae;
+  }
+}
+.pd *,.pd *::before,.pd *::after{box-sizing:border-box}
+.pd button,.pd select,.pd input{font:inherit;color:inherit}
+.pd :focus-visible{outline:2px solid var(--pd-ring);outline-offset:2px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pd h1{font-size:18px;line-height:1.25;margin:0;font-weight:600;letter-spacing:-.01em}
+.pd h2{font-size:14px;margin:0;font-weight:600}
+.sub{color:var(--pd-mfg);font-size:12.5px;margin:2px 0 0}
+.top{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:flex-end;justify-content:space-between}
+.ctl{display:flex;gap:8px;flex-wrap:wrap}
+.ctl label{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--pd-mfg)}
+.sel{appearance:none;-webkit-appearance:none;border:1px solid var(--pd-border);background:var(--pd-card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 9px center;border-radius:8px;padding:0 28px 0 10px;height:34px;font-size:13px;color:var(--pd-fg);cursor:pointer;min-width:0}
+.demo{display:inline-block;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--pd-warn-bg);color:var(--pd-warn);vertical-align:1px}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid var(--pd-border);border-radius:8px;background:var(--pd-card);cursor:pointer;font-size:13px;white-space:nowrap}
+.btn:hover{background:var(--pd-muted)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--pd-mfg)}
+.btn.ghost:hover{color:var(--pd-fg);background:var(--pd-muted)}
+.btn[aria-pressed="true"]{background:var(--pd-primary);color:var(--pd-pfg);border-color:var(--pd-primary)}
+.seg{display:inline-flex;border:1px solid var(--pd-border);border-radius:8px;overflow:hidden}
+.seg .btn{border:0;border-radius:0}
+.seg .btn+.btn{border-left:1px solid var(--pd-border)}
+
+/* filters */
+.fsec{display:flex;flex-direction:column;gap:8px}
+.fhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.flabel{font-size:12px;font-weight:600;color:var(--pd-mfg);text-transform:uppercase;letter-spacing:.04em}
+.fbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chip{display:inline-flex;flex-wrap:wrap;align-items:stretch;border:1px solid var(--pd-border);border-radius:8px;background:var(--pd-card);position:relative;min-height:32px;max-width:100%}
+.chip.incomplete{border-style:dashed}
+.chip>.p{display:flex;align-items:center;border-right:1px solid var(--pd-border);min-height:30px}
+.chip>.p:last-child{border-right:0}
+.chip select{appearance:none;-webkit-appearance:none;border:0;background:transparent;padding:0 8px;height:30px;font-size:13px;cursor:pointer;max-width:190px;text-overflow:ellipsis}
+.chip select.f{font-weight:500}
+.chip select.o{color:var(--pd-mfg)}
+.chip .val{border:0;background:transparent;padding:0 8px;height:30px;font-size:13px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.chip .val.empty{color:var(--pd-mfg);font-weight:400;font-style:italic}
+.chip .inp{display:flex;align-items:center;gap:4px;padding:0 8px;font-size:13px;color:var(--pd-mfg)}
+.chip input{border:0;background:transparent;width:78px;height:28px;font-size:13px;color:var(--pd-fg);padding:0}
+.chip input[type=text]{width:110px}
+.chip .rm{border:0;background:transparent;width:30px;cursor:pointer;color:var(--pd-mfg);font-size:16px;line-height:1;border-radius:0 7px 7px 0}
+.chip .rm:hover{color:var(--pd-fg);background:var(--pd-muted)}
+.join{border:1px dashed var(--pd-border);background:transparent;border-radius:6px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--pd-mfg);padding:3px 7px;cursor:pointer}
+.join:hover{color:var(--pd-fg);border-color:var(--pd-ring)}
+.add{appearance:none;-webkit-appearance:none;border:1px dashed var(--pd-border);background:transparent;border-radius:8px;height:32px;padding:0 10px;font-size:13px;color:var(--pd-mfg);cursor:pointer}
+.add:hover{color:var(--pd-fg);border-color:var(--pd-ring)}
+.pop{position:absolute;top:calc(100% + 4px);left:0;z-index:20;min-width:190px;max-width:calc(100vw - 32px);background:var(--pd-card);border:1px solid var(--pd-border);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.14);padding:6px;display:flex;flex-direction:column;gap:1px;max-height:280px;overflow:auto}
+.pop label{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+.pop label:hover{background:var(--pd-muted)}
+.pop input{accent-color:var(--pd-primary);width:15px;height:15px;margin:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--pd-mfg)}
+.preset{border:1px solid var(--pd-border);background:transparent;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--pd-mfg)}
+.preset:hover{color:var(--pd-fg);background:var(--pd-muted)}
+.preset[aria-pressed="true"]{background:var(--pd-primary);color:var(--pd-pfg);border-color:var(--pd-primary)}
+.ichip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:4px 9px;border-radius:8px;background:var(--pd-muted);color:var(--pd-fg)}
+.ichip svg{opacity:.55;flex:none}
+.status{font-size:12.5px;color:var(--pd-mfg)}
+.status b{color:var(--pd-fg);font-weight:600}
+
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+
+@media (min-width:1120px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.kpi{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:4px;padding:12px;border:1px solid var(--pd-border);border-radius:12px;background:var(--pd-card);cursor:pointer;min-width:0;transition:border-color .15s}
+.kpi:hover{border-color:var(--pd-ring)}
+.kpi:focus-visible{outline:2px solid var(--pd-ring);outline-offset:2px}
+.kpi .l{font-size:12.5px;color:var(--pd-mfg);display:flex;justify-content:space-between;gap:6px;align-items:center}
+.kpi .l .go{opacity:.5;font-size:13px}
+.kpi:hover .go{opacity:1}
+.kpi .v{font-size:21px;font-weight:650;letter-spacing:-.015em;line-height:1.15;overflow-wrap:anywhere}
+.kpi .v.na{font-size:15px;font-weight:500;color:var(--pd-mfg);padding:4px 0 2px}
+.kpi .fx{font-size:11.5px;color:var(--pd-mfg);line-height:1.4}
+.kpi .fx b{color:var(--pd-fg);font-weight:600}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--pd-warn-bg);color:var(--pd-warn);width:max-content;max-width:100%}
+.tag.neutral{background:var(--pd-muted);color:var(--pd-mfg)}
+.neg{color:var(--pd-neg)}.pos{color:var(--pd-pos)}
+
+/* panels */
+.cols{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+@media (min-width:1000px){.cols{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)}}
+.panel{border:1px solid var(--pd-border);border-radius:12px;background:var(--pd-card);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.phead{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11.5px;color:var(--pd-mfg)}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.hatch{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--pd-mfg) 45%,transparent) 0 3px,transparent 3px 6px)!important;border:1px solid color-mix(in srgb,var(--pd-mfg) 45%,transparent)}
+.svc{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--pd-border)}
+.svc:first-of-type{border-top:0;padding-top:0}
+.svch{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.svch .nm{font-weight:600}
+.svch .nm small{font-weight:400;color:var(--pd-mfg);margin-left:6px;font-size:12px}
+.bar{display:flex;height:12px;border-radius:4px;overflow:hidden;background:var(--pd-muted)}
+.bar span{display:block;height:100%;min-width:0}
+.bar span+span{box-shadow:inset 1px 0 0 var(--pd-card)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+@media (min-width:560px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.stat{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:8px;background:var(--pd-muted);cursor:pointer;min-width:0}
+.stat:hover{box-shadow:inset 0 0 0 1px var(--pd-ring)}
+.stat:focus-visible{outline:2px solid var(--pd-ring);outline-offset:1px}
+.stat small{font-size:11px;color:var(--pd-mfg);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.stat small i{width:7px;height:7px;border-radius:2px;display:inline-block;flex:none}
+.stat b{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.svc.total .stat{background:transparent;box-shadow:inset 0 0 0 1px var(--pd-border)}
+.check{font-size:12px;color:var(--pd-mfg);display:flex;gap:6px;align-items:flex-start}
+.check .ok{color:var(--pd-pos);font-weight:700}
+.wf{display:flex;flex-direction:column;gap:6px}
+.wfr{display:grid;grid-template-columns:minmax(92px,128px) minmax(0,1fr) auto;gap:8px;align-items:center;font-size:12.5px}
+.wfr .lab{color:var(--pd-mfg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wfr.sum .lab{color:var(--pd-fg);font-weight:600}
+.wfr .lab button{all:unset;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.wfr .lab button:focus-visible{outline:2px solid var(--pd-ring)}
+.wfr .trk{position:relative;height:14px}
+.wfr .trk span{position:absolute;top:0;bottom:0;border-radius:3px}
+.wfr .trk .zero{position:absolute;top:-3px;bottom:-3px;width:1px;background:var(--pd-border)}
+.wfr .amt{text-align:right;font-variant-numeric:tabular-nums;min-width:78px}
+.wfr.sum .amt{font-weight:650}
+.note{font-size:12px;color:var(--pd-mfg);margin:0}
+.note.warn{color:var(--pd-warn)}
+details.asm{border:1px solid var(--pd-border);border-radius:12px;background:var(--pd-card)}
+details.asm summary{cursor:pointer;padding:12px 14px;font-weight:600;font-size:13px;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.asm summary::-webkit-details-marker{display:none}
+details.asm summary::after{content:"+";color:var(--pd-mfg);font-weight:400}
+details.asm[open] summary::after{content:"−"}
+details.asm ul{margin:0;padding:0 14px 14px 32px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--pd-mfg)}
+details.asm li b{color:var(--pd-fg);font-weight:600}
+
+/* drill */
+.crumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--pd-mfg);flex-wrap:wrap}
+.crumb .btn{padding:0 8px 0 6px}
+.recon{border:1px solid var(--pd-border);border-radius:12px;background:var(--pd-card);padding:14px;display:flex;flex-direction:column;gap:10px}
+.eq{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px}
+.term{display:flex;flex-direction:column;justify-content:center;padding:6px 10px;border-radius:8px;background:var(--pd-muted);min-width:0}
+.term b{font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
+.term small{font-size:11px;color:var(--pd-mfg)}
+.term.res{background:transparent;box-shadow:inset 0 0 0 1.5px var(--pd-fg)}
+.op{display:flex;align-items:center;font-size:16px;color:var(--pd-mfg);padding:0 1px}
+.tb{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.tb .grp{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.search{display:flex;align-items:center;gap:6px;height:32px;border:1px solid var(--pd-border);border-radius:8px;padding:0 10px;background:var(--pd-card);min-width:0;flex:1 1 180px;max-width:280px}
+.search input{border:0;background:transparent;outline:0;width:100%;font-size:13px;min-width:0}
+.search:focus-within{outline:2px solid var(--pd-ring);outline-offset:1px}
+.colwrap{position:relative}
+.colwrap .pop{left:auto;right:0}
+.gridwrap{border:1px solid var(--pd-border);border-radius:12px;overflow-x:auto;background:var(--pd-card)}
+table.g{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.g th{background:var(--pd-muted);text-align:left;font-weight:500;color:var(--pd-mfg);padding:0;border-bottom:1px solid var(--pd-border);white-space:nowrap;font-size:12px}
+.g th button{all:unset;box-sizing:border-box;display:flex;gap:4px;align-items:center;padding:8px 10px;cursor:pointer;width:100%}
+.g th button:focus-visible{outline:2px solid var(--pd-ring);outline-offset:-2px}
+.g th .ar{opacity:.35;font-size:10px}
+.g th[aria-sort] .ar{opacity:1}
+.g td{padding:8px 10px;border-bottom:1px solid var(--pd-border);white-space:nowrap}
+.g tbody tr:hover td{background:color-mix(in srgb,var(--pd-muted) 60%,transparent)}
+.g .n{text-align:right;font-variant-numeric:tabular-nums}
+.g th.n button{justify-content:flex-end}
+.g tfoot td{font-weight:600;background:var(--pd-muted);border-bottom:0;font-variant-numeric:tabular-nums}
+.g tfoot small{display:block;font-weight:400;color:var(--pd-mfg);font-size:11px}
+.g .sb{display:inline-block;min-width:20px;text-align:center;font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--pd-muted)}
+.g .mut{color:var(--pd-mfg)}
+.miss{display:inline-block;font-size:11px;font-weight:600;padding:1px 6px;border-radius:5px;background:var(--pd-warn-bg);color:var(--pd-warn)}
+.g .hl{background:color-mix(in srgb,var(--pd-ring) 10%,transparent)}
+.empty{padding:28px 16px;text-align:center;color:var(--pd-mfg);font-size:13px}
+.pager{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--pd-mfg);flex-wrap:wrap}
+.chans{display:flex;flex-wrap:wrap;gap:6px}
+
+.kpi.summary{cursor:default}
+.kpi.summary:hover{border-color:var(--pd-border)}
+.kpi.summary .review{text-align:left;align-self:flex-start;border:0;background:none;padding:0;color:var(--pd-fg);font:inherit;text-decoration:underline;cursor:pointer}
+@media (min-width:640px){.kpis.customers{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:639px){
+  .wfr .lab button,.join,.pop label,.search,.g th button,.btn,.sel,.preset,.add,.stat,.chip select,.chip .val,.chip .rm,.kpi.summary .review{min-height:44px}
+  .chip .rm{min-width:44px}
+}
+</style>
+</head>
+<body>
+<main id="pd" class="pd"></main>
+<div id="pd-live" class="sr" aria-live="polite"></div>
+<script>
+(() => {
+'use strict';
+/* ---------- helpers ---------- */
+const root = document.getElementById('pd');
+const live = document.getElementById('pd-live');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const B = n => (n < 0 ? '−' : '') + '฿' + Math.abs(Math.round(n)).toLocaleString('en-US');
+const N = n => Math.round(n).toLocaleString('en-US');
+const PCT = n => (n * 100).toFixed(1) + '%';
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fdate = d => MON[+d.slice(5,7)-1] + ' ' + (+d.slice(8,10));
+const clone = o => JSON.parse(JSON.stringify(o));
+let seed = 3600;
+const R = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const pick = a => a[Math.floor(R() * a.length)];
+const wpick = (a, w) => { const r = R(); let s = 0; for (let i = 0; i < a.length; i++) { s += w[i]; if (r < s) return a[i]; } return a[a.length - 1]; };
+const LOCK = '<svg width="11" height="11" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h1Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>';
+
+/* ---------- demo fixtures (THB) ---------- */
+const BRANCHES = ['Sukhumvit','Ari','Thonglor'];
+const CHANNELS = ['Instagram','Facebook','Google','LINE OA','Referral','Walk-in'];
+const PAID = ['Instagram','Facebook','Google','LINE OA'];
+const PAYS = ['Card','PromptPay','Cash'];
+const SVC = {
+  A:{name:'Service A',desc:'Signature treatment',rates:[.25,.15,.10]},
+  B:{name:'Service B',desc:'Standard session',rates:[.30,.12,.06]},
+  C:{name:'Service C',desc:'Add-on care',rates:[.28,.20,.08]},
+};
+const STAFF = {Sukhumvit:['Dr. Mai','Kwan','Bee'],Ari:['Dr. Tor','Fern','Nam'],Thonglor:['Dr. Pim','Joy','Aom']};
+const ALLSTAFF = Object.values(STAFF).flat();
+const PERIODS = {
+  nov:{label:'Nov 2026',start:'2026-11-01',end:'2026-11-30',months:['2026-11']},
+  oct:{label:'Oct 2026',start:'2026-10-01',end:'2026-10-31',months:['2026-10']},
+  q4:{label:'Oct – Nov 2026',start:'2026-10-01',end:'2026-11-30',months:['2026-10','2026-11']},
+};
+const SPEND = {
+  '2026-10':{Sukhumvit:{Instagram:4500,Facebook:2500,Google:2800,'LINE OA':1000},Ari:{Instagram:2800,Facebook:1400,Google:1800,'LINE OA':800},Thonglor:{Instagram:2200,Facebook:1000,Google:800,'LINE OA':0}},
+  '2026-11':{Sukhumvit:{Instagram:5000,Facebook:2500,Google:3000,'LINE OA':1000},Ari:{Instagram:3000,Facebook:1500,Google:2000,'LINE OA':800},Thonglor:{Instagram:2500,Facebook:1200,Google:1000,'LINE OA':500}},
+};
+const OVERHEAD = {Sukhumvit:20000,Ari:14000,Thonglor:11000}; // per month: rent, utilities, admin
+const FIRST = ['Ploy','Nattapong','Mint','Anan','Pim','Kittisak','Fah','Somchai','Noon','Thanawat','Praew','Wichai','Kanya','Arthit','Jinny','Chai','Ning','Pong','May','Ton','Ice','Beam','Gift','Oat','Fon','Bank','Aim','Golf','Pear','Nut','Dao','Win','Nok','Boss','Ploen','Kim'];
+const INIT = 'SKTWPCBNRJ';
+const CUST = [];
+for (let i = 0; i < 72; i++) {
+  const hist = R() < .5;
+  CUST.push({id:'C' + (1001 + i), name:FIRST[i % 36] + ' ' + INIT[(i * 7) % 10] + '.', channel:wpick(CHANNELS,[.28,.18,.16,.14,.14,.10]), branch:wpick(BRANCHES,[.45,.32,.23]), hist, prior:hist ? Math.round((2000 + R() * 38000) / 100) * 100 : 0, first:null});
+}
+const CM = Object.fromEntries(CUST.map(c => [c.id, c]));
+const PLAN = {
+  '2026-10':{days:31,A:[22,88000],B:[32,64000],C:[20,31000]},
+  '2026-11':{days:30,A:[25,100000],B:[30,60000],C:[25,40000]},
+};
+const MISSING = {'2026-11|C':{idx:[3,9,14,20],k:'mc'},'2026-10|B':{idx:[5,17],k:'tc'}};
+let TX = [];
+for (const [m, p] of Object.entries(PLAN)) for (const s of ['A','B','C']) {
+  const [n, target] = p[s], base = target / n, amt = Array(n).fill(base);
+  for (let k = 0; k < n * 2; k++) { // sum-preserving price variation
+    const i = Math.floor(R() * n), j = Math.floor(R() * n), d = 100 * (1 + Math.floor(R() * 5));
+    if (i !== j && amt[j] - d >= base * .7 && amt[i] + d <= base * 1.35) { amt[i] += d; amt[j] -= d; }
+  }
+  const rates = SVC[s].rates, miss = MISSING[m + '|' + s], rows = [];
+  for (let i = 0; i < n; i++) {
+    const c = pick(CUST), br = R() < .85 ? c.branch : pick(BRANCHES), day = 1 + Math.floor(R() * p.days);
+    const r = {date:`${m}-${String(day).padStart(2,'0')}`, time:`${String(10 + Math.floor(R() * 9)).padStart(2,'0')}:${R() < .5 ? '00' : '30'}`, c:c.id, branch:br, service:s, staff:pick(STAFF[br]), pay:wpick(PAYS,[.45,.4,.15]), amount:amt[i], sc:Math.round(amt[i]*rates[0]), mc:Math.round(amt[i]*rates[1]), tc:Math.round(amt[i]*rates[2])};
+    if (miss && miss.idx.includes(i)) r[miss.k] = null;
+    rows.push(r);
+  }
+  ['sc','mc','tc'].forEach((k, ki) => { // make each cost line reconcile exactly to its rate
+    const have = rows.filter(r => r[k] !== null);
+    const tgt = Math.round(have.reduce((a, r) => a + r.amount, 0) * rates[ki]);
+    have[have.length - 1][k] += tgt - have.reduce((a, r) => a + r[k], 0);
+  });
+  TX.push(...rows);
+}
+TX.sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
+const seqs = {};
+TX.forEach(t => { const ym = t.date.slice(2,4) + t.date.slice(5,7); seqs[ym] = (seqs[ym] || 0) + 1; t.id = `INV-${ym}-${String(seqs[ym]).padStart(3,'0')}`; const c = CM[t.c]; if (!c.first) c.first = t.date; });
+const BYC = {}; TX.forEach(t => (BYC[t.c] = BYC[t.c] || []).push(t));
+
+/* ---------- domain rules ---------- */
+const S = {period:'nov', branch:'all', main:{rules:[],join:'and'}, drill:null, d:{rules:[],join:'and'}, view:'txn', sort:['date','desc'], q:'', page:0, open:null, hidden:new Set(matchMedia('(max-width:639px)').matches ? ['pay','id','branch','staff'] : ['pay']), hl:null};
+const P = () => PERIODS[S.period];
+const costed = t => t.sc !== null && t.mc !== null && t.tc !== null;
+const gpOf = t => costed(t) ? t.amount - t.sc - t.mc - t.tc : null;
+const isNew = c => !c.hist && !!c.first && c.first >= P().start && c.first <= P().end;
+const lifetime = c => c.prior + (BYC[c.id] || []).filter(t => t.date <= P().end).reduce((a, t) => a + t.amount, 0);
+const brs = () => S.branch === 'all' ? BRANCHES : [S.branch];
+
+const FIELDS = {
+  service:{label:'Service',type:'enum',opts:['A','B','C'],show:v => 'Service ' + v,get:t => t.service},
+  channel:{label:'Acquisition channel',type:'enum',opts:CHANNELS,get:t => CM[t.c].channel},
+  ctype:{label:'Customer type',type:'enum',opts:['New','Returning'],get:t => isNew(CM[t.c]) ? 'New' : 'Returning'},
+  costs:{label:'Cost inputs',type:'enum',opts:['Complete','Missing'],get:t => costed(t) ? 'Complete' : 'Missing'},
+  staff:{label:'Staff',type:'enum',opts:ALLSTAFF,get:t => t.staff},
+  pay:{label:'Payment method',type:'enum',opts:PAYS,get:t => t.pay},
+  amount:{label:'Transaction revenue',type:'num',unit:'฿',get:t => t.amount},
+  margin:{label:'Gross margin',type:'num',unit:'%',get:t => costed(t) ? gpOf(t) / t.amount * 100 : null},
+  ltv:{label:'Customer lifetime revenue',type:'num',unit:'฿',get:t => lifetime(CM[t.c])},
+  name:{label:'Customer name',type:'text',get:t => CM[t.c].name},
+};
+const OPS = {
+  enum:[['is','is'],['not','is not']],
+  num:[['gte','≥'],['gt','>'],['lte','≤'],['lt','<'],['eq','='],['neq','≠'],['between','between']],
+  text:[['has','contains'],['nohas','does not contain']],
+};
+const newRule = f => ({field:f, op:OPS[FIELDS[f].type][0][0], v:[], a:'', b:'', s:''});
+const complete = r => { const t = FIELDS[r.field].type; if (t === 'enum') return r.v.length > 0; if (t === 'text') return r.s.trim() !== ''; return r.a !== '' && !isNaN(+r.a) && (r.op !== 'between' || (r.b !== '' && !isNaN(+r.b))); };
+function test(r, t) {
+  const F = FIELDS[r.field], x = F.get(t);
+  if (F.type === 'enum') { const hit = r.v.includes(x); return r.op === 'is' ? hit : !hit; }
+  if (F.type === 'text') { const hit = String(x).toLowerCase().includes(r.s.trim().toLowerCase()); return r.op === 'has' ? hit : !hit; }
+  if (x === null) return false; // missing inputs never satisfy numeric comparisons
+  const a = +r.a, b = +r.b;
+  switch (r.op) { case 'gt': return x > a; case 'gte': return x >= a; case 'lt': return x < a; case 'lte': return x <= a; case 'eq': return x === a; case 'neq': return x !== a; case 'between': return x >= Math.min(a,b) && x <= Math.max(a,b); }
+  return true;
+}
+const filt = (rows, f) => { const a = f.rules.filter(complete); if (!a.length) return rows; return rows.filter(t => f.join === 'and' ? a.every(r => test(r, t)) : a.some(r => test(r, t))); };
+const opText = r => { const t = FIELDS[r.field].type; const o = OPS[t].find(x => x[0] === r.op)[1]; return t === 'enum' && r.v.length > 1 ? (r.op === 'is' ? 'is any of' : 'is none of') : o; };
+const valText = r => { const F = FIELDS[r.field]; if (F.type === 'enum') return r.v.join(', '); if (F.type === 'text') return '“' + r.s + '”'; const u = v => F.unit === '฿' ? B(+v) : v + '%'; return r.op === 'between' ? u(r.a) + ' – ' + u(r.b) : u(r.a); };
+const describe = r => `${FIELDS[r.field].label} ${opText(r)} ${valText(r)}`;
+
+function scope() { const p = P(); return TX.filter(t => t.date >= p.start && t.date <= p.end && (S.branch === 'all' || t.branch === S.branch)); }
+function spendBy(chans) { const o = {}; for (const m of P().months) for (const b of brs()) for (const ch of PAID) if (chans.includes(ch)) o[ch] = (o[ch] || 0) + SPEND[m][b][ch]; return o; }
+const sumv = o => Object.values(o).reduce((a, b) => a + b, 0);
+function overheadAll() { let s = 0; for (const m of P().months) for (const b of brs()) s += OVERHEAD[b]; return s; }
+
+function calc(rows, rules) {
+  const scopeRev = scope().reduce((a, t) => a + t.amount, 0);
+  const ids = [...new Set(rows.map(t => t.c))];
+  const nw = ids.filter(id => isNew(CM[id])).length;
+  let rev = 0, cRev = 0, st = 0, ma = 0, to = 0, aw = 0, awN = 0;
+  rows.forEach(t => { rev += t.amount; if (costed(t)) { cRev += t.amount; st += t.sc; ma += t.mc; to += t.tc; } else { aw += t.amount; awN++; } });
+  const gp = cRev > 0 ? cRev - st - ma - to : null;
+  const life = ids.reduce((a, id) => a + lifetime(CM[id]), 0);
+  const act = rules.filter(complete);
+  const chRule = act.some(r => r.field === 'channel');
+  const chans = chRule ? [...new Set(ids.map(id => CM[id].channel))] : CHANNELS;
+  const sp = spendBy(chans), cacSpend = sumv(sp);
+  const unattrib = act.filter(r => !['channel','ctype'].includes(r.field)).map(r => FIELDS[r.field].label);
+  const spendAll = sumv(spendBy(PAID)), ohAll = overheadAll();
+  const share = scopeRev ? rev / scopeRev : 0;
+  const mk = Math.round(spendAll * share), oh = Math.round(ohAll * share);
+  return {rows, n:rows.length, ids, cust:ids.length, nw, ret:ids.length - nw, rev, cRev, st, ma, to, dc:st + ma + to, aw, awN, gp,
+    life, ltv:ids.length ? life / ids.length : null, sp, cacSpend, chRule, unattrib, cac:nw ? cacSpend / nw : null,
+    share, mk, oh, spendAll, ohAll, net:gp === null ? null : gp - mk - oh, scopeRev};
+}
+
+/* ---------- filter bar ---------- */
+function filterBar(key) {
+  const f = S[key === 'main' ? 'main' : 'd'];
+  const chips = f.rules.map((r, i) => {
+    const F = FIELDS[r.field], ok = complete(r), id = key + '-' + i;
+    const fieldSel = `<select class="f" data-act="field" data-k="${key}" data-i="${i}" data-fid="${id}-f" aria-label="Filter ${i+1} field">${Object.entries(FIELDS).map(([k, x]) => `<option value="${k}"${k === r.field ? ' selected' : ''}>${esc(x.label)}</option>`).join('')}</select>`;
+    const opSel = `<select class="o" data-act="op" data-k="${key}" data-i="${i}" data-fid="${id}-o" aria-label="Filter ${i+1} operator">${OPS[F.type].map(([k, l]) => `<option value="${k}"${k === r.op ? ' selected' : ''}>${esc(F.type === 'enum' && r.v.length > 1 ? (k === 'is' ? 'is any of' : 'is none of') : l)}</option>`).join('')}</select>`;
+    let val;
+    if (F.type === 'enum') {
+      const open = S.open === id;
+      val = `<button class="val${r.v.length ? '' : ' empty'}" data-act="vals" data-k="${key}" data-i="${i}" data-fid="${id}-v" aria-haspopup="true" aria-expanded="${open}" aria-label="Filter ${i+1} values: ${esc(r.v.length ? valText(r) : 'none selected')}">${esc(r.v.length ? valText(r) : 'Select…')}</button>`
+        + (open ? `<div class="pop" role="group" aria-label="${esc(F.label)} values">${F.opts.map(o => `<label><input type="checkbox" data-act="vcheck" data-k="${key}" data-i="${i}" value="${esc(o)}" data-fid="${id}-c-${esc(o)}"${r.v.includes(o) ? ' checked' : ''}>${esc(F.show ? F.show(o) : o)}</label>`).join('')}</div>` : '');
+    } else if (F.type === 'text') {
+      val = `<span class="inp"><input type="text" data-act="vtext" data-k="${key}" data-i="${i}" data-fid="${id}-s" value="${esc(r.s)}" placeholder="name…" aria-label="Filter ${i+1} text"></span>`;
+    } else {
+      const pre = F.unit === '฿' ? '฿' : '', suf = F.unit === '%' ? '%' : '';
+      const inp = (w, v, lbl) => `${pre}<input type="number" inputmode="decimal" data-act="vnum" data-w="${w}" data-k="${key}" data-i="${i}" data-fid="${id}-${w}" value="${esc(v)}" placeholder="0" aria-label="Filter ${i+1} ${lbl}">${suf}`;
+      val = `<span class="inp">${inp('a', r.a, r.op === 'between' ? 'from' : 'value')}${r.op === 'between' ? ' and ' + inp('b', r.b, 'to') : ''}</span>`;
+    }
+    const join = i > 0 ? `<button class="join" data-act="join" data-k="${key}" data-fid="${key}-join-${i}" aria-label="Rules joined with ${f.join.toUpperCase()}. Switch to ${f.join === 'and' ? 'OR' : 'AND'}">${f.join}</button>` : '';
+    return `${join}<div class="chip${ok ? '' : ' incomplete'}" role="group" aria-label="Filter ${i+1}${ok ? ': ' + esc(describe(r)) : ' (incomplete, ignored)'}"><span class="p">${fieldSel}</span><span class="p">${opSel}</span><span class="p">${val}</span><span class="p"><button class="rm" data-act="rm" data-k="${key}" data-i="${i}" aria-label="Remove filter ${i+1}">×</button></span></div>`;
+  }).join('');
+  const add = `<select class="add" data-act="add" data-k="${key}" data-fid="${key}-add" aria-label="Add filter"><option value="">+ Add filter</option>${Object.entries(FIELDS).map(([k, x]) => `<option value="${k}">${esc(x.label)}</option>`).join('')}</select>`;
+  const clear = f.rules.length ? `<button class="btn ghost" data-act="clear" data-k="${key}">Clear</button>` : '';
+  return `<div class="fbar">${chips}${add}${clear}</div>`;
+}
+const PRESETS = [
+  ['Missing cost inputs',[{field:'costs',op:'is',v:['Missing']}]],
+  ['Paid social',[{field:'channel',op:'is',v:['Instagram','Facebook']}]],
+  ['Lifetime ≥ ฿20k',[{field:'ltv',op:'gte',a:'20000'}]],
+  ['New · Service A',[{field:'service',op:'is',v:['A']},{field:'ctype',op:'is',v:['New']}]],
+];
+const fullRule = r => Object.assign(newRule(r.field), r);
+const presetOn = i => JSON.stringify(S.main.rules.map(r => [r.field, r.op, r.v, r.a])) === JSON.stringify(PRESETS[i][1].map(r => { const x = fullRule(clone(r)); return [x.field, x.op, x.v, x.a]; }));
+
+/* ---------- overview ---------- */
+const METRICS = {
+  customers:{l:'Matching customers',view:'cust',sort:['rev','desc']},
+  ltv:{l:'LTV',view:'cust',sort:['life','desc']},
+  cac:{l:'CAC',view:'cust',sort:['first','desc'],preset:[{field:'ctype',op:'is',v:['New']}]},
+  revenue:{l:'Revenue',view:'txn',sort:['date','desc']},
+  gross:{l:'Gross profit',view:'txn',sort:['gp','desc']},
+  net:{l:'Net profit',view:'txn',sort:['date','desc']},
+};
+function kpiCards(m) {
+  const card = (k, label, value, fx, extra = '', cls = '') => `<button class="kpi" data-act="drill" data-m="${k}" data-fid="kpi-${k}"><span class="l"><span>${label}</span><span class="go" aria-hidden="true">→</span></span>${value === null ? `<span class="v na">${fx[0]}</span><span class="fx">${fx[1]}</span>` : `<span class="v num ${cls}">${value}</span><span class="fx num">${fx}</span>`}${extra}<span class="sr">Open ${label} drill-through</span></button>`;
+  const partial = m.awN ? `<span class="tag" title="Transactions with a missing direct cost are held out, not counted as zero cost">Partial · ${m.awN} txn${m.awN > 1 ? 's' : ''} held out</span>` : '';
+  const none = m.n === 0;
+  return `<div class="kpis">
+  ${card('revenue','Revenue', B(m.rev), none ? 'No matching transactions' : m.aw ? `<b>${B(m.cRev)}</b> costed + <b>${B(m.aw)}</b> awaiting costs` : `${m.n} transactions · avg <b>${B(m.rev / m.n)}</b>`)}
+  <div class="kpi summary"><span class="l">Service COGS</span><strong class="v ${m.n && m.n === m.awN ? 'na' : 'num'}">${m.n && m.n === m.awN ? 'Unavailable' : B(m.dc)}</strong><span class="fx">${m.n > m.awN ? `Staff ${B(m.st)} · Materials ${B(m.ma)} · Tools ${B(m.to)}` : 'Staff, materials and tools'}${m.awN && m.n > m.awN ? ' · Partial total' : ''}</span>
+    ${m.awN ? `<button class="review" data-act="bridgedrill" data-sort="missing" data-fid="review-missing">Review ${m.awN} missing-cost records</button>` : ''}</div>
+  ${card('gross','Gross profit', m.gp === null ? null : B(m.gp), none ? ['No data','No matching transactions'] : m.gp === null ? ['Not available','Cost inputs missing for every transaction'] : `<b>${B(m.cRev)}</b> − <b>${B(m.dc)}</b> direct costs · ${PCT(m.gp / m.cRev)} margin`, partial, m.gp < 0 ? 'neg' : '')}
+  ${card('net','Net profit', m.net === null ? null : B(m.net), none ? ['No data','No matching transactions'] : m.net === null ? ['Not available','Needs gross profit first'] : `GP − <b>${B(m.mk)}</b> marketing − <b>${B(m.oh)}</b> overhead${m.share < .9995 ? ` · ${PCT(m.share)} revenue share` : ''}`, partial, m.net < 0 ? 'neg' : 'pos')}
+  </div><div class="kpis customers">
+  ${card('customers','Matching customers', N(m.cust), `<b>${m.nw}</b> new · <b>${m.ret}</b> returning · ${m.n} txns`)}
+  ${card('ltv','LTV', m.ltv === null ? null : B(m.ltv), m.ltv === null ? ['No customers','Nothing to average'] : `<b>${B(m.life)}</b> lifetime revenue ÷ <b>${m.cust}</b> customers`, m.ltv !== null && m.cac ? `<span class="tag neutral">LTV : CAC ${(m.ltv / m.cac).toFixed(1)}×</span>` : '')}
+  ${card('cac','CAC', m.cac === null ? null : B(m.cac), m.cac === null ? ['Undefined','No new customers in this slice — not ฿0'] : `<b>${B(m.cacSpend)}</b> paid spend ÷ <b>${m.nw}</b> new customers`, m.unattrib.length && m.cac !== null ? `<span class="tag" title="Spend is tracked by channel and branch only">Spend not split by ${esc(m.unattrib[0].toLowerCase())}</span>` : '')}
+  </div>`;
+}
+const SEG = [['st','Staff','--c-staff','sc'],['ma','Materials','--c-mat','mc'],['to','Tools','--c-tool','tc']];
+function serviceBreakdown(rows) {
+  const per = ['A','B','C'].map(s => ({s, m:calc(rows.filter(t => t.service === s), [])}));
+  const tot = calc(rows, []);
+  const max = Math.max(1, ...per.map(p => p.m.rev));
+  const block = (title, sub, m, s, total) => {
+    const bar = m.rev ? `<div class="bar" aria-hidden="true" style="width:${total ? 100 : (m.rev / max * 100).toFixed(2)}%">${SEG.map(([k,, c]) => `<span style="width:${(m[k] / m.rev * 100).toFixed(2)}%;background:var(${c})"></span>`).join('')}${m.aw ? `<span class="hatch" style="width:${(m.aw / m.rev * 100).toFixed(2)}%"></span>` : ''}${m.gp > 0 ? `<span style="width:${(m.gp / m.rev * 100).toFixed(2)}%;background:var(--c-gp)"></span>` : ''}</div>` : '<p class="note">No matching transactions.</p>';
+    const stat = (label, val, color, sortKey, extra = '') => `<button class="stat" data-act="svcdrill" data-s="${s || ''}" data-sort="${sortKey}" data-fid="st-${s || 'T'}-${sortKey}${extra}"><small>${color ? `<i style="background:var(${color})"></i>` : ''}${label}</small><b class="num">${val}</b></button>`;
+    return `<div class="svc${total ? ' total' : ''}">
+      <div class="svch"><span class="nm">${title}${sub ? `<small>${sub}</small>` : ''}</span><span class="num">${B(m.rev)}${m.gp !== null && m.cRev ? ` <span class="sub" style="display:inline">· ${PCT(m.gp / m.cRev)} GM</span>` : ''}</span></div>
+      <span class="sub">Service COGS <b class="num">${m.n && m.awN === m.n ? 'Unavailable' : B(m.dc)}</b>${m.awN && m.n > m.awN ? ' · Partial total' : ''}</span>
+      ${bar}
+      <div class="stats">
+        ${stat('Revenue', B(m.rev), '', 'amount')}
+        ${SEG.map(([k, l, c, col]) => stat(l, m.awN && m.awN === m.n ? 'Awaiting costs' : '−' + B(m[k]), c, col)).join('')}
+        ${m.awN ? stat('Awaiting costs', B(m.aw), '', 'missing') : ''}
+        ${stat('Gross profit', m.gp === null ? (m.rev ? 'Not available' : '—') : B(m.gp), '--c-gp', 'gp')}
+      </div>
+      ${m.aw ? `<p class="note warn">${B(m.aw)} from ${m.awN} transaction${m.awN > 1 ? 's' : ''} held out of gross profit until cost inputs are entered — not treated as ฿0 cost.</p>` : ''}
+    </div>`;
+  };
+  // exemplar check: only meaningful for the default unfiltered Nov view
+  const a = per[0].m;
+  const ex = S.period === 'nov' && S.branch === 'all' && !S.main.rules.filter(complete).length
+    ? `<div class="check"><span class="ok" aria-hidden="true">✓</span><span>Reconciles: Service A ${B(a.rev)} − ${B(a.st)} staff − ${B(a.ma)} materials − ${B(a.to)} tools = <b>${B(a.gp)}</b> gross profit. Total ${B(tot.rev)} = direct costs ${B(tot.dc)} + awaiting ${B(tot.aw)} + gross profit ${B(tot.gp ?? 0)}.</span></div>`
+    : tot.n && tot.n === tot.awN ? '' : `<div class="check"><span class="ok" aria-hidden="true">✓</span><span>Total ${B(tot.rev)} = direct costs ${B(tot.dc)} + awaiting ${B(tot.aw)} + gross profit ${tot.gp === null ? '(n/a)' : B(tot.gp)}.</span></div>`;
+  return `<section class="panel" aria-labelledby="h-svc">
+    <div class="phead"><h2 id="h-svc">Revenue &amp; cost by service</h2>
+      <div class="legend" aria-hidden="true"><span><i style="background:var(--c-staff)"></i>Staff</span><span><i style="background:var(--c-mat)"></i>Materials</span><span><i style="background:var(--c-tool)"></i>Tools</span><span><i class="hatch"></i>Awaiting costs</span><span><i style="background:var(--c-gp)"></i>Gross profit</span></div></div>
+    ${per.map(p => block(SVC[p.s].name, SVC[p.s].desc, p.m, p.s, false)).join('')}
+    ${block('All services', '', tot, '', true)}
+    ${ex}
+  </section>`;
+}
+function bridge(m) {
+  if (m.n === 0) return `<section class="panel"><div class="phead"><h2>Profit bridge</h2></div><p class="note">No matching transactions.</p></section>`;
+  const steps = [['Revenue', m.rev, 'sum', 'var(--pd-fg)']];
+  if (m.n > m.awN) steps.push(['Staff', -m.st, '', 'var(--c-staff)', 'sc'], ['Materials', -m.ma, '', 'var(--c-mat)', 'mc'], ['Tools', -m.to, '', 'var(--c-tool)', 'tc']);
+  if (m.aw) steps.push(['Awaiting costs', -m.aw, 'held', '', 'missing']);
+  if (m.gp !== null) {
+    steps.push(['Gross profit', m.gp, 'sum', 'var(--c-gp)'], ['Marketing', -m.mk, '', 'var(--c-mk)'], ['Overhead', -m.oh, '', 'var(--c-oh)'], ['Net profit', m.net, 'sum', m.net < 0 ? 'var(--pd-neg)' : 'var(--c-gp)']);
+  }
+  let run = 0; const segs = [];
+  for (const [l, v, type, c, act] of steps) { if (type === 'sum') { segs.push({l, a:0, b:v, v, type, c}); run = v; } else { segs.push({l, a:run, b:run + v, v, type, c, act}); run += v; } }
+  const lo = Math.min(0, ...segs.map(s => Math.min(s.a, s.b))), hi = Math.max(...segs.map(s => Math.max(s.a, s.b)));
+  const x = v => ((v - lo) / (hi - lo || 1) * 100);
+  const rowsH = segs.map(s => {
+    const l = Math.min(x(s.a), x(s.b)), w = Math.max(.4, Math.abs(x(s.b) - x(s.a)));
+    const lab = s.act ? `<button data-act="bridgedrill" data-sort="${s.act}" data-fid="br-${s.act}">${s.l}</button>` : s.l;
+    return `<div class="wfr${s.type === 'sum' ? ' sum' : ''}" role="listitem"><span class="lab">${lab}</span><span class="trk" aria-hidden="true">${lo < 0 ? `<span class="zero" style="left:${x(0)}%"></span>` : ''}<span class="${s.type === 'held' ? 'hatch' : ''}" style="left:${l}%;width:${w}%;${s.c ? `background:${s.c}` : ''}"></span></span><span class="amt ${s.type === 'sum' && s.v < 0 ? 'neg' : ''}">${s.type === 'sum' ? B(s.v) : '−' + B(-s.v)}</span></div>`;
+  }).join('');
+  return `<section class="panel" aria-labelledby="h-br">
+    <div class="phead"><h2 id="h-br">Profit bridge</h2><span class="sub">${esc(P().label)} · ${S.branch === 'all' ? 'All branches' : esc(S.branch)}</span></div>
+    <div class="wf" role="list">${rowsH}</div>
+    ${m.gp === null ? '<p class="note warn">Gross and net profit are not available: no transaction in this slice has complete cost inputs.</p>' : ''}
+    <p class="note">Marketing ${B(m.spendAll)} paid spend and overhead ${B(m.ohAll)} for the selected period and branches${m.share < .9995 ? `, allocated to this slice at its ${PCT(m.share)} share of revenue` : ''}.${m.aw ? ' Net profit is partial while cost inputs are missing.' : ''}</p>
+  </section>`;
+}
+function assumptions() {
+  return `<details class="asm"><summary>Demo assumptions &amp; definitions</summary><ul>
+    <li><b>All figures are seeded demo fixtures</b> in THB, VAT-exclusive: 3 branches, 72 customers, ${TX.length} paid transactions across Oct–Nov 2026.</li>
+    <li><b>Revenue</b> = paid treatment transactions in the period. No refunds in the fixture.</li>
+    <li><b>Direct costs</b> per transaction: staff (commission and time), materials (consumables), tools (per-use equipment cost). Fixture rates: A 25/15/10%, B 30/12/6%, C 28/20/8% of revenue.</li>
+    <li><b>Missing inputs</b>: 4 Service C transactions in Nov have no materials cost and 2 Service B transactions in Oct have no tools cost. They stay in revenue but are held out of gross and net profit as “Awaiting costs”, never counted as ฿0 cost.</li>
+    <li><b>Matching customers</b> = distinct customers with at least one matching transaction. <b>New</b> = first-ever visit falls in the period. Earlier history is a fixture value.</li>
+    <li><b>LTV</b> = lifetime revenue to period end (history + fixture transactions, all branches) ÷ matching customers. It is revenue-based, not margin-based.</li>
+    <li><b>CAC</b> = paid media spend (Instagram, Facebook, Google, LINE OA) for the period and branches ÷ new customers. Referral and walk-in carry no paid spend. A channel filter limits spend to those channels. Spend is not split by service or staff, so the card shows a caveat when those filters are active.</li>
+    <li><b>Net profit</b> = gross profit − marketing − overhead (rent, utilities and admin per month: Sukhumvit ฿20,000, Ari ฿14,000, Thonglor ฿11,000). An advanced-filtered slice gets its revenue share of both.</li>
+    <li><b>Period and branch</b> are dashboard filters. They and the advanced rules are inherited by every drill-through, where more rules can be added.</li>
+  </ul></details>`;
+}
+function renderOverview() {
+  const sc = scope(), rows = filt(sc, S.main), m = calc(rows, S.main.rules);
+  const act = S.main.rules.filter(complete).length;
+  live.textContent = `${m.cust} customers and ${m.n} transactions match.`;
+  root.innerHTML = `
+  <header class="top">
+    <div><h1>Profitability</h1><p class="sub">Customers, unit economics and margin by service · THB <span class="demo">Demo data</span></p></div>
+    <div class="ctl">
+      <label>Period<select class="sel" data-act="period" data-fid="period">${Object.entries(PERIODS).map(([k, p]) => `<option value="${k}"${k === S.period ? ' selected' : ''}>${p.label}</option>`).join('')}</select></label>
+      <label>Branch<select class="sel" data-act="branch" data-fid="branch"><option value="all">All branches</option>${BRANCHES.map(b => `<option${b === S.branch ? ' selected' : ''}>${b}</option>`).join('')}</select></label>
+    </div>
+  </header>
+  <section class="fsec" aria-labelledby="h-f">
+    <div class="fhead"><span class="flabel" id="h-f">Filters</span>
+      <span class="status" role="status"><b>${m.cust}</b> customers · <b>${m.n}</b>${act ? ` of ${sc.length}` : ''} transactions match</span></div>
+    ${filterBar('main')}
+    <div class="presets"><span>Try:</span>${PRESETS.map((p, i) => `<button class="preset" data-act="preset" data-i="${i}" data-fid="pre-${i}" aria-pressed="${presetOn(i)}">${esc(p[0])}</button>`).join('')}</div>
+  </section>
+  ${kpiCards(m)}
+  <div class="cols">${serviceBreakdown(rows)}${bridge(m)}</div>
+  ${assumptions()}`;
+}
+
+/* ---------- drill-through ---------- */
+const TCOLS = [
+  {k:'date',l:'Date',get:t => t.date + t.time,fmt:(v, t) => `${fdate(t.date)} <span class="mut">${t.time}</span>`},
+  {k:'id',l:'Invoice',get:t => t.id,fmt:v => `<span class="mut">${v}</span>`},
+  {k:'cust',l:'Customer',get:t => CM[t.c].name},
+  {k:'branch',l:'Branch',get:t => t.branch},
+  {k:'service',l:'Service',get:t => t.service,fmt:v => `<span class="sb">${v}</span>`},
+  {k:'staff',l:'Staff',get:t => t.staff},
+  {k:'pay',l:'Payment',get:t => t.pay},
+  {k:'amount',l:'Revenue',n:1,get:t => t.amount},
+  {k:'sc',l:'Staff cost',n:1,get:t => t.sc},
+  {k:'mc',l:'Materials',n:1,get:t => t.mc},
+  {k:'tc',l:'Tools',n:1,get:t => t.tc},
+  {k:'gp',l:'Gross profit',n:1,get:gpOf},
+  {k:'gm',l:'Margin',n:1,pct:1,get:t => costed(t) ? gpOf(t) / t.amount : null},
+];
+const CCOLS = [
+  {k:'cust',l:'Customer',get:r => r.name},
+  {k:'channel',l:'Channel',get:r => r.channel},
+  {k:'branch',l:'Home branch',get:r => r.branch},
+  {k:'type',l:'Type',get:r => r.type,fmt:v => v === 'New' ? `<span class="sb">New</span>` : `<span class="mut">Returning</span>`},
+  {k:'first',l:'First visit',get:r => r.firstKey,fmt:(v, r) => r.hist ? '<span class="mut">Before Oct 2026</span>' : fdate(r.first)},
+  {k:'visits',l:'Visits',n:1,raw:1,get:r => r.visits},
+  {k:'rev',l:'Period revenue',n:1,get:r => r.rev},
+  {k:'gp',l:'Period GP',n:1,get:r => r.gp},
+  {k:'life',l:'Lifetime revenue',n:1,get:r => r.life},
+];
+function custRows(rows) {
+  const g = {};
+  rows.forEach(t => { const c = CM[t.c]; const r = g[t.c] || (g[t.c] = {id:c.id, name:c.name, channel:c.channel, branch:c.branch, hist:c.hist, first:c.first, firstKey:c.hist ? '0' : c.first, type:isNew(c) ? 'New' : 'Returning', visits:0, rev:0, gp:null, missing:0, life:lifetime(c)}); r.visits++; r.rev += t.amount; const p = gpOf(t); if (p !== null) r.gp = (r.gp || 0) + p; else r.missing++; });
+  return Object.values(g);
+}
+function cell(col, row) {
+  const v = col.get(row);
+  if (v === null || v === undefined) {
+    if (['sc','mc','tc'].includes(col.k)) return `<span class="miss">Missing</span>`;
+    return `<span class="mut" title="Awaiting cost inputs">—</span>`;
+  }
+  if (col.k === 'gp' && row.missing) return B(v) + ' <small>Partial</small>';
+  if (col.fmt) return col.fmt(v, row);
+  if (col.pct) return PCT(v);
+  if (col.n && !col.raw) return B(v);
+  return esc(v);
+}
+function recon(key, m, base) {
+  const t = (v, l) => `<span class="term"><b>${v}</b><small>${l}</small></span>`, op = s => `<span class="op" aria-hidden="true">${s}</span>`, r = (v, l) => `<span class="term res"><b>${v}</b><small>${l}</small></span>`;
+  const diff = (value, overview) => value === overview ? '<p class="note">Matches the overview card.</p>' : `<p class="note">Overview <b>${overview}</b> · Matching records <b>${value}</b></p>`;
+  const na = 'Not available';
+  let eq = '', extra = '';
+  switch (key) {
+    case 'customers': eq = t(N(m.nw), 'New') + op('+') + t(N(m.ret), 'Returning') + op('=') + r(N(m.cust), 'Matching customers'); extra = diff(N(m.cust), N(base.cust)); break;
+    case 'ltv': eq = t(B(m.life), 'Lifetime revenue') + op('÷') + t(N(m.cust), 'Customers') + op('=') + r(m.ltv === null ? na : B(m.ltv), 'LTV'); extra = diff(m.ltv === null ? na : B(m.ltv), base.ltv === null ? na : B(base.ltv)); break;
+    case 'cac':
+      eq = t(B(m.cacSpend), 'Paid spend') + op('÷') + t(N(m.nw), 'New customers') + op('=') + r(m.cac === null ? 'Undefined' : B(m.cac), 'CAC');
+      extra = `<div class="chans">${PAID.map(ch => `<span class="ichip">${ch} <b class="num">${m.sp[ch] === undefined ? '<span class="mut">excluded</span>' : B(m.sp[ch])}</b></span>`).join('')}<span class="ichip">Referral, Walk-in <span class="mut">no paid spend</span></span></div>`
+        + (m.unattrib.length ? `<p class="note warn">Spend is tracked by channel and branch only. With ${esc(m.unattrib.join(', '))} filters, the numerator is still the full channel spend.</p>` : '')
+        + (m.cac === null ? '<p class="note warn">No new customers match. CAC is undefined, not ฿0.</p>' : '')
+        + diff(m.cac === null ? 'Undefined' : B(m.cac), base.cac === null ? 'Undefined' : B(base.cac)); break;
+    case 'revenue': eq = t(B(m.cRev), 'Costed revenue') + op('+') + t(B(m.aw), 'Awaiting costs') + op('=') + r(B(m.rev), `Revenue · ${m.n} txns`); extra = diff(B(m.rev), B(base.rev)); break;
+    case 'gross': if (m.n && m.n === m.awN) { eq = r(na, 'Gross profit'); extra = '<p class="note warn">All matching transactions are awaiting costs.</p>'; break; } eq = t(B(m.cRev), 'Costed revenue') + op('−') + t(B(m.st), 'Staff') + op('−') + t(B(m.ma), 'Materials') + op('−') + t(B(m.to), 'Tools') + op('=') + r(m.gp === null ? na : B(m.gp), 'Gross profit');
+      extra = (m.aw ? `<p class="note warn">${B(m.aw)} revenue from ${m.awN} transaction${m.awN > 1 ? 's' : ''} with missing cost inputs is held out. Their recorded partial costs are excluded too.</p>` : '') + diff(m.gp === null ? na : B(m.gp), base.gp === null ? na : B(base.gp)); break;
+    case 'net': eq = t(m.gp === null ? na : B(m.gp), 'Gross profit') + op('−') + t(B(m.mk), 'Marketing') + op('−') + t(B(m.oh), 'Overhead') + op('=') + r(m.net === null ? na : B(m.net), 'Net profit');
+      extra = `<p class="note">Marketing ${B(m.spendAll)} and overhead ${B(m.ohAll)} for ${esc(P().label)} · ${S.branch === 'all' ? 'all branches' : esc(S.branch)}, allocated at ${PCT(m.share)} revenue share (${B(m.rev)} of ${B(m.scopeRev)}).</p>` + (m.aw ? '<p class="note warn">Partial: transactions awaiting cost inputs are excluded from gross profit.</p>' : '') + diff(m.net === null ? na : B(m.net), base.net === null ? na : B(base.net)); break;
+  }
+  return `<section class="recon" aria-label="Reconciliation"><div class="eq num">${eq}</div>${extra}</section>`;
+}
+function renderDrill() {
+  const meta = METRICS[S.drill];
+  const sc = scope(), base = filt(sc, S.main), rows0 = filt(base, S.d);
+  const allRules = [...S.main.rules, ...S.d.rules];
+  const mBase = calc(base, S.main.rules), m = calc(rows0, allRules);
+  const cust = S.view === 'cust';
+  const COLS = (cust ? CCOLS : TCOLS).filter(c => cust || !S.hidden.has(c.k));
+  let data = cust ? custRows(rows0) : rows0.slice();
+  const q = S.q.trim().toLowerCase();
+  if (q) data = data.filter(r => cust ? (r.name + ' ' + r.id).toLowerCase().includes(q) : (CM[r.c].name + ' ' + r.id + ' ' + r.staff).toLowerCase().includes(q));
+  const allCols = cust ? CCOLS : TCOLS;
+  const sc0 = allCols.find(c => c.k === S.sort[0]) || allCols[0], dir = S.sort[1] === 'asc' ? 1 : -1;
+  data.sort((a, b) => { const x = sc0.get(a), y = sc0.get(b); if (x === null && y === null) return 0; if (x === null) return 1; if (y === null) return -1; return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+  const PS = 12, pages = Math.max(1, Math.ceil(data.length / PS)); S.page = Math.min(S.page, pages - 1);
+  const slice = data.slice(S.page * PS, S.page * PS + PS);
+  const inh = [`<span class="ichip">${LOCK}Period: ${esc(P().label)}</span>`, `<span class="ichip">${LOCK}Branch: ${S.branch === 'all' ? 'All' : esc(S.branch)}</span>`, ...S.main.rules.filter(complete).map((r, i) => (i ? `<span class="status">${S.main.join}</span>` : '') + `<span class="ichip">${LOCK}${esc(describe(r))}</span>`)].join('');
+  const head = COLS.map(c => { const s = S.sort[0] === c.k; return `<th class="${c.n ? 'n' : ''}"${s ? ` aria-sort="${S.sort[1] === 'asc' ? 'ascending' : 'descending'}"` : ''}><button data-act="sort" data-c="${c.k}" data-fid="th-${c.k}">${c.l}<span class="ar" aria-hidden="true">${s ? (S.sort[1] === 'asc' ? '▲' : '▼') : '↕'}</span></button></th>`; }).join('');
+  const body = slice.map(r => `<tr>${COLS.map(c => `<td class="${c.n ? 'n' : ''}${S.hl === c.k ? ' hl' : ''}">${cell(c, r)}</td>`).join('')}</tr>`).join('');
+  // footer reconciles to the metric for all filtered rows (not just this page)
+  const fm = q ? calc(cust ? rows0.filter(t => data.some(d => d.id === t.c)) : data, allRules) : m;
+  const foot = COLS.map((c, i) => {
+    let v = '';
+    if (i === 0) v = cust ? `${N(data.length)} customers` : `${N(data.length)} transactions`;
+    else if (!cust) v = {amount:B(fm.rev), sc:B(fm.st), mc:B(fm.ma), tc:B(fm.to), gp:fm.gp === null ? '—' : B(fm.gp), gm:fm.gp === null ? '—' : PCT(fm.gp / fm.cRev)}[c.k] || '';
+    else v = {visits:N(fm.n), rev:B(fm.rev), gp:fm.gp === null ? '—' : B(fm.gp), life:`${B(fm.life)}<small>avg ${fm.ltv === null ? '—' : B(fm.ltv)} = LTV</small>`}[c.k] || '';
+    if (!cust && ['sc','mc','tc','gp'].includes(c.k) && fm.awN) v = fm.n === fm.awN ? 'Awaiting costs' : v + '<small>costed rows</small>';
+    return `<td class="${c.n ? 'n' : ''}">${v}</td>`;
+  }).join('');
+  const minW = COLS.length * (cust ? 104 : 92);
+  const colMenu = !cust ? `<div class="colwrap"><button class="btn" data-act="cols" data-fid="cols" aria-haspopup="true" aria-expanded="${S.open === 'cols'}">Columns</button>${S.open === 'cols' ? `<div class="pop" role="group" aria-label="Visible columns">${TCOLS.slice(1).map(c => `<label><input type="checkbox" data-act="colcheck" value="${c.k}" data-fid="cc-${c.k}"${S.hidden.has(c.k) ? '' : ' checked'}>${c.l}</label>`).join('')}</div>` : ''}</div>` : '';
+  live.textContent = `${data.length} ${cust ? 'customers' : 'transactions'} shown.`;
+  root.innerHTML = `
+  <nav class="crumb" aria-label="Breadcrumb"><button class="btn ghost" data-act="back" data-fid="back">← Overview</button><span aria-hidden="true">/</span><span>${meta.l}</span></nav>
+  <header class="top"><div><h1>${meta.l} · ${cust ? 'customers' : 'transactions'}</h1><p class="sub">Drill-through · ${esc(P().label)} · ${S.branch === 'all' ? 'All branches' : esc(S.branch)} <span class="demo">Demo data</span></p></div>
+    <div class="ctl">${Object.entries(METRICS).filter(([k]) => k !== S.drill).length ? `<label>Metric<select class="sel" data-act="metric" data-fid="metric">${Object.entries(METRICS).map(([k, x]) => `<option value="${k}"${k === S.drill ? ' selected' : ''}>${x.l}</option>`).join('')}</select></label>` : ''}</div></header>
+  <section class="fsec" aria-labelledby="h-inh"><div class="fhead"><span class="flabel" id="h-inh">Inherited from overview</span><button class="btn ghost" data-act="back" data-fid="edit-inh">Edit on overview</button></div><div class="fbar">${inh}</div></section>
+  <section class="fsec" aria-labelledby="h-add"><div class="fhead"><span class="flabel" id="h-add">Additional filters</span><span class="status" role="status"><b>${N(m.n)}</b> of ${N(base.length)} inherited transactions · <b>${N(m.cust)}</b> customers</span></div>${filterBar('drill')}</section>
+  ${recon(S.drill, fm, mBase)}
+  <div class="tb">
+    <label class="search"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" d="M7 12.5A5.5 5.5 0 1 0 7 1.5a5.5 5.5 0 0 0 0 11Zm4-1.5 3.5 3.5"/></svg><span class="sr">Search</span><input type="search" data-act="q" data-fid="q" value="${esc(S.q)}" placeholder="${cust ? 'Search customer or ID' : 'Search customer, invoice, staff'}"></label>
+    <div class="grp">
+      <div class="seg" role="group" aria-label="Group rows by"><button class="btn" data-act="view" data-v="txn" data-fid="v-txn" aria-pressed="${!cust}">Transactions</button><button class="btn" data-act="view" data-v="cust" data-fid="v-cust" aria-pressed="${cust}">Customers</button></div>
+      ${colMenu}
+      <button class="btn" data-act="csv" data-fid="csv">Export CSV</button>
+    </div>
+  </div>
+  <div class="gridwrap">${data.length ? `<table class="g" style="min-width:${minW}px"><caption class="sr">${meta.l} drill-through, ${cust ? 'customers' : 'transactions'}, sorted by ${sc0.l} ${S.sort[1] === 'asc' ? 'ascending' : 'descending'}</caption><thead><tr>${head}</tr></thead><tbody>${body}</tbody><tfoot><tr>${foot}</tr></tfoot></table>` : `<div class="empty">No ${cust ? 'customers' : 'transactions'} match this view. ${q ? '<button class="btn" data-act="clearsearch">Clear search</button>' : S.d.rules.length ? '<button class="btn" data-act="clear" data-k="drill">Clear additional filters</button>' : '<button class="btn" data-act="back">Edit overview filters</button>'}</div>`}</div>
+  <div class="pager"><span>${data.length ? `${S.page * PS + 1}–${Math.min(data.length, S.page * PS + PS)} of ${N(data.length)}` : '0 results'}${!cust && m.awN ? ' · <span class="miss">Missing</span> = cost input not entered yet' : ''}</span>
+    <span class="grp" style="display:flex;gap:6px"><button class="btn" data-act="page" data-d="-1" data-fid="pg-prev"${S.page === 0 ? ' disabled' : ''}>Previous</button><button class="btn" data-act="page" data-d="1" data-fid="pg-next"${S.page >= pages - 1 ? ' disabled' : ''}>Next</button></span></div>`;
+  S._csv = {cols:cust ? CCOLS : TCOLS.filter(c => !S.hidden.has(c.k)), data};
+}
+
+/* ---------- render + focus restore ---------- */
+function render() {
+  const a = document.activeElement, fid = a && root.contains(a) ? a.dataset.fid : null;
+  let selS = null; try { selS = a && a.selectionStart; } catch (e) {}
+  S.drill ? renderDrill() : renderOverview();
+  if (fid) { const el = root.querySelector(`[data-fid="${CSS.escape(fid)}"]`); if (el) { el.focus({preventScroll:true}); try { if (selS !== null && el.setSelectionRange) el.setSelectionRange(selS, selS); } catch (e) {} } }
+}
+let overviewTrigger = '';
+function go(metric, opts = {}) {
+  if (!S.drill) overviewTrigger = document.activeElement?.dataset.fid || '';
+  const meta = METRICS[metric];
+  S.drill = metric; S.view = opts.view || meta.view; S.d = {rules:(opts.rules || meta.preset || []).map(r => fullRule(clone(r))), join:'and'};
+  S.sort = opts.sort || meta.sort; S.hl = opts.hl || null; S.q = ''; S.page = 0; S.open = null;
+  try { if (location.hash !== '#drill/' + metric) history.pushState({m:metric}, '', '#drill/' + metric); } catch (e) {}
+  render(); try { window.scrollTo(0, 0); } catch (e) {}
+  const b = root.querySelector('[data-fid="back"]'); if (b) b.focus({preventScroll:true});
+}
+function back() {
+  const from = S.drill; S.drill = null; S.open = null;
+  try { history.pushState({}, '', location.pathname + location.search); } catch (e) {}
+  render(); const el = root.querySelector(`[data-fid="${CSS.escape(overviewTrigger)}"]`) || root.querySelector(`[data-fid="kpi-${from}"]`); el?.focus();
+}
+window.addEventListener('popstate', () => { let h = ''; try { h = location.hash; } catch (e) {} const m = (h.match(/^#drill\/(\w+)/) || [])[1]; if (m && METRICS[m]) { if (m !== S.drill) go(m); } else if (S.drill) { S.drill = null; S.open = null; render(); } });
+
+const fset = k => k === 'main' ? S.main : S.d;
+root.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (S.open && !e.target.closest('.pop') && !(el && ['vals','cols'].includes(el.dataset.act))) { S.open = null; if (!el) { render(); return; } }
+  if (!el) return;
+  const d = el.dataset, f = d.k ? fset(d.k) : null;
+  switch (d.act) {
+    case 'drill': go(d.m); break;
+    case 'svcdrill': {
+      const rules = d.s ? [{field:'service',op:'is',v:[d.s]}] : [];
+      if (d.sort === 'missing') { rules.push({field:'costs',op:'is',v:['Missing']}); go('gross', {rules, sort:['date','desc']}); }
+      else go(d.sort === 'amount' ? 'revenue' : 'gross', {rules, sort:[d.sort,'desc'], hl:d.sort});
+      break; }
+    case 'bridgedrill': d.sort === 'missing' ? go('gross', {rules:[{field:'costs',op:'is',v:['Missing']}], sort:['date','desc']}) : go('gross', {sort:[d.sort,'desc'], hl:d.sort}); break;
+    case 'back': back(); break;
+    case 'vals': { const id = d.k + '-' + d.i; S.open = S.open === id ? null : id; render(); break; }
+    case 'cols': S.open = S.open === 'cols' ? null : 'cols'; render(); break;
+    case 'rm': f.rules.splice(+d.i, 1); S.open = null; S.page = 0; render(); { const n = root.querySelector(`[data-fid="${d.k}-add"]`); if (n) n.focus(); } break;
+    case 'join': f.join = f.join === 'and' ? 'or' : 'and'; S.page = 0; render(); break;
+    case 'clear': f.rules = []; S.open = null; S.page = 0; render(); break;
+    case 'preset': { const on = presetOn(+d.i); S.main.rules = on ? [] : PRESETS[+d.i][1].map(r => fullRule(clone(r))); S.main.join = 'and'; render(); break; }
+    case 'sort': S.sort = [d.c, S.sort[0] === d.c && S.sort[1] === 'desc' ? 'asc' : 'desc']; S.page = 0; S.hl = null; render(); break;
+    case 'view': S.view = d.v; S.page = 0; S.q = ''; S.open = null; S.sort = d.v === 'cust' ? ['rev','desc'] : ['date','desc']; S.hl = null; render(); break;
+    case 'page': S.page += +d.d; render(); break;
+    case 'clearsearch': S.q = ''; S.page = 0; render(); root.querySelector('[data-fid="q"]').focus(); break;
+    case 'csv': exportCsv(); break;
+  }
+});
+root.addEventListener('change', e => {
+  const el = e.target, d = el.dataset, f = d.k ? fset(d.k) : null;
+  switch (d.act) {
+    case 'period': S.period = el.value; render(); break;
+    case 'branch': S.branch = el.value; render(); break;
+    case 'metric': go(el.value); break;
+    case 'field': f.rules[+d.i] = newRule(el.value); S.open = FIELDS[el.value].type === 'enum' ? d.k + '-' + d.i : null; render(); break;
+    case 'op': f.rules[+d.i].op = el.value; S.page = 0; render(); break;
+    case 'add': if (el.value) { const i = f.rules.push(newRule(el.value)) - 1; const t = FIELDS[el.value].type; S.open = t === 'enum' ? d.k + '-' + i : null; render(); const fid = t === 'enum' ? `${d.k}-${i}-c-${FIELDS[el.value].opts[0]}` : t === 'text' ? `${d.k}-${i}-s` : `${d.k}-${i}-a`; const n = root.querySelector(`[data-fid="${CSS.escape(fid)}"]`); if (n) n.focus(); } break;
+    case 'vcheck': { const r = f.rules[+d.i]; r.v = el.checked ? [...new Set([...r.v, el.value])] : r.v.filter(x => x !== el.value); r.v.sort((a, b) => FIELDS[r.field].opts.indexOf(a) - FIELDS[r.field].opts.indexOf(b)); S.page = 0; render(); break; }
+    case 'colcheck': el.checked ? S.hidden.delete(el.value) : S.hidden.add(el.value); render(); break;
+  }
+});
+let tmr;
+root.addEventListener('input', e => {
+  const el = e.target, d = el.dataset;
+  if (!['vnum','vtext','q'].includes(d.act)) return;
+  if (d.act === 'q') S.q = el.value; else { const r = fset(d.k).rules[+d.i]; if (d.act === 'vnum') r[d.w] = el.value; else r.s = el.value; }
+  S.page = 0; clearTimeout(tmr); tmr = setTimeout(render, 180);
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !S.open) return;
+  const o = S.open; S.open = null; render();
+  const t = root.querySelector(`[data-fid="${o === 'cols' ? 'cols' : o + '-v'}"]`); if (t) t.focus();
+});
+function exportCsv() {
+  const {cols, data} = S._csv; const q = v => { const s = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const lines = [cols.map(c => q(c.l)).join(',')].concat(data.map(r => cols.map(c => { let v = c.get(r); if (c.k === 'date' && r.date) v = r.date + ' ' + r.time; if (c.pct && v !== null) v = (v * 100).toFixed(1); if (v === null && ['sc','mc','tc'].includes(c.k)) v = 'MISSING'; return q(v); }).join(',')));
+  try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\n')], {type:'text/csv'})); a.download = `profitability-${S.drill}-${S.period}.csv`; document.body.appendChild(a); a.click(); a.remove(); live.textContent = `Exported ${data.length} rows.`; } catch (err) { live.textContent = 'Export is not available in this preview.'; }
+}
+
+/* initial route */
+let h0 = ''; try { h0 = location.hash; } catch (e) {}
+const m0 = (h0.match(/^#drill\/(\w+)/) || [])[1];
+if (m0 && METRICS[m0]) go(m0); else render();
+})();
+</script>
+</body>
+</html>

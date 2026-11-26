@@ -62,6 +62,16 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
         .first();
     await expect(card('Revenue')).toContainText('฿1,000');
     await expect(card('Net profit')).toContainText('Unavailable');
+    const cogs = page.getByRole('heading', { name: 'Service COGS', exact: true }).locator('..');
+    await expect(cogs).toContainText('Unavailable');
+    await cogs.getByRole('link', { name: /missing costs/ }).click();
+    await expect(page.getByLabel('Record category')).toHaveValue('Awaiting cost');
+    await expect(page.getByRole('row').filter({ hasText: visit.confirmationCode })).toContainText('Awaiting cost');
+    await page.getByRole('link', { name: 'Profitability overview' }).click();
+    await page.getByRole('link', { name: 'Review missing costs for ' + service }).click();
+    await expect(page.getByLabel('Record category')).toHaveValue('Awaiting cost');
+    await expect(page.getByRole('button', { name: 'Record actual costs' })).toBeVisible();
+    await page.getByRole('link', { name: 'Profitability overview' }).click();
     await page.getByRole('button', { name: 'Finance inputs' }).click();
     await page.getByLabel('Effective from').fill(from);
     await page.getByRole('combobox', { name: 'Service', exact: true }).selectOption(serviceId);
@@ -73,7 +83,11 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
       await page.getByLabel(k + ' (฿)', { exact: true }).fill(v);
     await page.getByRole('button', { name: 'Save cost schedule' }).click();
     await expect(card('Gross profit')).toContainText('฿500');
-    await page.getByRole('combobox', { name: 'Finance entry', exact: true }).selectOption('month');
+    await expect(cogs).toContainText('฿500');
+    await expect(cogs.getByRole('link', { name: /missing costs/ })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Finance inputs' }).click();
+    await page.getByRole('button', { name: 'Review monthly accounts for 2024-08' }).click();
+    await expect(page.getByLabel('Accounting month')).toHaveValue('2024-08');
     for (const [k, v] of [
       ['Operating overhead', '80'],
       ['Other expenses', '10'],
@@ -85,11 +99,14 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await page.getByRole('button', { name: 'Confirm monthly accounts' }).click();
     await expect(card('Net profit')).toContainText('฿405');
     await page.getByRole('button', { name: 'Finance inputs' }).click();
-    await card('Revenue').click();
+    await page.getByRole('link', { name: /without an identified attendee/ }).click();
     await page.getByRole('button', { name: 'Identify customer' }).click();
     await page.getByLabel('Find customer').fill(name);
     await page.getByRole('combobox', { name: 'Matching profiles', exact: true }).selectOption(customer);
     await page.getByRole('button', { name: 'Confirm customer' }).last().click();
+    await expect(page.getByText('No records match the selected rules and search.')).toBeVisible();
+    await page.getByRole('link', { name: 'Profitability overview' }).click();
+    await card('Revenue').click();
     await expect(page.getByRole('cell', { name: new RegExp(name) })).toBeVisible();
     await page.getByRole('button', { name: 'Record actual costs' }).click();
     await page.getByLabel('Staff (฿)', { exact: true }).fill('200');

@@ -13,7 +13,13 @@ export const metricNames: Record<ProfitMetric, string> = {
 };
 export const filterRule = v.union(
   v.object({
-    field: v.union(v.literal('service'), v.literal('source'), v.literal('kind'), v.literal('coverage')),
+    field: v.union(
+      v.literal('service'),
+      v.literal('source'),
+      v.literal('kind'),
+      v.literal('coverage'),
+      v.literal('attendee'),
+    ),
     operator: v.union(v.literal('is'), v.literal('is not')),
     value: v.union(v.string(), v.array(v.string())),
   }),
@@ -89,7 +95,11 @@ export function matchesProfitRules(row: ProfitLine, group: ProfitFilters) {
           : 'Missing'
         : rule.field === 'service'
           ? row.serviceId
-          : row[rule.field];
+          : rule.field === 'attendee'
+            ? row.customerId
+              ? 'Identified'
+              : 'Unidentified'
+            : row[rule.field];
     const included = Array.isArray(rule.value) ? rule.value.includes(value) : rule.value === value;
     return rule.operator === 'is' ? included : !included;
   }
@@ -132,9 +142,7 @@ export function calculateProfit(
   const acquired = customers.filter((c) => c.firstDay !== null && c.firstDay >= from && c.firstDay <= to);
   const lifetime = customers.reduce((sum, c) => sum + c.lifetime, 0);
   const total = profitTotals(lines);
-  const spend = facts.expenses
-    .filter((row) => row.kind === 'Marketing')
-    .reduce((sum, row) => sum - row.amount, 0);
+  const spend = facts.expenses.filter((row) => row.kind === 'Marketing').reduce((sum, row) => sum - row.amount, 0);
   const unmappedSpend = facts.expenses
     .filter((row) => row.kind === 'Unmapped spend')
     .reduce((sum, row) => sum - row.amount, 0);

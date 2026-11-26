@@ -6,12 +6,13 @@ import { emptyFilters, type ProfitFilters, type ProfitRule } from 'convex/shared
 import { thb } from '../marketing/marketing-format';
 
 export const inputStyle =
-  'min-h-10 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-ring';
+  'min-h-10 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring';
 const labels = {
   service: 'Service',
   source: 'Booking source',
   kind: 'Transaction type',
   coverage: 'Direct costs',
+  attendee: 'Attendee',
   revenue: 'Revenue',
 };
 type Options = { services: { id: string; name: string }[]; sources: string[] };
@@ -22,7 +23,9 @@ function choices(field: ProfitRule['field'], options: Options) {
       ? options.sources
       : field === 'kind'
         ? ['Service', 'Refund', 'Fee', 'Settlement']
-        : ['Complete', 'Missing'];
+        : field === 'attendee'
+          ? ['Identified', 'Unidentified']
+          : ['Complete', 'Missing'];
   return values.map((value) => ({ value, label: value }));
 }
 export function ruleLabel(rule: ProfitRule, options: Options) {
@@ -119,15 +122,20 @@ export function RuleEditor({
           </select>
         )}
         {group.rules.map((rule, index) => (
-          <button
+          <span
             key={index}
-            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-muted px-3 text-xs font-medium"
-            aria-label={'Remove ' + ruleLabel(rule, options)}
-            onClick={() => onChange({ ...group, rules: group.rules.filter((_, i) => i !== index) })}
+            className="inline-flex max-w-full items-center rounded-full bg-muted pl-3 text-xs font-medium"
           >
             {ruleLabel(rule, options)}
-            <X size={13} />
-          </button>
+            <button
+              type="button"
+              className="grid size-11 shrink-0 place-items-center rounded-full"
+              aria-label={'Remove ' + ruleLabel(rule, options)}
+              onClick={() => onChange({ ...group, rules: group.rules.filter((_, i) => i !== index) })}
+            >
+              <X size={14} />
+            </button>
+          </span>
         ))}
       </div>
       {open && (
