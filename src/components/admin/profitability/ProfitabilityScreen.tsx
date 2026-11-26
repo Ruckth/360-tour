@@ -207,13 +207,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             </span>
           </div>
         ) : (
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <CalendarRange aria-hidden="true" className="mb-3 hidden text-muted-foreground sm:block" size={18} />
             <label className="grid gap-1 text-xs">
               From
               <input
                 type="date"
-                className={inputStyle}
+                className={inputStyle + ' w-full'}
                 value={from}
                 onChange={(e) => update({ from: e.target.value })}
               />
@@ -222,7 +222,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               Through
               <input
                 type="date"
-                className={inputStyle}
+                className={inputStyle + ' w-full'}
                 value={to}
                 onChange={(e) => update({ to: e.target.value })}
               />
