@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useConvex } from 'convex/react';
@@ -106,6 +106,7 @@ export function BookingRangePicker({
   const calendarFormatters = useMemo(() => getCalendarFormatters(locale), [locale]);
   const [open, setOpen] = useState(false);
   const [activeField, setActiveField] = useState<ActiveDateField>("checkIn");
+  const [visibleMonth, setVisibleMonth] = useState<Date>();
   const checkInLabel = checkIn ? formatPickerDate(checkIn, locale) : t("checkIn");
   const checkOutLabel = checkOut ? formatPickerDate(checkOut, locale) : t("checkOut");
   const checkInDate = isoToDate(checkIn);
@@ -114,7 +115,9 @@ export function BookingRangePicker({
   const selectedRange: DateRange | undefined = checkInDate
     ? { from: checkInDate, to: checkOutDate ?? checkInDate }
     : undefined;
-  const clearLabel = activeField === "checkOut" ? t("checkOut") : t("checkIn");
+  const clearLabel = activeField === "checkOut"
+    ? checkOut && t("clearCheckOut")
+    : checkIn && t("clearCheckIn");
   const calendarPopoverClassName = cn(
     "w-[min(22rem,calc(100vw-2rem))] rounded-2xl p-2.5 shadow-xl shadow-black/15 sm:p-3",
     compact && "z-[80] w-[min(21rem,calc(100vw-2rem))]",
@@ -175,8 +178,23 @@ export function BookingRangePicker({
     setActiveField("checkIn");
   }
 
+  function showMonth(date: Date) {
+    const month = new Date(date);
+    month.setDate(1);
+    setVisibleMonth(month);
+    onMonthChange?.(month);
+  }
+
+  function activateField(field: ActiveDateField) {
+    if (field === activeField) return;
+    setActiveField(field);
+    const date = field === "checkIn" ? checkInDate : checkOutDate;
+    if (date) showMonth(date);
+  }
+
   function openPicker(field: ActiveDateField) {
-    onMonthChange?.(checkOutDate ?? checkInDate ?? isoToDate(todayIsoResort())!);
+    const date = field === "checkIn" ? checkInDate : checkOutDate;
+    showMonth(date ?? checkInDate ?? isoToDate(todayIsoResort())!);
     setActiveField(field);
     setOpen(true);
   }
@@ -190,15 +208,15 @@ export function BookingRangePicker({
       compact={compact}
       calendarFormatters={calendarFormatters}
       selectedRange={selectedRange}
-      defaultMonth={checkOutDate ?? checkInDate}
+      month={visibleMonth}
       isDateDisabled={isPickerDateDisabled}
       isUnavailableDate={isUnavailableDate}
       unavailableDayClassName={unavailableDayClassName}
       clearLabel={clearLabel}
-      onActivateField={setActiveField}
-      onClear={clearable ? clearActiveDate : undefined}
+      onActivateField={activateField}
+      onClear={clearable && clearLabel ? clearActiveDate : undefined}
       onSelectDate={selectDate}
-      onMonthChange={onMonthChange}
+      onMonthChange={showMonth}
     />
   );
 
@@ -319,7 +337,7 @@ function RangePickerContent({
   compact,
   calendarFormatters,
   selectedRange,
-  defaultMonth,
+  month,
   isDateDisabled,
   isUnavailableDate,
   unavailableDayClassName,
@@ -336,7 +354,7 @@ function RangePickerContent({
   compact: boolean;
   calendarFormatters: NonNullable<DayPickerProps["formatters"]>;
   selectedRange: DateRange | undefined;
-  defaultMonth: Date | undefined;
+  month: Date | undefined;
   isDateDisabled: (date: Date) => boolean;
   isUnavailableDate: (date: Date) => boolean;
   unavailableDayClassName: string;
@@ -344,7 +362,7 @@ function RangePickerContent({
   onActivateField: (field: ActiveDateField) => void;
   onClear?: () => void;
   onSelectDate: (date: Date) => void;
-  onMonthChange?: (month: Date) => void;
+  onMonthChange: (month: Date) => void;
 }) {
   return (
     <PopoverContent align="center" collisionPadding={16} className={className}>
@@ -361,7 +379,7 @@ function RangePickerContent({
         compact={compact}
         calendarFormatters={calendarFormatters}
         selectedRange={selectedRange}
-        defaultMonth={defaultMonth}
+        month={month}
         isDateDisabled={isDateDisabled}
         isUnavailableDate={isUnavailableDate}
         unavailableDayClassName={unavailableDayClassName}
@@ -398,17 +416,18 @@ function RangeHeader({
         active={activeField === "checkIn"}
         onClick={() => onActivateField("checkIn")}
         compact={compact}
+        clearLabel={clearLabel}
+        onClear={activeField === "checkIn" ? onClear : undefined}
       />
-      <div className="relative">
-        <RangeSummaryButton
-          field="checkOut"
-          value={checkOutValue}
-          active={activeField === "checkOut"}
-          onClick={() => onActivateField("checkOut")}
-          compact={compact}
-        />
-        {onClear ? <ClearDateButton label={clearLabel} onClear={onClear} /> : null}
-      </div>
+      <RangeSummaryButton
+        field="checkOut"
+        value={checkOutValue}
+        active={activeField === "checkOut"}
+        onClick={() => onActivateField("checkOut")}
+        compact={compact}
+        clearLabel={clearLabel}
+        onClear={activeField === "checkOut" ? onClear : undefined}
+      />
     </div>
   );
 }
@@ -417,7 +436,7 @@ function ClearDateButton({ label, onClear }: { label: string; onClear: () => voi
   return (
     <button
       type="button"
-      aria-label={`Clear ${label}`}
+      aria-label={label}
       onClick={onClear}
       className="absolute right-1 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full bg-muted-foreground/25 text-background transition hover:bg-muted-foreground/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
     >
@@ -430,7 +449,7 @@ function RangeCalendarBody({
   compact,
   calendarFormatters,
   selectedRange,
-  defaultMonth,
+  month,
   isDateDisabled,
   isUnavailableDate,
   unavailableDayClassName,
@@ -440,18 +459,18 @@ function RangeCalendarBody({
   compact: boolean;
   calendarFormatters: NonNullable<DayPickerProps["formatters"]>;
   selectedRange: DateRange | undefined;
-  defaultMonth: Date | undefined;
+  month: Date | undefined;
   isDateDisabled: (date: Date) => boolean;
   isUnavailableDate: (date: Date) => boolean;
   unavailableDayClassName: string;
   onSelectDate: (date: Date) => void;
-  onMonthChange?: (month: Date) => void;
+  onMonthChange: (month: Date) => void;
 }) {
   return (
     <Calendar
       mode="range"
       selected={selectedRange}
-      defaultMonth={defaultMonth}
+      month={month}
       onMonthChange={onMonthChange}
       onDayClick={onSelectDate}
       disabled={isDateDisabled}
@@ -471,31 +490,45 @@ function RangeSummaryButton({
   active,
   compact,
   onClick,
+  clearLabel,
+  onClear,
 }: {
   field: ActiveDateField;
   value: string;
   active: boolean;
   compact: boolean;
   onClick: () => void;
+  clearLabel: string;
+  onClear?: () => void;
 }) {
+  const fieldButton = useRef<HTMLButtonElement>(null);
   return (
-    <button
-      type="button"
-      data-testid={`booking-range-${field}`}
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "min-w-0 rounded-lg px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
-        active
-          ? "border border-border bg-background shadow-sm"
-          : "border border-transparent text-foreground hover:bg-background/50",
-        field === "checkOut" && "pr-8",
-        compact && "px-2.5 py-1.5",
-      )}
-    >
-      <span className={cn("block truncate font-semibold leading-tight", active ? "text-primary" : "text-foreground", compact ? "text-xs" : "text-sm")}>
-        {value}
-      </span>
-    </button>
+    <div className="relative min-w-0">
+      <button
+        ref={fieldButton}
+        type="button"
+        data-testid={`booking-range-${field}`}
+        aria-pressed={active}
+        onClick={onClick}
+        className={cn(
+          "w-full rounded-lg px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+          active
+            ? "border border-border bg-background shadow-sm"
+            : "border border-transparent text-foreground hover:bg-background/50",
+          compact && "px-2.5 py-1.5",
+          onClear && "pr-8",
+        )}
+      >
+        <span className={cn("block truncate font-semibold leading-tight", active ? "text-primary" : "text-foreground", compact ? "text-xs" : "text-sm")}>
+          {value}
+        </span>
+      </button>
+      {onClear ? (
+        <ClearDateButton label={clearLabel} onClear={() => {
+          onClear();
+          fieldButton.current?.focus();
+        }} />
+      ) : null}
+    </div>
   );
 }

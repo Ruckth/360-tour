@@ -159,6 +159,8 @@
     "continueToPay": "Перейти к оплате",
     "checkIn": "Заезд",
     "checkOut": "Выезд",
+    "clearCheckIn": "Очистить дату заезда",
+    "clearCheckOut": "Очистить дату выезда",
     "guests": "Гости",
     "guestCapacity": "{propertyName} вмещает до {count} гостей.",
     "adults": "Взрослые",

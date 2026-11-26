@@ -218,16 +218,17 @@ test("historical create loads only bounded months and allows changing past check
   const submit = page.getByRole("button", { name: "Create booking", exact: true });
   await expect(submit).toBeEnabled();
   await page.getByTestId("booking-check-in").click();
+  await expect(page.getByRole("grid", { name: /January 2025/ })).toBeVisible();
   await page.locator('[data-day="2025-01-29"] button').click();
-  await page.locator('[data-day="2025-02-04"] button').click();
+  await page.locator('[data-day="2025-02-01"] button').click();
   await page.getByLabel("Phone", { exact: true }).fill("0812345678");
   await page.getByLabel("Guest name", { exact: true }).fill("Past Guest");
   await submit.click();
-  await expect(page.locator("body")).toHaveAttribute("data-submission", /"checkIn":"2025-01-29","checkOut":"2025-02-04"/);
+  await expect(page.locator("body")).toHaveAttribute("data-submission", /"checkIn":"2025-01-29","checkOut":"2025-02-01"/);
   const requests = JSON.parse((await page.locator("body").getAttribute("data-availability-requests"))!);
   expect(requests.length).toBeLessThanOrEqual(3);
   expect(requests.every((request: { startDate: string; endDate: string }) =>
-    request.startDate.startsWith("2025-") && request.startDate.slice(0, 7) === request.endDate.slice(0, 7),
+    ["2024-12", "2025-01", "2025-02"].includes(request.startDate.slice(0, 7)) && request.startDate.slice(0, 7) === request.endDate.slice(0, 7),
   )).toBe(true);
 });
 
@@ -236,7 +237,7 @@ test("historical conflict in a middle month blocks submission and is marked unav
   await expect(page.getByRole("alert")).toContainText("overlap");
   await expect(page.getByRole("button", { name: "Create booking", exact: true })).toBeDisabled();
   await page.getByTestId("booking-check-in").click();
-  await page.getByRole("button", { name: "Go to the Previous Month" }).click();
+  await page.getByRole("button", { name: "Go to the Next Month" }).click();
   const cell = page.locator('[data-day="2025-02-15"]');
   await expect(cell).toHaveAttribute("data-disabled", "true");
   await expect(cell).toHaveClass(/bg-destructive/);
@@ -289,7 +290,9 @@ test("historical edit excludes its booking id and submits changed past dates", a
   const save = page.getByRole("button", { name: "Save changes", exact: true });
   await expect(save).toBeEnabled();
   await page.getByTestId("booking-check-in").click();
+  await expect(page.getByRole("grid", { name: /January 2025/ })).toBeVisible();
   await page.locator('[data-day="2025-01-29"] button').click();
+  await page.getByRole("button", { name: /next month/i }).click();
   await page.locator('[data-day="2025-02-04"] button').click();
   await expect(page.getByText("New total ฿42,000")).toBeVisible();
   await save.click();
@@ -398,4 +401,63 @@ test("public calendar keeps past blocked dates plainly disabled", async ({ page 
   const cell = page.locator('[data-day="2025-02-15"]');
   await expect(cell).toHaveAttribute("data-disabled", "true");
   await expect(cell).not.toHaveClass(/bg-destructive/);
+});
+
+test("public calendar opens and requests the intended month for each date", async ({ page }) => {
+  await page.goto("/tests/browser/index.html?mode=public-calendar&crossMonth");
+  const fixture = page.getByTestId("public-calendar");
+  const dialog = page.getByRole("dialog");
+  const checkIn = page.getByTestId("booking-range-checkIn");
+  const checkOut = page.getByTestId("booking-range-checkOut");
+
+  await page.getByTestId("booking-check-in").click();
+  await expect(dialog.getByText("February 2025", { exact: true })).toBeVisible();
+  await expect(fixture).toHaveAttribute("data-requested-month", "2025-02-01");
+  await expect(checkIn).toHaveAttribute("aria-pressed", "true");
+
+  await checkOut.click();
+  await expect(dialog.getByText("March 2025", { exact: true })).toBeVisible();
+  await expect(fixture).toHaveAttribute("data-requested-month", "2025-03-01");
+  await dialog.getByRole("button", { name: "Go to the Next Month" }).click();
+  await expect(dialog.getByText("April 2025", { exact: true })).toBeVisible();
+  await expect(fixture).toHaveAttribute("data-requested-month", "2025-04-01");
+  await checkOut.click();
+  await expect(dialog.getByText("April 2025", { exact: true })).toBeVisible();
+
+  await checkIn.click();
+  await expect(dialog.getByText("February 2025", { exact: true })).toBeVisible();
+  await expect(fixture).toHaveAttribute("data-requested-month", "2025-02-01");
+  await page.keyboard.press("Escape");
+  await page.getByTestId("booking-check-out").click();
+  await expect(dialog.getByText("March 2025", { exact: true })).toBeVisible();
+  await expect(fixture).toHaveAttribute("data-requested-month", "2025-03-01");
+  await expect(checkOut).toHaveAttribute("aria-pressed", "true");
+});
+
+test("public calendar puts localized clear controls beside the populated active date", async ({ page }) => {
+  await page.goto("/tests/browser/index.html?mode=public-calendar&crossMonth&lang=th");
+  const checkInTrigger = page.getByTestId("booking-check-in");
+  const checkOutTrigger = page.getByTestId("booking-check-out");
+  const checkIn = page.getByTestId("booking-range-checkIn");
+  const checkOut = page.getByTestId("booking-range-checkOut");
+  const clearCheckIn = page.getByRole("button", { name: "ล้างวันเช็กอิน", exact: true });
+  const clearCheckOut = page.getByRole("button", { name: "ล้างวันเช็กเอาต์", exact: true });
+
+  await checkInTrigger.click();
+  await expect(checkIn.locator("..").and(clearCheckIn.locator(".."))).toHaveCount(1);
+  await expect(clearCheckOut).toHaveCount(0);
+  await checkOut.click();
+  await expect(checkOut.locator("..").and(clearCheckOut.locator(".."))).toHaveCount(1);
+  await expect(clearCheckIn).toHaveCount(0);
+  await clearCheckOut.click();
+  await expect(checkOut).toBeFocused();
+  await expect(checkInTrigger).toHaveAttribute("data-selected-date", "2025-02-27");
+  await expect(checkOutTrigger).toHaveAttribute("data-selected-date", "");
+  await expect(clearCheckOut).toHaveCount(0);
+
+  await checkIn.click();
+  await clearCheckIn.click();
+  await expect(checkIn).toBeFocused();
+  await expect(checkInTrigger).toHaveAttribute("data-selected-date", "");
+  await expect(clearCheckIn).toHaveCount(0);
 });

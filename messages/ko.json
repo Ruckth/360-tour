@@ -159,6 +159,8 @@
     "continueToPay": "결제로 계속",
     "checkIn": "체크인",
     "checkOut": "체크아웃",
+    "clearCheckIn": "체크인 날짜 지우기",
+    "clearCheckOut": "체크아웃 날짜 지우기",
     "guests": "게스트",
     "guestCapacity": "{propertyName} 은 최대 {count}명까지 숙박할 수 있습니다.",
     "adults": "성인",

@@ -159,6 +159,8 @@
     "continueToPay": "ไปชำระเงิน",
     "checkIn": "เช็กอิน",
     "checkOut": "เช็กเอาต์",
+    "clearCheckIn": "ล้างวันเช็กอิน",
+    "clearCheckOut": "ล้างวันเช็กเอาต์",
     "guests": "ผู้เข้าพัก",
     "guestCapacity": "{propertyName} รองรับผู้เข้าพักได้สูงสุด {count} คน",
     "adults": "ผู้ใหญ่",

@@ -159,6 +159,8 @@
     "continueToPay": "भुगतान पर जाएँ",
     "checkIn": "चेक-इन",
     "checkOut": "चेकआउट",
+    "clearCheckIn": "चेक-इन की तारीख हटाएँ",
+    "clearCheckOut": "चेकआउट की तारीख हटाएँ",
     "guests": "मेहमान",
     "guestCapacity": "{propertyName} में अधिकतम {count} मेहमान ठहर सकते हैं।",
     "adults": "वयस्क",

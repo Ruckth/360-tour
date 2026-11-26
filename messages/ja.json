@@ -159,6 +159,8 @@
     "continueToPay": "支払いへ進む",
     "checkIn": "チェックイン",
     "checkOut": "チェックアウト",
+    "clearCheckIn": "チェックイン日をクリア",
+    "clearCheckOut": "チェックアウト日をクリア",
     "guests": "ゲスト",
     "guestCapacity": "{propertyName} は最大 {count} 名まで宿泊できます。",
     "adults": "大人",

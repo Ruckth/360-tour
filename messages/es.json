@@ -159,6 +159,8 @@
     "continueToPay": "Continuar al pago",
     "checkIn": "Llegada",
     "checkOut": "Salida",
+    "clearCheckIn": "Borrar fecha de llegada",
+    "clearCheckOut": "Borrar fecha de salida",
     "guests": "Huéspedes",
     "guestCapacity": "{propertyName} aloja hasta {count} huéspedes.",
     "adults": "Adultos",

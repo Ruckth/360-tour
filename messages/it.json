@@ -159,6 +159,8 @@
     "continueToPay": "Continua al pagamento",
     "checkIn": "Check-in",
     "checkOut": "Check-out",
+    "clearCheckIn": "Cancella la data di check-in",
+    "clearCheckOut": "Cancella la data di check-out",
     "guests": "Ospiti",
     "guestCapacity": "{propertyName} ospita fino a {count} persone.",
     "adults": "Adulti",

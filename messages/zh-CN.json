@@ -159,6 +159,8 @@
     "continueToPay": "继续付款",
     "checkIn": "入住",
     "checkOut": "退房",
+    "clearCheckIn": "清除入住日期",
+    "clearCheckOut": "清除退房日期",
     "guests": "住客",
     "guestCapacity": "{propertyName} 最多可入住 {count} 位住客。",
     "adults": "成人",
