@@ -18,18 +18,18 @@ export function BookingStepNav({
   const currentIndex = bookingSteps.findIndex((item) => item.key === currentStep);
   const labels: Record<BookingStep, string> = {
     select: t("villaDates"),
-    guests: t("guests"),
-    info: t("details"),
+    info: t("guestDetails"),
     review: t("pay"),
   };
 
   return (
-    <div className="mb-6 grid grid-cols-4 gap-2">
+    <div className="mb-6 grid grid-cols-3 gap-2">
       {bookingSteps.map((item, index) => (
         <Button
           key={item.key}
           type="button"
           variant={currentIndex >= index ? "primary" : "secondary"}
+          aria-current={currentStep === item.key ? "step" : undefined}
           disabled={index > highestAllowedStepIndex}
           onClick={() => onSelectStep(item.key)}
           className={cn(

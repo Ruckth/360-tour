@@ -2,7 +2,7 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { initialGuestCounts } from "@/lib/booking/booking";
+import { getHighestAllowedStepIndex, initialGuestCounts } from "@/lib/booking/booking";
 import { BookingFunnel } from "@/components/booking/BookingFunnel";
 
 const fixture = vi.hoisted(() => ({
@@ -54,6 +54,17 @@ describe("initialGuestCounts", () => {
   });
 });
 
+describe("booking progression", () => {
+  it.each([
+    [{ selectValid: false, guestsValid: true, infoValid: true }, 0],
+    [{ selectValid: true, guestsValid: false, infoValid: true }, 1],
+    [{ selectValid: true, guestsValid: true, infoValid: false }, 1],
+    [{ selectValid: true, guestsValid: true, infoValid: true }, 2],
+  ])("allows the furthest step for %o", (validity, step) => {
+    expect(getHighestAllowedStepIndex(validity)).toBe(step);
+  });
+});
+
 describe("booking link party size", () => {
   let root: Root | undefined;
   afterEach(async () => {
@@ -67,7 +78,7 @@ describe("booking link party size", () => {
   it.each([
     [{ initialGuests: "4" }, { adults: 4, childCount: 0 }],
     [{ initialGuests: "4", initialChildren: "1" }, { adults: 3, childCount: 1 }],
-  ])("carries %o into the guest step", async (params, expected) => {
+  ])("carries %o into the guest details step", async (params, expected) => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     root = createRoot(document.body.appendChild(document.createElement("div")));
     // The fixture's garden suite sleeps eight, so the requested party fits.

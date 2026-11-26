@@ -264,10 +264,9 @@ async function booking(page: Page, getOwner: () => Promise<ConvexHttpClient>) {
   try {
     const day = new Date(Date.now() + 45 * 86400_000).toISOString().slice(0, 10);
     await page.goto(`/booking?checkin=${day}&nights=2&adults=2&children=0&unit=garden-suite`);
-    for (const heading of ["Reserve your villa", "Guests"]) {
-      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
-      await page.getByRole("button", { name: "Continue", exact: true }).click();
-    }
+    await expect(page.getByRole("heading", { name: "Reserve your villa" })).toBeVisible();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Guests", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Guest details" })).toBeVisible();
     await page.getByLabel("Full name").fill("Preview Fixture Guest");
     await page.getByLabel("Email").fill(email);
