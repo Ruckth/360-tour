@@ -223,6 +223,16 @@ test("mobile chat trigger opens the dedicated chat page", async ({ page }) => {
   await expect(page).toHaveURL(/\/$/);
 });
 
+test("closing a direct chat visit restores the home Reviews link", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/chat");
+
+  await page.getByRole("button", { name: "Close chat" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole("button", { name: "Toggle menu" }).click();
+  await expect(page.getByRole("link", { name: "Reviews", exact: true })).toHaveAttribute("href", "/#reviews");
+});
+
 test("localized mobile chat trigger keeps the locale on the chat page", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await page.goto("/th");

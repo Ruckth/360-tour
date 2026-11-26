@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { IntlProvider } from "use-intl";
 import { Providers } from "@/components/global/Providers";
 import { PublicSiteShell, SiteShell } from "@/components/global/SiteShell";
-import { defaultLocale, isLocale, stripLocalePrefix, type Locale } from "@/i18n/routing";
+import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
 import { bypassesI18n } from "@/lib/i18n-exempt";
 import { themeInitScript } from "@/lib/theme";
 import { GLOBAL_NOT_FOUND_MESSAGE, withRootNotFoundHead } from "../not-found";
@@ -13,10 +13,8 @@ import { pathLocale } from "../request-locale";
 import cssUrl from "../start.css?url";
 
 const loadShell = createServerFn({ method: "GET" })
-  .validator((value: { locale: Locale; guest: boolean; showReviewsLink: boolean }) => {
-    if (!value || !isLocale(value.locale) || typeof value.guest !== "boolean" || typeof value.showReviewsLink !== "boolean") {
-      throw new Error("Invalid shell request");
-    }
+  .validator((value: { locale: Locale; guest: boolean }) => {
+    if (!value || !isLocale(value.locale) || typeof value.guest !== "boolean") throw new Error("Invalid shell request");
     return value;
   })
   .handler(async ({ data }) => {
@@ -25,7 +23,7 @@ const loadShell = createServerFn({ method: "GET" })
       import("@/lib/site-url"),
     ]);
     let hasReviews = false;
-    if (data.guest && data.showReviewsLink) {
+    if (data.guest) {
       const [{ hasStartFeaturedReviews }, { getRequest }] = await Promise.all([
         import("../villas.server"),
         import("@tanstack/react-start/server"),
@@ -41,7 +39,6 @@ const loadShell = createServerFn({ method: "GET" })
 export const Route = createRootRoute({
   loader: ({ location }) => loadShell({ data: {
     locale: pathLocale(location.pathname), guest: !bypassesI18n(location.pathname),
-    showReviewsLink: stripLocalePrefix(location.pathname) !== "/chat",
   } }),
   head: ({ loaderData, match }) => {
     const seo = loaderData?.messages.SEO;
