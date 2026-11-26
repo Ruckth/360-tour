@@ -40,9 +40,9 @@ const current = makeFunctionReference<"query", Record<string, never>, MarketingA
 const claimInvite = makeFunctionReference<"mutation", Record<string, never>, null>("marketing/access:claimInvite");
 
 function AccessState({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="mx-auto my-8 grid w-[calc(100%-2rem)] max-w-xl gap-3 border border-border bg-card p-6">
+  return <section className="mx-auto my-8 grid w-[calc(100%-2rem)] min-w-0 max-w-xl grid-cols-1 gap-3 border border-border bg-card p-6">
     <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-    <div className="grid gap-3 text-sm text-muted-foreground">{children}</div>
+    <div className="grid grid-cols-1 gap-3 text-sm text-muted-foreground wrap-anywhere">{children}</div>
   </section>;
 }
 

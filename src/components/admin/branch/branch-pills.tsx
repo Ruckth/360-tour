@@ -13,10 +13,10 @@ export const BRANCH_STATE_META: Record<BranchState, { tone: Tone; label: string 
 };
 
 /** The state pill beside a branch name. Active shows none unless `showActive` (Settings › Branches). */
-export function BranchStatePill({ state, showActive = false }: { state: BranchState; showActive?: boolean }) {
+export function BranchStatePill({ state, showActive = false, className }: { state: BranchState; showActive?: boolean; className?: string }) {
   if (state === "active" && !showActive) return null;
   const meta = BRANCH_STATE_META[state];
-  return <StatusBadge tone={meta.tone} label={meta.label} />;
+  return <StatusBadge tone={meta.tone} label={meta.label} className={className} />;
 }
 
 /**

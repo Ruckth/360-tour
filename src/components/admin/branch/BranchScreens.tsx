@@ -10,11 +10,11 @@ import { BranchStatePill } from "./branch-pills";
 /** The full-page card the access gate shows instead of the admin. */
 export function GateCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-dvh place-items-center px-5 py-10">
-      <section className="w-full max-w-md border border-border bg-card p-6 shadow-xl">
+    <div className="grid min-h-dvh grid-cols-1 place-items-center px-5 py-10">
+      <section className="w-full min-w-0 max-w-md border border-border bg-card p-6 shadow-xl">
         <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
         <h1 className="font-serif text-3xl font-semibold">{title}</h1>
-        <div className="mt-3 grid gap-4 text-sm leading-6 text-muted-foreground">{children}</div>
+        <div className="mt-3 grid grid-cols-1 gap-4 text-sm leading-6 text-muted-foreground wrap-anywhere">{children}</div>
       </section>
     </div>
   );
@@ -62,9 +62,9 @@ export function BranchChooser({ email }: { email: string | null }) {
               className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left text-foreground transition-colors hover:border-gold/60 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <MapPin aria-hidden className="size-5 shrink-0 text-gold-text" />
-              <span className="grid min-w-0 flex-1 justify-items-start gap-1">
+              <span className="grid min-w-0 flex-1 grid-cols-1 justify-items-start gap-1">
                 <span className="text-[15px] font-semibold">{branch.name}</span>
-                <BranchStatePill state={branch.state} />
+                <BranchStatePill state={branch.state} className="max-w-full whitespace-normal" />
               </span>
               <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
             </button>
@@ -84,7 +84,7 @@ export function BranchRevokedBanner() {
     <div role="status" className={revoked ? "mx-auto w-full max-w-7xl px-3 pt-4 sm:px-6" : undefined}>
       {revoked ? <div className="relative flex w-full flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-foreground">
         <Info aria-hidden className="size-4 shrink-0 text-gold-text" />
-        <p className="min-w-0 flex-1 basis-60 leading-relaxed">
+        <p className="min-w-0 flex-1 basis-60 leading-relaxed wrap-anywhere">
           <strong className="font-semibold">{revoked.from ? `Your access to ${revoked.from} ended.` : "Your branch access ended."}</strong>
           {revoked.to ? ` You’re now working in ${revoked.to}.` : null}
           {revoked.discarded ? ` Unsaved changes${revoked.from ? ` for ${revoked.from}` : ""} were discarded.` : null}

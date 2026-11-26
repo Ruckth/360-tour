@@ -26,6 +26,25 @@ const approvalsButton = (page: Page) => page.locator("header").getByTestId("appr
 const panel = (page: Page) => page.getByRole("dialog", { name: "Approvals" });
 const sections = (page: Page) => page.getByRole("navigation", { name: "Admin sections" });
 
+test("long account and branch names fit the compact access screens", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const email = "a".repeat(63) + "@example.com";
+  for (const { gate, heading, action } of [
+    { gate: "desk", heading: "Activate your access", action: "Activate access" },
+    { gate: "marketing", heading: "Activate your Marketing invitation", action: "Activate Marketing access" },
+    { gate: "none", heading: "No access", action: "Sign out" },
+    { gate: "choose", heading: "Choose a branch to start", action: /PhuketReservationOffice/ },
+  ]) {
+    await page.goto(`/tests/browser/admin-shell.html?path=/admin/chats&gate=${gate}`);
+    await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+    await expect(page.getByText(email, { exact: false })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+    const button = page.getByRole("button", { name: action });
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport({ ratio: 1 });
+  }
+});
+
 for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
   test.describe(`manager on ${device}`, () => {
     test.use({ viewport });
