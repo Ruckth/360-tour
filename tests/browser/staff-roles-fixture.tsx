@@ -42,6 +42,7 @@ import "@/app.css";
  *   theme=dark                   dark app theme
  */
 const params = new URLSearchParams(location.search);
+const incompleteSetup = params.has("incompleteSetup");
 document.documentElement.classList.toggle("dark", params.get("theme") === "dark");
 const role = (["owner", "manager", "cashier"] as const).find((value) => value === params.get("role")) ?? "owner";
 const view = params.get("view") ?? "checkout";
@@ -56,7 +57,13 @@ const rules: CashierRules = {
 const SAMUI_ID = "fxbranch-samui" as Id<"branches">;
 const PHUKET_ID = "fxbranch-phuket" as Id<"branches">;
 const SAMUI = { id: SAMUI_ID, key: "koh-samui", name: "Koh Samui", slug: "koh-samui", state: "active" as const };
-const PHUKET = { id: PHUKET_ID, key: "phuket", name: "Phuket", slug: "phuket", state: "setup" as const };
+const PHUKET = {
+  id: PHUKET_ID,
+  key: "phuket",
+  name: incompleteSetup ? "Phuket" + "ReservationOffice".repeat(5) : "Phuket",
+  slug: "phuket",
+  state: "setup" as const,
+};
 
 function accessFor(who: typeof role): StaffAccessView {
   const operations = who !== "cashier";
@@ -269,7 +276,12 @@ registerFixtureFunctions({
     })),
     "settings/cashierRules:getCashierRules": () => team.rules,
     "settings/settings:get": () => ({ ...mergeSiteSettings(null), revision: 0 }),
-    "settings/settings:setupChecklist": () => undefined,
+    "settings/settings:setupChecklist": () => incompleteSetup ? {
+      profileSaved: true, villaReady: true, aiKey: false, email: false, stripe: false,
+      messagingImageSecret: false, icalSynced: false,
+      channelsReplied: { line: false, facebook: false, instagram: false, whatsapp: false },
+      channelConfig: {},
+    } : undefined,
     "settings/settings:channelHealth": () => ({
       channels: (["line", "whatsapp", "facebook", "instagram"] as const).map((channel, index) => ({ channel, lastEventAt: params.get("channelHealth") === "states" && index === 3 ? null : now - (index + 1) * 3_600_000, lastRepliedAt: now - (index + 1) * 3_500_000, failed24h: params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failed7d: index === 1 ? 2 : params.get("channelHealth") === "states" && index === 2 ? 1 : 0, failedCapped: false, latestError: null })),
       ical: [

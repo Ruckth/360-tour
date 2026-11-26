@@ -33,7 +33,7 @@ export function BranchMultiSelect({
   const labelId = useId();
   const errorId = useId();
   return (
-    <div className="grid gap-1.5">
+    <div className="grid min-w-0 max-w-full grid-cols-[minmax(0,1fr)] gap-1.5">
       <span id={labelId} className="text-xs font-normal text-muted-foreground">
         {label}
       </span>
@@ -44,7 +44,7 @@ export function BranchMultiSelect({
           role="group"
           aria-labelledby={labelId}
           aria-describedby={error ? errorId : undefined}
-          className="flex flex-wrap gap-2"
+          className="flex min-w-0 flex-wrap gap-2"
         >
           {branches.map((branch) => {
             const checked = selectedIds.includes(branch.id);
@@ -57,7 +57,7 @@ export function BranchMultiSelect({
                 disabled={disabled}
                 onClick={() => onToggle(branch.id)}
                 className={cn(
-                  "inline-flex min-h-11 items-center gap-2 rounded-lg border px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+                  "inline-flex min-h-11 min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border px-3 py-1.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
                   checked
                     ? "border-foreground/60 bg-background font-medium text-foreground"
                     : "border-border bg-background text-muted-foreground hover:bg-muted",
@@ -73,7 +73,7 @@ export function BranchMultiSelect({
                   {checked ? <Check className="size-3" /> : null}
                 </span>
                 <MapPin aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>{branch.name}</span>
+                <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]">{branch.name}</span>
                 <BranchStatePill state={branch.state} />
               </button>
             );
@@ -81,11 +81,11 @@ export function BranchMultiSelect({
         </div>
       )}
       {error ? (
-        <p id={errorId} role="alert" className="text-xs text-destructive">
+        <p id={errorId} role="alert" className="min-w-0 break-words text-xs text-destructive">
           {error}
         </p>
       ) : hint ? (
-        <p className="text-xs text-muted-foreground">{hint}</p>
+        <p className="min-w-0 break-words text-xs text-muted-foreground">{hint}</p>
       ) : null}
     </div>
   );

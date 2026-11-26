@@ -62,9 +62,9 @@ export function BranchesSettings() {
     : undefined;
 
   return (
-    <section role="region" aria-label="Branches" className="grid max-w-4xl gap-5">
-      <header className="flex flex-wrap items-end gap-3 px-1 pt-1">
-        <div className="min-w-0 flex-1 basis-64">
+    <section role="region" aria-label="Branches" className="grid min-w-0 max-w-4xl grid-cols-[minmax(0,1fr)] gap-5">
+      <header className="flex min-w-0 flex-wrap items-end gap-3 px-1 pt-1">
+        <div className="min-w-0 flex-1 basis-56 sm:basis-64">
           <h2 className="font-serif text-3xl text-foreground">Branches</h2>
           <p className="mt-2 text-[13px] leading-5 text-muted-foreground">
             Every location your company operates. Guests only see Active branches. Only company owners change this page.
@@ -80,7 +80,7 @@ export function BranchesSettings() {
       </header>
 
       {statusMessage ? (
-        <p role="status" className="px-1 text-sm text-muted-foreground">
+        <p role="status" className="min-w-0 break-words px-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
           {statusMessage}
         </p>
       ) : null}
@@ -90,11 +90,11 @@ export function BranchesSettings() {
           <Spinner label="Loading branches" />
         </div>
       ) : sorted.length === 0 ? (
-        <Card className="p-6 text-sm text-muted-foreground">
+        <Card className="min-w-0 p-6 text-sm text-muted-foreground">
           No branches yet. Add your first branch to begin setup.
         </Card>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
           {sorted.map((branch) => {
             const isArchived = branch.state === "archived";
             return (
@@ -103,16 +103,16 @@ export function BranchesSettings() {
                 data-testid="branch-card"
                 data-branch-key={branch.key}
                 data-branch-state={branch.state}
-                className="p-5 lg:p-6"
+                className="min-w-0 p-5 lg:p-6"
               >
-                <div className="flex flex-wrap items-start gap-3">
-                  <div className="grid min-w-0 flex-1 basis-56 gap-1">
-                    <h3 className="flex flex-wrap items-center gap-2 text-[15px] font-semibold text-foreground">
+                <div className="flex min-w-0 flex-wrap items-start gap-3">
+                  <div className="grid min-w-0 flex-1 basis-48 grid-cols-[minmax(0,1fr)] gap-1 sm:basis-56">
+                    <h3 className="flex min-w-0 flex-wrap items-center gap-2 text-[15px] font-semibold text-foreground">
                       <MapPin aria-hidden className="size-4 shrink-0 text-gold-text" />
-                      <span>{branch.name}</span>
+                      <span className="min-w-0 max-w-full break-words [overflow-wrap:anywhere]">{branch.name}</span>
                       <BranchStatePill state={branch.state} showActive />
                     </h3>
-                    <p className="text-[13px] text-muted-foreground">{branchMetaLine(branch)}</p>
+                    <p className="min-w-0 break-words text-[13px] text-muted-foreground [overflow-wrap:anywhere]">{branchMetaLine(branch)}</p>
                   </div>
 
                   {!isArchived ? (
@@ -141,24 +141,24 @@ export function BranchesSettings() {
                   </p>
                 ) : null}
 
-                <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
-                  <div>
+                <dl className="mt-4 grid min-w-0 grid-cols-1 gap-x-4 gap-y-3 text-sm min-[380px]:grid-cols-2 sm:grid-cols-4">
+                  <div className="min-w-0">
                     <dt className="text-xs text-muted-foreground">URL slug</dt>
-                    <dd className="font-mono text-[13px] font-medium text-foreground">/{branch.slug}</dd>
+                    <dd className="min-w-0 break-all font-mono text-[13px] font-medium text-foreground">/{branch.slug}</dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-xs text-muted-foreground">Receipt issuer</dt>
-                    <dd className="font-medium text-foreground">{branch.issuer.legalName}</dd>
+                    <dd className="min-w-0 break-words font-medium text-foreground [overflow-wrap:anywhere]">{branch.issuer.legalName}</dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-xs text-muted-foreground">Tax ID &amp; code</dt>
-                    <dd className="font-medium tabular-nums text-foreground">
+                    <dd className="min-w-0 break-words font-medium tabular-nums text-foreground [overflow-wrap:anywhere]">
                       {branch.issuer.taxId} · {branch.issuer.branchCode}
                     </dd>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <dt className="text-xs text-muted-foreground">Address</dt>
-                    <dd className="font-medium text-foreground">{branch.issuer.address}</dd>
+                    <dd className="min-w-0 break-words font-medium text-foreground [overflow-wrap:anywhere]">{branch.issuer.address}</dd>
                   </div>
                 </dl>
               </Card>

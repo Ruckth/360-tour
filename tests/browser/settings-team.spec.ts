@@ -27,6 +27,38 @@ async function open(page: Page, query: string) {
   await page.locator("[data-fixture-ready]").waitFor();
 }
 
+test("compact Team and Branches open above setup tasks", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await open(page, "?view=settings&tab=team&incompleteSetup");
+  const invite = page.getByRole("button", { name: "Invite", exact: true });
+  await expect(invite).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("link", { name: "Open checklist" })).toHaveAttribute("href", "/admin/settings");
+  await invite.click();
+  const inviteForm = page.getByRole("form", { name: "Invite" });
+  await inviteForm.getByLabel("Email").fill("a".repeat(63) + "@example.com");
+  const phuket = inviteForm.getByRole("checkbox", { name: /PhuketReservationOffice/ });
+  await phuket.click();
+  await expect(phuket).toBeChecked();
+  const send = inviteForm.getByRole("button", { name: "Send invite", exact: true });
+  await send.scrollIntoViewIfNeeded();
+  await expect(send).toBeInViewport({ ratio: 1 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+
+  await open(page, "?view=settings&tab=branches&incompleteSetup");
+  const add = page.getByRole("button", { name: "Add branch", exact: true });
+  await expect(add).toBeInViewport({ ratio: 1 });
+  await add.click();
+  const create = page.getByRole("button", { name: "Create in Setup", exact: true });
+  await create.scrollIntoViewIfNeeded();
+  await expect(create).toBeInViewport({ ratio: 1 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+
+  await open(page, "?view=settings&incompleteSetup");
+  await expect(page.getByText("Finish setting up", { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Team", exact: true })).toHaveAttribute("href", "/admin/settings?tab=team");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+});
+
 /** Counts each action and whether its target needed a scroll first. */
 function recorder(page: Page) {
   const counts = { taps: 0, fields: 0, scrolls: 0 };

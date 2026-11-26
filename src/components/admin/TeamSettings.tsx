@@ -60,7 +60,7 @@ const MARKETING_OPTIONS = (Object.keys(MARKETING_ROLE_LABELS) as MarketingRole[]
 
 function RoleSelect<T extends string>({ id, label, value, disabled, onChange, options, empty }: { id: string; label?: string; value: T | ""; disabled: boolean; onChange: (value: T | "") => void; options: { value: T; label: string }[]; empty: string }) {
   return <Select value={value || "none"} onValueChange={(next) => onChange(next === "none" ? "" : next as T)} disabled={disabled}>
-    <SelectTrigger id={id} aria-label={label} className="min-w-40 font-normal"><SelectValue /></SelectTrigger>
+    <SelectTrigger id={id} aria-label={label} className="w-full min-w-0 font-normal sm:min-w-40"><SelectValue /></SelectTrigger>
     <SelectContent>{options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}<SelectItem value="none">{empty}</SelectItem></SelectContent>
   </Select>;
 }
@@ -133,7 +133,7 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
   const owners = useMemo(() => people?.filter((person) => person.role === "owner") ?? [], [people]);
 
   return (
-    <div className="grid max-w-4xl gap-4">
+    <div className="grid min-w-0 max-w-4xl grid-cols-[minmax(0,1fr)] gap-4">
       <PeoplePanel
         people={people}
         assignableBranches={assignableBranches}
@@ -152,15 +152,15 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
 
 function Section({ title, tip, action, children, label }: { title: string; tip?: ReactNode; action?: ReactNode; children: ReactNode; label: string }) {
   return (
-    <Card role="region" aria-label={label}>
-      <header className="flex flex-wrap items-center gap-2 px-4 pt-4 sm:px-5 sm:pt-5">
-        <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
-          {title}
+    <Card role="region" aria-label={label} className="min-w-0">
+      <header className="flex min-w-0 flex-wrap items-center gap-2 px-4 pt-4 sm:px-5 sm:pt-5">
+        <h2 className="flex min-w-0 items-center gap-1.5 text-[15px] font-semibold text-foreground">
+          <span className="min-w-0 break-words">{title}</span>
           {tip ? <InfoTip label={`About ${title.toLowerCase()}`}>{tip}</InfoTip> : null}
         </h2>
-        <div className="ml-auto flex items-center gap-2">{action}</div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">{action}</div>
       </header>
-      <div className="p-4 pt-3 sm:p-5">{children}</div>
+      <div className="min-w-0 p-4 pt-3 sm:p-5">{children}</div>
     </Card>
   );
 }
@@ -173,7 +173,7 @@ function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
       label="Owners and recovery"
       action={owners ? <StatusBadge tone={count >= 2 ? "success" : "warning"} label={`${count} company ${count === 1 ? "owner" : "owners"}`} /> : null}
     >
-      <div className="grid gap-4">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
         <p className="text-sm text-muted-foreground">
           Company owners open every branch, assign access and add branches. Branch managers can’t invite.
         </p>
@@ -182,21 +182,21 @@ function OwnersRecoveryPanel({ owners }: { owners: Person[] | undefined }) {
         ) : owners.length === 0 ? (
           <p className="text-sm text-muted-foreground">No company owners found.</p>
         ) : (
-          <ul className="divide-y divide-border rounded-lg border border-border" aria-label="Company owners">
+          <ul className="min-w-0 divide-y divide-border rounded-lg border border-border" aria-label="Company owners">
             {owners.map((owner) => (
-              <li key={owner.email} data-testid="owner-recovery-row" className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3">
+              <li key={owner.email} data-testid="owner-recovery-row" className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3">
                 <div className="min-w-0 flex-1 basis-48">
-                  <p className="text-[15px] font-medium text-foreground">{personLabel(owner.email)}</p>
-                  <p className="text-[13px] break-all text-muted-foreground">{owner.email} · Managed by the deployment admin</p>
+                  <p className="min-w-0 break-words text-[15px] font-medium text-foreground [overflow-wrap:anywhere]">{personLabel(owner.email)}</p>
+                  <p className="min-w-0 break-all text-[13px] text-muted-foreground">{owner.email} · Managed by the deployment admin</p>
                 </div>
                 <StatusBadge tone={owner.staffGrant?.claimed ? "success" : "warning"} label={owner.staffGrant?.claimed ? "Company owner" : "Pending claim"} />
               </li>
             ))}
           </ul>
         )}
-        <p className="flex gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-[13px] leading-5 text-muted-foreground">
+        <p className="flex min-w-0 gap-2 rounded-lg bg-muted/50 px-3 py-2.5 text-[13px] leading-5 text-muted-foreground">
           <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
-          <span>Recovery is a command for the deployment admin. It grants owner access from the server and has no screen here.</span>
+          <span className="min-w-0 break-words">Recovery is a command for the deployment admin. It grants owner access from the server and has no screen here.</span>
         </p>
       </div>
     </Section>
@@ -364,12 +364,12 @@ function PeoplePanel({
         />
       ) : null}
       {message && !people?.some((person) => person.email === message.email) ? (
-        <p role={message.error ? "alert" : "status"} className={cn("mb-3 text-sm", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p>
+        <p role={message.error ? "alert" : "status"} className={cn("mb-3 min-w-0 break-words text-sm [overflow-wrap:anywhere]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p>
       ) : null}
       {people === undefined ? (
         <div className="grid place-items-center py-8"><Spinner label="Loading people" /></div>
       ) : (
-        <ul ref={peopleList} className="divide-y divide-border" aria-label="People with access">
+        <ul ref={peopleList} className="min-w-0 divide-y divide-border" aria-label="People with access">
           {people.map((person) => (
             <PersonRow
               key={person.email}
@@ -481,21 +481,21 @@ function InviteForm({
     }
   }
   return (
-    <form onSubmit={(event) => void submit(event)} className="mb-4 grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end" aria-label="Invite">
+    <form onSubmit={(event) => void submit(event)} className="mb-4 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-end" aria-label="Invite">
       <div className="grid min-w-0 gap-1.5 sm:col-span-3">
         <Label htmlFor={`${id}-email`}>Email</Label>
         <Input id={`${id}-email`} type="email" required maxLength={254} autoFocus value={email} disabled={busy} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" aria-invalid={error ? true : undefined} />
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid min-w-0 gap-1.5">
         <Label htmlFor={`${id}-desk`}>Desk</Label>
         <RoleSelect id={`${id}-desk`} value={desk} disabled={busy} onChange={(next) => { setDesk(next); setError(""); }} options={DESK_OPTIONS} empty="No desk access" />
       </div>
-      <div className="grid gap-1.5">
+      <div className="grid min-w-0 gap-1.5">
         <Label htmlFor={`${id}-marketing`}>Marketing</Label>
         <RoleSelect id={`${id}-marketing`} value={marketing} disabled={busy} onChange={(next) => { setMarketing(next); setError(""); }} options={MARKETING_OPTIONS} empty="No Marketing access" />
       </div>
       {desk ? (
-        <div className="sm:col-span-3">
+        <div className="min-w-0 sm:col-span-3">
           <BranchMultiSelect
             branches={assignableBranches}
             selectedIds={effectiveBranchIds}
@@ -504,11 +504,11 @@ function InviteForm({
           />
         </div>
       ) : null}
-      <p className="text-xs text-muted-foreground sm:col-span-3">
+      <p className="min-w-0 break-words text-xs text-muted-foreground sm:col-span-3">
         They sign in with this email to activate it. The invite expires in 14 days; editing its role or branches doesn’t change that.
       </p>
-      {error ? <p role="alert" className="text-sm text-destructive sm:col-span-3">{error}</p> : null}
-      <div className="flex gap-2 sm:col-span-3 sm:justify-end">
+      {error ? <p role="alert" className="min-w-0 break-words text-sm text-destructive sm:col-span-3">{error}</p> : null}
+      <div className="flex flex-wrap gap-2 sm:col-span-3 sm:justify-end">
         <Button type="button" variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={busy || !email.trim()}>Send invite</Button>
       </div>
@@ -596,40 +596,44 @@ function PersonRow({
   }
 
   return (
-    <li className="grid gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0">
+    <li className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-0 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           {/* Who, then where: the branch pills sit on the name's line, so rows keep their height. */}
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-[15px] font-medium text-foreground">{name}</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 max-w-full break-words text-[15px] font-medium text-foreground [overflow-wrap:anywhere]">{name}</p>
             {/* Owners' badge already reads "Owner · Company". */}
             {!owner && (personBranchIds.length > 0 || marketing) ? (
               <span className="contents" data-testid="person-branch-chips">
                 {personBranchIds.flatMap((branchId) => branchById.get(branchId) ?? []).map((branch) => (
-                  <BranchPill key={branch.id} name={branch.name} />
+                  <BranchPill
+                    key={branch.id}
+                    name={branch.name}
+                    className="min-w-0 max-w-full shrink break-words [overflow-wrap:anywhere] [&>svg]:shrink-0"
+                  />
                 ))}
                 {!grant && marketing ? <BranchPill name="Company" company /> : null}
               </span>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="text-[13px] break-all text-muted-foreground">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 break-all text-[13px] text-muted-foreground">
               {person.email}
               {owner ? " · Managed by the deployment admin" : ""}
             </p>
             {states.map((state) => {
               const tone = state?.includes("Invite expired") ? TONES.danger : TONES.warning;
-              return <Badge key={state} variant="muted" className={cn("rounded-full text-xs font-medium", tone.bg, tone.text, tone.border)}>{state}</Badge>;
+              return <Badge key={state} variant="muted" className={cn("max-w-full shrink whitespace-normal break-words rounded-full text-xs font-medium", tone.bg, tone.text, tone.border)}>{state}</Badge>;
             })}
           </div>
         </div>
-        <div className="flex min-h-11 flex-wrap items-center gap-2 max-sm:col-span-2">
-          <Badge variant="muted" className="max-sm:mr-auto max-w-full rounded-full text-xs font-medium" data-testid="team-roles">{owner ? "Owner · Company" : rolesText(person)}</Badge>
+        <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-2">
+          <Badge variant="muted" className="max-w-full shrink whitespace-normal break-words rounded-full text-xs font-medium" data-testid="team-roles">{owner ? "Owner · Company" : rolesText(person)}</Badge>
           {separateMarketing ? (
-            <Badge variant="muted" className="rounded-full text-xs font-medium">Marketing {MARKETING_ROLE_LABELS[separateMarketing.role]} · Separate account</Badge>
+            <Badge variant="muted" className="max-w-full shrink whitespace-normal break-words rounded-full text-xs font-medium">Marketing {MARKETING_ROLE_LABELS[separateMarketing.role]} · Separate account</Badge>
           ) : null}
-          {!canChangeRoles ? <span aria-hidden className="h-11 w-32 shrink-0" /> : (
-            <div className="flex w-32 shrink-0 flex-nowrap items-center justify-end gap-1">
+          {!canChangeRoles ? <span aria-hidden className="hidden h-11 w-32 shrink-0 sm:inline-block" /> : (
+            <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-1 sm:min-w-32">
               <Button size="sm" variant="ghost" data-change-role className="font-medium text-muted-foreground hover:text-foreground" aria-expanded={changing} aria-controls={`${id}-roles`} aria-label={separateMarketing ? `Change Marketing role for the separate account at ${person.email}` : `Change roles for ${name}`} disabled={busy} onClick={() => { setBranchError(""); setNewDesk(null); setChanging(!changing); }}>
                 {saving ? <Spinner label="Saving role" className="text-current" /> : null}Change
               </Button>
@@ -653,11 +657,11 @@ function PersonRow({
         </div>
 
       </div>
-      {message ? <p role={message.error ? "alert" : "status"} className={cn("text-[13px]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
+      {message ? <p role={message.error ? "alert" : "status"} className={cn("min-w-0 break-words text-[13px] [overflow-wrap:anywhere]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
       {changing && canChangeRoles ? (
-        <div id={`${id}-roles`} className="flex flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
-          <p className="w-full text-[13px] text-muted-foreground">{separateMarketing ? "Changes apply immediately to the separate Marketing account." : "Role and branch changes apply immediately."}</p>
-          {!owner ? <div className="grid gap-1">
+        <div id={`${id}-roles`} className="flex min-w-0 flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
+          <p className="w-full min-w-0 break-words text-[13px] text-muted-foreground">{separateMarketing ? "Changes apply immediately to the separate Marketing account." : "Role and branch changes apply immediately."}</p>
+          {!owner ? <div className="grid min-w-0 max-w-full flex-1 basis-40 gap-1 sm:flex-none">
             <Label htmlFor={`${id}-desk`} className="text-xs font-normal text-muted-foreground">Desk</Label>
             <RoleSelect
               id={`${id}-desk`}
@@ -674,7 +678,7 @@ function PersonRow({
             />
           </div> : null}
           {!owner && newDesk && !grant ? (
-            <div className="grid w-full gap-2">
+            <div className="grid min-w-0 w-full gap-2">
               <BranchMultiSelect
                 branches={assignableBranches}
                 selectedIds={newDesk.branchIds}
@@ -685,7 +689,7 @@ function PersonRow({
                   setNewDesk({ ...newDesk, branchIds: newDesk.branchIds.includes(branchId) ? newDesk.branchIds.filter((entry) => entry !== branchId) : [...newDesk.branchIds, branchId] });
                 }}
               />
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   size="sm"
@@ -719,7 +723,7 @@ function PersonRow({
               onToggle={(branchId) => void toggleAssignedBranch(branchId)}
             />
           ) : null}
-          <div className="grid gap-1">
+          <div className="grid min-w-0 max-w-full flex-1 basis-40 gap-1 sm:flex-none">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
             <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
           </div>
@@ -808,10 +812,10 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate className={cn("grid", dirty && "pb-20")} aria-label="Rules for all cashiers">
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border py-2.5">
-        <RuleLabel htmlFor={`${id}-limit`} className="whitespace-nowrap text-sm font-normal text-foreground">Discount without approval</RuleLabel>
-        <div className="w-28">
+    <form onSubmit={(event) => void submit(event)} noValidate className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)]", dirty && "pb-20")} aria-label="Rules for all cashiers">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-border py-2.5">
+        <RuleLabel htmlFor={`${id}-limit`} className="min-w-0 text-sm font-normal text-foreground sm:whitespace-nowrap">Discount without approval</RuleLabel>
+        <div className="w-28 shrink-0">
           <NumberField
             id={`${id}-limit`}
             inputMode="decimal"
@@ -828,9 +832,9 @@ function RulesForm({ rules, onDirtyChange }: { rules: CashierRules; onDirtyChang
       </div>
       <p className="pt-5 pb-1 text-xs font-medium text-muted-foreground">Who can do this without asking</p>
       {RULES.map(({ key, label }) => (
-        <div key={key} className={cn("grid grid-cols-1 items-center gap-2 border-border py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3", key !== RULES.at(-1)?.key && "border-b")}>
-          <span id={`${id}-${key}-label`} className="text-sm text-foreground">{label}</span>
-          <ToggleGroup id={`${id}-${key}`} variant="segmented" tone="subtle" className="w-full sm:w-64" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
+        <div key={key} className={cn("grid min-w-0 grid-cols-1 items-center gap-2 border-border py-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-3", key !== RULES.at(-1)?.key && "border-b")}>
+          <span id={`${id}-${key}-label`} className="min-w-0 text-sm text-foreground">{label}</span>
+          <ToggleGroup id={`${id}-${key}`} variant="segmented" tone="subtle" className="w-full min-w-0 sm:w-64" value={draft[key]} onValueChange={(value: Permission) => set({ [key]: value })} aria-label={`${label} permission`} disabled={state.saving}>
             <ToggleGroupItem value="cashier">Any cashier</ToggleGroupItem><ToggleGroupItem value="manager">Manager only</ToggleGroupItem>
           </ToggleGroup>
         </div>
