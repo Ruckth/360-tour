@@ -24,6 +24,28 @@ test("@smoke booking flow validates steps and persists the booking and reaches p
   await expect(page.getByRole("heading", { name: "Guests", exact: true })).toBeInViewport();
   await expect(page.getByRole("heading", { name: "Guest details" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
+
+  const addAdult = page.getByRole("button", { name: "Add adult", exact: true });
+  const removeAdult = page.getByRole("button", { name: "Remove adult", exact: true });
+  const addChild = page.getByRole("button", { name: "Add child", exact: true });
+  const removeChild = page.getByRole("button", { name: "Remove child", exact: true });
+  const guestTotal = page.getByRole("status").filter({ hasText: "Total guests" });
+  await expect(guestTotal).toHaveText("Total guests: 2.");
+  await expect(addAdult).toBeDisabled();
+  await expect(addChild).toBeDisabled();
+  await expect(removeChild).toBeDisabled();
+  await removeAdult.click();
+  await expect(removeAdult).toBeDisabled();
+  await expect(guestTotal).toHaveText("Total guests: 1.");
+  await addChild.click();
+  await expect(guestTotal).toHaveText("Total guests: 2.");
+  await expect(addAdult).toBeDisabled();
+  await expect(addChild).toBeDisabled();
+  await removeChild.click();
+  await expect(removeChild).toBeDisabled();
+  await addAdult.click();
+  await expect(guestTotal).toHaveText("Total guests: 2.");
+
   await page.getByLabel("Full name").fill("Test Guest");
   await page.getByLabel("Email").fill("guest@example.com");
   await page.getByLabel("Phone / WhatsApp").fill("+66 77 111 222");

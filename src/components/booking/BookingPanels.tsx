@@ -93,13 +93,22 @@ export function GuestCountsPanel({
             <p className="text-xs text-muted-foreground">{t("adultsAge")}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => updateAdults(adults - 1)} disabled={adults <= 1}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={t("removeAdult")}
+              onClick={() => updateAdults(adults - 1)}
+              disabled={adults <= 1}
+            >
               <Minus className="h-4 w-4" />
             </Button>
             <span className="w-8 text-center text-lg font-semibold">{adults}</span>
             <Button
+              type="button"
               variant="outline"
               size="icon"
+              aria-label={t("addAdult")}
               onClick={() => updateAdults(adults + 1)}
               disabled={remainingCapacity <= 0}
             >
@@ -114,8 +123,10 @@ export function GuestCountsPanel({
           </div>
           <div className="flex items-center gap-3">
             <Button
+              type="button"
               variant="outline"
               size="icon"
+              aria-label={t("removeChild")}
               onClick={() => updateChildren(childCount - 1)}
               disabled={childCount <= 0}
             >
@@ -123,8 +134,10 @@ export function GuestCountsPanel({
             </Button>
             <span className="w-8 text-center text-lg font-semibold">{childCount}</span>
             <Button
+              type="button"
               variant="outline"
               size="icon"
+              aria-label={t("addChild")}
               onClick={() => updateChildren(childCount + 1)}
               disabled={remainingCapacity <= 0}
             >
@@ -133,7 +146,7 @@ export function GuestCountsPanel({
           </div>
         </div>
       </div>
-      <p className="mt-3 text-sm text-muted-foreground">
+      <p role="status" className="mt-3 text-sm text-muted-foreground">
         {t("totalGuests", { count: totalGuests })}
       </p>
     </div>
