@@ -58,11 +58,26 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test("search finds an item on another tab with no extra taps", async ({ page }) => {
       await open(page, "?role=cashier");
       // A spa service, searched from the Rooms tab (and not in Frequent).
-      await page.getByRole("tab", { name: "Rooms", exact: true }).click();
+      const rooms = page.getByRole("tab", { name: "Rooms", exact: true });
+      const search = page.getByRole("searchbox", { name: "Search all items" });
+      const clear = page.getByRole("button", { name: "Clear search", exact: true });
+      await rooms.click();
+      await expect(clear).toHaveCount(0);
       const count = new TaskCounter();
-      await count.type(page.getByRole("searchbox", { name: "Search all items" }), "Thai massage 90", "search");
+      await count.type(search, "Thai massage 90", "search");
       await count.tap(page.getByRole("button", { name: /^Thai massage 90.*Add to order/ }), "Thai massage 90 tile");
       expect(count.taps, count.log.join("\n")).toBe(1);
+      await clear.click();
+      await expect(search).toHaveValue("");
+      await expect(search).toBeFocused();
+      await expect(clear).toHaveCount(0);
+      await expect(rooms).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByText(/^Room items record charges only/)).toBeVisible();
+
+      await search.fill("Thai massage 90");
+      await search.press("Escape");
+      await expect(search).toHaveValue("");
+      await expect(search).toBeFocused();
       const panel = await orderPanel(page, size);
       await expect(panel.getByRole("button", { name: /^Thai massage 90/ })).toBeVisible();
     });
