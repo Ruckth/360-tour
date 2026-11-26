@@ -60,7 +60,7 @@ describe('project-scoped Preview build', () => {
       expect(() => assertPreviewProvidersDisabled(listing)).toThrow('Disable Preview provider');
       try { assertPreviewProvidersDisabled(listing); } catch (error) { expect(String(error)).not.toContain('private'); }
     }
-    expect(() => assertPreviewProvidersDisabled('AI_API_KEY=\nRESEND_API_KEY=\nADMIN_EMAILS=fixture')).not.toThrow();
+    expect(() => assertPreviewProvidersDisabled('AI_API_KEY=\nRESEND_API_KEY=\nCLERK_JWT_ISSUER_DOMAIN=https://fixture.example.invalid')).not.toThrow();
     expect(previewFrontendEnvironment({ NODE_ENV: 'production', AI_API_KEY: 'private', MESSAGING_IMAGE_SECRET: 'private', NEXT_PUBLIC_SENTRY_DSN: 'private', CLERK_SECRET_KEY: 'test-fixture', VERCEL_URL: 'branch.example.test' }, 'https://preview-example-123.convex.cloud')).toMatchObject({ AI_API_KEY: '', MESSAGING_IMAGE_SECRET: '', NEXT_PUBLIC_SENTRY_DSN: '', CONVEX_DEPLOY_KEY: '', CLERK_SECRET_KEY: 'test-fixture', NEXT_PUBLIC_SITE_URL: 'https://branch.example.test' });
   });
   it('allows push invalidation only toward this Preview, never production, without echoing the value', () => {

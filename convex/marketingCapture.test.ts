@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -19,7 +20,6 @@ const stay = { propertySlug: 'mossbell', guestName: 'Mia', guestPhone: '+6681111
 const rules = { code: 'NOV20', benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'accommodation' as const };
 
 beforeEach(() => {
-  vi.stubEnv('ADMIN_EMAILS', email);
   vi.stubEnv('SITE_URL', 'https://book.example.com');
   vi.spyOn(Date, 'now').mockReturnValue(now);
 });
@@ -27,7 +27,7 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email, tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell', tagline: '', description: '', pricePerNight: 450000, currency: 'THB',
     maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'

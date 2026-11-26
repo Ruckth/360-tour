@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { AdminShell } from '@/components/admin/AdminShell';
-import { staffAccessFor, type ShellRole } from './admin-shell-convex';
+import { KOH_SAMUI, staffAccessFor, type ShellRole } from './admin-shell-convex';
 
 const state = vi.hoisted(() => ({
   pathname: '/admin/chats',
@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   pending: 0,
   replace: vi.fn(),
   claim: vi.fn(async () => null),
+  claimMarketing: vi.fn(async () => null),
 }));
 vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
@@ -29,7 +30,7 @@ vi.mock('convex/react', () => ({
     const name = getFunctionName(ref);
     if (name === 'auth/staffAccess:myAccess') return state.access;
     return { businessName: 'Audit resort' };
-  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
+  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : getFunctionName(ref) === 'marketing/access:claimInvite' ? state.claimMarketing : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
     const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
     return { results: Array.from({ length: pending }, (_, i) => ({ _id: `appr${i}`, kind: 'discount', requesterEmail: 'mint@example.com', createdAt: 0, expiresAt: 0, status: 'pending', label: 'discount', summary: { amount: 100 } })), status: 'Exhausted', loadMore: () => undefined };
   }, useQueries: () => ({}) }));
@@ -103,6 +104,20 @@ it('sends a manager from Settings › Team to Settings, with Approvals and the c
   expect(document.querySelector('header')?.textContent).not.toContain('Sign out');
 });
 
+it('opens Settings › Branches to owners only: a manager is sent to Settings', async () => {
+  state.pathname = '/admin/settings';
+  state.tab = 'branches';
+  as('manager');
+  await render();
+  expect(state.replace).toHaveBeenCalledWith('/admin/settings');
+  expect(document.getElementById('page')).toBeNull();
+  state.replace.mockClear();
+  as('owner');
+  await render();
+  expect(state.replace).not.toHaveBeenCalled();
+  expect(document.getElementById('page')).not.toBeNull();
+});
+
 it('shows a manager Approvals on every page, not only checkout', async () => {
   as('manager');
   for (const path of ['/admin/chats', '/admin/hotel', '/admin/questions']) {
@@ -121,18 +136,61 @@ it('shows owners every section and Approvals without a count when nothing waits'
   expect(document.querySelector('[data-approval-count]')).toBeNull();
 });
 
-it('keeps the existing experience for a signed-in person without a role', async () => {
+it('shows a signed-in person without a role "No access" with Sign out, never the owner navigation', async () => {
   as(null);
   await render();
   expect(state.replace).not.toHaveBeenCalled();
+  expect(document.getElementById('page')).toBeNull();
+  expect(navs()).toHaveLength(0);
+  expect(document.querySelector('h1')?.textContent).toBe('No access');
+  expect(button('Sign out')).toBeDefined();
+});
+
+it('says access changed when a member is removed mid-session', async () => {
+  state.access = staffAccessFor('manager', 'lek@example.com');
+  await render();
   expect(document.getElementById('page')).not.toBeNull();
+  state.access = staffAccessFor(null, 'lek@example.com');
+  await render();
+  expect(document.getElementById('page')).toBeNull();
+  expect(document.querySelector('h1')?.textContent).toBe('Your access has changed');
+  expect(document.body.textContent).toContain('lek@example.com no longer has admin access.');
 });
 
 it('lets an invited person activate their access explicitly', async () => {
-  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000 } };
+  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000, branchIds: [KOH_SAMUI.id], branches: [KOH_SAMUI] } };
   await render();
-  expect(document.body.textContent).toContain('lek@example.com is invited as Cashier.');
+  expect(document.body.textContent).toContain('lek@example.com is invited as Cashier at Koh Samui.');
   expect(document.getElementById('page')).toBeNull();
   await act(async () => button('Activate access')!.click());
   expect(state.claim).toHaveBeenCalledWith({});
+});
+
+it('lets a Marketing-only invitee claim from the admin shell before any page mounts', async () => {
+  const base = staffAccessFor(null, 'market@example.com');
+  state.access = { ...base, marketingInvitation: { role: 'viewer', expiresAt: Date.now() + 60_000 } };
+  state.pathname = '/admin/marketing';
+  await render();
+  expect(document.getElementById('page')).toBeNull();
+  await act(async () => button('Activate Marketing access')!.click());
+  expect(state.claimMarketing).toHaveBeenCalledWith({});
+  state.access = { ...base, marketingRole: 'viewer', capabilities: { ...base.capabilities, marketing: true } };
+  await render();
+  expect(document.getElementById('page')).not.toBeNull();
+});
+
+it('offers the pending owner invitation to an existing desk member', async () => {
+  state.access = { ...staffAccessFor('cashier'), pendingInvitation: { role: 'owner', expiresAt: null, branchIds: [], branches: [] } };
+  await render();
+  expect(document.body.textContent).toContain('is invited as Owner.');
+  expect(document.getElementById('page')).toBeNull();
+  await act(async () => button('Activate access')!.click());
+  expect(state.claim).toHaveBeenCalledWith({});
+});
+
+it('keeps a pending Marketing invite reachable after a desk invite is claimed', async () => {
+  state.access = { ...staffAccessFor('manager'), marketingInvitation: { role: 'viewer', expiresAt: Date.now() + 60_000 } };
+  await render();
+  expect(document.getElementById('page')).not.toBeNull();
+  expect(document.querySelector('a[href="/admin/marketing"]')?.textContent).toBe('Review invitation');
 });

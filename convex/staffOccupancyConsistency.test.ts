@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "./_generated/api";
@@ -11,9 +12,8 @@ const at = (time: string, day = date) => localDateTimeUtc(day, time);
 const weekdays = [0, 1, 2, 3, 4, 5, 6];
 
 async function setup() {
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true,
+  const admin = await asTestOwner(t, { emailVerified: true,
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });
@@ -63,7 +63,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllEnvs();
 });
 
 describe("staff occupancy and finance consistency", () => {

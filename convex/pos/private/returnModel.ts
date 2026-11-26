@@ -382,7 +382,8 @@ export async function decideReturnApproval(
     readOrderProjection(ctx, () => cashierRules(ctx)), requesterFingerprint(ctx, request.requesterTokenIdentifier),
   ]);
   const operator: StaffActor = {
-    role: 'cashier', capabilities: staffCapabilities('cashier'), tokenIdentifier: request.requesterTokenIdentifier,
+    role: 'cashier', companyScope: false, branchIds: access.branchIds, capabilities: staffCapabilities('cashier'),
+    tokenIdentifier: request.requesterTokenIdentifier,
     email: request.requesterEmail, pendingInvitation: null,
   };
   if (access.role !== 'cashier' || access.fingerprint !== request.requesterAccessFingerprint ||

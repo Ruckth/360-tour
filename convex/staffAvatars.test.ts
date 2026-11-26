@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -12,12 +13,11 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const person = { role: 'Therapist', color: '#abc', workingHours: [{ weekday: 1, start: '09:00', end: '18:00' }], breaks: [] };
 	const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', ...person });
@@ -190,7 +190,6 @@ describe('staff photo uploads', () => {
 	});
 
 	it('cleans up a newly stored file when pending registration fails', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const failingModules = {
 			...modules,
 			'./services/commands/registerStaffAvatarUpload.ts': async () => {
@@ -199,7 +198,7 @@ describe('staff photo uploads', () => {
 			},
 		};
 		const t = convexTest(schema, failingModules);
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		await expect(admin.action(api.services.commands.uploadStaffAvatar.uploadStaffAvatar, { bytes: new ArrayBuffer(1000), contentType: 'image/webp' })).rejects.toThrow('Registration failed');
 		expect(await t.run((ctx) => ctx.db.system.query('_storage').collect())).toEqual([]);
 	});

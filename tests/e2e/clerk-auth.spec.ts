@@ -39,8 +39,17 @@ test("@smoke anonymous and real signed-in nonstaff cannot read protected checkou
   ).rejects.toThrow();
   await page.goto("/admin/checkout");
   await expect(
-    page.getByRole("heading", { name: "This view could not load" }),
+    page.getByRole("heading", { name: "No access", exact: true }),
   ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Sign out", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Order", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Checkout", exact: true }),
+  ).toHaveCount(0);
 });
 
 test("@smoke owner browser session authorizes real protected queries and retains team controls", async ({

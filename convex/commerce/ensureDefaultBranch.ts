@@ -1,22 +1,21 @@
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { readBudget, reserveWrites } from '../lib/readBudget';
+import { ConvexError } from 'convex/values';
+import type { QueryCtx } from '../_generated/server';
+import { readBudget } from '../lib/readBudget';
 
-const DEFAULT_BRANCH_KEY = 'default';
+import { PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
 
 export async function readDefaultBranch(ctx: QueryCtx) {
   const budget = readBudget(ctx);
   budget.range();
   budget.assert();
-  const branch = await ctx.db.query('branches').withIndex('by_key', q => q.eq('key', DEFAULT_BRANCH_KEY)).unique();
+  const branch = await readBranchByKey(ctx, PRIMARY_BRANCH.key);
   if (branch) budget.document(branch);
   budget.assert();
   return branch;
 }
 
-/** The indexed read and insert share the caller's transaction, including on concurrent setup. */
-export async function ensureDefaultBranch(ctx: MutationCtx) {
+export async function ensureDefaultBranch(ctx: QueryCtx) {
   const branch = await readDefaultBranch(ctx);
-  if (branch) return branch._id;
-  reserveWrites(ctx, 1);
-  return await ctx.db.insert('branches', { key: DEFAULT_BRANCH_KEY });
+  if (!branch) throw new ConvexError('Payment activation requires the seeded Koh Samui branch.');
+  return branch._id;
 }

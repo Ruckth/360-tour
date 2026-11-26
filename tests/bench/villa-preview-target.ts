@@ -108,15 +108,7 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
     "node_modules/convex/bin/main.js", ...args, "--env-file", selector, "--preview-name", previewName,
   ], isolated)).stdout;
   const getEnv = async () => parseEnv(await convex(["env", "list", "--include-values"]));
-  async function setOwnerList(value: string | undefined) {
-    if (value === undefined) await convex(["env", "remove", "ADMIN_EMAILS"]);
-    else {
-      const change = path.join(work, "owner-change");
-      await writeFile(change, value, { mode: 0o600 });
-      await convex(["env", "set", "ADMIN_EMAILS", "--from-file", change]);
-    }
-    assert.equal((await getEnv()).ADMIN_EMAILS, value);
-  }
+  const ownerGrants = async (): Promise<Array<{ email: string; claimed: boolean }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
   const vercelRun = async (args: string[]) => (await run(vercel, args, { ...isolated, cwd: work })).stdout;
 
   let jwt = "";
@@ -212,7 +204,8 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
   assert.equal(runtime.CLERK_JWT_ISSUER_DOMAIN?.replace(/\/$/, ""), clerkEnv.CLERK_JWT_ISSUER_DOMAIN);
   // Without push invalidation, visibility measures the real TTL and no edit reaches another origin.
   assert(!runtime.START_VILLA_INVALIDATION_ORIGIN && !runtime.START_VILLA_INVALIDATION_SECRET, "push invalidation must be off");
-  const beforeOwner = runtime.ADMIN_EMAILS;
+  const existingOwners = await ownerGrants();
+  assert(existingOwners.some((grant) => grant.claimed), "Claim a Preview owner grant before running temporary owner QA");
 
   const inert = await get(`/rooms/villa-acceptance-${runId}-inert`);
   assert(inert.status === 404 && !inert.faultActive && inert.process, "fault fixture must be present and inert without its token");
@@ -223,8 +216,8 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
   // --- run-owned owner, granted only on this Preview ---
   const provisioned = await testUsers(clerkEnv);
   const owner = provisioned.users.owner;
-  const expectedOwner = [beforeOwner, owner.email].filter(Boolean).join(",");
-  await writeFile(path.join(work, "recovery.json"), JSON.stringify({ beforeOwner, addedOwner: owner.email }), { flag: "wx", mode: 0o600 });
+  assert(!existingOwners.some((grant) => grant.email === owner.email));
+  await writeFile(path.join(work, "recovery.json"), JSON.stringify({ addedOwner: owner.email }), { flag: "wx", mode: 0o600 });
   let session: { id: string };
   try {
     session = await clerk.sessions.createSession({ userId: owner.id });
@@ -254,7 +247,9 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
   };
   // Teardown removes only this run's owner entry, so it also covers a partial grant.
   try {
-    await setOwnerList(expectedOwner);
+    await convex(["run", "auth/owners:grantOwner", JSON.stringify({ email: owner.email })]);
+    await asOwner();
+    await writer.mutation(api.auth.staffAccess.claimInvite, {});
   } catch (error) {
     await teardown();
     throw error;
@@ -275,13 +270,7 @@ async function openVillaTarget(isolation: string, extraReport: Record<string, un
       } catch { failed = true; }
     }
     try {
-      const current = (await getEnv()).ADMIN_EMAILS;
-      if (current === expectedOwner) await setOwnerList(beforeOwner);
-      else {
-        const entries = current?.split(",") ?? [];
-        const remainder = entries.filter((entry) => entry.trim().toLowerCase() !== owner.email);
-        if (remainder.length !== entries.length) await setOwnerList(remainder.join(","));
-      }
+      await convex(["run", "auth/owners:revokeOwner", JSON.stringify({ email: owner.email })]);
     } catch { failed = true; }
     try { await provisioned.cleanupSessions(); } catch { failed = true; }
     if (!failed) await rm(work, { recursive: true });

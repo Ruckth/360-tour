@@ -81,16 +81,7 @@ async function main() {
     "node_modules/convex/bin/main.js", ...args, "--env-file", selector, "--preview-name", previewName,
   ], isolated)).stdout;
   const getEnv = async () => parseEnv(await convex(["env", "list", "--include-values"]));
-  const setOwnerList = async (value: string | undefined) => {
-    if (value === undefined) {
-      await convex(["env", "remove", "ADMIN_EMAILS"]);
-    } else {
-      const change = path.join(work, "owner-change");
-      await writeFile(change, value, { mode: 0o600 });
-      await convex(["env", "set", "ADMIN_EMAILS", "--from-file", change]);
-    }
-    assert.equal((await getEnv()).ADMIN_EMAILS, value);
-  };
+  const ownerGrants = async (): Promise<Array<{ email: string; claimed: boolean }>> => JSON.parse(await convex(["run", "auth/owners:listOwners", "{}"]));
   const vercelRun = async (args: string[]) => (await run(vercel, args, { ...isolated, cwd: work })).stdout;
   const curl = async (route: string, options: string[] = []) => vercelRun([
     "curl", route, "--deployment", staging.deploymentId, "--scope", staging.scope,
@@ -98,8 +89,7 @@ async function main() {
   ]);
 
   let provisioned: Awaited<ReturnType<typeof testUsers>> | undefined;
-  let beforeOwner: string | undefined;
-  let expectedOwner: string | undefined;
+  let addedOwner: string | undefined;
   try {
     stage = "immutable-preview";
     const deployment = JSON.parse(await vercelRun(["inspect", staging.deploymentId, "--scope", staging.scope, "--json"]));
@@ -122,7 +112,6 @@ async function main() {
     const runtime = await getEnv();
     assert.equal(runtime.CLERK_JWT_ISSUER_DOMAIN?.replace(/\/$/, ""), issuer);
     assert(providerKeys.every((key) => !runtime[key]?.trim()));
-    beforeOwner = runtime.ADMIN_EMAILS;
     const publicClient = new ConvexHttpClient(backend, { logger: false });
     const [linkedPool, pool, garden] = await Promise.all([
       convex(["run", "catalog/publicProperties:getBySlug", '{"slug":"pool-villa"}']),
@@ -155,11 +144,13 @@ async function main() {
     stage = "run-owned-users";
     provisioned = await testUsers(clerkEnv);
     const emails = Object.fromEntries(roles.map((role) => [role, provisioned!.users[role].email]));
-    expectedOwner = [beforeOwner, emails.owner].filter(Boolean).join(",");
-    assert.equal((await getEnv()).ADMIN_EMAILS, beforeOwner);
+    const existingOwners = await ownerGrants();
+    assert(existingOwners.some((grant) => grant.claimed), "Claim a Preview owner grant before running temporary owner QA");
+    assert(!existingOwners.some((grant) => grant.email === emails.owner));
     const journal = path.join(work, "recovery.json");
-    await writeFile(journal, JSON.stringify({ beforeOwner, addedOwner: emails.owner }), { flag: "wx", mode: 0o600 });
-    await setOwnerList(expectedOwner);
+    await writeFile(journal, JSON.stringify({ addedOwner: emails.owner }), { flag: "wx", mode: 0o600 });
+    addedOwner = emails.owner;
+    await convex(["run", "auth/owners:grantOwner", JSON.stringify({ email: addedOwner })]);
 
     const targetPath = path.join(work, "target.json");
     await writeFile(targetPath, JSON.stringify({ ...staging, ownerGrantsAreRunOwned: true, emails }), { flag: "wx", mode: 0o600 });
@@ -188,17 +179,9 @@ async function main() {
     }
   } finally {
     let cleanupFailed = false;
-    if (expectedOwner !== undefined && provisioned) {
-      try {
-        const current = (await getEnv()).ADMIN_EMAILS;
-        if (current === expectedOwner) await setOwnerList(beforeOwner);
-        else {
-          const entries = current?.split(",") ?? [];
-          const ownEmail = provisioned.users.owner.email;
-          const remainder = entries.filter((entry) => entry.trim().toLowerCase() !== ownEmail);
-          if (remainder.length !== entries.length) await setOwnerList(remainder.join(","));
-        }
-      } catch { cleanupFailed = true; }
+    if (addedOwner !== undefined) {
+      try { await convex(["run", "auth/owners:revokeOwner", JSON.stringify({ email: addedOwner })]); }
+      catch { cleanupFailed = true; }
     }
     try { await provisioned?.cleanupSessions(); }
     catch { cleanupFailed = true; }

@@ -1,9 +1,10 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -27,7 +28,6 @@ const stay = {
 };
 
 async function setup() {
-  vi.stubEnv("ADMIN_EMAILS", adminEmail);
   const t = convexTest(schema, modules);
   await t.run(async (ctx) => {
     await ctx.db.insert("properties", {
@@ -48,7 +48,7 @@ async function setup() {
       status: "active",
     });
   });
-  const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
+  const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: "admin-token" });
   return { t, admin };
 }
 
@@ -66,8 +66,6 @@ async function attachCheckout(t: ReturnType<typeof convexTest>, bookingId: Id<'b
     attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut,
   });
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("Stripe checkout confirmation", () => {
   it("marks the matched checkout paid + confirmed and blocks the dates", async () => {

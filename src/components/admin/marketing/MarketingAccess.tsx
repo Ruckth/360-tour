@@ -1,6 +1,7 @@
 "use client";
 
-import { SignInButton } from "@/platform/auth";
+import { MARKETING_ROLE_LABELS } from "../staff-access";
+import { SignInButton, SignOutButton } from "@/platform/auth";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { makeFunctionReference } from "convex/server";
 import { Component, createContext, useContext, useState, type ReactNode } from "react";
@@ -39,9 +40,9 @@ const current = makeFunctionReference<"query", Record<string, never>, MarketingA
 const claimInvite = makeFunctionReference<"mutation", Record<string, never>, null>("marketing/access:claimInvite");
 
 function AccessState({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="mx-auto my-8 grid w-[calc(100%-2rem)] max-w-xl gap-3 border border-border bg-card p-6">
+  return <section className="mx-auto my-8 grid w-[calc(100%-2rem)] min-w-0 max-w-xl grid-cols-1 gap-3 border border-border bg-card p-6">
     <h2 className="text-xl font-semibold text-foreground">{title}</h2>
-    <div className="grid gap-3 text-sm text-muted-foreground">{children}</div>
+    <div className="grid grid-cols-1 gap-3 text-sm text-muted-foreground wrap-anywhere">{children}</div>
   </section>;
 }
 
@@ -54,23 +55,28 @@ class AccessBoundary extends Component<{ children: ReactNode }, { failed: boolea
   }
 }
 
-function AccessGate({ children }: { children: ReactNode }) {
-  const auth = useConvexAuth();
-  const access = useQuery(current, auth.isAuthenticated ? {} : "skip");
+export function MarketingInvitation({ email, role }: { email: string | null; role: Exclude<MarketingRole, "admin"> }) {
   const claim = useMutation(claimInvite);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (auth.isLoading || (auth.isAuthenticated && access === undefined)) return <AccessState title="Checking Marketing access"><Spinner label="Loading Marketing access" /></AccessState>;
-  if (!auth.isAuthenticated || !access?.email) return <AccessState title="Sign in to Marketing"><p>Use the account invited to Marketing.</p><SignInButton mode="modal"><Button>Sign in</Button></SignInButton></AccessState>;
-  if (access.capabilities.view) return <MarketingAccessProvider value={access}>{children}</MarketingAccessProvider>;
-  if (access.pendingInvitation) return <AccessState title="Activate your Marketing invitation">
-    <p>{access.email} has been invited as {access.pendingInvitation.role}. Activate access for this signed-in account.</p>
+  return <AccessState title="Activate your Marketing invitation">
+    <p>{email} has been invited as {MARKETING_ROLE_LABELS[role]}. Activate access for this signed-in account.</p>
     {error ? <p role="alert" className="text-destructive">{error}</p> : null}
     <Button disabled={claiming} onClick={async () => {
       setClaiming(true); setError(null);
       try { await claim({}); } catch (cause) { setError(marketingErrorText(cause, "Couldn’t activate the invitation. Try again.")); } finally { setClaiming(false); }
     }}>{claiming ? "Activating…" : "Activate Marketing access"}</Button>
+    <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
   </AccessState>;
+}
+
+function AccessGate({ children }: { children: ReactNode }) {
+  const auth = useConvexAuth();
+  const access = useQuery(current, auth.isAuthenticated ? {} : "skip");
+  if (auth.isLoading || (auth.isAuthenticated && access === undefined)) return <AccessState title="Checking Marketing access"><Spinner label="Loading Marketing access" /></AccessState>;
+  if (!auth.isAuthenticated || !access?.email) return <AccessState title="Sign in to Marketing"><p>Use the account invited to Marketing.</p><SignInButton mode="modal"><Button>Sign in</Button></SignInButton></AccessState>;
+  if (access.capabilities.view) return <MarketingAccessProvider value={access}>{children}</MarketingAccessProvider>;
+  if (access.pendingInvitation) return <MarketingInvitation email={access.email} role={access.pendingInvitation.role} />;
   return <AccessState title="Marketing access required"><p>{access.email} does not have Marketing access. Ask a system administrator to invite this account.</p></AccessState>;
 }
 

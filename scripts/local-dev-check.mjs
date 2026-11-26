@@ -111,7 +111,11 @@ try {
   browser = await chromium.launch();
   let page = await browser.newPage();
   const owner = await login(page, 'owner');
-  assert.equal((await owner.query(makeFunctionReference('auth/staffAccess:myAccess'), {})).role, 'owner');
+  const myAccess = makeFunctionReference('auth/staffAccess:myAccess');
+  if ((await owner.query(myAccess, {})).pendingInvitation?.role === 'owner') {
+    await owner.mutation(makeFunctionReference('auth/staffAccess:claimInvite'), {});
+  }
+  assert.equal((await owner.query(myAccess, {})).role, 'owner');
   const saved = await owner.mutation(makeFunctionReference('pos/commands/addItem:addItem'), { item: { kind: 'extra', name: 'Phase3f persistent local item', price: 12300 } });
   const before = await owner.query(makeFunctionReference('pos/orders:getOrder'), { orderId: saved.orderId });
   assert.ok(before.lines.some(line => line._id === saved.lineId));

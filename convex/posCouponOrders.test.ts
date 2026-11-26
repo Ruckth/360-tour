@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -15,9 +16,8 @@ const reviewedCustomer = (view: { customer: object | null }) =>
 	view.customer && 'revision' in view.customer && typeof view.customer.revision === 'number' ? { expectedCustomerRevision: view.customer.revision } : {};
 
 async function setup(limits: { usageLimit?: number; discountBudget?: number; amount?: number; min?: number } = {}) {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
@@ -77,7 +77,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 const unavailable = (code: string) => ({ data: expect.objectContaining({ code: 'coupon_unavailable', problem: expect.objectContaining({ code }) }) });
 

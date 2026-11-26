@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
@@ -21,14 +22,11 @@ const DEVICE = 'front-desk-ipad-device-0001';
 const TAB = 'front-desk-ipad-tab-key-0001';
 type Method = 'cash' | 'promptpay' | 'card' | 'transfer';
 
-afterEach(() => vi.unstubAllEnvs());
-
 async function fixture() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const t = convexTest(schema, modules);
   await t.run(async ctx => {
     for (const [tokenIdentifier, role] of [['manager', 'manager'], ['ploy', 'cashier'], ['nok', 'cashier']] as const) {
-      await ctx.db.insert('staffGrants', { role, email: `${tokenIdentifier}@example.com`, tokenIdentifier, createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com' });
+      await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)], role, email: `${tokenIdentifier}@example.com`, tokenIdentifier, createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com' });
     }
   });
   const as = (tokenIdentifier: string) => t.withIdentity({ email: `${tokenIdentifier}@example.com`, tokenIdentifier, emailVerified: true });

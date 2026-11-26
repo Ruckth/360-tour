@@ -1,11 +1,12 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import { convexToJson } from 'convex/values';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
-import { adjust, type AdjustmentWriter } from '../commerce/private/adjustments';
+import { adjust, executeApprovedAdjustment, type AdjustmentWriter } from '../commerce/private/adjustments';
 import { resolveCommerceSettings } from '../commerce/model';
 import { requireStaff } from '../auth/model';
 import { ReadBudget } from '../lib/readBudget';
@@ -27,23 +28,21 @@ type AdjustmentRequest = Extract<Doc<'staffApprovalRequests'>, { kind: 'adjustme
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
-  vi.unstubAllEnvs();
 });
 
 async function setup() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   vi.spyOn(Date, 'now').mockReturnValue(now);
   const t = convexTest(schema, modules);
   const cashier = t.withIdentity({ email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
   const manager = t.withIdentity({ email: 'manager@example.com', emailVerified: true, tokenIdentifier: 'manager' });
-  const owner = t.withIdentity({ email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' });
   const guest = t.withIdentity({ email: 'guest@example.com', emailVerified: true, tokenIdentifier: 'guest' });
   const fixture = await t.run(async ctx => {
-    const grantId = await ctx.db.insert('staffGrants', {
+    const grantId = await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       role: 'cashier', email: 'cashier@example.com', tokenIdentifier: 'cashier',
       createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
     });
-    await ctx.db.insert('staffGrants', {
+    await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       role: 'manager', email: 'manager@example.com', tokenIdentifier: 'manager',
       createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
     });
@@ -54,7 +53,7 @@ async function setup() {
     const lineId = await ctx.db.insert('orderLines', {
       orderId, kind: 'voucher', name: 'Gift voucher', qty: 1, unitPrice: 60000, catalogUnitPrice: 60000, currency: 'THB', createdAt: now,
     });
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const voucherId = await ctx.db.insert('vouchers', {
       faceValue: 60000, paidBalance: 60000, goodwillBalance: 0, status: 'active', branchId,
       source: { kind: 'sale', orderId, lineId }, issuedExpiresAt: now + 86400000, effectiveExpiresAt: now + 86400000,
@@ -173,8 +172,8 @@ it('keeps a live pre-commerce approval visible after twenty stale requests and s
   const queue = await s.manager.query(approvals.pending, {});
   expect(queue).toMatchObject({ count: 1, list: [{ _id: requestId }] });
   expect(documents.mock.calls.filter(([row]) => row && typeof row === 'object' && 'expiresAt' in row)).toHaveLength(21);
-  expect(documents.mock.calls.length + 1).toBeLessThanOrEqual(26);
-  expect(ranges.mock.calls.length + 1).toBe(12);
+  expect(documents.mock.calls.length + 2).toBeLessThanOrEqual(28);
+  expect(ranges.mock.calls.length + 2).toBe(14);
 
   await s.t.run(async ctx => {
     const live = await ctx.db.get(requestId);
@@ -307,6 +306,39 @@ it('shows changed revisions as stale in detail and own status without re-reading
   });
 });
 
+it('marks checkout, adjustment and return approvals stale when the requester loses every branch', async () => {
+  const s = await setup();
+  const { orderId, lineId } = await s.owner.mutation(api.pos.commands.addItem.addItem, {
+    item: { kind: 'extra', name: 'Airport transfer', price: 60000 },
+  });
+  const { requestId: checkoutId } = await s.cashier.mutation(approvals.create, {
+    orderId, payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 3000 } }, reason: 'Discount request',
+  });
+  const writer: AdjustmentWriter = {
+    assertScope: async () => {},
+    prepare: async () => ({ before: {}, after: {}, apply: async () => { throw new Error('Stale approval cannot write'); } }),
+  };
+  const adjustment = await s.cashier.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), {
+    target: { targetType: 'voucher', targetId: s.voucherId }, kind: 'addGoodwill', input: { delta: 1000 },
+    expectedRevision: 3, clientKey: 'archive-branch', reasonCode: 'serviceRecovery',
+  }, writer));
+  if (adjustment.status !== 'approvalRequired') throw new Error('Expected manager approval');
+  const adjustmentId = adjustment.requestId;
+  const returnId = await s.insertReturn({ orderFingerprint: encodeReturnApprovalReview({ revisions: [], rows: [] }) });
+  const requestIds = [checkoutId, adjustmentId, returnId];
+  for (const requestId of requestIds) {
+    expect(await s.owner.query(approvals.detail, { requestId })).toMatchObject({ status: 'pending' });
+  }
+  await s.t.run(ctx => ctx.db.patch(s.branchId, { state: 'archived' }));
+  for (const requestId of requestIds) {
+    expect(await s.owner.query(approvals.detail, { requestId })).toMatchObject({ status: 'stale' });
+  }
+  await expect(s.owner.mutation(approvals.approve, { requestId: checkoutId })).resolves.toMatchObject({ status: 'stale' });
+  await expect(s.owner.run(async ctx =>
+    executeApprovedAdjustment(ctx, await requireStaff(ctx, 'approve'), adjustmentId, writer)))
+    .resolves.toEqual({ status: 'stale' });
+});
+
 it('checks order, authority and all 127 return targets within 130 reads when only the last target changes', async () => {
   const s = await setup();
   const review = await s.t.run(async ctx => {
@@ -377,8 +409,8 @@ it('checks order, authority and all 127 return targets within 130 reads when onl
   const ranges = vi.spyOn(ReadBudget.prototype, 'range');
   const fresh = await s.manager.query(approvals.detail, { requestId });
   expect(fresh).toMatchObject({ status: 'pending', freshness: 'checked', authorityCurrent: true, kind: 'returnItems', rows: [{ label: 'Gift voucher' }] });
-  expect(document.mock.calls.length + 1).toBe(112); // The manager access builder reads one staff grant.
-  expect(ranges.mock.calls.length + 1).toBe(112);
+  expect(document.mock.calls.length + 2).toBe(114); // The manager access builder reads one grant and one branch.
+  expect(ranges.mock.calls.length + 2).toBe(114);
   for (const mismatch of [
     { rulesRevision: 999 }, { requesterAccessFingerprint: 'revoked' },
     { rulesRevision: 999, requesterAccessFingerprint: 'revoked' },
@@ -386,7 +418,7 @@ it('checks order, authority and all 127 return targets within 130 reads when onl
     const staleId = await s.insertReturn({ ...review.checkpoint, ...mismatch });
     ranges.mockClear();
     expect(await s.manager.query(approvals.detail, { requestId: staleId })).toMatchObject({ status: 'stale', freshness: 'checked', authorityCurrent: false });
-    expect(ranges.mock.calls.length + 1).toBe(112);
+    expect(ranges.mock.calls.length + 2).toBe(114);
   }
   const handoverId = review.lastHandover._id;
   await s.manager.run(async ctx => adjust(ctx, await requireStaff(ctx, 'checkout'), {
@@ -405,8 +437,8 @@ it('checks order, authority and all 127 return targets within 130 reads when onl
     status: 'stale', freshness: 'checked', authorityCurrent: true,
     orderRevision: { expected: 2, current: 2, expectedCommerce: 0, currentCommerce: 1 },
   });
-  expect(ranges.mock.calls.length + 1).toBe(112);
-  expect(document.mock.calls.length + 1).toBe(112);
+  expect(ranges.mock.calls.length + 2).toBe(114);
+  expect(document.mock.calls.length + 2).toBe(114);
   expect(await s.cashier.query(approvals.myStatus, { requestId })).toMatchObject({ status: 'stale' });
 
   // Requests saved before the checkpoint have no proof for targets beyond the read ceiling.
@@ -419,7 +451,7 @@ it('checks order, authority and all 127 return targets within 130 reads when onl
   expect(await s.manager.query(approvals.detail, { requestId: sharedRequestId })).toMatchObject({
     status: 'stale', revisions: expect.arrayContaining([{ table: 'sessionGrants', id: review.affectedGrantId, expected: 0, current: 1 }]),
   });
-  expect(ranges.mock.calls.length + 1).toBe(112);
+  expect(ranges.mock.calls.length + 2).toBe(114);
 });
 
 it('sweeps pending commerce requests without a timer and keeps authorized returns in progress', async () => {

@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -29,9 +30,8 @@ const tokenOf = (result: { ok: true; token: string } | { ok: false }) => {
 };
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 	const link = (clientId = HERE) => admin.mutation(api.pos.displays.createPairLink, { clientId });
 	const claim = (secret: string, deviceName?: string) => t.mutation(api.pos.displays.claimLink, { secret, deviceName });
@@ -57,7 +57,6 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 describe('H1-03: the display shows an open order only while its checkout is live', () => {

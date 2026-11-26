@@ -2,7 +2,8 @@ import { validate } from 'convex-helpers/validators';
 import { ConvexError, convexToJson, v, type Infer } from 'convex/values';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { canReadCheckoutOrder, type StaffActor } from '../../auth/model';
+import { canReadCheckoutOrder, type requireStaff, type StaffActor } from '../../auth/model';
+import { listAssignedBranches } from '../../branches/model';
 import { readBudget } from '../../lib/readBudget';
 import { sha256 } from '../../shared/displayTokens';
 import { resortTodayIso } from '../../shared/time';
@@ -41,8 +42,9 @@ export async function requesterFingerprint(ctx: ReadCtx, tokenIdentifier: string
   // This is a stored request freshness check, not authentication. The request
   // was created by a verified cashier; like authentication, bind by account,
   // since its verified primary email may have changed after accepting the invite.
-  const role = grant?.role ?? null;
-  return { role, fingerprint: canonical({ role, grant }) };
+  const branches = grant && grant.role !== 'owner' ? await listAssignedBranches(ctx, grant.branchIds, readBudget(ctx)) : [];
+  const role = grant && (grant.role === 'owner' || branches.length > 0) ? grant.role : null;
+  return { role, branchIds: branches.map(branch => branch._id), fingerprint: canonical({ role, grant }) };
 }
 
 /** Extra targets matter too: paid-link targets and amended customer revisions are checked before execution. */
@@ -134,15 +136,15 @@ function getApprovalTarget<Table extends TableNames>(ctx: ReadCtx, id: Id<Table>
   return readApprovalDocument(ctx, () => ctx.db.get(id));
 }
 
-// The staff builder reads one bound grant for a manager/cashier and no grant for an owner.
-// Reserve room for that read in the selected-detail ceiling.
+// The staff builder reads the reviewer's bound grant and each assigned branch for desk staff.
+// Reserve those reads separately from the detail handler's measured reads.
 const DETAIL_READS = 130;
-function availableDetailReads(ctx: ReadCtx, actor: StaffActor) {
-  return DETAIL_READS - readBudget(ctx).ranges - (actor.role === 'owner' ? 0 : 1);
+function availableDetailReads(ctx: ReadCtx, accessReads: number) {
+  return DETAIL_READS - readBudget(ctx).ranges - accessReads;
 }
 
-function checkDetailReads(ctx: ReadCtx, actor: StaffActor) {
-  if (availableDetailReads(ctx, actor) < 0) throw new Error('Approval detail exceeded its read budget.');
+function checkDetailReads(ctx: ReadCtx, accessReads: number) {
+  if (availableDetailReads(ctx, accessReads) < 0) throw new Error('Approval detail exceeded its read budget.');
 }
 
 async function adjustmentAccessIsCurrent(ctx: ReadCtx, request: AdjustmentRequest) {
@@ -153,7 +155,8 @@ async function adjustmentAccessIsCurrent(ctx: ReadCtx, request: AdjustmentReques
   ]);
   return request.payload.requester === request.requesterTokenIdentifier &&
     grant?.role === 'cashier' && await sha256(JSON.stringify(convexToJson(grant))) === request.requesterAccessFingerprint &&
-    rules.revision === request.rulesRevision && await sha256(JSON.stringify(convexToJson(rules))) === request.rulesFingerprint;
+    rules.revision === request.rulesRevision && await sha256(JSON.stringify(convexToJson(rules))) === request.rulesFingerprint &&
+    (await listAssignedBranches(ctx, grant.branchIds, readBudget(ctx))).length > 0;
 }
 
 function pendingStatus(request: ApprovalRequest) {
@@ -235,7 +238,7 @@ async function adjustmentTargetView(ctx: ReadCtx, row: Doc<AdjustmentTargetTable
   return { label: row.name, status: row.status };
 }
 
-export async function adjustmentApprovalDetail(ctx: ReadCtx, actor: StaffActor, request: AdjustmentRequest, includeTarget: boolean) {
+export async function adjustmentApprovalDetail(ctx: ReadCtx, accessReads: number, request: AdjustmentRequest, includeTarget: boolean) {
   const { target, expectedRevisions, adjustmentKind } = request.payload;
   const baseStatus = pendingStatus(request);
   const [primary] = expectedRevisions;
@@ -254,7 +257,7 @@ export async function adjustmentApprovalDetail(ctx: ReadCtx, actor: StaffActor, 
   const current = valid && targets.every(({ revision }) => revision.current === revision.expected && !revision.blockedByReturn);
   const status = baseStatus === 'pending' && (!current || !await adjustmentAccessIsCurrent(ctx, request)) ? 'stale' : baseStatus;
   const targetView = includeTarget ? await adjustmentTargetView(ctx, targets[0]?.row ?? null) : null;
-  checkDetailReads(ctx, actor);
+  checkDetailReads(ctx, accessReads);
   return { status, target: targetView, revisions: targets.map(({ revision }) => revision) };
 }
 
@@ -318,7 +321,7 @@ function parseReturnReview(ctx: ReadCtx, request: ReturnRequest) {
   return value;
 }
 
-export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, request: ReturnRequest, includeTarget: boolean) {
+export async function returnApprovalDetail(ctx: ReadCtx, accessReads: number, request: ReturnRequest, includeTarget: boolean) {
   const baseStatus = pendingStatus(request);
   let authorityCurrent = true;
   if (baseStatus === 'pending') {
@@ -344,7 +347,7 @@ export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, requ
   // grants and appointments can change on other receipts and are compared directly.
   const hasCheckpoint = request.commerceRevision !== undefined;
   const directTargets = review?.revisions.filter(ref => !hasCheckpoint || ref.table !== 'handovers') ?? [];
-  const checked = review !== null && directTargets.length <= availableDetailReads(ctx, actor);
+  const checked = review !== null && directTargets.length <= availableDetailReads(ctx, accessReads);
   const targets = checked ? directTargets : [];
   const revisions = await Promise.all(targets.map(async ref => ({
     table: ref.table, id: ref.id, expected: ref.revision, current: revisionOf(await getApprovalTarget(ctx, ref.id)),
@@ -362,7 +365,7 @@ export async function returnApprovalDetail(ctx: ReadCtx, actor: StaffActor, requ
   const status = baseStatus === 'pending' && stale ? 'stale' : baseStatus;
   const freshness = baseStatus !== 'pending' ? 'resolved' as const
     : checked ? 'checked' as const : 'partial' as const;
-  checkDetailReads(ctx, actor);
+  checkDetailReads(ctx, accessReads);
   return {
     status, freshness, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,
     target: order && orderView(order), orderRevision, rows, revisions,
@@ -382,11 +385,11 @@ export async function checkoutApprovalDetail(ctx: ReadCtx, request: CheckoutAppr
   };
 }
 
-export async function ownApprovalStatus(ctx: ReadCtx, actor: StaffActor, request: ApprovalRequest) {
+export async function ownApprovalStatus(ctx: ReadCtx, actor: Awaited<ReturnType<typeof requireStaff>>, request: ApprovalRequest) {
   const baseStatus = pendingStatus(request);
   if (baseStatus !== 'pending') return baseStatus;
-  if (request.kind === 'adjustment') return (await adjustmentApprovalDetail(ctx, actor, request, false)).status;
-  if (request.kind === 'returnItems') return (await returnApprovalDetail(ctx, actor, request, false)).status;
+  if (request.kind === 'adjustment') return (await adjustmentApprovalDetail(ctx, actor.accessReads, request, false)).status;
+  if (request.kind === 'returnItems') return (await returnApprovalDetail(ctx, actor.accessReads, request, false)).status;
   if (!canReadCheckoutOrder(actor, await getApprovalTarget(ctx, request.orderId))) return 'stale';
   return await effectiveRequestStatus(ctx, request);
 }

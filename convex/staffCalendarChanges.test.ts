@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -16,9 +17,8 @@ const tea = { start: '15:00', end: '15:15', label: 'Tea' };
 const patternPlan = { shifts: [{ start: '09:00', end: '18:00' }], breaks: [lunch, tea] };
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const person = (name: string) => admin.mutation(api.services.commands.createStaff.createStaff, {
 		name, role: 'Therapist', color: '#abc',
 		workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })),
@@ -43,7 +43,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('appointment changes', () => {
 	it('cancels while keeping the record and payment state, frees the slot and records who and why', async () => {

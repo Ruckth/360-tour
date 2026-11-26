@@ -1,9 +1,15 @@
+import type { UserIdentity } from 'convex/server';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { adminEmails } from '../lib/adminEmails';
+import { appendRecordHistory } from '../settings/model';
 import { MARKETING_INVITATION_TTL_MS } from '../shared/marketingPolicy';
-import type { MarketingPermission, MarketingRole } from '../shared/marketingAccess';
+import type { MarketingRole } from '../shared/marketingAccess';
 import { marketingCapabilities } from '../shared/marketingAccess';
+
+/** An email can label both an owner record and a grant already bound to another account. */
+export function isSeparateMarketingAccount(owner: Doc<"staffGrants">, grant: Doc<"marketingGrants"> | null) {
+  return Boolean(grant?.tokenIdentifier && grant.tokenIdentifier !== owner.tokenIdentifier);
+}
 
 export function marketingInvitationExpiry(grant: Doc<"marketingGrants">) {
   return grant.tokenIdentifier ? null : grant.inviteExpiresAt ?? grant.createdAt + MARKETING_INVITATION_TTL_MS;
@@ -14,15 +20,14 @@ export function marketingInvitationExpired(grant: Doc<"marketingGrants">, now = 
   return expiresAt !== null && expiresAt <= now;
 }
 
-export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
-  const identity = await ctx.auth.getUserIdentity();
+export async function marketingAccessForIdentity(ctx: QueryCtx | MutationCtx, identity: UserIdentity | null, isOwner: boolean) {
   const email = identity?.email?.trim().toLowerCase() ?? null;
   // Same policy as staff access: an email without explicit verification grants no marketing authority.
   if (identity?.emailVerified !== true)
     return { email, role: null, capabilities: marketingCapabilities(null), pendingInvitation: null };
-  if (email && adminEmails().has(email))
+  if (isOwner)
     return {
-      email: identity!.email!,
+      email: identity.email!,
       role: "admin" as const,
       capabilities: marketingCapabilities("admin"),
       pendingInvitation: null,
@@ -42,25 +47,16 @@ export async function marketingAccess(ctx: QueryCtx | MutationCtx) {
           .withIndex("by_email", (q) => q.eq("email", email))
           .unique()
       : null;
+  const expiresAt = invite && marketingInvitationExpiry(invite);
   const role = grant?.role ?? null;
   return {
     email,
     role,
     capabilities: marketingCapabilities(role),
     pendingInvitation:
-      invite && !invite.tokenIdentifier && !marketingInvitationExpired(invite)
-        ? { role: invite.role } : null,
+      invite && expiresAt !== null && expiresAt > Date.now()
+        ? { role: invite.role, expiresAt } : null,
   };
-}
-
-export async function requireMarketingPermission(
-  ctx: QueryCtx | MutationCtx,
-  permission: MarketingPermission,
-) {
-  const access = await marketingAccess(ctx);
-  if (!access.email) throw new Error("Not authenticated");
-  if (!access.capabilities[permission]) throw new Error("Not authorized");
-  return { ...access, email: access.email };
 }
 
 export function requireEditableDraft(
@@ -69,4 +65,21 @@ export function requireEditableDraft(
 ) {
   if (access.role === "marketer" && existing && existing.status !== "draft")
     throw new Error("Marketers may edit drafts only");
+}
+
+/** Claiming company ownership replaces this identity's narrower Marketing access. */
+export async function retireOwnerMarketingGrants(ctx: MutationCtx, email: string, tokenIdentifier: string, actor: string) {
+  const [bound, byEmail] = await Promise.all([
+    ctx.db.query('marketingGrants').withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', tokenIdentifier)).unique(),
+    ctx.db.query('marketingGrants').withIndex('by_email', q => q.eq('email', email)).unique(),
+  ]);
+  // A reassigned email can still label another account's bound grant.
+  for (const grant of [bound, byEmail && !byEmail.tokenIdentifier ? byEmail : null]) {
+    if (!grant) continue;
+    await appendRecordHistory(ctx, {
+      entityType: 'marketingGrant', entityId: grant._id, actor, kind: 'retired',
+      reason: 'Superseded by company ownership', before: { email: grant.email, role: grant.role },
+    });
+    await ctx.db.delete(grant._id);
+  }
 }

@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -11,14 +12,13 @@ import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-14T03:00:00Z');
 beforeEach(() => {
-	vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
 	vi.spyOn(Date, 'now').mockReturnValue(now);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 async function setup() {
 	const t = convexTest(schema, modules);
-	const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
+	const owner = await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
 	const { propertyId, bookingId, serviceId, staffId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
 			slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 4,
@@ -58,12 +58,12 @@ describe('stay checkout', () => {
 			await expect(client.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).rejects.toThrow();
 		}
 		const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'cashier' });
-		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier' });
+		await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'cashier@example.com', role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
 		await cashier.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(cashier.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow('Not authorized');
 		await expect(cashier.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).resolves.toMatchObject({ added: [] });
 		const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'manager' });
-		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: 'manager' });
+		await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'manager@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
 		await manager.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(manager.query(api.bookings.admin.stayAppointments, { bookingId })).resolves.toEqual({ appointments: [], complete: true });
 	});

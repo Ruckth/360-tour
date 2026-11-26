@@ -1,7 +1,8 @@
+import { seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import type { Infer } from 'convex/values';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { MutationCtx } from './_generated/server';
 import {
@@ -16,7 +17,7 @@ import {
 import { benefitExpiresAt, benefitState, isProtectedUnusedRefund } from './shared/commerce/settings';
 import { approvalStatus, type CashierRules } from './shared/staffTypes';
 import { insertFixture } from './testing/completeFixture.test-support';
-import { adminIdentity, asAdmin, createHarness } from './testing/harness';
+import { asAdmin, createHarness } from './testing/harness';
 
 const now = Date.UTC(2026, 10, 19, 8);
 const businessDate = '2026-11-19';
@@ -34,8 +35,6 @@ const terms = {
   packageValidityDays: 180, voucherValidityDays: 365, allowSessionTransfer: true,
   packageSplit: 'voucherFaceValue', packageVatTiming: 'atSale', pointsVatTreatment: 'discount', pointsExpiryMonths: 12,
 } as const;
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function existingRecords(ctx: MutationCtx) {
   const serviceId = await ctx.db.insert('services', {
@@ -74,7 +73,7 @@ async function commerceRecords(ctx: MutationCtx) {
   const { orderId, lineId, serviceId } = base;
   const { revision: settingsRevision } = resolveCommerceSettings(null);
   const settingsId = await ctx.db.insert('commerceSettings', { key: 'default', ...resolveCommerceSettings(null) });
-  const branchId = await ctx.db.insert('branches', { key: 'main' });
+  const branchId = await seedTestBranch(ctx, 'main');
   const categoryId = await ctx.db.insert('productCategories', { name: 'Spa shop', sort: 0 });
   const productId = await ctx.db.insert('products', {
     categoryId, name: 'Oil', status: 'active', vatProfile: 'standard', options: [],
@@ -158,9 +157,8 @@ it('validates and reads pre-commerce orders, lines, payments, refunds, appointme
 });
 
 it('defaults missing cashier policies and keeps new settings when old clients save', async () => {
-  vi.stubEnv('ADMIN_EMAILS', adminIdentity.email);
   const t = createHarness(convexTest);
-  const owner = asAdmin(t);
+  const owner = await asAdmin(t);
   const get = () => owner.query(api.settings.cashierRules.getCashierRules, {});
   const save = (expectedRevision: number, fields: Partial<Pick<CashierRules, 'sessionWaive' | 'benefitEdit'>> = {}) => owner.mutation(api.settings.cashierRules.updateCashierRules, {
     ...existingRules, expectedRevision, ...fields,
@@ -246,7 +244,6 @@ it('freezes D20 Off and unlimited from stored settings and uses them in refund a
 });
 
 it('round-trips each row and tender kind, and only permits vouchers on POS tender records', async () => {
-  vi.stubEnv('ADMIN_EMAILS', adminIdentity.email);
   const t = createHarness(convexTest);
   const { orderId, lineId, bookingId, voucherId } = await t.run(commerceRecords);
   await t.run(async ctx => {
@@ -273,7 +270,7 @@ it('round-trips each row and tender kind, and only permits vouchers on POS tende
     // @ts-expect-error An external refund cannot point to a voucher.
     await expect(ctx.db.insert('orderRefunds', { ...refund, idempotencyKey: 'wrong-refund-method', method: 'cash', voucherId })).rejects.toThrow('Validator error');
   });
-  const owner = asAdmin(t);
+  const owner = await asAdmin(t);
   await expect(owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, {
     orderId, expectedCorrectionRevision: 0, reason: 'Correction', idempotencyKey: 'voucher-correction',
     // @ts-expect-error Corrected tenders use external payment methods.

@@ -8,7 +8,7 @@ This project deploys as a TanStack Start app (Nitro Build Output API) on Vercel 
 - Booking funnel with Convex-backed live inventory when production Convex is configured and seeded.
 - Live Convex bookings start pending. Stripe Checkout creates a hosted payment session; only the signed Stripe webhook confirms a paid booking. Unpaid requests expire after 24 hours.
 - Concierge chat uses Convex. If AI env vars are present, responses use the configured xAI/OpenAI-compatible endpoint; otherwise the app falls back to static localized replies.
-- Admin chat dashboard uses Clerk plus Convex JWT validation and `ADMIN_EMAILS` allowlisting.
+- Admin chat dashboard uses Clerk plus Convex JWT validation and staff grants.
 
 ## Vercel Project Settings
 
@@ -68,7 +68,6 @@ Set these in the Convex production deployment:
 | Name | Required | Notes |
 | --- | --- | --- |
 | `CLERK_JWT_ISSUER_DOMAIN` | Yes for admin | Required for Convex to validate Clerk tokens. |
-| `ADMIN_EMAILS` | Yes for admin | Comma-separated allowlist for `/admin`, for example `owner@example.com,manager@example.com`. |
 | `MESSAGING_IMAGE_SECRET` | For social card images | Match the Vercel image-conversion signing key. No public event mutation accepts a shared secret. |
 | `AI_API_KEY` | No | Enables live AI concierge responses. Use an OpenAI project key for the direct OpenAI endpoint. |
 | `AI_API_BASE_URL` | No | Use `https://api.openai.com/v1` for direct OpenAI. |
@@ -100,7 +99,7 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 ## OTA calendars
 
-- An allowlisted admin adds each Airbnb, Booking.com, or Agoda HTTPS iCal URL in **Admin → Hotel bookings → OTA calendars**. The Convex cron imports all-day date events every 30 minutes and records `lastSyncedAt` or `lastSyncError` on each source.
+- A claimed owner or manager adds each Airbnb, Booking.com, or Agoda HTTPS iCal URL in **Admin → Hotel bookings → OTA calendars**. The Convex cron imports all-day date events every 30 minutes and records `lastSyncedAt` or `lastSyncError` on each source.
 - Generate the export URL for each villa in the same admin dialog, then provide it to the OTA. Treat the token in the URL as a secret and rotate it if disclosed.
 - Check source errors and cross-channel conflicts after initial import. OTA polling is delayed; verify availability before accepting an offline or manual payment.
 
@@ -108,7 +107,7 @@ Without `--prod`, the command changes the deployment this checkout is linked to 
 
 Seed scenarios are for a deliberately fresh, isolated deployment. They are **not** an upgrade or repair step for a nonempty production, development or Preview database. `maintenance/seed:seedAll` checks every application table and throws `Seed requires an empty database; <table> is not empty` if any contains a record, including when the requested scenario is `empty`. It never clears data or returns `already_seeded`.
 
-After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default) or `busy-weekend`:
+After explicitly selecting a new empty local backend, choose `empty`, `demo-resort` (the default), `busy-weekend` or `two-branch`:
 
 ```sh
 bun run convex run maintenance/seed:seedAll '{"scenario":"demo-resort"}'
@@ -125,6 +124,12 @@ Current local/CI integration and guarded per-PR Preview initialization use the u
 
 Before retiring the old operator CLI namespaces, root must stop/drain actual seed/eval producers and inspect relevant stored and inflight jobs, preserving their arguments, tool/payment state and delivery uncertainty. Never replay an ambiguous eval/tool turn or destructive seed. This ownership change does not establish live queue emptiness or model delivery, and introduces no global app traffic gate: public/frontend, HTTP and scheduler names remain stable. See [the maintenance closure record](docs/architecture/phase3b-maintenance-implementation.md) for the complete mapping and operator handoff.
 
+`two-branch` creates Koh Samui in Active and Phuket in Setup. Seed scenarios create no owner grants. To include the three example desk invitations in a disposable demo, pass `{"scenario":"two-branch","demoAccess":true}`. The default is `false`.
+
+After an authorized multi-branch reset and backend deploy, run `maintenance/seed:seedAll` with `{"scenario":"two-branch"}`. Then grant the real owner and the designated recovery owner, in that order, using the procedure below. Have both owners sign in and claim their grants. Use `auth/owners:listOwners` to confirm both are claimed. The revoke command preserves at least one claimed owner.
+
+During the multi-branch cutover, `vercel.json` sets `git.deploymentEnabled.main` to `false`. Merging to `main` skips the automatic production deployment. Pull request previews still build. Follow the authorized cutover before deploying this revision manually. Remove the hold after verifying the production branch data and both owner claims.
+
 ## Admin Setup
 
 To enable `/admin`:
@@ -133,9 +138,18 @@ To enable `/admin`:
 2. Configure the Clerk `convex` JWT template.
    The Clerk Convex JWT template must include `email_verified` so Convex can reject unverified email addresses for staff access and invitation claims.
 3. Set `CLERK_JWT_ISSUER_DOMAIN` in Convex.
-4. Set `ADMIN_EMAILS` in Convex with the exact Clerk account email addresses allowed to access the dashboard.
+4. After seeding, use the deployment admin credentials to run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}'` once for the real owner and again for the recovery owner. Replace the example address with each account's verified Clerk email. Each owner signs in and activates their grant. Claiming company ownership retires narrower Marketing grants bound to that account and pending Marketing invitations at its verified email. A later owner revocation therefore requires a fresh invitation for Marketing access.
+
+Seed scenarios (`maintenance/seed:seedAll`) never create owner grants; owners are always granted explicitly through the deployment-admin CLI.
 
 Missing Clerk or Convex configuration refuses app initialization. Configure a matching Clerk issuer and `convex` JWT template with audience `convex`; a signed-in user without a staff grant must still be refused protected operations.
+
+### Owner Recovery
+
+Use deployment admin credentials (adding `--prod` for production) for all `auth/owners:*` commands:
+
+- **Lost Clerk account (same verified email):** run `bun run convex run auth/owners:grantOwner '{"email":"owner@example.com","rebind":true}'`. This clears the Clerk identity binding on the existing claimed owner grant so the verified email holder can sign in with their new Clerk account and claim the grant again.
+- **Replace an owner:** grant a second owner with `bun run convex run auth/owners:grantOwner '{"email":"new-owner@example.com"}'`, have that person sign in and claim their grant, verify with `bun run convex run auth/owners:listOwners '{}'`, and then run `bun run convex run auth/owners:revokeOwner '{"email":"old-owner@example.com"}'`. (`revokeOwner` refuses to remove the last claimed owner.)
 
 ## Social webhook ingress (Phase 2)
 
@@ -191,7 +205,7 @@ After an authorized deployment, root owns live acceptance. Coordinate any extern
 - Live Convex booking redirects to Stripe Checkout; a signed test webhook marks it paid and queues both emails.
 - Invalid Stripe and Meta webhook signatures are rejected.
 - OTA imports block dates and the export feed includes confirmed bookings.
-- `/admin` requires Clerk sign-in and only allowlisted admin emails can load chat sessions.
+- `/admin` requires Clerk sign-in. Loading chat sessions requires a claimed owner or a claimed manager with a current branch assignment.
 - Chat opens and returns either AI or fallback content.
 - Mobile layout has no visible overlap in hero, booking, chat, or 360 tour views.
 

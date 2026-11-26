@@ -31,8 +31,13 @@ export const ADMIN_SETTINGS_TABS = [
   { id: "email", label: "Email", keywords: ["notifications"] },
   { id: "channels", label: "Channels", keywords: ["LINE", "Facebook", "Messenger", "Instagram", "WhatsApp"] },
   { id: "team", label: "Team", keywords: ["admins", "access", "users", "roles", "cashier", "manager", "invite"] },
+  { id: "branches", label: "Branches", keywords: ["locations", "setup", "suspend", "archive", "issuer"] },
 ] as const;
 export type AdminSettingsTab = (typeof ADMIN_SETTINGS_TABS)[number]["id"];
+
+export function isOwnerOnlySettingsTab(tab: AdminSettingsTab): boolean {
+  return tab === "team" || tab === "branches";
+}
 
 export function adminSettingsTabPath(tab: AdminSettingsTab): string {
   return tab === "business" ? "/admin/settings" : `/admin/settings?tab=${tab}`;

@@ -51,7 +51,7 @@ const at = (date: string, time: string) => resortDateTime(date, time);
 const fid = <T extends string>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T & never>;
 
 const access: StaffAccessView = {
-  email: EMAIL, role: "manager", pendingInvitation: null, marketingRole: null,
+  email: EMAIL, role: "manager", pendingInvitation: null, companyScope: false, branches: [], marketingInvitation: null, marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: false, settings: false, bookings: true, services: true, customers: true,

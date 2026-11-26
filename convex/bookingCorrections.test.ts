@@ -1,8 +1,9 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
@@ -22,13 +23,12 @@ let keySeq = 0;
 const key = (label = 'attempt') => `${label}-${String(++keySeq).padStart(6, '0')}`;
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', adminEmail);
 	const t = convexTest(schema, modules);
 	const propertyId = await t.run((ctx) => ctx.db.insert('properties', {
 		slug: 'pool-villa', name: 'Pool Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 4,
 		bedrooms: 2, bathrooms: 2, area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'
 	}));
-	const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
 	const stranger = t.withIdentity({ emailVerified: true, email: 'stranger@example.com', tokenIdentifier: 'stranger' });
 	const get = (bookingId: Id<'bookings'>) => t.run((ctx) => ctx.db.get(bookingId)).then((b) => b!);
 	const rev = async (bookingId: Id<'bookings'>) => (await get(bookingId)).revision ?? 0;
@@ -65,8 +65,6 @@ async function setup() {
 	const scheduled = () => t.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name));
 	return { t, admin, stranger, propertyId, get, rev, create, financials, history, pay, refund, edit, order, settle, scheduled };
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe('refund records', () => {
 	it('cancels a multiple-payment stay with a selected linked refund and replays the exact atomic request', async () => {
@@ -126,8 +124,7 @@ describe('refund records', () => {
 		for (const changes of [{ reason: 'Other reason' }, { effectiveAt: args.effectiveAt + 1 }, { paymentId: undefined }, { currency: 'USD' }, { method: 'transfer' as const }]) {
 			await expect(admin.mutation(api.bookings.commands.recordRefund.recordRefund, { ...args, ...changes })).rejects.toThrow('different refund');
 		}
-		vi.stubEnv('ADMIN_EMAILS', `${adminEmail},desk@example.com`);
-		await expect(t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' }).mutation(api.bookings.commands.recordRefund.recordRefund, args)).rejects.toThrow('different refund');
+		await expect((await asTestOwner(t, { emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' })).mutation(api.bookings.commands.recordRefund.recordRefund, args)).rejects.toThrow('different refund');
 		expect((await financials(bookingId)).refunds).toHaveLength(1);
 	});
 

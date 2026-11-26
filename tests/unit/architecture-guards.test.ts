@@ -197,6 +197,9 @@ it.each([
 // Unit tests and generated declarations must never keep a deployed endpoint alive.
 // Manual operator commands and staged commerce endpoints each need a documented reason.
 const functionReferenceAllowlist: Record<string, string> = {
+  "auth/owners:listOwners": "Deployment CLI enumerates company owner grants.",
+  "auth/owners:revokeOwner": "Deployment CLI revokes an owner while retaining another owner grant.",
+  "branches/branches:setState": "Staged: Settings › Branches state actions return with the Phuket launch (plan step 7).",
   "pos/commands/adjust:adjust": "Dormant D19 command for the W3+ desk and catalogue edit sheets.",
   "pos/commands/adjust:approve": "Dormant D19 approval command for the W3+ desk approval panel.",
   "catalog/reviewMaintenance:initialize": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",

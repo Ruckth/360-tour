@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -15,13 +16,11 @@ const campaign = { ...audit, name: 'Happy holidays', source: 'Meta', medium: 'Pa
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	vi.unstubAllEnvs();
 });
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', audit.updatedByEmail);
 	const t = convexTest(schema, modules);
-	const owner = t.withIdentity({ email: audit.updatedByEmail, emailVerified: true, tokenIdentifier: 'owner' });
+	const owner = await asTestOwner(t, { email: audit.updatedByEmail, emailVerified: true, tokenIdentifier: 'owner' });
 	const viewer = t.withIdentity({ email: 'viewer@example.com', emailVerified: true, tokenIdentifier: 'viewer' });
 	await t.run(ctx => ctx.db.insert('marketingGrants', { ...audit, email: 'viewer@example.com', role: 'viewer', tokenIdentifier: 'viewer' }));
 	return { t, owner, viewer };
@@ -44,7 +43,7 @@ it('reads only the first 500 campaigns for pickers, with extra fields limited to
 	await viewer.run(async ctx => {
 		const queries = vi.spyOn(ctx.db, 'query');
 		const options = await read(ctx, {});
-		expect(queries.mock.calls.map(([table]) => table).filter(table => table !== 'marketingGrants')).toEqual(['marketingCampaigns']);
+		expect(queries.mock.calls.map(([table]) => table)).toEqual(['staffGrants', 'marketingGrants', 'marketingCampaigns']);
 		queries.mockRestore();
 		expect(options).toHaveLength(500);
 		expect(options[0]).toEqual({ _id: first, name: 'Happy holidays', status: 'active' });
@@ -94,8 +93,9 @@ it('enriches only each requested page, preserving exact legacy counts, opens and
 		const queries = vi.spyOn(ctx.db, 'query');
 		const documents = vi.spyOn(ReadBudget.prototype, 'document');
 		const result = await read(ctx, { campaignIds: firstPage });
-		const childQueries = queries.mock.calls.map(([table]) => table).filter(table => table !== 'marketingGrants');
-		expect(childQueries).toEqual(firstPage.flatMap(() => ['marketingLinks', 'coupons']));
+		expect(queries.mock.calls.map(([table]) => table)).toEqual([
+			'staffGrants', 'marketingGrants', ...firstPage.flatMap(() => ['marketingLinks', 'coupons'])
+		]);
 		expect(documents).toHaveBeenCalledTimes(CAMPAIGN_PAGE_SIZE + 1000 + 2 * (CAMPAIGN_PAGE_SIZE - 1));
 		documents.mockRestore();
 		queries.mockRestore();

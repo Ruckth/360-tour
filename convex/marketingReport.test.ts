@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { markBookingPaid } from './bookings/model';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -14,12 +15,12 @@ const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-09T10:00:00Z');
 const day = 86_400_000;
 const email = 'admin@example.com';
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', email); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup(couponAmount = 10000) {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email, tokenIdentifier: 'admin' });
 	const propertyId = await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 100000, currency: 'THB', maxGuests: 4, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
 	const campaignId = await admin.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'November', source: 'print', medium: 'qr' });
 	const { couponId } = await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { campaignId, code: 'SPA100', benefit: { kind: 'fixed', amount: couponAmount }, scope: 'services' });

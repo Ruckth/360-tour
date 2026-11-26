@@ -10,6 +10,7 @@
  * - Optional POST validation is strictly loopback-only and non-mutating (401/400).
  * - Always closes Playwright browser/contexts and signs out in finally.
  */
+import { chooseBranchIfPrompted } from "../../tests/support/choose-branch.mjs";
 import { sanitizeHeaders, sanitizePath } from "./start-route-parity.sanitize.mjs";
 import { LOCALES } from "./start-route-parity.manifest.mjs";
 
@@ -352,16 +353,25 @@ export async function runAuthenticatedFixture(options, deps = {}) {
     await withRoleSession("NONSTAFF", async ({ page, token }) => {
       await record("auth:nonstaff:admin-checkout", "nonstaff", "GET", "/admin/checkout", true, async () => {
         const response = await page.goto("/admin/checkout", { waitUntil: "domcontentloaded" });
-        const errorHeading = page.getByRole("heading", { name: "This view could not load" });
-        await errorHeading.waitFor({ state: "visible", timeout: 15_000 });
+        const noAccessHeading = page.getByRole("heading", { name: "No access", exact: true });
+        await noAccessHeading.waitFor({ state: "visible", timeout: 15_000 });
+        const signOutVisible = await page.getByRole("button", { name: "Sign out", exact: true }).isVisible();
+        const bodyText = await page.locator("body").innerText();
+        const leakedCheckout = /\bCheckout\b|Record payment|Frequent|Connect display/i.test(bodyText);
         const status = response ? response.status() : null;
-        const pass = status === 200;
+        const pass = status === 200 && signOutVisible && !leakedCheckout;
         return {
           pass,
           status,
           finalPath: new URL(page.url()).pathname,
-          markers: { errorBoundaryVisible: true },
-          detail: pass ? "Non-staff session blocked from protected checkout view." : "Unexpected non-staff checkout status.",
+          markers: {
+            noAccessVisible: true,
+            signOutButtonVisible: signOutVisible,
+            leakedCheckoutUi: leakedCheckout,
+          },
+          detail: pass
+            ? "Non-staff session blocked with No access card and no checkout UI."
+            : "Non-staff checkout gate failed.",
         };
       });
 
@@ -453,6 +463,7 @@ export async function runAuthenticatedFixture(options, deps = {}) {
       await record("auth:owner:admin-chats", "owner", "GET", "/admin/chats", true, async () => {
         const response = await page.goto("/admin/chats", { waitUntil: "domcontentloaded" });
         const chatsHeading = page.getByRole("heading", { name: "Chats", exact: true });
+        await chooseBranchIfPrompted(page, chatsHeading, 15_000);
         await chatsHeading.waitFor({ state: "visible", timeout: 15_000 });
         const status = response ? response.status() : null;
         const pass = status === 200;

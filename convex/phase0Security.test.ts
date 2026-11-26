@@ -12,7 +12,7 @@ import { recordUnknownQuestion } from './concierge/knowledge';
 import { asAdmin, createHarness, fixedClock, guestSession } from './testing/harness';
 import { hashGuestToken } from './messaging/guestToken';
 
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it('rejects webhook mutations when the server secret is missing', async () => {
   // The shared secret bridge is retired. No public event mutation exists; ingress requires a provider signature.
@@ -79,8 +79,7 @@ it('rejects respond for a session the caller does not own', async () => {
 
 it('hides rooms and reviews of draft properties', async () => {
 	const t = createHarness(convexTest);
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-	const admin = asAdmin(t);
+	const admin = await asAdmin(t);
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Draft Villa' });
 	await t.run(async ctx => {
 		await ctx.db.insert('tourScenes', { propertyId, slug: 'room', name: 'Room', imagePath: '/room.webp', hotspots: [] });

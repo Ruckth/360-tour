@@ -1,32 +1,29 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
 import { requireStaff } from './auth/private/staffAccess';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 it.each([true, false, undefined])('checks owner email verification (%s) requiring explicit verification', async emailVerified => {
   const t = convexTest(schema, modules);
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
-  const owner = t.withIdentity({ email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });
+  const owner = await asTestOwner(t, { email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });
   expect(await owner.query(internal.auth.staffAccess.currentInternal, {})).toMatchObject({
     role: emailVerified !== true ? null : 'owner',
     capabilities: { manageTeam: emailVerified === true, checkout: emailVerified === true },
     pendingInvitation: null,
   });
-  const invite = owner.mutation(api.auth.staffAccess.setGrant, { email: 'staff@example.com', role: 'manager' });
+  const invite = owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'staff@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   if (emailVerified !== true) await expect(invite).rejects.toThrow('Not authorized');
   else await invite;
 });
 
 it.each([false, undefined].flatMap(emailVerified => (['manager', 'cashier'] as const).map(role => ({ emailVerified, role }))))('rejects unverified staff invite claims and existing grants, and allows verification (%s)', async ({ emailVerified, role }) => {
   const t = convexTest(schema, modules);
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
-  const owner = t.withIdentity({ email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' });
-  const grantId = await owner.mutation(api.auth.staffAccess.setGrant, { email: 'staff@example.com', role });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' });
+  const grantId = await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'staff@example.com', role, branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   const identity = { email: 'Staff@Example.com', tokenIdentifier: 'issuer|staff' };
   const unverified = t.withIdentity({ ...identity, ...(emailVerified === undefined ? {} : { emailVerified }) });
   const denied = { role: null, capabilities: { checkout: false, operations: false, manageTeam: false }, pendingInvitation: null };

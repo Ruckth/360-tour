@@ -24,10 +24,11 @@ describe('default frontend entry', () => {
     expect(scripts['vercel-build']).toBe('node scripts/run-checks.mjs --parallel typecheck:app typecheck:tests && node scripts/vercel-build.mjs');
   });
 
-  it('selects the Other framework preset in source so Vercel uses the Nitro Build Output API', () => {
+  it('selects the Other framework and holds automatic main deploys for the multi-branch cutover', () => {
     // Overrides the shared project preset per deployment; the dashboard setting is untouched.
     expect(JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'))).toEqual({
       framework: null,
+      git: { deploymentEnabled: { main: false } },
       buildCommand: 'npx --yes bun@1.4.5 run vercel-build',
       installCommand: 'npx --yes bun@1.4.5 install --frozen-lockfile',
     });

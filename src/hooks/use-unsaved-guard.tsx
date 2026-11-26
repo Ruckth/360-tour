@@ -6,6 +6,12 @@ import { isInAppNavigation } from "@/lib/react/use-unsaved-changes";
 
 // A captured link is replayed through every mounted guard, including nested drafts.
 let replaying = false;
+let dirtyGuards = 0;
+
+/** True while any mounted `useUnsavedGuard` is dirty, for changes that aren't links (the branch switcher). */
+export function hasDirtyUnsavedGuard() {
+  return dirtyGuards > 0;
+}
 
 /** Guard explicit close/tab routes with confirmDiscard; same-tab links and page unloads are automatic. */
 export function useUnsavedGuard(dirty: boolean) {
@@ -29,6 +35,7 @@ export function useUnsavedGuard(dirty: boolean) {
 
   useEffect(() => {
     if (!dirty) return;
+    dirtyGuards += 1;
     let awaitingNavigation = false;
     let live = true;
     const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -60,6 +67,7 @@ export function useUnsavedGuard(dirty: boolean) {
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", click, true);
     return () => {
+      dirtyGuards -= 1;
       live = false;
       window.removeEventListener("beforeunload", beforeUnload);
       document.removeEventListener("click", click, true);

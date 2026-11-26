@@ -1,3 +1,4 @@
+import { seedTestBranch, asTestOwner } from '../../convex/testing/staff.test-support';
 import { convexTest } from 'convex-test';
 // convex-test counts every get, patch and returned query row the way native Convex does.
 import { TransactionMetricsTracker } from 'convex-test/dist/transactionMetrics.js';
@@ -27,18 +28,17 @@ export type Snapshot = NonNullable<Doc<'orderLines'>['saleSnapshot']>;
 export type Payment = { method: 'card' | 'cash' | 'transfer' | 'promptpay'; amount: number } | { method: 'voucher'; amount: number; voucherId: Id<'vouchers'> };
 
 export async function setup() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const date = vi.spyOn(Date, 'now').mockReturnValue(now);
   const t = convexTest(schema, modules);
   const staff = (token: string) => t.withIdentity({ tokenIdentifier: token, email: `${token}@example.com`, emailVerified: true });
   await t.run(async ctx => {
     for (const [tokenIdentifier, role] of [['cashier', 'cashier'], ['manager', 'manager'], ['other', 'manager']] as const) {
-      await ctx.db.insert('staffGrants', {
+      await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
         role, email: `${tokenIdentifier}@example.com`, tokenIdentifier, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
       });
     }
   });
-  return { t, date, cashier: staff('cashier'), manager: staff('manager'), other: staff('other'), owner: staff('owner') };
+  return { t, date, cashier: staff('cashier'), manager: staff('manager'), other: staff('other'), owner: await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' }) };
 }
 
 export function receipt(ctx: MutationCtx, total: number, itemCount = 1) {
@@ -68,7 +68,7 @@ export function snapshot(label: string, paidShare: number, contents: Snapshot['c
 }
 
 export async function catalog(ctx: MutationCtx, existingBranch?: Id<'branches'>) {
-  const branchId = existingBranch ?? await ctx.db.insert('branches', { key: 'default' });
+  const branchId = existingBranch ?? await seedTestBranch(ctx);
   const categoryId = await ctx.db.insert('productCategories', { name: 'Gifts', sort: 0 });
   const productId = await ctx.db.insert('products', {
     categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [],
@@ -131,7 +131,7 @@ export async function soldProduct(ctx: MutationCtx, amount = 100, handover = fal
 
 export async function maximumPackages(ctx: MutationCtx, allVoucher: boolean) {
   const orderId = await receipt(ctx, allVoucher ? 2000 : 4000, 100);
-  const branchId = await ctx.db.insert('branches', { key: 'default' });
+  const branchId = await seedTestBranch(ctx);
   const ownerId = await ctx.db.insert('customers', { name: 'Customer', createdAt: now, updatedAt: now, createdBy: 'cashier' });
   const packageId = await ctx.db.insert('packages', { name: 'Package', status: 'active', sort: 0, revision: 0 });
   const packageVersionId = await ctx.db.insert('packageVersions', {

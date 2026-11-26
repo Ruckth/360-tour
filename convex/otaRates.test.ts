@@ -1,16 +1,14 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 async function setup(status: 'active' | 'draft' = 'active') {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const propertyId = await t.run(async (ctx) => await ctx.db.insert('properties', {
 		slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 1000000, currency: 'THB', maxGuests: 2,
 		bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status

@@ -162,6 +162,15 @@ export async function session(): Promise<Session> {
     await clerk.signIn({ page, emailAddress: process.env.UI_LOOP_ADMIN_EMAIL });
     await page.goto(base + "/admin/chats");
     await settle(page);
+    const chooser = page.getByRole("heading", {
+      name: "Choose a branch to start",
+      exact: true,
+    });
+    if (await chooser.isVisible()) {
+      await page.getByRole("listitem").getByRole("button").first().click();
+      await chooser.waitFor({ state: "hidden" });
+      await settle(page);
+    }
     const state = await auth.storageState();
     await auth.close();
     return {

@@ -1,15 +1,16 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 1, 5);
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+afterEach(() => { vi.useRealTimers(); });
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Mali', role: 'Therapist', color: '#abc', workingHours: [0,1,2,3,4,5,6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] });
   const serviceId = await admin.mutation(api.services.commands.createService.createService, { slug: 'massage', name: 'Massage', description: '', category: 'Wellness', durationMin: 60, bufferMin: 15, price: 120000, currency: 'THB', staffIds: [staffId] });
   const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, staffId, start: now - 86_400_000, guestName: 'Guest', guestPhone: '' });

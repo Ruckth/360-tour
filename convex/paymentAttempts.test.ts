@@ -1,5 +1,6 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Id } from './_generated/dataModel';
@@ -23,15 +24,15 @@ const TAB_A = 'test-payment-tab-aaaaaaaa';
 const TAB_B = 'test-payment-tab-bbbbbbbb';
 
 async function fixture(mode: 'direct' | 'attempts' = 'attempts') {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner', name: 'Desk Owner' });
+  const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner', name: 'Desk Owner' });
   const { orderId } = await owner.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 60000 } });
   const settingsId = await t.run(ctx => ctx.db.insert('commerceSettings', {
     key: 'default', ...resolveCommerceSettings(null), paymentsMode: mode,
   }));
   const order = await t.run(ctx => ctx.db.get(orderId));
   if (mode === 'direct') {
+    await t.run(ctx => seedTestBranch(ctx));
     await owner.mutation(rollout.setPaused, { expectedRevision: 0, clientKey: 'pause-checkout', reason: 'Announced desk update', paused: true });
     await owner.mutation(rollout.activate, { expectedRevision: 1, clientKey: 'activate-checkout', reason: 'Announced desk update' });
   }
@@ -50,7 +51,7 @@ async function fixture(mode: 'direct' | 'attempts' = 'attempts') {
 const at = (tillId: Id<'tills'>, deviceKey = DEVICE_A, loadedRevision = 0, tabKey = TAB_A) =>
   ({ tillId, tabKey, load: { tillId, deviceKey, loadedMode: 'attempts' as const, loadedRevision } });
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it('atomically claims the order and replays only the same scoped quote', async () => {
   const { t, owner, request, deskB } = await fixture();
@@ -137,7 +138,7 @@ it('refuses a stale direct panel after cutoff', async () => {
 it('keeps paid voucher value outside cash and freezes goodwill as a discount', async () => {
   const { t, owner, request } = await fixture();
   const { voucherId, issuingOrderId } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const settings = resolveCommerceSettings(null);
     const { revision } = settings;
     const terms = termsOf(settings);
@@ -176,7 +177,7 @@ it('keeps paid voucher value outside cash and freezes goodwill as a discount', a
 it.each(['freeze', 'switch-off', 'duration'] as const)('checks the armed Gold Wellness receipt (%s)', async scenario => {
   const { t, owner, request, settingsId } = await fixture();
   const { customerId, serviceId, variantId, lineId } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const customerId = await ctx.db.insert('customers', { name: 'Guest', createdBy: 'owner@example.com', createdAt: Date.now(), updatedAt: Date.now() });
     const serviceId = await ctx.db.insert('services', {
       slug: 'massage', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
@@ -414,7 +415,7 @@ async function stayFixture(mode: 'direct' | 'attempts' = 'attempts') {
 it('retries Pay the room first with one key and collects the posted ฿350 tote after standard cutover', async () => {
   const { t, owner, room, request, bookingId, addVisit } = await stayFixture('direct');
   const { handoverId, bookingLineId } = await t.run(async ctx => {
-    const branch = await ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'default')).unique();
+    const branch = await ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).unique();
     expect(branch).not.toBeNull();
     const branchId = branch!._id;
     const booking = (await ctx.db.get(bookingId))!;
@@ -504,7 +505,7 @@ for (const scenario of ['stock', 'recollections', 'fee history'] as const) it(`m
     const settings = resolveCommerceSettings(null);
     const terms = termsOf(settings);
     await ctx.db.patch(settingsId, { saleSwitches: { ...settings.saleSwitches, products: 'everyone', mixedPackages: 'everyone' } });
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const customerId = await ctx.db.insert('customers', { name: 'Payer', createdBy: 'owner@example.com', createdAt: now, updatedAt: now });
     const customers = [{ customerId, revision: 0 }];
     const categoryId = await ctx.db.insert('productCategories', { name: 'Shop', sort: 0 });
@@ -642,7 +643,7 @@ for (const scenario of ['stock', 'recollections', 'fee history'] as const) it(`m
 
 it('gives only the owning tab an instruction and blocks the same cashier on another tab or device until handover', async () => {
   const { t, request, deskA, deskB } = await fixture();
-  await t.run(ctx => ctx.db.insert('staffGrants', {
+  await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
     role: 'cashier', email: 'cashier@example.com', tokenIdentifier: 'cashier', createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
   }));
   const identity = { email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier', name: 'Ploy Desk' };
@@ -759,7 +760,7 @@ it('derives cancel-sale give-back from verified money even after removing the la
 
 it('checks present cashier scope before replaying a receipt or leg and allows backdated open recovery', async () => {
   const { t, request } = await fixture();
-  await t.run(ctx => ctx.db.insert('staffGrants', {
+  await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
     role: 'cashier', email: 'cashier@example.com', tokenIdentifier: 'cashier', createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
   }));
   const cashier = t.withIdentity({ email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
@@ -860,7 +861,7 @@ it.each(['collect rest', 'give back and cancel', 'change method then give back']
 
 it('lets only the current till and tab edit a funded swap, including after handover', async () => {
   const { t, request, deskA, deskB } = await fixture();
-  await t.run(ctx => ctx.db.insert('staffGrants', {
+  await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
     role: 'cashier', email: 'cashier@example.com', tokenIdentifier: 'cashier', createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
   }));
   const identity = { email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' };

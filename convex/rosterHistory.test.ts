@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference, type PaginationOptions, type PaginationResult } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,16 +18,15 @@ const hours = (start = '09:00', end = '17:00') => days.map((weekday) => ({ weekd
 const breaks = days.map((weekday) => ({ weekday, start: '12:00', end: '13:00', label: 'Lunch' }));
 const at = (date: string, time = '10:00') => localDateTimeUtc(date, time);
 const now = (date: string) => vi.setSystemTime(at(date));
-function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com,second@example.com');
+async function setup() {
 	const t = convexTest(schema, modules);
 	return {
 		t,
-		admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
-		second: t.withIdentity({ emailVerified: true, email: 'second@example.com', tokenIdentifier: 'second' })
+		admin: await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
+		second: await asTestOwner(t, { emailVerified: true, email: 'second@example.com', tokenIdentifier: 'second' })
 	};
 }
-async function person(admin: ReturnType<typeof setup>['admin']) {
+async function person(admin: Awaited<ReturnType<typeof setup>>['admin']) {
 	return admin.mutation(api.services.commands.createStaff.createStaff, {
 		name: 'Mali',
 		role: 'Therapist',
@@ -35,7 +35,7 @@ async function person(admin: ReturnType<typeof setup>['admin']) {
 		breaks
 	});
 }
-async function schedule(admin: ReturnType<typeof setup>['admin'], staffId: Id<'staff'>, date: string) {
+async function schedule(admin: Awaited<ReturnType<typeof setup>>['admin'], staffId: Id<'staff'>, date: string) {
 	return admin.query(api.services.admin.listSchedule, {
 		from: at(date, '00:00'),
 		to: at(date, '24:00'),
@@ -48,12 +48,11 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 describe('durable effective roster patterns', () => {
 	it('keeps past shifts and breaks stable through actual roster and schedule readers after staff pattern edits', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await person(admin);
 		const before = await schedule(admin, staffId, '2026-09-28');
 		now('2026-10-01');
@@ -82,7 +81,7 @@ describe('durable effective roster patterns', () => {
 		]);
 	});
 	it('preserves the creation baseline when a profile-only edit comes before the first weekly change', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		const staffId = await person(admin);
 		now('2026-09-25');
 		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, name: 'Mali renamed' });
@@ -93,7 +92,7 @@ describe('durable effective roster patterns', () => {
 		expect(past.patternHistory[0].known).toBe(true);
 	});
 	it('does not invent a creation baseline for legacy staff that had already changed', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await t.run((ctx) =>
 			ctx.db.insert('staff', {
 				name: 'Legacy',
@@ -123,7 +122,7 @@ describe('durable effective roster patterns', () => {
 		expect(versions[0]).toMatchObject({ effectiveFrom: '2026-10-01', provenance: 'observed' });
 	});
 	it('records day edits, reset, copy and undo per entity, and pruning the undo buffer keeps all events', async () => {
-		const { t, admin, second } = setup();
+		const { t, admin, second } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		const cell = { staffId, date: '2026-10-05' };
@@ -170,7 +169,7 @@ describe('durable effective roster patterns', () => {
 		expect((await schedule(admin, staffId, '2026-10-05')).shifts[0].start).toBe(at('2026-10-05', '14:00'));
 	});
 	it('makes a new default and later undoes it without rewriting the intervening day or earlier overrides', async () => {
-		const { t, admin, second } = setup();
+		const { t, admin, second } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		await admin.mutation(api.services.roster.applyCells, {
@@ -213,7 +212,7 @@ describe('durable effective roster patterns', () => {
 		});
 	});
 	it('versions weekly break edits and undo, but directs past break edits to a date-only correction', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		const edit = {
@@ -240,7 +239,7 @@ describe('durable effective roster patterns', () => {
 		);
 	});
 	it('validates new hours against upcoming appointments using the proposed version and rolls all writes back on conflict', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await person(admin);
 		const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'massage',
@@ -278,7 +277,7 @@ describe('durable effective roster patterns', () => {
 		).toHaveLength(0);
 	});
 	it('uses the real helper for indexed single-date and batched range resolution, including repeated same-day changes', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		await t.run(async (ctx) => {
@@ -303,7 +302,7 @@ describe('durable effective roster patterns', () => {
 		expect(resolved.past.historyKnown).toBe(true);
 	});
 	it('uses versioned defaults for serviceRostered and availability after a staff pattern update', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await person(admin);
 		const serviceId = await admin.mutation(api.services.commands.createService.createService, {
 			slug: 'massage',
@@ -324,7 +323,7 @@ describe('durable effective roster patterns', () => {
 		expect(await admin.query(api.services.admin.findOpenSlots, { serviceId, staffId, date: '2026-10-02' })).toEqual([]);
 	});
 	it('copies the historical source plan across a newer default instead of silently substituting current hours', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, workingHours: hours('14:00', '22:00'), breaks: [] });
@@ -340,7 +339,7 @@ describe('durable effective roster patterns', () => {
 		expect((await schedule(admin, staffId, '2026-09-21')).shifts[0].start).toBe(at('2026-09-21', '09:00'));
 	});
 	it('refuses to undo an old pattern batch over a later staff-editor pattern change', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		const staffId = await person(admin);
 		now('2026-10-01');
 		const edit = await admin.mutation(api.services.roster.editBreak, {
@@ -360,7 +359,7 @@ describe('durable effective roster patterns', () => {
 		expect((await schedule(admin, staffId, '2026-10-01')).shifts[0].start).toBe(at('2026-10-01', '10:00'));
 	});
 	it('protects roster mutation authorization without creating versions or history', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const staffId = await person(admin);
 		const outsider = t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' });
 		await expect(outsider.mutation(api.services.commands.updateStaff.updateStaff, { staffId, workingHours: [] })).rejects.toThrow(

@@ -35,7 +35,7 @@ Abbreviations for paths used below (all absolute):
 
 The Orders dialog in the screenshot is `STRIP:157-169` (title "Orders", description "Open an unpaid order to keep selling or take payment…") together with `OrdersBrowser`/`OrdersList` at `STRIP:513-578`.
 
-Authorization context: there is one role. `requireAdmin` (`/Users/macbook/Development/360-tour-pos-checkout/convex/lib/adminAuth.ts:12-24`) admits any email listed in `ADMIN_EMAILS`. Every staff member who can use checkout can already do everything an owner can. Any override capability recommended below therefore goes to every admin, unless a role is introduced first.
+At the audited revision, one environment allowlist governed `requireAdmin` and all staff with checkout access had owner-equivalent authority. The recommendations below reflect that policy. Current owners need a claimed grant from `auth/owners:grantOwner`, and staff capabilities depend on role and branch assignment.
 
 ---
 

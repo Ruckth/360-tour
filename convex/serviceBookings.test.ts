@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { generateTestReply } from './testing/turn.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
@@ -147,7 +148,6 @@ describe('AI service booking', () => {
 	});
 
 	it('reads one selected therapist and reuses the eligible roster when preparing a quote', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const { t, staffId, serviceId, sessionId } = await setup();
 		const staffIds = await t.run(async ctx => {
 			const ids = [staffId];
@@ -161,7 +161,7 @@ describe('AI service booking', () => {
 			await ctx.db.patch(serviceId, { staffIds: ids });
 			return ids;
 		});
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
 		const slotsFunction = api.services.admin.findOpenSlots;
 		const readSlots: (ctx: QueryCtx, args: FunctionArgs<typeof slotsFunction>) => Promise<FunctionReturnType<typeof slotsFunction>> = Reflect.get(findOpenSlots, '_handler');
 		const measureSlots = (args: FunctionArgs<typeof slotsFunction>) => admin.run(async ctx => {
@@ -333,8 +333,7 @@ describe('AI service booking', () => {
 		if (!('confirmationCode' in booked)) throw new Error('Expected confirmation');
 		const args = { sessionId: s.sessionId, reference: booked.confirmationCode!, turnStartedAt: Date.now() };
 		expect(await s.t.mutation(internal.services.serviceBookings.cancelChatServiceBooking, args)).toMatchObject({ state: 'needs_confirmation', time: '14:00' });
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
-		const admin = s.t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(s.t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const [appointment] = await appointments(s.t);
 		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: appointment._id, expectedRevision: 0, staffId: s.staffId, start: at('16:00') });
 		vi.advanceTimersByTime(1000);

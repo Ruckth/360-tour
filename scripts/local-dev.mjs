@@ -4,7 +4,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
-import { readDevConfig, refuseInheritedTarget, devEnvironment, devPublicEnvironment, requireAnonymousState, checkDevArgs, devFrontendCommand } from './local-dev-config.mjs';
+import { readDevConfig, parseDevOwnerEmails, refuseInheritedTarget, devEnvironment, devPublicEnvironment, requireAnonymousState, checkDevArgs, devFrontendCommand } from './local-dev-config.mjs';
 import { requireLocalBackend, createPrivateOutput } from './local-integration-config.mjs';
 import { localProcesses, waitFor } from './local-processes.mjs';
 import { seedEmpty } from './seed-empty.mjs';
@@ -102,18 +102,45 @@ try {
     secrets.push(backend.adminKey);
     const response = await localFetch(url + '/api/update_environment_variables', {
       method: 'POST', headers: { Authorization: `Convex ${backend.adminKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ changes: [{ name: 'CLERK_JWT_ISSUER_DOMAIN', value: config.CLERK_JWT_ISSUER_DOMAIN }, { name: 'ADMIN_EMAILS', value: config.LOCAL_DEV_OWNER_EMAILS }] }),
+      body: JSON.stringify({ changes: [{ name: 'CLERK_JWT_ISSUER_DOMAIN', value: config.CLERK_JWT_ISSUER_DOMAIN }] }),
     });
-    if (!response.ok) throw new Error('Failed to configure local Clerk issuer/owner allowlist');
+    if (!response.ok) throw new Error('Failed to configure local Clerk issuer');
     await response.body?.cancel();
     const client = new ConvexHttpClient(url, { logger: false, fetch: localFetch });
     client.setAdminAuth(backend.adminKey);
+    const requireKohSamuiBranch = async () => {
+      let cursor = null;
+      for (;;) {
+        /** @type {{ page: Array<{ key?: unknown }>, isDone: boolean, continueCursor: string }} */
+        const page = await client.query(makeFunctionReference('_system/cli/tableData'), {
+          table: 'branches',
+          order: 'asc',
+          paginationOpts: { cursor, numItems: 500 },
+        });
+        if (page.page.some(branch => branch.key === 'koh-samui')) return;
+        if (page.isDone) {
+          throw new Error(
+            'Local database predates branches (required "koh-samui" branch row is missing). ' +
+            'Refusing to reset automatically. To reset this checkout\'s local dev database and re-seed from empty, run:\n' +
+            '  rm -rf .local-dev\n' +
+            '  bun run dev'
+          );
+        }
+        cursor = page.continueCursor;
+      }
+    };
     // The first push waits for issuer configuration. Wait for this exact app's seed to exist.
     let result;
     await wait(async () => {
       try { result = await seedEmpty(() => client.mutation(makeFunctionReference('maintenance/seed:seedAll'), { scenario: 'demo-resort' })); return true; }
       catch (error) { if (/Could not find (?:public )?function|No functions found/.test(error.message)) return false; throw error; }
     }, 'backend deployment and empty-only seed');
+    if (result === 'preserved') {
+      await requireKohSamuiBranch();
+    }
+    for (const email of parseDevOwnerEmails(config.LOCAL_DEV_OWNER_EMAILS)) {
+      await client.mutation(makeFunctionReference('auth/owners:grantOwner'), { email });
+    }
     console.log(result === 'seeded' ? 'Local backend seeded from empty.' : 'Local backend data preserved; seed refused nonempty database.');
     processes.launch(process.execPath, devFrontendCommand(root, config.port), root, env);
     await wait(async () => { try { const response = await localFetch(`http://localhost:${config.port}/admin/chats`); await response.body?.cancel(); return response.ok; } catch { return false; } }, 'TanStack Start development server');

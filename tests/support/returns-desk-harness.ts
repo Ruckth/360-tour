@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { seedTestBranch } from '../../convex/testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { makeFunctionReference } from "convex/server";
 import schema from "../../convex/schema";
@@ -28,7 +29,7 @@ async function seedGold(ctx: MutationCtx, createdBy: string) {
     orderNumber: 1042, receiptNumber: 2042, currency: "THB", status: "paid", itemCount: 1, hasItems: true,
     total: 690000, due: 0, revision: 1, paidAt: now, createdBy, createdAt: now, updatedAt: now, vatVersion: 2,
   });
-  const branchId = await ctx.db.insert("branches", { key: "default" });
+  const branchId = await seedTestBranch(ctx);
   const ownerId = await ctx.db.insert("customers", { name: "Maya Lin", createdAt: now, updatedAt: now, createdBy });
   const packageId = await ctx.db.insert("packages", { name: "Gold Wellness", status: "active", sort: 0, revision: 0 });
   const packageVersionId = await ctx.db.insert("packageVersions", {
@@ -114,7 +115,7 @@ async function seedVisitVariant(ctx: MutationCtx, variant: ReturnsVariant, creat
   if (variant === "linked" && appointmentId) await ctx.db.insert("orderLineLinks", {
     orderId, lineId, appointmentId, kind: "appointment", status: "active", amount, currency: "THB", effectiveAt: now, linkedAt: now, linkedBy: createdBy, reason: "Match visit", sequence: 1,
   });
-  const branchId = await ctx.db.insert("branches", { key: "default" });
+  const branchId = await seedTestBranch(ctx);
   if (covered && appointmentId) {
     const ownerId = await ctx.db.insert("customers", { name: "Maya Lin", createdBy, createdAt: now, updatedAt: now });
     const packageId = await ctx.db.insert("packages", { name: "Thai", status: "active", sort: 0, revision: 0 });
@@ -164,7 +165,7 @@ export async function createFixtureBackend(options: { variant?: ReturnsVariant }
   const orderId = await t.run(async (ctx) => {
     const now = Date.now();
     for (const who of ["manager", "cashier"] as const) {
-      await ctx.db.insert("staffGrants", { role: who, email: EMAILS[who], tokenIdentifier: identity(who).tokenIdentifier, revision: 1, createdAt: now, updatedAt: now, updatedByEmail: "system:seed" });
+      await ctx.db.insert("staffGrants", { branchIds: [await seedTestBranch(ctx)], role: who, email: EMAILS[who], tokenIdentifier: identity(who).tokenIdentifier, revision: 1, createdAt: now, updatedAt: now, updatedByEmail: "system:seed" });
     }
     const createdBy = identity("cashier").tokenIdentifier;
     return options.variant ? await seedVisitVariant(ctx, options.variant, createdBy) : await seedGold(ctx, createdBy);

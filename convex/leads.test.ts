@@ -1,19 +1,17 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 
-afterEach(() => vi.unstubAllEnvs());
-
 describe('admin leads list', () => {
 	it('filters by source, newest first', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		await t.mutation(api.messaging.leads.save, { email: 'a@example.com', source: 'chat' });
 		await t.mutation(api.messaging.leads.save, { email: 'b@example.com', source: 'tour_completion' });
 		await t.mutation(api.messaging.leads.save, { email: 'c@example.com', source: 'chat' });
@@ -31,9 +29,8 @@ describe('admin leads list', () => {
 	});
 
 	it('records a repeat sign-up from a new source or villa, but not an identical repeat', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const propertyId = await t.run((ctx) =>
 			ctx.db.insert('properties', {
 				slug: 'villa-a',
@@ -70,9 +67,8 @@ describe('admin leads list', () => {
 	});
 
 	it('lets admins delete a lead', async () => {
-		vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 		const t = convexTest(schema, modules);
-		const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+		const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 		const leadId = await t.mutation(api.messaging.leads.save, { email: 'a@example.com', source: 'chat' });
 
 		await expect(t.mutation(api.messaging.leads.remove, { leadId })).rejects.toThrow('Not authenticated');

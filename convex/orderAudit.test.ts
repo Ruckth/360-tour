@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent first-pass business regressions. CONFIRMED REGRESSION cases intentionally
@@ -14,13 +15,12 @@ const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-29T03:00:00Z'));
-  vi.stubEnv('ADMIN_EMAILS', 'order-audit@example.com');
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'order-audit@example.com', tokenIdentifier: 'order-audit' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'order-audit@example.com', tokenIdentifier: 'order-audit' });
   const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
     name: 'Audit therapist', role: 'Therapist', color: '#abc',
     workingHours: [0, 1, 2, 3, 4, 5, 6].map(weekday => ({ weekday, start: '09:00', end: '18:00' })), breaks: []

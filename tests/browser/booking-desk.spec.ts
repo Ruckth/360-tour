@@ -34,6 +34,17 @@ const inView = (target: Locator) =>
     return true;
   });
 
+test("opens a stay on the first click within the drag suppression window", async ({ page }) => {
+  await page.setViewportSize(DESK_VIEWPORTS.phone);
+  await openDesk(page);
+  await page.evaluate(() => {
+    // Simulate an early click without requiring the fixture to render within 250 ms.
+    performance.now = () => 100;
+  });
+  await chip(page, "Anna Schmidt").click();
+  await expect(popover(page, "Anna Schmidt")).toBeVisible();
+});
+
 test("replaces a pending villa calendar response when the filter changes", async ({ page }) => {
   await page.setViewportSize(DESK_VIEWPORTS.ipad);
   await page.addInitScript(() => localStorage.setItem("admin.hotel.villa", "removed-villa"));

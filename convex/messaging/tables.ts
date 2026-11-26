@@ -1,5 +1,5 @@
 import { messagesFields, channelEventsFields, messageDocument, channelEventDocument } from './validators';
-import { chatCouponValidator } from '../bookings/model';
+import { chatCouponValidator } from '../shared/chatCouponTypes';
 import { defineTable } from 'convex/server';
 import { inboxReasonValidator } from '../shared/inboxTypes';
 import { v } from 'convex/values';

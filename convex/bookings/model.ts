@@ -5,6 +5,7 @@ export { bookingsByPhone } from './private/bookingPhone';
 export { OVERLAP_SCAN_LIMIT, MAX_ROWS_PER_NIGHT, STAY_TAKEN_ERROR, STAY_BLOCKED_ERROR, OVERLAP_INCOMPLETE_ERROR, NIGHT_ROWS_ERROR, scanOverlappingBookings, scanOverlappingDateBlocks, findOverlappingBookings, assertNoBookingOverlap, findBlockingNight, nightRows } from './private/stayOverlap';
 export { blocksNewBookings, staysOverlap } from '../shared/overlap';
 export { blockBookingDates, releaseBookingDates, writeDateBlockRows, releaseDateBlockRows } from './private/availabilityWrites';
-export { chatCouponValidator, type ChatCouponSnapshot, activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity } from './private/chatCoupon';
+export { activeGuestCoupon, assertGuestSuppliedCoupon, quoteChatStay, couponSnapshotIdentity } from './private/chatCoupon';
 export { isDocumentedLiveRefund, type StayPaymentInput, recordStayPayment, markBookingPaid, queueBookingEmails, queueCancellationEmail, SEARCH_SCAN_LIMIT, toAdminBooking, type AdminBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, type GuestSuggestion, priceOverrideInput, refundInput, loadBooking, confirmStay, archivedVillaPolicy, cleanPriceOverride, assertBookingEditable, planBookingEditPricing, assertReviewedPrice, deleteBlocker, recordsBlocker, deleteBookingRecord, DAY_MS, CLEANUP_SCAN_LIMIT, MAX_BATCH_DELETE, dateBlockArgs, MAX_BLOCKED_NIGHTS_PER_CALL, dateBlockSnapshot, assertDateBlockUnchanged, blockReason, validateDateBlock } from './private/stays';
 export { bookingSnapshot, appendBookingHistory, writeBooking } from './private/money';
+export type { ChatCouponSnapshot } from '../shared/chatCouponTypes';

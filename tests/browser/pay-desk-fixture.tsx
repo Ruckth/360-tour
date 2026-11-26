@@ -66,12 +66,13 @@ async function seed(): Promise<OrderId> {
     // A ฿1,900 product sale with stock in hand and product sales on, so the owner can switch them
     // off after the card is charged (the sale can't be saved as it is: Swap or Give back).
     const { orderId, lineId } = await actions.addItem({ item: { kind: "extra", name: "Beach tote", price: 190000 } });
+    const branch = (await backend.fixtureRows("branches")).find(row => row.key === "koh-samui");
+    if (!branch) throw new Error("The pay-desk fixture needs its seeded Koh Samui branch.");
     await backend.insertFixtureRows([
-      { alias: "fxbranch0default", table: "branches", fields: { key: "default" } },
       { alias: "fxcat0shop", table: "productCategories", fields: { name: "Shop", sort: 0 } },
       { alias: "fxprod0tote", table: "products", fields: { categoryId: "fxcat0shop", name: "Beach tote", status: "active", vatProfile: "standard", options: [], minPrice: 190000, maxPrice: 190000, variantCount: 1, sort: 0, revision: 0 } },
       { alias: "fxvar0tote", table: "productVariants", fields: { productId: "fxprod0tote", optionValueIds: [], label: "Beach tote", price: 190000, status: "active", revision: 0 } },
-      { alias: "fxstock0tote", table: "stockLevels", fields: { branchId: "fxbranch0default", productId: "fxprod0tote", variantId: "fxvar0tote", onHand: 5, revision: 0 } },
+      { alias: "fxstock0tote", table: "stockLevels", fields: { branchId: branch._id, productId: "fxprod0tote", variantId: "fxvar0tote", onHand: 5, revision: 0 } },
     ]);
     await backend.patchFixtureRow("orderLines", lineId, { kind: "product", variantId: "fxvar0tote" });
     await productSales("everyone");

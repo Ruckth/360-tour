@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch } from '../testing/staff.test-support';
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Id } from '../_generated/dataModel';
 import { command, give, line, payment, receipt, selection, setup, snapshot, voucher } from '../../tests/support/return-items-fixture';
@@ -12,7 +13,6 @@ import { command, give, line, payment, receipt, selection, setup, snapshot, vouc
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 function random(seed: number) {
@@ -32,7 +32,7 @@ it.each(Array.from({ length: 12 }, (_, index) => index + 1))('stored row total m
     const shares = Array.from({ length: 30 }, () => ({ qty: 1 + pick(3), share: 1 + pick(60) }));
     const total = shares.reduce((sum, row) => sum + row.share, 0);
     const orderId = await receipt(ctx, total, shares.length);
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const lineIds: Id<'orderLines'>[] = [];
     for (const [index, { qty, share }] of shares.entries()) {
       lineIds.push(await line(ctx, orderId, 'service', Math.ceil(share / qty), { qty, saleSnapshot: snapshot(`Row ${index}`, share) }));

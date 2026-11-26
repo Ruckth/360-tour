@@ -6,17 +6,21 @@ import { useMutation, useQuery, useConvexAuth } from "convex/react";
 import { api } from "convex/_generated/api";
 import { LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { MarketingInvitation } from "@/components/admin/marketing/MarketingAccess";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
-import { adminAccessRedirect, adminTillOnly, type StaffAccessView } from "@/components/admin/admin-access";
+import { adminAccessRedirect, adminNoAccess, adminTillOnly, type StaffAccessView } from "@/components/admin/admin-access";
+import { AdminBranchProvider, useAdminBranch } from "@/components/admin/branch/branch-context";
+import { BranchChooser, BranchRevokedBanner, GateCard, NoAccessCard } from "@/components/admin/branch/BranchScreens";
+import { HeaderBranchPill } from "@/components/admin/branch/BranchSwitcher";
 import { adminNavItem } from "@/components/admin/admin-routes";
 import { ROLE_LABELS, StaffAccessProvider, useStaffAccess } from "@/components/admin/staff-access";
 import type { CheckoutBackend } from "@/components/checkout/backend";
 import { CheckoutHeaderStaff } from "@/components/checkout/CheckoutHeaderStaff";
 import { convexCheckoutBackend } from "@/components/checkout/convex-backend";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { errorText } from "@/lib/staff-bookings";
@@ -42,8 +46,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
           <h1 className="font-serif text-4xl font-semibold text-foreground">Admin</h1>
           <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            Sign in with an allowlisted admin account to view visitor chat activity and
-            transcripts.
+            Sign in with an admin account to view visitor chat activity and transcripts.
           </p>
           <SignInButton mode="modal">
             <Button className="mt-6 w-full">Sign in</Button>
@@ -85,21 +88,18 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return <AdminAccessGate userEmail={user.primaryEmailAddress?.emailAddress}>{children}</AdminAccessGate>;
 }
 
-function GateCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="grid min-h-dvh place-items-center px-5">
-      <section className="w-full max-w-md border border-border bg-card p-6 shadow-xl">
-        <Shield aria-hidden="true" className="mb-5 h-8 w-8 text-gold-text" />
-        <h1 className="font-serif text-3xl font-semibold">{title}</h1>
-        <div className="mt-3 grid gap-4 text-sm leading-6 text-muted-foreground">{children}</div>
-      </section>
-    </div>
-  );
-}
-
-/** Loads the person's staff access once, lets an invited person activate it, then shows the admin. */
+/**
+ * Loads the person's staff access (live), lets an invited person activate it, then shows the
+ * admin. A person with no admin access, including one whose access is removed mid-session, gets
+ * "No access" with Sign out instead of the frame.
+ */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+  const pathname = usePathname();
   const access = useQuery(api.auth.staffAccess.myAccess, {});
+  const allowed = access !== undefined && !adminNoAccess(access);
+  // Whether this session has had access, so losing it reads as a change rather than a refusal.
+  const [hadAccess, setHadAccess] = useState(false);
+  if (allowed && !hadAccess) setHadAccess(true);
   if (access === undefined) {
     return (
       <div className="grid min-h-dvh place-items-center">
@@ -107,7 +107,11 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
       </div>
     );
   }
-  if (!access.role && access.pendingInvitation) return <ClaimInvitation access={access} />;
+  if (access.pendingInvitation) return <ClaimInvitation access={access} />;
+  if (access.marketingInvitation && (!allowed || adminNavItem(pathname)?.href.startsWith("/admin/marketing"))) {
+    return <MarketingInvitation email={access.email} role={access.marketingInvitation.role} />;
+  }
+  if (!allowed) return <NoAccessCard email={access.email ?? userEmail ?? null} changed={hadAccess} />;
   return (
     <StaffAccessProvider access={access}>
       <AdminFrame userEmail={userEmail}>{children}</AdminFrame>
@@ -123,7 +127,10 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
   const role = access.pendingInvitation ? ROLE_LABELS[access.pendingInvitation.role] : "";
   return (
     <GateCard title="Activate your access">
-      <p>{access.email} is invited as {role}.</p>
+      <p>{access.email} is invited as {role}{access.pendingInvitation?.branches.length
+        ? ` at ${access.pendingInvitation.branches.map(branch => branch.name).join(", ")}`
+        : ""}.</p>
+      {access.pendingInvitation?.role === "owner" ? <p>Activating company owner access replaces your previous desk and Marketing grants for this account.</p> : null}
       {error ? <p role="alert" className="text-destructive">{error}</p> : null}
       <Button
         className="w-full"
@@ -142,6 +149,7 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
       >
         {claiming ? "Activating…" : "Activate access"}
       </Button>
+      <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
     </GateCard>
   );
 }
@@ -151,8 +159,20 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
  * till alone, with Sign out in the header. Approvers get Approvals in the header on every page.
  * `checkoutBackend` feeds the header's approvals (Convex; browser fixtures pass their own).
  */
-export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend, children }: { userEmail?: string; checkoutBackend?: CheckoutBackend; children: ReactNode }) {
+export function AdminFrame(props: { userEmail?: string; checkoutBackend?: CheckoutBackend; children: ReactNode }) {
+  // Above the sidebar and header too, so the branch switcher can ask before discarding changes.
+  return (
+    <ConfirmProvider>
+      <AdminBranchProvider>
+        <AdminFrameBody {...props} />
+      </AdminBranchProvider>
+    </ConfirmProvider>
+  );
+}
+
+function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, children }: { userEmail?: string; checkoutBackend?: CheckoutBackend; children: ReactNode }) {
   const pathname = usePathname();
+  const branch = useAdminBranch();
   const tab = useSearchParams().get("tab");
   const router = useRouter();
   const access = useStaffAccess();
@@ -182,6 +202,9 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
     };
   }, []);
 
+  // A first-time person with two or more branches chooses once before any page.
+  if (branch.needsChoice && !redirect) return <BranchChooser email={access.email ?? userEmail ?? null} />;
+
   return (
     <SidebarProvider
       open={checkoutFlow ? checkoutOpen : open}
@@ -205,6 +228,7 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
           <h1 className="min-w-0 flex-1 truncate font-serif text-2xl font-semibold tracking-tight text-foreground">
             {adminNavItem(pathname)?.label ?? "Admin"}
           </h1>
+          <HeaderBranchPill tillOnly={tillOnly} />
           {/* Page tools render here (checkout ?timing=1), so they never sit over the page. */}
           <div data-admin-header-tools="" className="contents" />
           {access.capabilities.approve || checkoutFlow ? <CheckoutHeaderStaff backend={checkoutBackend} /> : null}
@@ -237,15 +261,20 @@ export function AdminFrame({ userEmail, checkoutBackend = convexCheckoutBackend,
             </>
           ) : null}
         </header>
-        <ConfirmProvider>
-          {redirect ? (
-            <div className="grid flex-1 place-items-center p-10">
-              <Spinner label="Loading" className="size-6" />
-            </div>
-          ) : (
-            children
-          )}
-        </ConfirmProvider>
+        <BranchRevokedBanner />
+        {access.marketingInvitation ? (
+          <div className="flex items-center gap-2 px-4 py-2 text-sm">
+            <span>You have a Marketing invitation.</span>
+            <ButtonLink href="/admin/marketing" variant="outline" size="sm">Review invitation</ButtonLink>
+          </div>
+        ) : null}
+        {redirect ? (
+          <div className="grid flex-1 place-items-center p-10">
+            <Spinner label="Loading" className="size-6" />
+          </div>
+        ) : (
+          <Fragment key={branch.scopeKey}>{children}</Fragment>
+        )}
         {tillOnly ? null : <AdminTabBar />}
       </SidebarInset>
     </SidebarProvider>

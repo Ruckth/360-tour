@@ -1,0 +1,40 @@
+import type { TestConvex } from 'convex-test';
+import type { UserIdentity } from 'convex/server';
+import { api } from '../_generated/api';
+import type { MutationCtx } from '../_generated/server';
+import type schema from '../schema';
+import { insertBranch, PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
+
+export async function asTestOwner(t: TestConvex<typeof schema>, identity: Partial<UserIdentity> & { email: string }) {
+  const tokenIdentifier = identity.tokenIdentifier ?? `issuer|${identity.email.toLowerCase()}`;
+  const email = identity.email.trim().toLowerCase();
+  await t.run(async ctx => {
+    const old = await ctx.db.query('staffGrants').withIndex('by_email', q => q.eq('email', email)).unique();
+    if (!old) {
+      const now = Date.now();
+      await ctx.db.insert('staffGrants', { role: 'owner', email, tokenIdentifier, branchIds: [], createdAt: now, updatedAt: now, updatedByEmail: 'system:test' });
+    }
+  });
+  return t.withIdentity({ ...identity, tokenIdentifier });
+}
+
+export async function seedTestBranch(ctx: MutationCtx, key: string = PRIMARY_BRANCH.key) {
+  const existing = await readBranchByKey(ctx, key);
+  return existing?._id ?? await insertBranch(ctx, {
+    ...PRIMARY_BRANCH, key, slug: key, name: key === PRIMARY_BRANCH.key ? PRIMARY_BRANCH.name : key,
+  }, 'system:test');
+}
+
+export async function testGrantVersion(owner: Pick<TestConvex<typeof schema>, 'query'>, email: string) {
+  const people = await owner.query(api.auth.staffAccess.listPeople, {});
+  const grant = people.find(person => person.email === email)?.staffGrant;
+  if (!grant) throw new Error(`Missing test desk grant for ${email}`);
+  return { id: grant.id, revision: grant.revision };
+}
+
+export async function testMarketingGrantVersion(owner: Pick<TestConvex<typeof schema>, 'query'>, email: string) {
+  const people = await owner.query(api.auth.staffAccess.listPeople, {});
+  const grant = people.find(person => person.email === email)?.marketingGrant;
+  if (!grant) throw new Error(`Missing test Marketing grant for ${email}`);
+  return { id: grant.id, revision: grant.revision };
+}

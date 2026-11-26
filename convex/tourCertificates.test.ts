@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { makeFunctionReference } from 'convex/server';
 import { getDocumentSize } from 'convex/values';
@@ -29,10 +30,9 @@ const page = makeFunctionReference<'mutation', {
 afterEach(() => vi.unstubAllEnvs());
 
 it('clears a paused, target-bound import by resumable pages before a formerly certified room can grow', async () => {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	vi.stubEnv('CONVEX_CLOUD_URL', targetOrigin);
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Import target' });
 	const otherProperty = await admin.mutation(api.catalog.adminProperties.create, { name: 'Unaffected villa' });
 	const create = (villa: typeof propertyId, slug: string, name: string) =>

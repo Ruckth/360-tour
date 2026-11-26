@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch, asTestOwner } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import type { FunctionArgs } from 'convex/server';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -15,21 +16,19 @@ const { adjust, approve } = api.pos.commands.adjust;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 
 async function setup({ cutover = true } = {}) {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-11-19T04:00:00Z'));
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   const t = convexTest(schema, modules);
   const now = Date.now();
   const identity = (role: string) => t.withIdentity({
     tokenIdentifier: role, email: `${role}@example.com`, emailVerified: true,
   });
   const ids = await t.run(async ctx => {
-    for (const role of ['manager', 'cashier'] as const) await ctx.db.insert('staffGrants', {
+    for (const role of ['manager', 'cashier'] as const) await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       role, email: `${role}@example.com`, tokenIdentifier: role, createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
     });
     if (cutover) await ctx.db.insert('commerceSettings', {
@@ -58,7 +57,7 @@ async function setup({ cutover = true } = {}) {
     });
     return { orderId, lineId, paymentId, serviceId, propertyId };
   });
-  return { t, now, owner: identity('owner'), manager: identity('manager'), cashier: identity('cashier'), ...ids };
+  return { t, now, owner: await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' }), manager: identity('manager'), cashier: identity('cashier'), ...ids };
 }
 
 function amend(orderId: Id<'orders'>) {
@@ -125,7 +124,7 @@ it('routes a cashier payment fix through one manager request and applies it once
 it('corrects only external methods on a voucher-funded receipt and counts vouchers in the tender cap', async () => {
   const { t, manager, now, orderId, lineId } = await setup();
   const vouchers = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const rules = resolveCommerceSettings(null);
     return await Promise.all([1, 2].map(async index => {
       const voucherId = await ctx.db.insert('vouchers', {

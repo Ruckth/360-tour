@@ -15,6 +15,7 @@ Use Bun 1.4.5 with Node 22. Run `bun check` to type-check the app, tests and Con
 | Owner | Responsibilities |
 | --- | --- |
 | `convex/auth` | Identity, staff grants, capabilities, admin policy and access builders |
+| `convex/branches` | Branch identity, issuer details, lifecycle, and branch access checks |
 | `convex/catalog` | Properties, tour scenes, reviews, review stats and OTA rates |
 | `convex/bookings` | Stays, availability, date blocks, iCal, stay payments/refunds and Stripe |
 | `convex/services` | Services, staff/rosters/time off, appointments and their finance |
@@ -26,7 +27,7 @@ Use Bun 1.4.5 with Node 22. Run `bun check` to type-check the app, tests and Con
 
 Each domain owns `tables.ts`, endpoint registrations and its ctx implementations. Other backend domains import **only `model.ts`**, including for types. A model is a small, named interface over actual plain implementations; private implementation files may compose useful internal seams. Do not add forwarding endpoints or a generic architecture framework. Registrations belong to their domain, never a new root or `lib` file. Maintenance scripts/seed scenarios live under `convex/maintenance`; focused tests and harnesses may cross private seams intentionally. Production never imports tests.
 
-`convex/schema.ts` assembles domain tables; `http.ts` assembles routes and the messaging ingress factory; `crons.ts` registers schedules. `auth.config.ts` and `convex.config.ts` configure the backend. Root declaration files supply types. The only current `convex/lib` infrastructure is `adminEmails`, `maintenance` and invocation-scoped `readBudget`. Do not put new business ctx implementations there. A real new infrastructure need requires a deliberate, tested ownership decision, not broad directory exemptions.
+`convex/schema.ts` assembles domain tables; `http.ts` assembles routes and the messaging ingress factory; `crons.ts` registers schedules. `auth.config.ts` and `convex.config.ts` configure the backend. Root declaration files supply types. The only current `convex/lib` infrastructure is `maintenance` and invocation-scoped `readBudget`. Do not put new business ctx implementations there. A real new infrastructure need requires a deliberate, tested ownership decision, not broad directory exemptions.
 
 `convex/shared` owns pure rules: money/rounding, fixed UTC+7 resort time, dates, phone, pricing, overlap, scheduling and time off. It receives data and returns results, with no server ctx, environment, network, registration builders, backend lib or browser implementation. Its runtime imports are shared leaves, `convex/values` validators and the existing pure `libphonenumber-js/min` parser. Generated data-model imports must be type-only. New external shared dependencies need an explicit purity review. Browser Date adapters and Intl presentation stay in `src`; database reads and side effects stay in the owning backend domain. Use `shared/pricing.calculateDirectQuote` for actual quote calculations and `shared/money` for integer **satang** and basis points. Do not duplicate financial policy in UI fixtures.
 

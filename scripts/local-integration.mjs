@@ -306,7 +306,6 @@ try {
               name: "CLERK_JWT_ISSUER_DOMAIN",
               value: env.CLERK_JWT_ISSUER_DOMAIN,
             },
-            { name: "ADMIN_EMAILS", value: users.owner.email },
             ...(villaStudy ? [
               { name: "START_VILLA_INVALIDATION_ORIGIN", value: `http://127.0.0.1:${app}` },
               { name: "START_VILLA_INVALIDATION_SECRET", value: villaStudy.secret },
@@ -326,7 +325,7 @@ try {
       ),
     "Convex deployment",
   );
-  // Admin credentials are used only for the empty seed/import; no browser or acceptance client gets them.
+  // Admin credentials stay here for seed and grant provisioning. Browsers use real Clerk sessions.
   const seeder = new ConvexHttpClient(url);
   seeder.setAdminAuth(config.adminKey);
   const seeded = await seeder.mutation(
@@ -336,11 +335,20 @@ try {
   await fs.writeFile(env.E2E_SEED_FILE, JSON.stringify(seeded), {
     mode: 0o600,
   });
+  await seeder.mutation(makeFunctionReference("auth/owners:grantOwner"), { email: users.owner.email });
+  const owner = new ConvexHttpClient(url);
+  const issuer = env.CLERK_JWT_ISSUER_DOMAIN.replace(/\/$/, "");
+  owner.setAdminAuth(config.adminKey, { issuer, subject: users.owner.id, email: users.owner.email, emailVerified: true });
+  await owner.mutation(makeFunctionReference("auth/staffAccess:claimInvite"), {});
+  const { branches } = await owner.query(makeFunctionReference("auth/staffAccess:myAccess"), {});
+  const samui = branches.find(/** @param {{key: string}} branch */ branch => branch.key === "koh-samui");
+  if (!samui) throw new Error("Koh Samui branch was not seeded");
   const grants = [
     {
       email: users.cashier.email,
       role: "cashier",
-      tokenIdentifier: `${env.CLERK_JWT_ISSUER_DOMAIN.replace(/\/$/, "")}|${users.cashier.id}`,
+      branchIds: [samui.id],
+      tokenIdentifier: `${issuer}|${users.cashier.id}`,
       revision: 1,
       createdAt: Date.now(),
       updatedAt: Date.now(),

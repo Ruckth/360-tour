@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { getDocumentSize } from 'convex/values';
 import { makeFunctionReference, type PaginationOptions, type PaginationResult } from 'convex/server';
@@ -20,12 +21,11 @@ const records = makeFunctionReference<
 	PaginationResult<Doc<'configurationHistoryIndex'>>
 >('settings/configurationHistory:records');
 const page = { numItems: 100, cursor: null };
-function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
+async function setup() {
 	const t = convexTest(schema, modules);
 	return {
 		t,
-		admin: t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
+		admin: await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' }),
 		stranger: t.withIdentity({ emailVerified: true, email: 'guest@example.com', tokenIdentifier: 'guest' })
 	};
 }
@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('configuration history and safe restoration', () => {
 	it('discovers removed time off without its deleted id and pages all retained changes with admin authorization', async () => {
-		const { admin, stranger } = setup();
+		const { admin, stranger } = await setup();
 		const staffId = await admin.mutation(api.services.commands.createStaff.createStaff, {
 			name: 'Mali', role: 'Therapist', color: '#abc',
 			workingHours: [{ weekday: 1, start: '09:00', end: '18:00' }], breaks: []
@@ -58,7 +58,7 @@ describe('configuration history and safe restoration', () => {
 		await expect(stranger.query(list, args)).rejects.toThrow();
 	});
 	it('records settings before/after, actor and time while excluding AI instructions and environment secrets', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		vi.stubEnv('AI_API_KEY', 'provider-ai-secret');
 		vi.stubEnv('STRIPE_SECRET_KEY', 'stripe-secret');
 		await admin.mutation(api.settings.settings.update, {
@@ -80,7 +80,7 @@ describe('configuration history and safe restoration', () => {
 		expect(result.page[0].reason).toContain('excluded');
 	});
 	it('restores a safe snapshot as a new validated revision and retains excluded instructions', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		await admin.mutation(api.settings.settings.update, {
 			business: { businessName: 'Earlier' },
 			ai: { tone: 'Earlier tone', extraInstructions: 'First private instruction' }
@@ -118,7 +118,7 @@ describe('configuration history and safe restoration', () => {
 		expect((await admin.query(api.settings.settings.get, {})).revision).toBe(3);
 	});
 	it('supports a legacy settings row without revision and rejects malformed or unrelated restore entries atomically', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		await t.run((ctx) =>
 			ctx.db.insert('siteSettings', {
 				key: 'default',
@@ -180,7 +180,7 @@ describe('configuration history and safe restoration', () => {
 		).toHaveLength(0);
 	});
 	it('protects history, discovery and restoration with server-side authorization', async () => {
-		const { t, admin, stranger } = setup();
+		const { t, admin, stranger } = await setup();
 		await admin.mutation(api.settings.settings.update, { business: { businessName: 'Saved' } });
 		const event = (await admin.query(list, { entityType: 'settings', entityId: 'default', paginationOpts: page }))
 			.page[0];
@@ -202,7 +202,7 @@ describe('configuration history and safe restoration', () => {
 		).rejects.toThrow('Page size');
 	});
 	it('keeps archive/restore, photos, slug, room images, hotspots and reorder history with no export token', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		await t.run((ctx) => ctx.db.patch(id, { icalExportToken: 'private-export-token' }));
 		await admin.mutation(api.catalog.properties.update, { propertyId: id, images: ['/photos/one.jpg'], pricePerNight: 500000 });
@@ -247,7 +247,7 @@ describe('configuration history and safe restoration', () => {
 		expect(deletedRoom).toMatchObject({ deleted: true, name: 'Pool' });
 	});
 	it('retains deleted villa and room snapshots and discovers them without the primary records', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Deleted draft' });
 		const room = await admin.mutation(api.catalog.adminProperties.createRoom, {
 			propertyId: id,
@@ -285,7 +285,7 @@ describe('configuration history and safe restoration', () => {
 	});
 
 	it('keeps oversized room history readable and can delete a referenced room from a legacy tour', async () => {
-		const { t, admin } = setup();
+		const { t, admin } = await setup();
 		const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Legacy villa' });
 		const name = '🌴'.repeat(160_000) + 'A';
 		const large = await admin.mutation(api.catalog.adminProperties.createRoom, {
@@ -338,7 +338,7 @@ describe('configuration history and safe restoration', () => {
 	});
 
 	it('paginates beyond the first history page and logs OTA edits and removals', async () => {
-		const { admin } = setup();
+		const { admin } = await setup();
 		const id = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 		for (let index = 0; index < 12; index++)
 			await admin.mutation(api.catalog.properties.update, { propertyId: id, tagline: `Tagline ${index}` });

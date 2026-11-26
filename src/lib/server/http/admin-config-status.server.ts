@@ -14,7 +14,7 @@ export async function readChannelConfig(request: Request) {
     return Response.json({ error: "Convex is not configured" }, { status: 503 });
   }
 
-  // Same check as the admin reply route: Convex validates the Clerk token and ADMIN_EMAILS.
+  // Same check as the admin reply route: Convex validates the Clerk token and staff access.
   const client = new ConvexHttpClient(convexUrl);
   client.setAuth(token);
   try {

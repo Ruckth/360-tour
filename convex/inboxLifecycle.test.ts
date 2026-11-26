@@ -1,18 +1,17 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 import { sendFailed, staffNeeded } from './messaging/inboxState';
 
 const modules = import.meta.glob("./**/*.ts");
-beforeEach(() => vi.stubEnv("ADMIN_EMAILS", "admin@example.com"));
-afterEach(() => vi.unstubAllEnvs());
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true,
+  const admin = await asTestOwner(t, { emailVerified: true,
     email: "admin@example.com",
     tokenIdentifier: "admin",
   });

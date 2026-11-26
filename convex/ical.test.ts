@@ -1,15 +1,14 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 /** Starts a sync (takes its ticket) and applies `dates`, as the sync action does after fetching. */
 async function applyFeed(t: ReturnType<typeof convexTest>, sourceId: Id<'icalSources'>, dates: string[]) {
   const started = await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId });
@@ -18,9 +17,8 @@ async function applyFeed(t: ReturnType<typeof convexTest>, sourceId: Id<'icalSou
 }
 
 it('keeps OTA sources separate and preserves other blocked dates when one is removed', async () => {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const airbnb = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   const booking = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'booking_com', icalUrl: 'https://example.com/booking.ics' });
@@ -49,9 +47,8 @@ it('exports future bookings even when more than 500 past bookings exist', async 
 });
 
 async function sourceSetup() {
-  vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   const propertyId = await t.run(async ctx => await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   const sourceId = await admin.mutation(api.bookings.calendar.ical.addSource, { propertyId, platform: 'airbnb', icalUrl: 'https://example.com/airbnb.ics' });
   return { t, admin, sourceId };

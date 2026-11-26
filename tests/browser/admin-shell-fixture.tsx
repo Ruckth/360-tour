@@ -5,7 +5,7 @@ import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AdminSessionActions } from "@/components/admin/AdminSessionActions";
 import { AdminSessionDetail } from "@/components/admin/AdminSessionDetail";
-import { AdminFrame } from "@/components/admin/AdminShell";
+import { AdminFrame, AdminShell } from "@/components/admin/AdminShell";
 import type { AdminSession } from "@/components/admin/admin-chat-types";
 import type { StaffAccessView } from "@/components/admin/admin-access";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
@@ -13,6 +13,7 @@ import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/bac
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { createFixtureBackend } from "./checkout-transport";
 import en from "../../messages/en.json";
+import { registerFixtureFunctions } from "./convex-mock";
 import "@/app.css";
 
 /*
@@ -23,6 +24,7 @@ import "@/app.css";
  *   pending=0|1|2                cashier requests waiting (1 by default): a 15% discount, then ฿100 off
  */
 const params = new URLSearchParams(location.search);
+const gate = params.get("gate");
 const role = (["owner", "manager", "cashier"] as const).find((value) => value === params.get("role")) ?? "manager";
 const path = params.get("path") ?? "/admin/chats";
 const pending = Number(params.get("pending") ?? 1);
@@ -30,13 +32,34 @@ const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", 
 
 const operations = role !== "cashier";
 const access: StaffAccessView = {
-  email: EMAILS[role], role, pendingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+  email: EMAILS[role], role, pendingInvitation: null, companyScope: role === "owner", branches: [], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: operations, operations, manageTeam: role === "owner", settings: role === "owner",
     bookings: operations, services: operations, customers: operations, orders: operations, chats: operations,
     properties: operations, roster: operations, reports: operations, marketing: role === "owner",
   },
 };
+
+if (gate) {
+  const branches: StaffAccessView["branches"] = [
+    { id: "fx-samui" as Id<"branches">, key: "samui", slug: "samui", name: "Koh Samui", state: "active" },
+    { id: "fx-phuket" as Id<"branches">, key: "phuket", slug: "phuket", name: "Phuket" + "ReservationOffice".repeat(5), state: "setup" },
+  ];
+  const gateAccess: StaffAccessView = {
+    ...access,
+    email: "a".repeat(63) + "@example.com",
+    role: gate === "choose" ? "manager" : null,
+    branches: gate === "choose" ? branches : [],
+    pendingInvitation: gate === "desk" ? {
+      role: "cashier", expiresAt: Date.now() + 86_400_000, branchIds: [branches[1].id], branches: [branches[1]],
+    } : null,
+    marketingInvitation: gate === "marketing" ? { role: "marketer", expiresAt: Date.now() + 86_400_000 } : null,
+    capabilities: gate === "choose" ? access.capabilities : Object.fromEntries(
+      Object.keys(access.capabilities).map(key => [key, false]),
+    ) as StaffAccessView["capabilities"],
+  };
+  registerFixtureFunctions({ queries: { "auth/staffAccess:myAccess": () => gateAccess } });
+}
 
 const backend = await createFixtureBackend({ staff: { role, email: EMAILS[role], rules: DEFAULT_CASHIER_RULES } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
@@ -109,6 +132,14 @@ function CheckoutPage({ initial }: { initial: OrderId | null }) {
 }
 
 async function main() {
+  if (gate) {
+    createRoot(document.getElementById("root")!).render(
+      <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
+        <AdminShell>Branch workspace</AdminShell>
+      </IntlProvider>,
+    );
+    return;
+  }
   const orderId = await seed();
   createRoot(document.getElementById("root")!).render(
     <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>

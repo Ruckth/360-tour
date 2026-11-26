@@ -31,7 +31,7 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for environment variables, release flow, an
 
 Follow the [admin UX conventions](./docs/guides/admin-ux.md) when changing staff screens. Generated screenshots and temporary UX review output stay local, outside the tracked source tree.
 
-`bun run dev` starts an isolated persistent checkout-local Convex and Next together, seeds only an empty backend, and retains data on Ctrl-C/restart. Configure only real Clerk test fields and explicit local owners in mode-600 `.env.dev.local`. See the [local development and Preview runbook](./docs/architecture/phase3f-operations.md) for configuration, recovery and `bun run test:dev` lifecycle acceptance.
+`bun run dev` starts checkout-local Convex and TanStack Start together and retains data on Ctrl-C or restart. It seeds only an empty backend, then grants the owners configured in mode-600 `.env.dev.local` via `auth/owners:grantOwner`. Sign in with the configured Clerk test account and activate its grant. See the [local development and Preview runbook](./docs/architecture/phase3f-operations.md) for configuration, recovery and `bun run test:dev` lifecycle acceptance.
 
 `bun run test:e2e` starts and seeds a fresh isolated local Convex backend, builds the app, signs in dedicated Clerk test users, and stops its processes and new sessions afterward. Supply the three Clerk test fields from `.env.example` through the environment or an ignored `.env.e2e.local` file (mode `600`). Production Clerk keys are refused. `bun run verify:integration` also runs the full verification and component browser suite. See the [Phase 3d implementation record](./docs/architecture/phase3d-dataflow-implementation.md) for auth evidence and CI secret names.
 

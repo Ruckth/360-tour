@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch } from '../testing/staff.test-support';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import { creditMoney, syncAffiliateCredit } from '../marketing/model';
 import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
@@ -13,7 +14,6 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 it('keeps the original refund deadline when a failed give-back is retried by another method (lead decision)', async () => {
@@ -90,6 +90,17 @@ it('binds approval to the cashier and serializes four competing tills', async ()
   expect(await cashier.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId })).toMatchObject({ status: 'applied' });
 });
 
+it('cannot authorize a cashier return after their last assigned branch is archived', async () => {
+  const { t, cashier, owner } = await setup();
+  const { args } = await t.run(ctx => soldProduct(ctx));
+  const { requestId } = await cashier.mutation(command.askManager, args);
+  const [branch] = await owner.query(api.branches.branches.list, {});
+  await owner.mutation(internal.branches.branches.setState, { branchId: branch._id, revision: branch.revision, state: 'suspended', reason: 'Closing' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: branch._id, revision: branch.revision + 1, state: 'archived' });
+  await expect(owner.mutation(command.decideApproval, { requestId, decision: 'approve' })).resolves.toMatchObject({ status: 'stale' });
+  expect(await t.run(ctx => ctx.db.query('orderReturns').first())).toBeNull();
+});
+
 it('authorizes at a cashier till only under the current Refund rule, including on replay', async () => {
   const { t, cashier, owner } = await setup();
   const { args } = await t.run(ctx => soldProduct(ctx));
@@ -164,7 +175,7 @@ it('keeps a partially paid return open, verifies an unknown payment, and retries
 it('returns cumulative paid units to zero and consumes a voucher contribution before cash', async () => {
   const { t, owner } = await setup();
   const { orderId, lineId, voucherId } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const orderId = await receipt(ctx, 11);
     const lineId = await line(ctx, orderId, 'service', 11, { qty: 5 });
     const voucherId = await voucher(ctx, { kind: 'sale', orderId, lineId }, branchId, 0, { faceValue: 3 });
@@ -191,7 +202,7 @@ it('returns cumulative paid units to zero and consumes a voucher contribution be
 it('reduces partner credit once for external money and leaves the voucher credit out of the cash total', async () => {
   const { t, owner } = await setup();
   const { orderId, lineId, creditId, voucherId } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const orderId = await receipt(ctx, 600);
     const lineId = await line(ctx, orderId, 'service', 600);
     const voucherId = await voucher(ctx, { kind: 'sale', orderId, lineId }, branchId, 0, { faceValue: 200 });
@@ -290,7 +301,7 @@ it('records a payout on a receipt with more refund history than a partner recoun
 it.each([0, 50000])('restores goodwill as goodwill only with %s external satang', async external => {
   const { t, owner } = await setup();
   const { orderId, lineId, voucherId } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const orderId = await receipt(ctx, external);
     const lineId = await line(ctx, orderId, 'service', external + 10000);
     const voucherId = await voucher(ctx, { kind: 'sale', orderId, lineId }, branchId, 0, { faceValue: 40000 });

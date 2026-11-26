@@ -6,7 +6,7 @@ import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
 import { action as rawAction, httpAction as rawHttpAction, mutation as rawMutation, query as rawQuery } from '../_generated/server';
 import { sha256 } from '../shared/displayTokens';
 import { maintenancePaused } from '../lib/maintenance';
-import { requireMarketingPermission } from '../marketing/model';
+import { requireMarketingPermission } from './private/marketingAccess';
 import { requireGuestToken } from '../messaging/model';
 import { type MarketingPermission } from '../shared/marketingAccess';
 import { requireAdmin } from './private/adminAuth';
@@ -63,12 +63,12 @@ export const staffMutation = customMutation(rawMutation, staffAccess);
 export const staffAction = customAction(rawAction, staffAccess);
 
 // Marketing grants are independent of desk roles. Never require a staff grant here.
-const marketingAccess = customCtx(async (ctx: QueryCtx | MutationCtx, { permission }: { permission: MarketingPermission }) => {
+const marketingContext = customCtx(async (ctx: QueryCtx | MutationCtx, { permission }: { permission: MarketingPermission }) => {
   operational();
   return { marketing: await requireMarketingPermission(ctx, permission) };
 });
-export const marketingQuery = customQuery(rawQuery, marketingAccess);
-export const marketingMutation = customMutation(rawMutation, marketingAccess);
+export const marketingQuery = customQuery(rawQuery, marketingContext);
+export const marketingMutation = customMutation(rawMutation, marketingContext);
 
 const guestAccess = {
   // Missing optional credentials still fail with INVALID_GUEST_TOKEN, in the transaction.
@@ -102,6 +102,9 @@ export const httpAction: HttpActionBuilder = handler => rawHttpAction((ctx, requ
 );
 // Auth-owned plain ctx implementations. Registrations stay in users.ts/staffAccess.ts.
 export { requireAdmin, requireOwner } from './private/adminAuth';
-export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
 
 export { manualReduction } from '../shared/staffDiscount';
+
+export { OWNER_MANAGEMENT_MESSAGE } from './private/owners';
+export { marketingAccess, requireMarketingPermission } from './private/marketingAccess';

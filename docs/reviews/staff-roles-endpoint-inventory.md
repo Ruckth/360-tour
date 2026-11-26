@@ -10,7 +10,7 @@ Implemented on `feat/staff-roles-backend`, with audit fixes on `feat/staff-roles
 
 `convex/lib/staffAccess.ts` is the server permission layer. `staffAccess(ctx)` resolves the authenticated canonical `tokenIdentifier`, then returns `{ email, tokenIdentifier, role, capabilities, pendingInvitation }`. `requireStaff(ctx, capability)` rejects without that capability. This also works from actions through the authenticated internal `staffAccess.currentInternal` query.
 
-- **Owner:** email in `ADMIN_EMAILS`. Owner takes precedence over every staff grant, including a legacy/corrupt cashier grant. Owners cannot be assigned or downgraded through Team. With no staff grants or cashier rules, existing owners retain their access.
+- **Owner:** this revision used an environment allowlist. Current owners have a claimed, identity-bound grant created through `auth/owners:grantOwner`. Owner grants are managed by the deployment admin.
 - **Manager:** a claimed, identity-bound staff grant. `requireAdmin` now means Owner or Manager (`operations`). Its existing callers keep their validation and audit behavior. Marketing keeps its separate grants and permission checks.
 - **Cashier:** a claimed, identity-bound staff grant. Gets the explicitly listed checkout endpoints and no general operations permission. Invitations confer no access before claim. A matching email in a different identity/issuer cannot reuse a claimed grant.
 - **No staff role:** no staff/admin access. An independent marketing grant continues to work.

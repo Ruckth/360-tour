@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { seedTestBranch } from '../../convex/testing/staff.test-support';
 import { convexTest } from "convex-test";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
@@ -67,9 +68,10 @@ export async function createFixtureBackend(options: Options = {}) {
         .withIndex("by_email", (q) => q.eq("email", staff.email))
         .unique();
       const fields = {
+        branchIds: staff.role === "owner" ? [] : [await seedTestBranch(ctx)],
         email: staff.email,
         tokenIdentifier: identity().tokenIdentifier,
-        role: staff.role === "owner" ? ("manager" as const) : staff.role,
+        role: staff.role,
         revision: 1,
         createdAt: Date.now(),
         updatedAt: Date.now(),

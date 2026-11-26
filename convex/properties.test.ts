@@ -1,17 +1,17 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { getDocumentSize } from 'convex/values';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { propertyId, roomId } = await t.run(async (ctx) => {
 		const propertyId = await ctx.db.insert('properties', {
 			slug: 'pool-villa', name: 'Pool Villa', tagline: 'Sea views', description: 'Villa', pricePerNight: 850000,
@@ -44,8 +44,6 @@ async function legacyTourWithHeadroom(headroom: number) {
 	});
 	return { t, admin, propertyId, roomId, secondRoom };
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe('admin property editing', () => {
 	it('requires an admin for reads and writes', async () => {
@@ -222,7 +220,7 @@ describe('admin property editing', () => {
 			const after = await ctx.meta.getTransactionMetrics();
 			return after.documentsRead.used - before.documentsRead.used;
 		});
-		expect(reads).toBe(53);
+		expect(reads).toBe(1 + 53); // Owner grant + the scene and related rows.
 		expect((await admin.query(api.catalog.adminProperties.get, { propertyId }))?.rooms).toHaveLength(51);
 		expect(await t.query(api.catalog.properties.getTourRooms, { slug: 'pool-villa' })).toHaveLength(50);
 		await expect(admin.mutation(api.catalog.properties.updateRoom, { roomId, name: 'Living12' }))

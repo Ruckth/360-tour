@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
@@ -37,11 +38,9 @@ const month = {
   expected: null,
   campaignIds: [],
 };
-afterEach(() => vi.unstubAllEnvs());
 async function setup() {
-  vi.stubEnv('ADMIN_EMAILS', email);
   const t = convexTest(schema, modules),
-    user = t.withIdentity({ email, emailVerified: true, tokenIdentifier: 'owner' });
+    user = await asTestOwner(t, { email, emailVerified: true, tokenIdentifier: 'owner' });
   const ids = await t.run(async (ctx) => {
     const staffId = await ctx.db.insert('staff', {
       name: 'Mali',

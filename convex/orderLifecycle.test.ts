@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -14,10 +15,9 @@ const reviewedCustomer = (view: { customer: object | null }) =>
 	view.customer && 'revision' in view.customer && typeof view.customer.revision === 'number' ? { expectedCustomerRevision: view.customer.revision } : {};
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com,desk@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
-	const desk = t.withIdentity({ emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const desk = await asTestOwner(t, { emailVerified: true, email: 'desk@example.com', tokenIdentifier: 'desk' });
 	const hours = { workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: [] };
 	const nok = await admin.mutation(api.services.commands.createStaff.createStaff, { name: 'Nok', role: 'Therapist', color: '#abc', ...hours });
 	const serviceId = await admin.mutation(api.services.commands.createService.createService, {
@@ -69,7 +69,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('discarding unpaid orders', () => {
 	it('moves an order from Unpaid to Discarded, keeping its rows, links, customer and a full history entry', async () => {

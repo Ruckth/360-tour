@@ -1,9 +1,10 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import type { RegisteredQuery } from 'convex/server';
 import type { QueryCtx } from './_generated/server';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { getOrder } from './pos/orders';
@@ -15,11 +16,10 @@ function handler<A extends Record<string, unknown>, R>(fn: RegisteredQuery<'publ
   return Reflect.get(fn, '_handler');
 }
 const modules = import.meta.glob('./**/*.ts');
-beforeEach(() => vi.stubEnv('ADMIN_EMAILS', 'reads@example.com'));
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 async function fixture() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'reads@example.com', tokenIdentifier: 'reads' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'reads@example.com', tokenIdentifier: 'reads' });
   const ids = await t.run(async ctx => {
     const propertyId = await ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: 'Pool', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 30, images: ['/villa.jpg'], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' });
     const bookingId = await insertFixture(ctx, 'bookings', { propertyId, guestName: 'Guest', guestPhone: '0800000000', checkIn: '2026-11-01', checkOut: '2026-11-02', guests: 1, nights: 1, subtotal: 10000, discountAmount: 0, total: 10000, currency: 'THB', amountPaid: 0, paymentStatus: 'pending', status: 'confirmed', confirmationCode: 'READS', createdAt: 1 });
@@ -43,7 +43,7 @@ it('reads a linked stay and property once, including nulls, and observes later e
   const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
   const initial = await read(orderId);
   expect(initial.gets).toEqual([orderId, bookingId, propertyId]);
-  expect(initial.queries).toHaveLength(6);
+  expect(initial.queries).toHaveLength(1 + 6);
   expect(initial.result?.lines[0]).toMatchObject({ imageUrl: '/villa.jpg', sourceIssue: null });
   await t.run(ctx => ctx.db.patch(propertyId, { name: 'Renamed villa', images: ['/new.jpg'] }));
   const renamed = await read(orderId);
@@ -78,8 +78,8 @@ it('skips four history ranges at the till and keeps full receipts after settleme
 
   const receipt = await read(orderId);
   const till = await read(orderId, 'checkout');
-  expect(receipt.queries).toHaveLength(6);
-  expect(till.queries).toEqual(['orderLines', 'orderPayments']);
+  expect(receipt.queries).toHaveLength(1 + 6);
+  expect(till.queries).toEqual(['staffGrants', 'orderLines', 'orderPayments']);
   expect(till.gets).toEqual(receipt.gets);
   expect(receipt.result?.audit).toHaveLength(50);
   expect(till.result).toEqual({ ...receipt.result, audit: [], corrections: [], refunds: [] });
@@ -160,8 +160,8 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
     return { result, tables };
   });
   const stable = await measure(handler(stableCatalog)), empty = await measure(handler(recentCatalogRanking));
-  expect(stable.tables).toEqual(['services', 'properties', 'staff']);
-  expect(empty).toEqual({ result: [], tables: ['orderLines'] });
+  expect(stable.tables).toEqual(['staffGrants', 'services', 'properties', 'staff']);
+  expect(empty).toEqual({ result: [], tables: ['staffGrants', 'orderLines'] });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
   await t.run(async ctx => {
     // Older than the recent-300 cutoff; quantity never contributes to frequency.
@@ -169,7 +169,7 @@ it('separately authorizes stable catalog and ranking, with disjoint reads, bound
     for (let i = 0; i < 300; i++) await insertFixture(ctx, 'orderLines', { orderId: orderId, kind: 'extra', name: `Tie ${i % 10}`, qty: i % 99 + 1, unitPrice: 100, currency: 'THB', createdAt: i });
   });
   const ranked = await measure(handler(recentCatalogRanking));
-  expect(ranked.tables).toEqual(['orderLines']);
+  expect(ranked.tables).toEqual(['staffGrants', 'orderLines']);
   expect(ranked.result).toEqual(Array.from({ length: 8 }, (_, i) => `extra:Tie ${9 - i}`));
   expect((await measure(handler(stableCatalog))).result).toEqual(stable.result);
   await t.run(async ctx => {

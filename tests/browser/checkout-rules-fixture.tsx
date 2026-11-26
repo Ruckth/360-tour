@@ -32,7 +32,7 @@ const stage = params.get("stage") ?? "before";
 const now = Date.UTC(2026, 10, 21, 3, 30);
 
 const access: StaffAccessView = {
-  email: role === "owner" ? "narin@auraliscove.co" : "ploy@auraliscove.co", role, pendingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+  email: role === "owner" ? "narin@auraliscove.co" : "ploy@auraliscove.co", role, pendingInvitation: null, companyScope: role === "owner", branches: [], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: role === "owner", settings: role === "owner",
     bookings: true, services: true, customers: true, orders: true, chats: true, properties: true, roster: true, reports: true, marketing: role === "owner",

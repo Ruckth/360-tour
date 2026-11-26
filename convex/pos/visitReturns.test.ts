@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
@@ -22,13 +23,12 @@ const terms = termsOf(resolveCommerceSettings(null));
 const ownerEmail = 'owner@example.com';
 const tillId = 'desk-a';
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
-function setup() {
-  vi.stubEnv('ADMIN_EMAILS', ownerEmail);
+async function setup() {
   vi.spyOn(Date, 'now').mockReturnValue(now);
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ tokenIdentifier: 'owner', email: ownerEmail, emailVerified: true });
+  const owner = await asTestOwner(t, { tokenIdentifier: 'owner', email: ownerEmail, emailVerified: true });
   return { t, owner };
 }
 
@@ -95,7 +95,7 @@ async function visit(
 }
 
 async function retail(ctx: MutationCtx, orderId: Id<'orders'>, count: number) {
-  const branchId = await ctx.db.insert('branches', { key: 'default' });
+  const branchId = await seedTestBranch(ctx);
   const categoryId = await ctx.db.insert('productCategories', { name: 'Gifts', sort: 0 });
   const productId = await ctx.db.insert('products', {
     categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [],
@@ -147,7 +147,7 @@ async function measured<T>(label: string, maxReads: number, maxWrites: number, r
 }
 
 it('returns 15 products and five visits with one payout after 200 earlier refunds, within budget', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, visits, goods } = await t.run(async ctx => {
     const total = 15 * 100 + 5 * price;
     const orderId = await receipt(ctx, 21, total + price);
@@ -204,7 +204,7 @@ it('returns 15 products and five visits with one payout after 200 earlier refund
 });
 
 it('blocks desk refunds and edits while an open return claims the visit, then releases after a verified cancel', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 2, price + 100);
     const { appointmentId, lineId } = await visit(ctx, orderId, await service(ctx));
@@ -244,7 +244,7 @@ async function coveredVisit(
 ) {
   const roster = await service(ctx);
   const { appointmentId, lineId } = await visit(ctx, orderId, roster, { covered: true });
-  const branchId = await ctx.db.insert('branches', { key: 'default' });
+  const branchId = await seedTestBranch(ctx);
   const ownerId = await ctx.db.insert('customers', { name: 'Guest', createdBy: ownerEmail, createdAt: now, updatedAt: now });
   const packageId = await ctx.db.insert('packages', { name: 'Thai', status: 'active', sort: 0, revision: 0 });
   const packageVersionId = await ctx.db.insert('packageVersions', {
@@ -271,7 +271,7 @@ async function coveredVisit(
 }
 
 it('restores a covered visit to unpaid at its frozen price and collects that price once', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId, grantId, useId, serviceProjection } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, 0);
     const covered = await coveredVisit(ctx, orderId);
@@ -294,11 +294,11 @@ it('restores a covered visit to unpaid at its frozen price and collects that pri
 });
 
 it('keeps a visit reserved after partial payout and records its external and voucher destinations once each', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId, voucherId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, price);
     const { appointmentId, lineId } = await visit(ctx, orderId, await service(ctx));
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const voucherId = await ctx.db.insert('vouchers', {
       faceValue: 50_000, paidBalance: 0, goodwillBalance: 0, issuedExpiresAt: now + day, effectiveExpiresAt: now + day,
       status: 'active', branchId, source: { kind: 'sale', orderId, lineId }, revision: 1, settingsRevision: 0, terms,
@@ -360,7 +360,7 @@ it('keeps a visit reserved after partial payout and records its external and vou
 });
 
 it('preserves the covered visit and used session when a mixed return is cancelled', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId, grantId, useId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 2, 100);
     const covered = await coveredVisit(ctx, orderId);
@@ -382,7 +382,7 @@ it('preserves the covered visit and used session when a mixed return is cancelle
 });
 
 it.each(['paid', 'goodwill'] as const)('restores an expired %s use without making it available to spend', async bucket => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId, grantId, serviceProjection } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, 0);
     const covered = await coveredVisit(ctx, orderId, bucket, now - 1);
@@ -398,7 +398,7 @@ it.each(['paid', 'goodwill'] as const)('restores an expired %s use without makin
 });
 
 it('refuses to restore a use made before a package transfer even if the grant is back with the original owner', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const args = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, 0);
     const covered = await coveredVisit(ctx, orderId);
@@ -413,7 +413,7 @@ it('refuses to restore a use made before a package transfer even if the grant is
 });
 
 it('projects attached, linked and covered visit parts on the receipt and quotes each through the owning adapter', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, attached, linked, covered, stayLine } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 4, price * 2);
     const roster = await service(ctx);
@@ -447,7 +447,7 @@ it('projects attached, linked and covered visit parts on the receipt and quotes 
 });
 
 it('refuses a D19 payment date after a visit-only payout, including a payout saved before the order index', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { args, appointmentId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 2, price + 100);
     const source = await visit(ctx, orderId, await service(ctx));
@@ -476,7 +476,7 @@ it('refuses a D19 payment date after a visit-only payout, including a payout sav
 });
 
 it('bumps both order checkpoints when D19 changes the date of a visit on a prior receipt', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { orderId, earlierOrderId, appointmentId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, price);
     const roster = await service(ctx);
@@ -504,10 +504,10 @@ it('bumps both order checkpoints when D19 changes the date of a visit on a prior
 });
 
 it('invalidates another receipt approval when a visit restore reserves its issuing grant, then releases both owners on cancel', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const cashier = t.withIdentity({ tokenIdentifier: 'cashier', email: 'cashier@example.com', emailVerified: true });
   const { cashArgs, restoreArgs, grantId, appointmentId } = await t.run(async ctx => {
-    await ctx.db.insert('staffGrants', {
+    await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
       tokenIdentifier: 'cashier', role: 'cashier', email: 'cashier@example.com', createdAt: now, updatedAt: now, updatedByEmail: ownerEmail,
     });
     const visitOrder = await receipt(ctx, 2, 100);
@@ -544,7 +544,7 @@ it('invalidates another receipt approval when a visit restore reserves its issui
 });
 
 it('leaves a performed covered visit and its use in place when the mistaken receipt is voided', async () => {
-  const { t, owner } = setup();
+  const { t, owner } = await setup();
   const { orderId, appointmentId, useId } = await t.run(async ctx => {
     const orderId = await receipt(ctx, 1, 0);
     return { orderId, ...await coveredVisit(ctx, orderId) };
@@ -557,7 +557,7 @@ it('leaves a performed covered visit and its use in place when the mistaken rece
   expect(await t.run(ctx => ctx.db.get(useId))).toMatchObject({ activeAppointmentId: appointmentId });
 });
 it('recognizes a paid package unit on delivery, reverses it on restoration and counts its replacement payment once',async()=>{
-  const {t,owner}=setup();
+  const {t,owner}=await setup();
   const {args,appointmentId}=await t.run(async ctx=>{
     const orderId=await receipt(ctx,1,0);
     const covered=await coveredVisit(ctx,orderId);
@@ -580,7 +580,7 @@ it('recognizes a paid package unit on delivery, reverses it on restoration and c
   expect(await revenue(now-day,now+day)).toBe(price-Math.round(price*7/107));
 });
 it('keeps both grant values and both dated restorations when a completed visit is redeemed twice', async()=>{
-  const {t,owner}=setup();
+  const {t,owner}=await setup();
   async function redeem(amount:number,at:number,existing?:Id<'appointments'>) {
     return t.run(async ctx=>{
       const orderId=await receipt(ctx,1,0), covered=await coveredVisit(ctx,orderId);
@@ -618,7 +618,7 @@ it('keeps both grant values and both dated restorations when a completed visit i
   expect(await report(now-day,now+4*day)).toBe(0);
 });
 it('includes the first paid package settlement after delivery in the paying month customer cohort',async()=>{
-  const {t}=setup();
+  const {t}=await setup();
   const start=Date.UTC(2026,9,31,5), paid=Date.UTC(2026,10,1,5);
   await t.run(async ctx=>{
     const order=await receipt(ctx,1,0), c=await coveredVisit(ctx,order);

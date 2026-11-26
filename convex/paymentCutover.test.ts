@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch, asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { requireStaff } from './auth/model';
@@ -19,8 +20,6 @@ const refusal = (code: string) => ({ data: expect.objectContaining({ code }) });
 const edit = (expectedRevision: number, clientKey: string, reason = 'Announced desk update') =>
   ({ expectedRevision, clientKey, reason });
 
-afterEach(() => vi.unstubAllEnvs());
-
 type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
 /** What a manager reviewed on the panel's row: which registration and its current revision, after confirming its till stopped. */
 async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outcome: Outcome; note?: string }>(t: Awaited<ReturnType<typeof fixture>>['t'], args: A) {
@@ -29,12 +28,12 @@ async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outco
   return { ...args, expectedInstanceId: String(panel?._id), expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
 }
 
-async function fixture() {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
+async function fixture(seedPrimary = true) {
   const t = convexTest(schema, modules);
   const { managerId, orderId, otherOrderId } = await t.run(async ctx => {
-    const grant = (tokenIdentifier: string, role: 'manager' | 'cashier') =>
-      ctx.db.insert('staffGrants', {
+    if (seedPrimary) await seedTestBranch(ctx);
+    const grant = async (tokenIdentifier: string, role: 'manager' | 'cashier') =>
+      ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx, 'payment-test-desk')],
         role, email: `${tokenIdentifier}@example.com`, tokenIdentifier,
         createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
       });
@@ -50,11 +49,11 @@ async function fixture() {
   const as = (tokenIdentifier: string) => t.withIdentity({
     email: `${tokenIdentifier}@example.com`, tokenIdentifier, emailVerified: true,
   });
-  return { t, owner: as('owner'), manager: as('manager'), second: as('second'), cashier: as('cashier'), managerId, orderId, otherOrderId };
+  return { t, owner: await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'owner' }), manager: as('manager'), second: as('second'), cashier: as('cashier'), managerId, orderId, otherOrderId };
 }
 
 it('resolves dormant defaults without writing any rows', async () => {
-  const { t, owner, cashier } = await fixture();
+  const { t, owner, cashier } = await fixture(false);
   expect(await owner.query(settings.getRules, {})).toMatchObject({
     revision: 0, paymentsMode: 'direct', canEdit: true,
     terms: { unusedFullRefundDays: 7, refundDueDays: { card: 45, cashOrTransfer: 15 }, allowSessionTransfer: true },
@@ -68,7 +67,7 @@ it('resolves dormant defaults without writing any rows', async () => {
     mode: 'direct', cutoverAt: null, acknowledged: [], pending: [],
   });
   expect(await t.run(ctx => ctx.db.query('commerceSettings').take(1))).toEqual([]);
-  expect(await t.run(ctx => ctx.db.query('branches').take(1))).toEqual([]);
+  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).take(1))).toEqual([]);
 });
 
 it('applies one settings adjustment, replays matching payloads and preserves the audit and revision', async () => {
@@ -149,7 +148,10 @@ it('authorizes the rollout and field groups before reading or replaying an edit'
   await expect(manager.mutation(rollout.setPaused, pause)).rejects.toThrow('Not authorized');
   await expect(manager.mutation(rollout.activate, activate)).rejects.toThrow('Not authorized');
   await owner.mutation(settings.updateRules, { ...terms, expectedRevision: 2 });
-  vi.stubEnv('ADMIN_EMAILS', '');
+  await t.run(async ctx => {
+    const grant = await ctx.db.query('staffGrants').withIndex('by_email', q => q.eq('email', 'owner@example.com')).unique();
+    await ctx.db.delete(grant!._id);
+  });
   await expect(owner.mutation(settings.updateRules, { ...terms, expectedRevision: 2 })).rejects.toThrow('Not authorized');
 });
 
@@ -180,6 +182,14 @@ it('keeps the D19 manager exception scoped to rollout fields and runs target sco
   }
 });
 
+it('keeps payment mode paused if the required primary branch was never seeded', async () => {
+  const { t, manager } = await fixture(false);
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  await expect(manager.mutation(rollout.activate, edit(1, 'activate'))).rejects.toThrow('seeded Koh Samui');
+  expect(await manager.query(rollout.status, {})).toMatchObject({ mode: 'direct', paused: true });
+  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).unique())).toBeNull();
+});
+
 it('serializes two managers switching and replays only the winning payload', async () => {
   const { t, manager, second, owner } = await fixture();
   await expect(manager.mutation(rollout.activate, edit(0, 'activate'))).rejects.toMatchObject(refusal('PAYMENT_PAUSE_REQUIRED'));
@@ -197,11 +207,11 @@ it('serializes two managers switching and replays only the winning payload', asy
   await expect(manager.mutation(rollout.setPaused, { ...edit(2, 'resume'), paused: false }))
     .rejects.toMatchObject(refusal('PAYMENTS_ALREADY_SWITCHED'));
   const stored = await t.run(async ctx => ({
-    branches: await ctx.db.query('branches').take(2),
+    branches: await ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).take(2),
     audits: await ctx.db.query('commerceAdjustments').take(3),
     settings: await readCommerceSettings(ctx),
   }));
-  expect(stored.branches).toEqual([expect.objectContaining({ key: 'default' })]);
+  expect(stored.branches).toEqual([expect.objectContaining({ key: 'koh-samui', name: 'Koh Samui', state: 'active', issuer: expect.objectContaining({ branchCode: '00000' }) })]);
   expect(await t.run(ensureDefaultBranch)).toEqual(stored.branches[0]._id);
   expect(stored.audits).toHaveLength(2);
   expect(stored.audits[1]).toMatchObject({
@@ -234,7 +244,7 @@ it('blocks activation for open panels and attempts, then refuses the old panel a
     code: 'PAYMENTS_STILL_OPEN', panels: [expect.objectContaining(panel)],
     attempts: [expect.objectContaining({ attemptId, status: 'refused' })],
   } });
-  expect(await t.run(ctx => ctx.db.query('branches').take(1))).toEqual([]);
+  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).take(2))).toHaveLength(1);
   // A reopened panel continues the cashier's open registration; a new order's panel waits.
   await expect(cashier.mutation(rollout.openDirectPanel, { ...panel, panelKey: 'too-late' })).resolves.toMatchObject({
     tillId, previous: { tillId, panelKey: panel.panelKey, check: true },
@@ -402,7 +412,7 @@ it('keeps an unconfirmed direct instruction admitted after an older client close
 it('replays a backdated direct sale for its original cashier while receipt reads stay scoped', async () => {
   const { t, manager, cashier } = await fixture();
   const { orderId, pay: quote } = await payable(manager, 'Backdated');
-  await t.run(ctx => ctx.db.insert('staffGrants', {
+  await t.run(async ctx => ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx, 'payment-test-desk')],
     role: 'cashier', email: 'other@example.com', tokenIdentifier: 'other', createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
   }));
   const other = t.withIdentity({ email: 'other@example.com', tokenIdentifier: 'other', emailVerified: true });

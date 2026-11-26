@@ -1,24 +1,22 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
 
-function authenticatedTest(t: ReturnType<typeof convexTest>) {
-  vi.stubEnv("ADMIN_EMAILS", "admin@example.com");
-  return t.withIdentity({ emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
+async function authenticatedTest(t: ReturnType<typeof convexTest>) {
+  return await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin-token" });
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("bounded list queries", () => {
 
   it("paginates leads", async () => {
     const t = convexTest(schema, modules);
-    const admin = authenticatedTest(t);
+    const admin = await authenticatedTest(t);
 
     await t.mutation(api.messaging.leads.save, {
       email: "first@example.com",

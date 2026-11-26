@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -12,15 +13,14 @@ const modules = import.meta.glob('./**/*.ts');
 const email = 'admin@example.com';
 const NOW = Date.parse('2026-11-07T10:00:00Z');
 beforeEach(() => {
-  vi.stubEnv('ADMIN_EMAILS', email);
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 type Limits = { usageLimit?: number; discountBudget?: number; maxSaving?: number; minNights?: number; percent?: number };
 async function setup(limits: Limits = {}) {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email, tokenIdentifier: 'admin' });
   const propertyId = await t.run(ctx => ctx.db.insert('properties', {
     slug: 'mossbell', name: 'Mossbell Garden Suite', tagline: '', description: '', pricePerNight: 450000, currency: 'THB', maxGuests: 2,
     bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 1500, status: 'active'

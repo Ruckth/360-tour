@@ -1,19 +1,17 @@
 // @vitest-environment edge-runtime
 
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 
-afterEach(() => vi.unstubAllEnvs());
-
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const propertyId = await admin.mutation(api.catalog.adminProperties.create, { name: 'Villa' });
 	return { t, admin, propertyId };
 }

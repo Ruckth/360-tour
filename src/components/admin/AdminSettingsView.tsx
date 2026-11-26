@@ -34,12 +34,13 @@ import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
-import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, type AdminSettingsTab } from "./admin-routes";
+import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, isOwnerOnlySettingsTab, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
 import { StatusBadge } from "./StatusBadge";
 import { useStaffAccess } from "./staff-access";
 import { NumberField } from "./marketing/MarketingBits";
 import { TeamSettings } from "./TeamSettings";
+import { BranchesSettings } from "./branch/BranchesSettings";
 import { sourceLabel } from "./labels";
 import { personLabel } from "./person-label";
 import { statusMeta, TONES, type StatusMeta } from "./status-tones";
@@ -62,12 +63,17 @@ export function AdminSettingsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const access = useStaffAccess();
-  // Managers read settings; only owners change them or see Team. Others see them as before.
-  const readOnly = access.role === "manager" || access.role === "cashier";
-  // Team comes second, so on a phone it starts on screen instead of past the edge.
+  // Changing settings needs the settings capability; Team and Branches need manageTeam (owners).
+  const readOnly = !access.capabilities.settings;
+  // Team and Branches sit near the front so on a phone they start on screen instead of past the edge.
   const tabs = [...TABS]
-    .sort((a, b) => Number(b.id === "business") - Number(a.id === "business") || Number(b.id === "team") - Number(a.id === "team"))
-    .filter(({ id }) => id !== "team" || !readOnly);
+    .sort(
+      (a, b) =>
+        Number(b.id === "business") - Number(a.id === "business") ||
+        Number(b.id === "team") - Number(a.id === "team") ||
+        Number(b.id === "branches") - Number(a.id === "branches"),
+    )
+    .filter(({ id }) => !isOwnerOnlySettingsTab(id) || access.capabilities.manageTeam);
   // The tab lives in the URL (?tab=email) so the setup checklist can link straight to it.
   const requested = adminSettingsTab(searchParams.get("tab"));
   const tab: Tab = tabs.some(({ id }) => id === requested) ? requested : "business";
@@ -88,13 +94,12 @@ export function AdminSettingsView() {
 
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-5 px-4 py-4 sm:px-6 sm:py-6">
+    <div className="mx-auto grid w-full max-w-6xl grid-cols-[minmax(0,1fr)] gap-5 px-4 py-4 sm:px-6 sm:py-6">
       {readOnly && tab !== "checkoutRules" ? (
         <Alert data-testid="read-only-banner">
           <AlertDescription><strong className="font-semibold">Read only.</strong> Only owners can change settings.</AlertDescription>
         </Alert>
       ) : null}
-      <SetupChecklistCard />
       <SegmentedTabs
         id="settings"
         tabs={tabs.map(({ id, label }) => ({ value: id, label }))}
@@ -102,14 +107,17 @@ export function AdminSettingsView() {
         onValueChange={setTab}
         label="Settings sections"
       />
+      {tab === "business" ? <SetupChecklistCard /> : null}
 
-      <div {...tabPanelProps("settings", tab)} className="grid gap-4">
+      <div {...tabPanelProps("settings", tab)} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
         {tab === "channels" ? (
           <ChannelsPanel />
         ) : tab === "checkoutRules" ? (
           <Suspense fallback={<PanelSpinner label="Loading checkout rules" />}><CheckoutRulesPanel onDirtyChange={setDirty} /></Suspense>
         ) : tab === "team" ? (
           <TeamSettings onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
+        ) : tab === "branches" ? (
+          <BranchesSettings />
         ) : settings === undefined ? (
           <PanelSpinner label="Loading settings" />
         ) : tab === "business" ? (
@@ -122,6 +130,13 @@ export function AdminSettingsView() {
           <SettingsForm key={tab} section="email" settings={settings} readOnly={readOnly} onDirtyChange={setDirty} />
         )}
       </div>
+
+      {tab !== "business" ? (
+        <SetupChecklistCard
+          compact
+          className={cn((tab === "team" || tab === "branches") && "max-w-4xl")}
+        />
+      ) : null}
     </div>
   );
 }
@@ -394,7 +409,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
       onBlur: () => setTouched((current) => new Set(current).add(field.name)),
     };
     return (
-      <div key={field.name} className={cn("grid content-start gap-2", field.unit && "gap-3", field.wide && "sm:col-span-2")}>
+      <div key={field.name} className={cn("grid min-w-0 content-start gap-2", field.unit && "gap-3", field.wide && "sm:col-span-2")}>
         <span className="flex items-center gap-1.5">
           <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
             {field.label}
@@ -469,37 +484,37 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
 
   return (
     <Panel title={config.title} description={config.description} grouped>
-      <form onSubmit={submit} noValidate className={cn("grid gap-5", showSaveBar && "pb-20")}>
+      <form onSubmit={submit} noValidate className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5", showSaveBar && "pb-20")}>
       {settings.revision > revision ? <Alert variant="warning"><AlertDescription>Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></AlertDescription></Alert> : null}
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
-        <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
+        <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
           {section === "business" ? businessGroups.map((group) => (
-            <Card key={group.title} className="grid gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
-              <header>
+            <Card key={group.title} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
+              <header className="min-w-0">
                 <h3 className="text-balance text-[15px] font-semibold">{group.title}</h3>
                 <p className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground">{group.description}</p>
               </header>
-              <div className="grid min-w-0 content-start gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
+              <div className="grid min-w-0 content-start grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
-          )) : <Card className="grid gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
+          )) : <Card className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
           {section === "ai" ? <FastRepliesCard
             checked={values.fastReplies === "true"}
             disabled={state.saving || readOnly}
             onChange={(on) => { void toggleFastReplies(on); }}
           /> : null}
-          {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid gap-5 p-5 lg:p-6">
-            <header>
+          {section === "ai" ? <Card role="region" aria-label="Reply limits" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:p-6">
+            <header className="min-w-0">
               <div className="flex items-center gap-2">
                 <h3 className="text-[15px] font-semibold">Reply limits</h3>
                 <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Website messages count during staff replies; other channels pause counting while staff take over. Changes apply from the next message, and each limit value has its own hourly count. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
               </div>
               <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Default total: 2,500 guest messages/hour across five channels</p>
             </header>
-            <div className="grid gap-5 sm:grid-cols-2">{replyFields.map(renderField)}</div>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 sm:grid-cols-2">{replyFields.map(renderField)}</div>
           </Card> : null}
         </fieldset>
 
-      <Card className="px-5 py-3 lg:px-6 [&>details]:border-t-0">
+      <Card className="min-w-0 px-5 py-3 lg:px-6 [&>details]:border-t-0">
         <HistoryDisclosure hint={settings.updatedAt ? `Last saved ${formatTime(settings.updatedAt)}${settings.updatedByEmail ? ` by ${personLabel(settings.updatedByEmail)}` : ""}` : usingDefaults ? "Using built-in defaults" : undefined}>
           {dirty && !readOnly ? <p className="text-xs text-muted-foreground">Save or discard your changes first.</p> : null}
           <RecordHistoryPanel
@@ -536,7 +551,7 @@ function ChannelsPanel() {
 
   return (
     <Panel title="Channels" description="Messages coming in from LINE, WhatsApp, Messenger and Instagram." grouped>
-      <div className="grid gap-5">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5">
         <Panel title="Messaging channels" description="Webhook activity from the last events received. Failure counts cover the last 24 hours and 7 days.">
           {config.state === "error" ? (
             <Alert variant="warning" className="mb-4 flex flex-wrap items-center gap-3 leading-relaxed">
@@ -544,7 +559,7 @@ function ChannelsPanel() {
                 <p>Couldn&apos;t check channel setup. Recent message activity is still shown.</p>
                 <details className="mt-1 text-xs">
                   <summary className="min-h-11 cursor-pointer content-center rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Technical details</summary>
-                  <p className="break-words py-2">{config.message}</p>
+                  <p className="break-words py-2 [overflow-wrap:anywhere]">{config.message}</p>
                 </details>
               </div>
               <Button type="button" size="sm" variant="outline" onClick={config.retry}>
@@ -556,20 +571,20 @@ function ChannelsPanel() {
           {health === undefined ? (
             <PanelSpinner label="Loading channel health" />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="min-w-0 divide-y divide-border">
               {health.channels.map((channel) => {
                 const env = config.state === "ready" ? config.channels[channel.channel] : null;
                 const missing = env ? Object.entries(env.vars).filter(([, set]) => !set).map(([name]) => name) : [];
                 return (
-                  <li key={channel.channel} className="py-4 first:pt-0 last:pb-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="flex-1 text-[15px] font-medium text-foreground">{sourceLabel(channel.channel)}</h3>
+                  <li key={channel.channel} className="min-w-0 py-4 first:pt-0 last:pb-0">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 flex-1 break-words text-[15px] font-medium text-foreground">{sourceLabel(channel.channel)}</h3>
                       <StatusBadge {...channelHealthMeta(config, env?.configured, channel, now)} />
                     </div>
                     {missing.length ? (
-                      <p className="mt-1 text-xs text-muted-foreground">Missing: {missing.map(channelSetupLabel).join(", ")}</p>
+                      <p className="mt-1 break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">Missing: {missing.map(channelSetupLabel).join(", ")}</p>
                     ) : null}
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
+                    <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
                       <Stat label="Last message in" value={channel.lastEventAt ? formatTime(channel.lastEventAt) : "Never"} />
                       <Stat label="Last reply" value={channel.lastRepliedAt ? formatTime(channel.lastRepliedAt) : "Never"} />
                       <Stat label="Failed replies · 24 h" value={String(channel.failed24h)} alert={channel.failed24h > 0} />
@@ -580,7 +595,7 @@ function ChannelsPanel() {
                       />
                     </dl>
                     {channel.latestError ? (
-                      <p className="mt-3 break-words rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+                      <p className="mt-3 break-words rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
                         <span className="font-semibold text-foreground">Latest error ({formatTime(channel.latestError.at)}):</span>{" "}
                         {channel.latestError.message}
                       </p>
@@ -598,10 +613,10 @@ function ChannelsPanel() {
           {server === undefined ? (
             <PanelSpinner label="Loading backend services" />
           ) : (
-            <ul className="divide-y divide-border">
+            <ul className="min-w-0 divide-y divide-border">
               {Object.entries(server).map(([name, set]) => (
-                <li key={name} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <span className="text-sm">{channelSetupLabel(name)}</span>
+                <li key={name} className="flex min-w-0 items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <span className="min-w-0 break-words text-sm">{channelSetupLabel(name)}</span>
                   <StatusBadge tone={set ? "success" : "muted"} label={set ? "Set" : "Not set"} />
                 </li>
               ))}
@@ -619,24 +634,24 @@ function ChannelsPanel() {
 function Panel({ title, description, children, grouped = false }: { title: string; description: string; children: ReactNode; grouped?: boolean }) {
   const Surface = grouped ? "section" : Card;
   return (
-    <Surface role="region" className={cn(grouped && "grid gap-5")} aria-label={title}>
-      <header className={cn(grouped ? "px-1 pt-1" : "border-b border-border px-5 py-4")}>
+    <Surface role="region" className={cn("min-w-0", grouped && "grid grid-cols-[minmax(0,1fr)] gap-5")} aria-label={title}>
+      <header className={cn("min-w-0", grouped ? "px-1 pt-1" : "border-b border-border px-5 py-4")}>
         <h2 className={cn("flex items-center gap-2 text-foreground", grouped ? "font-serif text-3xl" : "text-base font-semibold")}>
           {title}
           {!grouped ? <InfoTip label={`About ${title.toLowerCase()}`}>{description}</InfoTip> : null}
         </h2>
         {grouped ? <p className="mt-2 text-[13px] leading-5 text-muted-foreground">{description}</p> : null}
       </header>
-      <div className={cn(!grouped && "p-5")}>{children}</div>
+      <div className={cn("min-w-0", !grouped && "p-5")}>{children}</div>
     </Surface>
   );
 }
 
 function Stat({ label, value, alert, warning }: { label: string; value: string; alert?: boolean; warning?: boolean }) {
   return (
-    <div>
+    <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("font-medium", alert ? "text-destructive" : warning ? TONES.warning.text : "text-foreground")}>{value}</dd>
+      <dd className={cn("break-words font-medium", alert ? "text-destructive" : warning ? TONES.warning.text : "text-foreground")}>{value}</dd>
     </div>
   );
 }

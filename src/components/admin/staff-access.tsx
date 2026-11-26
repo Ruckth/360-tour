@@ -1,5 +1,6 @@
 "use client";
 
+import type { MarketingRole } from "convex/shared/marketingAccess";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { ADMIN_NAV } from "./admin-routes";
@@ -13,8 +14,10 @@ import { adminNavFor, type StaffAccessView } from "./admin-access";
 const OWNER_VIEW: StaffAccessView = {
   email: null,
   role: "owner",
+  companyScope: true,
+  branches: [],
   pendingInvitation: null,
-  marketingRole: null,
+  marketingInvitation: null, marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: true, settings: true, bookings: true, services: true,
@@ -40,3 +43,5 @@ export function useAdminNav() {
 
 /** A role's name as staff read it. */
 export const ROLE_LABELS = { owner: "Owner", manager: "Manager", cashier: "Cashier" } as const;
+
+export const MARKETING_ROLE_LABELS: Record<MarketingRole, string> = { manager: "Lead", marketer: "Editor", finance: "Finance", viewer: "Viewer" };

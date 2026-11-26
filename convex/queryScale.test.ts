@@ -1,3 +1,4 @@
+import { asTestOwner } from './testing/staff.test-support';
 import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { listSessions } from './messaging/adminChat';
 import { insertFixture } from './testing/completeFixture.test-support';
@@ -39,10 +40,9 @@ const villa = {
 };
 
 async function setup() {
-	vi.stubEnv('ADMIN_EMAILS', adminEmail);
 	const t = convexTest(schema, modules);
 	const propertyId = await t.run((ctx) => ctx.db.insert('properties', { ...villa, slug: 'villa', name: 'Villa' }));
-	const admin = t.withIdentity({ emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: adminEmail, tokenIdentifier: 'admin' });
 	return { t, admin, propertyId };
 }
 
@@ -86,7 +86,6 @@ async function applyFeed(t: Tester, sourceId: Id<'icalSources'>, dates: string[]
 const guest = { guestName: 'New Guest', guestEmail: 'new@example.com', guestPhone: '0811111111', guests: 2 };
 
 afterEach(() => {
-	vi.unstubAllEnvs();
 	vi.useRealTimers();
 });
 
@@ -160,7 +159,7 @@ describe('booking overlap reads every relevant booking', () => {
 });
 
 describe('admin calendar', () => {
-	it('scopes a selected villa to five date ranges while preserving its calendar events', async () => {
+	it('scopes a selected villa to five date ranges plus the owner lookup while preserving its calendar events', async () => {
 		const { t, admin, propertyId } = await setup();
 		const args = { from: '2030-03-01', to: '2030-03-08' };
 		await t.run(async ctx => {
@@ -189,8 +188,8 @@ describe('admin calendar', () => {
 
 		const all = await measure(args);
 		const selected = await measure({ ...args, propertyId });
-		expect(all.tables).toHaveLength(101);
-		expect(selected.tables).toEqual(['bookings', 'bookings', 'dateBlocks', 'dateBlocks', 'availability']);
+		expect(all.tables).toHaveLength(1 + 101);
+		expect(selected.tables).toEqual(['staffGrants', 'bookings', 'bookings', 'dateBlocks', 'dateBlocks', 'availability']);
 		expect(selected.ids.filter(id => id === propertyId)).toHaveLength(1);
 		expect(selected.data).toEqual({
 			properties: all.data.properties.filter(row => row._id === propertyId),
@@ -500,21 +499,21 @@ describe('inbox read amplification', () => {
       }
     });
     const before = await measure();
-    expect(before.reads).toBe(41);
+    expect(before.reads).toBe(1 + 41);
     expect(await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: true })).toEqual({ checked: 10, changed: 10, complete: false });
     expect((await measure()).reads).toBe(before.reads);
     await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: false });
     expect(await t.mutation(internal.messaging.projectionMaintenance.initializeInbox, { dryRun: true })).toEqual({ checked: 10, changed: 0, complete: true });
     const after = await measure();
     expect(after.rows).toBe(10);
-    expect(after.reads).toBe(20);
+    expect(after.reads).toBe(1 + 20);
     expect(after.sessions.map((row: Doc<'conversations'>) => row._id)).toEqual(before.sessions.map((row: Doc<'conversations'>) => row._id));
-    expect(after.reads).toBeLessThanOrEqual(after.rows * 2);
+    expect(after.reads).toBeLessThanOrEqual(1 + after.rows * 2);
     // The sparse index skips unrelated processing rows and preserves the same ten results.
     await t.run(async ctx => {
       for (let i = 0; i < 60; i++) await ctx.db.insert('conversations', { channel: 'web', createdAt: i + 100, messageCount: 0, adminSortAt: i + 100, lastActivityAt: i + 100, inboxProjectionVersion: 1, inboxState: 'processing', lastMessagePreview: null, lastDeliveryStatus: null });
     });
-    expect((await measure()).reads).toBe(20);
+    expect((await measure()).reads).toBe(1 + 20);
   });
 });
 

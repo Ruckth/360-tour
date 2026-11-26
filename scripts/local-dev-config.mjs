@@ -4,6 +4,14 @@ import { disabledServices } from './local-integration-config.mjs';
 
 export const clerkFields = ['NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', 'CLERK_SECRET_KEY', 'CLERK_JWT_ISSUER_DOMAIN'];
 const fields = [...clerkFields, 'LOCAL_DEV_OWNER_EMAILS', 'LOCAL_DEV_PORT'];
+
+/** Parse comma-separated LOCAL_DEV_OWNER_EMAILS, ignoring blank entries (such as a trailing comma).
+ * @param {string | undefined} raw
+ */
+export function parseDevOwnerEmails(raw) {
+  return (raw ?? '').split(',').map(email => email.trim()).filter(Boolean);
+}
+
 /** Read only this explicit, private configuration, never the project's ordinary dotenv files.
  * @param {string} file
  */
@@ -24,7 +32,8 @@ export async function readDevConfig(file) {
   try { issuer = new URL(config.CLERK_JWT_ISSUER_DOMAIN); }
   catch { throw new Error('Set CLERK_JWT_ISSUER_DOMAIN to the matching real HTTPS Clerk test issuer'); }
   if (issuer.protocol !== 'https:' || issuer.host !== host || issuer.pathname !== '/' || issuer.search || issuer.hash) throw new Error('Clerk issuer must match the publishable test key');
-  if (!config.LOCAL_DEV_OWNER_EMAILS || !config.LOCAL_DEV_OWNER_EMAILS.split(',').every(email => /^[^\s,@]+@[^\s,@]+\.[^\s,@]+$/.test(email.trim()))) throw new Error('Set LOCAL_DEV_OWNER_EMAILS explicitly to your local Clerk test owners');
+  const ownerEmails = parseDevOwnerEmails(config.LOCAL_DEV_OWNER_EMAILS);
+  if (!ownerEmails.length || !ownerEmails.every(email => /^[^\s,@]+@[^\s,@]+\.[^\s,@]+$/.test(email))) throw new Error('Set LOCAL_DEV_OWNER_EMAILS explicitly to your local Clerk test owners');
   if (config.LOCAL_DEV_PORT && !/^[1-9]\d{3,4}$/.test(config.LOCAL_DEV_PORT)) throw new Error('LOCAL_DEV_PORT must be a port between 1024 and 65535');
   const port = Number(config.LOCAL_DEV_PORT || 3000);
   if (port < 1024 || port > 65535) throw new Error('LOCAL_DEV_PORT must be a port between 1024 and 65535');

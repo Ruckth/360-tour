@@ -2,6 +2,7 @@
 // Regressions for the provider/POS review findings on PR #34 (Sol C1, Kiro C1–C4). Every case runs
 // the production mutations; only pre-itemisation (legacy) money is seeded directly, because no
 // current code path can write it.
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
@@ -9,12 +10,12 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 1, 5);
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); vi.stubEnv('ADMIN_EMAILS', 'admin@example.com'); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup() {
   const t = convexTest(schema, modules);
-  const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
   await t.run(ctx => ctx.db.insert('properties', { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 40, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' }));
   // Two nights at 100: total 200.
   const { bookingId, accessToken } = await t.mutation(api.bookings.bookings.create, { propertySlug: 'villa', guestName: 'Guest', guestEmail: 'guest@example.com', guestPhone: '+66123456789', checkIn: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10), checkOut: new Date(Date.now() + 32 * 86_400_000).toISOString().slice(0, 10), guests: 2 });

@@ -1,3 +1,4 @@
+import { chooseBranchIfPrompted } from "../../tests/support/choose-branch.mjs";
 import { chromium } from "@playwright/test";
 import { setTimeout } from "node:timers/promises";
 
@@ -178,6 +179,7 @@ export async function signInOnce(browser, { origin, email, propertyName, env = p
     await clerk.signIn({ page, emailAddress: email });
     await page.goto(new URL("/admin/properties", target).href);
     const link = page.locator('a[href^="/admin/properties/"]').filter({ hasText: propertyName }).first();
+    await chooseBranchIfPrompted(page, link);
     await link.waitFor({ state: "attached" });
     const href = await link.getAttribute("href");
     const propertyId = href?.match(/^\/admin\/properties\/([\w-]+)$/)?.[1];

@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { seedTestBranch, asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -29,11 +30,9 @@ const terms: SaleSnapshot['terms'] = {
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(soldAt);
-	vi.stubEnv('ADMIN_EMAILS', email);
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 async function order(ctx: MutationCtx, total: number, fields: Partial<Pick<Doc<'orders'>, 'vatVersion' | 'returnedTotal' | 'affiliateSnapshot' | 'amendedTenders'>> = {}) {
@@ -62,7 +61,7 @@ async function payment(ctx: MutationCtx, orderId: Id<'orders'>, tender: { method
 }
 
 async function voucher(ctx: MutationCtx, source: Doc<'vouchers'>['source'], amount: number) {
-	const branchId = await ctx.db.insert('branches', { key: 'default' });
+	const branchId = await seedTestBranch(ctx);
 	return ctx.db.insert('vouchers', {
 		source, faceValue: amount, paidBalance: amount, goodwillBalance: 0,
 		issuedExpiresAt: soldAt + 365 * 86_400_000, effectiveExpiresAt: soldAt + 365 * 86_400_000,
@@ -84,16 +83,16 @@ async function affiliate(ctx: MutationCtx): Promise<NonNullable<Doc<'orders'>['a
 	return { capturedAt: soldAt, affiliateId, flags: [], candidates: [{ affiliateId, name: 'Partner', slug: 'partner', origin: 'link', eligible: true }] };
 }
 
-function setup() {
+async function setup() {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ email, emailVerified: true, tokenIdentifier: 'reporting' });
+	const admin = await asTestOwner(t, { email, emailVerified: true, tokenIdentifier: 'reporting' });
 	const report = (from: string, to = from, basis: 'cash' | 'cohort' = 'cash') =>
 		admin.query(api.marketing.report.getReport, { from, to, basis });
 	return { t, report };
 }
 
 it('counts a voucher sale once and shows the voucher-only sale across the Bangkok day boundary', async () => {
-	const { t, report } = setup();
+	const { t, report } = await setup();
 	const sold = await t.run(async ctx => {
 		const affiliateSnapshot = await affiliate(ctx);
 		const orderId = await order(ctx, 100_000, { vatVersion: 2, affiliateSnapshot });
@@ -132,7 +131,7 @@ it('counts a voucher sale once and shows the voucher-only sale across the Bangko
 });
 
 it('reports an imported voucher spend on the Bangkok ledger day', async () => {
-	const { t, report } = setup();
+	const { t, report } = await setup();
 	const voucherId = await t.run(async ctx => {
 		const orderId = await order(ctx, 50_000);
 		const lineId = await line(ctx, orderId, 'voucher', 50_000);
@@ -147,7 +146,7 @@ it('reports an imported voucher spend on the Bangkok ledger day', async () => {
 });
 
 it('projects mixed commerce rows, reconciles paid and goodwill voucher value, and uses the payout day', async () => {
-	const { t, report } = setup();
+	const { t, report } = await setup();
 	const seeded = await t.run(async ctx => {
 		const affiliateSnapshot = await affiliate(ctx);
 		const issuing = await order(ctx, 690_000, { vatVersion: 2, affiliateSnapshot });
@@ -257,7 +256,7 @@ it('projects mixed commerce rows, reconciles paid and goodwill voucher value, an
 });
 
 it('reports a pre-commerce refund unchanged and reads zero of 900 unrelated old refunds', async () => {
-	const { t } = setup();
+	const { t } = await setup();
 	const refundFields = { currency: 'THB', method: 'cash' as const, reason: 'Return', createdBy: email, createdByEmail: email };
 	const orderId = await t.run(async ctx => {
 		const orderId = await order(ctx, 90_000);
@@ -294,7 +293,7 @@ it('reports a pre-commerce refund unchanged and reads zero of 900 unrelated old 
 });
 
 it('reports the frozen VAT on a prepaid session taxed at use without adding cash', async () => {
-	const { t, report } = setup();
+	const { t, report } = await setup();
 	const orderId = await t.run(async ctx => {
 		const orderId = await order(ctx, 0, { vatVersion: 2 });
 		await line(ctx, orderId, 'appointment', 0, {

@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { posix, resolve } from 'node:path';
 
-export const SCHEMA_DOMAINS = ['auth', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings', 'commerce'];
+export const SCHEMA_DOMAINS = ['auth', 'branches', 'catalog', 'bookings', 'services', 'pos', 'marketing', 'messaging', 'concierge', 'settings', 'commerce'];
 export const PROFITABILITY_TABLE_NAMES = ['serviceCostSchedules','serviceFinanceMonths','serviceProfitViews','serviceProfitViewChunks'];
 export const COMMERCE_TABLE_NAMES = [
   'branches', 'productCategories', 'products', 'productVariants', 'stockLevels', 'stockMovements',

@@ -688,7 +688,18 @@ async function rehearse() {
   secrets.push(webhookSecret);
   /** @param {any} b */
   async function configure(b) {
-    for (const [name, value] of [['CLERK_JWT_ISSUER_DOMAIN', issuer], ['ADMIN_EMAILS', people.owner], ['STRIPE_WEBHOOK_SECRET', webhookSecret]]) await setEnv(b, name, value);
+    for (const [name, value] of [['CLERK_JWT_ISSUER_DOMAIN', issuer], ['STRIPE_WEBHOOK_SECRET', webhookSecret]]) await setEnv(b, name, value);
+  }
+  // Archived rehearsal revisions keep their original access contract. Configure only the isolated copy.
+  /** @param {any} b @param {string} source */
+  async function configureOwner(b, source) {
+    if (fs.existsSync(path.join(source, 'convex/auth/owners.ts'))) {
+      await setEnv(b, 'ADMIN_EMAILS', null);
+      await client(b, 'admin').mutation(ref('auth/owners:grantOwner'), { email: people.owner });
+      await client(b, 'owner').mutation(ref('auth/staffAccess:claimInvite'), {});
+    } else {
+      await setEnv(b, 'ADMIN_EMAILS', people.owner);
+    }
   }
   /** @param {any} b */
   async function scheduled(b) {
@@ -785,9 +796,19 @@ async function rehearse() {
     const forged = await fetch(`${b.siteUrl}/stripe/webhook`, { method: 'POST', headers: { 'stripe-signature': `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}` }, body: JSON.stringify(event) });
     const paid = await client(b).query(ref('bookings/bookings:getById'), { id: booking.bookingId, accessToken: booking.accessToken });
     if (first.status !== 200 || replay.status !== 200 || forged.status !== 400 || paid?.paymentStatus !== 'paid') throw new Error(`payment sandbox: ${first.status}/${replay.status}/${forged.status}/${paid?.paymentStatus}/${paid?.status}`);
-    // Roles: owner via ADMIN_EMAILS, cashier through the real invite/claim workflow, non-staff denied.
+    // Roles: owner, cashier through the real invite/claim workflow, and a denied non-staff caller.
     const access = async (/** @type {'owner' | 'cashier' | 'nonstaff'} */ who) => (await client(b, who).query(ref('auth/staffAccess:myAccess'), {})).role ?? null;
-    await client(b, 'owner').mutation(ref('auth/staffAccess:setGrant'), { email: people.cashier, role: 'cashier' });
+    const { branches } = await client(b, 'owner').query(ref('auth/staffAccess:myAccess'), {});
+    if (branches && !branches.length) throw new Error('No branch available for the rehearsal cashier');
+    if (await access('cashier') !== 'cashier') {
+      const team = await client(b, 'owner').query(ref('auth/staffAccess:listPeople'), {});
+      const person = team.find((/** @type {{email: string}} */ row) => row.email === people.cashier);
+      if (!person?.staffGrant) {
+        await client(b, 'owner').mutation(ref('auth/staffAccess:setGrant'), {
+          email: people.cashier, role: 'cashier', ...(branches ? { branchIds: [branches[0].id], expectedGrant: null } : {}),
+        });
+      }
+    }
     await client(b, 'cashier').mutation(ref('auth/staffAccess:claimInvite'), {});
     const denied = async (/** @type {'owner' | 'cashier' | 'nonstaff'} */ who) => { try { await client(b, who).query(ref('auth/staffAccess:listPeople'), {}); return false; } catch { return true; } };
     const roles = { owner: await access('owner'), cashier: await access('cashier'), nonstaff: await access('nonstaff'), anonymous: (await client(b).query(ref('auth/staffAccess:myAccess'), {})).role ?? null,
@@ -899,6 +920,7 @@ async function rehearse() {
     await step('OLD live state: deploy OLD, seed, smoke and upload storage', async () => {
       await deploy(P, src.old);
       await convex(P, src.old, ['run', 'maintenance/seed:seedAll', '{"scenario":"demo-resort"}']).then(r => fs.writeFileSync(path.join(work, 'old-seed.json'), r.output, { mode: 0o600 }));
+      await configureOwner(P, src.old);
       await uploadProbe(P, 1); await uploadProbe(P, 2);
       const live = await smoke(P, 'OLD live');
       const crons = await cronJobs(P);
@@ -989,7 +1011,7 @@ async function rehearse() {
       if (wrong.length || seeded.dangling.length || missingAssets.length) throw new Error(`seed mismatch ${JSON.stringify({ wrong, dangling: seeded.dangling, missingAssets })}`);
       return { keyCounts: expected, publicAssetsChecked: assets.length, dangling: 0 };
     });
-    await step('lift internal pause (ingress still gated) for NEW acceptance', async () => { await setEnv(P, 'ARCH_RESET_PAUSED', null); storage.length = 0; await uploadProbe(P, 3); return { providerFetch: 'blackholed', publicFrontend: 'not exposed' }; });
+    await step('lift internal pause (ingress still gated) for NEW acceptance', async () => { await setEnv(P, 'ARCH_RESET_PAUSED', null); await configureOwner(P, src.new); storage.length = 0; await uploadProbe(P, 3); return { providerFetch: 'blackholed', publicFrontend: 'not exposed' }; });
     if (args.includes('--frontends')) {
       await step('NEW default frontend (Start) SSR probe against accepted backend', () => frontendProbe('new'));
       // Frontend-only rollback while NEW still ships the Next entry: its explicit Next rebuild against the accepted
@@ -1026,6 +1048,7 @@ async function rehearse() {
     await step('rollback: deploy OLD (crons restored) and lift internal pause', async () => {
       await deploy(P, src.old);
       await setEnv(P, 'ARCH_RESET_PAUSED', null);
+      await configureOwner(P, src.old);
       const crons = await cronJobs(P);
       if (!sameCrons(crons, manifest.old.crons)) throw new Error(`restored OLD registered crons ${JSON.stringify(crons)}`);
       return { cronJobs: crons.length };

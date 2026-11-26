@@ -170,7 +170,8 @@ async function signIn(page: Page, target: Target, role: Role) {
   await clerk.signIn({ page, emailAddress: target.emails[role] });
   const client = await refreshAuthorization(page, new ConvexHttpClient(target.backend, { logger: false }));
   let access = await client.query(api.auth.staffAccess.myAccess, {});
-  if (role === "cashier" && process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1" && access.pendingInvitation?.role === "cashier") {
+  if (access.pendingInvitation?.role === "owner" && role === "owner" ||
+      access.pendingInvitation?.role === "cashier" && role === "cashier" && process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1") {
     await client.mutation(api.auth.staffAccess.claimInvite, {});
     access = await client.query(api.auth.staffAccess.myAccess, {});
   }
@@ -188,10 +189,14 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
   await assert.rejects(anonymous.query(api.pos.catalog.stableCatalog, {}));
 
   const provisionCashier = process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1";
+  let provisionedGrant: Id<"staffGrants"> | null = null;
   if (provisionCashier) {
     const grants = await owner.query(api.auth.staffAccess.listPeople, {});
     assert(!grants.some(({ email }) => email === target.emails.cashier));
-    await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: "cashier" });
+    const { branches } = await owner.query(api.auth.staffAccess.myAccess, {});
+    const branch = branches.find(({ key }) => key === "koh-samui");
+    if (!branch) throw new Error("Koh Samui branch was not seeded");
+    provisionedGrant = await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: target.emails.cashier, role: "cashier", branchIds: [branch.id] });
   }
   try {
     for (const role of ["cashier", "nonstaff"] as const) {
@@ -208,7 +213,10 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
         } else {
           await assert.rejects(client.query(api.pos.catalog.stableCatalog, {}));
           await page.goto("/admin/checkout");
-          await expect(page.getByRole("heading", { name: "This view could not load" })).toBeVisible();
+          await expect(page.getByRole("heading", { name: "No access", exact: true })).toBeVisible();
+          await expect(page.getByRole("button", { name: "Sign out", exact: true })).toBeVisible();
+          await expect(page.getByRole("complementary", { name: "Order", exact: true })).toHaveCount(0);
+          await expect(page.getByRole("heading", { name: "Checkout", exact: true })).toHaveCount(0);
           await clerk.signOut({ page });
         }
         await page.waitForFunction(() => Boolean(window.Clerk?.loaded) && !window.Clerk?.session);
@@ -220,9 +228,14 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
       }
     }
   } finally {
-    if (provisionCashier) {
+    if (provisionedGrant) {
       await refreshAuthorization(ownerPage, owner);
-      await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: null });
+      const people = await owner.query(api.auth.staffAccess.listPeople, {});
+      const grant = people.find(({ email }) => email === target.emails.cashier)?.staffGrant;
+      assert(grant && grant.id === provisionedGrant && grant.role === "cashier" && grant.revision === (grant.claimed ? 2 : 1), "QA cashier grant changed during this run");
+      await owner.mutation(api.auth.staffAccess.setGrant, {
+        expectedGrant: { id: grant.id, revision: grant.revision }, email: target.emails.cashier, role: null, branchIds: [],
+      });
       const grants = await owner.query(api.auth.staffAccess.listPeople, {});
       assert(!grants.some(({ email }) => email === target.emails.cashier));
     }

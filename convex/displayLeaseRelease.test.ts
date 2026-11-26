@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -11,13 +12,12 @@ const leaseId = 'lease-release-review';
 beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-11-01T03:00:00Z'));
-	vi.stubEnv('ADMIN_EMAILS', 'admin@example.com');
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 it.each(['release', 'new-sale'] as const)('a delayed renewal cannot resurrect an order after %s', async (exit) => {
 	const t = convexTest(schema, modules);
-	const admin = t.withIdentity({ emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
+	const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });
 	const { secret } = await admin.mutation(api.pos.displays.createPairLink, { clientId });
 	const claim = await t.mutation(api.pos.displays.claimLink, { secret });
 	if (!claim.ok) throw new Error('Pairing failed');

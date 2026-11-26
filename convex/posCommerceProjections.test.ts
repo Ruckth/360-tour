@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
@@ -20,17 +21,15 @@ const rawCode = 'GOLD-X17L-V54Z';
 const codeMask = '•••• V54Z';
 
 beforeEach(() => {
-  vi.stubEnv('ADMIN_EMAILS', 'owner@example.com');
   vi.spyOn(Date, 'now').mockReturnValue(now);
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
-function setup() {
+async function setup() {
   const t = convexTest(schema, modules);
-  const owner = t.withIdentity({ emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
+  const owner = await asTestOwner(t, { emailVerified: true, email: 'owner@example.com', tokenIdentifier: 'owner' });
   const view = async (orderId: Id<'orders'>) => (await owner.query(api.pos.orders.getOrder, { orderId }))!;
   const display = async (orderId: Id<'orders'>) => {
     const token = 'paired-test-device-with-a-long-token-0001';
@@ -76,7 +75,7 @@ async function retail(ctx: MutationCtx) {
     categoryId, name: 'Robe', status: 'active', vatProfile: 'standard', options: [], minPrice: 129000, maxPrice: 129000, variantCount: 1, sort: 0, revision: 0,
   });
   const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'Robe · Gold', price: 129000, status: 'active', revision: 0 });
-  const branchId = await ctx.db.insert('branches', { key: 'default' });
+  const branchId = await seedTestBranch(ctx);
   return { branchId, productId, variantId };
 }
 
@@ -92,7 +91,7 @@ async function issueVoucher(ctx: MutationCtx, source: Doc<'vouchers'>['source'],
 }
 
 it('preserves pre-commerce receipt and display VAT with absent or unrecognized VAT versions', async () => {
-  const { t, view, display } = setup();
+  const { t, view, display } = await setup();
   const orderId = await t.run(async ctx => {
     const orderId = await order(ctx, 60000);
     await line(ctx, orderId, 'service', 60000, { priceOverride: { price: 60000, note: 'Private note', by: 'owner', at: now } });
@@ -115,7 +114,7 @@ it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and
   expect(saleSwitches).toEqual({ products: 'off', vouchers: 'off', sessionPackages: 'off', mixedPackages: 'off' });
   expect(paymentsMode).toBe('direct');
   expect(cutover).toBeUndefined();
-  const { t, view, display } = setup();
+  const { t, view, display } = await setup();
   const { orderId, draftId, voucherExpiry, grantExpiry, handoverId } = await t.run(async ctx => {
     const { branchId, productId, variantId } = await retail(ctx);
     const orderId = await order(ctx, 690000, { vatVersion: 2, returnedTotal: 113251 });
@@ -202,9 +201,9 @@ it('reads Gold Wellness at the D1 split and ฿418.69 VAT, with issued terms and
 });
 
 it('keeps corrected external money, voucher paid value and goodwill separate through receipt and display', async () => {
-  const { t, view, display } = setup();
+  const { t, view, display } = await setup();
   const { orderId, voucherId, attemptId, issueOrder } = await t.run(async ctx => {
-    const branchId = await ctx.db.insert('branches', { key: 'default' });
+    const branchId = await seedTestBranch(ctx);
     const issueOrder = await order(ctx, 50000, { vatVersion: 2, orderNumber: 2 });
     const issueLine = await line(ctx, issueOrder, 'voucher', 50000, { detail: rawCode });
     const { voucherId } = await issueVoucher(ctx, { kind: 'sale', orderId: issueOrder, lineId: issueLine }, branchId);
@@ -262,7 +261,7 @@ it('keeps corrected external money, voucher paid value and goodwill separate thr
 });
 
 it('uses frozen balances with zero refund ledger reads on a receipt with 900 earlier refunds', async () => {
-  const { t, owner, view } = setup();
+  const { t, owner, view } = await setup();
   const { orderId, lineId } = await t.run(async ctx => {
     const { variantId } = await retail(ctx);
     const orderId = await order(ctx, 60000, { vatVersion: 2, returnedTotal: 900 });
@@ -292,7 +291,7 @@ it('uses frozen balances with zero refund ledger reads on a receipt with 900 ear
 });
 
 it('projects an open return with custody and gives link and correction previews typed refusals', async () => {
-  const { t, owner, view } = setup();
+  const { t, owner, view } = await setup();
   const { orderId, lineId, returnId, oldLineId, voucherId } = await t.run(async ctx => {
     const { branchId, variantId } = await retail(ctx);
     const propertyId = await ctx.db.insert('properties', {
@@ -330,7 +329,7 @@ it('projects an open return with custody and gives link and correction previews 
   expect(receipt.commerce?.handovers).toMatchObject([{ lineId, kind: 'room_bill', withGuest: 1, unpaid: 0, paid: 1, pendingReturnId: returnId }]);
   const email = 'cashier@example.com';
   const cashier = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'cashier' });
-  await owner.mutation(api.auth.staffAccess.setGrant, { email, role: 'cashier' });
+  await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   await cashier.mutation(api.auth.staffAccess.claimInvite, {});
   const link = (id: Id<'orderLines'>) => owner.query(api.pos.sourceReads.linkCandidates, { orderId, lineId: id });
   const correct = () => cashier.mutation(api.pos.staffApprovals.create, {
@@ -365,10 +364,10 @@ it('projects an open return with custody and gives link and correction previews 
 });
 
 it('refuses direct and approved paid-sale voids on voucher receipts and preserves an authorized return', async () => {
-  const { t, owner, view } = setup();
+  const { t, owner, view } = await setup();
   const email = 'cashier@example.com';
   const cashier = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'cashier' });
-  await owner.mutation(api.auth.staffAccess.setGrant, { email, role: 'cashier' });
+  await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   await cashier.mutation(api.auth.staffAccess.claimInvite, {});
   const { orderId, lineId, voucherId } = await t.run(async ctx => {
     const { branchId } = await retail(ctx);
@@ -409,7 +408,7 @@ it('refuses direct and approved paid-sale voids on voucher receipts and preserve
 });
 
 it('projects existing goodwill credit even without a voucher tender or code mask and reserves newVoucher for replacements', async () => {
-  const { t, view } = setup();
+  const { t, view } = await setup();
   const { orderId, returnId, voucherId, expiredVoucherId } = await t.run(async ctx => {
     const { branchId } = await retail(ctx);
     const issueOrder = await order(ctx, 50000);
@@ -449,7 +448,7 @@ it('projects existing goodwill credit even without a voucher tender or code mask
 });
 
 it('blocks receipt correction, link candidates and direct amendments on a mixed product and service receipt', async () => {
-  const { t, owner, view } = setup();
+  const { t, owner, view } = await setup();
   const { orderId, lineId } = await t.run(async ctx => {
     const orderId = await order(ctx, 80_000, { itemCount: 2 });
     const lineId = await line(ctx, orderId, 'service', 60_000);
