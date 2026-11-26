@@ -214,7 +214,10 @@ function HotelBookings() {
       setStayDialog(action);
       return;
     }
-    const { booking } = action;
+    openStaySpa(action.booking, villaName(action.booking.propertyId));
+  }
+
+  function openStaySpa(booking: AdminBooking, name: string) {
     // Today while the guest is staying, else the first day of the stay.
     const resortToday = serverTodayIso();
     const date = booking.checkIn > resortToday ? booking.checkIn : resortToday;
@@ -222,7 +225,7 @@ function HotelBookings() {
       date,
       stay: {
         bookingId: booking._id, guestName: booking.guestName, guestPhone: booking.guestPhone,
-        guestEmail: booking.guestEmail, villaName: villaName(booking.propertyId),
+        guestEmail: booking.guestEmail, villaName: name,
       },
     });
   }
@@ -428,7 +431,16 @@ function HotelBookings() {
         </div>
       </Card>
 
-      <BookingSheet bookingId={selected?.id ?? null} initialAction={selected?.initialAction} properties={properties ?? []} onClose={() => setSelected(null)} />
+      <BookingSheet
+        bookingId={selected?.id ?? null}
+        initialAction={selected?.initialAction}
+        properties={properties ?? []}
+        onClose={() => setSelected(null)}
+        onBookSpa={(booking) => {
+          setSelected(null);
+          openStaySpa(booking, booking.propertyName);
+        }}
+      />
       {quick ? (
         <BookingQuickActions
           key={quick.booking._id}

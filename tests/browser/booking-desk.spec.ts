@@ -68,6 +68,35 @@ test("replaces a pending villa calendar response when the filter changes", async
   await expect(page.getByRole("region", { name: "Today" }).getByRole("button", { name: /Arriving/ })).toContainText("2");
 });
 
+test("books spa from a searched stay after resolving unsaved notes", async ({ page }) => {
+  await page.setViewportSize(DESK_VIEWPORTS.ipad);
+  await openDesk(page);
+  const search = page.getByRole("searchbox", { name: "Search bookings" });
+  await search.click();
+  await search.fill("CONF-2026-MAYA");
+  await page.getByRole("button", { name: /Maya Lin.*CONF-2026-MAYA/ }).click();
+  const stay = page.getByRole("dialog", { name: "Maya Lin" });
+  const notes = stay.getByLabel("Notes (staff only)");
+  const bookSpa = stay.getByRole("button", { name: "Book spa" });
+  const guard = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+  const appointment = page.getByRole("dialog", { name: "Book spa" });
+  await notes.fill("Keep this draft if I stay on this screen.");
+  await bookSpa.click();
+  await guard.getByRole("button", { name: "Keep editing" }).click();
+  await expect(notes).toHaveValue("Keep this draft if I stay on this screen.");
+  await expect(appointment).toHaveCount(0);
+  await bookSpa.click();
+  await guard.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(stay).toHaveCount(0);
+  await expect(appointment).toContainText("For Maya Lin · Garden Villa");
+  await appointment.getByRole("button", { name: /^Hot stone 60/ }).click();
+  await appointment.getByRole("button", { name: "15:00", exact: true }).click();
+  await appointment.getByRole("button", { name: "Book Hot stone 60 · 15:00" }).click();
+  await expect(page.getByTestId("toast")).toContainText("Maya Lin: spa booked");
+  expect((await calls(page)).find((call) => call.name === "createAppointment")?.args)
+    .toMatchObject({ bookingId: "fxbkg000003", guestName: "Maya Lin", guestPhone: "+66 81 234 5678" });
+});
+
 for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
   test.describe(size, () => {
     test.use({ viewport });
@@ -245,6 +274,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await t.type(dialog.getByLabel("Guest name (optional)"), "Walk-in Guest", "Guest name");
       await t.tap(dialog.getByRole("button", { name: "Book Hot stone 60 · 15:00" }), "Book");
       await expect.poll(async () => (await calls(page)).some((call) => call.name === "createAppointment")).toBe(true);
+      expect(await page.evaluate(() => window.desk.stayReads())).toBe(0);
       expect(t.summary()).toMatchObject({ taps: 3, typed: 1, scrolls: 0 });
     });
 
