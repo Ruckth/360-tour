@@ -311,11 +311,6 @@ function BookingDetails({
             Reopen
           </Button>
         ) : null}
-        {onBookSpa ? (
-          <Button variant="outline" disabled={pending !== null} onClick={() => void onBookSpa()}>
-            Book spa
-          </Button>
-        ) : null}
         {pending === "resend" || pending === "delete" || pending === "copy" || pending === "reference" ? <Spinner label="Working" /> : null}
 
       </div>
@@ -354,6 +349,11 @@ function BookingDetails({
             {booking.nights} {booking.nights === 1 ? "night" : "nights"} · {booking.guests}{" "}
             {booking.guests === 1 ? "guest" : "guests"}
           </span>
+          {onBookSpa ? (
+            <Button size="sm" variant="outline" className="mt-2" disabled={pending !== null} onClick={() => void onBookSpa()}>
+              Book spa
+            </Button>
+          ) : null}
         </Detail>
         <Detail label="Phone"><a className="-my-3 inline-flex min-h-11 items-center rounded underline decoration-muted-foreground/40 underline-offset-4 hover:decoration-foreground focus-visible:ring-2 focus-visible:ring-ring" href={`tel:${booking.guestPhone}`}>{booking.guestPhone}</a></Detail>
         <Detail label="Email">
