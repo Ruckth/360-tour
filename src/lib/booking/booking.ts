@@ -8,12 +8,11 @@ export type BookingProperty = Property & {
   source: "live";
 };
 
-export type BookingStep = "select" | "guests" | "info" | "review";
+export type BookingStep = "select" | "info" | "review";
 
 export const bookingSteps: { key: BookingStep; label: string }[] = [
   { key: "select", label: "Villa & Dates" },
-  { key: "guests", label: "Guests" },
-  { key: "info", label: "Details" },
+  { key: "info", label: "Guest details" },
   { key: "review", label: "Pay" },
 ];
 
@@ -39,9 +38,8 @@ export function getHighestAllowedStepIndex({
   infoValid: boolean;
 }) {
   if (!selectValid) return 0;
-  if (!guestsValid) return 1;
-  if (!infoValid) return 2;
-  return 3;
+  if (!guestsValid || !infoValid) return 1;
+  return 2;
 }
 
 /** A whole-number URL count; absent, blank or malformed values are missing (Number("") is 0). */

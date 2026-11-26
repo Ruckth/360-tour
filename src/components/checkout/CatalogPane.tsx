@@ -2,7 +2,7 @@
 import { parseMoneyInput } from "@/lib/money-input";
 
 
-import { ChevronDown, Plus, Search } from "lucide-react";
+import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
@@ -104,6 +104,7 @@ export function CatalogPane({
 }) {
   const [tab, setTab] = useState<Tab>("frequent");
   const [search, setSearch] = useState("");
+  const searchField = useRef<HTMLInputElement>(null);
   // Groups folded by hand, per tab ("services:Massage").
   const [folded, setFolded] = useState<ReadonlySet<string>>(new Set());
   // The tile whose duration picker is open; one at a time.
@@ -129,6 +130,11 @@ export function CatalogPane({
     }
     return counts;
   }, [lines]);
+
+  function clearSearch() {
+    setSearch("");
+    searchField.current?.focus({ preventScroll: true });
+  }
 
   const toggleGroup = (key: string) => setFolded((prev) => {
     const next = new Set(prev);
@@ -164,13 +170,32 @@ export function CatalogPane({
         <div className="relative min-w-0 flex-1">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            ref={searchField}
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape" || !search || event.nativeEvent.isComposing) return;
+              event.preventDefault();
+              event.stopPropagation();
+              clearSearch();
+            }}
             placeholder="Search all items"
             aria-label="Search all items"
-            className="h-11 rounded-xl bg-card/60 pl-10 [&::-webkit-search-cancel-button]:hidden"
+            className="h-11 rounded-xl bg-card/60 pr-12 pl-10 [&::-webkit-search-cancel-button]:hidden"
           />
+          {search ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Clear search"
+              onClick={clearSearch}
+              className="absolute inset-y-0 right-0 size-11 rounded-xl text-muted-foreground"
+            >
+              <X aria-hidden className="size-4" />
+            </Button>
+          ) : null}
         </div>
       </div>
 

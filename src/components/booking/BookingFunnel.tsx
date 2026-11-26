@@ -313,10 +313,7 @@ function LiveBookingFunnel({
   }
 
   function currentStepValid() {
-    if (step === "select") return selectValid;
-    if (step === "guests") return guestsValid;
-    if (step === "info") return infoValid;
-    return selectValid && guestsValid && infoValid;
+    return selectValid && (step === "select" || (guestsValid && infoValid));
   }
 
   function next() {
@@ -453,25 +450,24 @@ function LiveBookingFunnel({
             </div>
           ) : null}
 
-          {step === "guests" ? (
-            <GuestCountsPanel
-              property={property}
-              adults={adults}
-              childCount={children}
-              onChangeAdults={setAdults}
-              onChangeChildren={setChildren}
-            />
-          ) : null}
-
           {step === "info" ? (
-            <GuestDetailsPanel
-              guestName={guestName}
-              guestEmail={guestEmail}
-              guestPhone={guestPhone}
-              onGuestNameChange={setGuestName}
-              onGuestEmailChange={setGuestEmail}
-              onGuestPhoneChange={setGuestPhone}
-            />
+            <div className="space-y-6">
+              <GuestCountsPanel
+                property={property}
+                adults={adults}
+                childCount={children}
+                onChangeAdults={setAdults}
+                onChangeChildren={setChildren}
+              />
+              <GuestDetailsPanel
+                guestName={guestName}
+                guestEmail={guestEmail}
+                guestPhone={guestPhone}
+                onGuestNameChange={setGuestName}
+                onGuestEmailChange={setGuestEmail}
+                onGuestPhoneChange={setGuestPhone}
+              />
+            </div>
           ) : null}
 
           {step === "review" ? (
@@ -535,7 +531,7 @@ function LiveBookingFunnel({
               {t("back")}
             </Button>
             {step === "review" ? (
-              <Button onClick={submitBooking} disabled={submitting || couponChecking || highestAllowedStepIndex < 3}>
+              <Button onClick={submitBooking} disabled={submitting || couponChecking || !currentStepValid()}>
                 <CreditCard className="h-4 w-4" />
                 {submitting || couponChecking ? t("checking") : t("continueToPay")}
               </Button>

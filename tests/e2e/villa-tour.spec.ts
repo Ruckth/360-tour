@@ -33,6 +33,17 @@ test("@smoke home villa 360 opens the tour overlay without leaving home", async 
   });
 });
 
+test("home villa actions preserve the locale and book the selected villa directly", async ({ page }) => {
+  await page.goto("/th");
+  const card = page.getByRole("article").filter({ has: page.locator('a[href="/th/rooms/pool-villa"]') });
+  const villaName = await card.getByRole("heading").innerText();
+  const book = card.locator('a[href="/th/booking?unit=pool-villa"]');
+  await expect(book).toBeVisible();
+  await book.click();
+  await expect(page).toHaveURL(/\/th\/booking\?unit=pool-villa$/);
+  await expect(page.getByRole("button", { pressed: true })).toContainText(villaName);
+});
+
 test("mobile villa chat trigger targets the property chat page", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
   await page.goto("/rooms/pool-villa");

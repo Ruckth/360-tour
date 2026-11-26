@@ -82,7 +82,7 @@ async function openBookingLink(initialProperty: string, coupon = "") {
 
 async function book(initialCoupon = "", initialProperty = "pool-villa") {
   await openBookingLink(initialProperty, initialCoupon);
-  for (let step = 0; step < 3; step++) await act(async () => button("continue").click());
+  for (let step = 0; step < 2; step++) await act(async () => button("continue").click());
   await act(async () => button("continueToPay").click());
 }
 
@@ -140,7 +140,7 @@ describe("direct villa booking links", () => {
   it("keeps the guest details and selected villa when the initially linked villa is retired mid-booking", async () => {
     await openBookingLink("villa-101");
     await act(async () => button("pool-villa").click());
-    for (let step = 0; step < 3; step++) await act(async () => button("continue").click());
+    for (let step = 0; step < 2; step++) await act(async () => button("continue").click());
     const remaining = fixture.queryInventory({});
     await fixture.queryInventory.withImplementation(() => remaining, async () => {
       await openBookingLink("villa-101");

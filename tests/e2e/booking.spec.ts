@@ -20,16 +20,17 @@ test("@smoke booking flow validates steps and persists the booking and reaches p
   await expect(page.getByRole("heading", { name: "Reserve your villa" })).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Guests" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue" }).click();
-
+  await expect(page.getByRole("button", { name: "Guest details", exact: true })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Guests", exact: true })).toBeInViewport();
   await expect(page.getByRole("heading", { name: "Guest details" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeDisabled();
   await page.getByLabel("Full name").fill("Test Guest");
   await page.getByLabel("Email").fill("guest@example.com");
   await page.getByLabel("Phone / WhatsApp").fill("+66 77 111 222");
   await page.getByRole("button", { name: "Continue" }).click();
 
-  await expect(page.getByRole("heading", { name: "Review and pay" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Pay", exact: true })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Review and pay" })).toBeInViewport();
   await expect(page.getByTestId("booking-review-property")).toContainText("Mossbell Garden Suite");
   await expect(page.getByTestId("booking-review-dates")).toContainText("2 nights");
   await expect(page.getByTestId("booking-review-guests")).toHaveText("2 guests");
