@@ -129,6 +129,17 @@ describe('branch switcher', () => {
     expect(page()?.dataset.mount).toBe('2');
   });
 
+  it('returns from the property editor to the list on a manual switch', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+    state.pathname = '/admin/properties/villa-1';
+    await render();
+    await click(headerPill());
+    await click(sheetRow('Phuket'));
+    expect(state.replace).toHaveBeenCalledExactlyOnceWith('/admin/properties');
+    expect(page()?.textContent).toBe('Phuket');
+  });
+
   it('shows the header pill at xl once the sidebar is collapsed', async () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
@@ -226,6 +237,24 @@ describe('unsaved changes', () => {
     expect(page()?.textContent).toBe('Phuket');
   });
 
+  it('rejects a pending switch when the target assignment was removed during confirmation', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+    state.dirty = true;
+    state.search = 'booking=b1';
+    await render();
+    await click(headerPill());
+    await click(sheetRow('Phuket'));
+    manager([KOH_SAMUI]);
+    await render();
+    await click(button('Discard and switch'));
+    expect(page()?.textContent).toBe('Koh Samui');
+    expect(page()?.dataset.mount).toBe('1');
+    expect(state.replace).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(`admin:branch:${EMAIL}`)).toBe(KOH_SAMUI.id);
+    expect(localStorage.getItem(`admin:last-branch:${EMAIL}`)).toBeNull();
+  });
+
   it('asks through the older useUnsavedChangesGuard path too', async () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
@@ -317,6 +346,65 @@ describe('access changes', () => {
     expect(banner?.textContent).toContain('Unsaved changes for Phuket were discarded.');
     expect(state.replace).toHaveBeenCalledWith('/admin/hotel');
   });
+
+  it('drops the property record URL when its working branch is revoked', async () => {
+    manager();
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, PHUKET.id);
+    state.pathname = '/admin/properties/villa-1';
+    state.search = 'q=villa';
+    await render();
+    manager([KOH_SAMUI]);
+    await render();
+    expect(state.replace).toHaveBeenCalledExactlyOnceWith('/admin/properties');
+    expect(page()?.textContent).toBe('Koh Samui');
+  });
+
+  it.each([
+    ['/admin/settings', 'tab=email&draft=1'],
+    ['/admin/marketing/coupons/coupon-1', 'draft=1'],
+    ['/admin/checkout', 'order=order-1'],
+    ['/admin/receipt/order-1', 'print=1'],
+  ])('preserves a surviving draft and URL on %s', async (pathname, search) => {
+    state.access = staffAccessFor('owner', EMAIL, [KOH_SAMUI, PHUKET]);
+    sessionStorage.setItem(`admin:branch:${EMAIL}`, PHUKET.id);
+    Object.assign(state, { pathname, search, dirty: true });
+    await render();
+    state.access = staffAccessFor('owner', EMAIL, [KOH_SAMUI]);
+    await render();
+    expect(page()?.dataset.mount).toBe('1');
+    expect(state.replace).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('Your access to Phuket ended.');
+    expect(document.body.textContent).not.toContain('Unsaved changes');
+  });
+
+  it.each(['/admin/properties/villa-1', '/admin/marketing/coupons/coupon-1'])(
+    'announces loss of the last desk assignment while preserving Marketing from %s',
+    async (pathname) => {
+      const marketing = { marketingRole: 'admin' as const };
+      const desk = staffAccessFor('manager', EMAIL, [KOH_SAMUI]);
+      state.access = { ...desk, ...marketing, capabilities: { ...desk.capabilities, marketing: true } };
+      Object.assign(state, { pathname, search: 'draft=1', dirty: true });
+      await render();
+      const none = staffAccessFor(null, EMAIL);
+      state.access = { ...none, ...marketing, capabilities: { ...none.capabilities, marketing: true } };
+      await render();
+
+      if (pathname.startsWith('/admin/properties')) {
+        expect(state.replace).toHaveBeenCalledExactlyOnceWith('/admin/marketing/dashboard');
+        state.pathname = '/admin/marketing/dashboard';
+        state.search = '';
+        await render();
+      } else {
+        expect(state.replace).not.toHaveBeenCalled();
+        expect(page()?.dataset.mount).toBe('1');
+      }
+      expect(page()?.dataset.scope).toBe('company');
+      const status = [...document.querySelectorAll('[role="status"]')].find((node) => node.textContent?.includes('Your access'));
+      expect(status?.textContent).toContain('Your access to Koh Samui ended.');
+      expect(status?.textContent?.includes('Unsaved changes')).toBe(pathname.startsWith('/admin/properties'));
+      expect(sidebar()?.textContent).toContain('Marketing');
+    },
+  );
 
   it('forgets the working branch when none is left, so a later return is not read as a removal', async () => {
     state.access = staffAccessFor('owner', EMAIL, [KOH_SAMUI, PHUKET]);

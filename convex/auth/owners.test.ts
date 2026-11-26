@@ -240,7 +240,7 @@ it('surfaces and claims a pending owner invite even when the old desk grant has 
     email: oldEmail, role: 'cashier', branchIds: [phuket], expectedGrant: null,
   });
   await t.withIdentity(identity(oldEmail, tokenIdentifier)).mutation(staffApi.claimInvite, {});
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'archived' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 1, state: 'archived' });
 
   const ownerInviteId = await t.mutation(ownerApi.grantOwner, { email: newEmail });
   const holder = t.withIdentity(identity(newEmail, tokenIdentifier));

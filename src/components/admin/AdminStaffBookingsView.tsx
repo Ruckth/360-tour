@@ -59,6 +59,7 @@ import {
 import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { appointmentServiceLabel } from "@/lib/service-options";
+import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
 
@@ -193,6 +194,7 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 }
 
 function StaffCalendar() {
+  const branchId = useAdminBranch().current?.id;
   const [range, setRange] = useState(todayRange);
   const [search, setSearch] = useState("");
   // This device remembers the view and filters (rule 5); the date always starts today.
@@ -200,8 +202,8 @@ function StaffCalendar() {
   const phone = useIsMobile(640);
   const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
   const [date, setDate] = useState(() => new Date());
-  const [hiddenStaff, setHiddenStaff] = useStoredSet("admin.staff.hiddenStaff");
-  const [hiddenServices, setHiddenServices] = useStoredSet("admin.staff.hiddenServices");
+  const [hiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
+  const [hiddenServices, setHiddenServices] = useStoredSet(branchId ? `admin.staff.hiddenServices:${branchId}` : "admin.staff.hiddenServices");
   const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
   const [storedCancelled, setStoredCancelled] = useStoredState("admin.staff.showCancelled", "no");

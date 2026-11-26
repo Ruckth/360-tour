@@ -36,8 +36,7 @@ import { BranchMultiSelect, type SelectableBranch } from "./branch/BranchMultiSe
 import { BranchPill } from "./branch/branch-pills";
 
 type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
-function grantVersion(person: Person) {
-  const grant = person.staffGrant;
+function grantVersion<T extends "staffGrants" | "marketingGrants">(grant: { id: Id<T>; revision: number } | null) {
   return grant ? { id: grant.id, revision: grant.revision } : null;
 }
 
@@ -236,6 +235,7 @@ function PeoplePanel({
   const setStaffGrant = useMutation(api.auth.staffAccess.setGrant);
   const updateInvitation = useMutation(api.auth.staffAccess.updateInvitation);
   const setMarketingGrant = useMutation(api.marketing.access.setGrant);
+  const renewMarketingInvitation = useMutation(api.marketing.access.renewInvitation);
   const confirm = useConfirm();
   const [inviting, setInviting] = useState(false);
   const peopleList = useRef<HTMLUListElement>(null);
@@ -286,7 +286,7 @@ function PeoplePanel({
       const places = branchNamesFor(existingIds);
       const description = `${name} loses desk access${places ? ` at ${places}` : ""} now, on every device. Open sessions lose access within seconds, and unsent work there isn’t submitted. Marketing access, if any, stays.`;
       if (!(await confirm({ title: `Remove ${name} from the desk?`, description, confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
-      return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
+      return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
     }
     const branchIds = uniqueBranchIds(chosenBranchIds ?? (existingIds.length > 0 ? existingIds : defaultBranchIds));
     if (branchIds.length === 0) {
@@ -295,7 +295,7 @@ function PeoplePanel({
     }
     const baseDone = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
     const done = `${baseDone}${person.staffGrant ? inviteExpirySuffix(person) : ""}`;
-    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role, branchIds }), done);
+    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds }), done);
   }
 
   async function setBranches(person: Person, branchIds: Id<"branches">[]) {
@@ -309,18 +309,18 @@ function PeoplePanel({
     const name = personLabel(person.email);
     const places = branchNamesFor(unique);
     const done = `${name}’s branches are now ${places || "updated"}.${inviteExpirySuffix(person)}`;
-    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role, branchIds: unique }), done);
+    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds: unique }), done);
   }
 
   async function setMarketing(person: Person, role: MarketingRole | null) {
     const name = personLabel(person.email);
     if (role === null) {
       if (!(await confirm({ title: `Remove ${name} from Marketing?`, description: "Their Marketing access ends now. Desk access, if any, stays.", confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
-      return save(person.email, () => setMarketingGrant({ email: person.email, role: null }), `Removed ${name} from Marketing.`);
+      return save(person.email, () => setMarketingGrant({ expectedGrant: grantVersion(person.marketingGrant), email: person.email, role: null }), `Removed ${name} from Marketing.`);
     }
     const label = MARKETING_ROLE_LABELS[role];
     const done = person.marketingGrant ? `${name} is now Marketing ${label}.` : `Invited ${name} to Marketing as ${label}.`;
-    return save(person.email, () => setMarketingGrant({ email: person.email, role }), done);
+    return save(person.email, () => setMarketingGrant({ expectedGrant: grantVersion(person.marketingGrant), email: person.email, role }), done);
   }
 
   return (
@@ -348,7 +348,7 @@ function PeoplePanel({
                 if (desk) await setStaffGrant({ expectedGrant: null, email, role: desk, branchIds });
                 if (marketing) {
                   try {
-                    await setMarketingGrant({ email, role: marketing });
+                    await setMarketingGrant({ expectedGrant: null, email, role: marketing });
                   } catch (err) {
                     if (!desk) throw err;
                     setInviting(false);
@@ -387,13 +387,18 @@ function PeoplePanel({
               onRenew={() => {
                 const staff = person.staffGrant && !person.staffGrant.claimed ? person.staffGrant : null;
                 const marketing = person.marketingGrant && !person.marketingGrant.claimed ? person.marketingGrant : null;
-                // Renewing only extends the invite's deadline; no email is sent. Saving an unclaimed
-                // Marketing invite with its own role renews it.
                 void save(
                   person.email,
                   async () => {
                     if (staff) await updateInvitation({ grantId: staff.id, expectedRevision: staff.revision, action: "resend" });
-                    if (marketing) await setMarketingGrant({ email: person.email, role: marketing.role });
+                    if (marketing) {
+                      try {
+                        await renewMarketingInvitation({ grantId: marketing.id, expectedRevision: marketing.revision });
+                      } catch (err) {
+                        if (!staff) throw err;
+                        throw new Error(`Desk invitation renewed. Review the Marketing invitation in Team. ${errorText(err, "Couldn’t renew the Marketing invitation.")}`);
+                      }
+                    }
                   },
                   `Invite renewed for ${personLabel(person.email)}.`,
                 );

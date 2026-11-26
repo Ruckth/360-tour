@@ -86,7 +86,7 @@ export const listPeople = staffQuery({
       email, role: grant?.role ?? null, branchIds: grant?.branchIds ?? [],
       staffGrant: grant ? { id: grant._id, revision: grant.revision ?? 0, role: grant.role, ...status(grant, staffInvitationExpiry(grant)) } : null,
       marketingGrant: marketingGrant ? {
-        id: marketingGrant._id, role: marketingGrant.role, ...status(marketingGrant, marketingInvitationExpiry(marketingGrant)),
+        id: marketingGrant._id, revision: marketingGrant.revision ?? 0, role: marketingGrant.role, ...status(marketingGrant, marketingInvitationExpiry(marketingGrant)),
       } : null,
     };
   });

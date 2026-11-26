@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { adminAccessRedirect } from "@/components/admin/admin-access";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { hasDirtyUnsavedGuard } from "@/hooks/use-unsaved-guard";
@@ -27,7 +28,7 @@ export type AdminBranch = {
    * switch); resolves false when the person stays or the switch isn't allowed here.
    */
   select: (id: AdminBranchId) => Promise<boolean>;
-  /** Changes on every switch. The shell remounts the page with it; key filters, selection and search on it. */
+  /** Branch-scoped pages remount when this changes. Company and till pages keep their state. */
   scopeKey: string;
   /** Checkout and receipts: no branch control, and the branch is never switched there. */
   readOnly: boolean;
@@ -36,10 +37,10 @@ export type AdminBranch = {
   /** A first-time person with two or more branches hasn't chosen yet (branch routes only). */
   needsChoice: boolean;
   /**
-   * Set when the working branch was removed mid-session and the shell moved to another.
+   * Set when working branch access ends mid-session.
    * `discarded`: a form had unsaved changes, which the move threw away.
    */
-  revoked: { from: string; to: string; discarded: boolean } | null;
+  revoked: { from: string | null; to: string | null; discarded: boolean } | null;
   dismissRevoked: () => void;
 };
 
@@ -83,23 +84,28 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     typeof window === "undefined" ? { session: null, device: null } : { session: readStorage(session, keys.session), device: readStorage(local, keys.device) },
   );
   const [currentId, setCurrentId] = useState<AdminBranchId | null>(null);
-  const [revoked, setRevoked] = useState<AdminBranch["revoked"]>(null);
+  const [revoked, setRevoked] = useState<(NonNullable<AdminBranch["revoked"]> & { href: string | null }) | null>(null);
   // The branches as last seen, so a branch removed mid-session can still be named.
   const [seen, setSeen] = useState(branches);
 
   const working = resolveWorkingBranch(branches, { current: currentId, ...remembered });
   const resolvedId = working.kind === "selected" ? working.id : null;
-  // Adopt a restored, single or replacement branch while rendering, not in an effect.
-  if (resolvedId !== null && resolvedId !== currentId) {
-    setCurrentId(resolvedId);
-    if (working.kind === "selected" && working.revokedId) {
-      const from = seen.find((branch) => branch.id === working.revokedId)?.name ?? "a branch";
-      const discarded = hasDirtyUnsavedGuard() || hasUnsavedChanges();
-      setRevoked({ from, to: branches.find((branch) => branch.id === resolvedId)?.name ?? "", discarded });
-    }
+  const switchable = scope === "branch" && !readOnly;
+  const redirect = adminAccessRedirect(pathname, search.get("tab"), access);
+  const lostLastDeskAssignment = working.kind === "none" && seen.length > 0 && access.role === null && access.capabilities.marketing;
+  const revokedId = working.kind === "selected" ? working.revokedId : working.kind === "none" ? currentId : null;
+
+  // Resolve the working preference before children render. Company and till pages keep their drafts.
+  if (resolvedId !== currentId) setCurrentId(resolvedId);
+  if (revokedId || lostLastDeskAssignment) {
+    const from = seen.find((branch) => branch.id === revokedId)?.name ?? null;
+    const to = switchable ? branches.find((branch) => branch.id === resolvedId)?.name ?? null : null;
+    const discarded = (switchable || redirect !== null) && (hasDirtyUnsavedGuard() || hasUnsavedChanges());
+    // If the shell redirects to a page the remaining grants allow, that already drops the URL.
+    setRevoked({ from, to, discarded, href: redirect ? null : branchSwitchHref(pathname, search) });
+  } else if (resolvedId !== null && currentId === null && revoked?.to === null) {
+    setRevoked(null);
   }
-  // Nothing left to work in: forget the old branch, so its return isn't later read as a removal.
-  if (working.kind === "none" && currentId !== null) setCurrentId(null);
   if (branchListKey(seen) !== branchListKey(branches)) setSeen(branches);
 
   // Read-only routes never ask: they show the first branch until the person picks one elsewhere.
@@ -111,22 +117,28 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     if (resolvedId) writeStorage(session, keys.session, resolvedId);
   }, [resolvedId, keys]);
 
-  // The old branch's URL state (open record, search, filters) goes with it. `select` drops it
-  // before switching; a removal is only seen while rendering, so it is dropped here.
   const cleanedFor = useRef<AdminBranch["revoked"]>(null);
   useEffect(() => {
-    // Once per removal, not on every later navigation.
     if (!revoked || cleanedFor.current === revoked) return;
     cleanedFor.current = revoked;
-    const href = branchSwitchHref(pathname, search);
-    if (href) router.replace(href);
-  }, [revoked, pathname, search, router]);
+    if (revoked.href) router.replace(revoked.href);
+  }, [revoked, router]);
+
+  // The assignment and route may change while a confirmation dialog is open.
+  const selectionContext = useMemo(
+    () => ({ branches, currentId, switchable, pathname, search, keys }),
+    [branches, currentId, switchable, pathname, search, keys],
+  );
+  const latest = useRef<typeof selectionContext | null>(null);
+  useLayoutEffect(() => {
+    latest.current = selectionContext;
+    return () => { latest.current = null; };
+  }, [selectionContext]);
 
   const select = useCallback(
     async (id: AdminBranchId) => {
       const target = branches.find((branch) => branch.id === id);
-      // Checkout and receipts never switch the branch.
-      if (!target || id === currentBranch?.id || readOnly) return false;
+      if (!target || id === currentId || !switchable) return false;
       if (hasDirtyUnsavedGuard() || hasUnsavedChanges()) {
         const discard = await confirm({
           title: `Discard unsaved changes and switch to ${target.name}?`,
@@ -136,6 +148,12 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
           destructive: true,
         });
         if (!discard) return false;
+        const live = latest.current;
+        if (
+          !live?.switchable || live.currentId !== currentId || live.pathname !== pathname ||
+          live.search.toString() !== search.toString() || live.keys !== keys ||
+          !live.branches.some((branch) => branch.id === id)
+        ) return false;
       }
       const href = branchSwitchHref(pathname, search);
       if (href) router.replace(href);
@@ -146,7 +164,7 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       writeStorage(local, keys.device, id);
       return true;
     },
-    [branches, currentBranch, readOnly, confirm, keys, pathname, search, router],
+    [branches, currentBranch, currentId, switchable, confirm, keys, pathname, search, router],
   );
 
   const dismissRevoked = useCallback(() => setRevoked(null), []);
@@ -155,14 +173,14 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       branches,
       current: currentBranch,
       select,
-      scopeKey: currentBranch?.id ?? "none",
+      scopeKey: switchable ? currentBranch?.id ?? "none" : scope === "company" ? "company" : "till",
       readOnly,
       scope,
       needsChoice: working.kind === "choose" && !readOnly && scope === "branch",
       revoked,
       dismissRevoked,
     }),
-    [branches, currentBranch, select, readOnly, scope, working.kind, revoked, dismissRevoked],
+    [branches, currentBranch, select, readOnly, scope, switchable, working.kind, revoked, dismissRevoked],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }

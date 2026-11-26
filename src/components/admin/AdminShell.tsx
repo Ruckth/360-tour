@@ -259,16 +259,13 @@ function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, ch
             </>
           ) : null}
         </header>
+        <BranchRevokedBanner />
         {redirect ? (
           <div className="grid flex-1 place-items-center p-10">
             <Spinner label="Loading" className="size-6" />
           </div>
         ) : (
-          <>
-            <BranchRevokedBanner />
-            {/* A new branch remounts the page, which clears its filters, selection, search and drafts. */}
-            <Fragment key={branch.scopeKey}>{children}</Fragment>
-          </>
+          <Fragment key={branch.scopeKey}>{children}</Fragment>
         )}
         {tillOnly ? null : <AdminTabBar />}
       </SidebarInset>

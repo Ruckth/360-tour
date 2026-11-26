@@ -1,7 +1,8 @@
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { readBudget, reserveWrites } from '../lib/readBudget';
+import { ConvexError } from 'convex/values';
+import type { QueryCtx } from '../_generated/server';
+import { readBudget } from '../lib/readBudget';
 
-import { insertBranch, PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
+import { PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
 
 export async function readDefaultBranch(ctx: QueryCtx) {
   const budget = readBudget(ctx);
@@ -13,10 +14,8 @@ export async function readDefaultBranch(ctx: QueryCtx) {
   return branch;
 }
 
-/** The indexed read and insert share the caller's transaction, including on concurrent setup. */
-export async function ensureDefaultBranch(ctx: MutationCtx) {
+export async function ensureDefaultBranch(ctx: QueryCtx) {
   const branch = await readDefaultBranch(ctx);
-  if (branch) return branch._id;
-  reserveWrites(ctx, 1);
-  return await insertBranch(ctx, PRIMARY_BRANCH, 'system:commerce');
+  if (!branch) throw new ConvexError('Payment activation requires the seeded Koh Samui branch.');
+  return branch._id;
 }

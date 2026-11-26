@@ -30,9 +30,10 @@ async function reviewed<A extends { tillId: Id<'tills'>; panelKey: string; outco
   return { ...args, expectedInstanceId: String(panel?._id), expectedRevision: panel?.revision ?? 0, stoppedPreviousOperator: true };
 }
 
-async function fixture() {
+async function fixture(seedPrimary = true) {
   const t = convexTest(schema, modules);
   const { managerId, orderId, otherOrderId } = await t.run(async ctx => {
+    if (seedPrimary) await seedTestBranch(ctx);
     const grant = async (tokenIdentifier: string, role: 'manager' | 'cashier') =>
       ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx, 'payment-test-desk')],
         role, email: `${tokenIdentifier}@example.com`, tokenIdentifier,
@@ -54,7 +55,7 @@ async function fixture() {
 }
 
 it('resolves dormant defaults without writing any rows', async () => {
-  const { t, owner, cashier } = await fixture();
+  const { t, owner, cashier } = await fixture(false);
   expect(await owner.query(settings.getRules, {})).toMatchObject({
     revision: 0, paymentsMode: 'direct', canEdit: true,
     terms: { unusedFullRefundDays: 7, refundDueDays: { card: 45, cashOrTransfer: 15 }, allowSessionTransfer: true },
@@ -183,6 +184,14 @@ it('keeps the D19 manager exception scoped to rollout fields and runs target sco
   }
 });
 
+it('keeps payment mode paused if the required primary branch was never seeded', async () => {
+  const { t, manager } = await fixture(false);
+  await manager.mutation(rollout.setPaused, { ...edit(0, 'pause'), paused: true });
+  await expect(manager.mutation(rollout.activate, edit(1, 'activate'))).rejects.toThrow('seeded Koh Samui');
+  expect(await manager.query(rollout.status, {})).toMatchObject({ mode: 'direct', paused: true });
+  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).unique())).toBeNull();
+});
+
 it('serializes two managers switching and replays only the winning payload', async () => {
   const { t, manager, second, owner } = await fixture();
   await expect(manager.mutation(rollout.activate, edit(0, 'activate'))).rejects.toMatchObject(refusal('PAYMENT_PAUSE_REQUIRED'));
@@ -237,7 +246,7 @@ it('blocks activation for open panels and attempts, then refuses the old panel a
     code: 'PAYMENTS_STILL_OPEN', panels: [expect.objectContaining(panel)],
     attempts: [expect.objectContaining({ attemptId, status: 'refused' })],
   } });
-  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).take(1))).toEqual([]);
+  expect(await t.run(ctx => ctx.db.query('branches').withIndex('by_key', q => q.eq('key', 'koh-samui')).take(2))).toHaveLength(1);
   // A reopened panel continues the cashier's open registration; a new order's panel waits.
   await expect(cashier.mutation(rollout.openDirectPanel, { ...panel, panelKey: 'too-late' })).resolves.toMatchObject({
     tillId, previous: { tillId, panelKey: panel.panelKey, check: true },

@@ -239,7 +239,7 @@ window.fixture = {
 // ---------- Settings › Team ----------
 
 type Grant = { id: string; revision: number; role: "manager" | "cashier"; claimed: boolean; expiresAt: number | null; expired: boolean; updatedAt: number };
-type MarketingGrant = { id: string; role: "manager" | "marketer" | "finance" | "viewer"; claimed: boolean; expiresAt: number | null; expired: boolean; updatedAt: number };
+type MarketingGrant = { id: string; revision: number; role: "manager" | "marketer" | "finance" | "viewer"; claimed: boolean; expiresAt: number | null; expired: boolean; updatedAt: number };
 type Person = { email: string; role: "owner" | "manager" | "cashier" | null; branchIds: Id<"branches">[]; staffGrant: Grant | null; marketingGrant: MarketingGrant | null };
 const DAY = 86_400_000;
 const now = Date.now();
@@ -248,8 +248,8 @@ const team = {
     { email: "lek@auraliscove.co", role: "cashier", branchIds: [SAMUI_ID], staffGrant: { id: "grant-lek", revision: 1, role: "cashier", claimed: false, expiresAt: now + 12 * DAY, expired: false, updatedAt: now }, marketingGrant: null },
     { email: "mint@auraliscove.co", role: "cashier", branchIds: [SAMUI_ID], staffGrant: { id: "grant-mint", revision: 1, role: "cashier", claimed: true, expiresAt: null, expired: false, updatedAt: now }, marketingGrant: null },
     { email: "narin@auraliscove.co", role: "owner", branchIds: [], staffGrant: null, marketingGrant: null },
-    { email: "ploy@auraliscove.co", role: "manager", branchIds: [SAMUI_ID], staffGrant: { id: "grant-ploy", revision: 1, role: "manager", claimed: true, expiresAt: null, expired: false, updatedAt: now }, marketingGrant: { id: "mkt-ploy", role: "viewer", claimed: true, expiresAt: null, expired: false, updatedAt: now } },
-    { email: "sun@auraliscove.co", role: null, branchIds: [], staffGrant: null, marketingGrant: { id: "mkt-sun", role: "marketer", claimed: true, expiresAt: null, expired: false, updatedAt: now } },
+    { email: "ploy@auraliscove.co", role: "manager", branchIds: [SAMUI_ID], staffGrant: { id: "grant-ploy", revision: 1, role: "manager", claimed: true, expiresAt: null, expired: false, updatedAt: now }, marketingGrant: { id: "mkt-ploy", revision: 1, role: "viewer", claimed: true, expiresAt: null, expired: false, updatedAt: now } },
+    { email: "sun@auraliscove.co", role: null, branchIds: [], staffGrant: null, marketingGrant: { id: "mkt-sun", revision: 1, role: "marketer", claimed: true, expiresAt: null, expired: false, updatedAt: now } },
   ] as Person[],
   rules: { ...rules },
   staleOnce: params.get("stale") === "1",
@@ -297,14 +297,29 @@ registerFixtureFunctions({
         : [...team.people, { email, role: next, branchIds, staffGrant: grant, marketingGrant: null }].sort((a, b) => a.email.localeCompare(b.email));
       return grant.id;
     },
-    "marketing/access:setGrant": ({ email, role: next }: { email: string; role: MarketingGrant["role"] | null }) => {
-      const known = team.people.some((person) => person.email === email);
-      const fresh: MarketingGrant | null = next ? { id: `mkt-${email}`, role: next, claimed: false, expiresAt: Date.now() + 14 * DAY, expired: false, updatedAt: Date.now() } : null;
-      team.people = known
-        ? team.people
-            .map((person) => (person.email === email ? { ...person, marketingGrant: next ? { ...(person.marketingGrant ?? fresh!), role: next, updatedAt: Date.now() } : null } : person))
-            .filter((person) => person.role || person.marketingGrant)
-        : [...team.people, ...(fresh ? [{ email, role: null, branchIds: [], staffGrant: null, marketingGrant: fresh }] : [])].sort((a, b) => a.email.localeCompare(b.email));
+    "marketing/access:setGrant": ({ email, role, expectedGrant }: { email: string; role: MarketingGrant["role"] | null; expectedGrant: Pick<MarketingGrant, "id" | "revision"> | null }) => {
+      const person = team.people.find((row) => row.email === email);
+      const old = person?.marketingGrant;
+      if (old?.id !== expectedGrant?.id || old?.revision !== expectedGrant?.revision) throw new ConvexError("Marketing access changed.");
+      const now = Date.now();
+      const grant: MarketingGrant | null = role && (old
+        ? { ...old, role, revision: old.revision + 1, updatedAt: now }
+        : { id: crypto.randomUUID(), revision: 1, role, claimed: false, expiresAt: now + 14 * DAY, expired: false, updatedAt: now });
+      if (person) {
+        team.people = team.people.map((row) => row.email === email ? { ...row, marketingGrant: grant } : row)
+          .filter((row) => row.role || row.marketingGrant);
+      } else if (grant) {
+        team.people = [...team.people, { email, role: null, branchIds: [], staffGrant: null, marketingGrant: grant }]
+          .sort((a, b) => a.email.localeCompare(b.email));
+      }
+      return null;
+    },
+    "marketing/access:renewInvitation": ({ grantId, expectedRevision }: { grantId: string; expectedRevision: number }) => {
+      const grant = team.people.find((row) => row.marketingGrant?.id === grantId)?.marketingGrant;
+      if (!grant || grant.claimed || grant.revision !== expectedRevision) throw new ConvexError("Marketing invitation changed.");
+      const now = Date.now();
+      team.people = team.people.map((row) => row.marketingGrant?.id === grantId
+        ? { ...row, marketingGrant: { ...grant, revision: grant.revision + 1, updatedAt: now, expiresAt: now + 14 * DAY, expired: false } } : row);
       return null;
     },
     "auth/staffAccess:updateInvitation": ({ grantId, action, expectedRevision }: { grantId: string; expectedRevision: number; action: "resend" | "expire" }) => {

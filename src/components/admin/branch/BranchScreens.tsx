@@ -79,19 +79,19 @@ export function BranchChooser({ email }: { email: string | null }) {
 /** Shown above the page after the working branch was removed mid-session. */
 export function BranchRevokedBanner() {
   const { revoked, dismissRevoked } = useAdminBranch();
-  if (!revoked) return null;
   return (
-    <div className="mx-auto w-full max-w-7xl px-3 pt-4 sm:px-6">
-      <div role="status" className="relative flex w-full flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-foreground">
+    <div role="status" className={revoked ? "mx-auto w-full max-w-7xl px-3 pt-4 sm:px-6" : undefined}>
+      {revoked ? <div className="relative flex w-full flex-wrap items-center gap-3 rounded-lg border border-gold/40 bg-gold/10 px-4 py-3 text-sm text-foreground">
         <Info aria-hidden className="size-4 shrink-0 text-gold-text" />
         <p className="min-w-0 flex-1 basis-60 leading-relaxed">
-          <strong className="font-semibold">Your access to {revoked.from} ended.</strong> You’re now working in {revoked.to}.
-          {revoked.discarded ? ` Unsaved changes for ${revoked.from} were discarded.` : null}
+          <strong className="font-semibold">{revoked.from ? `Your access to ${revoked.from} ended.` : "Your branch access ended."}</strong>
+          {revoked.to ? ` You’re now working in ${revoked.to}.` : null}
+          {revoked.discarded ? ` Unsaved changes${revoked.from ? ` for ${revoked.from}` : ""} were discarded.` : null}
         </p>
         <Button type="button" variant="ghost" size="sm" onClick={dismissRevoked}>
           Dismiss
         </Button>
-      </div>
+      </div> : null}
     </div>
   );
 }

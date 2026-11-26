@@ -130,7 +130,7 @@ it("grants Marketing access from the row, through the unchanged Marketing mutati
   await render();
   await change(row(active.email));
   await pick(select(row(active.email), "Marketing role"), "marketer");
-  expect(mocks.calls).toEqual([["marketing/access:setGrant", { email: active.email, role: "marketer" }]]);
+  expect(mocks.calls).toEqual([["marketing/access:setGrant", { expectedGrant: null, email: active.email, role: "marketer" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invited Mint to Marketing as Editor.");
   expect(mocks.confirm).not.toHaveBeenCalled();
 });
@@ -205,8 +205,16 @@ it("validates branch multi-select in the invite form and excludes archived branc
   await act(async () => form.requestSubmit());
   expect(mocks.calls).toEqual([
     ["auth/staffAccess:setGrant", { expectedGrant: null, email: "fon@auraliscove.co", role: "manager", branchIds: [samuiId, phuketId] }],
-    ["marketing/access:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
+    ["marketing/access:setGrant", { expectedGrant: null, email: "fon@auraliscove.co", role: "viewer" }],
   ]);
+});
+
+it("renews an expired Marketing invitation against the displayed grant version", async () => {
+  mocks.people = [{ ...marketer, marketingGrant: grant("mkt-sun", "viewer", false, true) }];
+  await render();
+  const renew = row(marketer.email).querySelector<HTMLButtonElement>('button[aria-label^="Renew invitation"]')!;
+  await act(async () => renew.click());
+  expect(mocks.calls).toEqual([["marketing/access:renewInvitation", { grantId: "mkt-sun", expectedRevision: 7 }]]);
 });
 
 it("shows a conflicting branch edit and uses the demoted role on the owner's next change", async () => {

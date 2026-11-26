@@ -34,6 +34,7 @@ import { resortTodayIso } from 'convex/shared/time';
 import { errorText } from "@/lib/staff-bookings";
 import { STAFF_CALENDAR_FORMATS, staffDateTime } from "@/lib/staff-time";
 import { Toast, useToast } from "@/components/ui/toast";
+import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
@@ -116,9 +117,10 @@ export function AdminBookingsView() {
 }
 
 function HotelBookings() {
+  const branchId = useAdminBranch().current?.id;
   const [range, setRange] = useState(initialRange);
   const [storedView, setView] = useStoredState("admin.hotel.view", "auto");
-  const [storedVilla, setVilla] = useStoredState("admin.hotel.villa", "all");
+  const [storedVilla, setVilla] = useStoredState(branchId ? `admin.hotel.villa:${branchId}` : "admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [selected, setSelected] = useState<{ id: Id<"bookings">; initialAction?: BookingSheetAction } | null>(null);
   const [quick, setQuick] = useState<QuickTarget | null>(null);

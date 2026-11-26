@@ -142,7 +142,7 @@ describe('staff permissions and invitations', () => {
     const s = await setup();
     const id = await s.owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'invite@example.com', role: 'cashier', branchIds: [await s.owner.run(ctx => seedTestBranch(ctx))] });
     await s.owner.mutation(api.auth.staffAccess.updateInvitation, { expectedRevision: 1, grantId: id!, action: 'expire' });
-    await s.owner.mutation(api.marketing.access.setGrant, { email: 'cashier@example.com', role: 'viewer' });
+    await s.owner.mutation(api.marketing.access.setGrant, { expectedGrant: null, email: 'cashier@example.com', role: 'viewer' });
     await s.cashier.mutation(api.marketing.access.claimInvite, {});
     const people = await s.owner.query(api.auth.staffAccess.listPeople, {});
     expect(people.find(p => p.email === 'owner@example.com')).toMatchObject({ role: 'owner' });

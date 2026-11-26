@@ -71,6 +71,10 @@ describe("working branch selection", () => {
     expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBe("/admin/chats");
     expect(branchSwitchHref("/admin/staff-bookings", new URLSearchParams("tab=list&booking=b1"))).toBe("/admin/staff-bookings?tab=list");
     expect(branchSwitchHref("/admin/hotel", new URLSearchParams(""))).toBeNull();
-    expect(branchSwitchHref("/admin/settings", new URLSearchParams("tab=team"))).toBeNull();
+    expect(branchSwitchHref("/admin/properties/villa-1", new URLSearchParams())).toBe("/admin/properties");
+    expect(branchSwitchHref("/admin/settings", new URLSearchParams("tab=team&draft=1"))).toBeNull();
+    expect(branchSwitchHref("/admin/marketing/coupons/coupon-1", new URLSearchParams("draft=1"))).toBeNull();
+    expect(branchSwitchHref("/admin/checkout", new URLSearchParams("order=o1"))).toBeNull();
+    expect(branchSwitchHref("/admin/receipt/o1", new URLSearchParams("print=1"))).toBeNull();
   });
 });

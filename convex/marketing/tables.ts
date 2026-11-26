@@ -29,6 +29,7 @@ export const marketingTables = {
 	marketingGrants: defineTable({
 		email: v.string(),
 		role: marketingRole,
+		revision: v.optional(v.number()),
 		inviteExpiresAt: v.optional(v.number()),
 		tokenIdentifier: v.optional(v.string()),
 		createdAt: v.number(),

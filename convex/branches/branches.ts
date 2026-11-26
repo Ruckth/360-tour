@@ -1,7 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
-import { staffMutation, staffQuery } from '../auth/model';
+import { internalMutation, requireStaff, staffMutation, staffQuery } from '../auth/model';
 import { appendRecordHistory } from '../settings/model';
 import { assertUniqueBranchSlug, insertBranch, listBranches, readBranch } from './private/branches';
 import { branchState, type BranchState } from '../shared/branchTypes';
@@ -85,11 +85,12 @@ export const update = staffMutation({
   },
 });
 
-export const setState = staffMutation({
-  capability: 'manageTeam',
+/** Pilot transition logic stays internal until bookings and checkout enforce branch state. */
+export const setState = internalMutation({
   args: { branchId: v.id('branches'), state: branchState, revision: v.number(), reason: v.optional(v.string()) },
   returns: v.object({ revision: v.number() }),
   handler: async (ctx, { branchId, state, revision, reason }) => {
+    const actor = await requireStaff(ctx, 'manageTeam');
     const branch = await existingBranch(ctx, branchId);
     if (branch.revision !== revision) throw branchChanged();
     if (branch.state === 'active' && state === 'archived') throw new ConvexError('Suspend the branch before archiving it.');
@@ -99,9 +100,9 @@ export const setState = staffMutation({
     if (stateReason && stateReason.length > 500) throw new ConvexError('Enter a reason of at most 500 characters.');
     const now = Date.now();
     const nextRevision = revision + 1;
-    await ctx.db.patch(branchId, { state, stateReason, stateChangedAt: now, stateChangedByEmail: ctx.staff.email, revision: nextRevision, updatedAt: now });
+    await ctx.db.patch(branchId, { state, stateReason, stateChangedAt: now, stateChangedByEmail: actor.email, revision: nextRevision, updatedAt: now });
     await appendRecordHistory(ctx, {
-      entityType: 'branch', entityId: branchId, actor: ctx.staff.email, kind: 'state_changed', reason: stateReason,
+      entityType: 'branch', entityId: branchId, actor: actor.email, kind: 'state_changed', reason: stateReason,
       before: { state: branch.state, ...(branch.stateReason ? { stateReason: branch.stateReason } : {}) },
       after: { state, ...(stateReason ? { stateReason } : {}) },
     });

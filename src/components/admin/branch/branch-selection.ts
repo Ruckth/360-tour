@@ -62,14 +62,16 @@ const SWITCH_KEPT_PARAMS = ["tab"] as const;
  * replaces the URL with it, so `?session=`, `?q=` or a `?booking=` from the old branch never loads.
  */
 export function branchSwitchHref(pathname: string, search: URLSearchParams): string | null {
+  if (branchReadOnlyRoute(pathname) || branchRouteScope(pathname) === "company") return null;
+  const destination = /^\/admin\/properties\/[^/]+\/?$/.test(pathname) ? "/admin/properties" : pathname;
   const kept = new URLSearchParams();
   for (const key of SWITCH_KEPT_PARAMS) {
     const value = search.get(key);
     if (value !== null) kept.set(key, value);
   }
-  if (kept.toString() === search.toString()) return null;
+  if (destination === pathname && kept.toString() === search.toString()) return null;
   const query = kept.toString();
-  return query ? `${pathname}?${query}` : pathname;
+  return query ? `${destination}?${query}` : destination;
 }
 
 /** Per-person storage keys: this tab's working branch, and the last one used on this device. */

@@ -4,21 +4,41 @@ import { createRoot, type Root } from "react-dom/client";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
+import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
 import type { NewBookingDialog } from "@/components/admin/NewBookingDialog";
 
 type CalendarProps = {
+  resources?: { id: string }[];
+  events?: { id: string }[];
   canSelectSlot?: (slot: { start: Date }) => boolean;
   onSelectSlot: (slot: { start: Date; end: Date; allDay: boolean; resourceId?: string }) => void;
   onSlotClick: (slot: { date: Date; view: string; allDay: boolean; resourceId?: string }) => void;
 };
-const observed = vi.hoisted(() => ({ calendar: null as CalendarProps | null, draft: null as ComponentProps<typeof NewBookingDialog>["prefill"] | null }));
+const observed = vi.hoisted(() => ({ calendar: null as CalendarProps | null, branch: undefined as string | undefined, draft: null as ComponentProps<typeof NewBookingDialog>["prefill"] | null }));
 const villa = { _id: "p1", name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 400000, currency: "THB", maxGuests: 4 };
+const villas = [villa, { ...villa, _id: "p2", name: "Pool Villa", slug: "pool-villa" }];
+const appointmentStart = Date.parse("2026-11-10T10:00:00+07:00");
+const schedule = {
+  staff: [{ _id: "staff-1", name: "Niran", status: "active" }, { _id: "staff-2", name: "Mali", status: "active" }],
+  services: [{ _id: "service-1", name: "Massage", status: "active" }],
+  appointments: [{
+    _id: "appointment-1", staffId: "staff-2", serviceId: "service-1", guestName: "Maya",
+    start: appointmentStart, end: appointmentStart + 3600000, blockedUntil: appointmentStart + 3600000, status: "booked",
+  }],
+  shifts: [],
+  blocks: [],
+};
+vi.mock("@/components/admin/branch/branch-context", () => ({
+  useAdminBranch: () => ({ current: observed.branch ? { id: observed.branch } : null }),
+}));
+vi.mock("@/components/admin/AppointmentSheet", () => ({ AppointmentSheet: () => null }));
 vi.mock("convex/react", () => ({
   useMutation: () => vi.fn(),
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(ref);
-    if (name.endsWith(":listCalendarProperties")) expect(args).toBe("skip");
-    if (name.endsWith(":listForAdmin")) return { properties: [villa], bookings: [], dateBlocks: [], blocks: [], complete: true };
+    if (name.endsWith(":listCalendarProperties") && args !== "skip") return villas;
+    if (name.endsWith(":listSchedule")) return schedule;
+    if (name.endsWith(":listForAdmin")) return { properties: villas, bookings: [], dateBlocks: [], blocks: [], complete: true };
     return undefined;
   },
 }));
@@ -37,7 +57,8 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-10T14:32:00+07:00"));
-  observed.calendar = null; observed.draft = null;
+  observed.calendar = null; observed.branch = undefined; observed.draft = null;
+  window.localStorage.clear();
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ""; vi.useRealTimers(); vi.unstubAllGlobals(); });
@@ -65,4 +86,31 @@ it("refuses past calendar taps and drags while leaving explicit past-stay entry 
   await act(async () => observed.calendar!.onSelectSlot({ start, end, allDay: true, resourceId: "p1" }));
   expect(observed.draft).toBeNull();
   expect(document.body.textContent).not.toContain("Booking form opened");
+});
+
+it("applies a remembered villa filter only in its branch", async () => {
+  window.localStorage.setItem("admin.hotel.villa:samui", villa._id);
+  window.localStorage.setItem("admin.hotel.villa", villa._id);
+  observed.branch = "samui";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["p1"]);
+
+  observed.branch = "phuket";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["p1", "p2"]);
+});
+
+it("applies remembered staff and service IDs only in their branch", async () => {
+  window.localStorage.setItem("admin.staff.hiddenStaff:samui", '["staff-1"]');
+  window.localStorage.setItem("admin.staff.hiddenServices:samui", '["service-1"]');
+  observed.branch = "samui";
+  const renderStaff = () => act(async () => root.render(createElement(AdminStaffBookingsView, { tab: "calendar" })));
+  await renderStaff();
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["staff-2"]);
+  expect(observed.calendar?.events?.map((event) => event.id)).not.toContain("appointment-1");
+
+  observed.branch = "phuket";
+  await renderStaff();
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["staff-1", "staff-2"]);
+  expect(observed.calendar?.events?.map((event) => event.id)).toContain("appointment-1");
 });

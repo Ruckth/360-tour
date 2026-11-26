@@ -31,3 +31,10 @@ export async function testGrantVersion(owner: Pick<TestConvex<typeof schema>, 'q
   if (!grant) throw new Error(`Missing test desk grant for ${email}`);
   return { id: grant.id, revision: grant.revision };
 }
+
+export async function testMarketingGrantVersion(owner: Pick<TestConvex<typeof schema>, 'query'>, email: string) {
+  const people = await owner.query(api.auth.staffAccess.listPeople, {});
+  const grant = people.find(person => person.email === email)?.marketingGrant;
+  if (!grant) throw new Error(`Missing test Marketing grant for ${email}`);
+  return { id: grant.id, revision: grant.revision };
+}

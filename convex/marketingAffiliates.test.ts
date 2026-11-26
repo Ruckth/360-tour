@@ -1,4 +1,4 @@
-import { asTestOwner } from './testing/staff.test-support';
+import { asTestOwner, testMarketingGrantVersion } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
@@ -459,6 +459,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
     tokenIdentifier: "issuer|manager",
   });
   await s.admin.mutation(api.marketing.access.setGrant, {
+    expectedGrant: null,
     email: " MANAGER@example.com ",
     role: "manager",
   });
@@ -480,6 +481,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
   });
   await expect(
     user.mutation(api.marketing.access.setGrant, {
+      expectedGrant: null,
       email: "manager@example.com",
       role: "finance",
     }),
@@ -508,6 +510,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
     } as unknown as import('convex/server').FunctionArgs<typeof api.marketing.access.claimInvite>),
   ).rejects.toThrow();
   await s.admin.mutation(api.marketing.access.setGrant, {
+    expectedGrant: await testMarketingGrantVersion(s.admin, "manager@example.com"),
     email: "manager@example.com",
     role: null,
   });
@@ -516,6 +519,7 @@ it("claims email invitations explicitly, binds canonical identity and prevents e
 it("restricts marketer to draft edits, protects budgets/status/active data and operational admin gates", async () => {
   const s = await setup();
   await s.admin.mutation(api.marketing.access.setGrant, {
+    expectedGrant: null,
     email: "writer@example.com",
     role: "marketer",
   });
@@ -754,7 +758,7 @@ it("enforces read/finance roles on public APIs and validates stale revisions and
   const row = await s.credit();
   for (const role of ["viewer", "finance"] as const) {
     const email = `${role}@example.com`;
-    await s.admin.mutation(api.marketing.access.setGrant, { email, role });
+    await s.admin.mutation(api.marketing.access.setGrant, { expectedGrant: null, email, role });
     const user = s.t.withIdentity({ emailVerified: true, email, tokenIdentifier: role });
     await user.mutation(api.marketing.access.claimInvite, {});
     expect(
@@ -884,6 +888,7 @@ it("keeps marketer edits to budgeted drafts safe and blocks active link/coupon e
     budget: 50000,
   });
   await s.admin.mutation(api.marketing.access.setGrant, {
+    expectedGrant: null,
     email: "writer@example.com",
     role: "marketer",
   });
@@ -1136,7 +1141,7 @@ it("keeps deposits pending for review until the booking is fully paid", async ()
 it("does not pretend invitations can revoke or downgrade configured system administrators", async () => {
   const s = await setup();
   for (const role of [null, "viewer"] as const) {
-    await expect(s.admin.mutation(api.marketing.access.setGrant, { email: "admin@example.com", role })).rejects.toThrow("Owners are managed by the deployment admin");
+    await expect(s.admin.mutation(api.marketing.access.setGrant, { expectedGrant: null, email: "admin@example.com", role })).rejects.toThrow("Owners are managed by the deployment admin");
   }
   expect((await s.admin.query(api.marketing.access.current, {})).role).toBe("admin");
 });

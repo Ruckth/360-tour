@@ -85,7 +85,7 @@ it('returns current branches for each role and removes desk access when all assi
     await expect(requireBranchAccess(ctx, access, samui)).rejects.toMatchObject(forbidden);
   });
 
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'archived' })).resolves.toEqual({ revision: 2 });
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 1, state: 'archived' })).resolves.toEqual({ revision: 2 });
   const archivedAccess = await cashier.query(staffApi.myAccess, {});
   expect(archivedAccess).toMatchObject({ companyScope: false, role: null, branches: [] });
   expect(Object.values(archivedAccess.capabilities).every(value => value === false)).toBe(true);
@@ -109,7 +109,7 @@ it('validates desk scope, preserves invite expiry and keeps owner grants out of 
   await expect(owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [] })).rejects.toThrow('Select at least one branch.');
   await expect(owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [samui, samui] })).rejects.toThrow('Select each branch only once.');
   await owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [phuket] });
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'archived' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 1, state: 'archived' });
   const invitee = t.withIdentity(identity(email));
   expect(await invitee.query(staffApi.myAccess, {})).toMatchObject({ role: null, pendingInvitation: null });
   await expect(invitee.mutation(staffApi.claimInvite, {})).rejects.toThrow('This invitation has no available branches. Ask an owner to update it.');
@@ -131,7 +131,7 @@ it('validates desk scope, preserves invite expiry and keeps owner grants out of 
     await expect(owner.mutation(staffApi.updateInvitation, { expectedRevision: 1, grantId: ownerGrantId, action })).rejects.toThrow('Owners are managed by the deployment admin');
   }
   for (const role of ['manager', null] as const) {
-    await expect(owner.mutation(api.marketing.access.setGrant, { email: ownerEmail, role })).rejects.toThrow('Owners are managed by the deployment admin');
+    await expect(owner.mutation(api.marketing.access.setGrant, { expectedGrant: null, email: ownerEmail, role })).rejects.toThrow('Owners are managed by the deployment admin');
   }
   await expect(owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), email, role: null, branchIds: [] })).resolves.toBeNull();
   expect(await t.withIdentity(identity(email)).query(staffApi.myAccess, {})).toMatchObject({ role: null, pendingInvitation: null });
@@ -198,7 +198,7 @@ it('enforces owner-only branch operations, unique identity, revision and audited
     await expect(client.query(branchApi.list, {})).rejects.toThrow(message);
     await expect(client.mutation(branchApi.create, { key: 'extra', ...profile })).rejects.toThrow(message);
     await expect(client.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile })).rejects.toThrow(message);
-    await expect(client.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toThrow(message);
+    await expect(client.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toThrow(message);
   }
   await expect(manager.query(api.settings.recordHistory.list, {
     entityType: 'branch', entityId: phuket, paginationOpts: { cursor: null, numItems: 20 },
@@ -209,17 +209,17 @@ it('enforces owner-only branch operations, unique identity, revision and audited
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile, issuer: { ...issuer, branchCode: '12' } })).rejects.toThrow('Enter a five-digit issuer branch code.');
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile, slug: 'phuket-town' })).resolves.toEqual({ revision: 2 });
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile })).rejects.toMatchObject(branchChanged);
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toMatchObject(branchChanged);
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 2, state: 'suspended', reason: 'Test' })).rejects.toThrow('This branch state transition is not allowed.');
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 2, state: 'active' });
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 3, state: 'archived' })).rejects.toThrow('Suspend the branch before archiving it.');
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: ' ' })).rejects.toThrow('Enter a reason for suspending this branch.');
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: 'r'.repeat(501) })).rejects.toThrow('Enter a reason of at most 500 characters.');
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: '  Repairs  ' });
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 4, state: 'active' });
-  await owner.mutation(branchApi.setState, { branchId: phuket, revision: 5, state: 'suspended', reason: 'Closure' });
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 6, state: 'archived' })).resolves.toEqual({ revision: 7 });
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 7, state: 'active' })).rejects.toThrow('This branch state transition is not allowed.');
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toMatchObject(branchChanged);
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 2, state: 'suspended', reason: 'Test' })).rejects.toThrow('This branch state transition is not allowed.');
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 2, state: 'active' });
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 3, state: 'archived' })).rejects.toThrow('Suspend the branch before archiving it.');
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: ' ' })).rejects.toThrow('Enter a reason for suspending this branch.');
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: 'r'.repeat(501) })).rejects.toThrow('Enter a reason of at most 500 characters.');
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 3, state: 'suspended', reason: '  Repairs  ' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 4, state: 'active' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 5, state: 'suspended', reason: 'Closure' });
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 6, state: 'archived' })).resolves.toEqual({ revision: 7 });
+  await expect(owner.mutation(internal.branches.branches.setState, { branchId: phuket, revision: 7, state: 'active' })).rejects.toThrow('This branch state transition is not allowed.');
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 7, ...profile })).rejects.toThrow('Archived branches are read-only.');
   const branch = (await owner.query(branchApi.list, {})).find(row => row._id === phuket);
   expect(branch).toMatchObject({ key: 'phuket', slug: 'phuket-town', state: 'archived', stateChangedByEmail: ownerEmail, revision: 7 });

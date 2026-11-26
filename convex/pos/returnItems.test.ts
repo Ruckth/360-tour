@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { seedTestBranch } from '../testing/staff.test-support';
 import { afterEach, expect, it, vi } from 'vitest';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import { creditMoney, syncAffiliateCredit } from '../marketing/model';
 import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
@@ -96,8 +96,8 @@ it('cannot authorize a cashier return after their last assigned branch is archiv
   const { args } = await t.run(ctx => soldProduct(ctx));
   const { requestId } = await cashier.mutation(command.askManager, args);
   const [branch] = await owner.query(api.branches.branches.list, {});
-  await owner.mutation(api.branches.branches.setState, { branchId: branch._id, revision: branch.revision, state: 'suspended', reason: 'Closing' });
-  await owner.mutation(api.branches.branches.setState, { branchId: branch._id, revision: branch.revision + 1, state: 'archived' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: branch._id, revision: branch.revision, state: 'suspended', reason: 'Closing' });
+  await owner.mutation(internal.branches.branches.setState, { branchId: branch._id, revision: branch.revision + 1, state: 'archived' });
   await expect(owner.mutation(command.decideApproval, { requestId, decision: 'approve' })).resolves.toMatchObject({ status: 'stale' });
   expect(await t.run(ctx => ctx.db.query('orderReturns').first())).toBeNull();
 });

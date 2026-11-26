@@ -36,6 +36,7 @@ export const claimInvite = authenticatedMutation({
     if (marketingInvitationExpired(invite)) throw new ConvexError("Invitation expired. Ask an administrator to renew the invitation.");
     await ctx.db.patch(invite._id, {
       tokenIdentifier: identity.tokenIdentifier,
+      revision: (invite.revision ?? 0) + 1,
       updatedAt: Date.now(),
     });
     await appendRecordHistory(ctx, {
@@ -49,9 +50,14 @@ export const claimInvite = authenticatedMutation({
   },
 });
 
+const MARKETING_ACCESS_CHANGED = "Marketing access changed. Review the current role before trying again.";
+
 export const setGrant = marketingMutation({
   permission: "manageAccess",
-  args: { email: v.string(), role: v.union(marketingRole, v.null()) },
+  args: {
+    email: v.string(), role: v.union(marketingRole, v.null()),
+    expectedGrant: v.union(v.null(), v.object({ id: v.id("marketingGrants"), revision: v.number() })),
+  },
   handler: async (ctx, args) => {
     const actor = ctx.marketing;
     const email = args.email.trim().toLowerCase();
@@ -62,6 +68,9 @@ export const setGrant = marketingMutation({
       .query("marketingGrants")
       .withIndex("by_email", (q) => q.eq("email", email))
       .unique();
+    const expected = args.expectedGrant;
+    if (expected === null && old) throw new ConvexError("This person already has Marketing access or an invitation. Review their Team entry.");
+    if (expected && (old?._id !== expected.id || (old.revision ?? 0) !== expected.revision)) throw new ConvexError(MARKETING_ACCESS_CHANGED);
     if (!args.role) {
       if (old) {
         await appendRecordHistory(ctx, {
@@ -76,18 +85,20 @@ export const setGrant = marketingMutation({
       }
       return null;
     }
+    const now = Date.now();
     const fields = {
       email,
       role: args.role,
-      ...(!old?.tokenIdentifier ? { inviteExpiresAt: Date.now() + MARKETING_INVITATION_TTL_MS } : {}),
-      updatedAt: Date.now(),
+      revision: (old?.revision ?? 0) + 1,
+      updatedAt: now,
       updatedByEmail: actor.email,
     };
     const id = old
       ? old._id
       : await ctx.db.insert("marketingGrants", {
           ...fields,
-          createdAt: Date.now(),
+          createdAt: now,
+          inviteExpiresAt: now + MARKETING_INVITATION_TTL_MS,
         });
     if (old) await ctx.db.patch(old._id, fields);
     await appendRecordHistory(ctx, {
@@ -98,6 +109,23 @@ export const setGrant = marketingMutation({
       ...(old ? { before: { role: old.role } } : {}),
       after: { email, role: args.role },
     });
+    return null;
+  },
+});
+
+export const renewInvitation = marketingMutation({
+  permission: "manageAccess",
+  args: { grantId: v.id("marketingGrants"), expectedRevision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, { grantId, expectedRevision }) => {
+    const grant = await ctx.db.get(grantId);
+    if (!grant || grant.tokenIdentifier) throw new ConvexError("No unclaimed Marketing invitation");
+    if ((grant.revision ?? 0) !== expectedRevision) throw new ConvexError(MARKETING_ACCESS_CHANGED);
+    if ((await findStaffGrantByEmail(ctx, grant.email))?.role === "owner") throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
+    const now = Date.now();
+    const expiresAt = now + MARKETING_INVITATION_TTL_MS;
+    await ctx.db.patch(grantId, { inviteExpiresAt: expiresAt, revision: expectedRevision + 1, updatedAt: now, updatedByEmail: ctx.marketing.email });
+    await appendRecordHistory(ctx, { entityType: "marketingGrant", entityId: grantId, actor: ctx.marketing.email, kind: "resend", after: { expiresAt } });
     return null;
   },
 });
