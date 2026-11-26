@@ -5,6 +5,48 @@ async function open(page: import('@playwright/test').Page, query = '') {
   await page.goto(`/tests/browser/checkout.html${query}`);
   await page.locator('[data-fixture-ready]').waitFor();
 }
+
+test('catalog search Enter adds a unique match and ignores ambiguous, composing and held Enter', async ({ page }) => {
+  await open(page);
+  const search = page.getByRole('searchbox', { name: 'Search all items' });
+  const order = page.getByRole('complementary', { name: 'Order', exact: true });
+  await search.fill('Thai massage');
+  const matches = page.getByRole('group', { name: 'Results for Thai massage' });
+  await expect(matches.getByRole('button')).toHaveCount(2);
+  await search.press('Enter');
+  await expect(order.getByText('No items yet')).toBeVisible();
+
+  await search.fill('Foot spa');
+  await expect(search).toHaveAccessibleDescription('Press Enter to add this item.');
+  await search.dispatchEvent('keydown', { key: 'Enter', isComposing: true });
+  await expect(order.getByText('No items yet')).toBeVisible();
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  await expect(order.getByRole('button', { name: /^Foot spa 45/ })).toBeVisible();
+  await expect(order.getByRole('button', { name: 'Cash ฿600', exact: true })).toBeEnabled();
+  await expect(search).toBeFocused();
+});
+
+test('catalog search Enter opens the duration picker and waits for an explicit choice', async ({ page }) => {
+  await open(page, '?scenario=catalog-duration');
+  const search = page.getByRole('searchbox', { name: 'Search all items' });
+  const order = page.getByRole('complementary', { name: 'Order', exact: true });
+  await search.fill('Foot spa');
+  await expect(search).toHaveAccessibleDescription('Press Enter to choose a duration.');
+  await page.keyboard.down('Enter');
+  const durations = page.getByRole('group', { name: 'Foot spa 45 duration' });
+  await expect(durations.getByRole('button', { name: /^45 min/ })).toBeFocused();
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  await expect(durations).toBeVisible();
+  await expect(order.getByText('No items yet')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(durations.getByRole('button', { name: /^60 min/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(order.getByRole('button', { name: 'Cash ฿800', exact: true })).toBeEnabled();
+});
+
 test('discard from the order\'s ⋯ asks first, keeps the order read only and restores it through Discarded', async ({ page }) => {
   await open(page, '?lines=1');
   const order = page.getByRole('complementary', { name: 'Order', exact: true });

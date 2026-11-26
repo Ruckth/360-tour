@@ -27,6 +27,7 @@ import "@/app.css";
  *                coupon-paid     DCNT-SPA-500 paid by card, on the receipt
  *                unscheduled     Somchai's Thai massage 90 with no date or time, unpaid
  *                unscheduled-paid  the same, paid by cash, on the receipt (his appointment still unlinked)
+ *                catalog-duration  empty order with two lengths for Foot spa
  */
 const params = new URLSearchParams(location.search);
 const locale = params.get("locale") === "th" ? "th" : "en";
@@ -75,6 +76,11 @@ async function couponSeed(): Promise<OrderId | null> {
 async function seed() {
   const actions = backend.useActions();
   let orderId: OrderId | undefined;
+  if (scenario === "catalog-duration") {
+    await backend.patchFixtureRow("services", service(7).serviceId, {
+      options: [{ durationMin: 45, price: 60000 }, { durationMin: 60, price: 80000 }],
+    });
+  }
   if (scenario.startsWith("coupon-")) return couponSeed();
   if (params.get("scenario") === "fee") {
     return (await actions.addAppointmentFee({ appointmentId: "fxappt000002" as Id<"appointments">, kind: "no_show", amount: 50000, reason: "Guest did not attend" })).orderId;

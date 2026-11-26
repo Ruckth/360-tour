@@ -115,6 +115,7 @@ export function CatalogPane({
   const query = search.trim();
   const searching = query.length > 0;
   const tiles = all ? (searching ? searchTiles(all, query) : all[tab]) : [];
+  const singleMatch = searching && tiles.length === 1 ? tiles[0] : undefined;
   const flat = searching || tab === "frequent";
   const sections = flat
     ? []
@@ -175,13 +176,22 @@ export function CatalogPane({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(event) => {
-              if (event.key !== "Escape" || !search || event.nativeEvent.isComposing) return;
-              event.preventDefault();
-              event.stopPropagation();
-              clearSearch();
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Escape" && search) {
+                event.preventDefault();
+                event.stopPropagation();
+                clearSearch();
+              }
+              if (event.key === "Enter" && singleMatch) {
+                event.preventDefault();
+                if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                if (singleMatch.options) setPicking(singleMatch.key);
+                else onAdd(singleMatch.item);
+              }
             }}
             placeholder="Search all items"
             aria-label="Search all items"
+            aria-describedby={singleMatch ? `${ids}-search-hint` : undefined}
             className="h-11 rounded-xl bg-card/60 pr-12 pl-10 [&::-webkit-search-cancel-button]:hidden"
           />
           {search ? (
@@ -200,6 +210,7 @@ export function CatalogPane({
       </div>
 
       <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
+        {singleMatch ? <p id={`${ids}-search-hint`} className="mb-2 text-xs text-muted-foreground">Press Enter {singleMatch.options ? "to choose a duration" : "to add this item"}.</p> : null}
         {(searching ? tiles.some((tile) => tile.kind === "room") : tab === "rooms") ? (
           <p className="mb-4 rounded-xl border border-border/70 bg-card/50 p-3 text-sm text-muted-foreground">
             Room items record charges only. To reserve dates, create a booking and add it to the order.
@@ -317,6 +328,7 @@ function CatalogTile({ tile, count, onAdd, picking, onPick, pickerId }: {
           role="group"
           aria-label={`${tile.name} duration`}
           onKeyDown={(event) => {
+            if (event.key === "Enter" && event.repeat) event.preventDefault();
             if (event.key !== "Escape") return;
             event.stopPropagation();
             close();
