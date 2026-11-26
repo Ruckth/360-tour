@@ -48,7 +48,7 @@ const defaultBranches = [
   { _id: archivedId, _creationTime: now, key: "hua-hin", name: "Hua Hin", slug: "hua-hin", state: "archived", issuer: { ...defaultIssuer, branchCode: "00002" }, stateChangedAt: now, stateChangedByEmail: "narin@auraliscove.co", revision: 1, createdAt: now, updatedAt: now },
 ];
 
-const grant = (id: string, role: string, claimed: boolean, expired = false) => ({ id, role, claimed, expiresAt: claimed ? null : now + (expired ? -DAY : 12 * DAY), expired, updatedAt: now });
+const grant = (id: string, role: string, claimed: boolean, expired = false) => ({ id, revision: 7, role, claimed, expiresAt: claimed ? null : now + (expired ? -DAY : 12 * DAY), expired, updatedAt: now });
 const pending = { email: "lek@auraliscove.co", role: "cashier", branchIds: [phuketId], staffGrant: grant("grant-lek", "cashier", false), marketingGrant: null };
 const expired = { email: "may@auraliscove.co", role: "cashier", branchIds: [samuiId], staffGrant: grant("grant-may", "cashier", false, true), marketingGrant: null };
 const active = { email: "mint@auraliscove.co", role: "cashier", branchIds: [samuiId], staffGrant: grant("grant-mint", "cashier", true), marketingGrant: null };
@@ -154,7 +154,7 @@ it("asks before removing either role with the consequence on every device, and l
   const lastConfirm = mocks.confirm.mock.calls.at(-1)?.[0] as { description?: string };
   expect(lastConfirm.description).toContain("every device");
   expect(lastConfirm.description).toContain("within seconds");
-  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: active.email, role: null, branchIds: [] }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-mint", revision: 7 }, email: active.email, role: null, branchIds: [] }]]);
 });
 
 it("keeps invite actions in ⋯, and shows Renew only when the invite has expired", async () => {
@@ -163,7 +163,7 @@ it("keeps invite actions in ⋯, and shows Renew only when the invite has expire
   expect(buttonsIn(row(expired.email))).toEqual(["Change roles for May", "Renew invitation for May"]);
   expect(buttonsIn(row(active.email))).toEqual(["Change roles for Mint"]);
   await act(async () => row(expired.email).querySelector<HTMLButtonElement>('button[aria-label="Renew invitation for May"]')!.click());
-  expect(mocks.calls).toEqual([["auth/staffAccess:updateInvitation", { grantId: "grant-may", action: "resend" }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:updateInvitation", { grantId: "grant-may", expectedRevision: 7, action: "resend" }]]);
   expect(host.querySelector('[role="status"]')!.textContent).toBe("Invite renewed for May.");
 });
 
@@ -204,9 +204,30 @@ it("validates branch multi-select in the invite form and excludes archived branc
   await act(async () => chipIn(form, "Phuket")!.click());
   await act(async () => form.requestSubmit());
   expect(mocks.calls).toEqual([
-    ["auth/staffAccess:setGrant", { email: "fon@auraliscove.co", role: "manager", branchIds: [samuiId, phuketId] }],
+    ["auth/staffAccess:setGrant", { expectedGrant: null, email: "fon@auraliscove.co", role: "manager", branchIds: [samuiId, phuketId] }],
     ["marketing/access:setGrant", { email: "fon@auraliscove.co", role: "viewer" }],
   ]);
+});
+
+it("shows a conflicting branch edit and uses the demoted role on the owner's next change", async () => {
+  await render();
+  await change(row(dual.email));
+  mocks.mutationError = new Error("Desk access changed. Review the current role and branches before trying again.");
+  await act(async () => chipIn(row(dual.email), "Koh Samui")!.click());
+  expect(row(dual.email).querySelector('[role="alert"]')?.textContent).toContain("Desk access changed");
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", {
+    email: dual.email, role: "manager", branchIds: [phuketId], expectedGrant: { id: dual.staffGrant.id, revision: 7 },
+  }]]);
+
+  mocks.people = [{ ...dual, role: "cashier", staffGrant: { ...dual.staffGrant, role: "cashier", revision: 8 } }];
+  mocks.mutationError = null;
+  await render();
+  expect(row(dual.email).querySelector('[data-testid="team-roles"]')?.textContent).toBe("Cashier");
+  expect(mocks.calls).toHaveLength(1);
+  await act(async () => chipIn(row(dual.email), "Phuket")!.click());
+  expect(mocks.calls.at(-1)).toEqual(["auth/staffAccess:setGrant", {
+    email: dual.email, role: "cashier", branchIds: [samuiId], expectedGrant: { id: dual.staffGrant.id, revision: 8 },
+  }]);
 });
 
 it("validates branch removal in row edit and keeps existing assignment and invite expiry", async () => {
@@ -225,7 +246,7 @@ it("validates branch removal in row edit and keeps existing assignment and invit
   // Adding Koh Samui saves both branches and notes the invite still expires on the existing date.
   await act(async () => chipIn(lekRow, "Koh Samui")!.click());
   expect(mocks.calls).toEqual([
-    ["auth/staffAccess:setGrant", { email: pending.email, role: "cashier", branchIds: [phuketId, samuiId] }],
+    ["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-lek", revision: 7 }, email: pending.email, role: "cashier", branchIds: [phuketId, samuiId] }],
   ]);
   expect(lekRow.querySelector('[role="status"]')!.textContent).toContain("still expires");
 
@@ -233,7 +254,7 @@ it("validates branch removal in row edit and keeps existing assignment and invit
   mocks.calls = [];
   await pick(select(lekRow, "Desk role"), "manager");
   expect(mocks.calls).toEqual([
-    ["auth/staffAccess:setGrant", { email: pending.email, role: "manager", branchIds: [phuketId] }],
+    ["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-lek", revision: 7 }, email: pending.email, role: "manager", branchIds: [phuketId] }],
   ]);
 });
 
@@ -252,7 +273,7 @@ it("ignores an archived branch inside a grant: no pill, no raw id, and edits sti
   expect(chipIn(fah, "Phuket")!.getAttribute("aria-checked")).toBe("true");
   // Adding a branch sends only live ids, so the server accepts it.
   await act(async () => chipIn(fah, "Koh Samui")!.click());
-  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: stuck.email, role: "cashier", branchIds: [phuketId, samuiId] }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-fah", revision: 7 }, email: stuck.email, role: "cashier", branchIds: [phuketId, samuiId] }]]);
 });
 
 it("counts a grant left with only archived branches as having none", async () => {
@@ -287,7 +308,7 @@ it("shows the branch chips before a marketing-only person's first desk save", as
   expect(mocks.calls).toEqual([]);
   await act(async () => chipIn(sun, "Phuket")!.click());
   await act(async () => [...sun.querySelectorAll("button")].find((b) => b.textContent === "Add desk access")!.click());
-  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { email: marketer.email, role: "manager", branchIds: [phuketId] }]]);
+  expect(mocks.calls).toEqual([["auth/staffAccess:setGrant", { expectedGrant: null, email: marketer.email, role: "manager", branchIds: [phuketId] }]]);
 });
 
 it("starts an invite at the branch the owner is working in", async () => {

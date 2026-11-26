@@ -221,7 +221,6 @@ describe("Settings › Branches", () => {
       [
         "branches/branches:create",
         {
-          key: "chiang-mai",
           name: "Chiang Mai",
           slug: "chiang-mai",
           issuer: {
@@ -235,29 +234,50 @@ describe("Settings › Branches", () => {
     ]);
   });
 
-  it("passes row revision when editing profile and shows a reload hint on stale revision conflict", async () => {
+  it("handles BRANCH_CHANGED by code, reloads the latest row and retries with its revision", async () => {
     await renderBranches();
     await act(async () => cardFor("koh-samui").querySelector<HTMLButtonElement>('button[aria-label="Edit profile for Koh Samui"]')!.click());
     const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+    const form = dialog.querySelector<HTMLFormElement>("form")!;
+    const nameInput = () => dialog.querySelector<HTMLInputElement>('input[placeholder="Phuket"]')!;
+    const reloadButton = () => [...dialog.querySelectorAll("button")].find((b) => /Reload latest|Loading latest/.test(b.textContent ?? ""))!;
     expect(dialog.querySelector<HTMLInputElement>('input[placeholder="phuket"]')!.value).toBe("koh-samui");
     expect(dialog.querySelectorAll("input")).toHaveLength(6);
 
+    mocks.mutationError = new ConvexError({ code: "BRANCH_CHANGED", message: "Someone else saved this branch." });
+    await act(async () => form.requestSubmit());
+    const update = (revision: number, name: string) => [
+      "branches/branches:update",
+      { branchId: samui._id, revision, name, slug: "koh-samui", issuer: samui.issuer },
+    ];
+    expect(mocks.calls).toEqual([update(3, "Koh Samui")]);
+    // The code, not the wording, marks the conflict; the server's message is shown.
+    const alerts = [...dialog.querySelectorAll('[role="alert"]')];
+    expect(alerts.map((el) => el.textContent)).toEqual([expect.stringContaining("Someone else saved this branch.")]);
+    // Until the live row carries the newer revision, reloading would resend the stale one.
+    expect(reloadButton().textContent).toBe("Loading latest…");
+    expect(reloadButton().disabled).toBe(true);
+
+    mocks.branches = [{ ...samui, name: "Samui Bay", revision: 4 }, phuket, krabi, huaHin];
+    await renderBranches();
+    expect(reloadButton().textContent).toBe("Reload latest");
+    await act(async () => reloadButton().click());
+    expect(nameInput().value).toBe("Samui Bay");
+    expect(dialog.textContent).not.toContain("Someone else saved this branch.");
+
+    mocks.mutationError = null;
+    await act(async () => form.requestSubmit());
+    expect(mocks.calls).toEqual([update(3, "Koh Samui"), update(4, "Samui Bay")]);
+  });
+
+  it("does not treat other save errors that mention a change as a stale revision", async () => {
+    await renderBranches();
+    await act(async () => cardFor("phuket").querySelector<HTMLButtonElement>('button[aria-label="Edit profile for Phuket"]')!.click());
+    const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
     mocks.mutationError = new ConvexError("This branch changed. Reload it and try again.");
     await act(async () => dialog.querySelector<HTMLFormElement>("form")!.requestSubmit());
-    expect(mocks.calls).toEqual([
-      [
-        "branches/branches:update",
-        {
-          branchId: samui._id,
-          revision: 3,
-          name: "Koh Samui",
-          slug: "koh-samui",
-          issuer: samui.issuer,
-        },
-      ],
-    ]);
-    expect(dialog.querySelector('[role="alert"]')!.textContent).toContain("This branch changed. Reload it and try again.");
-    expect(dialog.textContent).toContain("Reload latest");
+    expect(dialog.querySelector('[role="alert"]')!.textContent).toBe("This branch changed. Reload it and try again.");
+    expect(dialog.textContent).not.toMatch(/Reload latest|Loading latest/);
   });
 
   it("shows the Branches tab only to owners in AdminSettingsView", async () => {

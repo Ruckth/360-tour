@@ -1,4 +1,4 @@
-import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
+import { asTestOwner, seedTestBranch, testGrantVersion } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
@@ -28,7 +28,7 @@ async function setup() {
   for (const [email, role, client] of [
     ['manager@example.com', 'manager', manager], ['cashier@example.com', 'cashier', cashier],
   ] as const) {
-    await owner.mutation(api.auth.staffAccess.setGrant, { email, role, branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+    await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email, role, branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
     await client.mutation(api.auth.staffAccess.claimInvite, {});
   }
   const serviceId = await t.run(ctx => ctx.db.insert('services', {
@@ -468,7 +468,7 @@ describe('POS refund staff approvals', () => {
     if (change === 'refund') await s.manager.mutation(api.pos.commands.refundLine.refundLine, s.args(orderId, lineId, 1, 'other-refund-attempt'));
     if (change === 'line') await s.t.run(ctx => ctx.db.patch(lineId, { couponDiscount: 100 }));
     if (change === 'order') await s.owner.mutation(api.pos.commands.amendOrderPayment.amendOrderPayment, { orderId, expectedCorrectionRevision: 0, idempotencyKey: 'amend-attempt', reason: 'Correct date', effectiveAt: now - day });
-    if (change === 'requester') await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: null, branchIds: [] });
+    if (change === 'requester') await s.owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: await testGrantVersion(s.owner, 'cashier@example.com'), email: 'cashier@example.com', role: null, branchIds: [] });
     expect(await s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'stale', replayed: false });
     expect(await s.records(orderId)).toHaveLength(change === 'refund' ? 1 : 0);
   });
@@ -491,9 +491,9 @@ describe('POS refund staff approvals', () => {
     const { orderId, lineId } = await s.sale();
     await s.pay(orderId);
     const request = await s.request(s.args(orderId, lineId));
-    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'manager', branchIds: [await s.owner.run(ctx => seedTestBranch(ctx))] });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: await testGrantVersion(s.owner, 'cashier@example.com'), email: 'cashier@example.com', role: 'manager', branchIds: [await s.owner.run(ctx => seedTestBranch(ctx))] });
     await expect(s.cashier.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('own request');
-    await s.owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: null, branchIds: [] });
+    await s.owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: await testGrantVersion(s.owner, 'manager@example.com'), email: 'manager@example.com', role: null, branchIds: [] });
     await expect(s.manager.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).rejects.toThrow('Not authorized');
     vi.mocked(Date.now).mockReturnValue(now + APPROVAL_TTL_MS);
     expect(await s.owner.mutation(api.pos.staffApprovals.approve, { requestId: request.requestId })).toEqual({ status: 'expired', replayed: false });

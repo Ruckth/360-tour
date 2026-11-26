@@ -30,7 +30,7 @@ const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", 
 
 const operations = role !== "cashier";
 const access: StaffAccessView = {
-  email: EMAILS[role], role, pendingInvitation: null, companyScope: role === "owner", branches: [], marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+  email: EMAILS[role], role, pendingInvitation: null, companyScope: role === "owner", branches: [], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: operations, operations, manageTeam: role === "owner", settings: role === "owner",
     bookings: operations, services: operations, customers: operations, orders: operations, chats: operations,

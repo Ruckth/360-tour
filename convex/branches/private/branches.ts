@@ -47,14 +47,18 @@ export async function listAssignedBranches(ctx: QueryCtx, branchIds: Id<'branche
   return assigned.filter((branch): branch is Branch => branch !== null && branch.state !== 'archived');
 }
 
+/**
+ * Branches the actor may use: assigned ones, or for company scope every branch that is not archived.
+ * `by_state` orders states as strings (active < archived < setup < suspended), so archived rows form one
+ * contiguous range. Reading the ranges below and above it skips archived rows without reading them, and the
+ * two reads together take at most BRANCH_LIST_LIMIT + 1 rows, enough to detect a list over the limit.
+ */
 export async function listBranchesForAccess(ctx: QueryCtx, access: BranchScope): Promise<Branch[]> {
   if (!access.companyScope) return listAssignedBranches(ctx, access.branchIds);
-  const beforeArchived = await ctx.db.query('branches')
-    .withIndex('by_state', q => q.lt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1);
-  if (beforeArchived.length > BRANCH_LIST_LIMIT) throw new ConvexError(BRANCH_LIST_LIMIT_MESSAGE);
-  const afterArchived = await ctx.db.query('branches')
-    .withIndex('by_state', q => q.gt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1 - beforeArchived.length);
-  const branches = [...beforeArchived, ...afterArchived];
+  const below = await ctx.db.query('branches').withIndex('by_state', q => q.lt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1);
+  const above = below.length > BRANCH_LIST_LIMIT ? [] : await ctx.db.query('branches')
+    .withIndex('by_state', q => q.gt('state', 'archived')).take(BRANCH_LIST_LIMIT + 1 - below.length);
+  const branches = [...below, ...above];
   if (branches.length > BRANCH_LIST_LIMIT) throw new ConvexError(BRANCH_LIST_LIMIT_MESSAGE);
   return branches;
 }

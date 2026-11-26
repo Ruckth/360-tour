@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   pending: 0,
   replace: vi.fn(),
   claim: vi.fn(async () => null),
+  claimMarketing: vi.fn(async () => null),
 }));
 vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
@@ -29,7 +30,7 @@ vi.mock('convex/react', () => ({
     const name = getFunctionName(ref);
     if (name === 'auth/staffAccess:myAccess') return state.access;
     return { businessName: 'Audit resort' };
-  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
+  }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : getFunctionName(ref) === 'marketing/access:claimInvite' ? state.claimMarketing : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
     const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
     return { results: Array.from({ length: pending }, (_, i) => ({ _id: `appr${i}`, kind: 'discount', requesterEmail: 'mint@example.com', createdAt: 0, expiresAt: 0, status: 'pending', label: 'discount', summary: { amount: 100 } })), status: 'Exhausted', loadMore: () => undefined };
   }, useQueries: () => ({}) }));
@@ -157,9 +158,31 @@ it('says access changed when a member is removed mid-session', async () => {
 });
 
 it('lets an invited person activate their access explicitly', async () => {
-  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000, branchIds: [KOH_SAMUI.id] } };
+  state.access = { ...staffAccessFor(null, 'lek@example.com'), pendingInvitation: { role: 'cashier', expiresAt: Date.now() + 86_400_000, branchIds: [KOH_SAMUI.id], branches: [KOH_SAMUI] } };
   await render();
-  expect(document.body.textContent).toContain('lek@example.com is invited as Cashier.');
+  expect(document.body.textContent).toContain('lek@example.com is invited as Cashier at Koh Samui.');
+  expect(document.getElementById('page')).toBeNull();
+  await act(async () => button('Activate access')!.click());
+  expect(state.claim).toHaveBeenCalledWith({});
+});
+
+it('lets a Marketing-only invitee claim from the admin shell before any page mounts', async () => {
+  const base = staffAccessFor(null, 'market@example.com');
+  state.access = { ...base, marketingInvitation: { role: 'viewer', expiresAt: Date.now() + 60_000 } };
+  state.pathname = '/admin/marketing';
+  await render();
+  expect(document.getElementById('page')).toBeNull();
+  await act(async () => button('Activate Marketing access')!.click());
+  expect(state.claimMarketing).toHaveBeenCalledWith({});
+  state.access = { ...base, marketingRole: 'viewer', capabilities: { ...base.capabilities, marketing: true } };
+  await render();
+  expect(document.getElementById('page')).not.toBeNull();
+});
+
+it('offers the pending owner invitation to an existing desk member', async () => {
+  state.access = { ...staffAccessFor('cashier'), pendingInvitation: { role: 'owner', expiresAt: null, branchIds: [], branches: [] } };
+  await render();
+  expect(document.body.textContent).toContain('is invited as Owner.');
   expect(document.getElementById('page')).toBeNull();
   await act(async () => button('Activate access')!.click());
   expect(state.claim).toHaveBeenCalledWith({});

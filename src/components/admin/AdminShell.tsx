@@ -7,6 +7,7 @@ import { api } from "convex/_generated/api";
 import { LogOut, Shield } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import { Fragment, useEffect, useState, type ReactNode } from "react";
+import { MarketingInvitation } from "@/components/admin/marketing/MarketingAccess";
 import { AdminRail, AdminTabBar } from "@/components/admin/AdminNav";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -93,6 +94,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
  * "No access" with Sign out instead of the frame.
  */
 function AdminAccessGate({ userEmail, children }: { userEmail?: string; children: ReactNode }) {
+  const pathname = usePathname();
   const access = useQuery(api.auth.staffAccess.myAccess, {});
   const allowed = access !== undefined && !adminNoAccess(access);
   // Whether this session has had access, so losing it reads as a change rather than a refusal.
@@ -105,7 +107,10 @@ function AdminAccessGate({ userEmail, children }: { userEmail?: string; children
       </div>
     );
   }
-  if (!access.role && access.pendingInvitation) return <ClaimInvitation access={access} />;
+  if (access.pendingInvitation) return <ClaimInvitation access={access} />;
+  if (access.marketingInvitation && (!allowed || adminNavItem(pathname)?.href.startsWith("/admin/marketing"))) {
+    return <MarketingInvitation email={access.email} role={access.marketingInvitation.role} />;
+  }
   if (!allowed) return <NoAccessCard email={access.email ?? userEmail ?? null} changed={hadAccess} />;
   return (
     <StaffAccessProvider access={access}>
@@ -122,7 +127,9 @@ function ClaimInvitation({ access }: { access: StaffAccessView }) {
   const role = access.pendingInvitation ? ROLE_LABELS[access.pendingInvitation.role] : "";
   return (
     <GateCard title="Activate your access">
-      <p>{access.email} is invited as {role}.</p>
+      <p>{access.email} is invited as {role}{access.pendingInvitation?.branches.length
+        ? ` at ${access.pendingInvitation.branches.map(branch => branch.name).join(", ")}`
+        : ""}.</p>
       {error ? <p role="alert" className="text-destructive">{error}</p> : null}
       <Button
         className="w-full"

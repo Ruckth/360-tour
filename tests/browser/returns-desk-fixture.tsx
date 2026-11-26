@@ -167,7 +167,7 @@ const backend: CheckoutBackend = {
 };
 
 const access: StaffAccessView = {
-  email: EMAILS[role], role, pendingInvitation: null, companyScope: false, branches: [], marketingRole: null,
+  email: EMAILS[role], role, pendingInvitation: null, companyScope: false, branches: [], marketingInvitation: null, marketingRole: null,
   cashierRules: params.get("refundRule") === "cashier" ? { ...DEFAULT_CASHIER_RULES, refund: "cashier" } : DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: role === "manager", operations: role === "manager", manageTeam: false, settings: false,

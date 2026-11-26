@@ -13,6 +13,7 @@ export const usersFields = {
 
 export const grantRole = v.union(v.literal('owner'), staffRole);
 const branchIds = v.array(v.id('branches'));
+const invitedBranches = v.array(v.object({ id: v.id('branches'), name: v.string() }));
 const expiry = v.union(v.null(), v.number());
 
 export const staffAccessMyAccessResult = v.object({
@@ -22,8 +23,8 @@ export const staffAccessMyAccessResult = v.object({
   branches: v.array(v.object({ id: v.id('branches'), key: v.string(), name: v.string(), slug: v.string(), state: branchState })),
   pendingInvitation: v.union(
     v.null(),
-    v.object({ role: v.literal('owner'), expiresAt: v.null(), branchIds }),
-    v.object({ role: staffRole, expiresAt: v.number(), branchIds }),
+    v.object({ role: v.literal('owner'), expiresAt: v.null(), branchIds, branches: invitedBranches }),
+    v.object({ role: staffRole, expiresAt: v.number(), branchIds, branches: invitedBranches }),
   ),
   capabilities: v.object({
     marketing: v.boolean(),
@@ -42,6 +43,7 @@ export const staffAccessMyAccessResult = v.object({
     reports: v.boolean(),
   }),
   cashierRules: resolvedCashierRulesValidator,
+  marketingInvitation: v.union(v.null(), v.object({ role: marketingRole, expiresAt: v.number() })),
   marketingRole: v.union(v.null(), v.literal('admin'), marketingRole),
 });
 
@@ -50,6 +52,6 @@ export const staffAccessListPeopleResult = v.array(v.object({
   email: v.string(),
   role: v.union(v.null(), grantRole),
   branchIds,
-  staffGrant: v.union(v.null(), v.object({ id: v.id('staffGrants'), role: grantRole, ...grantStatus })),
+  staffGrant: v.union(v.null(), v.object({ id: v.id('staffGrants'), revision: v.number(), role: grantRole, ...grantStatus })),
   marketingGrant: v.union(v.null(), v.object({ id: v.id('marketingGrants'), role: marketingRole, ...grantStatus })),
 }));

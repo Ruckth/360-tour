@@ -330,7 +330,7 @@ it('projects an open return with custody and gives link and correction previews 
   expect(receipt.commerce?.handovers).toMatchObject([{ lineId, kind: 'room_bill', withGuest: 1, unpaid: 0, paid: 1, pendingReturnId: returnId }]);
   const email = 'cashier@example.com';
   const cashier = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'cashier' });
-  await owner.mutation(api.auth.staffAccess.setGrant, { email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+  await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   await cashier.mutation(api.auth.staffAccess.claimInvite, {});
   const link = (id: Id<'orderLines'>) => owner.query(api.pos.sourceReads.linkCandidates, { orderId, lineId: id });
   const correct = () => cashier.mutation(api.pos.staffApprovals.create, {
@@ -368,7 +368,7 @@ it('refuses direct and approved paid-sale voids on voucher receipts and preserve
   const { t, owner, view } = await setup();
   const email = 'cashier@example.com';
   const cashier = t.withIdentity({ emailVerified: true, email, tokenIdentifier: 'cashier' });
-  await owner.mutation(api.auth.staffAccess.setGrant, { email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+  await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email, role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   await cashier.mutation(api.auth.staffAccess.claimInvite, {});
   const { orderId, lineId, voucherId } = await t.run(async ctx => {
     const { branchId } = await retail(ctx);

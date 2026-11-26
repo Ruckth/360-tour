@@ -4,11 +4,11 @@ import { appendRecordHistory } from '../settings/model';
 import { grantCompanyOwner, ownerGrants } from './private/owners';
 import { findStaffGrantByEmail, validStaffEmail } from './private/staffAccess';
 
-/** CLI: bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}' */
+/** CLI: bun run convex run auth/owners:grantOwner '{"email":"owner@example.com"}' (pass "rebind":true to unbind a claimed owner for recovery) */
 export const grantOwner = internalMutation({
-  args: { email: v.string() },
+  args: { email: v.string(), rebind: v.optional(v.boolean()) },
   returns: v.id('staffGrants'),
-  handler: (ctx, { email }) => grantCompanyOwner(ctx, email),
+  handler: (ctx, { email, rebind }) => grantCompanyOwner(ctx, email, { rebind }),
 });
 
 /** CLI: bun run convex run auth/owners:revokeOwner '{"email":"owner@example.com"}' */

@@ -200,13 +200,14 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
   await assert.rejects(anonymous.query(api.pos.catalog.stableCatalog, {}));
 
   const provisionCashier = process.env.E2E_PREVIEW_QA_PROVISION_CASHIER === "1";
+  let provisionedGrant: Id<"staffGrants"> | null = null;
   if (provisionCashier) {
     const grants = await owner.query(api.auth.staffAccess.listPeople, {});
     assert(!grants.some(({ email }) => email === target.emails.cashier));
     const { branches } = await owner.query(api.auth.staffAccess.myAccess, {});
     const branch = branches.find(({ key }) => key === "koh-samui");
     if (!branch) throw new Error("Koh Samui branch was not seeded");
-    await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: "cashier", branchIds: [branch.id] });
+    provisionedGrant = await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: target.emails.cashier, role: "cashier", branchIds: [branch.id] });
   }
   try {
     for (const role of ["cashier", "nonstaff"] as const) {
@@ -240,9 +241,14 @@ async function checkAuth(browser: Browser, target: Target, ownerSession: Browser
       }
     }
   } finally {
-    if (provisionCashier) {
+    if (provisionedGrant) {
       await refreshAuthorization(ownerPage, owner);
-      await owner.mutation(api.auth.staffAccess.setGrant, { email: target.emails.cashier, role: null, branchIds: [] });
+      const people = await owner.query(api.auth.staffAccess.listPeople, {});
+      const grant = people.find(({ email }) => email === target.emails.cashier)?.staffGrant;
+      assert(grant && grant.id === provisionedGrant && grant.role === "cashier" && grant.revision === (grant.claimed ? 2 : 1), "QA cashier grant changed during this run");
+      await owner.mutation(api.auth.staffAccess.setGrant, {
+        expectedGrant: { id: grant.id, revision: grant.revision }, email: target.emails.cashier, role: null, branchIds: [],
+      });
       const grants = await owner.query(api.auth.staffAccess.listPeople, {});
       assert(!grants.some(({ email }) => email === target.emails.cashier));
     }

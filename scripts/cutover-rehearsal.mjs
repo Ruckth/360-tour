@@ -800,9 +800,15 @@ async function rehearse() {
     const access = async (/** @type {'owner' | 'cashier' | 'nonstaff'} */ who) => (await client(b, who).query(ref('auth/staffAccess:myAccess'), {})).role ?? null;
     const { branches } = await client(b, 'owner').query(ref('auth/staffAccess:myAccess'), {});
     if (branches && !branches.length) throw new Error('No branch available for the rehearsal cashier');
-    await client(b, 'owner').mutation(ref('auth/staffAccess:setGrant'), {
-      email: people.cashier, role: 'cashier', ...(branches ? { branchIds: [branches[0].id] } : {}),
-    });
+    if (await access('cashier') !== 'cashier') {
+      const team = await client(b, 'owner').query(ref('auth/staffAccess:listPeople'), {});
+      const person = team.find((/** @type {{email: string}} */ row) => row.email === people.cashier);
+      if (!person?.staffGrant) {
+        await client(b, 'owner').mutation(ref('auth/staffAccess:setGrant'), {
+          email: people.cashier, role: 'cashier', ...(branches ? { branchIds: [branches[0].id], expectedGrant: null } : {}),
+        });
+      }
+    }
     await client(b, 'cashier').mutation(ref('auth/staffAccess:claimInvite'), {});
     const denied = async (/** @type {'owner' | 'cashier' | 'nonstaff'} */ who) => { try { await client(b, who).query(ref('auth/staffAccess:listPeople'), {}); return false; } catch { return true; } };
     const roles = { owner: await access('owner'), cashier: await access('cashier'), nonstaff: await access('nonstaff'), anonymous: (await client(b).query(ref('auth/staffAccess:myAccess'), {})).role ?? null,

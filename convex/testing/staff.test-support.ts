@@ -1,5 +1,6 @@
 import type { TestConvex } from 'convex-test';
 import type { UserIdentity } from 'convex/server';
+import { api } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import type schema from '../schema';
 import { insertBranch, PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
@@ -22,4 +23,11 @@ export async function seedTestBranch(ctx: MutationCtx, key: string = PRIMARY_BRA
   return existing?._id ?? await insertBranch(ctx, {
     ...PRIMARY_BRANCH, key, slug: key, name: key === PRIMARY_BRANCH.key ? PRIMARY_BRANCH.name : key,
   }, 'system:test');
+}
+
+export async function testGrantVersion(owner: Pick<TestConvex<typeof schema>, 'query'>, email: string) {
+  const people = await owner.query(api.auth.staffAccess.listPeople, {});
+  const grant = people.find(person => person.email === email)?.staffGrant;
+  if (!grant) throw new Error(`Missing test desk grant for ${email}`);
+  return { id: grant.id, revision: grant.revision };
 }

@@ -22,7 +22,7 @@ export const myAccess = publicQuery({
   ]);
   const branches = currentBranches.map(({ _id: id, key, name, slug, state }) => ({ id, key, name, slug, state }));
   const publicAccess = { email, role, pendingInvitation, companyScope, branches };
-  return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingRole: marketing.role };
+  return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingInvitation: marketing.pendingInvitation, marketingRole: marketing.role };
 } });
 
 export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx => {
@@ -30,16 +30,39 @@ export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx 
   const email = identity?.email?.trim().toLowerCase();
   if (!identity || !email) throw new Error('Not authenticated');
   if (identity.emailVerified !== true) throw new ConvexError('Verify your email before claiming a staff invitation');
-  if (await boundStaffGrant(ctx, identity)) return null;
-  const invite = await findStaffGrantByEmail(ctx, email);
-  if (!invite || invite.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
+  const [existing, invite] = await Promise.all([boundStaffGrant(ctx, identity), findStaffGrantByEmail(ctx, email)]);
+  if (existing) {
+    if (existing.email === email || existing.role === 'owner') return null;
+    if (!invite || invite.tokenIdentifier || invite.role !== 'owner') throw new ConvexError('No unclaimed invitation');
+  } else if (!invite || invite.tokenIdentifier) {
+    throw new ConvexError('No unclaimed invitation');
+  }
+  const now = Date.now();
   const expiresAt = staffInvitationExpiry(invite);
-  if (expiresAt !== null && expiresAt <= Date.now()) throw new ConvexError('Invitation expired. Ask an owner to resend it.');
+  if (expiresAt !== null && expiresAt <= now) throw new ConvexError('Invitation expired. Ask an owner to resend it.');
   if (invite.role !== 'owner' && !(await listAssignedBranches(ctx, invite.branchIds)).length) {
     throw new ConvexError('This invitation has no available branches. Ask an owner to update it.');
   }
-  await ctx.db.patch(invite._id, { tokenIdentifier: identity.tokenIdentifier, revision: (invite.revision ?? 0) + 1, updatedAt: Date.now() });
-  await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: invite._id, actor: email, kind: 'claimed', after: { role: invite.role, branchIds: invite.branchIds } });
+  if (existing) {
+    await ctx.db.delete(existing._id);
+    await appendRecordHistory(ctx, {
+      entityType: 'staffGrant', entityId: existing._id, actor: email, kind: 'retired',
+      reason: 'Superseded by claimed owner grant',
+      before: { email: existing.email, role: existing.role, branchIds: existing.branchIds },
+      after: { replacedByGrantId: invite._id, replacedByEmail: invite.email, replacedByRole: invite.role },
+    });
+  }
+  const branchIds = invite.role === 'owner' ? [] : invite.branchIds;
+  await ctx.db.patch(invite._id, {
+    tokenIdentifier: identity.tokenIdentifier,
+    ...(invite.role === 'owner' ? { inviteExpiresAt: undefined, branchIds } : {}),
+    revision: (invite.revision ?? 0) + 1, updatedAt: now,
+  });
+  await appendRecordHistory(ctx, {
+    entityType: 'staffGrant', entityId: invite._id, actor: email, kind: 'claimed',
+    ...(existing ? { before: { retiredGrantId: existing._id, email: existing.email, role: existing.role, branchIds: existing.branchIds } } : {}),
+    after: { email: invite.email, role: invite.role, branchIds },
+  });
   return null;
 } });
 
@@ -61,7 +84,7 @@ export const listPeople = staffQuery({
     const marketingGrant = marketingByEmail.get(email);
     return {
       email, role: grant?.role ?? null, branchIds: grant?.branchIds ?? [],
-      staffGrant: grant ? { id: grant._id, role: grant.role, ...status(grant, staffInvitationExpiry(grant)) } : null,
+      staffGrant: grant ? { id: grant._id, revision: grant.revision ?? 0, role: grant.role, ...status(grant, staffInvitationExpiry(grant)) } : null,
       marketingGrant: marketingGrant ? {
         id: marketingGrant._id, role: marketingGrant.role, ...status(marketingGrant, marketingInvitationExpiry(marketingGrant)),
       } : null,
@@ -71,12 +94,20 @@ export const listPeople = staffQuery({
 
 /** Invite, change a claimed role, or revoke. Updating an unclaimed invite never renews its deadline. */
 export const setGrant = staffMutation({
-  capability: 'manageTeam', args: { email: v.string(), role: v.union(staffRole, v.null()), branchIds: v.array(v.id('branches')) },
+  capability: 'manageTeam', args: {
+    email: v.string(), role: v.union(staffRole, v.null()), branchIds: v.array(v.id('branches')),
+    expectedGrant: v.union(v.null(), v.object({ id: v.id('staffGrants'), revision: v.number() })),
+  },
   returns: v.union(v.id('staffGrants'), v.null()), handler: async (ctx, args) => {
   const actor = ctx.staff;
   const email = validStaffEmail(args.email);
   const old = await findStaffGrantByEmail(ctx, email);
   if (old?.role === 'owner') throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
+  const expected = args.expectedGrant;
+  if (expected === null && old) throw new ConvexError('This person already has desk access or an invitation. Review their Team entry.');
+  if (expected && (old?._id !== expected.id || (old.revision ?? 0) !== expected.revision)) {
+    throw new ConvexError('Desk access changed. Review the current role and branches before trying again.');
+  }
   if (args.role === null) {
     if (old) {
       await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: old._id, actor: actor.email, kind: 'revoked', before: { email, role: old.role, branchIds: old.branchIds } });
@@ -99,11 +130,12 @@ export const setGrant = staffMutation({
 
 /** Resending renews the existing invitation; expiring prevents claim. Neither sends an email. */
 export const updateInvitation = staffMutation({
-  capability: 'manageTeam', args: { grantId: v.id('staffGrants'), action: v.union(v.literal('resend'), v.literal('expire')) }, handler: async (ctx, args) => {
+  capability: 'manageTeam', args: { grantId: v.id('staffGrants'), expectedRevision: v.number(), action: v.union(v.literal('resend'), v.literal('expire')) }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const grant = await ctx.db.get(args.grantId);
   if (grant?.role === 'owner') throw new ConvexError(OWNER_MANAGEMENT_MESSAGE);
   if (!grant || grant.tokenIdentifier) throw new ConvexError('No unclaimed invitation');
+  if ((grant.revision ?? 0) !== args.expectedRevision) throw new ConvexError('Invitation changed. Review the current invitation before trying again.');
   const expiresAt = Date.now() + (args.action === 'resend' ? STAFF_INVITATION_TTL_MS : 0);
   await ctx.db.patch(grant._id, { inviteExpiresAt: expiresAt, revision: (grant.revision ?? 0) + 1, updatedAt: Date.now(), updatedByEmail: actor.email });
   await appendRecordHistory(ctx, { entityType: 'staffGrant', entityId: grant._id, actor: actor.email, kind: args.action, after: { expiresAt } });

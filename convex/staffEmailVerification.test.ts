@@ -17,7 +17,7 @@ it.each([true, false, undefined])('checks owner email verification (%s) requirin
     capabilities: { manageTeam: emailVerified === true, checkout: emailVerified === true },
     pendingInvitation: null,
   });
-  const invite = owner.mutation(api.auth.staffAccess.setGrant, { email: 'staff@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+  const invite = owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'staff@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   if (emailVerified !== true) await expect(invite).rejects.toThrow('Not authorized');
   else await invite;
 });
@@ -25,7 +25,7 @@ it.each([true, false, undefined])('checks owner email verification (%s) requirin
 it.each([false, undefined].flatMap(emailVerified => (['manager', 'cashier'] as const).map(role => ({ emailVerified, role }))))('rejects unverified staff invite claims and existing grants, and allows verification (%s)', async ({ emailVerified, role }) => {
   const t = convexTest(schema, modules);
   const owner = await asTestOwner(t, { email: 'owner@example.com', emailVerified: true, tokenIdentifier: 'issuer|owner' });
-  const grantId = await owner.mutation(api.auth.staffAccess.setGrant, { email: 'staff@example.com', role, branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+  const grantId = await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'staff@example.com', role, branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
   const identity = { email: 'Staff@Example.com', tokenIdentifier: 'issuer|staff' };
   const unverified = t.withIdentity({ ...identity, ...(emailVerified === undefined ? {} : { emailVerified }) });
   const denied = { role: null, capabilities: { checkout: false, operations: false, manageTeam: false }, pendingInvitation: null };

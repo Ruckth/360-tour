@@ -58,12 +58,12 @@ describe('stay checkout', () => {
 			await expect(client.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).rejects.toThrow();
 		}
 		const cashier = t.withIdentity({ emailVerified: true, email: 'cashier@example.com', tokenIdentifier: 'cashier' });
-		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'cashier@example.com', role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+		await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'cashier@example.com', role: 'cashier', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
 		await cashier.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(cashier.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow('Not authorized');
 		await expect(cashier.mutation(api.pos.commands.openStayCheckout.openStayCheckout, { bookingId })).resolves.toMatchObject({ added: [] });
 		const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'manager' });
-		await owner.mutation(api.auth.staffAccess.setGrant, { email: 'manager@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
+		await owner.mutation(api.auth.staffAccess.setGrant, { expectedGrant: null, email: 'manager@example.com', role: 'manager', branchIds: [await owner.run(ctx => seedTestBranch(ctx))] });
 		await manager.mutation(api.auth.staffAccess.claimInvite, {});
 		await expect(manager.query(api.bookings.admin.stayAppointments, { bookingId })).resolves.toEqual({ appointments: [], complete: true });
 	});

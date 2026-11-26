@@ -8,7 +8,8 @@ import { branchState, type BranchState } from '../shared/branchTypes';
 import { branchDocument, branchProfileFields } from './validators';
 
 type Profile = Pick<Doc<'branches'>, 'name' | 'slug' | 'issuer'>;
-const BRANCH_CHANGED = 'This branch changed. Reload it and try again.';
+/** A stale `revision`: the client reloads the branch by this code, then retries. */
+const branchChanged = () => new ConvexError({ code: 'BRANCH_CHANGED', message: 'This branch changed. Reload it and try again.' });
 const transitions: Record<BranchState, readonly BranchState[]> = {
   setup: ['active', 'archived'],
   active: ['suspended'],
@@ -52,10 +53,12 @@ export const list = staffQuery({
 
 export const create = staffMutation({
   capability: 'manageTeam',
-  args: { key: v.string(), ...branchProfileFields },
+  // `key` is the permanent internal id; it defaults to the normalized slug.
+  args: { key: v.optional(v.string()), ...branchProfileFields },
   returns: v.id('branches'),
   handler: async (ctx, { key, ...profile }) => {
-    const branch = { ...cleanProfile(profile), key: slugValue(key, 'key'), state: 'setup' as const };
+    const clean = cleanProfile(profile);
+    const branch = { ...clean, key: key === undefined ? clean.slug : slugValue(key, 'key'), state: 'setup' as const };
     const id = await insertBranch(ctx, branch, ctx.staff.email);
     await appendRecordHistory(ctx, { entityType: 'branch', entityId: id, actor: ctx.staff.email, kind: 'created', after: branch });
     return id;
@@ -69,7 +72,7 @@ export const update = staffMutation({
   handler: async (ctx, { branchId, revision, ...profile }) => {
     const branch = await existingBranch(ctx, branchId);
     if (branch.state === 'archived') throw new ConvexError('Archived branches are read-only.');
-    if (branch.revision !== revision) throw new ConvexError(BRANCH_CHANGED);
+    if (branch.revision !== revision) throw branchChanged();
     const next = cleanProfile(profile);
     await assertUniqueBranchSlug(ctx, next.slug, branchId);
     const patch = { ...next, revision: revision + 1, updatedAt: Date.now() };
@@ -88,7 +91,7 @@ export const setState = staffMutation({
   returns: v.object({ revision: v.number() }),
   handler: async (ctx, { branchId, state, revision, reason }) => {
     const branch = await existingBranch(ctx, branchId);
-    if (branch.revision !== revision) throw new ConvexError(BRANCH_CHANGED);
+    if (branch.revision !== revision) throw branchChanged();
     if (branch.state === 'active' && state === 'archived') throw new ConvexError('Suspend the branch before archiving it.');
     if (!transitions[branch.state].includes(state)) throw new ConvexError('This branch state transition is not allowed.');
     const stateReason = reason?.trim() || undefined;

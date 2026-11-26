@@ -41,14 +41,15 @@ export async function marketingAccessForIdentity(ctx: QueryCtx | MutationCtx, id
           .withIndex("by_email", (q) => q.eq("email", email))
           .unique()
       : null;
+  const expiresAt = invite && marketingInvitationExpiry(invite);
   const role = grant?.role ?? null;
   return {
     email,
     role,
     capabilities: marketingCapabilities(role),
     pendingInvitation:
-      invite && !invite.tokenIdentifier && !marketingInvitationExpired(invite)
-        ? { role: invite.role } : null,
+      invite && expiresAt !== null && expiresAt > Date.now()
+        ? { role: invite.role, expiresAt } : null,
   };
 }
 

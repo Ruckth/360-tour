@@ -205,7 +205,7 @@ test.describe("Settings › Team", () => {
     await expect(branches.getByRole("checkbox", { name: /Phuket/ })).not.toBeChecked();
     await people.getByRole("button", { name: "Send invite" }).click();
     await expect(people.getByRole("status")).toHaveText("Invited Fon. They sign in with fon@auraliscove.co to activate it.");
-    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "fon@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ expectedGrant: null, email: "fon@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
     const fon = people.getByTestId("team-person").filter({ hasText: "fon@auraliscove.co" });
     await expect(fon).toContainText(/Invited · expires/);
     await expect(fon.getByTestId("team-roles")).toHaveText("Manager");
@@ -216,7 +216,7 @@ test.describe("Settings › Team", () => {
     await page.getByRole("option", { name: "Manager", exact: true }).click();
     await expect(people.getByRole("status")).toHaveText("Mint is now Manager.");
     // A role change keeps the person's branches.
-    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ email: "mint@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
+    expect(JSON.parse((await page.locator("body").getAttribute("data-submission"))!)).toEqual({ expectedGrant: { id: "grant-mint", revision: 1 }, email: "mint@auraliscove.co", role: "manager", branchIds: ["fxbranch-samui"] });
     // The change shows as text again.
     await expect(people.getByRole("combobox")).toHaveCount(0);
     await expect(people.getByTestId("team-person").filter({ hasText: "mint@" }).getByTestId("team-roles")).toHaveText("Manager");

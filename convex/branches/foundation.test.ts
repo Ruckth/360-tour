@@ -2,10 +2,10 @@
 import { convexTest } from 'convex-test';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
-import { PRIMARY_BRANCH, requireBranchAccess } from './model';
+import { listBranchesForAccess, PRIMARY_BRANCH, requireBranchAccess } from './model';
 import { accessForIdentity } from '../auth/model';
 import schema from '../schema';
-import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
+import { asTestOwner, seedTestBranch, testGrantVersion } from '../testing/staff.test-support';
 
 const modules = import.meta.glob('/convex/**/*.ts');
 const ownerEmail = 'owner@example.com';
@@ -16,6 +16,7 @@ const ownerApi = internal.auth.owners;
 const issuer = { legalName: '360 Tour Co., Ltd.', taxId: '0000000000000', branchCode: '00001', address: 'Phuket' };
 const profile = { name: 'Phuket', slug: 'phuket', issuer };
 const forbidden = { data: { code: 'BRANCH_FORBIDDEN', message: "You don't have access to this branch." } };
+const branchChanged = { data: { code: 'BRANCH_CHANGED', message: 'This branch changed. Reload it and try again.' } };
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -62,10 +63,10 @@ it('returns current branches for each role and removes desk access when all assi
   const managerEmail = 'manager@example.com', cashierEmail = 'cashier@example.com';
   const managerIdentity = identity(managerEmail), cashierIdentity = identity(cashierEmail);
   const manager = t.withIdentity(managerIdentity), cashier = t.withIdentity(cashierIdentity);
-  await owner.mutation(staffApi.setGrant, { email: managerEmail, role: 'manager', branchIds: [samui, phuket] });
-  await owner.mutation(staffApi.setGrant, { email: cashierEmail, role: 'cashier', branchIds: [phuket] });
+  await owner.mutation(staffApi.setGrant, { expectedGrant: null, email: managerEmail, role: 'manager', branchIds: [samui, phuket] });
+  await owner.mutation(staffApi.setGrant, { expectedGrant: null, email: cashierEmail, role: 'cashier', branchIds: [phuket] });
   expect(await manager.query(staffApi.myAccess, {})).toMatchObject({
-    role: null, branches: [], pendingInvitation: { role: 'manager', branchIds: [samui, phuket], expiresAt: expect.any(Number) },
+    role: null, branches: [], pendingInvitation: { role: 'manager', branchIds: [samui, phuket], branches: [{ id: samui, name: 'Koh Samui' }, { id: phuket, name: 'Phuket' }], expiresAt: expect.any(Number) },
   });
   await manager.mutation(staffApi.claimInvite, {});
   await cashier.mutation(staffApi.claimInvite, {});
@@ -105,42 +106,66 @@ it('validates desk scope, preserves invite expiry and keeps owner grants out of 
   const { t, owner, samui, phuket } = await setup();
   const email = 'invite@example.com';
   const invite = { email, role: 'manager' as const };
-  await expect(owner.mutation(staffApi.setGrant, { ...invite, branchIds: [] })).rejects.toThrow('Select at least one branch.');
-  await expect(owner.mutation(staffApi.setGrant, { ...invite, branchIds: [samui, samui] })).rejects.toThrow('Select each branch only once.');
-  await owner.mutation(staffApi.setGrant, { ...invite, branchIds: [phuket] });
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [] })).rejects.toThrow('Select at least one branch.');
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [samui, samui] })).rejects.toThrow('Select each branch only once.');
+  await owner.mutation(staffApi.setGrant, { expectedGrant: null, ...invite, branchIds: [phuket] });
   await owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'archived' });
   const invitee = t.withIdentity(identity(email));
   expect(await invitee.query(staffApi.myAccess, {})).toMatchObject({ role: null, pendingInvitation: null });
   await expect(invitee.mutation(staffApi.claimInvite, {})).rejects.toThrow('This invitation has no available branches. Ask an owner to update it.');
-  await expect(owner.mutation(staffApi.setGrant, { ...invite, branchIds: [phuket] })).rejects.toThrow('Select existing branches that are not archived.');
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), ...invite, branchIds: [phuket] })).rejects.toThrow('Select existing branches that are not archived.');
   await t.run(ctx => ctx.db.delete(phuket));
-  await expect(owner.mutation(staffApi.setGrant, { ...invite, branchIds: [phuket] })).rejects.toThrow('Select existing branches that are not archived.');
-  const id = await owner.mutation(staffApi.setGrant, { ...invite, branchIds: [samui] });
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), ...invite, branchIds: [phuket] })).rejects.toThrow('Select existing branches that are not archived.');
+  const id = await owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), ...invite, branchIds: [samui] });
   const before = (await owner.query(staffApi.listPeople, {})).find(person => person.email === email);
-  await expect(owner.mutation(staffApi.setGrant, { ...invite, role: 'cashier', branchIds: [samui] })).resolves.toBe(id);
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), ...invite, role: 'cashier', branchIds: [samui] })).resolves.toBe(id);
   expect(await owner.query(staffApi.listPeople, {})).toMatchObject([
     { email, role: 'cashier', branchIds: [samui], staffGrant: { id, claimed: false, expiresAt: before?.staffGrant?.expiresAt } },
     { email: ownerEmail, role: 'owner', branchIds: [], staffGrant: { role: 'owner', claimed: true, expiresAt: null } },
   ]);
   for (const role of ['manager', null] as const) {
-    await expect(owner.mutation(staffApi.setGrant, { email: ownerEmail, role, branchIds: [samui] })).rejects.toThrow('Owners are managed by the deployment admin');
+    await expect(owner.mutation(staffApi.setGrant, { expectedGrant: null, email: ownerEmail, role, branchIds: [samui] })).rejects.toThrow('Owners are managed by the deployment admin');
   }
   const ownerGrantId = await t.mutation(ownerApi.grantOwner, { email: ownerEmail });
   for (const action of ['resend', 'expire'] as const) {
-    await expect(owner.mutation(staffApi.updateInvitation, { grantId: ownerGrantId, action })).rejects.toThrow('Owners are managed by the deployment admin');
+    await expect(owner.mutation(staffApi.updateInvitation, { expectedRevision: 1, grantId: ownerGrantId, action })).rejects.toThrow('Owners are managed by the deployment admin');
   }
   for (const role of ['manager', null] as const) {
     await expect(owner.mutation(api.marketing.access.setGrant, { email: ownerEmail, role })).rejects.toThrow('Owners are managed by the deployment admin');
   }
-  await expect(owner.mutation(staffApi.setGrant, { email, role: null, branchIds: [] })).resolves.toBeNull();
+  await expect(owner.mutation(staffApi.setGrant, { expectedGrant: await testGrantVersion(owner, email), email, role: null, branchIds: [] })).resolves.toBeNull();
   expect(await t.withIdentity(identity(email)).query(staffApi.myAccess, {})).toMatchObject({ role: null, pendingInvitation: null });
+});
+
+it('preserves a demotion against stale Team edits and rejects edits to a replaced invitation', async () => {
+  const { owner, samui, phuket } = await setup();
+  const email = 'desk@example.com';
+  const invite = { email, role: 'manager' as const, branchIds: [samui], expectedGrant: null };
+  await owner.mutation(staffApi.setGrant, invite);
+  const first = await testGrantVersion(owner, email);
+  await expect(owner.mutation(staffApi.setGrant, { ...invite, role: 'cashier' })).rejects.toThrow('already has desk access');
+
+  await owner.mutation(staffApi.setGrant, { ...invite, role: 'cashier', expectedGrant: first });
+  await expect(owner.mutation(staffApi.setGrant, { ...invite, branchIds: [samui, phuket], expectedGrant: first })).rejects.toThrow('Desk access changed');
+  await expect(owner.mutation(staffApi.updateInvitation, { grantId: first.id, expectedRevision: first.revision, action: 'resend' })).rejects.toThrow('Invitation changed');
+  const demoted = (await owner.query(staffApi.listPeople, {})).find(person => person.email === email);
+  expect(demoted).toMatchObject({ role: 'cashier', branchIds: [samui], staffGrant: { id: first.id, revision: first.revision + 1 } });
+
+  await owner.mutation(staffApi.setGrant, { email, role: null, branchIds: [], expectedGrant: await testGrantVersion(owner, email) });
+  await expect(owner.mutation(staffApi.setGrant, { ...invite, expectedGrant: first })).rejects.toThrow('Desk access changed');
+  await owner.mutation(staffApi.setGrant, { ...invite, role: 'cashier' });
+  const replacement = await testGrantVersion(owner, email);
+  expect(replacement.revision).toBe(first.revision);
+  expect(replacement.id).not.toBe(first.id);
+  await expect(owner.mutation(staffApi.setGrant, { email, role: null, branchIds: [], expectedGrant: first })).rejects.toThrow('Desk access changed');
+  expect(await testGrantVersion(owner, email)).toEqual(replacement);
 });
 
 it('lists, upgrades and safely revokes CLI owners', async () => {
   const { t, owner, samui } = await setup();
   await expect(t.mutation(ownerApi.revokeOwner, { email: ownerEmail })).rejects.toThrow('Cannot revoke the last owner.');
   const email = 'recovery@example.com';
-  const id = await owner.mutation(staffApi.setGrant, { email, role: 'manager', branchIds: [samui] });
+  const id = await owner.mutation(staffApi.setGrant, { expectedGrant: null, email, role: 'manager', branchIds: [samui] });
   await expect(t.mutation(ownerApi.revokeOwner, { email })).resolves.toBeNull();
   expect(await t.run(ctx => ctx.db.get(id!))).toMatchObject({ role: 'manager' });
   await expect(t.mutation(ownerApi.grantOwner, { email })).resolves.toBe(id);
@@ -164,8 +189,8 @@ it('enforces owner-only branch operations, unique identity, revision and audited
   const { t, owner, samui, phuket } = await setup();
   const managerEmail = 'manager@example.com';
   const cashierEmail = 'cashier@example.com';
-  await owner.mutation(staffApi.setGrant, { email: managerEmail, role: 'manager', branchIds: [samui] });
-  await owner.mutation(staffApi.setGrant, { email: cashierEmail, role: 'cashier', branchIds: [samui] });
+  await owner.mutation(staffApi.setGrant, { expectedGrant: null, email: managerEmail, role: 'manager', branchIds: [samui] });
+  await owner.mutation(staffApi.setGrant, { expectedGrant: null, email: cashierEmail, role: 'cashier', branchIds: [samui] });
   const manager = t.withIdentity(identity(managerEmail));
   const cashier = t.withIdentity(identity(cashierEmail));
   for (const client of [manager, cashier]) await client.mutation(staffApi.claimInvite, {});
@@ -183,8 +208,8 @@ it('enforces owner-only branch operations, unique identity, revision and audited
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile, slug: 'koh-samui' })).rejects.toThrow('This branch slug is already in use.');
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile, issuer: { ...issuer, branchCode: '12' } })).rejects.toThrow('Enter a five-digit issuer branch code.');
   await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile, slug: 'phuket-town' })).resolves.toEqual({ revision: 2 });
-  await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile })).rejects.toThrow('This branch changed.');
-  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toThrow('This branch changed. Reload it and try again.');
+  await expect(owner.mutation(branchApi.update, { branchId: phuket, revision: 1, ...profile })).rejects.toMatchObject(branchChanged);
+  await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 1, state: 'active' })).rejects.toMatchObject(branchChanged);
   await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 2, state: 'suspended', reason: 'Test' })).rejects.toThrow('This branch state transition is not allowed.');
   await owner.mutation(branchApi.setState, { branchId: phuket, revision: 2, state: 'active' });
   await expect(owner.mutation(branchApi.setState, { branchId: phuket, revision: 3, state: 'archived' })).rejects.toThrow('Suspend the branch before archiving it.');
@@ -223,6 +248,14 @@ it('validates branch key, slug and required profile fields', async () => {
     await expect(owner.mutation(branchApi.update, { ...args, issuer: { ...issuer, [field]: ' ' } })).rejects.toThrow('Enter the issuer legal name, tax ID and address.');
     await expect(owner.mutation(branchApi.update, { ...args, issuer: { ...issuer, [field]: 'a'.repeat(maxLength + 1) } })).rejects.toThrow(`at most ${maxLength} characters.`);
   }
+  // Without a key, the key is the normalized slug, under the same validation and uniqueness.
+  await expect(owner.mutation(branchApi.create, { ...profile, slug: 'chiang mai' })).rejects.toThrow('Enter a branch slug of 1–80 characters');
+  const chiangMai = await owner.mutation(branchApi.create, { ...profile, name: 'Chiang Mai', slug: '  Chiang-Mai ' });
+  await owner.mutation(branchApi.update, { ...profile, branchId: phuket, revision: 1, slug: 'phuket-town' });
+  await expect(owner.mutation(branchApi.create, { ...profile })).rejects.toThrow('This branch key is already in use.');
+  await expect(owner.mutation(branchApi.create, { ...profile, slug: 'phuket-town' })).rejects.toThrow('This branch slug is already in use.');
+  const rows = await owner.query(branchApi.list, {});
+  expect(rows.find(row => row._id === chiangMai)).toMatchObject({ key: 'chiang-mai', slug: 'chiang-mai', state: 'setup' });
 });
 
 it('rejects branch and owner lists over 500 rows', async () => {
@@ -247,6 +280,30 @@ it('rejects branch and owner lists over 500 rows', async () => {
   await expect(t.query(ownerApi.listOwners, {})).rejects.toThrow('There are more than 500 owner grants.');
 });
 
+it('lists up to 500 company branches without counting or returning archived rows', async () => {
+  const { t } = await setup();
+  const now = Date.now();
+  const insert = (key: string, state: 'setup' | 'suspended' | 'archived') => t.run(ctx => ctx.db.insert('branches', {
+    ...PRIMARY_BRANCH, key, slug: key, state, revision: 1, stateChangedAt: now, stateChangedByEmail: ownerEmail, createdAt: now, updatedAt: now,
+  }));
+  await t.run(async ctx => {
+    for (let index = 0; index < 498; index++) {
+      const key = `branch-${index}`;
+      await ctx.db.insert('branches', {
+        ...PRIMARY_BRANCH, key, slug: key, state: index % 2 ? 'suspended' : 'active',
+        revision: 1, stateChangedAt: now, stateChangedByEmail: ownerEmail, createdAt: now, updatedAt: now,
+      });
+    }
+  });
+  for (let index = 0; index < 3; index++) await insert(`archived-${index}`, 'archived');
+  const company = { companyScope: true, branchIds: [] };
+  const listed = await t.run(ctx => listBranchesForAccess(ctx, company));
+  expect(listed).toHaveLength(500);
+  expect(new Set(listed.map(branch => branch.state))).toEqual(new Set(['active', 'setup', 'suspended']));
+  await insert('one-more', 'setup');
+  await expect(t.run(ctx => listBranchesForAccess(ctx, company))).rejects.toThrow('There are more than 500 branches to list.');
+});
+
 it('seeds both branches with issuer data and no grants by default', async () => {
   const t = convexTest(schema, modules);
   const args = { scenario: 'two-branch' as const };
@@ -258,6 +315,31 @@ it('seeds both branches with issuer data and no grants by default', async () => 
     expect(phuket).toMatchObject({ key: 'phuket', state: 'setup', issuer: { ...issuer, address: '21 Moo 5, Kamala, Kathu, Phuket 83150' } });
   });
   await expect(t.mutation(internal.maintenance.seed.seedAll, args)).rejects.toThrow('Seed requires an empty database');
+});
+
+it('repeats the two-branch reset and restores both owners from fresh invitations', async () => {
+  const t = convexTest(schema, modules);
+  const emails = [ownerEmail, 'recovery@example.com'];
+  async function seedAndClaim() {
+    const { counts } = await t.mutation(internal.maintenance.seed.seedAll, { scenario: 'two-branch' });
+    expect(counts.staffGrants).toBe(0);
+    for (const email of emails) {
+      const owner = t.withIdentity(identity(email));
+      await t.mutation(ownerApi.grantOwner, { email });
+      expect((await owner.query(staffApi.myAccess, {})).role).toBeNull();
+      await owner.mutation(staffApi.claimInvite, {});
+      expect((await owner.query(staffApi.myAccess, {})).role).toBe('owner');
+    }
+    return { counts, owners: await t.query(ownerApi.listOwners, {}) };
+  }
+  const first = await seedAndClaim();
+  // The reset only touches this in-memory deployment. The seed itself always refuses existing data.
+  await t.run(async ctx => {
+    for (const table of Object.keys(schema.tables) as (keyof typeof schema.tables)[]) {
+      for (const row of await ctx.db.query(table).collect()) await ctx.db.delete(row._id);
+    }
+  });
+  expect(await seedAndClaim()).toEqual(first);
 });
 
 it('opts into exactly three unclaimed desk invites in the two-branch demo', async () => {

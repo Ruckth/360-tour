@@ -16,7 +16,7 @@ const OWNER_VIEW: StaffAccessView = {
   companyScope: true,
   branches: [],
   pendingInvitation: null,
-  marketingRole: null,
+  marketingInvitation: null, marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: true, settings: true, bookings: true, services: true,

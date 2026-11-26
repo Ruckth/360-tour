@@ -29,6 +29,7 @@ export const accessCurrentResult = v.union(v.object({
 "serviceFinance": v.boolean(),
 }),
 "pendingInvitation": v.union(v.null(), v.object({
+"expiresAt": v.number(),
 "role": v.union(v.literal("manager"), v.literal("marketer"), v.literal("finance"), v.literal("viewer")),
 })),
 }));

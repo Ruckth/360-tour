@@ -282,7 +282,7 @@ it("Half refunds half of what is left; a new form is a new key", async () => {
 it("shows cashiers no History; Correct payment and Void… stay, as requests", async () => {
   const { backend, orderId } = await paidSale();
   const cashier: StaffAccessView = {
-    email: "mint@example.com", role: "cashier", pendingInvitation: null, companyScope: false, branches: [], marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+    email: "mint@example.com", role: "cashier", pendingInvitation: null, companyScope: false, branches: [], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
     capabilities: { checkout: true, approve: false, operations: false, manageTeam: false, settings: false, bookings: false, services: false, customers: false, orders: false, chats: false, properties: false, roster: false, reports: false, marketing: false },
   };
   await act(async () => root.render(createElement(StaffAccessProvider, { access: cashier }, provide(backend, createElement(ReceiptWithConfirm, { orderId, onNewSale: () => {}, onOpenOrder: () => {} })))));

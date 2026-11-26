@@ -36,6 +36,11 @@ import { BranchMultiSelect, type SelectableBranch } from "./branch/BranchMultiSe
 import { BranchPill } from "./branch/branch-pills";
 
 type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
+function grantVersion(person: Person) {
+  const grant = person.staffGrant;
+  return grant ? { id: grant.id, revision: grant.revision } : null;
+}
+
 type StaffRole = "manager" | "cashier";
 /** Stored Marketing roles. "manager" is shown as Lead; the stored value is unchanged. */
 type MarketingRole = "manager" | "marketer" | "finance" | "viewer";
@@ -281,7 +286,7 @@ function PeoplePanel({
       const places = branchNamesFor(existingIds);
       const description = `${name} loses desk access${places ? ` at ${places}` : ""} now, on every device. Open sessions lose access within seconds, and unsent work there isn’t submitted. Marketing access, if any, stays.`;
       if (!(await confirm({ title: `Remove ${name} from the desk?`, description, confirmLabel: "Remove", cancelLabel: "Keep access", destructive: true }))) return false;
-      return save(person.email, () => setStaffGrant({ email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
+      return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role: null, branchIds: [] }), `Removed ${name} from the desk.`);
     }
     const branchIds = uniqueBranchIds(chosenBranchIds ?? (existingIds.length > 0 ? existingIds : defaultBranchIds));
     if (branchIds.length === 0) {
@@ -290,7 +295,7 @@ function PeoplePanel({
     }
     const baseDone = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
     const done = `${baseDone}${person.staffGrant ? inviteExpirySuffix(person) : ""}`;
-    return save(person.email, () => setStaffGrant({ email: person.email, role, branchIds }), done);
+    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role, branchIds }), done);
   }
 
   async function setBranches(person: Person, branchIds: Id<"branches">[]) {
@@ -304,7 +309,7 @@ function PeoplePanel({
     const name = personLabel(person.email);
     const places = branchNamesFor(unique);
     const done = `${name}’s branches are now ${places || "updated"}.${inviteExpirySuffix(person)}`;
-    return save(person.email, () => setStaffGrant({ email: person.email, role, branchIds: unique }), done);
+    return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person), email: person.email, role, branchIds: unique }), done);
   }
 
   async function setMarketing(person: Person, role: MarketingRole | null) {
@@ -340,8 +345,16 @@ function PeoplePanel({
             const ok = await save(
               email,
               async () => {
-                if (desk) await setStaffGrant({ email, role: desk, branchIds });
-                if (marketing) await setMarketingGrant({ email, role: marketing });
+                if (desk) await setStaffGrant({ expectedGrant: null, email, role: desk, branchIds });
+                if (marketing) {
+                  try {
+                    await setMarketingGrant({ email, role: marketing });
+                  } catch (err) {
+                    if (!desk) throw err;
+                    setInviting(false);
+                    throw new Error(`Desk invitation saved. Review Marketing access in Team. ${errorText(err, "Couldn’t save the Marketing role.")}`);
+                  }
+                }
               },
               `Invited ${personLabel(email)}. They sign in with ${email} to activate it.`,
             );
@@ -379,7 +392,7 @@ function PeoplePanel({
                 void save(
                   person.email,
                   async () => {
-                    if (staff) await updateInvitation({ grantId: staff.id, action: "resend" });
+                    if (staff) await updateInvitation({ grantId: staff.id, expectedRevision: staff.revision, action: "resend" });
                     if (marketing) await setMarketingGrant({ email: person.email, role: marketing.role });
                   },
                   `Invite renewed for ${personLabel(person.email)}.`,
@@ -639,7 +652,7 @@ function PersonRow({
             <RoleSelect
               id={`${id}-desk`}
               label={`Desk role for ${name}`}
-              value={(newDesk?.role ?? grant?.role ?? "") as StaffRole | ""}
+              value={(grant?.role ?? newDesk?.role ?? "") as StaffRole | ""}
               disabled={busy}
               onChange={(value) => {
                 setBranchError("");
@@ -650,7 +663,7 @@ function PersonRow({
               empty="None"
             />
           </div>
-          {newDesk ? (
+          {newDesk && !grant ? (
             <div className="grid w-full gap-2">
               <BranchMultiSelect
                 branches={assignableBranches}

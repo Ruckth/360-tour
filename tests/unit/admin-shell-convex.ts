@@ -14,7 +14,7 @@ export const PHUKET: ShellBranch = { id: 'branch_phuket' as Id<'branches'>, key:
 export function staffAccessFor(role: ShellRole, email = 'staff@example.com', branches: ShellBranch[] = role === 'manager' || role === 'cashier' ? [KOH_SAMUI] : []) {
   const operations = role === 'owner' || role === 'manager';
   return {
-    email, role, pendingInvitation: null, companyScope: role === "owner", branches, marketingRole: null as null | 'admin', cashierRules: DEFAULT_CASHIER_RULES,
+    email, role, pendingInvitation: null, companyScope: role === "owner", branches, marketingInvitation: null, marketingRole: null as null | 'admin', cashierRules: DEFAULT_CASHIER_RULES,
     capabilities: {
       checkout: role !== null, approve: operations, operations, manageTeam: role === 'owner', settings: role === 'owner',
       bookings: operations, services: operations, customers: operations, orders: operations, chats: operations,

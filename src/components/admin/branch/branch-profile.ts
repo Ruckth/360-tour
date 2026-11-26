@@ -3,6 +3,14 @@ import type { FunctionReturnType } from "convex/server";
 
 export type BranchRow = FunctionReturnType<typeof api.branches.branches.list>[number];
 
+/** `BRANCH_CHANGED` from a stale branch revision (`ConvexError` data, or its serialized message). */
+export function isBranchChangedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const data: unknown = "data" in error ? error.data : undefined;
+  if (data && typeof data === "object" && "code" in data && data.code === "BRANCH_CHANGED") return true;
+  return error instanceof Error && /"code"\s*:\s*"BRANCH_CHANGED"/.test(error.message);
+}
+
 const BRANCH_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const BRANCH_CODE_PATTERN = /^[0-9]{5}$/;
 

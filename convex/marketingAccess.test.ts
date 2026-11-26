@@ -26,6 +26,7 @@ it.each([false, true])("refuses expired invitations (explicit expiry: %s), then 
   }));
   expect(await t.run(async ctx => (await ctx.db.query('marketingGrants').take(10)).map(grant => ({ ...grant, expiresAt: marketingInvitationExpiry(grant), expired: marketingInvitationExpired(grant) })))).toMatchObject([{ expiresAt: now, expired: true }]);
   expect(await user.query(api.marketing.access.current, {})).toMatchObject({ role: null, pendingInvitation: null });
+  expect((await user.query(api.auth.staffAccess.myAccess, {})).marketingInvitation).toBeNull();
   await expect(user.mutation(api.marketing.access.claimInvite, {})).rejects.toThrow("Invitation expired");
   expect((await t.run(ctx => ctx.db.get(id)))?.tokenIdentifier).toBeUndefined();
   await admin.mutation(api.marketing.access.setGrant, { email: " FRIEND@example.com ", role: "manager" });
@@ -33,8 +34,13 @@ it.each([false, true])("refuses expired invitations (explicit expiry: %s), then 
     { _id: id, expiresAt: now + MARKETING_INVITATION_TTL_MS, expired: false },
   ]);
   expect(await user.query(api.marketing.access.current, {})).toMatchObject({ pendingInvitation: { role: "manager" } });
+  expect(await user.query(api.auth.staffAccess.myAccess, {})).toMatchObject({
+    marketingInvitation: { role: "manager", expiresAt: now + MARKETING_INVITATION_TTL_MS }, capabilities: { marketing: false },
+  });
   await user.mutation(api.marketing.access.claimInvite, {});
-  expect(await user.query(api.marketing.access.current, {})).toMatchObject({ role: "manager" });
+  expect(await user.query(api.auth.staffAccess.myAccess, {})).toMatchObject({
+    marketingRole: "manager", marketingInvitation: null, capabilities: { marketing: true, checkout: false },
+  });
 });
 
 it("sets a 14-day deadline on new invitations and accepts one just before expiry", async () => {

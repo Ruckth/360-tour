@@ -19,6 +19,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import {
+  isBranchChangedError,
   slugifyBranchValue,
   validateBranchProfile,
   type BranchProfileDraft,
@@ -39,10 +40,6 @@ function draftFromBranch(branch: BranchRow): BranchProfileDraft {
     branchCode: branch.issuer.branchCode,
     address: branch.issuer.address,
   };
-}
-
-function isStaleBranchError(message: string): boolean {
-  return message.toLowerCase().includes("this branch changed");
 }
 
 export function BranchProfileDialog({
@@ -99,6 +96,7 @@ function BranchProfileDialogBody({
   const [error, setError] = useState("");
   const [staleError, setStaleError] = useState(false);
 
+  // The live row: newer than the loaded draft once the conflicting change has arrived.
   const hasNewerRevision = isEdit && branch.revision > loadedRevision;
   const showReloadHint = staleError || hasNewerRevision;
   const errorId = `${id}-error`;
@@ -170,15 +168,14 @@ function BranchProfileDialogBody({
         await updateBranch({ branchId: branch._id, revision: loadedRevision, name, slug, issuer });
         onSaved(`Saved changes to ${name}.`);
       } else {
-        // The key is internal: it follows the slug the owner chose.
-        await createBranch({ key: slug, name, slug, issuer });
+        // The server derives the internal key from the slug.
+        await createBranch({ name, slug, issuer });
         onSaved(`Created ${name} in Setup.`);
       }
       onClose();
     } catch (err) {
-      const message = errorText(err, isEdit ? "Couldn’t save this branch." : "Couldn’t create this branch.");
-      if (isEdit && isStaleBranchError(message)) setStaleError(true);
-      setError(message);
+      if (isEdit && isBranchChangedError(err)) setStaleError(true);
+      setError(errorText(err, isEdit ? "Couldn’t save this branch." : "Couldn’t create this branch."));
     } finally {
       setSaving(false);
     }
@@ -201,8 +198,8 @@ function BranchProfileDialogBody({
           <Alert variant="warning">
             <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
               <span>{staleError && error ? error : "This branch changed. Reload it and try again."}</span>
-              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={reloadLatest}>
-                Reload latest
+              <Button type="button" variant="outline" size="sm" disabled={saving || !hasNewerRevision} onClick={reloadLatest}>
+                {hasNewerRevision ? "Reload latest" : "Loading latest…"}
               </Button>
             </AlertDescription>
           </Alert>
