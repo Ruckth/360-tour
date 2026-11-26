@@ -12,7 +12,7 @@ import { recordUnknownQuestion } from './concierge/knowledge';
 import { asAdmin, createHarness, fixedClock, guestSession } from './testing/harness';
 import { hashGuestToken } from './messaging/guestToken';
 
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it('rejects webhook mutations when the server secret is missing', async () => {
   // The shared secret bridge is retired. No public event mutation exists; ingress requires a provider signature.

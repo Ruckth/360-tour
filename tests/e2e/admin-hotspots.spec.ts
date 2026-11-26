@@ -1,6 +1,7 @@
 import { clerk } from "@clerk/testing/playwright";
 import { api } from "../../convex/_generated/api";
-import { chooseBranchIfPrompted, signedInBackend } from "./backend";
+import { chooseBranchIfPrompted } from "../support/choose-branch.mjs";
+import { signedInBackend } from "./backend";
 import { expect, test } from "./fixtures";
 
 test("the visual editor opens from the keyboard, places and moves a hotspot, and reloads the saved marker", async ({ page }) => {

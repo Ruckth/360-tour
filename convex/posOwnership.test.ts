@@ -11,7 +11,7 @@ import { executeOrderRefund, orderRefunds } from './pos/private/orderRefunds';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it('rolls back the caller order counter and source link, then reuses one committed source order', async () => {
   const t = convexTest(schema, modules);

@@ -12,7 +12,6 @@ const modules = import.meta.glob('/convex/**/*.ts');
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 it('issues an unlimited voucher with frozen null terms and projects it with its own History target and mask', async () => {

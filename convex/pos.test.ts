@@ -60,7 +60,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('order identity', () => {
 	it('sells a standalone order with no booking or customer, numbered permanently', async () => {

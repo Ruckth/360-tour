@@ -16,7 +16,7 @@ function handler<A extends Record<string, unknown>, R>(fn: RegisteredQuery<'publ
   return Reflect.get(fn, '_handler');
 }
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 async function fixture() {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'reads@example.com', tokenIdentifier: 'reads' });

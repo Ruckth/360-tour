@@ -16,7 +16,6 @@ const { adjust, approve } = api.pos.commands.adjust;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
   vi.useRealTimers();
 });
 

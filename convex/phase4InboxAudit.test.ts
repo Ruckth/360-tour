@@ -7,7 +7,7 @@ import { inboxProjectionReady, insertChannelEvent, patchChannelEvent } from './m
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 it('keeps internal inbox snapshots and web tool capabilities out of list, search and detail responses', async () => {
   const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });

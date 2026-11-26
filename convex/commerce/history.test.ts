@@ -16,7 +16,6 @@ const PRIVATE = 'Private note and code GV-ABCD-WXYZ';
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 async function setup() {

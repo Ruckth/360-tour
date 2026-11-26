@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
@@ -21,8 +21,6 @@ const edit = (expectedRevision: number, clientKey: string) => ({ expectedRevisio
 const DEVICE = 'front-desk-ipad-device-0001';
 const TAB = 'front-desk-ipad-tab-key-0001';
 type Method = 'cash' | 'promptpay' | 'card' | 'transfer';
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function fixture() {
   const t = convexTest(schema, modules);

@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-29T01:00:00Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 it('writes contact lookup fields through both real appointment seed paths', async () => {
   const t = convexTest(schema, modules);

@@ -13,7 +13,7 @@ import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
 
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup() {
 	const t = convexTest(schema, modules);

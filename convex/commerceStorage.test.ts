@@ -2,7 +2,7 @@ import { seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { omit } from 'convex-helpers';
 import type { Infer } from 'convex/values';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { MutationCtx } from './_generated/server';
 import {
@@ -35,8 +35,6 @@ const terms = {
   packageValidityDays: 180, voucherValidityDays: 365, allowSessionTransfer: true,
   packageSplit: 'voucherFaceValue', packageVatTiming: 'atSale', pointsVatTreatment: 'discount', pointsExpiryMonths: 12,
 } as const;
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function existingRecords(ctx: MutationCtx) {
   const serviceId = await ctx.db.insert('services', {

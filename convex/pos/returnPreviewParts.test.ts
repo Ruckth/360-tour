@@ -18,7 +18,6 @@ type Snapshot = NonNullable<Doc<'orderLines'>['saleSnapshot']>;
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 function allocation(paidShare: number): Pick<Snapshot, 'paidShare' | 'vatBase' | 'returnedAmount' | 'returnedUnits' | 'tenderCells'> {

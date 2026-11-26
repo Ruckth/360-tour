@@ -44,7 +44,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('Add booking finds standalone appointments by contact', () => {
 	it('stores lookup forms at creation and finds the appointment by any-case email and differently formatted phone', async () => {

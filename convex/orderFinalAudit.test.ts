@@ -3,14 +3,12 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent final audit. Required-behavior assertions intentionally fail for confirmed gaps.
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 import { ensureLinkedOrder } from './pos/private/orderLinks';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 async function setup() {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'order-final@example.com', tokenIdentifier: 'order-final' });

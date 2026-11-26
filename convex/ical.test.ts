@@ -3,14 +3,12 @@ import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 /** Starts a sync (takes its ticket) and applies `dates`, as the sync action does after fetching. */
 async function applyFeed(t: ReturnType<typeof convexTest>, sourceId: Id<'icalSources'>, dates: string[]) {
   const started = await t.mutation(internal.bookings.calendar.ical.beginSync, { sourceId });

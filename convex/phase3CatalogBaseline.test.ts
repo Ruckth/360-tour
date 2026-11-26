@@ -248,7 +248,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	vi.unstubAllEnvs();
 	vi.useRealTimers();
 });
 

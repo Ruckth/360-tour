@@ -2,7 +2,7 @@
 
 import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { featuredReviews } from './catalog/publicProperties';
@@ -41,8 +41,6 @@ async function setup() {
 	});
 	return { t, ...ids };
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe('public villa queries', () => {
 	it('lists only active villas with a review summary and no internal fields', async () => {

@@ -36,7 +36,7 @@ async function setup() {
 }
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('admin appointment corrections', () => {
   it('accepts old actual service time only through the explicit authenticated admin policy and logs creation without secrets', async () => {

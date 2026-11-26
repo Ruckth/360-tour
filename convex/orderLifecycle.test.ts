@@ -69,7 +69,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('discarding unpaid orders', () => {
 	it('moves an order from Unpaid to Discarded, keeping its rows, links, customer and a full history entry', async () => {

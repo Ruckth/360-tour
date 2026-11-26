@@ -1,13 +1,11 @@
 // @vitest-environment edge-runtime
 import { asTestOwner, testMarketingGrantVersion } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 it.each(['manager', 'marketer', 'finance', 'viewer'] as const)('allows %s report reads, limits spend writes, and keeps operational data admin-only', async role => {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });

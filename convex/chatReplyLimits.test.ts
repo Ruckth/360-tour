@@ -8,7 +8,7 @@ import { channelLimitConfig, consumeChatAdmission } from './messaging/chatAdmiss
 import { CHAT_REPLY_LIMIT_DEFAULTS } from './shared/siteSettings';
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-13T06:00:00Z')); });
-afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 it('saves separate web and LINE allowances, enforcing them across chats without sharing with WhatsApp', async () => {
   const t = createHarness(convexTest), admin = await asAdmin(t);

@@ -2,14 +2,12 @@
 
 import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);

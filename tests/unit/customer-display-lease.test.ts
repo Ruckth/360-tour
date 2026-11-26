@@ -105,7 +105,6 @@ afterEach(async () => {
   await Promise.allSettled([...backend.pending]);
   document.body.innerHTML = "";
   vi.useRealTimers();
-  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 

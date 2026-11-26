@@ -63,7 +63,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllEnvs();
 });
 
 describe("staff occupancy and finance consistency", () => {

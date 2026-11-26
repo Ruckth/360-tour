@@ -11,7 +11,7 @@ const now = Date.parse("2026-11-07T10:00:00Z");
 beforeEach(() => {
   vi.spyOn(Date, "now").mockReturnValue(now);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it.each([false, true])("refuses expired invitations (explicit expiry: %s), then refreshes and claims the same row", async explicitExpiry => {
   const t = convexTest(schema, modules);

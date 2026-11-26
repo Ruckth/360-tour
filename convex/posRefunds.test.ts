@@ -17,7 +17,7 @@ const day = 86_400_000;
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(now);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 const error = (code: string) => ({ data: expect.objectContaining({ code }) });
 
 async function setup() {

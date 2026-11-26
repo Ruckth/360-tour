@@ -14,7 +14,6 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 it('keeps the original refund deadline when a failed give-back is retried by another method (lead decision)', async () => {

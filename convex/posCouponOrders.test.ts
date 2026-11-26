@@ -77,7 +77,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-10-02T03:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 const unavailable = (code: string) => ({ data: expect.objectContaining({ code: 'coupon_unavailable', problem: expect.objectContaining({ code }) }) });
 

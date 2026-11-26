@@ -8,7 +8,7 @@ import schema from './schema';
 import { appointmentHistory, cancelAppointmentRecord, createAppointmentRecord, localDateTimeUtc, recordAppointmentChange } from './services/model';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 it('keeps model creation, linked order and the canonical audit atomic in the caller transaction', async () => {
   vi.useFakeTimers();

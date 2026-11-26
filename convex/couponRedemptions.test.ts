@@ -15,7 +15,7 @@ const NOW = Date.parse('2026-11-07T10:00:00Z');
 beforeEach(() => {
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 type Limits = { usageLimit?: number; discountBudget?: number; maxSaving?: number; minNights?: number; percent?: number };
 async function setup(limits: Limits = {}) {

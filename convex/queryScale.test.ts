@@ -86,7 +86,6 @@ async function applyFeed(t: Tester, sourceId: Id<'icalSources'>, dates: string[]
 const guest = { guestName: 'New Guest', guestEmail: 'new@example.com', guestPhone: '0811111111', guests: 2 };
 
 afterEach(() => {
-	vi.unstubAllEnvs();
 	vi.useRealTimers();
 });
 

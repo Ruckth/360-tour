@@ -3,7 +3,7 @@
 import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { getDocumentSize } from 'convex/values';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
@@ -44,8 +44,6 @@ async function legacyTourWithHeadroom(headroom: number) {
 	});
 	return { t, admin, propertyId, roomId, secondRoom };
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe('admin property editing', () => {
 	it('requires an admin for reads and writes', async () => {

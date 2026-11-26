@@ -3,12 +3,11 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { type FunctionReturnType } from 'convex/server';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import schema from './schema';
 import { api } from './_generated/api';
 const modules = import.meta.glob('./**/*.ts');
 const readers = api.pos.orderHistoryPages;
-afterEach(() => vi.unstubAllEnvs());
 it('authenticates every financial stream and rejects oversized or invalid pages', async () => {
   const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });

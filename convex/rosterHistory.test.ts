@@ -48,7 +48,6 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 describe('durable effective roster patterns', () => {

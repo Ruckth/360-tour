@@ -25,7 +25,7 @@ beforeEach(() => {
   // UTC date is Nov 6, Bangkok date is Nov 7.
   vi.setSystemTime(new Date('2026-11-06T18:00:00Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('marketing admin access', () => {
   it('requires admin for every admin query and mutation', async () => {

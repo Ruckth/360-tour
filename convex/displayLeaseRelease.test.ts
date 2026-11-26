@@ -13,7 +13,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-11-01T03:00:00Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 it.each(['release', 'new-sale'] as const)('a delayed renewal cannot resurrect an order after %s', async (exit) => {
 	const t = convexTest(schema, modules);

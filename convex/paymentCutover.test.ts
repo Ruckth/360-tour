@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { seedTestBranch, asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { requireStaff } from './auth/model';
@@ -19,8 +19,6 @@ const settings = api.commerce.settings;
 const refusal = (code: string) => ({ data: expect.objectContaining({ code }) });
 const edit = (expectedRevision: number, clientKey: string, reason = 'Announced desk update') =>
   ({ expectedRevision, clientKey, reason });
-
-afterEach(() => vi.unstubAllEnvs());
 
 type Outcome = 'recorded' | 'nothing_taken' | 'collected_unrecorded';
 /** What a manager reviewed on the panel's row: which registration and its current revision, after confirming its till stopped. */

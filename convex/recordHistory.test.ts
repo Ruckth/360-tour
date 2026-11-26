@@ -2,13 +2,11 @@
 import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import type { FunctionReturnType } from 'convex/server';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('protects all marketing history snapshots and pagination for %s', async role => {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com', tokenIdentifier: 'admin' });

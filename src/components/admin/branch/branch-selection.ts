@@ -54,9 +54,6 @@ export function branchRouteScope(pathname: string): AdminBranchScope {
   return /^\/admin\/(settings|marketing)(\/|$)/.test(pathname) ? "company" : "branch";
 }
 
-/** URL parameters that survive a branch switch; the rest (open record, search, filters) belong to the old branch. */
-const SWITCH_KEPT_PARAMS = ["tab"] as const;
-
 /**
  * The same page without the old branch's URL state, or null when nothing needs dropping. A switch
  * replaces the URL with it, so `?session=`, `?q=` or a `?booking=` from the old branch never loads.
@@ -64,13 +61,9 @@ const SWITCH_KEPT_PARAMS = ["tab"] as const;
 export function branchSwitchHref(pathname: string, search: URLSearchParams): string | null {
   if (branchReadOnlyRoute(pathname) || branchRouteScope(pathname) === "company") return null;
   const destination = /^\/admin\/properties\/[^/]+\/?$/.test(pathname) ? "/admin/properties" : pathname;
-  const kept = new URLSearchParams();
-  for (const key of SWITCH_KEPT_PARAMS) {
-    const value = search.get(key);
-    if (value !== null) kept.set(key, value);
-  }
-  if (destination === pathname && kept.toString() === search.toString()) return null;
-  const query = kept.toString();
+  const tab = search.get("tab");
+  const query = tab === null ? "" : new URLSearchParams({ tab }).toString();
+  if (destination === pathname && query === search.toString()) return null;
   return query ? `${destination}?${query}` : destination;
 }
 

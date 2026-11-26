@@ -57,7 +57,6 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 describe('H1-03: the display shows an open order only while its checkout is live', () => {

@@ -13,7 +13,7 @@ import { insertFixture } from './testing/completeFixture.test-support';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 beforeEach(() => { vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 const property = { slug: 'villa', name: 'Villa', tagline: '', description: '', pricePerNight: 10000, currency: 'THB', maxGuests: 2, bedrooms: 1, bathrooms: 1, area: 20, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: 'active' as const };
 const review = { authorName: 'Guest', authorCity: '', authorCountry: '', rating: 4, title: '', body: 'Great stay', date: '2030-01-01', verified: true };
 

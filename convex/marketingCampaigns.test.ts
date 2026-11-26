@@ -16,7 +16,6 @@ const campaign = { ...audit, name: 'Happy holidays', source: 'Meta', medium: 'Pa
 
 afterEach(() => {
 	vi.restoreAllMocks();
-	vi.unstubAllEnvs();
 });
 
 async function setup() {

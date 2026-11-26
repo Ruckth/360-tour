@@ -26,7 +26,7 @@ async function setup() {
   const mergeArgs = (sourceId: Id<'customers'>, destinationId: Id<'customers'>) => ({ sourceId, destinationId, sourceRevision: 0, destinationRevision: 0, reason: 'Confirmed same guest by phone', idempotencyKey: 'merge-attempt-01' });
   return { t, admin, stranger, create, profile, history, orders, mergeArgs };
 }
-afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('customer corrections', () => {
   it('supplies POS guards that reject archived/merged links and require the exact reviewed revision', async () => {

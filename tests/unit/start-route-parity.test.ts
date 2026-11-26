@@ -489,7 +489,8 @@ describe("start-route-parity optional Clerk Playwright authenticated fixture", (
         evaluate: vi.fn(async () => `eyJhbGciOiJSUzI1NiJ9.${currentRole}Payload1234567890.signature1234567890`),
         getByRole: vi.fn((role: string, opts?: { name?: string }) => ({
           waitFor: vi.fn(async () => undefined),
-          isVisible: vi.fn(async () => true),
+          or: () => ({ first: () => ({ waitFor: async () => undefined }) }),
+          isVisible: vi.fn(async () => opts?.name !== "Choose a branch to start"),
           count: vi.fn(async () => (role === "link" && opts?.name === "Settings" ? 0 : 1)),
         })),
         locator: vi.fn((selector: string) => ({

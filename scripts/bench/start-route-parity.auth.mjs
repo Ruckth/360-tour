@@ -10,6 +10,7 @@
  * - Optional POST validation is strictly loopback-only and non-mutating (401/400).
  * - Always closes Playwright browser/contexts and signs out in finally.
  */
+import { chooseBranchIfPrompted } from "../../tests/support/choose-branch.mjs";
 import { sanitizeHeaders, sanitizePath } from "./start-route-parity.sanitize.mjs";
 import { LOCALES } from "./start-route-parity.manifest.mjs";
 
@@ -348,27 +349,6 @@ export async function runAuthenticatedFixture(options, deps = {}) {
       }
     };
 
-    /**
-     * If a multi-branch session displays the one-time branch chooser before the target UI,
-     * pick the first branch and then wait for the target locator to be visible.
-     * @param {any} page
-     * @param {any} target
-     * @param {number} [timeout]
-     */
-    const waitThroughBranchChooser = async (page, target, timeout = 15_000) => {
-      if (typeof target.or !== "function") {
-        await target.waitFor({ state: "visible", timeout });
-        return;
-      }
-      const chooser = page.getByRole("heading", { name: "Choose a branch to start", exact: true });
-      await target.or(chooser).first().waitFor({ state: "visible", timeout });
-      if (await chooser.isVisible()) {
-        await page.getByRole("listitem").getByRole("button").first().click();
-        await chooser.waitFor({ state: "hidden", timeout });
-      }
-      await target.waitFor({ state: "visible", timeout });
-    };
-
     // 4. Non-staff checks
     await withRoleSession("NONSTAFF", async ({ page, token }) => {
       await record("auth:nonstaff:admin-checkout", "nonstaff", "GET", "/admin/checkout", true, async () => {
@@ -418,7 +398,7 @@ export async function runAuthenticatedFixture(options, deps = {}) {
       await record("auth:cashier:admin-checkout", "cashier", "GET", "/admin/checkout", true, async () => {
         const response = await page.goto("/admin/checkout", { waitUntil: "domcontentloaded" });
         const heading = page.getByRole("heading", { name: "Checkout", exact: true });
-        await waitThroughBranchChooser(page, heading);
+        await heading.waitFor({ state: "visible", timeout: 15_000 });
         const settingsCount = await page.getByRole("link", { name: "Settings", exact: true }).count();
         const status = response ? response.status() : null;
         const pass = status === 200 && settingsCount === 0;
@@ -468,7 +448,7 @@ export async function runAuthenticatedFixture(options, deps = {}) {
       await record("auth:owner:admin-settings-team", "owner", "GET", "/admin/settings?tab=team", true, async () => {
         const response = await page.goto("/admin/settings?tab=team", { waitUntil: "domcontentloaded" });
         const inviteBtn = page.getByRole("button", { name: "Invite", exact: true });
-        await waitThroughBranchChooser(page, inviteBtn);
+        await inviteBtn.waitFor({ state: "visible", timeout: 15_000 });
         const status = response ? response.status() : null;
         const pass = status === 200;
         return {
@@ -483,7 +463,8 @@ export async function runAuthenticatedFixture(options, deps = {}) {
       await record("auth:owner:admin-chats", "owner", "GET", "/admin/chats", true, async () => {
         const response = await page.goto("/admin/chats", { waitUntil: "domcontentloaded" });
         const chatsHeading = page.getByRole("heading", { name: "Chats", exact: true });
-        await waitThroughBranchChooser(page, chatsHeading);
+        await chooseBranchIfPrompted(page, chatsHeading, 15_000);
+        await chatsHeading.waitFor({ state: "visible", timeout: 15_000 });
         const status = response ? response.status() : null;
         const pass = status === 200;
         return {

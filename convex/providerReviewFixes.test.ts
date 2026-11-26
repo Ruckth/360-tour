@@ -11,7 +11,7 @@ import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.UTC(2026, 10, 1, 5);
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup() {
   const t = convexTest(schema, modules);

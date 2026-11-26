@@ -4,7 +4,6 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { recordExactCash } from "../support/exact-cash-payment";
-import { chooseBranchIfPrompted } from "./backend";
 
 function backend() {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL!;
@@ -63,9 +62,9 @@ test("@smoke owner browser session authorizes real protected queries and retains
   const catalog = await owner.query(api.pos.catalog.stableCatalog, {});
   expect(catalog.services.length).toBeGreaterThan(0);
   await page.goto("/admin/settings?tab=team");
-  const invite = page.getByRole("button", { name: "Invite", exact: true });
-  await chooseBranchIfPrompted(page, invite);
-  await expect(invite).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Invite", exact: true }),
+  ).toBeVisible();
 });
 
 test("@smoke cashier browser session authorizes checkout and preserves manager-only limits", async ({
@@ -92,11 +91,11 @@ test("@smoke cashier browser session authorizes checkout and preserves manager-o
     }),
   ).rejects.toThrow();
   await page.goto(`/admin/checkout?order=${orderId}`);
-  const orderLine = page
-    .getByRole("complementary", { name: "Order", exact: true })
-    .getByText(catalog.services[0].name, { exact: true });
-  await chooseBranchIfPrompted(page, orderLine);
-  await expect(orderLine).toBeVisible();
+  await expect(
+    page
+      .getByRole("complementary", { name: "Order", exact: true })
+      .getByText(catalog.services[0].name, { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Settings", exact: true }),
   ).toHaveCount(0);
@@ -120,9 +119,7 @@ test("owner checkout interactions persist a local cash receipt across reload", a
   const catalog = await owner.query(api.pos.catalog.stableCatalog, {});
   const item = catalog.rooms[0];
   await page.goto("/admin/checkout");
-  const roomsTab = page.getByRole("tab", { name: "Rooms", exact: true });
-  await chooseBranchIfPrompted(page, roomsTab);
-  await roomsTab.click();
+  await page.getByRole("tab", { name: "Rooms", exact: true }).click();
   await page
     .getByRole("region", { name: "Catalog" })
     .getByRole("button")

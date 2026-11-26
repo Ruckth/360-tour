@@ -3,7 +3,7 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import schema from './schema';
@@ -65,8 +65,6 @@ async function setup() {
 	const scheduled = () => t.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name));
 	return { t, admin, stranger, propertyId, get, rev, create, financials, history, pay, refund, edit, order, settle, scheduled };
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe('refund records', () => {
 	it('cancels a multiple-payment stay with a selected linked refund and replays the exact atomic request', async () => {

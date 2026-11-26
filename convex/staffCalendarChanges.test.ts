@@ -43,7 +43,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	vi.setSystemTime(new Date('2026-09-24T00:00:00.000Z'));
 });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 describe('appointment changes', () => {
 	it('cancels while keeping the record and payment state, frees the slot and records who and why', async () => {

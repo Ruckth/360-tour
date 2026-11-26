@@ -1,6 +1,6 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api, internal } from '../_generated/api';
 import { accessForIdentity } from './model';
 import schema from '../schema';
@@ -13,8 +13,6 @@ const identity = (email: string, tokenIdentifier = `issuer|${email}`, emailVerif
 const staffApi = api.auth.staffAccess;
 const branchApi = api.branches.branches;
 const ownerApi = internal.auth.owners;
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function setupWithOwner() {
   const t = convexTest(schema, modules);

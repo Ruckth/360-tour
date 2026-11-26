@@ -3,12 +3,10 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 // Independent read-side photo regressions. All records exist only in convex-test.
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api } from './_generated/api';
 import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 it('keeps photo reads safe after deleted service, property and booking sources, without writing financial records', async () => {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'audit@example.com', tokenIdentifier: 'audit' });

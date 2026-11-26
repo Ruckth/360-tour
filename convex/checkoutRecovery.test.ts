@@ -2,7 +2,7 @@ import { asTestOwner } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api } from "./_generated/api";
 import schema from "./schema";
 
@@ -12,8 +12,6 @@ async function setup() {
   const admin = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
   return { t, admin };
 }
-afterEach(() => vi.unstubAllEnvs());
-
 describe("customer phone validation", () => {
   it.each(["not-a-phone", "call0812345678", "abc+66812345678", "0812345678abc"])("rejects supplied non-phone text %s on create", async (phone) => {
     const { admin } = await setup();

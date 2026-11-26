@@ -18,7 +18,6 @@ import {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 it('finishes a 100-row all-voucher return with 20 grants, 200 service projections and two replacement slips within budget', async () => {

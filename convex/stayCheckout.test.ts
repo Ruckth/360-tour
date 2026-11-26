@@ -14,7 +14,7 @@ const now = Date.parse('2026-11-14T03:00:00Z');
 beforeEach(() => {
 	vi.spyOn(Date, 'now').mockReturnValue(now);
 });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 async function setup() {
 	const t = convexTest(schema, modules);

@@ -4,7 +4,7 @@ import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -66,8 +66,6 @@ async function attachCheckout(t: ReturnType<typeof convexTest>, bookingId: Id<'b
     attempt: request.attempt, total: request.total, currency: request.currency, checkIn: request.checkIn, checkOut: request.checkOut,
   });
 }
-
-afterEach(() => vi.unstubAllEnvs());
 
 describe("Stripe checkout confirmation", () => {
   it("marks the matched checkout paid + confirmed and blocks the dates", async () => {

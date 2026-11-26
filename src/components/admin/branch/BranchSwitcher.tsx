@@ -108,18 +108,6 @@ function BranchSheet({ children, onLeave }: { children: ReactElement; onLeave?: 
   );
 }
 
-function SidebarStatic({ company = false, children }: { company?: boolean; children: ReactElement | string }) {
-  return (
-    <div data-branch-static="" className="grid gap-0.5 rounded-lg px-2.5 py-1.5 leading-tight">
-      <span className="admin-eyebrow">Branch</span>
-      <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-        {company ? <Building2 aria-hidden className="size-3.5 shrink-0 text-sidebar-foreground/70" /> : null}
-        <span className="truncate">{children}</span>
-      </span>
-    </div>
-  );
-}
-
 /**
  * Sidebar: the first block under the brand. Two or more branches get a button that opens the
  * list (a popover on desktop, the sheet in the drawer); one branch gets static text; company
@@ -130,23 +118,23 @@ export function SidebarBranchSwitcher() {
   const { isMobile, setOpenMobile } = useSidebar();
   const access = useStaffAccess();
   const company = useShowsCompany();
-  if (readOnly) return null;
-  if (company) return <SidebarStatic company>Company</SidebarStatic>;
-  if (!current) return null;
+  if (readOnly || (!company && !current)) return null;
+  const branch = company ? null : current;
   const name = (
     <>
       <span className="admin-eyebrow">Branch</span>
       <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
-        <span className="truncate">{current.name}</span>
+        {company ? <Building2 aria-hidden className="size-3.5 shrink-0 text-sidebar-foreground/70" /> : null}
+        <span className="truncate">{branch?.name ?? "Company"}</span>
       </span>
-      {current.state !== "active" ? (
+      {branch && branch.state !== "active" ? (
         <span className="mt-1">
-          <BranchStatePill state={current.state} />
+          <BranchStatePill state={branch.state} />
         </span>
       ) : null}
     </>
   );
-  if (branches.length < 2) {
+  if (!branch || branches.length < 2) {
     return (
       <div data-branch-static="" className="grid gap-0.5 rounded-lg px-2.5 py-1.5 leading-tight">
         {name}
@@ -178,10 +166,10 @@ export function SidebarBranchSwitcher() {
           <Menu.Popup aria-label="Switch branch" className="w-[21rem] max-w-[calc(100vw-1rem)] rounded-xl border bg-popover p-1 text-popover-foreground shadow-xl outline-none">
             <Menu.Group>
               <Menu.GroupLabel className="px-2 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">Your branches</Menu.GroupLabel>
-              <Menu.RadioGroup value={current.id} onValueChange={(id: AdminBranchId) => void select(id)}>
-                {branches.map((branch) => (
-                  <Menu.RadioItem key={branch.id} value={branch.id} closeOnClick className={cn(ROW, "min-h-11 data-highlighted:bg-muted")}>
-                    <RowBody branch={branch} current={branch.id === current.id} />
+              <Menu.RadioGroup value={branch.id} onValueChange={(id: AdminBranchId) => void select(id)}>
+                {branches.map((option) => (
+                  <Menu.RadioItem key={option.id} value={option.id} closeOnClick className={cn(ROW, "min-h-11 data-highlighted:bg-muted")}>
+                    <RowBody branch={option} current={option.id === branch.id} />
                   </Menu.RadioItem>
                 ))}
               </Menu.RadioGroup>

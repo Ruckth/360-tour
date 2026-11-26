@@ -28,7 +28,6 @@ type AdjustmentRequest = Extract<Doc<'staffApprovalRequests'>, { kind: 'adjustme
 afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
-  vi.unstubAllEnvs();
 });
 
 async function setup() {

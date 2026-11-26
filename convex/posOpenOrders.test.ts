@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { api } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import schema from './schema';
@@ -9,8 +9,6 @@ import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const now = Date.parse('2026-11-12T03:00:00Z');
 const paginationOpts = { numItems: 20, cursor: null };
-
-afterEach(() => vi.unstubAllEnvs());
 
 async function setup() {
 	const t = convexTest(schema, modules);

@@ -9,7 +9,6 @@ import schema from "./schema";
 const modules = import.meta.glob("./**/*.ts");
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllEnvs();
 });
 
 async function setup(now: string) {

@@ -13,7 +13,6 @@ import { command, give, line, payment, receipt, selection, setup, snapshot, vouc
 
 afterEach(() => {
   vi.restoreAllMocks();
-  vi.unstubAllEnvs();
 });
 
 function random(seed: number) {

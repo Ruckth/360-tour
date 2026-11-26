@@ -16,7 +16,7 @@ const now = Date.parse('2026-11-09T10:00:00Z');
 const day = 86_400_000;
 const email = 'admin@example.com';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now); });
-afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.useRealTimers(); });
 
 async function setup(couponAmount = 10000) {
 	const t = convexTest(schema, modules);

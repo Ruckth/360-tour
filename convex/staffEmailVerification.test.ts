@@ -1,14 +1,12 @@
 // @vitest-environment edge-runtime
 import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it } from 'vitest';
 import { api, internal } from './_generated/api';
 import schema from './schema';
 import { requireStaff } from './auth/private/staffAccess';
 
 const modules = import.meta.glob('./**/*.ts');
-afterEach(() => vi.unstubAllEnvs());
-
 it.each([true, false, undefined])('checks owner email verification (%s) requiring explicit verification', async emailVerified => {
   const t = convexTest(schema, modules);
   const owner = await asTestOwner(t, { email: 'Owner@Example.com', tokenIdentifier: 'issuer|owner', ...(emailVerified === undefined ? {} : { emailVerified }) });

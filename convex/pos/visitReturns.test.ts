@@ -23,7 +23,7 @@ const terms = termsOf(resolveCommerceSettings(null));
 const ownerEmail = 'owner@example.com';
 const tillId = 'desk-a';
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 async function setup() {
   vi.spyOn(Date, 'now').mockReturnValue(now);

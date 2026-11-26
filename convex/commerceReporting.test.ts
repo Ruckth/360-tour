@@ -33,7 +33,6 @@ beforeEach(() => {
 });
 afterEach(() => {
 	vi.useRealTimers();
-	vi.unstubAllEnvs();
 });
 
 async function order(ctx: MutationCtx, total: number, fields: Partial<Pick<Doc<'orders'>, 'vatVersion' | 'returnedTotal' | 'affiliateSnapshot' | 'amendedTenders'>> = {}) {

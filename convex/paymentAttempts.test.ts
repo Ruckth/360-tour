@@ -51,7 +51,7 @@ async function fixture(mode: 'direct' | 'attempts' = 'attempts') {
 const at = (tillId: Id<'tills'>, deviceKey = DEVICE_A, loadedRevision = 0, tabKey = TAB_A) =>
   ({ tillId, tabKey, load: { tillId, deviceKey, loadedMode: 'attempts' as const, loadedRevision } });
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 it('atomically claims the order and replays only the same scoped quote', async () => {
   const { t, owner, request, deskB } = await fixture();
