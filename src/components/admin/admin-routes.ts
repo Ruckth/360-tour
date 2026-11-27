@@ -177,22 +177,32 @@ export function adminRedirectPath(pathname: string): string | null {
   return adminNavItem(pathname) ? null : ADMIN_HOME;
 }
 
-function navLinkMatches(link: AdminNavLink, query: string) {
-  return [link.label, ...(link.keywords ?? [])].some((word) => word.toLowerCase().includes(query));
+function navMatchRank(link: AdminNavLink, query: string) {
+  const label = link.label.toLowerCase();
+  if (label === query) return 3;
+  if (label.includes(query)) return 2;
+  return link.keywords?.some((word) => word.toLowerCase().includes(query)) ? 1 : 0;
 }
 
-/**
- * Sidebar search: sections whose label or keywords match, with only their matching sub-pages.
- * A section matched just by a sub-page keeps that sub-page so it can be reached.
- */
+/** Keep matching pages in their sections, with the strongest match first for Enter. */
 export function searchAdminNav(query: string, nav: readonly AdminNavItem[] = ADMIN_NAV): AdminNavItem[] {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase().replace(/\s+/g, " ");
   if (!q) return [...nav];
-  return nav.flatMap((item): AdminNavItem[] => {
-    const children = item.children?.filter((child) => navLinkMatches(child, q)) ?? [];
-    if (children.length) return [{ ...item, children }];
-    return navLinkMatches(item, q) ? [{ ...item, children: undefined }] : [];
-  });
+  const byRank = (a: { rank: number }, b: { rank: number }) => b.rank - a.rank;
+
+  return nav.map((item) => {
+    // "Settings team" names both levels. "Settings" alone still points at the section.
+    const prefix = item.label.toLowerCase() + " ";
+    const childQuery = q.startsWith(prefix) ? q.slice(prefix.length) : q;
+    const matches = (item.children ?? [])
+      .map((child) => ({ child, rank: navMatchRank(child, childQuery) }))
+      .filter(({ rank }) => rank > 0)
+      .sort(byRank);
+    return {
+      item: { ...item, children: matches.length ? matches.map(({ child }) => child) : undefined },
+      rank: Math.max(navMatchRank(item, q), matches[0]?.rank ?? 0),
+    };
+  }).filter(({ rank }) => rank > 0).sort(byRank).map(({ item }) => item);
 }
 
 /** The sub-page link for this URL: an exact path and `?tab` match, else the section's link without a tab, else the page it's nested under. */
