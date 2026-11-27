@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "@/platform/auth";
-import { useLocale, useTranslations } from "@/platform/intl";
+import { useTranslations } from "@/platform/intl";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
@@ -12,7 +12,6 @@ import { TourIntro } from "@/components/tour/TourIntro";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import type { PanoramaDetailRequest, PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import { Button } from "@/components/ui/button";
-import { localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
@@ -30,6 +29,7 @@ export type TourViewerProps = {
   onClose: () => void;
   onFirstSceneDrawn?: () => void;
   onReady?: (renderer: TourRenderer) => void;
+  standardTourHref?: string;
 };
 type CanvasProps = ComponentProps<typeof TourCanvas>;
 type ViewerContentProps = TourViewerProps & {
@@ -43,9 +43,8 @@ export function TourViewerContent(props: ViewerContentProps) {
   return <LiveTourViewer key={`${props.property.id}\n${userId ?? ""}`} {...props} />;
 }
 
-function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas, loadFallbackCanvas }: ViewerContentProps) {
+function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standardTourHref, Canvas, loadFallbackCanvas }: ViewerContentProps) {
   const messages = usePublicMessages();
-  const locale = useLocale();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
   const { rooms: liveRooms, fresh } = useLiveTourRooms(property.id);
@@ -134,7 +133,8 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
   function handleRetry() {
     if (fallback === "failed") {
       // A failed module fetch may be cached for this document. Retry the standard tour from a fresh page.
-      window.location.replace(localizeHref(`/rooms/${property.id}?tour=1`, locale));
+      if (standardTourHref) window.location.replace(standardTourHref);
+      else window.location.reload();
       return;
     }
     setLoadFailed(false);

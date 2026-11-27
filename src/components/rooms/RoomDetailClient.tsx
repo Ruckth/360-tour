@@ -73,7 +73,8 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
 
   const roomPath = `/rooms/${property.id}`;
   const isTrial = renderer === "pannellum";
-  const tourHref = localizeHref(`${roomPath}?tour=1${isTrial ? "&tourRenderer=pannellum" : ""}`, locale);
+  const standardTourHref = localizeHref(`${roomPath}?tour=1`, locale);
+  const tourHref = isTrial ? `${standardTourHref}&tourRenderer=pannellum` : standardTourHref;
   const closeHref = localizeHref(isTrial ? `${roomPath}?tourRenderer=pannellum` : roomPath, locale);
   const preloadViewer = () => preloadTourRenderer(renderer);
 
@@ -251,6 +252,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
           onReady={finish}
           onFirstSceneDrawn={galleryStart === "waiting" ? requestCoveredGallery : undefined}
           closeHref={closeHref}
+          standardTourHref={standardTourHref}
         />
       ) : null}
     </div>
