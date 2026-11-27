@@ -214,11 +214,31 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
     let disposed = false;
     let camera: Camera | null = null;
     let restoreTimer: number | undefined;
+    let instance: { viewer: PannellumViewer; host: HTMLDivElement } | null = null;
+
+    function disposeInstance(viewer: PannellumViewer, host: HTMLDivElement) {
+      try {
+        viewer.destroy();
+      } finally {
+        host.remove();
+      }
+    }
+
+    function disposeCurrent() {
+      const previous = instance;
+      instance = null;
+      viewerRef.current = null;
+      if (previous) disposeInstance(previous.viewer, previous.host);
+    }
 
     function create(global: PannellumGlobal, scene: Scene, view: Camera | null) {
       const hfov = view?.hfov ?? tourHfov(container!.clientWidth, container!.clientHeight);
       loadingRef.current = scene;
-      const viewer = global.viewer(container!, {
+      // A late completion belongs to this host only. Pannellum clears its host in destroy().
+      const host = document.createElement("div");
+      Object.assign(host.style, { position: "absolute", inset: "0", background: "#000", fontFamily: "inherit", lineHeight: "inherit" });
+      container!.append(host);
+      const config = {
         default: {
           firstScene: scene.id,
           autoLoad: true,
@@ -239,11 +259,27 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
           strings: PANNELLUM_STRINGS,
         },
         scenes: { [scene.id]: sceneConfig(scene, latest) },
-      });
+      };
+      let viewer: PannellumViewer;
+      try {
+        viewer = global.viewer(host, config);
+      } catch (error) {
+        host.remove();
+        throw error;
+      }
+      instance = { viewer, host };
       viewerRef.current = viewer;
+
+      function isCurrent() {
+        if (!disposed && viewerRef.current === viewer) return true;
+        // The library's image request can finish after destroy() and allocate a renderer and
+        // document listeners. Dispose again once that callback stack has returned.
+        queueMicrotask(() => disposeInstance(viewer, host));
+        return false;
+      }
       let instrumented: PanoramaRenderer | undefined;
       viewer.on("load", () => {
-        if (disposed || viewerRef.current !== viewer) return;
+        if (!isCurrent()) return;
         const loaded = loadingRef.current;
         loadingRef.current = null;
         if (!loaded) return;
@@ -284,7 +320,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         if (!disposed && viewerRef.current === viewer) setFading(false);
       });
       viewer.on("error", (message) => {
-        if (disposed || viewerRef.current !== viewer) return;
+        if (!isCurrent()) return;
         const failed = loadingRef.current;
         loadingRef.current = null;
         if (pannellumErrorKind(message) === "renderer" || !failed) {
@@ -327,8 +363,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         return;
       }
       // Pannellum cannot rebuild its GPU state: replace the viewer on the same scene and camera.
-      viewerRef.current?.destroy();
-      viewerRef.current = null;
+      disposeCurrent();
       loadingRef.current = null;
       const scene = shownRef.current ?? wantedRef.current;
       if (!scene || !library || !latest.current.initialTextureConfirmed) {
@@ -367,8 +402,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       resize.disconnect();
       container.removeEventListener("webglcontextlost", onContextLost, true);
       container.removeEventListener("webglcontextrestored", onContextRestored, true);
-      viewerRef.current?.destroy();
-      viewerRef.current = null;
+      disposeCurrent();
       loadingRef.current = null;
       shownRef.current = null;
       recoveringRef.current = false;

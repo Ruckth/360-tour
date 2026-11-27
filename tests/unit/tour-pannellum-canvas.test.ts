@@ -59,7 +59,8 @@ class FakeViewer {
   setHfov() { return this; }
   setHfovBounds() { return this; }
   resize() {}
-  destroy() { this.destroyed = true; this.container.replaceChildren(); }
+  destroyCalls = 0;
+  destroy() { this.destroyCalls++; this.destroyed = true; this.container.replaceChildren(); }
 }
 
 let viewers: FakeViewer[];
@@ -236,6 +237,21 @@ it("recreates the viewer on the same scene and camera after a restored context",
   await act(async () => last().finish());
   expect(status()).toEqual(["ready", "pool"]);
   expect(cb.onFallback).not.toHaveBeenCalled();
+});
+
+it("disposes a late load again without clearing the reopened viewer's host", async () => {
+  const first = last();
+  await act(() => root.unmount());
+  expect(first.destroyCalls).toBe(1);
+  root = createRoot(host);
+  await render();
+  const reopened = last();
+
+  await act(async () => first.finish());
+  await flush();
+  expect(first.destroyCalls).toBe(2);
+  expect(reopened.destroyCalls).toBe(0);
+  expect(host.querySelectorAll("canvas")).toHaveLength(1);
 });
 
 it("falls back when a lost context is not restored in time", async () => {
