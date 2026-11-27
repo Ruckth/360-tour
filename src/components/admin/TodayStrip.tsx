@@ -4,7 +4,7 @@ import { useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 type AdminBooking = import("convex/server").FunctionReturnType<typeof import("convex/_generated/api").api.bookings.admin.listForAdmin>["bookings"][number];
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -37,14 +37,18 @@ export function todayGroups(bookings: readonly AdminBooking[], today: string): R
 export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => string; onOpen: (booking: AdminBooking, element: Element) => void }) {
   const today = serverTodayIso();
   // Stays touching today: from yesterday so a check-out today is included.
-  const data = useQuery(api.bookings.admin.listForAdmin, { from: addDaysIso(today, -1), to: addDaysIso(today, 1) });
+  const data = useQuery(api.bookings.admin.listForAdmin, {
+    from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true,
+  });
   const [open, setOpen] = useState<TodayGroup | null>(null);
-  const groups = data ? todayGroups(data.bookings, today) : null;
+  const bookings = data?.bookings;
+  const groups = useMemo(() => bookings ? todayGroups(bookings, today) : null, [bookings, today]);
   const list = open && groups ? groups[open] : [];
   const owed = groups?.balanceDue.filter((b) => b.currency === "THB").reduce((sum, b) => sum + b.owed, 0) ?? 0;
 
   return (
     <section aria-label="Today" className="grid shrink-0 gap-2">
+      {data?.complete === false ? <p role="status" className="text-xs text-muted-foreground">Some of today’s stays could not be loaded.</p> : null}
       <div className="grid grid-cols-[1fr_1fr_1fr_1.7fr] gap-1.5 sm:grid-cols-4 sm:gap-3">
         {GROUPS.map(({ key, label }) => (
           <button

@@ -16,6 +16,7 @@ const anonymousSpecs = [
   "public-chat",
   "service-catalog",
   "tour-loading",
+  "tour-renderer-trial",
   "villa-tour",
 ].map((name) => `**/${name}.spec.ts`);
 

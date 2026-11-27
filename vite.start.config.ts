@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/postcss";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import { startRouteJsManifest } from "./scripts/bench/start-route-js-manifest.mjs";
 import { startTourModulePreloads } from "./scripts/start-tour-module-preloads";
@@ -52,6 +53,8 @@ export default defineConfig(({ mode }) => {
   return {
     envPrefix: [],
     define,
+    // The Start stylesheet only needs app classes. Browser fixtures use their own Vite config.
+    css: { postcss: { plugins: [tailwindcss({ base: here("./src") })] } },
     resolve: {
       alias: [
         { find: /^tailwindcss$/, replacement: here("./node_modules/tailwindcss/index.css") },
