@@ -1,9 +1,11 @@
 "use client";
 
+import type { PaginationStatus } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { CheckCheck, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { SkeletonRows } from "@/components/admin/admin-bulk";
 import { Callout, FieldError, NumberField } from "@/components/admin/marketing/MarketingBits";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button, ButtonLink } from "@/components/ui/button";
@@ -56,6 +58,8 @@ export function ReceivePurchaseOrderSection({
   initialOrderId,
   allowDirectReceipt,
   orderedOpenOrders,
+  openOrdersStatus,
+  onLoadMoreOrders,
   matchedOrderIdSet,
   selectedOrderId,
   orderDetail,
@@ -84,6 +88,8 @@ export function ReceivePurchaseOrderSection({
   initialOrderId?: Id<"purchaseOrders">;
   allowDirectReceipt: boolean;
   orderedOpenOrders: readonly ReceiveOrderRow[];
+  openOrdersStatus: PaginationStatus;
+  onLoadMoreOrders: () => void;
   matchedOrderIdSet: ReadonlySet<Id<"purchaseOrders">>;
   selectedOrderId: Id<"purchaseOrders"> | null;
   orderDetail: ReceiveOrderDetail | undefined;
@@ -113,7 +119,9 @@ export function ReceivePurchaseOrderSection({
       {!initialOrderId ? (
         <div className="grid gap-2">
           <Label>Select an open purchase order</Label>
-          {orderedOpenOrders.length === 0 ? (
+          {openOrdersStatus === "LoadingFirstPage" ? (
+            <SkeletonRows label="Loading open purchase orders" rows={2} />
+          ) : openOrdersStatus === "Exhausted" && orderedOpenOrders.length === 0 ? (
             <Callout tone="info">
               No open purchase orders at {branchName}.
               {allowDirectReceipt ? " You can switch to Receive without PO above." : ""}
@@ -126,6 +134,7 @@ export function ReceivePurchaseOrderSection({
                   <li key={po._id}>
                     <button
                       type="button"
+                      aria-pressed={selectedOrderId === po._id}
                       onClick={() => onSelectOrder(po._id)}
                       className={cn(
                         "flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition hover:bg-muted",
@@ -149,6 +158,17 @@ export function ReceivePurchaseOrderSection({
               })}
             </ul>
           )}
+          {openOrdersStatus === "CanLoadMore" || openOrdersStatus === "LoadingMore" ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={openOrdersStatus === "LoadingMore"}
+              onClick={onLoadMoreOrders}
+            >
+              {openOrdersStatus === "LoadingMore" ? "Loading more orders…" : "Load more orders"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
