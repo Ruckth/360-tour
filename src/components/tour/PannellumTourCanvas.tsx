@@ -1,5 +1,6 @@
 "use client";
 
+import "pannellum/build/pannellum.css";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { TourCanvas, TourSceneStatus } from "@/components/tour/TourCanvas";
 import type { PanoramaDetailStatus } from "@/components/tour/useTourTextures";
@@ -45,10 +46,7 @@ const PREFETCH_LIMIT = 2;
 
 let pannellumScript: Promise<PannellumGlobal> | undefined;
 function loadPannellum(): Promise<PannellumGlobal> {
-  pannellumScript ??= Promise.all([
-    import("pannellum/build/pannellum.js"),
-    import("pannellum/build/pannellum.css"),
-  ]).then(() => {
+  pannellumScript ??= import("pannellum/build/pannellum.js").then(() => {
     const global = (window as { pannellum?: PannellumGlobal }).pannellum;
     if (!global) throw new Error("Pannellum did not load");
     return global;
