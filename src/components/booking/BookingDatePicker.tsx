@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type Ref, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useConvex } from 'convex/react';
@@ -10,7 +10,7 @@ import type { DateRange, DayPickerProps } from "react-day-picker";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { defaultLocale, isLocale } from "@/i18n/routing";
 import { addDaysIso, dateToIso, isoToDate, nightsBetweenIso } from '@/lib/booking/dates';
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
@@ -114,6 +114,11 @@ export function BookingRangePicker({
   const [open, setOpen] = useState(false);
   const [activeField, setActiveField] = useState<ActiveDateField>("checkIn");
   const [visibleMonth, setVisibleMonth] = useState<Date>();
+  const calendarId = useId();
+  const triggerGroup = useRef<HTMLDivElement>(null);
+  const checkOutTrigger = useRef<HTMLButtonElement>(null);
+  const openingTrigger = useRef<HTMLButtonElement>(null);
+  const dismissedFromOutside = useRef(false);
   const checkInLabel = checkIn ? formatPickerDate(checkIn, locale) : t("checkIn");
   const checkOutLabel = checkOut ? formatPickerDate(checkOut, locale) : t("checkOut");
   const checkInDate = isoToDate(checkIn);
@@ -163,6 +168,7 @@ export function BookingRangePicker({
       }
 
       updateRange({ checkIn, checkOut: iso });
+      openingTrigger.current = checkOutTrigger.current;
       setOpen(false);
       return;
     }
@@ -199,8 +205,14 @@ export function BookingRangePicker({
     if (date) showMonth(date);
   }
 
-  function openPicker(field: ActiveDateField) {
+  function openPicker(field: ActiveDateField, trigger: HTMLButtonElement) {
+    if (open && activeField === field) {
+      setOpen(false);
+      return;
+    }
     if (!open) onCalendarOpening?.(field);
+    openingTrigger.current = trigger;
+    dismissedFromOutside.current = false;
     const date = field === "checkIn" ? checkInDate : checkOutDate;
     showMonth(date ?? checkInDate ?? isoToDate(todayIsoResort())!);
     setActiveField(field);
@@ -209,8 +221,21 @@ export function BookingRangePicker({
 
   const popoverContent = (
     <RangePickerContent
+      id={calendarId}
+      aria-label={t("chooseDates")}
       className={calendarPopoverClassName}
       onOpenAutoFocus={onCalendarOpened}
+      onCloseAutoFocus={(event) => {
+        event.preventDefault();
+        if (!dismissedFromOutside.current) openingTrigger.current?.focus();
+      }}
+      onInteractOutside={(event) => {
+        if (event.target instanceof Node && triggerGroup.current?.contains(event.target)) {
+          event.preventDefault();
+        } else {
+          dismissedFromOutside.current = true;
+        }
+      }}
       checkInValue={checkIn ? formatPickerDate(checkIn, locale) : t("checkIn")}
       checkOutValue={checkOut ? formatPickerDate(checkOut, locale) : t("checkOut")}
       activeField={activeField}
@@ -232,62 +257,36 @@ export function BookingRangePicker({
   return (
     <div className={cn("space-y-2", className)}>
       <Popover open={open} onOpenChange={setOpen}>
-        <DateTriggerFields
-          compact={compact}
-          checkInLabel={checkInLabel}
-          checkOutLabel={checkOutLabel}
-          checkIn={checkIn}
-          checkOut={checkOut}
-          checkInText={t("checkIn")}
-          checkOutText={t("checkOut")}
-          onOpenPicker={openPicker}
-        />
+        <PopoverAnchor asChild>
+          <div ref={triggerGroup} className={cn("grid gap-3 sm:grid-cols-2", compact && "gap-2")}>
+            <DateTriggerField
+              field="checkIn"
+              compact={compact}
+              label={t("checkIn")}
+              value={checkIn}
+              displayValue={checkInLabel}
+              expanded={open && activeField === "checkIn"}
+              calendarId={calendarId}
+              onOpen={openPicker}
+            />
+            <DateTriggerField
+              triggerRef={checkOutTrigger}
+              field="checkOut"
+              compact={compact}
+              label={t("checkOut")}
+              value={checkOut}
+              displayValue={checkOutLabel}
+              expanded={open && activeField === "checkOut"}
+              calendarId={calendarId}
+              onOpen={openPicker}
+            />
+          </div>
+        </PopoverAnchor>
         {popoverContent}
       </Popover>
       {helperText ? (
         <p className="text-xs leading-relaxed text-muted-foreground">{helperText}</p>
       ) : null}
-    </div>
-  );
-}
-
-function DateTriggerFields({
-  compact,
-  checkInLabel,
-  checkOutLabel,
-  checkIn,
-  checkOut,
-  checkInText,
-  checkOutText,
-  onOpenPicker,
-}: {
-  compact: boolean;
-  checkInLabel: string;
-  checkOutLabel: string;
-  checkIn: string;
-  checkOut: string;
-  checkInText: string;
-  checkOutText: string;
-  onOpenPicker: (field: ActiveDateField) => void;
-}) {
-  return (
-    <div className={cn("grid gap-3 sm:grid-cols-2", compact && "gap-2")}>
-      <DateTriggerField
-        field="checkIn"
-        compact={compact}
-        label={checkInText}
-        value={checkIn}
-        displayValue={checkInLabel}
-        onOpen={onOpenPicker}
-      />
-      <DateTriggerField
-        field="checkOut"
-        compact={compact}
-        label={checkOutText}
-        value={checkOut}
-        displayValue={checkOutLabel}
-        onOpen={onOpenPicker}
-      />
     </div>
   );
 }
@@ -298,6 +297,9 @@ function DateTriggerField({
   label,
   value,
   displayValue,
+  expanded,
+  calendarId,
+  triggerRef,
   onOpen,
 }: {
   field: ActiveDateField;
@@ -305,9 +307,13 @@ function DateTriggerField({
   label: string;
   value: string;
   displayValue: string;
-  onOpen: (field: ActiveDateField) => void;
+  expanded: boolean;
+  calendarId: string;
+  triggerRef?: Ref<HTMLButtonElement>;
+  onOpen: (field: ActiveDateField, trigger: HTMLButtonElement) => void;
 }) {
-  const id = compact ? `chat-booking-${field === "checkIn" ? "check-in" : "check-out"}` : `booking-${field === "checkIn" ? "check-in" : "check-out"}`;
+  const id = useId();
+  const testId = `${compact ? "chat-booking" : "booking"}-${field === "checkIn" ? "check-in" : "check-out"}`;
   return (
     <div className={cn("space-y-2", compact && "space-y-1.5")}>
       <Label
@@ -316,31 +322,32 @@ function DateTriggerField({
       >
         {label}
       </Label>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          data-testid={id}
-          data-selected-date={value}
-          onClick={() => onOpen(field)}
-          className={cn(
-            "w-full justify-start border-input bg-background px-3 text-left font-medium",
-            compact ? "h-10 rounded-xl text-sm" : "h-12",
-            !value && "text-muted-foreground",
-          )}
-        >
-          <CalendarDays className={cn("text-muted-foreground", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
-          <span className="truncate">{displayValue}</span>
-        </Button>
-      </PopoverTrigger>
+      <Button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        variant="outline"
+        data-testid={testId}
+        data-selected-date={value}
+        aria-controls={expanded ? calendarId : undefined}
+        aria-describedby={value ? `${id}-value` : undefined}
+        aria-expanded={expanded}
+        aria-haspopup="dialog"
+        onClick={(event) => onOpen(field, event.currentTarget)}
+        className={cn(
+          "w-full justify-start border-input bg-background px-3 text-left font-medium",
+          compact ? "h-10 rounded-xl text-sm" : "h-12",
+          !value && "text-muted-foreground",
+        )}
+      >
+        <CalendarDays aria-hidden className={cn("text-muted-foreground", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
+        <span id={`${id}-value`} className="truncate">{displayValue}</span>
+      </Button>
     </div>
   );
 }
 
 function RangePickerContent({
-  className,
-  onOpenAutoFocus,
   checkInValue,
   checkOutValue,
   activeField,
@@ -356,9 +363,8 @@ function RangePickerContent({
   onClear,
   onSelectDate,
   onMonthChange,
-}: {
-  className: string;
-  onOpenAutoFocus?: () => void;
+  ...popoverProps
+}: ComponentProps<typeof PopoverContent> & {
   checkInValue: string;
   checkOutValue: string;
   activeField: ActiveDateField;
@@ -376,7 +382,7 @@ function RangePickerContent({
   onMonthChange: (month: Date) => void;
 }) {
   return (
-    <PopoverContent align="center" collisionPadding={16} className={className} onOpenAutoFocus={onOpenAutoFocus}>
+    <PopoverContent align="center" collisionPadding={16} {...popoverProps}>
       <RangeHeader
         checkInValue={checkInValue}
         checkOutValue={checkOutValue}

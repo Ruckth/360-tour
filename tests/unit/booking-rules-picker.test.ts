@@ -24,7 +24,7 @@ vi.mock("@/components/ui/calendar", () => ({
 vi.mock("@/components/ui/popover", () => {
   const Wrapper = ({ children }: { children: ReactNode }) =>
     createElement(Fragment, null, children);
-  return { Popover: Wrapper, PopoverContent: Wrapper, PopoverTrigger: Wrapper };
+  return { Popover: Wrapper, PopoverContent: Wrapper, PopoverAnchor: Wrapper };
 });
 let root: Root;
 beforeEach(() => {
@@ -69,7 +69,7 @@ it("limits arrivals by resort day and permits a departure after the last arrival
   await render();
   expect(state.calendar.disabled(date(14))).toBe(false);
   expect(state.calendar.disabled(date(15))).toBe(true);
-  await act(async () => document.getElementById("booking-check-out")!.click());
+  await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="booking-check-out"]')!.click());
   expect(state.calendar.disabled(date(15))).toBe(true); // One night, below minimum.
   expect(state.calendar.disabled(date(16))).toBe(true);
   expect(state.calendar.disabled(date(17))).toBe(false); // Three nights, beyond max arrival.

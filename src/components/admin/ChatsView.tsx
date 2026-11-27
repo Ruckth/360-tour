@@ -694,7 +694,7 @@ export function ChatsView() {
                       <p className="admin-eyebrow">Guest activity</p>
                       <SegmentedTabs
                         tabs={statusTabs}
-                        value={status === "needs_reply" ? "all" : status}
+                        value={status === "active" || status === "inactive" ? status : "all"}
                         onValueChange={setStatus}
                         label="Guest activity"
                         fill

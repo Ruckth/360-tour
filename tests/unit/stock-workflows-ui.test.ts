@@ -19,6 +19,7 @@ import {
   parseStockError,
   parseWholeQuantity,
   STOCK_MAX_LINES,
+  STOCK_PAGE_SIZE,
 } from "@/components/stock/stock-format";
 import { StockLineEditor } from "@/components/stock/StockLineEditor";
 import { StockPurchasingHubView } from "@/components/stock/StockPurchasingHubView";
@@ -545,6 +546,64 @@ describe("Stock UI components and workflow regressions", () => {
       operationKey: firstSubmitKey,
     });
     expect(onSaved).toHaveBeenCalledWith("req_1");
+  });
+
+  it("distinguishes loading from an empty order picker and preserves the receipt draft across pages", async () => {
+    const first = { _id: "po_1", reference: "PO-0001", supplier: { name: "Island Supply" }, dueUnits: 4 };
+    const second = { ...first, _id: "po_2", reference: "PO-0002" };
+    const loadMore = vi.fn();
+    async function renderPage(status: string, results: typeof first[]) {
+      mockConvex.paginated.mockReturnValue({ results, status, loadMore });
+      await act(async () => root.render(wrap(createElement(ReceiveDeliverySheet, {
+        branchId: "branch_1" as Id<"branches">,
+        branchName: "Koh Samui",
+        allowDirectReceipt: true,
+        onClose: vi.fn(),
+        onPosted: vi.fn(),
+      }))));
+    }
+    const button = (label: string) =>
+      Array.from(document.querySelectorAll("button")).find(item => item.textContent.includes(label));
+
+    await renderPage("LoadingFirstPage", []);
+    expect(document.body.textContent).toContain("Loading open purchase orders");
+    expect(document.body.textContent).not.toContain("No open purchase orders");
+    await renderPage("Exhausted", []);
+    expect(document.body.textContent).toContain("No open purchase orders at Koh Samui.");
+    expect(button("Load more orders")).toBeUndefined();
+
+    await renderPage("CanLoadMore", [first]);
+    await act(async () => button(first.reference)!.click());
+    const referenceInput = () => document.querySelector<HTMLInputElement>("#recv-del-ref")!;
+    await act(async () => setInputValue(referenceInput(), "DEL-109"));
+    const more = button("Load more orders")!;
+    await act(async () => {
+      more.focus();
+      more.click();
+    });
+    expect(loadMore).toHaveBeenCalledWith(STOCK_PAGE_SIZE);
+    await renderPage("LoadingMore", [first]);
+    expect(button("Loading more orders")?.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => more.click());
+    expect(loadMore).toHaveBeenCalledTimes(1);
+
+    await renderPage("Exhausted", [first, second]);
+    expect(button("Load more orders")).toBeUndefined();
+    expect(button(first.reference)?.getAttribute("aria-pressed")).toBe("true");
+    expect(referenceInput().value).toBe("DEL-109");
+    expect(document.activeElement).toBe(button(second.reference));
+    await act(async () => button(second.reference)!.click());
+    expect(button(second.reference)?.getAttribute("aria-pressed")).toBe("true");
+
+    await renderPage("CanLoadMore", [first, second]);
+    const nextPage = button("Load more orders")!;
+    await act(async () => {
+      nextPage.focus();
+      nextPage.click();
+      referenceInput().focus();
+    });
+    await renderPage("Exhausted", [first, second, { ...first, _id: "po_3", reference: "PO-0003" }]);
+    expect(document.activeElement).toBe(referenceInput());
   });
 
   it("ReceiveDeliverySheet auto-selects linked replacement holdId and forwards followUp / undercount / OCC retry key", async () => {

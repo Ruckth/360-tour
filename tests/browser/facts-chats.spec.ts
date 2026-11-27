@@ -154,6 +154,20 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       if (size === "desktop") await expect(list.getByRole("status")).toHaveText("No reply needed · Anna Müller");
     });
 
+    test("keyboard users can filter guest activity from In progress", async ({ page }) => {
+      await open(page, "/tests/browser/chats.html?path=/admin/chats");
+      await page.getByRole("tab", { name: "In progress" }).click();
+      await page.getByRole("button", { name: "Filters", exact: true }).click();
+      await expect(page.getByRole("tab", { name: "Open", exact: true })).toBeFocused();
+
+      await page.keyboard.press("Tab");
+      const activity = page.getByRole("tablist", { name: "Guest activity" });
+      await expect(activity.getByRole("tab", { name: "All", exact: true })).toBeFocused();
+      await page.keyboard.press("ArrowLeft");
+      await expect(activity.getByRole("tab", { name: "Live" })).toHaveAttribute("aria-selected", "true");
+      await expect(page.locator("body")).toHaveAttribute("data-navigation", /view=active/);
+    });
+
     test("contact details are behind the header info button; IDs stay under closed More · technical", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
       if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();

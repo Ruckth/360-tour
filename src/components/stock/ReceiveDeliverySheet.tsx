@@ -99,7 +99,7 @@ export function ReceiveDeliverySheet({
   });
   const [selectedOrderId, setSelectedOrderId] = useState<Id<"purchaseOrders"> | null>(initialOrderId ?? null);
 
-  const { results: openOrders } = usePaginatedQuery(
+  const { results: openOrders, status: openOrdersStatus, loadMore: loadMoreOrders } = usePaginatedQuery(
     api.commerce.purchasing.orders,
     !initialOrderId && mode === "po" ? { branchId, view: { kind: "phase", phase: "open" } } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
@@ -799,6 +799,8 @@ export function ReceiveDeliverySheet({
               initialOrderId={initialOrderId}
               allowDirectReceipt={allowDirectReceipt}
               orderedOpenOrders={orderedOpenOrders}
+              openOrdersStatus={openOrdersStatus}
+              onLoadMoreOrders={() => loadMoreOrders(STOCK_PAGE_SIZE)}
               matchedOrderIdSet={matchedOrderIdSet}
               selectedOrderId={selectedOrderId}
               orderDetail={orderDetail}

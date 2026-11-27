@@ -50,13 +50,13 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-40 transition-all duration-300",
+        "fixed inset-x-0 top-0 z-40 flex max-h-dvh flex-col transition-all duration-300",
         solid
           ? "border-b border-border bg-background/95 shadow-sm backdrop-blur-md"
           : "bg-transparent",
       )}
     >
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3 md:px-8 md:py-4">
+      <nav className="mx-auto flex w-full max-w-7xl shrink-0 items-center justify-between px-5 py-3 md:px-8 md:py-4">
         <Link
           href={localizeHref("/", locale)}
           className="flex items-center gap-2"
@@ -132,7 +132,7 @@ export function SiteHeader({ hasReviews = true }: { hasReviews?: boolean }) {
       </nav>
 
       {mobileMenuOpen ? (
-        <div className="border-t border-border bg-background/98 backdrop-blur-md lg:hidden">
+        <div className="min-h-0 overflow-y-auto overscroll-contain border-t border-border bg-background/98 backdrop-blur-md lg:hidden">
           <div className="flex flex-col space-y-1 px-5 py-4">
             {links.map((link) => (
               <Link

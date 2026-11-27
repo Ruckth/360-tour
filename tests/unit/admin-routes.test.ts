@@ -135,6 +135,17 @@ describe("admin routes", () => {
       expect(shown("pos")).toEqual([["Checkout", []]]);
     });
 
+    it("puts named pages ahead of earlier keyword and partial-label matches", () => {
+      expect(shown("team")).toEqual([["Settings", ["Team"]], ["Staff bookings", ["Staff"]]]);
+      expect(shown("business")[0]).toEqual(["Settings", ["Business"]]);
+    });
+
+    it("matches a section with its child name or keyword within the allowed navigation", () => {
+      expect(shown(" Settings   Team ")).toEqual([["Settings", ["Team"]]]);
+      expect(shown("marketing qr")).toEqual([["Marketing", ["Links & QR"]]]);
+      expect(searchAdminNav("settings team", ADMIN_NAV.filter((section) => section.label !== "Settings"))).toEqual([]);
+    });
+
     it("returns nothing for no match", () => {
       expect(searchAdminNav("zzz")).toEqual([]);
     });
