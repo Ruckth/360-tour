@@ -370,7 +370,8 @@ export async function loadStartRoomData(
   const [tour, ...duplicate] = url.searchParams.getAll("tour");
   const directTour = request.method === "GET" && url.pathname === expectedPath && tour === "1" && duplicate.length === 0;
   const env = deps.env ?? process.env;
-  const localTrial = !env.VERCEL_ENV && env.BENCH_LOCAL_SSR === "1" && env.START_PANNELLUM_TRIAL === "1";
+  const localTrial = !env.VERCEL_ENV && env.START_PANNELLUM_TRIAL === "1" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
   const pannellumAvailable = !read.recovery && slug === "pool-villa" && (env.VERCEL_ENV === "preview" || localTrial)
     ? true
     : undefined;
