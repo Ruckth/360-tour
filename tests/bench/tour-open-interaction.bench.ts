@@ -33,6 +33,7 @@ const EXPECTED_FIRST_PANORAMA = "/tour/panoramas/v1/pool-villa-living-2048.webp"
 const EXPECTED_NEIGHBOR_PREFETCH_PANORAMA = "/tour/panoramas/v1/pool-villa-pool-2048.webp";
 const ALLOWED_PANORAMAS_BEFORE_GESTURE = new Set([EXPECTED_FIRST_PANORAMA, EXPECTED_NEIGHBOR_PREFETCH_PANORAMA]);
 const START = process.env.BENCH_FRONTEND === "start";
+const trialRenderer = process.env.BENCH_TOUR_RENDERER === "pannellum";
 const OBSERVE_USABLE_FRAME = process.env.BENCH_RELEASE_USABLE === "1";
 const VERIFY_USABLE_PIXELS = process.env.BENCH_USABLE_PIXEL_PROBE === "1";
 const PANORAMA_CLIP = { x: 110, y: 320, width: 160, height: 120 };
@@ -114,7 +115,10 @@ function instrument() {
   addEventListener(
     "touchstart",
     (e) => {
-      if (e.isTrusted && e.target instanceof HTMLCanvasElement && sample.gesture === null) {
+      const target = e.target;
+      const dragSurface = target instanceof HTMLCanvasElement ||
+        (target instanceof HTMLElement && target.matches('[data-testid="tour-pannellum"] .pnlm-dragfix'));
+      if (e.isTrusted && dragSurface && sample.gesture === null) {
         sample.origin = sample.last;
         sample.gesture = performance.now();
         performance.mark("tour_bench:drag_started");
@@ -161,18 +165,20 @@ async function drag(cdp: CDPSession) {
 
 async function waitForScene(page: Page, expectedRoom: string) {
   await page.waitForFunction(
-    ({ targetRoom, observeUsableFrame }) => {
+    ({ targetRoom, observeUsableFrame, trial }) => {
       const viewer = document.querySelector('[data-testid="tour-viewer"]');
       const requested = viewer?.getAttribute("data-requested-room");
       const shown = viewer?.getAttribute("data-shown-room");
       const sample = (window as unknown as InstrumentedWindow).__tourSample;
       const hit = document.elementFromPoint(190, 390);
+      const hitViewer = hit instanceof HTMLCanvasElement ||
+        (trial && hit instanceof HTMLElement && hit.matches(".pnlm-dragfix"));
       const sceneReady =
         requested === targetRoom &&
         shown === targetRoom &&
         viewer?.getAttribute("data-scene-status") === "ready" &&
         sample.last?.roomId === targetRoom &&
-        hit instanceof HTMLCanvasElement;
+        hitViewer;
       if (!sceneReady || !observeUsableFrame) return sceneReady;
 
       // Hit-test the real gesture point so a covering intro cannot qualify. Opacity must also be
@@ -181,7 +187,7 @@ async function waitForScene(page: Page, expectedRoom: string) {
         !viewer?.contains(hit) ||
         viewer.getAttribute("data-live") !== "confirmed" ||
         viewer.getAttribute("aria-busy") !== "false" ||
-        !hit.checkVisibility({ opacityProperty: true, visibilityProperty: true })
+        !hit?.checkVisibility({ opacityProperty: true, visibilityProperty: true })
       ) return false;
       if (sample.stages.first_usable_frame === undefined) {
         sample.stages.first_usable_frame = performance.now();
@@ -189,7 +195,7 @@ async function waitForScene(page: Page, expectedRoom: string) {
       }
       return true;
     },
-    { targetRoom: expectedRoom, observeUsableFrame: OBSERVE_USABLE_FRAME },
+    { targetRoom: expectedRoom, observeUsableFrame: OBSERVE_USABLE_FRAME, trial: trialRenderer },
     { timeout: 60_000, polling: "raf" },
   );
 }
@@ -382,7 +388,8 @@ async function measure(
     if (direct) await openSpan();
     // The loader emits viewer hints only for exactly one tour value. Both URLs open the same viewer.
     const search = direct ? (preloadProbe?.enabled === false ? "?tour=1&tour=1" : "?tour=1") : "";
-    const documentResponse = await page.goto(VILLA_PATH + search, {
+    const trialSearch = trialRenderer ? (search ? "&tourRenderer=pannellum" : "?tourRenderer=pannellum") : "";
+    const documentResponse = await page.goto(VILLA_PATH + search + trialSearch, {
       waitUntil: direct ? "commit" : "load",
     });
     const routeCache = START ? null : ((await documentResponse?.headerValue("x-nextjs-cache")) ?? null);
@@ -409,6 +416,7 @@ async function measure(
       await explore.tap();
     }
     await waitForScene(page, EXPECTED_FIRST_ROOM);
+    if (trialRenderer) await expect(page.getByTestId("tour-viewer")).toHaveAttribute("data-tour-renderer", "pannellum");
     if (VERIFY_USABLE_PIXELS && !OBSERVE_USABLE_FRAME) throw Error("Functional pixel probe requires BENCH_RELEASE_USABLE=1");
     const usablePixels = VERIFY_USABLE_PIXELS ? await verifyUsablePixels(page) : undefined;
     await drag(cdp);
@@ -649,6 +657,7 @@ async function benchmarkMetadata(browser: Browser) {
     upKbps: MOBILE_PROFILE.upKbps,
     downloadBytesPerSec: MOBILE_PROFILE.downloadThroughput,
     uploadBytesPerSec: MOBILE_PROFILE.uploadThroughput,
+    ...(trialRenderer && { tourRenderer: "pannellum" }),
     expectedFirstRoom: EXPECTED_FIRST_ROOM,
     expectedFirstPanorama: EXPECTED_FIRST_PANORAMA,
     lockSha256: digest("bun.lock"),

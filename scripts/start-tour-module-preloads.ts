@@ -1,8 +1,16 @@
 import type { Plugin } from "vite";
+import type { TourRenderer } from "../src/lib/tour/renderer";
 
 const virtualModule = "virtual:start-tour-module-preloads";
 const resolvedVirtualModule = "\0" + virtualModule;
-const viewerModule = "/src/components/tour/TourViewer.tsx";
+const viewerModule = {
+  three: "/src/components/tour/TourViewer.tsx",
+  pannellum: "/src/components/tour/PannellumTourViewer.tsx",
+};
+const canvasModule = {
+  three: "/src/components/tour/TourCanvas.tsx",
+  pannellum: "/src/components/tour/PannellumTourCanvas.tsx",
+};
 const roomRouteModule = "/src/start-app/routes/{-$locale}.rooms.$id.tsx";
 
 type ClientChunk = {
@@ -12,13 +20,17 @@ type ClientChunk = {
   imports: string[];
 };
 
-export function collectTourModulePreloads(chunks: ClientChunk[], base: string): string[] {
+export function collectTourModulePreloads(
+  chunks: ClientChunk[],
+  base: string,
+  renderer: TourRenderer = "three",
+): string[] {
   if (!base.startsWith("/") || base.startsWith("//") || !base.endsWith("/")) {
     throw new Error("Expected a same-origin Start asset base for tour module preloads");
   }
   const contains = (chunk: ClientChunk, file: string) =>
     chunk.moduleIds.some((id) => id.split("?", 1)[0].replaceAll("\\", "/").endsWith(file));
-  const viewer = chunks.filter((chunk) => contains(chunk, viewerModule));
+  const viewer = chunks.filter((chunk) => contains(chunk, viewerModule[renderer]));
   const ordinaryRoom = chunks.filter((chunk) => chunk.isEntry || contains(chunk, roomRouteModule));
   if (viewer.length !== 1 || !ordinaryRoom.some((chunk) => contains(chunk, roomRouteModule))) {
     throw new Error("Could not locate the TourViewer and room route in the Start client build");
@@ -44,17 +56,27 @@ export function collectTourModulePreloads(chunks: ClientChunk[], base: string): 
   if (existing.has(viewer[0].fileName)) {
     throw new Error("The ordinary room route must keep TourViewer lazy");
   }
-  return [...staticImports(viewer)].filter((file) => !existing.has(file)).map((file) => base + file);
+  const closure = staticImports(viewer);
+  const other = renderer === "pannellum" ? "three" : "pannellum";
+  if (chunks.some((chunk) => (closure.has(chunk.fileName) || existing.has(chunk.fileName))
+      && (contains(chunk, viewerModule[other]) || contains(chunk, canvasModule[other])))) {
+    throw new Error(`The ${renderer} tour must keep the ${other} renderer lazy`);
+  }
+  return [...closure].filter((file) => !existing.has(file)).map((file) => base + file);
 }
 
 export function startTourModulePreloads(): Plugin {
-  let preloads: string[] | undefined;
+  let preloads: Record<TourRenderer, string[]> | undefined;
   return {
     name: "start-tour-module-preloads",
     generateBundle(_options, bundle) {
       if (this.environment.name !== "client") return;
       const chunks = Object.values(bundle).filter((output) => output.type === "chunk");
-      preloads = collectTourModulePreloads(chunks, this.environment.config.base);
+      const { base } = this.environment.config;
+      preloads = {
+        three: collectTourModulePreloads(chunks, base, "three"),
+        pannellum: collectTourModulePreloads(chunks, base, "pannellum"),
+      };
     },
     resolveId(id) {
       return id === virtualModule ? resolvedVirtualModule : undefined;
@@ -66,7 +88,7 @@ export function startTourModulePreloads(): Plugin {
       if (this.environment.config.command === "build" && !preloads) {
         this.error("Build the Start client before loading the tour module preload manifest");
       }
-      return `export default ${JSON.stringify(preloads ?? [])};`;
+      return `export default ${JSON.stringify(preloads ?? { three: [], pannellum: [] })};`;
     },
   };
 }

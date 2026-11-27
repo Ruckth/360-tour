@@ -33,6 +33,27 @@ describe("Start tour client chunk graph", () => {
     ]);
   });
 
+  it("preloads only the selected renderer and rejects cross-renderer imports", () => {
+    const trialViewer = {
+      ...shared,
+      fileName: "assets/trial-viewer.js",
+      moduleIds: ["/checkout/src/components/tour/PannellumTourViewer.tsx"],
+      imports: ["assets/trial-canvas.js"],
+    };
+    const trialCanvas = {
+      ...shared,
+      fileName: "assets/trial-canvas.js",
+      moduleIds: ["/checkout/src/components/tour/PannellumTourCanvas.tsx"],
+    };
+    expect(collectTourModulePreloads([...chunks, trialViewer, trialCanvas], "/", "pannellum")).toEqual([
+      "/assets/trial-viewer.js",
+      "/assets/trial-canvas.js",
+    ]);
+    expect(() => collectTourModulePreloads([...chunks, {
+      ...trialViewer, imports: [viewer.fileName],
+    }], "/", "pannellum")).toThrow("must keep the three renderer lazy");
+  });
+
   it("fails the build if TourViewer becomes eager or its generated chunk disappears", () => {
     expect(() => collectTourModulePreloads(
       [{ ...entry, imports: [viewer.fileName] }, ...chunks.slice(1)], "/",

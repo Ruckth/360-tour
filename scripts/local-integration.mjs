@@ -398,6 +398,7 @@ try {
     START_VILLA_INVALIDATION_SECRET: villaStudy?.secret ?? "",
     ...(villaSwrPilot && { VERCEL_ENV: "preview", VILLA_BENCH_NAMESPACE: "1" }),
     ...(supplied.BENCH_SPANS_OUT && { BENCH_LOCAL_SSR: "1", BENCH_START_PORT: String(app) }),
+    ...(supplied.START_PANNELLUM_TRIAL === "1" && { START_PANNELLUM_TRIAL: "1" }),
   }, "start.log");
   await until(async () => {
     try {
@@ -424,6 +425,8 @@ try {
     ...env,
     ...(benchSpans && { BENCH_SPAN_ENDPOINT: benchSpans.endpoint }),
     BENCH_FRONTEND: "start",
+    ...(supplied.START_PANNELLUM_TRIAL === "1" && { START_PANNELLUM_TRIAL: "1" }),
+    ...(supplied.BENCH_TOUR_RENDERER && { BENCH_TOUR_RENDERER: supplied.BENCH_TOUR_RENDERER }),
     ...(supplied.BENCH_START_WIRE_GZIP === "1" && { BENCH_START_WIRE_GZIP: "1" }),
     ...(villaStudy && { START_VILLA_CACHE_STUDY_CONTROL: villaStudy.controlUrl }),
   });

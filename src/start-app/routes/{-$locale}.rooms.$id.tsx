@@ -16,6 +16,7 @@ import {
   buildRoomHeaders,
   loadStartRoomData,
   resolveRoomLocale,
+  roomTourRenderer,
   StartRoomLoadError,
   StartRoomUnavailableError,
   validateRoomInput,
@@ -50,7 +51,7 @@ export const loadStartRoomServerFn = createServerFn({ method: "GET" })
       getPublicMessages,
       siteUrl,
       getRequest,
-      getTourModulePreloads: async () => (await import("../guest/tour-preloads.server")).tourModulePreloads,
+      getTourModulePreloads: async (renderer) => (await import("../guest/tour-preloads.server")).tourModulePreloads[renderer],
       setResponseHeader,
       setResponseStatus,
       env: process.env,
@@ -100,9 +101,10 @@ export const Route = createFileRoute("/{-$locale}/rooms/$id")({
 
 function StartRoomRouteComponent() {
   const data = Route.useLoaderData();
+  const renderer = roomTourRenderer(data.pannellumAvailable, Route.useSearch());
   return (
     <Suspense fallback={<div className="min-h-screen px-5 py-24">{data.loadingLabel}</div>}>
-      <RoomDetailClient property={data.villa} reviews={data.reviews} />
+      <RoomDetailClient property={data.villa} reviews={data.reviews} renderer={renderer} />
     </Suspense>
   );
 }

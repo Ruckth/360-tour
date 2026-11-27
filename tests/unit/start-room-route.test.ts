@@ -200,6 +200,63 @@ describe("start room server orchestration (loadStartRoomData)", () => {
     expect(buildRoomHead(data, {}).links?.some((link) => link.rel === "modulepreload") ?? false).toBe(false);
   });
 
+  it.each([
+    ["preview", "pool-villa", "tourRenderer=pannellum", undefined, "pannellum"],
+    ["preview", "pool-villa", "tourRenderer=pannellum&tourRenderer=pannellum", undefined, "three"],
+    ["preview", "garden-suite", "tourRenderer=pannellum", undefined, "three"],
+    ["production", "pool-villa", "tourRenderer=pannellum", undefined, "three"],
+    ["preview", "pool-villa", "tourRenderer=pannellum", "backoff", null],
+  ] as const)("limits the renderer trial to the eligible room in Preview (%s %s %s %s)", async (
+    vercelEnv, slug, search, recovery, selected,
+  ) => {
+    const getTourModulePreloads = vi.fn(async (renderer: "three" | "pannellum") => [`/assets/${renderer}.js`]);
+    const result = await loadStartRoomData({ slug, locale: "en" }, {
+      getStartVilla: async () => ({
+        page: { villa: sampleVilla, reviews: [] },
+        cache: "hit",
+        recovery,
+      }),
+      villaCacheHeader: mockVillaCacheHeader,
+      isVillaUnavailableError: (error): error is MockVillaUnavailableError => error instanceof MockVillaUnavailableError,
+      getLocalizedResort,
+      getPublicMessages,
+      siteUrl: () => "https://tour.helpgueststay.com",
+      getRequest: () => new Request(`https://tour.helpgueststay.com/rooms/${slug}?tour=1&${search}`),
+      getTourModulePreloads,
+      setResponseStatus: vi.fn(),
+      setResponseHeader: vi.fn(),
+      env: { VERCEL_ENV: vercelEnv },
+    });
+    expect(result.status).toBe("ok");
+    if (result.status !== "ok") return;
+    expect(result.data.pannellumAvailable).toBe(vercelEnv === "preview" && slug === "pool-villa" && !recovery ? true : undefined);
+    expect(getTourModulePreloads.mock.calls).toEqual(selected ? [[selected]] : []);
+    expect(result.data.tourModulePreloads).toEqual(selected ? [`/assets/${selected}.js`] : undefined);
+  });
+
+  it.each([
+    ["http://localhost:3100", undefined, true],
+    ["http://localhost:3100", "production", false],
+    ["https://tour.helpgueststay.com", undefined, false],
+  ] as const)("limits the local trial switch to loopback (%s %s)", async (origin, vercelEnv, enabled) => {
+    const getTourModulePreloads = vi.fn(async (renderer: "three" | "pannellum") => [`/assets/${renderer}.js`]);
+    const result = await loadStartRoomData({ slug: "pool-villa", locale: "en" }, {
+      getStartVilla: async () => ({ page: { villa: sampleVilla, reviews: [] }, cache: "hit" }),
+      villaCacheHeader: mockVillaCacheHeader,
+      isVillaUnavailableError: (error): error is MockVillaUnavailableError => error instanceof MockVillaUnavailableError,
+      getLocalizedResort,
+      getPublicMessages,
+      siteUrl: () => origin,
+      getRequest: () => new Request(`${origin}/rooms/pool-villa?tour=1&tourRenderer=pannellum`),
+      getTourModulePreloads,
+      setResponseStatus: vi.fn(),
+      setResponseHeader: vi.fn(),
+      env: { VERCEL_ENV: vercelEnv, START_PANNELLUM_TRIAL: "1" },
+    });
+    expect(result.status).toBe("ok");
+    expect(getTourModulePreloads).toHaveBeenCalledExactlyOnceWith(enabled ? "pannellum" : "three");
+  });
+
   it("reads getStartVilla once, falls back to resort description without og:image, and hides x-villa-cache in production", async () => {
     const getStartVilla = vi.fn().mockResolvedValue({
       page: { villa: { ...sampleVilla, description: "", images: [] }, reviews: [] },

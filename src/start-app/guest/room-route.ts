@@ -2,6 +2,7 @@ import { defaultLocale, isLocale, localizeHref, type Locale } from "@/i18n/routi
 import type { Review } from "@/lib/data/reviews";
 import type { PublicMessages } from "@/lib/i18n/public-content";
 import type { PublicVilla } from "@/lib/villas";
+import type { TourRenderer } from "@/lib/tour/renderer";
 
 import {
   VILLA_BENCH_REQUEST_HEADER,
@@ -16,7 +17,7 @@ const MAX_ROOM_SLUG_LENGTH = 200;
 const SAFE_SLUG_PATTERN = /^[^\s/\\?#\u0000-\u001f]+$/;
 const FALLBACK_RESORT_TITLE = "Auralis Cove Retreat";
 
-export type StartRoomSearch = { tour?: "1" };
+export type StartRoomSearch = { tour?: "1"; tourRenderer?: "pannellum" };
 export type StartRoomInput = { slug: string; locale: Locale };
 
 export type StartVillaRead = {
@@ -49,6 +50,8 @@ export type StartRoomLoaderData = {
   meta: StartRoomMetadata;
   loadingLabel: string;
   tourModulePreloads?: readonly string[];
+  tourModulePreloadRenderer?: "pannellum";
+  pannellumAvailable?: true;
   /** Present only when Preview cache header diagnostics are enabled. */
   cacheHeader?: string;
   benchmarkHeaders?: Record<string, string>;
@@ -132,7 +135,14 @@ export function resolveRoomLocale(rawLocale: string | undefined): StartRoomLocal
 
 /** Root router uses `parseUrlSearch`, retaining `?tour=1` as the string `"1"`. */
 export function validateRoomSearch(search: Record<string, unknown>): StartRoomSearch {
-  return search.tour === "1" ? { tour: "1" } : {};
+  return {
+    ...(search.tour === "1" && { tour: "1" }),
+    ...(search.tourRenderer === "pannellum" && { tourRenderer: "pannellum" }),
+  };
+}
+
+export function roomTourRenderer(available: true | undefined, search: StartRoomSearch): TourRenderer {
+  return available && search.tourRenderer === "pannellum" ? "pannellum" : "three";
 }
 
 export function validateRoomInput(input: unknown): StartRoomInput {
@@ -234,11 +244,16 @@ export function buildRoomHead(loaderData: StartRoomLoaderData | undefined, searc
     meta.push({ name: "twitter:image", content: roomMeta.ogImage });
   }
 
+  const requestedRenderer = roomTourRenderer(loaderData.pannellumAvailable, search ?? {});
+  const preloads = search?.tour === "1" && requestedRenderer === (loaderData.tourModulePreloadRenderer ?? "three")
+    ? loaderData.tourModulePreloads
+    : undefined;
+
   return {
     meta,
     links: [
       { rel: "canonical", href: roomMeta.canonicalUrl },
-      ...((search?.tour === "1" ? loaderData.tourModulePreloads : undefined) ?? [])
+      ...(preloads ?? [])
         .map((href) => ({ rel: "modulepreload" as const, href, crossOrigin: "anonymous" as const })),
     ],
   };
@@ -267,7 +282,7 @@ export type StartRoomServerDeps = {
   getPublicMessages: (locale?: string) => Pick<PublicMessages, "Villa">;
   siteUrl: () => string;
   getRequest: () => Request;
-  getTourModulePreloads?: () => Promise<readonly string[]>;
+  getTourModulePreloads?: (renderer: TourRenderer) => Promise<readonly string[]>;
   setResponseStatus: (status: number, statusText?: string) => void;
   setResponseHeader: (name: string, value: string) => void;
   env?: Record<string, string | undefined>;
@@ -354,8 +369,18 @@ export async function loadStartRoomData(
   const expectedPath = localizeHref(`/rooms/${encodeURIComponent(slug)}`, locale);
   const [tour, ...duplicate] = url.searchParams.getAll("tour");
   const directTour = request.method === "GET" && url.pathname === expectedPath && tour === "1" && duplicate.length === 0;
+  const env = deps.env ?? process.env;
+  const localTrial = !env.VERCEL_ENV && env.START_PANNELLUM_TRIAL === "1" &&
+    (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  const pannellumAvailable = !read.recovery && slug === "pool-villa" && (env.VERCEL_ENV === "preview" || localTrial)
+    ? true
+    : undefined;
+  const [tourRenderer, ...additionalRenderers] = url.searchParams.getAll("tourRenderer");
+  const renderer = roomTourRenderer(pannellumAvailable, validateRoomSearch({
+    tourRenderer: additionalRenderers.length === 0 ? tourRenderer : undefined,
+  }));
   const tourModulePreloads = directTour && !read.recovery
-    ? await deps.getTourModulePreloads?.()
+    ? await deps.getTourModulePreloads?.(renderer)
     : undefined;
 
   return {
@@ -373,7 +398,11 @@ export async function loadStartRoomData(
         ...(ogImage ? { ogImage } : {}),
       },
       loadingLabel: villaCopy.loadingVilla,
-      ...(tourModulePreloads?.length ? { tourModulePreloads } : {}),
+      ...(tourModulePreloads?.length ? {
+        tourModulePreloads,
+        ...(renderer === "pannellum" && { tourModulePreloadRenderer: renderer }),
+      } : {}),
+      ...(pannellumAvailable ? { pannellumAvailable } : {}),
       ...(cacheHeader ? { cacheHeader } : {}),
       ...(benchmarkHeaders ? { benchmarkHeaders } : {}),
     },

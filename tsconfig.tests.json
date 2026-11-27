@@ -13,6 +13,7 @@
     "src/start-app/env.d.ts",
     "src/start-app/routeTree.gen.ts",
     "types/**/*.d.ts",
+    "src/components/tour/pannellum.d.ts",
     "tests/**/*.ts",
     "tests/**/*.tsx",
     "playwright.booking.config.ts",

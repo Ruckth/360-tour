@@ -3,10 +3,11 @@
 import dynamic from "@/platform/dynamic";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useRouter } from "@/platform/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
 import { dateToIso } from '@/lib/booking/dates';
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
+import { finishGuestPerformanceClock, startGuestPerformanceClock } from "@/lib/marketing/analytics";
 import { HomeSolidBookButton } from "@/components/home/HomeSolidBookButton";
 
 const BookingRangePicker = dynamic(
@@ -37,6 +38,10 @@ export function HomeQuickBooking() {
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [error, setError] = useState("");
+  const calendarOpening = useRef<{
+    clock: ReturnType<typeof startGuestPerformanceClock>;
+    trigger: "check_in" | "check_out";
+  } | null>(null);
 
   function prefetchBooking() {
     router.prefetch(bookingHref);
@@ -80,6 +85,17 @@ export function HomeQuickBooking() {
           }}
           isDateDisabled={(date) => dateToIso(date) < today}
           onRangeChange={() => setError("")}
+          onCalendarOpening={(field) => {
+            calendarOpening.current = {
+              clock: startGuestPerformanceClock(),
+              trigger: field === "checkIn" ? "check_in" : "check_out",
+            };
+          }}
+          onCalendarOpened={() => {
+            const opening = calendarOpening.current;
+            calendarOpening.current = null;
+            if (opening) finishGuestPerformanceClock(opening.clock, { metric: "home_calendar_open", trigger: opening.trigger });
+          }}
         />
 
         <HomeSolidBookButton type="submit">
