@@ -43,12 +43,16 @@ export const listCalendarProperties = adminQuery({
 
 /**
  * Villas, bookings, OTA blocks and host date blocks overlapping [from, to) for the admin calendar.
+ * The Today strip requests bookings only and skips both block reads and villa projections.
  * Every read counts against one shared read budget. `complete` is false when there are more villas
  * than shown, a villa had more rows than one read can check, or the budget ran out; the calendar
  * then says so instead of passing a partial view off as the whole picture.
  */
 export const listForAdmin = adminQuery({
-	args: { from: v.string(), to: v.string(), propertyId: v.optional(v.id('properties')) },
+	args: {
+		from: v.string(), to: v.string(), propertyId: v.optional(v.id('properties')),
+		bookingsOnly: v.optional(v.boolean())
+	},
 	handler: async (ctx, args) => {
 		assertValidIsoDate(args.from, 'From date');
 		assertValidIsoDate(args.to, 'To date');
@@ -79,11 +83,14 @@ export const listForAdmin = adminQuery({
 			}
 			const overlap = await scanOverlappingBookings(ctx, property._id, args.from, args.to);
 			bookings.push(...overlap.bookings);
+			complete &&= overlap.complete;
+			if (args.bookingsOnly) continue;
+
 			// Host blocks come from both their start and end indexes, so a long block whose nights
 			// were never mirrored still shows.
 			const hostBlocks = await scanOverlappingDateBlocks(ctx, property._id, args.from, args.to);
 			dateBlocks.push(...hostBlocks.blocks);
-			complete &&= overlap.complete && hostBlocks.complete;
+			complete &&= hostBlocks.complete;
 
 			// OTA/iCal nights (read-only here).
 			let rows = 0;
@@ -104,7 +111,7 @@ export const listForAdmin = adminQuery({
 		}
 
 		return {
-			properties: properties.map(calendarProperty),
+			properties: args.bookingsOnly ? [] : properties.map(calendarProperty),
 			bookings: bookings.map(toAdminBooking),
 			blocks,
 			dateBlocks: dateBlocks.map(({ _id, propertyId, start, end, reason }) => ({ _id, propertyId, start, end, reason })),

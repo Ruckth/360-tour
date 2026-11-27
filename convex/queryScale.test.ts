@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import type { QueryCtx } from './_generated/server';
-import type { FunctionReturnType } from 'convex/server';
+import type { FunctionArgs, FunctionReturnType } from 'convex/server';
 import { markBookingPaid } from './bookings/model';
 import { listForAdmin } from './bookings/admin';
 import { READ_BUDGET_ERROR, readBudget, ReadBudget, ReadBudgetExceeded, reserveWrites } from './lib/readBudget';
@@ -174,7 +174,7 @@ describe('admin calendar', () => {
 			await ctx.db.insert('availability', { propertyId, date: '2030-03-06', status: 'blocked', source: 'airbnb' });
 		});
 
-		const measure = (params: typeof args & { propertyId?: Id<'properties'> }) => admin.run(async ctx => {
+		const measure = (params: FunctionArgs<typeof api.bookings.admin.listForAdmin>) => admin.run(async ctx => {
 			const queries = vi.spyOn(ctx.db, 'query');
 			const gets = vi.spyOn(ctx.db, 'get');
 			const invoke: (ctx: QueryCtx, args: typeof params) => Promise<FunctionReturnType<typeof api.bookings.admin.listForAdmin>> = Reflect.get(listForAdmin, '_handler');
@@ -188,7 +188,10 @@ describe('admin calendar', () => {
 
 		const all = await measure(args);
 		const selected = await measure({ ...args, propertyId });
+		const today = await measure({ ...args, bookingsOnly: true });
 		expect(all.tables).toHaveLength(1 + 101);
+		expect(today.tables).toEqual(['staffGrants', 'properties', ...Array<string>(40).fill('bookings')]);
+		expect(today.data).toEqual({ properties: [], bookings: all.data.bookings, dateBlocks: [], blocks: [], complete: true });
 		expect(selected.tables).toEqual(['staffGrants', 'bookings', 'bookings', 'dateBlocks', 'dateBlocks', 'availability']);
 		expect(selected.ids.filter(id => id === propertyId)).toHaveLength(1);
 		expect(selected.data).toEqual({
