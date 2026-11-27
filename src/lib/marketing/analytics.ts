@@ -162,7 +162,8 @@ export async function captureGuestPerformance(timing: GuestPerformanceTiming, st
     const posthog = await loadSdk();
     if (route !== current || !mayCapture(startedIn)) return;
     initializeSdk(posthog, current.config);
-    posthog.capture(PERFORMANCE_EVENT, properties);
+    // Send while this consent is current instead of leaving timings in the SDK's batch queue.
+    posthog.capture(PERFORMANCE_EVENT, properties, { send_instantly: true, transport: "sendBeacon" });
   } catch {
     // Measurements must never delay or break a guest action.
   }

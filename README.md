@@ -41,6 +41,8 @@ Follow the [admin UX conventions](./docs/guides/admin-ux.md) when changing staff
 
 On a Vercel Preview, open `/rooms/pool-villa?tour=1&tourRenderer=pannellum` to try Pannellum. The control is `/rooms/pool-villa?tour=1`. For the tap and reopen paths, omit `tour=1` and use the room's Explore button. The current viewer handles a failed trial load and full-detail requests. Pannellum displays the source panorama orientation, including scenes the current renderer mirrors. Production URLs always use the current viewer.
 
+When guests opt in to measurement, PostHog records `guest_performance` timings for the first interactive tour frame, the homepage calendar opening, and two booking milestones. Booking durations start when the funnel mounts. The first villa change includes the time the guest spends deciding. The date controls count as ready once mounted and the requested months have loaded. Timing properties exclude URLs, coupon codes, and booking details.
+
 Run the renderer and fallback checks against the seeded local app:
 
 ```sh

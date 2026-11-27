@@ -24,6 +24,7 @@ const HOST = "https://ph.invalid";
 const OPT_KEY = "__ph_opt_in_out_phc_test";
 const intl = { locale: "en", messages, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 const requests: string[] = [];
+const beacon = vi.fn((url: string) => (requests.push(url), true));
 let root: Root | null = null;
 
 class OfflineXhr {
@@ -50,11 +51,12 @@ beforeEach(() => {
     return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
   }));
   vi.stubGlobal("XMLHttpRequest", OfflineXhr);
-  Object.defineProperty(navigator, "sendBeacon", { value: (url: string) => (requests.push(url), true), configurable: true });
+  Object.defineProperty(navigator, "sendBeacon", { value: beacon, configurable: true });
   // A desktop browser: PostHog drops events from what it takes for bots, and happy-dom says it is automated.
   Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", configurable: true });
   Object.defineProperty(navigator, "webdriver", { value: false, configurable: true });
   requests.length = 0;
+  beacon.mockClear();
   window.localStorage.clear();
   window.sessionStorage.clear();
   document.cookie.split(";").forEach((cookie) => (document.cookie = `${cookie.split("=")[0].trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`));
@@ -150,7 +152,9 @@ it("lifts an opt-out the SDK saved earlier, ends opted out when another tab with
   window.history.replaceState(null, "", "/rooms/mossbell?private=not-for-measurement");
   const sample = { metric: "tour_ready", entry: "tap", renderer: "three", durationMs: 616.4 } as const;
   const generation = capture.consentGeneration();
+  beacon.mockClear();
   await captureGuestPerformance(sample, generation);
+  expect(beacon).toHaveBeenCalledTimes(1);
   expect(performanceEvents).toHaveLength(1);
   expect(performanceEvents[0].properties).toEqual({
     token: "phc_test",
@@ -178,8 +182,10 @@ it("lifts an opt-out the SDK saved earlier, ends opted out when another tab with
     duration_ms: 21,
   });
 
-  const inFlight = captureGuestPerformance(sample, generation);
+  beacon.mockClear();
+  const inFlight = captureGuestPerformance(checkout, generation);
   await act(async () => capture.setConsent("no"));
   await inFlight;
+  expect(beacon).not.toHaveBeenCalled();
   expect(performanceEvents).toHaveLength(2);
 });
