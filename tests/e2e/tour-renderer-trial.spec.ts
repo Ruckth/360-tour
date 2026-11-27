@@ -81,6 +81,26 @@ test("a failed trial import opens the standard viewer", async ({ page }) => {
   await expect(viewer).toHaveAttribute("aria-busy", "false");
 });
 
+test("a failed standard canvas download stays inside the tour and can retry from a fresh page", async ({ page }) => {
+  await page.route(standardCanvas, (route) => route.abort("failed"));
+  await page.goto(trialRoom + "&tour=1");
+  const viewer = page.getByTestId("tour-viewer");
+  await expect(viewer).toHaveAttribute("data-tour-renderer", "pannellum");
+  await expect(viewer).toHaveAttribute("aria-busy", "false");
+
+  await viewer.getByTestId("tour-pannellum").locator("canvas").dispatchEvent("webglcontextlost");
+  await expect(viewer).toHaveAttribute("data-scene-status", "failed");
+  const error = viewer.getByRole("alert");
+  await expect(error.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+
+  await page.unroute(standardCanvas);
+  await error.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.searchParams.get("tour") === "1" && !url.searchParams.has("tourRenderer"));
+  await expect(viewer).toHaveAttribute("data-tour-renderer", "three");
+  await expect(viewer).toHaveAttribute("data-shown-room", "pv-living");
+  await expect(viewer).toHaveAttribute("aria-busy", "false");
+});
+
 test("closing during the first panorama leaves no late Pannellum listeners", async ({ page }) => {
   await page.addInitScript(() => {
     const add = EventTarget.prototype.addEventListener;

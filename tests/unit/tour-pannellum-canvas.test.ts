@@ -222,6 +222,7 @@ it("recreates the viewer on the same scene and camera after a restored context",
   first.yaw = 42;
   first.pitch = -10;
   const canvas = host.querySelector("canvas")!;
+  vi.useFakeTimers();
 
   const lost = new Event("webglcontextlost", { cancelable: true });
   await act(async () => canvas.dispatchEvent(lost));
@@ -236,6 +237,7 @@ it("recreates the viewer on the same scene and camera after a restored context",
   expect(last().path).toBe(POOL);
   await act(async () => last().finish());
   expect(status()).toEqual(["ready", "pool"]);
+  await act(async () => vi.advanceTimersByTime(3_000));
   expect(cb.onFallback).not.toHaveBeenCalled();
 });
 
@@ -258,6 +260,29 @@ it("falls back when a lost context is not restored in time", async () => {
   await act(async () => last().finish());
   vi.useFakeTimers();
   await act(async () => host.querySelector("canvas")!.dispatchEvent(new Event("webglcontextlost", { cancelable: true })));
+  await act(async () => vi.advanceTimersByTime(3_000));
+  expect(cb.onFallback).toHaveBeenCalledTimes(1);
+});
+
+it("falls back when the replacement viewer cannot reload the panorama", async () => {
+  await act(async () => last().finish());
+  const canvas = host.querySelector("canvas")!;
+  await act(async () => canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true })));
+  await act(async () => canvas.dispatchEvent(new Event("webglcontextrestored")));
+
+  expect(viewers).toHaveLength(2);
+  await act(async () => last().fail("tour-file-error:<a>x</a>"));
+  expect(cb.onFallback).toHaveBeenCalledTimes(1);
+});
+
+it("falls back when the restored context never finishes loading a panorama", async () => {
+  await act(async () => last().finish());
+  vi.useFakeTimers();
+  const canvas = host.querySelector("canvas")!;
+  await act(async () => canvas.dispatchEvent(new Event("webglcontextlost", { cancelable: true })));
+  await act(async () => canvas.dispatchEvent(new Event("webglcontextrestored")));
+
+  expect(viewers).toHaveLength(2);
   await act(async () => vi.advanceTimersByTime(3_000));
   expect(cb.onFallback).toHaveBeenCalledTimes(1);
 });

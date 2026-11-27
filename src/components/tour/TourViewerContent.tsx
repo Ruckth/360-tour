@@ -2,8 +2,8 @@
 
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth } from "@/platform/auth";
-import { useTranslations } from "@/platform/intl";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from "react";
+import { useLocale, useTranslations } from "@/platform/intl";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import type { TourCanvas, TourSceneStatus } from "@/components/tour/TourCanvas";
@@ -12,6 +12,7 @@ import { TourIntro } from "@/components/tour/TourIntro";
 import { TourOverlay } from "@/components/tour/TourOverlay";
 import type { PanoramaDetailRequest, PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import { Button } from "@/components/ui/button";
+import { localizeHref } from "@/i18n/routing";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
@@ -33,7 +34,7 @@ export type TourViewerProps = {
 type CanvasProps = ComponentProps<typeof TourCanvas>;
 type ViewerContentProps = TourViewerProps & {
   Canvas: ComponentType<CanvasProps & { onFallback: () => void }>;
-  FallbackCanvas?: ComponentType<CanvasProps>;
+  loadFallbackCanvas?: () => Promise<ComponentType<CanvasProps>>;
 };
 
 /** A different villa or signed-in identity starts a new viewer: no scene or selection carries over. */
@@ -42,8 +43,9 @@ export function TourViewerContent(props: ViewerContentProps) {
   return <LiveTourViewer key={`${props.property.id}\n${userId ?? ""}`} {...props} />;
 }
 
-function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas, FallbackCanvas }: ViewerContentProps) {
+function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas, loadFallbackCanvas }: ViewerContentProps) {
   const messages = usePublicMessages();
+  const locale = useLocale();
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
   const { rooms: liveRooms, fresh } = useLiveTourRooms(property.id);
@@ -55,10 +57,10 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
     [liveRooms, messages, property.tourRoomIds, roomsReady],
   );
   const [phase, setPhase] = useState<Phase>("intro");
-  const [usingFallback, setUsingFallback] = useState(false);
+  const [fallback, setFallback] = useState<"loading" | "failed" | { Canvas: ComponentType<CanvasProps> } | null>(null);
   const reportedReady = useRef(false);
-  const renderer: TourRenderer = FallbackCanvas && !usingFallback ? "pannellum" : "three";
-  const ActiveCanvas = usingFallback && FallbackCanvas ? FallbackCanvas : Canvas;
+  const renderer: TourRenderer = loadFallbackCanvas && fallback === null ? "pannellum" : "three";
+  const ActiveCanvas = fallback === null ? Canvas : typeof fallback === "object" ? fallback.Canvas : null;
   // An explicit choice made by navigating; null follows the first room in the current tour order.
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const currentRoom = activeRooms.find((room) => room.id === selectedRoomId) ?? activeRooms[0];
@@ -82,6 +84,16 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
   useEffect(() => {
     markTourBench("viewer_mounted");
   }, []);
+
+  useEffect(() => {
+    if (fallback !== "loading" || !loadFallbackCanvas) return;
+    let active = true;
+    void loadFallbackCanvas().then(
+      (canvas) => { if (active) setFallback({ Canvas: canvas }); },
+      () => { if (active) setFallback("failed"); },
+    );
+    return () => { active = false; };
+  }, [fallback, loadFallbackCanvas]);
 
   useEffect(() => {
     if (!timedOut || liveRooms !== undefined) return;
@@ -119,10 +131,15 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
     onFirstSceneDrawn?.();
   }, [onFirstSceneDrawn]);
   const handleLoadError = useCallback((failed: boolean) => setLoadFailed(failed), []);
-  const handleRetry = useCallback(() => {
+  function handleRetry() {
+    if (fallback === "failed") {
+      // A failed module fetch may be cached for this document. Retry the standard tour from a fresh page.
+      window.location.replace(localizeHref(`/rooms/${property.id}?tour=1`, locale));
+      return;
+    }
     setLoadFailed(false);
     setRetryNonce((nonce) => nonce + 1);
-  }, []);
+  }
   const handleStatusChange = useCallback((status: TourSceneStatus, roomId: string | null) => {
     setSceneStatus(status);
     setShownRoomId(roomId);
@@ -133,7 +150,8 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
   }, []);
 
   // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
-  const navigationLocked = transitioning || loadFailed || sceneStatus !== "ready" || !fresh;
+  const failed = loadFailed || fallback === "failed";
+  const navigationLocked = transitioning || failed || sceneStatus !== "ready" || !fresh;
   // Neighbors may prefetch only after the intro clears and the confirmed scene accepts input.
   const prefetchNeighborsAllowed = phase === "tour" && !navigationLocked && shownRoomId === currentRoomId;
 
@@ -144,7 +162,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
   }, [onReady, prefetchNeighborsAllowed, renderer]);
 
   const activateFallback = useCallback(() => {
-    setUsingFallback(true);
+    setFallback("loading");
     setSceneStatus("loading");
     setShownRoomId(null);
     setLoadFailed(false);
@@ -200,7 +218,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
     );
   }
 
-  const canvas = !roomsReady || activeRooms.length ? (
+  const canvas = ActiveCanvas && (!roomsReady || activeRooms.length) ? (
     <ActiveCanvas
       onFallback={activateFallback}
       rooms={activeRooms}
@@ -225,7 +243,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
     <div
       data-testid="tour-viewer"
       // Observable scene state (requested vs. on-screen room) for assistive tech and browser tests.
-      data-scene-status={sceneStatus}
+      data-scene-status={fallback === "failed" ? "failed" : sceneStatus}
       data-tour-renderer={renderer}
       data-requested-room={currentRoomId}
       data-shown-room={shownRoomId ?? ""}
@@ -243,20 +261,20 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, Canvas,
           (phase === "conclusion" || phase === "leadCapture") && "blur-md",
         )}
       >
-        {usingFallback ? <Suspense fallback={null}>{canvas}</Suspense> : canvas}
+        {canvas}
       </div>
 
       {phase === "intro" ? (
         <TourIntro
           name={property.name}
           closeLabel={a11y("close")}
-          loadingLabel={!texturesLoaded && !loadFailed ? tourT("loading") : undefined}
+          loadingLabel={!texturesLoaded && !failed ? tourT("loading") : undefined}
           loaded={texturesLoaded}
           onClose={onClose}
         />
       ) : null}
 
-      {loadFailed ? (
+      {failed ? (
         <div
           role="alert"
           aria-live="assertive"

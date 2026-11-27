@@ -37,7 +37,7 @@ type PannellumGlobal = { viewer(container: HTMLElement, config: object): Pannell
 /** One panorama scene: the room and source it shows, the file loaded and the hotspots it carries. */
 type Scene = { id: string; roomId: string; originalPath: string; path: string; room: Room };
 
-/** Longest wait for the browser to restore a lost WebGL context before the existing renderer takes over. */
+/** Maximum wait for each stage of WebGL recovery: restoring the context, then reloading its scene. */
 const CONTEXT_RESTORE_TIMEOUT_MS = 3_000;
 /** Context recoveries per open tour; a device that keeps losing its context gets the existing renderer. */
 const MAX_CONTEXT_RECOVERIES = 2;
@@ -211,6 +211,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
     if (!container || !first || !library || !mountViewer) return;
     let disposed = false;
     let camera: Camera | null = null;
+    let awaitingContext = false;
     let restoreTimer: number | undefined;
     let instance: { viewer: PannellumViewer; host: HTMLDivElement } | null = null;
 
@@ -277,10 +278,11 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       }
       let instrumented: PanoramaRenderer | undefined;
       viewer.on("load", () => {
-        if (!isCurrent()) return;
+        if (!isCurrent() || awaitingContext) return;
         const loaded = loadingRef.current;
         loadingRef.current = null;
         if (!loaded) return;
+        window.clearTimeout(restoreTimer);
         markTourBench("pannellum_scene_loaded");
         shownRef.current = loaded;
         const probe = tourBench();
@@ -318,10 +320,10 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         if (!disposed && viewerRef.current === viewer) setFading(false);
       });
       viewer.on("error", (message) => {
-        if (!isCurrent()) return;
+        if (!isCurrent() || awaitingContext) return;
         const failed = loadingRef.current;
         loadingRef.current = null;
-        if (pannellumErrorKind(message) === "renderer" || !failed) {
+        if (recoveringRef.current || pannellumErrorKind(message) === "renderer" || !failed) {
           fallback();
           return;
         }
@@ -347,6 +349,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       if (!viewer) return;
       // Allow the browser to restore the context; until then the scene is not interactive.
       event.preventDefault();
+      awaitingContext = true;
       camera = { yaw: viewer.getYaw(), pitch: viewer.getPitch(), hfov: viewer.getHfov() };
       recoveringRef.current = true;
       setRecovering(true);
@@ -354,7 +357,8 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       restoreTimer = window.setTimeout(fallback, CONTEXT_RESTORE_TIMEOUT_MS);
     }
     function onContextRestored(event: Event) {
-      if (!(event.target instanceof HTMLCanvasElement) || !recoveringRef.current) return;
+      if (!(event.target instanceof HTMLCanvasElement) || !awaitingContext) return;
+      awaitingContext = false;
       window.clearTimeout(restoreTimer);
       if (++recoveries.current > MAX_CONTEXT_RECOVERIES) {
         fallback();
@@ -370,6 +374,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       }
       try {
         create(library, scene, camera);
+        restoreTimer = window.setTimeout(fallback, CONTEXT_RESTORE_TIMEOUT_MS);
       } catch {
         fallback();
       }
