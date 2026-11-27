@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import messages from "../../messages/en.json";
+import type { CaptureResult } from "posthog-js";
 
 /*
  * M1 with the real posthog-js (not a stand-in), offline: fetch, XMLHttpRequest and sendBeacon are
@@ -140,4 +141,45 @@ it("lifts an opt-out the SDK saved earlier, ends opted out when another tab with
   expect(posthog.get_distinct_id()).not.toBe(before);
   // One view of the page the guest is on, and no $opt_in event.
   expect(captured).toEqual(["$pageview", "$pageview"]);
+
+  const performanceEvents: CaptureResult[] = [];
+  posthog.on("eventCaptured", (event: CaptureResult) => {
+    if (event.event === "guest_performance") performanceEvents.push(event);
+  });
+  const { captureGuestPerformance } = await import("@/lib/marketing/analytics");
+  window.history.replaceState(null, "", "/rooms/mossbell?private=not-for-measurement");
+  const sample = { metric: "tour_ready", entry: "tap", renderer: "three", durationMs: 616.4 } as const;
+  const generation = capture.consentGeneration();
+  await captureGuestPerformance(sample, generation);
+  expect(performanceEvents).toHaveLength(1);
+  expect(performanceEvents[0].properties).toEqual({
+    token: "phc_test",
+    distinct_id: posthog.get_distinct_id(),
+    metric: "tour_ready",
+    entry: "tap",
+    renderer: "three",
+    duration_ms: 616,
+  });
+  expect(JSON.stringify(performanceEvents)).not.toContain("not-for-measurement");
+
+  await captureGuestPerformance({ ...sample, durationMs: Number.NaN }, generation);
+  await captureGuestPerformance({ ...sample, durationMs: -1 }, generation);
+  const checkout = { metric: "home_calendar_open", trigger: "check_out", durationMs: 21 } as const;
+  await captureGuestPerformance(checkout, generation);
+  expect(performanceEvents).toHaveLength(1);
+
+  await navigate("/th/");
+  await captureGuestPerformance(checkout, generation);
+  expect(performanceEvents[1].properties).toEqual({
+    token: "phc_test",
+    distinct_id: posthog.get_distinct_id(),
+    metric: "home_calendar_open",
+    trigger: "check_out",
+    duration_ms: 21,
+  });
+
+  const inFlight = captureGuestPerformance(sample, generation);
+  await act(async () => capture.setConsent("no"));
+  await inFlight;
+  expect(performanceEvents).toHaveLength(2);
 });

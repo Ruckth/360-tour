@@ -22,6 +22,7 @@ import type { PublicVilla } from "@/lib/villas";
 import { markTourBench } from "@/lib/tour/bench";
 import { preloadTourRenderer } from "@/lib/tour/preload";
 import type { TourRenderer } from "@/lib/tour/renderer";
+import { useTourOpenTiming } from "@/lib/tour/use-tour-open-timing";
 
 export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   property: PublicVilla;
@@ -35,7 +36,9 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   const searchParams = useSearchParams();
   const [galleryIndex, setGalleryIndex] = useState(0);
   // The tour follows ?tour=1 whenever the URL changes; openTour/closeTour also set it right away.
-  const [showTour, setShowTour] = useState(() => searchParams.get("tour") === "1");
+  const [directOnMount] = useState(() => searchParams.get("tour") === "1");
+  const [showTour, setShowTour] = useState(directOnMount);
+  const { begin, cancel, finish } = useTourOpenTiming(directOnMount);
   // Behind a direct tour, start the gallery photo after the current panorama draws or the guest closes.
   // The ordinary room page still advertises the photo immediately.
   const [galleryStart, setGalleryStart] = useState<"waiting" | "covered" | "visible">(showTour ? "waiting" : "visible");
@@ -53,6 +56,8 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   const clearChatContext = chatContext?.clearContext;
   const resort = getLocalizedResort(usePublicMessages());
   const images = property.images.length ? property.images : [resort.heroImage];
+
+  useEffect(() => { if (!showTour) cancel(); }, [cancel, showTour]);
 
   useEffect(() => {
     markTourBench("room_hydrated");
@@ -73,12 +78,14 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   const preloadViewer = () => preloadTourRenderer(renderer);
 
   function openTour() {
+    begin();
     markTourBench("tour_open_requested");
     setShowTour(true);
     router.replace(tourHref, { scroll: false });
   }
 
   function closeTour() {
+    cancel();
     if (galleryStart === "waiting") setGalleryStart("visible");
     setShowTour(false);
     router.replace(closeHref, { scroll: false });
@@ -241,6 +248,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
           renderer={renderer}
           property={property}
           onClose={closeTour}
+          onReady={finish}
           onFirstSceneDrawn={galleryStart === "waiting" ? requestCoveredGallery : undefined}
           closeHref={closeHref}
         />

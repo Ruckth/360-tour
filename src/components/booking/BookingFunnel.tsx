@@ -5,7 +5,7 @@ import dynamic from "@/platform/dynamic";
 import { useRouter } from "@/platform/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookingPriceSummary, PriceLines } from "@/components/booking/BookingPriceSummary";
 import { CouponField, type CouponNotice, type CouponSource } from "@/components/booking/CouponField";
 import { useCouponCopy } from "@/components/booking/coupon-copy";
@@ -54,6 +54,7 @@ import { useConvex, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { localizeHref } from "@/i18n/routing";
 import { arrivalCoupon, captureForBooking } from "@/lib/marketing/capture";
+import { finishGuestPerformanceClock, startGuestPerformanceClock } from "@/lib/marketing/analytics";
 
 const BookingDatePicker = dynamic(
   () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingDatePicker),
@@ -80,13 +81,23 @@ type FunnelProps = {
   initialGuests?: string; initialAdults?: string; initialChildren?: string;
   initialProperty?: string; initialCoupon?: string;
 };
+type BookingMetric = "booking_villa_selected" | "booking_dates_ready";
+
 export function BookingFunnel(props: FunnelProps) {
+  const firstVisit = useRef<ReturnType<typeof startGuestPerformanceClock>>(null);
+  const reported = useRef(new Set<BookingMetric>());
+  useEffect(() => { firstVisit.current = startGuestPerformanceClock(); }, []);
+  const record = useCallback((metric: BookingMetric) => {
+    if (reported.current.has(metric)) return;
+    reported.current.add(metric);
+    finishGuestPerformanceClock(firstVisit.current, { metric });
+  }, []);
   const initialProperty = props.initialProperty;
   const rows = useQuery(api.catalog.properties.list, initialProperty ? { includeSlug: initialProperty } : {});
   const t = useTranslations("Booking");
   if (rows === undefined) return <div role="status" className="p-24">{t("loadingInventory")}</div>;
   if (rows.length === 0) return <div role="alert" className="p-24">{t("liveBookingUnavailable")}</div>;
-  return <LiveBookingFunnel key={initialProperty} {...props} rows={rows} />;
+  return <LiveBookingFunnel key={initialProperty} {...props} rows={rows} record={record} />;
 }
 function LiveBookingFunnel({
   initialCheckIn = "",
@@ -98,7 +109,8 @@ function LiveBookingFunnel({
   initialProperty = "garden-suite",
   initialCoupon = "",
   rows,
-}: FunnelProps & { rows: FunctionReturnType<typeof api.catalog.properties.list> }) {
+  record,
+}: FunnelProps & { rows: FunctionReturnType<typeof api.catalog.properties.list>; record: (metric: BookingMetric) => void }) {
   const router = useRouter();
   const locale = useLocale();
   const messages = usePublicMessages();
@@ -120,8 +132,16 @@ function LiveBookingFunnel({
   });
 
   const [step, setStep] = useState<BookingStep>("select");
+  const [datePickerMounted, setDatePickerMounted] = useState(false);
+  const handleDatePickerReady = useCallback(() => setDatePickerMounted(true), []);
   const propertyList = useMemo(() => rows.map(row => localizePropertyLike({ ...row, id: row.slug, source: "live" as const }, messages, locale)), [rows, messages, locale]);
   const [selectedId, setSelectedId] = useState(() => rows.some(row => row.slug === initialProperty) ? initialProperty : rows[0].slug);
+  const selectionPending = useRef(false);
+  useEffect(() => {
+    if (!selectionPending.current) return;
+    selectionPending.current = false;
+    record("booking_villa_selected");
+  }, [record, selectedId]);
   const [checkIn, setCheckIn] = useState(initialCheckIn);
   const [checkOut, setCheckOut] = useState(derivedInitialCheckOut);
   const [adults, setAdults] = useState(startingAdults);
@@ -174,6 +194,10 @@ function LiveBookingFunnel({
   const stayBlockedByProperty = useStayBlockedDates(liveClient, livePropertyIds, checkIn, checkOut);
   // Months still loading or that failed to load are unknown, so their days can't be picked.
   const unknownMonths = useMemo(() => new Set([...pendingMonths, ...failedMonths]), [pendingMonths, failedMonths]);
+  const dateCalendarReady = datePickerMounted && Boolean(property._id) && requestedMonths.length > 0 && unknownMonths.size === 0;
+  useEffect(() => {
+    if (dateCalendarReady) record("booking_dates_ready");
+  }, [dateCalendarReady, record]);
   const stayDatesUnknown = stayMonths(checkIn, checkOut).some((month) => unknownMonths.has(month));
   const blockedDateSet = useMemo(() => new Set(propertyBlockedDates), [propertyBlockedDates]);
   const nights = nightsBetweenIso(checkIn, checkOut);
@@ -246,6 +270,7 @@ function LiveBookingFunnel({
       setDateWarning(t("notAvailableShort", { propertyName: item.name }));
       return;
     }
+    if (item.slug !== selectedId) selectionPending.current = true;
     setSelectedId(item.slug);
     const nextTotal = Math.min(Math.max(1, guests), item.maxGuests);
     const nextChildren = Math.min(children, Math.max(0, nextTotal - 1));
@@ -431,6 +456,7 @@ function LiveBookingFunnel({
                   unavailableDates={propertyBlockedDates}
                   helperText={invalidRange ? t("checkoutAfterCheckin") : nightHelperText}
                   onMonthChange={(month) => setVisibleMonth(monthOf(dateToIso(month)))}
+                  onReady={handleDatePickerReady}
                 />
                 {failedMonths.length > 0 ? (
                   <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive">

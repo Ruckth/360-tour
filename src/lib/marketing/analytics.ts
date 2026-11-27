@@ -1,10 +1,11 @@
-import type { PostHog } from "posthog-js";
+import type { BeforeSendFn, PostHog } from "posthog-js";
+import { stripLocalePrefix } from "@/i18n/routing";
 import { consentGeneration, isUntrackedPath, mayCapture, onConsentTransition } from "./capture";
 
 /**
- * PostHog page views under the shared measurement choice (see capture.ts). Client only.
+ * PostHog page views and guest performance timings under the shared measurement choice (see capture.ts). Client only.
  *
- * The SDK is loaded and started only while the answer is Yes, and every page view checks the consent
+ * The SDK is loaded and started only while the answer is Yes, and every event checks the consent
  * generation it started in, after the SDK has loaded too. A withdrawal heard in any tab resets the SDK's
  * identity and then opts it out (reset() clears an opt-out, so the order matters); the opt-out is saved
  * by PostHog. A later Yes starts a fresh identity and opts back in explicitly, without PostHog's own
@@ -13,10 +14,59 @@ import { consentGeneration, isUntrackedPath, mayCapture, onConsentTransition } f
  */
 
 export type AnalyticsConfig = { key: string; host: string };
+type TourTiming = {
+  metric: "tour_ready";
+  entry: "direct" | "tap" | "reopen";
+  renderer: "three" | "pannellum";
+  durationMs: number;
+};
+type HomeCalendarTiming = {
+  metric: "home_calendar_open";
+  trigger: "check_in" | "check_out";
+  durationMs: number;
+};
+type BookingTiming = {
+  metric: "booking_villa_selected" | "booking_dates_ready";
+  durationMs: number;
+};
+type GuestPerformanceTiming = TourTiming | HomeCalendarTiming | BookingTiming;
+type ClockTiming = Omit<HomeCalendarTiming, "durationMs"> | Omit<BookingTiming, "durationMs">;
+const PERFORMANCE_EVENT = "guest_performance";
+
+function performanceProperties(properties: Record<string, unknown>) {
+  const { metric, duration_ms: duration, entry, renderer, trigger } = properties;
+  if (typeof duration !== "number" || !Number.isFinite(duration) || duration < 0 || duration > 120_000) return null;
+  const duration_ms = Math.round(duration);
+  if (metric === "tour_ready" && (entry === "direct" || entry === "tap" || entry === "reopen")
+      && (renderer === "three" || renderer === "pannellum")) {
+    return { metric, duration_ms, entry, renderer };
+  }
+  if (metric === "home_calendar_open" && (trigger === "check_in" || trigger === "check_out")) {
+    return { metric, duration_ms, trigger };
+  }
+  if (metric === "booking_villa_selected" || metric === "booking_dates_ready") {
+    return { metric, duration_ms };
+  }
+  return null;
+}
+
+// The SDK adds location and referrer details by default. Keep only the timing and ingestion fields.
+const stripPerformanceContext: BeforeSendFn = (event) => {
+  if (event?.event !== PERFORMANCE_EVENT) return event;
+  const properties = event.properties;
+  const timing = properties && performanceProperties(properties);
+  if (!properties || !timing) return null;
+  return {
+    event: event.event,
+    timestamp: event.timestamp,
+    uuid: event.uuid,
+    properties: { token: properties.token, distinct_id: properties.distinct_id, ...timing },
+  };
+};
 
 type Route = { path: string; config: AnalyticsConfig | null };
 let route: Route | null = null;
-// The started SDK; null until the first page view under Yes.
+// The started SDK; null until the first event under Yes.
 let sdk: PostHog | null = null;
 // The guest said Yes on this page: the next use of the SDK starts a fresh identity and opts in.
 let freshStart = false;
@@ -27,13 +77,14 @@ const OPTIONS = {
   capture_pageview: false,
   autocapture: false,
   disable_session_recording: true,
-  // Only page views are used here. Resetting consent must not start flag or extension requests.
+  // Resetting consent must not start flag or extension requests.
   advanced_disable_flags: true,
   disable_external_dependency_loading: true,
   disable_surveys: true,
   disable_conversations: true,
   disable_product_tours: true,
   person_profiles: "identified_only",
+  before_send: stripPerformanceContext,
 } as const;
 
 function restart(posthog: PostHog) {
@@ -67,16 +118,54 @@ export function analyticsRoute(path: string, config: AnalyticsConfig | null) {
   void sendPageview();
 }
 
-// The SDK module, loaded once and shared by every page view waiting for it.
+// The SDK module, loaded once and shared by every event waiting for it.
 let loading: Promise<PostHog> | null = null;
 
 function loadSdk(): Promise<PostHog> {
   const load = (loading ??= import("posthog-js").then((module) => module.default));
   // A failed load (offline, blocked) can be tried again by a later page view.
-  load.catch(() => {
+  void load.catch(() => {
     if (loading === load) loading = null;
   });
   return load;
+}
+
+function initializeSdk(posthog: PostHog, config: AnalyticsConfig) {
+  if (!sdk) {
+    posthog.init(config.key, { ...OPTIONS, api_host: config.host });
+    sdk = posthog;
+  }
+  // An opt-out saved from the previous visit is lifted only once consent authorizes capture.
+  if (freshStart || posthog.has_opted_out_capturing()) restart(posthog);
+}
+
+export function startGuestPerformanceClock() {
+  const consent = consentGeneration();
+  return mayCapture(consent) ? { consent, start: performance.now() } : null;
+}
+
+export function finishGuestPerformanceClock(clock: ReturnType<typeof startGuestPerformanceClock>, timing: ClockTiming) {
+  if (clock) void captureGuestPerformance({ ...timing, durationMs: performance.now() - clock.start }, clock.consent);
+}
+
+export async function captureGuestPerformance(timing: GuestPerformanceTiming, startedIn: number) {
+  const current = route;
+  if (!current?.config || !mayCapture(startedIn)) return;
+  const pathname = stripLocalePrefix(current.path);
+  if (timing.metric === "home_calendar_open" && pathname !== "/") return;
+  if (timing.metric === "tour_ready" && pathname !== "/" && !pathname.startsWith("/rooms/")) return;
+  if ((timing.metric === "booking_villa_selected" || timing.metric === "booking_dates_ready") && pathname !== "/booking") return;
+  const properties = performanceProperties({ ...timing, duration_ms: timing.durationMs });
+  if (!properties) return;
+
+  try {
+    const posthog = await loadSdk();
+    if (route !== current || !mayCapture(startedIn)) return;
+    initializeSdk(posthog, current.config);
+    posthog.capture(PERFORMANCE_EVENT, properties);
+  } catch {
+    // Measurements must never delay or break a guest action.
+  }
 }
 
 const alreadySent = (generation: number, path: string) => sent?.generation === generation && sent.path === path;
@@ -95,12 +184,7 @@ async function sendPageview() {
   // Anything may have changed while the SDK loaded: the answer, the page, or another call sent this view.
   if (route !== current || !mayCapture(generation) || alreadySent(generation, current.path)) return;
   try {
-    if (!sdk) {
-      posthog.init(current.config.key, { ...OPTIONS, api_host: current.config.host });
-      sdk = posthog;
-    }
-    // An opt-out PostHog saved when the guest last said No isn't lifted by starting up.
-    if (freshStart || posthog.has_opted_out_capturing()) restart(posthog);
+    initializeSdk(posthog, current.config);
     sent = { generation, path: current.path };
     posthog.capture("$pageview");
   } catch {

@@ -17,6 +17,7 @@ import { currencyPrefix, type PublicVilla } from "@/lib/villas";
 import { clampIndex, isHorizontalSwipe, swipeDirection, type SwipePoint } from "@/lib/interaction/swipe";
 import { loadTourViewer, preloadTourViewer } from "@/lib/tour/preload";
 import { cn } from "@/lib/utils";
+import { useTourOpenTiming } from "@/lib/tour/use-tour-open-timing";
 
 const TourViewer = dynamic(
   loadTourViewer,
@@ -41,6 +42,7 @@ export function VillaCard({
   const [index, setIndex] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const [showTour, setShowTour] = useState(false);
+  const { begin, cancel, finish } = useTourOpenTiming(false);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
 
@@ -179,7 +181,7 @@ export function VillaCard({
           </ButtonLink>
           <Button
             type="button"
-            onClick={() => setShowTour(true)}
+            onClick={() => { begin(); setShowTour(true); }}
             onFocus={preloadTourViewer}
             onPointerEnter={preloadTourViewer}
             onTouchStart={preloadTourViewer}
@@ -191,7 +193,7 @@ export function VillaCard({
           </Button>
         </div>
       </div>
-      {showTour ? <TourViewer property={property} onClose={() => setShowTour(false)} /> : null}
+      {showTour ? <TourViewer property={property} onReady={finish} onClose={() => { cancel(); setShowTour(false); }} /> : null}
     </article>
   );
 }

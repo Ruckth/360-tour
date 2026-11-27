@@ -10,6 +10,7 @@ const { consentGeneration, mayCapture } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/marketing/capture", () => ({ consentGeneration, mayCapture }));
+vi.mock("@/lib/marketing/analytics", () => ({ captureGuestPerformance: vi.fn() }));
 
 let root: Root | undefined;
 const report = vi.fn();

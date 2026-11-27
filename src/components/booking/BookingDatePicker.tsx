@@ -36,6 +36,8 @@ type BookingRangePickerProps = {
   className?: string;
   contentClassName?: string;
   onRangeChange?: () => void;
+  onCalendarOpening?: (field: ActiveDateField) => void;
+  onCalendarOpened?: () => void;
   /** Called with the first day of the month the calendar shows, so callers can load that month. */
   onMonthChange?: (month: Date) => void;
 };
@@ -48,6 +50,7 @@ export function BookingDatePicker({
   unavailableDates = [],
   helperText,
   onMonthChange,
+  onReady,
 }: {
   checkIn: string;
   checkOut: string;
@@ -56,6 +59,7 @@ export function BookingDatePicker({
   unavailableDates?: string[];
   helperText?: string;
   onMonthChange?: (month: Date) => void;
+  onReady?: () => void;
 }) {
   const convex = useConvex();
   const [rules, setRules] = useState(BOOKING_RULE_DEFAULTS);
@@ -68,6 +72,7 @@ export function BookingDatePicker({
     }
     return () => { active = false; };
   }, [convex]);
+  useEffect(() => { onReady?.(); }, [onReady]);
   return (
     <BookingRangePicker
       minNights={rules.minNights}
@@ -98,6 +103,8 @@ export function BookingRangePicker({
   className,
   contentClassName,
   onRangeChange,
+  onCalendarOpening,
+  onCalendarOpened,
   onMonthChange,
 }: BookingRangePickerProps) {
   const t = useTranslations("Booking");
@@ -193,6 +200,7 @@ export function BookingRangePicker({
   }
 
   function openPicker(field: ActiveDateField) {
+    if (!open) onCalendarOpening?.(field);
     const date = field === "checkIn" ? checkInDate : checkOutDate;
     showMonth(date ?? checkInDate ?? isoToDate(todayIsoResort())!);
     setActiveField(field);
@@ -202,6 +210,7 @@ export function BookingRangePicker({
   const popoverContent = (
     <RangePickerContent
       className={calendarPopoverClassName}
+      onOpenAutoFocus={onCalendarOpened}
       checkInValue={checkIn ? formatPickerDate(checkIn, locale) : t("checkIn")}
       checkOutValue={checkOut ? formatPickerDate(checkOut, locale) : t("checkOut")}
       activeField={activeField}
@@ -331,6 +340,7 @@ function DateTriggerField({
 
 function RangePickerContent({
   className,
+  onOpenAutoFocus,
   checkInValue,
   checkOutValue,
   activeField,
@@ -348,6 +358,7 @@ function RangePickerContent({
   onMonthChange,
 }: {
   className: string;
+  onOpenAutoFocus?: () => void;
   checkInValue: string;
   checkOutValue: string;
   activeField: ActiveDateField;
@@ -365,7 +376,7 @@ function RangePickerContent({
   onMonthChange: (month: Date) => void;
 }) {
   return (
-    <PopoverContent align="center" collisionPadding={16} className={className}>
+    <PopoverContent align="center" collisionPadding={16} className={className} onOpenAutoFocus={onOpenAutoFocus}>
       <RangeHeader
         checkInValue={checkInValue}
         checkOutValue={checkOutValue}
