@@ -83,3 +83,23 @@ test("tablet header keeps the villa booking action visible and secondary navigat
   await expect(page).toHaveURL(/\/booking$/);
   await expect(header.getByRole("button", { name: "Toggle menu" })).toHaveAttribute("aria-expanded", "false");
 });
+
+test("short mobile viewports can scroll the navigation to Book", async ({ page }) => {
+  await page.setViewportSize({ width: 568, height: 320 });
+  await page.goto("/");
+  const header = page.getByRole("banner");
+  const menu = header.getByRole("button", { name: "Toggle menu" });
+  const book = header.getByRole("link", { name: "Book", exact: true });
+
+  await menu.focus();
+  await page.keyboard.press("Enter");
+  await expect(menu).toHaveAttribute("aria-expanded", "true");
+  await expect.poll(async () => (await header.boundingBox())!.height).toBeLessThanOrEqual(320);
+  for (let index = 0; index < await header.getByRole("link").count() - 1; index++) {
+    await page.keyboard.press("Tab");
+  }
+  await expect(book).toBeFocused();
+  await expect(book).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/booking$/);
+});
