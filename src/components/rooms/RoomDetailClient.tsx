@@ -20,9 +20,14 @@ import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import type { PublicVilla } from "@/lib/villas";
 import { markTourBench } from "@/lib/tour/bench";
-import { preloadTourViewer } from "@/lib/tour/preload";
+import { preloadTourRenderer } from "@/lib/tour/preload";
+import type { TourRenderer } from "@/lib/tour/renderer";
 
-export function RoomDetailClient({ property, reviews }: { property: PublicVilla; reviews: Review[] }) {
+export function RoomDetailClient({ property, reviews, renderer = "three" }: {
+  property: PublicVilla;
+  reviews: Review[];
+  renderer?: TourRenderer;
+}) {
   const router = useRouter();
   const locale = useLocale();
   const navT = useTranslations("Nav");
@@ -61,16 +66,22 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
     return () => clearChatContext?.();
   }, [clearChatContext, property.id, property.name, setChatContext]);
 
+  const roomPath = `/rooms/${property.id}`;
+  const isTrial = renderer === "pannellum";
+  const tourHref = localizeHref(`${roomPath}?tour=1${isTrial ? "&tourRenderer=pannellum" : ""}`, locale);
+  const closeHref = localizeHref(isTrial ? `${roomPath}?tourRenderer=pannellum` : roomPath, locale);
+  const preloadViewer = () => preloadTourRenderer(renderer);
+
   function openTour() {
     markTourBench("tour_open_requested");
     setShowTour(true);
-    router.replace(localizeHref(`/rooms/${property.id}?tour=1`, locale), { scroll: false });
+    router.replace(tourHref, { scroll: false });
   }
 
   function closeTour() {
     if (galleryStart === "waiting") setGalleryStart("visible");
     setShowTour(false);
-    router.replace(localizeHref(`/rooms/${property.id}`, locale), { scroll: false });
+    router.replace(closeHref, { scroll: false });
   }
 
   function goTo(next: number) {
@@ -111,9 +122,9 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
               <button
                 type="button"
                 onClick={openTour}
-                onFocus={preloadTourViewer}
-                onPointerEnter={preloadTourViewer}
-                onTouchStart={preloadTourViewer}
+                onFocus={preloadViewer}
+                onPointerEnter={preloadViewer}
+                onTouchStart={preloadViewer}
                 className="absolute bottom-4 right-4 inline-flex items-center gap-2 rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-navy shadow-lg backdrop-blur-sm"
               >
                 <Globe2 className="h-4 w-4" />
@@ -145,9 +156,9 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
               variant="outline"
               className="mt-3 w-full bg-card py-3 md:hidden"
               onClick={openTour}
-              onFocus={preloadTourViewer}
-              onPointerEnter={preloadTourViewer}
-              onTouchStart={preloadTourViewer}
+              onFocus={preloadViewer}
+              onPointerEnter={preloadViewer}
+              onTouchStart={preloadViewer}
             >
               <Globe2 className="h-4 w-4" />
               {t("exploreIn360")}
@@ -217,7 +228,7 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
             <PriceComparison
               property={property}
               onOpen360={openTour}
-              onPreload360={preloadTourViewer}
+              onPreload360={preloadViewer}
             />
           </div>
         </div>
@@ -226,10 +237,12 @@ export function RoomDetailClient({ property, reviews }: { property: PublicVilla;
       <MobileStickyBar propertyId={property.id} />
       {showTour ? (
         <RoomTourViewer
+          key={renderer}
+          renderer={renderer}
           property={property}
           onClose={closeTour}
           onFirstSceneDrawn={galleryStart === "waiting" ? requestCoveredGallery : undefined}
-          closeHref={localizeHref(`/rooms/${property.id}`, locale)}
+          closeHref={closeHref}
         />
       ) : null}
     </div>

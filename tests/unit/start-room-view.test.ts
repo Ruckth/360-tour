@@ -94,7 +94,7 @@ vi.mock("convex/react", () => ({
 // RoomDetailClient mounts the viewer through RoomTourViewer, which imports it only after the tour is requested.
 vi.mock("@/lib/tour/preload", () => ({
   loadTourViewer: mockLoadTourViewer,
-  preloadTourViewer: mockPreloadTourViewer,
+  preloadTourRenderer: mockPreloadTourViewer,
 }));
 
 function MockTourViewer({ property, onFirstSceneDrawn }: { property: PublicVilla; onFirstSceneDrawn?: () => void }) {

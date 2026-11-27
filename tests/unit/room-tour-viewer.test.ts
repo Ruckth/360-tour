@@ -19,10 +19,12 @@ vi.mock("@/lib/tour/preload", () => ({
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((res) => {
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
     resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -100,6 +102,25 @@ describe("RoomTourViewer", () => {
     document.body.style.overflow = "";
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("falls back to the existing viewer if the trial entry fails to load", async () => {
+    const { React, RoomTourViewer, MockTourViewer, render, container } = await fresh();
+    mockLoadTourViewer.mockRejectedValueOnce(new Error("Could not load trial")).mockResolvedValueOnce(MockTourViewer);
+    await render(React.createElement(RoomTourViewer, { ...props, renderer: "pannellum" }));
+    expect(mockLoadTourViewer.mock.calls).toEqual([["pannellum"], ["three"]]);
+    expect(container.querySelector('[data-testid="viewer"]')).not.toBeNull();
+  });
+
+  it("does not download the fallback if the guest closes before the trial import fails", async () => {
+    const { React, RoomTourViewer, render } = await fresh();
+    const trial = deferred<never>();
+    mockLoadTourViewer.mockReturnValueOnce(trial.promise);
+    await render(React.createElement(RoomTourViewer, { ...props, renderer: "pannellum" }));
+    await render(null);
+    trial.reject(new Error("Could not load trial"));
+    await settle();
+    expect(mockLoadTourViewer.mock.calls).toEqual([["pannellum"]]);
   });
 
   it("renders only the opaque intro on the server, with a plain link back, and never starts the import there", async () => {

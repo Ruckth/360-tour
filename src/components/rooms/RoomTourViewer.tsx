@@ -5,25 +5,30 @@ import { TourIntro } from "@/components/tour/TourIntro";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
 import { useTranslations } from "@/platform/intl";
 import { loadTourViewer } from "@/lib/tour/preload";
+import type { TourRenderer } from "@/lib/tour/renderer";
 
 type Viewer = Awaited<ReturnType<typeof loadTourViewer>>;
 
-// One shared load per page session: StrictMode's effect replay and later reopens reuse it. A failed import is
-// forgotten so the next mount retries.
-let loaded: Viewer | undefined;
-let pending: Promise<Viewer> | undefined;
-function load() {
-  pending ??= loadTourViewer().then(
+// Keep intent loads and reopens for the two variants independent.
+const loaded = new Map<TourRenderer, Viewer>();
+const pending = new Map<TourRenderer, Promise<Viewer>>();
+
+function load(renderer: TourRenderer): Promise<Viewer> {
+  const existing = pending.get(renderer);
+  if (existing) return existing;
+
+  const request = loadTourViewer(renderer).then(
     (viewer) => {
-      loaded = viewer;
+      loaded.set(renderer, viewer);
       return viewer;
     },
     (error: unknown) => {
-      pending = undefined;
+      pending.delete(renderer);
       throw error;
     },
   );
-  return pending;
+  pending.set(renderer, request);
+  return request;
 }
 
 /**
@@ -31,19 +36,27 @@ function load() {
  * through hydration and while the import loads) it shows the viewer's own opaque intro, so the room behind it stays
  * covered and Close works: an ordinary link to `closeHref` before hydration, an in-place close (or Escape) after.
  */
-export function RoomTourViewer({ closeHref, ...props }: ComponentProps<Viewer> & { closeHref: string }) {
+export function RoomTourViewer({ closeHref, renderer = "three", ...props }: ComponentProps<Viewer> & {
+  closeHref: string;
+  renderer?: TourRenderer;
+}) {
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
-  const [state, setState] = useState<{ viewer: Viewer } | { error: unknown } | null>(() =>
-    loaded ? { viewer: loaded } : null,
-  );
+  const [state, setState] = useState<{ viewer: Viewer } | { error: unknown } | null>(() => {
+    const viewer = loaded.get(renderer);
+    return viewer ? { viewer } : null;
+  });
   const { onClose } = props;
   // The pending intro holds its own reference-counted lock; the viewer takes its own once mounted.
   useBodyScrollLock(!state);
   useEffect(() => {
     if (state) return;
     let active = true;
-    void load().then(
+    const request = load(renderer).catch((error: unknown) => {
+      if (active && renderer === "pannellum") return load("three");
+      throw error;
+    });
+    void request.then(
       (viewer) => { if (active) setState({ viewer }); },
       (error: unknown) => { if (active) setState({ error }); },
     );
@@ -53,7 +66,7 @@ export function RoomTourViewer({ closeHref, ...props }: ComponentProps<Viewer> &
       active = false;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [state, onClose]);
+  }, [state, onClose, renderer]);
   if (!state) {
     return (
       <div

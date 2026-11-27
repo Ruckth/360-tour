@@ -36,3 +36,16 @@ Follow the [admin UX conventions](./docs/guides/admin-ux.md) when changing staff
 `bun run test:e2e` starts and seeds a fresh isolated local Convex backend, builds the app, signs in dedicated Clerk test users, and stops its processes and new sessions afterward. Supply the three Clerk test fields from `.env.example` through the environment or an ignored `.env.e2e.local` file (mode `600`). Production Clerk keys are refused. `bun run verify:integration` also runs the full verification and component browser suite. See the [Phase 3d implementation record](./docs/architecture/phase3d-dataflow-implementation.md) for auth evidence and CI secret names.
 
 `bun run test:pure`, `bun run test:dom <file>`, `bun run test:convex <file>` and `bun run test:guards` focus the four Vitest projects. Guards run serially with a 60-second default timeout. `bun run test:unit` preserves full default coverage.
+
+## Guest tour renderer trial
+
+On a Vercel Preview, open `/rooms/pool-villa?tour=1&tourRenderer=pannellum` to try Pannellum. The control is `/rooms/pool-villa?tour=1`. For the tap and reopen paths, omit `tour=1` and use the room's Explore button. The current viewer handles a failed trial load. Production URLs always use the current viewer.
+
+Run the renderer and fallback checks against the seeded local app:
+
+```sh
+START_PANNELLUM_TRIAL=1 node scripts/heavy.mjs node scripts/local-integration.mjs -- \
+  bun run playwright test tests/e2e/tour-renderer-trial.spec.ts --project=chromium --no-deps
+```
+
+For the timed mobile comparison use the same harness with `BENCH_START_WIRE_GZIP=1`. Run the existing `tour-open-interaction` benchmark for each renderer with matching `BENCH_RUNS` and separate `BENCH_OUT` files. Pass `BENCH_TOUR_RENDERER=pannellum` for the trial. Judge the result by a rendered frame that responds to a trusted drag, and check the click and reopen paths as well as the direct link.

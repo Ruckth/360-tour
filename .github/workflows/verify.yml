@@ -85,6 +85,8 @@ jobs:
           restore-keys: |
             convex-${{ runner.os }}-${{ runner.arch }}-
       - name: Build and run Start E2E with fresh local Convex and real Clerk sign-in
+        env:
+          START_PANNELLUM_TRIAL: "1"
         run: bun run test:e2e
       - name: Confirm the committed route tree matches the Start build
         run: git diff --exit-code -- src/start-app/routeTree.gen.ts
