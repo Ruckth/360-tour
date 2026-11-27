@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { canReadCheckoutOrder, staffCapabilities, type StaffActor } from '../../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, staffCapabilities, type StaffActor } from '../../auth/model';
 import { bumpOrderCommerceRevision } from '../../commerce/model';
 import { readBudget, reserveWrites } from '../../lib/readBudget';
 import { applyAffiliatePayout } from '../../marketing/model';
@@ -24,6 +24,7 @@ import {
   approvalReturnReview, planReturnMoney, planReturnParts, planReturnStock, receiptRowsForReturn, returnedDelta, returnError, returnGet, rowsReturned,
   selectReturnRows, type OrderReturn, type ReturnPart,
 } from './returnPlan';
+import { MAX_RETURN_LOTS, readReturnMovementLots } from './returnLots';
 import { returnApprovalCheckpoint, isOwnApproval, requesterFingerprint, rulesFingerprint } from './staffApprovalState';
 
 type ReadCtx = MutationCtx | QueryCtx;
@@ -54,6 +55,12 @@ function validateInput(args: ReturnInput): ReturnInput {
   if (!args.parts.length || args.parts.length > COMMERCE_LIMITS.return.parts) {
     returnError('RETURN_PART_LIMIT', 'Return these in two parts.');
   }
+  for (const part of args.parts) {
+    if ('lotAllocations' in part && part.lotAllocations &&
+        (part.disposition !== 'sellable' || !part.lotAllocations.length || part.lotAllocations.length > MAX_RETURN_LOTS)) {
+      returnError('RETURN_INVALID_LOTS', 'Confirm up to 100 original lots for sellable goods received back.');
+    }
+  }
   return { ...args, clientKey: boundedText(args.clientKey, 8, 128, 'request key'),
     tillId: boundedText(args.tillId, 1, 128, 'till'), reason: boundedText(args.reason, 1, 500, 'reason') };
 }
@@ -65,7 +72,8 @@ async function fingerprint(args: ReturnInput, destinations: ExternalTender[] | u
   return await sha256(JSON.stringify([
     args.orderId, args.expectedRevision, args.expectedCorrectionRevision, args.tillId, args.reason, args.mistakenSale ?? false,
     args.parts.map(part => [part.kind, part.lineId, 'units' in part ? part.units : null,
-      'contentKey' in part ? part.contentKey : null, 'disposition' in part ? part.disposition : null, 'useId' in part ? part.useId : null]),
+      'contentKey' in part ? part.contentKey : null, 'disposition' in part ? part.disposition : null, 'useId' in part ? part.useId : null,
+      ...('lotAllocations' in part && part.lotAllocations ? [part.lotAllocations.map(({ lotId, quantity }) => [lotId, quantity]).sort()] : [])]),
     destinations?.map(({ amount, method }) => [amount, method]),
   ]));
 }
@@ -108,9 +116,11 @@ export async function readReturn(
   if (args.returnId) {
     const row = await returnGet(ctx, args.returnId);
     if (!row || (args.orderId && row.orderId !== args.orderId)) return null;
+    const order = await returnGet(ctx, row.orderId);
+    if (!order || !canAccessCheckoutOrderBranch(actor, order)) return null;
     if (row.status === 'authorized') {
       if (row.operator !== actor.tokenIdentifier && !manager(actor)) return null;
-    } else if (!canReadCheckoutOrder(actor, await returnGet(ctx, row.orderId))) return null;
+    } else if (!canReadCheckoutOrder(actor, order)) return null;
     return await returnView(ctx, row, actor, args.tillId);
   }
   if (!args.orderId) returnError('RETURN_INVALID_INPUT', 'Choose an order or return.');
@@ -131,16 +141,67 @@ export async function readReturn(
     }
     return null;
   }
-  const active = await openOrderReturn(ctx, args.orderId);
+  const order = await returnGet(ctx, args.orderId);
+  if (!order || !canAccessCheckoutOrderBranch(actor, order)) returnError('RETURN_ORDER_NOT_FOUND', 'Order not found.');
+  const active = await openOrderReturn(ctx, order._id);
   if (active?.operator === actor.tokenIdentifier) return await returnView(ctx, active, actor, args.tillId);
-  await returnOrder(ctx, args.orderId, actor);
+  if (!canReadCheckoutOrder(actor, order)) returnError('RETURN_ORDER_NOT_FOUND', 'Order not found.');
   return active && manager(actor) ? await returnView(ctx, active, actor, args.tillId) : null;
 }
 
-async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: number) {
+type LotLookupPart = { lineId: Id<'orderLines'>; contentKey?: string };
+type LotLookupResult = Awaited<ReturnType<typeof readReturnMovementLots>> & { unavailable?: true };
+const unavailableLots: LotLookupResult = { tracked: false, lots: [], unavailable: true };
+
+async function lookupSaleLots(ctx: QueryCtx, actor: StaffActor, movementId: Id<'stockMovements'>): Promise<LotLookupResult> {
+  if (readBudget(ctx).documents > 350) return unavailableLots;
+  const movement = await returnGet(ctx, movementId);
+  if (!movement || movement.delta >= 0) return unavailableLots;
+  try {
+    const options = await readReturnMovementLots(ctx, movement);
+    if (options.tracked && !actor.companyScope && !actor.branchIds.includes(movement.branchId)) return unavailableLots;
+    return options;
+  } catch (error) {
+    if (error instanceof ConvexError && error.data?.code === 'STOCK_LOT_RECONCILIATION') return unavailableLots;
+    throw error;
+  }
+}
+
+export async function readReturnLots(ctx: QueryCtx, actor: StaffActor, orderId: Id<'orders'>, parts: LotLookupPart[]) {
+  const order = await returnOrder(ctx, orderId, actor);
+  assertPaidReceipt(order);
+  if (parts.length > COMMERCE_LIMITS.return.parts) returnError('RETURN_PART_LIMIT', 'Return these in two parts.');
+  const lines = new Map<Id<'orderLines'>, Doc<'orderLines'>>();
+  const byMovement = new Map<Id<'stockMovements'>, LotLookupResult>();
+  const result = [];
+  for (const { lineId, contentKey } of parts) {
+    const line = lines.get(lineId) ?? await returnGet(ctx, lineId);
+    if (line?.orderId !== orderId || line.bookingId || line.appointmentId || line.coverage ||
+        (contentKey === undefined ? line.kind !== 'product' : line.kind !== 'package')) {
+      returnError('RETURN_INVALID_PART', 'Select a product sold on this receipt.');
+    }
+    lines.set(lineId, line);
+    const contents = line.saleSnapshot?.contents;
+    const content = contentKey === undefined ? contents?.[0] : contents?.find(item => item.contentKey === contentKey);
+    const movementId = content && content.returnedUnits < content.units ? content.stockMovementId : undefined;
+    let options = movementId ? byMovement.get(movementId) : unavailableLots;
+    if (!options && movementId) {
+      options = await lookupSaleLots(ctx, actor, movementId);
+      byMovement.set(movementId, options);
+    }
+    result.push({ lineId, ...(contentKey !== undefined ? { contentKey } : {}), ...(options ?? unavailableLots) });
+  }
+  return result;
+}
+
+function assertPaidReceipt(order: Order) {
   if (order.status !== 'paid' || order.paidAt === undefined || order.voidUnreceived || order.currency !== 'THB') {
     returnError('RETURN_ORDER_NOT_PAID', 'Only a settled THB receipt can be returned here.');
   }
+}
+
+async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: number, actor: StaffActor) {
+  assertPaidReceipt(order);
   if (order.revision !== args.expectedRevision || (order.correctionRevision ?? 0) !== args.expectedCorrectionRevision) {
     returnError('RETURN_STALE', 'This receipt changed. Review it again.');
   }
@@ -148,19 +209,26 @@ async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: numbe
   const { lines, previouslyReturned } = await receiptRowsForReturn(ctx, order, args.parts);
   const selected = await selectReturnRows(ctx, lines, args.parts);
   const parts = await planReturnParts(ctx, order, selected, now, args.mistakenSale ?? false);
-  const [stock, money] = await Promise.all([planReturnStock(ctx, parts.products), planReturnMoney(ctx, order, previouslyReturned, parts, now)]);
+  const [{ stock, allocationsByPart }, money] = await Promise.all([planReturnStock(ctx, parts.products), planReturnMoney(ctx, order, previouslyReturned, parts, now)]);
+  if (!actor.companyScope && stock.some(group => group.lotAllocations && !actor.branchIds.includes(group.stock.branchId))) {
+    returnError('RETURN_STOCK_MISSING', 'The original stock movement for this receipt is unavailable.');
+  }
   const review = returnApprovalCheckpoint(order, approvalReturnReview(order, selected, parts, stock, money.funding),
     parts.products.flatMap(({ handover }) => handover ? [handover] : []));
   const amount = parts.rows.reduce((sum, item) => sum + item.amount, 0);
   // Keep headroom for the staff builder and completion reads made on voucher-only returns.
   if (readBudget(ctx).documents > 430) returnError('RETURN_READ_LIMIT', 'Return these in two parts.');
-  return { parts, stock, money, review, amount, previouslyReturned };
+  const confirmedParts = args.parts.map(part => {
+    const lotAllocations = 'units' in part ? allocationsByPart.get(part) : undefined;
+    return lotAllocations ? { ...part, lotAllocations } : part;
+  });
+  return { parts, stock, money, review, amount, previouslyReturned, confirmedParts };
 }
 
 export async function previewReturn(ctx: ReadCtx, actor: StaffActor, input: ReturnInput) {
   const args = validateInput(input);
   const order = await returnOrder(ctx, args.orderId, actor);
-  const { parts, money, amount } = await prepare(ctx, order, args, Date.now());
+  const { parts, money, amount } = await prepare(ctx, order, args, Date.now(), actor);
   const voucherCredits = await Promise.all(money.credits.map(async credit => {
     const maskedCode = await voucherCodeMask(ctx, money.funding.get(credit.voucherId)!);
     const destination = credit.destination?.kind === 'existingVoucher' ? { ...credit.destination, codeMask: maskedCode } : credit.destination;
@@ -218,7 +286,7 @@ async function startReturn(
   const pending = claims.length > 0;
   const visitReturns = parts.rows.flatMap(({ visit }) => visit ? [visit] : []);
   const data = {
-    orderId: order._id, key, fingerprint: requestFingerprint, parts: args.parts, effectsApplied: [],
+    orderId: order._id, key, fingerprint: requestFingerprint, parts: prepared.confirmedParts, effectsApplied: [],
     claims, voucherCredits: money.credits, status: 'authorized' as const, operator, tillId: args.tillId,
     operatorRevision: 0, approvalId, reason: args.reason, createdAt: now,
     ...(visitReturns.length ? { visitReturns } : {}),
@@ -270,7 +338,7 @@ export async function authorizeReturn(ctx: MutationCtx, actor: StaffActor, input
     };
   }
   const now = Date.now();
-  return await startReturn(ctx, order, args, await prepare(ctx, order, args, now), actor,
+  return await startReturn(ctx, order, args, await prepare(ctx, order, args, now, actor), actor,
     actor.tokenIdentifier, key, payloadFingerprint, now, input.destinations);
 }
 
@@ -336,13 +404,13 @@ export async function askReturnApproval(ctx: MutationCtx, actor: StaffActor, inp
     }
   }
   const [prepared, rules, requester] = await Promise.all([
-    prepare(ctx, order, args, now), readOrderProjection(ctx, () => cashierRules(ctx)), requesterFingerprint(ctx, actor.tokenIdentifier),
+    prepare(ctx, order, args, now, actor), readOrderProjection(ctx, () => cashierRules(ctx)), requesterFingerprint(ctx, actor.tokenIdentifier),
   ]);
   if (requester.role !== 'cashier') returnError('RETURN_CASHIER_REQUIRED', 'Cashier access changed.');
   const expiresAt = now + APPROVAL_TTL_MS;
   reserveWrites(ctx, 2);
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    kind: 'returnItems', orderId: order._id, ...prepared.review,
+    kind: 'returnItems', orderId: order._id, stockBranchId: order.stockBranchId, ...prepared.review,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules), reason: args.reason, status: 'pending', createdAt: now, expiresAt,
     amount: prepared.amount, totalBefore: order.total, totalAfter: order.total - prepared.amount,
@@ -392,7 +460,7 @@ export async function decideReturnApproval(
   }
   let prepared;
   try {
-    prepared = await prepare(ctx, order, args, now);
+    prepared = await prepare(ctx, order, args, now, operator);
   } catch (error) {
     if (error instanceof ConvexError) return await resolve('stale');
     throw error;
@@ -412,8 +480,11 @@ async function controlledReturn(ctx: MutationCtx, actor: StaffActor, args: Contr
   if (!row || row.operator !== actor.tokenIdentifier || row.tillId !== args.tillId || !row.tillId) {
     returnError('RETURN_OPERATOR_REQUIRED', 'Claim this return at this till first.');
   }
-  if (row.status !== 'authorized') await returnOrder(ctx, row.orderId, actor);
-  return row;
+  const order = await returnGet(ctx, row.orderId);
+  if (!order || !canAccessCheckoutOrderBranch(actor, order) || (row.status !== 'authorized' && !canReadCheckoutOrder(actor, order))) {
+    returnError('RETURN_ORDER_NOT_FOUND', 'Return not found.');
+  }
+  return { row, order };
 }
 
 function assertControl(row: OrderReturn, args: Control) {
@@ -426,6 +497,8 @@ export async function claimReturn(
 ) {
   const row = await returnGet(ctx, args.returnId);
   if (!row || (row.operator !== actor.tokenIdentifier && !manager(actor))) returnError('RETURN_ORDER_NOT_FOUND', 'Return not found.');
+  const order = await returnGet(ctx, row.orderId);
+  if (!order || !canAccessCheckoutOrderBranch(actor, order)) returnError('RETURN_ORDER_NOT_FOUND', 'Return not found.');
   assertControl(row, args);
   const tillId = boundedText(args.tillId, 1, 128, 'till');
   if (row.operator === actor.tokenIdentifier && row.tillId === tillId) return await returnView(ctx, row, actor, tillId);
@@ -443,7 +516,7 @@ export async function claimReturn(
 }
 
 export async function releaseReturn(ctx: MutationCtx, actor: StaffActor, args: Control) {
-  const row = await controlledReturn(ctx, actor, args);
+  const { row } = await controlledReturn(ctx, actor, args);
   assertControl(row, args);
   const patch = { tillId: '', operatorRevision: row.operatorRevision + 1,
     claims: row.claims.map(invalidateFreshInstruction) };
@@ -465,7 +538,7 @@ function activeInstruction(row: OrderReturn) {
 }
 
 export async function armReturn(ctx: MutationCtx, actor: StaffActor, args: Control & { destinationKey: string }) {
-  const row = await controlledReturn(ctx, actor, args);
+  const { row } = await controlledReturn(ctx, actor, args);
   assertControl(row, args);
   const { claim, index } = locateClaim(row, args.destinationKey);
   if (activeInstruction(row)) returnError('RETURN_CHECK_PREVIOUS', 'Check the previous refund before issuing another instruction.');
@@ -482,7 +555,7 @@ export async function armReturn(ctx: MutationCtx, actor: StaffActor, args: Contr
 }
 
 export async function retryReturn(ctx: MutationCtx, actor: StaffActor, args: Retry) {
-  const row = await controlledReturn(ctx, actor, args);
+  const { row } = await controlledReturn(ctx, actor, args);
   assertControl(row, args);
   const { claim, index } = locateClaim(row, args.destinationKey);
   if (activeInstruction(row)) returnError('RETURN_CHECK_PREVIOUS', 'Check the previous refund before retrying.');
@@ -501,7 +574,7 @@ export async function retryReturn(ctx: MutationCtx, actor: StaffActor, args: Ret
 }
 
 export async function recordReturnPayout(ctx: MutationCtx, actor: StaffActor, args: RecordPayout) {
-  const row = await controlledReturn(ctx, actor, args);
+  const { row, order } = await controlledReturn(ctx, actor, args);
   const { claim, index } = locateClaim(row, args.destinationKey);
   const reference = args.reference === undefined ? undefined : boundedText(args.reference, 1, 128, 'payout reference');
   const payoutKey = `return:${row._id}:${claim.key}`;
@@ -527,8 +600,7 @@ export async function recordReturnPayout(ctx: MutationCtx, actor: StaffActor, ar
   const patch: Partial<OrderReturn> = { claims, operatorRevision: row.operatorRevision + 1 };
   const changedOrders = new Set([row.orderId]);
   if (args.outcome === 'given') {
-    const order = await returnGet(ctx, row.orderId);
-    if (!order || order.status !== 'paid') returnError('RETURN_EFFECT_CHANGED', 'The receipt is no longer settled.');
+    if (order.status !== 'paid') returnError('RETURN_EFFECT_CHANGED', 'The receipt is no longer settled.');
     const lines = await readOrderProjection(ctx, () => orderLines(ctx, order._id));
     const planned = await planReturnParts(ctx, order, await selectReturnRows(ctx, lines, row.parts, row), row.createdAt, true, row);
     const amounts = [...row.voucherCredits.map(item => item.paid), ...claims.map(item => item.amount)];
@@ -560,7 +632,7 @@ export async function recordReturnPayout(ctx: MutationCtx, actor: StaffActor, ar
       await applyAffiliatePayout(ctx, order, credited, actor.email);
     }
     if (finishing) {
-      patch.effectsApplied = await finishReturnEffects(ctx, reconciled, planned, await planReturnStock(ctx, planned.products), new Map(), actor, now, true, changedOrders);
+      patch.effectsApplied = await finishReturnEffects(ctx, reconciled, planned, (await planReturnStock(ctx, planned.products)).stock, new Map(), actor, now, true, changedOrders);
       patch.hasReplacementSlips = hasReplacementEffects(patch.effectsApplied.slice(row.effectsApplied.length), row.voucherCredits);
       patch.status = 'completed';
       patch.completedAt = now;
@@ -575,7 +647,7 @@ export async function recordReturnPayout(ctx: MutationCtx, actor: StaffActor, ar
 }
 
 export async function cancelReturn(ctx: MutationCtx, actor: StaffActor, args: Control) {
-  const row = await controlledReturn(ctx, actor, args);
+  const { row, order } = await controlledReturn(ctx, actor, args);
   if (row.status === 'cancelled') return await returnView(ctx, row, actor, args.tillId);
   assertControl(row, args);
   if (row.claims.some(item => item.state === 'given')) returnError('RETURN_ALREADY_PAID', 'A payout was given. Complete the remaining destinations.');
@@ -583,8 +655,6 @@ export async function cancelReturn(ctx: MutationCtx, actor: StaffActor, args: Co
   const now = Date.now();
   const changedOrders = new Set([row.orderId]);
   await reverseReturnEffects(ctx, row, actor, now, changedOrders);
-  const order = await returnGet(ctx, row.orderId);
-  if (!order) returnError('RETURN_ORDER_NOT_FOUND', 'Order not found.');
   const patch = { status: 'cancelled' as const, operatorRevision: row.operatorRevision + 1,
     claims: row.claims.map(item => ({ ...item, state: 'cancelled' as const })) };
   reserveWrites(ctx, 2);

@@ -196,6 +196,7 @@ const payDesk = payDeskCommerce(transport, cutoverAccess(transport));
 // sale switch Off nothing here runs; the managers' return queue loads only once payments use attempts.
 const returnsDesk: ReturnsDesk = {
   useReturn: (args) => useQuery(api.pos.commands.returnItems.get, args ? returnArgs(args) : SKIP),
+  useLots: (args) => useQueries(args ? { lots: { query: api.pos.commands.returnItems.lots, args } } : {}).lots,
   useRequestStatus: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
   useActions: () => {
     const convex = useConvex();

@@ -898,3 +898,18 @@ for (const width of Object.keys(WIDTHS) as Width[]) test.describe(`round 5 at ${
     expect(await directPanels(page)).toEqual([]);
   });
 });
+
+test("reviews a product shortage before showing the payment instruction", async ({ page }) => {
+  await open(page, "phone", "mode=attempts&scenario=tote&shortage=1");
+  const panel = await order(page, new Taps(page));
+  await panel.getByRole("button", { name: "Card", exact: true }).click();
+  await expect(panel.getByText("Beach tote · 1 needed · 0 recorded")).toBeVisible();
+  await expect(panel.getByTestId("pay-instruction")).toHaveCount(0);
+  await panel.getByRole("button", { name: "Confirm items in hand" }).click();
+  await expect(panel.getByText("Charge ฿1,900 on the terminal")).toBeVisible();
+  await panel.getByRole("button", { name: "Confirm ฿1,900" }).click();
+  await expect(page.getByTestId("receipt-screen")).toBeVisible();
+  expect(await payments(page)).toMatchObject([{ method: "card", amount: 190000 }]);
+  const balances = await page.evaluate(() => (window as unknown as { payDesk: { fixtureRows(t: string): Promise<unknown[]> } }).payDesk.fixtureRows("stockLevels"));
+  expect(balances).toContainEqual(expect.objectContaining({ onHand: -1, needsRecount: true }));
+});

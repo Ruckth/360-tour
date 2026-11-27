@@ -1,7 +1,8 @@
 import { staffAccessListPeopleResult, staffAccessMyAccessResult } from './validators';
-import { ConvexError, v } from 'convex/values';
+import { ConvexError, v, type Infer } from 'convex/values';
 import { authenticatedMutation, internalQuery, publicQuery, staffMutation, staffQuery } from './model';
 import { listAssignedBranches, listBranchesForAccess, readBranch } from '../branches/model';
+import { hasBranchStockRole } from '../commerce/model';
 import { STAFF_INVITATION_TTL_MS, staffRole } from '../shared/staffTypes';
 import { isSeparateMarketingAccount, retireOwnerMarketingGrants, marketingAccessForIdentity, marketingInvitationExpiry } from '../marketing/model';
 import { appendRecordHistory, cashierRules } from '../settings/model';
@@ -12,17 +13,19 @@ export const currentInternal = internalQuery({ args: {}, handler: staffAccess })
 
 export const myAccess = publicQuery({
   returns: staffAccessMyAccessResult,
-  reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {}, handler: async ctx => {
+  reason: "Sign-in bootstrap returns caller capabilities or anonymous access.", args: {},
+  handler: async (ctx): Promise<Infer<typeof staffAccessMyAccessResult>> => {
   const identity = await ctx.auth.getUserIdentity();
-  const [{ access, branches: assigned }, rules] = await Promise.all([resolveStaffAccess(ctx, identity), cashierRules(ctx)]);
+  const [{ access, branches: assigned, grantId }, rules] = await Promise.all([resolveStaffAccess(ctx, identity), cashierRules(ctx)]);
   const { email, role, pendingInvitation, companyScope } = access;
-  const [currentBranches, marketing] = await Promise.all([
+  const [currentBranches, marketing, stock] = await Promise.all([
     companyScope ? listBranchesForAccess(ctx, access) : assigned,
     marketingAccessForIdentity(ctx, identity, companyScope),
+    role === 'cashier' && grantId ? hasBranchStockRole(ctx, grantId, access.branchIds) : false,
   ]);
   const branches = currentBranches.map(({ _id: id, key, name, slug, state }) => ({ id, key, name, slug, state }));
   const publicAccess = { email, role, pendingInvitation, companyScope, branches };
-  return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view }, cashierRules: rules, marketingInvitation: marketing.pendingInvitation, marketingRole: marketing.role };
+  return { ...publicAccess, capabilities: { ...access.capabilities, marketing: marketing.capabilities.view, ...(stock ? { stock } : {}) }, cashierRules: rules, marketingInvitation: marketing.pendingInvitation, marketingRole: marketing.role };
 } });
 
 export const claimInvite = authenticatedMutation({ args: {}, handler: async ctx => {

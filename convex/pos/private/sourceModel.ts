@@ -8,14 +8,13 @@ import { type StaffActor } from '../../auth/model';
 import { ATTACH_SCAN, PAYABLE_LOOKUP_SCAN, ReadCtx, appointmentAttachable, attachTo, bookingClosedReason, bookingPayable, editableOrder, lastPaidOrder } from './orderModel';
 
 /** Contacts searched by both the results and their completeness indicator. */
-export async function attachContacts(ctx: ReadCtx, args: { orderId?: Id<'orders'>; query?: string }) {
-	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
+export async function attachContacts(ctx: ReadCtx, order: Doc<'orders'> | null, query?: string) {
 	const customer = order?.customerId ? await ctx.db.get(order.customerId) : null;
 	const phones = new Set<string>();
 	const emails = new Set<string>();
 	if (customer?.phoneDigits && customer.phoneDigits.length >= 4) phones.add(customer.phoneDigits);
 	if (customer?.emailNormalized) emails.add(customer.emailNormalized);
-	const text = args.query?.trim() ?? '';
+	const text = query?.trim() ?? '';
 	if (text.length >= 2) {
 		const digits = text.replace(/\D/g, '');
 		if (digits.length >= 4) phones.add(digits);
@@ -62,8 +61,7 @@ export async function contactBookings(ctx: ReadCtx, contacts: Awaited<ReturnType
  * listAttachable): the order's own booking, its customer's contacts and `query`. Unfiltered: callers
  * decide which can be charged or linked.
  */
-export async function findSources(ctx: ReadCtx, args: { orderId?: Id<'orders'>; query?: string }) {
-	const order = args.orderId ? await ctx.db.get(args.orderId) : null;
+export async function findSources(ctx: ReadCtx, order: Doc<'orders'> | null, query?: string) {
 	const bookings = new Map<Id<'bookings'>, Doc<'bookings'>>();
 	const appointments = new Map<Id<'appointments'>, Doc<'appointments'>>();
 	const addBookings = (rows: Doc<'bookings'>[]) => rows.forEach((row) => bookings.set(row._id, row));
@@ -78,7 +76,7 @@ export async function findSources(ctx: ReadCtx, args: { orderId?: Id<'orders'>; 
 		if (appointment) addAppointments([appointment]);
 	}
 	const searches: Array<Promise<Doc<'bookings'>[] | Doc<'appointments'>[]>> = [];
-	const contacts = await attachContacts(ctx, args);
+	const contacts = await attachContacts(ctx, order, query);
 	const { phones, emails, text } = contacts;
 	addBookings((await contactBookings(ctx, contacts)).rows);
 	if (text.length >= 2) {

@@ -9,15 +9,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
-import { newAttemptKey, useReturnsDesk, type ApprovalId, type OrderView, type ReturnPreview, type ReturnRequestArgs } from "./backend";
+import { newAttemptKey, useReturnsDesk, type ApprovalId, type OrderView, type ReturnLotOptions, type ReturnPreview, type ReturnRequestArgs } from "./backend";
 import { cn } from "@/lib/utils";
 import { CheckoutSheetContent } from "./CheckoutLayers";
 import { DESK_TARGETS, voucherMasks } from "./checkout-ui";
+import { ReturnLotChoice } from "./ReturnLotChoice";
 import { ReturnPayout, SheetActions, SheetBody } from "./ReturnPayout";
 import { returnableParts, returnRefusal, type DeskPart } from "./returnable-parts";
 import {
   chosenParts, coveredByWhole, destinations, freshChoice, freshInstruction, initialChoices, missingCondition, quoteDueAt, rememberRequest, rememberedRequest,
-  returnsTillId, type Choice, type Choices, type Condition, type FreshInstruction,
+  returnLotKey, returnsTillId, type Choice, type Choices, type Condition, type FreshInstruction,
 } from "./returns-desk";
 import { authorizeLabel, destinationText, returnRefusalText, returnsCopy } from "./returns-desk-copy";
 
@@ -146,7 +147,8 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
   onBusyChange: (busy: boolean) => void;
 }) {
   const id = useId();
-  const actions = useReturnsDesk()!.useActions();
+  const desk = useReturnsDesk()!;
+  const actions = desk.useActions();
   const parts = useMemo(() => returnableParts(view), [view]);
   const [choices, setChoices] = useState<Choices>(() => initialChoices(parts, lineId));
   const [mistaken, setMistaken] = useState(false);
@@ -161,7 +163,12 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
   const [uncertain, setUncertain] = useState(false);
   const lock = useRef(false);
 
-  const chosen = useMemo(() => chosenParts(parts, choices), [parts, choices]);
+  const sellable = parts.filter(part => part.kind === "goods" && choices[part.partKey]?.condition === "sellable");
+  const lotResult = desk.useLots(sellable.length ? { orderId: view.order._id, parts: sellable.map(({ lineId, contentKey }) => ({
+    lineId, ...(contentKey === null ? {} : { contentKey }),
+  })) } : null);
+  const lotOptions = useMemo(() => Array.isArray(lotResult) ? new Map(lotResult.map(option => [returnLotKey(option), option])) : null, [lotResult]);
+  const chosen = useMemo(() => chosenParts(parts, choices, lotOptions), [parts, choices, lotOptions]);
   const voucherSale = parts.some((part) => part.voucherSale && choices[part.partKey]);
   const base = useMemo(() => chosen?.length ? {
     orderId: view.order._id, expectedRevision: view.order.revision, expectedCorrectionRevision: view.paymentRecord.correctionRevision,
@@ -197,10 +204,12 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
   }
 
   async function submit() {
-    if (lock.current || (!ready && !uncertain) || !base) return;
+    if (lock.current || (!ready && !uncertain)) return;
+    const request = sent.current ?? (base ? { args: { ...base, reason: reason.trim() }, ask: !manager } : null);
+    if (!request) return;
     lock.current = true;
-    sent.current ??= { args: { ...base, reason: reason.trim() }, ask: !manager };
-    const { args, ask } = sent.current;
+    sent.current = request;
+    const { args, ask } = request;
     setSending(true);
     onBusyChange(true);
     setError("");
@@ -247,12 +256,18 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
               <li key={row} className="grid gap-2 rounded-xl border border-border bg-background p-3">
                 <p className="text-sm font-semibold text-pretty [overflow-wrap:anywhere]">{name}</p>
                 {items.filter((part) => !coveredByWhole(part, choices)).map((part) => (
-                  <PartChoice key={part.partKey} part={part} choice={choices[part.partKey] ?? null} disabled={frozen} onChange={(next) => choose(part, next)} />
+                  <PartChoice key={part.partKey} part={part} choice={choices[part.partKey] ?? null} disabled={frozen} lots={lotOptions?.get(part.partKey)} onChange={(next) => choose(part, next)} />
                 ))}
               </li>
             ))}
           </ul>
         ) : <p className="text-sm text-muted-foreground">{t("returns.nothingToReturn")}</p>}
+        {sellable.length && lotResult instanceof Error ? (
+          <p role="alert" className="text-sm text-destructive">{t("returns.lotsUnavailable")}</p>
+        ) : null}
+        {sellable.length && lotResult === undefined ? (
+          <p role="status" className="text-sm text-muted-foreground">{t("returns.loadingLots")}</p>
+        ) : null}
         {voucherSale ? (
           <label className="flex min-h-11 items-center gap-3 text-sm">
             <input type="checkbox" className="size-5 accent-foreground" checked={mistaken} disabled={frozen} onChange={(event) => setMistaken(event.target.checked)} />
@@ -302,7 +317,9 @@ const CONDITIONS: { value: Condition; key: string }[] = [
 ];
 
 /** One returnable part: a tick, its units, and for goods what came back. */
-function PartChoice({ part, choice, disabled, onChange }: { part: DeskPart; choice: Choice | null; disabled: boolean; onChange: (next: Choice | null) => void }) {
+function PartChoice({ part, choice, disabled, lots, onChange }: {
+  part: DeskPart; choice: Choice | null; disabled: boolean; lots?: ReturnLotOptions; onChange: (next: Choice | null) => void;
+}) {
   // The row's card already names the package.
   const label = part.kind === "whole" ? t("returns.wholePackageShort") : part.kind === "restore" ? t("returns.restoreSession") : part.label;
   const units = choice && part.maxUnits > 1 ? (
@@ -331,6 +348,10 @@ function PartChoice({ part, choice, disabled, onChange }: { part: DeskPart; choi
             );
           })}
         </div>
+        {choice?.condition === "sellable" && lots?.unavailable ? (
+          <p role="alert" className="text-sm text-destructive">{t("returns.lotsUnavailable")}</p>
+        ) : null}
+        {choice?.condition === "sellable" && lots?.tracked ? <ReturnLotChoice options={lots.lots} choice={choice} disabled={disabled} onChange={onChange} /> : null}
       </div>
     );
   }

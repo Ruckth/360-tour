@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { OrderView, ReturnClaim } from '@/components/checkout/backend';
+import type { OrderView, ReturnClaim, ReturnLotOptions } from '@/components/checkout/backend';
 import { returnableParts, returnRefusal, rowReturnable } from '@/components/checkout/returnable-parts';
 import {
   canCancel, chosenParts, coveredByWhole, destinations, freshInstruction, initialChoices, missingCondition, payoutStep, quoteDueAt,
@@ -108,11 +108,38 @@ describe('choices', () => {
     ]);
   });
 
+  it('waits for the physical lot on a partial restock and fills in an unambiguous return', () => {
+    const lotA = 'a' as ReturnLotOptions['lots'][number]['lotId'];
+    const lotB = 'b' as ReturnLotOptions['lots'][number]['lotId'];
+    const options = new Map<string, ReturnLotOptions>([['tote', {
+      lineId: 'tote' as ReturnLotOptions['lineId'], tracked: true,
+      lots: [{ lotId: lotA, code: 'A', expiresAt: 10, quantity: 1 }, { lotId: lotB, code: 'B', expiresAt: 20, quantity: 1 }],
+    }]]);
+    expect(chosenParts(parts, { tote: { units: 1, condition: 'sellable' } }, null)).toBeNull();
+    expect(chosenParts(parts, { tote: { units: 1, condition: 'sellable' } }, options)).toBeNull();
+    expect(chosenParts(parts, { tote: { units: 1, condition: 'sellable', lotQuantities: { [lotB]: 1 } } }, options))
+      .toMatchObject([{ lotAllocations: [{ lotId: 'b', quantity: 1 }] }]);
+    expect(chosenParts(parts, { tote: { units: 2, condition: 'sellable' } }, options))
+      .toMatchObject([{ lotAllocations: [{ lotId: 'a', quantity: 1 }, { lotId: 'b', quantity: 1 }] }]);
+    expect(chosenParts(parts, { tote: { units: 1, condition: 'damaged', lotQuantities: { [lotB]: 1 } } }, options))
+      .toEqual([{ kind: 'line', lineId: 'tote', units: 1, disposition: 'damaged' }]);
+  });
+
   it('sends no disposition for goods kept off a room charge, and clamps units to what is left', () => {
     expect(chosenParts(parts, { tote: { units: 9, condition: 'guest' }, 'gold:sessions': { units: 2, condition: null } })).toEqual([
       { kind: 'content', lineId: 'gold', contentKey: 'sessions', units: 2 },
       { kind: 'line', lineId: 'tote', units: 2 },
     ]);
+  });
+
+  it('lets staff return an eligible item when a different item has unavailable lot evidence', () => {
+    const options = new Map<string, ReturnLotOptions>([
+      ['gold:robe', { lineId: 'gold' as ReturnLotOptions['lineId'], contentKey: 'robe', tracked: false, lots: [], unavailable: true }],
+      ['tote', { lineId: 'tote' as ReturnLotOptions['lineId'], tracked: false, lots: [] }],
+    ]);
+    expect(chosenParts(parts, { 'gold:robe': { units: 1, condition: 'sellable' } }, options)).toBeNull();
+    expect(chosenParts(parts, { tote: { units: 1, condition: 'sellable' } }, options))
+      .toEqual([{ kind: 'line', lineId: 'tote', units: 1, disposition: 'sellable' }]);
   });
 });
 

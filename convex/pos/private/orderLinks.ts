@@ -102,7 +102,7 @@ export async function ordersForSource(ctx: ReadCtx, source: OrderSource, limit =
 	return [...found.values()].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit);
 }
 
-type OrderLinks = Partial<Pick<Doc<'orders'>, 'bookingId' | 'appointmentId' | 'parentOrderId' | 'customerId'>>;
+type OrderLinks = Partial<Pick<Doc<'orders'>, 'bookingId' | 'appointmentId' | 'parentOrderId' | 'customerId' | 'stockBranchId'>>;
 
 /** A new unpaid order with its permanent number. */
 export async function insertOrder(ctx: MutationCtx, actor: string, links: OrderLinks = {}): Promise<Doc<'orders'>> {

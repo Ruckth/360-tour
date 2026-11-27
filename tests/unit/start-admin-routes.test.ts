@@ -198,6 +198,17 @@ describe("start admin route helpers and server logic", () => {
     ["/admin/marketing/coupons/new", null],
     ["/admin/marketing/affiliates", null],
     ["/admin/marketing/access", null],
+    ["/admin/stock", { to: "/admin/stock/balances", replace: true, statusCode: 307 }],
+    ["/admin/stock/", { to: "/admin/stock/balances", replace: true, statusCode: 307 }],
+    ["/admin/stock/unknown", { to: "/admin/chats", replace: true, statusCode: 307 }],
+    ["/admin/stock/balances", null],
+    ["/admin/stock/activity", null],
+    ["/admin/stock/products", null],
+    ["/admin/stock/purchasing", null],
+    ["/admin/stock/purchasing/requests/req-1", null],
+    ["/admin/stock/purchasing/orders/po-1", null],
+    ["/admin/stock/purchasing/receipts/gr-1", null],
+    ["/admin/stock/expansion", null],
   ] as const)("maps %s redirect via common adminRedirectPath", (pathname, expected) => {
     expect(resolveAdminRedirect(pathname)).toEqual(expected);
   });

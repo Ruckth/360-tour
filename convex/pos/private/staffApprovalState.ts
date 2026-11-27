@@ -2,7 +2,7 @@ import { validate } from 'convex-helpers/validators';
 import { ConvexError, convexToJson, v, type Infer } from 'convex/values';
 import type { Doc, Id, TableNames } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import { canReadCheckoutOrder, type requireStaff, type StaffActor } from '../../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, type requireStaff, type StaffActor } from '../../auth/model';
 import { listAssignedBranches } from '../../branches/model';
 import { readBudget } from '../../lib/readBudget';
 import { sha256 } from '../../shared/displayTokens';
@@ -372,12 +372,13 @@ export async function returnApprovalDetail(ctx: ReadCtx, accessReads: number, re
   };
 }
 
-export async function checkoutApprovalDetail(ctx: ReadCtx, request: CheckoutApprovalRequest) {
+export async function checkoutApprovalDetail(ctx: ReadCtx, request: CheckoutApprovalRequest, actor: StaffActor) {
   const [order, line, status] = await Promise.all([
     getApprovalTarget(ctx, request.orderId),
     request.lineId ? getApprovalTarget(ctx, request.lineId) : null,
     effectiveRequestStatus(ctx, request),
   ]);
+  if (order && !canAccessCheckoutOrderBranch(actor, order)) return null;
   return {
     status, target: order && orderView(order),
     orderRevision: { expected: request.orderRevision, current: revisionOf(order) },
@@ -394,10 +395,10 @@ export async function ownApprovalStatus(ctx: ReadCtx, actor: Awaited<ReturnType<
   return await effectiveRequestStatus(ctx, request);
 }
 
-export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'orders'>) {
+export async function assertNoPendingApprovals(ctx: MutationCtx, orderId: Id<'orders'>, action = 'taking payment') {
   const requests = await ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_status', q => q.eq('orderId', orderId).eq('status', 'pending')).take(201);
   if (requests.length > 200) throw new ConvexError('Too many unresolved requests. Ask a manager to resolve them.');
   for (const request of requests) {
-    if (isCheckoutApproval(request) && await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: 'Resolve the manager request before taking payment.', requestId: request._id });
+    if (isCheckoutApproval(request) && await effectiveRequestStatus(ctx, request) === 'pending') throw new ConvexError({ code: 'PENDING_APPROVAL', message: `Resolve the manager request before ${action}.`, requestId: request._id });
   }
 }

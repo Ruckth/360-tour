@@ -31,6 +31,7 @@ import { CheckoutPhoto } from "./CheckoutPhoto";
 import { discountText, parseDiscount } from "./discount-input";
 import { FinancialHistory } from "./FinancialHistory";
 import { OrderCoupon, SHORT_SCREEN_ONLY, canAddCoupon } from "./OrderCoupon";
+import { RecollectionTakeBack } from "./RecollectionTakeBack";
 import { OrderHistory } from "./OrderHistory";
 import { DiscardOrderDialog } from "./OrderLifecycle";
 import { useCheckoutDraft, useCheckoutDraftState, useCheckoutDiscountNotice, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
@@ -127,6 +128,11 @@ export function OrderPanel({
   // While a payment holds the order its rows can't change; a swap after a refusal reopens them for its owning tab only.
   const swapping = view?.paymentAttempt?.status === "refused" && view.paymentAttempt.refusal?.code === "swap_requested";
   const swapAttempt = useCommerce().usePaymentAttempt(swapping && view?.paymentAttempt ? view.order._id : null, view?.paymentAttempt?._id);
+  const recollections = view?.order.status === "draft"
+    ? view.commerce?.handovers.filter(handover =>
+        handover.kind === "recollect" && handover.successorOrderId === orderId && handover.status === "open" &&
+        !handover.pendingReturnId && handover.contents?.some(item => item.unpaid > 0 && item.withGuest > 0)) ?? []
+    : [];
   const rowsLocked = attemptActive && !(swapping && swapAttempt?.mine);
   // A queued line edit (a discount applied on blur) would change the total under an open pay panel.
   const payLocked = cannotPay || busy;
@@ -289,10 +295,12 @@ export function OrderPanel({
               </div>
             ) : (
               <ul className="divide-y divide-border/70 px-1">
-                {lines.map((line) => (
-                  <OrderLineRow
+                {lines.map((line) => {
+                  const recollection = recollections.find(handover => handover.successorLineId === line._id);
+                  return <OrderLineRow
                     key={line._id}
                     line={line}
+                    canEditProductQuantity={Boolean(view?.order.stockBranchId && !recollection)}
                     catalog={catalog}
                     open={expanded === line._id}
                     onToggle={() => { void confirmDiscard().then((discard) => { if (discard) setExpanded(expanded === line._id ? null : line._id); }); }}
@@ -301,8 +309,10 @@ export function OrderPanel({
                     waiting={waiting}
                     request={shownLine === line._id ? shown : null}
                     onSent={() => setExpanded(null)}
-                  />
-                ))}
+                    takeBack={recollection && access.capabilities.approve ? <RecollectionTakeBack handover={recollection} line={line}
+                      disabled={attemptActive || paymentSubmitting || busy} /> : null}
+                  />;
+                })}
               </ul>
             )}
             {orderId && view && view.order.revision > 0 ? <div className="px-4"><OrderHistory orderId={orderId} /></div> : null}
@@ -407,12 +417,14 @@ function lineSubtitle(line: OrderLine, now: number) {
   return parts.filter(Boolean).join(" · ");
 }
 
-function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, request, onSent }: {
+function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, request, onSent, takeBack, canEditProductQuantity }: {
   line: OrderLine; catalog: Catalog | undefined; open: boolean; onToggle: () => void; run: Run; now: number; waiting: boolean;
   /** This line's request: waiting for a manager, or its recent outcome. */
   request: ApprovalRequest | null;
   /** A discount request was sent from the editor; it closes, and the request shows in its place. */
   onSent: () => void;
+  takeBack: ReactNode;
+  canEditProductQuantity: boolean;
 }) {
   const actions = useCheckoutBackend().useActions();
   const send = useSendApproval();
@@ -460,8 +472,8 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
         <ChevronDown aria-hidden className={cn("mt-0.5 size-4 shrink-0 text-muted-foreground transition motion-reduce:transition-none", open && "rotate-180")} />
       </button>
       {line.fee ? <div className="px-4 pb-3 text-xs text-muted-foreground"><p>Appointment fee · service not given. Appointment status, price and payment are unchanged.</p>{line.fee.reason ? <p>{line.fee.reason}</p> : null}<Button size="sm" variant="ghost" onClick={() => run(() => actions.removeLine({ lineId: line._id }))}>Remove fee</Button></div> : null}
-      {/* Only rooms and extras have a quantity; each service or appointment is its own scheduled row. */}
-      {MERGES_QTY[line.kind] && !line.fee ? <QtyStepper line={line} run={run} /> : null}
+      {/* Rooms, extras and products can carry a quantity. Service and appointment rows keep their own schedules. */}
+      {MERGES_QTY[line.kind] && !line.fee && (line.kind !== "product" || canEditProductQuantity) ? <QtyStepper line={line} run={run} /> : null}
       {issue ? (
         <div className="flex items-start gap-2 px-4 pb-2.5 text-xs text-amber-800 dark:text-amber-300">
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -485,6 +497,7 @@ function OrderLineRow({ line, catalog, open, onToggle, run, now, waiting, reques
           }}
         />
       ) : null}
+      {takeBack}
       {request ? <ApprovalInline key={request._id} request={request} lineName={line.name} className="mx-3 mb-3" /> : null}
       {open && !line.fee ? <LineEditor line={line} catalog={catalog} run={run} waiting={waiting} onSent={onSent} /> : null}
     </li>

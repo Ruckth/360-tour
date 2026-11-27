@@ -1,7 +1,8 @@
 "use client";
 
+import type { Id } from "convex/_generated/dataModel";
 import { ChevronUp, ReceiptText, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -9,7 +10,7 @@ import { Sheet, SheetDescription, SheetTitle, SheetTrigger } from "@/components/
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
-import { useCheckoutBackend, type CatalogItem, type OrderId } from "./backend";
+import { useCheckoutBackend, useCommerce, type CatalogItem, type OrderId } from "./backend";
 import { CatalogPane } from "./CatalogPane";
 import { TOUCH_TARGETS } from "./checkout-ui";
 import { CheckoutDialogContent, CheckoutSheetContent } from "./CheckoutLayers";
@@ -20,6 +21,9 @@ import { OrderStrip } from "./OrderStrip";
 import { errorText } from "@/lib/staff-bookings";
 import { needsApproval, shownRequest } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
+import { useCommerceCopy } from "./commerce-copy";
+
+const CheckoutProducts = lazy(() => import("./CheckoutProducts"));
 
 /**
  * Staff checkout: the order strip on top (order, booking, customer, Orders), the catalog on the
@@ -28,7 +32,7 @@ import { useOrderWrites } from "./useOrderWrites";
  * preview render the same UI.
  */
 export function CheckoutView(props: CheckoutViewProps) {
-  return <CheckoutDraftProvider><CheckoutContent {...props} /></CheckoutDraftProvider>;
+  return <CheckoutDraftProvider>{props.retail ? <RetailCheckoutContent {...props} /> : <CheckoutContent {...props} />}</CheckoutDraftProvider>;
 }
 
 type CheckoutViewProps = {
@@ -41,7 +45,14 @@ type CheckoutViewProps = {
   onNoticeRetry?: () => void;
   /** The customer display button; only the admin page has one. */
   displayControl?: ReactNode;
+  retail?: boolean;
+  preferredRetailBranchId?: Id<"branches">;
 };
+
+function RetailCheckoutContent(props: CheckoutViewProps) {
+  const { t } = useCommerceCopy();
+  return <CheckoutContent {...props} retailLabels={{ products: t("kinds.products"), loading: t("retail.loading") }} />;
+}
 
 function CheckoutContent({
   orderId,
@@ -50,10 +61,14 @@ function CheckoutContent({
   notice,
   onNoticeRetry,
   displayControl,
-}: CheckoutViewProps) {
+  retailLabels,
+  preferredRetailBranchId,
+}: CheckoutViewProps & { retailLabels?: { products: string; loading: string } }) {
   const { confirmDiscard } = useCheckoutDraft();
   const { discountNotice, setDiscountNotice } = useCheckoutDiscountNotice();
   const backend = useCheckoutBackend();
+  const commerce = useCommerce();
+  const commerceAccess = commerce.useAccess();
   const catalog = backend.useCatalog();
   const view = backend.useOrder(orderId, "checkout");
   const actions = backend.useActions();
@@ -226,7 +241,7 @@ function CheckoutContent({
       {message ? alert(message) : null}
       {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">
-        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} className="min-w-0 flex-1" />}
+        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} products={retailLabels && commerceAccess?.canSell.products && commerceAccess.paymentsMode === "attempts" && !commerceAccess.paused ? { label: retailLabels.products, content: <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">{retailLabels.loading}</p>}><CheckoutProducts preferredBranchId={preferredRetailBranchId} orderBranchId={view?.order.stockBranchId} busy={busy || paymentSubmitting || Boolean(orderId && !view)} run={run} /></Suspense> } : undefined} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         {!narrow && !sheetOpen ? <aside

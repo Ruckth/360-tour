@@ -24,6 +24,7 @@ import { Route as AdminMarketingRouteImport } from './routes/admin.marketing'
 import { Route as AdminQuestionsRouteImport } from './routes/admin.questions'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
+import { Route as AdminStockRouteImport } from './routes/admin.stock'
 import { Route as DevCheckoutPreviewRouteImport } from './routes/dev.checkout-preview'
 import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$locale}.index'
 import { Route as Char123LocaleChar125ChatRouteImport } from './routes/{-$locale}.chat'
@@ -45,6 +46,11 @@ import { Route as AdminReceiptIndexRouteImport } from './routes/admin.receipt.in
 import { Route as AdminReceiptOrderIdRouteImport } from './routes/admin.receipt.$orderId'
 import { Route as AdminStaffIndexRouteImport } from './routes/admin.staff.index'
 import { Route as AdminStaffTabRouteImport } from './routes/admin.staff.$tab'
+import { Route as AdminStockIndexRouteImport } from './routes/admin.stock.index'
+import { Route as AdminStockActivityRouteImport } from './routes/admin.stock.activity'
+import { Route as AdminStockBalancesRouteImport } from './routes/admin.stock.balances'
+import { Route as AdminStockExpansionRouteImport } from './routes/admin.stock.expansion'
+import { Route as AdminStockProductsRouteImport } from './routes/admin.stock.products'
 import { Route as ApiAdminConfigStatusRouteImport } from './routes/api.admin.config-status'
 import { Route as ApiInternalVillaCacheRouteImport } from './routes/api.internal.villa-cache'
 import { Route as ApiMessagingImageRouteImport } from './routes/api.messaging.image'
@@ -56,7 +62,11 @@ import { Route as AdminMarketingCouponsIndexRouteImport } from './routes/admin.m
 import { Route as AdminMarketingCouponsIdRouteImport } from './routes/admin.marketing.coupons.$id'
 import { Route as AdminMarketingProfitabilityIndexRouteImport } from './routes/admin.marketing.profitability.index'
 import { Route as AdminMarketingProfitabilityTransactionsRouteImport } from './routes/admin.marketing.profitability.transactions'
+import { Route as AdminStockPurchasingIndexRouteImport } from './routes/admin.stock.purchasing.index'
 import { Route as ApiAdminChatReplyRouteImport } from './routes/api.admin.chat.reply'
+import { Route as AdminStockPurchasingOrdersIdRouteImport } from './routes/admin.stock.purchasing.orders.$id'
+import { Route as AdminStockPurchasingReceiptsIdRouteImport } from './routes/admin.stock.purchasing.receipts.$id'
+import { Route as AdminStockPurchasingRequestsIdRouteImport } from './routes/admin.stock.purchasing.requests.$id'
 
 const AdminRoute = AdminRouteImport.update({
   id: '/admin',
@@ -131,6 +141,11 @@ const AdminSettingsRoute = AdminSettingsRouteImport.update({
 const AdminStaffRoute = AdminStaffRouteImport.update({
   id: '/staff',
   path: '/staff',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminStockRoute = AdminStockRouteImport.update({
+  id: '/stock',
+  path: '/stock',
   getParentRoute: () => AdminRoute,
 } as any)
 const DevCheckoutPreviewRoute = DevCheckoutPreviewRouteImport.update({
@@ -245,6 +260,31 @@ const AdminStaffTabRoute = AdminStaffTabRouteImport.update({
   path: '/$tab',
   getParentRoute: () => AdminStaffRoute,
 } as any)
+const AdminStockIndexRoute = AdminStockIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminStockRoute,
+} as any)
+const AdminStockActivityRoute = AdminStockActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => AdminStockRoute,
+} as any)
+const AdminStockBalancesRoute = AdminStockBalancesRouteImport.update({
+  id: '/balances',
+  path: '/balances',
+  getParentRoute: () => AdminStockRoute,
+} as any)
+const AdminStockExpansionRoute = AdminStockExpansionRouteImport.update({
+  id: '/expansion',
+  path: '/expansion',
+  getParentRoute: () => AdminStockRoute,
+} as any)
+const AdminStockProductsRoute = AdminStockProductsRouteImport.update({
+  id: '/products',
+  path: '/products',
+  getParentRoute: () => AdminStockRoute,
+} as any)
 const ApiAdminConfigStatusRoute = ApiAdminConfigStatusRouteImport.update({
   id: '/api/admin/config-status',
   path: '/api/admin/config-status',
@@ -307,11 +347,35 @@ const AdminMarketingProfitabilityTransactionsRoute =
     path: '/profitability/transactions',
     getParentRoute: () => AdminMarketingRoute,
   } as any)
+const AdminStockPurchasingIndexRoute =
+  AdminStockPurchasingIndexRouteImport.update({
+    id: '/purchasing/',
+    path: '/purchasing/',
+    getParentRoute: () => AdminStockRoute,
+  } as any)
 const ApiAdminChatReplyRoute = ApiAdminChatReplyRouteImport.update({
   id: '/api/admin/chat/reply',
   path: '/api/admin/chat/reply',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminStockPurchasingOrdersIdRoute =
+  AdminStockPurchasingOrdersIdRouteImport.update({
+    id: '/purchasing/orders/$id',
+    path: '/purchasing/orders/$id',
+    getParentRoute: () => AdminStockRoute,
+  } as any)
+const AdminStockPurchasingReceiptsIdRoute =
+  AdminStockPurchasingReceiptsIdRouteImport.update({
+    id: '/purchasing/receipts/$id',
+    path: '/purchasing/receipts/$id',
+    getParentRoute: () => AdminStockRoute,
+  } as any)
+const AdminStockPurchasingRequestsIdRoute =
+  AdminStockPurchasingRequestsIdRouteImport.update({
+    id: '/purchasing/requests/$id',
+    path: '/purchasing/requests/$id',
+    getParentRoute: () => AdminStockRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
@@ -328,6 +392,7 @@ export interface FileRoutesByFullPath {
   '/admin/questions': typeof AdminQuestionsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/staff': typeof AdminStaffRouteWithChildren
+  '/admin/stock': typeof AdminStockRouteWithChildren
   '/dev/checkout-preview': typeof DevCheckoutPreviewRoute
   '/{-$locale}/chat': typeof Char123LocaleChar125ChatRoute
   '/{-$locale}/experiences': typeof Char123LocaleChar125ExperiencesRoute
@@ -345,6 +410,10 @@ export interface FileRoutesByFullPath {
   '/admin/properties/$id': typeof AdminPropertiesIdRoute
   '/admin/receipt/$orderId': typeof AdminReceiptOrderIdRoute
   '/admin/staff/$tab': typeof AdminStaffTabRoute
+  '/admin/stock/activity': typeof AdminStockActivityRoute
+  '/admin/stock/balances': typeof AdminStockBalancesRoute
+  '/admin/stock/expansion': typeof AdminStockExpansionRoute
+  '/admin/stock/products': typeof AdminStockProductsRoute
   '/api/admin/config-status': typeof ApiAdminConfigStatusRoute
   '/api/internal/villa-cache': typeof ApiInternalVillaCacheRoute
   '/api/messaging/image': typeof ApiMessagingImageRoute
@@ -356,12 +425,17 @@ export interface FileRoutesByFullPath {
   '/admin/properties/': typeof AdminPropertiesIndexRoute
   '/admin/receipt/': typeof AdminReceiptIndexRoute
   '/admin/staff/': typeof AdminStaffIndexRoute
+  '/admin/stock/': typeof AdminStockIndexRoute
   '/{-$locale}/booking/': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
   '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons/': typeof AdminMarketingCouponsIndexRoute
   '/admin/marketing/profitability/': typeof AdminMarketingProfitabilityIndexRoute
+  '/admin/stock/purchasing/': typeof AdminStockPurchasingIndexRoute
+  '/admin/stock/purchasing/orders/$id': typeof AdminStockPurchasingOrdersIdRoute
+  '/admin/stock/purchasing/receipts/$id': typeof AdminStockPurchasingReceiptsIdRoute
+  '/admin/stock/purchasing/requests/$id': typeof AdminStockPurchasingRequestsIdRoute
 }
 export interface FileRoutesByTo {
   '/display': typeof DisplayRoute
@@ -392,6 +466,10 @@ export interface FileRoutesByTo {
   '/admin/properties/$id': typeof AdminPropertiesIdRoute
   '/admin/receipt/$orderId': typeof AdminReceiptOrderIdRoute
   '/admin/staff/$tab': typeof AdminStaffTabRoute
+  '/admin/stock/activity': typeof AdminStockActivityRoute
+  '/admin/stock/balances': typeof AdminStockBalancesRoute
+  '/admin/stock/expansion': typeof AdminStockExpansionRoute
+  '/admin/stock/products': typeof AdminStockProductsRoute
   '/api/admin/config-status': typeof ApiAdminConfigStatusRoute
   '/api/internal/villa-cache': typeof ApiInternalVillaCacheRoute
   '/api/messaging/image': typeof ApiMessagingImageRoute
@@ -403,12 +481,17 @@ export interface FileRoutesByTo {
   '/admin/properties': typeof AdminPropertiesIndexRoute
   '/admin/receipt': typeof AdminReceiptIndexRoute
   '/admin/staff': typeof AdminStaffIndexRoute
+  '/admin/stock': typeof AdminStockIndexRoute
   '/{-$locale}/booking': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
   '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons': typeof AdminMarketingCouponsIndexRoute
   '/admin/marketing/profitability': typeof AdminMarketingProfitabilityIndexRoute
+  '/admin/stock/purchasing': typeof AdminStockPurchasingIndexRoute
+  '/admin/stock/purchasing/orders/$id': typeof AdminStockPurchasingOrdersIdRoute
+  '/admin/stock/purchasing/receipts/$id': typeof AdminStockPurchasingReceiptsIdRoute
+  '/admin/stock/purchasing/requests/$id': typeof AdminStockPurchasingRequestsIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -426,6 +509,7 @@ export interface FileRoutesById {
   '/admin/questions': typeof AdminQuestionsRoute
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/staff': typeof AdminStaffRouteWithChildren
+  '/admin/stock': typeof AdminStockRouteWithChildren
   '/dev/checkout-preview': typeof DevCheckoutPreviewRoute
   '/{-$locale}/chat': typeof Char123LocaleChar125ChatRoute
   '/{-$locale}/experiences': typeof Char123LocaleChar125ExperiencesRoute
@@ -443,6 +527,10 @@ export interface FileRoutesById {
   '/admin/properties/$id': typeof AdminPropertiesIdRoute
   '/admin/receipt/$orderId': typeof AdminReceiptOrderIdRoute
   '/admin/staff/$tab': typeof AdminStaffTabRoute
+  '/admin/stock/activity': typeof AdminStockActivityRoute
+  '/admin/stock/balances': typeof AdminStockBalancesRoute
+  '/admin/stock/expansion': typeof AdminStockExpansionRoute
+  '/admin/stock/products': typeof AdminStockProductsRoute
   '/api/admin/config-status': typeof ApiAdminConfigStatusRoute
   '/api/internal/villa-cache': typeof ApiInternalVillaCacheRoute
   '/api/messaging/image': typeof ApiMessagingImageRoute
@@ -454,12 +542,17 @@ export interface FileRoutesById {
   '/admin/properties/': typeof AdminPropertiesIndexRoute
   '/admin/receipt/': typeof AdminReceiptIndexRoute
   '/admin/staff/': typeof AdminStaffIndexRoute
+  '/admin/stock/': typeof AdminStockIndexRoute
   '/{-$locale}/booking/': typeof Char123LocaleChar125BookingIndexRoute
   '/admin/marketing/coupons/$id': typeof AdminMarketingCouponsIdRoute
   '/admin/marketing/profitability/transactions': typeof AdminMarketingProfitabilityTransactionsRoute
   '/api/admin/chat/reply': typeof ApiAdminChatReplyRoute
   '/admin/marketing/coupons/': typeof AdminMarketingCouponsIndexRoute
   '/admin/marketing/profitability/': typeof AdminMarketingProfitabilityIndexRoute
+  '/admin/stock/purchasing/': typeof AdminStockPurchasingIndexRoute
+  '/admin/stock/purchasing/orders/$id': typeof AdminStockPurchasingOrdersIdRoute
+  '/admin/stock/purchasing/receipts/$id': typeof AdminStockPurchasingReceiptsIdRoute
+  '/admin/stock/purchasing/requests/$id': typeof AdminStockPurchasingRequestsIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -478,6 +571,7 @@ export interface FileRouteTypes {
     | '/admin/questions'
     | '/admin/settings'
     | '/admin/staff'
+    | '/admin/stock'
     | '/dev/checkout-preview'
     | '/{-$locale}/chat'
     | '/{-$locale}/experiences'
@@ -495,6 +589,10 @@ export interface FileRouteTypes {
     | '/admin/properties/$id'
     | '/admin/receipt/$orderId'
     | '/admin/staff/$tab'
+    | '/admin/stock/activity'
+    | '/admin/stock/balances'
+    | '/admin/stock/expansion'
+    | '/admin/stock/products'
     | '/api/admin/config-status'
     | '/api/internal/villa-cache'
     | '/api/messaging/image'
@@ -506,12 +604,17 @@ export interface FileRouteTypes {
     | '/admin/properties/'
     | '/admin/receipt/'
     | '/admin/staff/'
+    | '/admin/stock/'
     | '/{-$locale}/booking/'
     | '/admin/marketing/coupons/$id'
     | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons/'
     | '/admin/marketing/profitability/'
+    | '/admin/stock/purchasing/'
+    | '/admin/stock/purchasing/orders/$id'
+    | '/admin/stock/purchasing/receipts/$id'
+    | '/admin/stock/purchasing/requests/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/display'
@@ -542,6 +645,10 @@ export interface FileRouteTypes {
     | '/admin/properties/$id'
     | '/admin/receipt/$orderId'
     | '/admin/staff/$tab'
+    | '/admin/stock/activity'
+    | '/admin/stock/balances'
+    | '/admin/stock/expansion'
+    | '/admin/stock/products'
     | '/api/admin/config-status'
     | '/api/internal/villa-cache'
     | '/api/messaging/image'
@@ -553,12 +660,17 @@ export interface FileRouteTypes {
     | '/admin/properties'
     | '/admin/receipt'
     | '/admin/staff'
+    | '/admin/stock'
     | '/{-$locale}/booking'
     | '/admin/marketing/coupons/$id'
     | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons'
     | '/admin/marketing/profitability'
+    | '/admin/stock/purchasing'
+    | '/admin/stock/purchasing/orders/$id'
+    | '/admin/stock/purchasing/receipts/$id'
+    | '/admin/stock/purchasing/requests/$id'
   id:
     | '__root__'
     | '/admin'
@@ -575,6 +687,7 @@ export interface FileRouteTypes {
     | '/admin/questions'
     | '/admin/settings'
     | '/admin/staff'
+    | '/admin/stock'
     | '/dev/checkout-preview'
     | '/{-$locale}/chat'
     | '/{-$locale}/experiences'
@@ -592,6 +705,10 @@ export interface FileRouteTypes {
     | '/admin/properties/$id'
     | '/admin/receipt/$orderId'
     | '/admin/staff/$tab'
+    | '/admin/stock/activity'
+    | '/admin/stock/balances'
+    | '/admin/stock/expansion'
+    | '/admin/stock/products'
     | '/api/admin/config-status'
     | '/api/internal/villa-cache'
     | '/api/messaging/image'
@@ -603,12 +720,17 @@ export interface FileRouteTypes {
     | '/admin/properties/'
     | '/admin/receipt/'
     | '/admin/staff/'
+    | '/admin/stock/'
     | '/{-$locale}/booking/'
     | '/admin/marketing/coupons/$id'
     | '/admin/marketing/profitability/transactions'
     | '/api/admin/chat/reply'
     | '/admin/marketing/coupons/'
     | '/admin/marketing/profitability/'
+    | '/admin/stock/purchasing/'
+    | '/admin/stock/purchasing/orders/$id'
+    | '/admin/stock/purchasing/receipts/$id'
+    | '/admin/stock/purchasing/requests/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -740,6 +862,13 @@ declare module '@tanstack/react-router' {
       path: '/staff'
       fullPath: '/admin/staff'
       preLoaderRoute: typeof AdminStaffRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/stock': {
+      id: '/admin/stock'
+      path: '/stock'
+      fullPath: '/admin/stock'
+      preLoaderRoute: typeof AdminStockRouteImport
       parentRoute: typeof AdminRoute
     }
     '/dev/checkout-preview': {
@@ -889,6 +1018,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminStaffTabRouteImport
       parentRoute: typeof AdminStaffRoute
     }
+    '/admin/stock/': {
+      id: '/admin/stock/'
+      path: '/'
+      fullPath: '/admin/stock/'
+      preLoaderRoute: typeof AdminStockIndexRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/activity': {
+      id: '/admin/stock/activity'
+      path: '/activity'
+      fullPath: '/admin/stock/activity'
+      preLoaderRoute: typeof AdminStockActivityRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/balances': {
+      id: '/admin/stock/balances'
+      path: '/balances'
+      fullPath: '/admin/stock/balances'
+      preLoaderRoute: typeof AdminStockBalancesRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/expansion': {
+      id: '/admin/stock/expansion'
+      path: '/expansion'
+      fullPath: '/admin/stock/expansion'
+      preLoaderRoute: typeof AdminStockExpansionRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/products': {
+      id: '/admin/stock/products'
+      path: '/products'
+      fullPath: '/admin/stock/products'
+      preLoaderRoute: typeof AdminStockProductsRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
     '/api/admin/config-status': {
       id: '/api/admin/config-status'
       path: '/api/admin/config-status'
@@ -966,12 +1130,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMarketingProfitabilityTransactionsRouteImport
       parentRoute: typeof AdminMarketingRoute
     }
+    '/admin/stock/purchasing/': {
+      id: '/admin/stock/purchasing/'
+      path: '/purchasing'
+      fullPath: '/admin/stock/purchasing/'
+      preLoaderRoute: typeof AdminStockPurchasingIndexRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
     '/api/admin/chat/reply': {
       id: '/api/admin/chat/reply'
       path: '/api/admin/chat/reply'
       fullPath: '/api/admin/chat/reply'
       preLoaderRoute: typeof ApiAdminChatReplyRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/stock/purchasing/orders/$id': {
+      id: '/admin/stock/purchasing/orders/$id'
+      path: '/purchasing/orders/$id'
+      fullPath: '/admin/stock/purchasing/orders/$id'
+      preLoaderRoute: typeof AdminStockPurchasingOrdersIdRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/purchasing/receipts/$id': {
+      id: '/admin/stock/purchasing/receipts/$id'
+      path: '/purchasing/receipts/$id'
+      fullPath: '/admin/stock/purchasing/receipts/$id'
+      preLoaderRoute: typeof AdminStockPurchasingReceiptsIdRouteImport
+      parentRoute: typeof AdminStockRoute
+    }
+    '/admin/stock/purchasing/requests/$id': {
+      id: '/admin/stock/purchasing/requests/$id'
+      path: '/purchasing/requests/$id'
+      fullPath: '/admin/stock/purchasing/requests/$id'
+      preLoaderRoute: typeof AdminStockPurchasingRequestsIdRouteImport
+      parentRoute: typeof AdminStockRoute
     }
   }
 }
@@ -1021,6 +1213,34 @@ const AdminStaffRouteWithChildren = AdminStaffRoute._addFileChildren(
   AdminStaffRouteChildren,
 )
 
+interface AdminStockRouteChildren {
+  AdminStockActivityRoute: typeof AdminStockActivityRoute
+  AdminStockBalancesRoute: typeof AdminStockBalancesRoute
+  AdminStockExpansionRoute: typeof AdminStockExpansionRoute
+  AdminStockProductsRoute: typeof AdminStockProductsRoute
+  AdminStockIndexRoute: typeof AdminStockIndexRoute
+  AdminStockPurchasingIndexRoute: typeof AdminStockPurchasingIndexRoute
+  AdminStockPurchasingOrdersIdRoute: typeof AdminStockPurchasingOrdersIdRoute
+  AdminStockPurchasingReceiptsIdRoute: typeof AdminStockPurchasingReceiptsIdRoute
+  AdminStockPurchasingRequestsIdRoute: typeof AdminStockPurchasingRequestsIdRoute
+}
+
+const AdminStockRouteChildren: AdminStockRouteChildren = {
+  AdminStockActivityRoute: AdminStockActivityRoute,
+  AdminStockBalancesRoute: AdminStockBalancesRoute,
+  AdminStockExpansionRoute: AdminStockExpansionRoute,
+  AdminStockProductsRoute: AdminStockProductsRoute,
+  AdminStockIndexRoute: AdminStockIndexRoute,
+  AdminStockPurchasingIndexRoute: AdminStockPurchasingIndexRoute,
+  AdminStockPurchasingOrdersIdRoute: AdminStockPurchasingOrdersIdRoute,
+  AdminStockPurchasingReceiptsIdRoute: AdminStockPurchasingReceiptsIdRoute,
+  AdminStockPurchasingRequestsIdRoute: AdminStockPurchasingRequestsIdRoute,
+}
+
+const AdminStockRouteWithChildren = AdminStockRoute._addFileChildren(
+  AdminStockRouteChildren,
+)
+
 interface AdminRouteChildren {
   AdminSplatRoute: typeof AdminSplatRoute
   AdminChatsRoute: typeof AdminChatsRoute
@@ -1030,6 +1250,7 @@ interface AdminRouteChildren {
   AdminQuestionsRoute: typeof AdminQuestionsRoute
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminStaffRoute: typeof AdminStaffRouteWithChildren
+  AdminStockRoute: typeof AdminStockRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
   AdminCheckoutPreviewRoute: typeof AdminCheckoutPreviewRoute
   AdminPropertiesIdRoute: typeof AdminPropertiesIdRoute
@@ -1048,6 +1269,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminQuestionsRoute: AdminQuestionsRoute,
   AdminSettingsRoute: AdminSettingsRoute,
   AdminStaffRoute: AdminStaffRouteWithChildren,
+  AdminStockRoute: AdminStockRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
   AdminCheckoutPreviewRoute: AdminCheckoutPreviewRoute,
   AdminPropertiesIdRoute: AdminPropertiesIdRoute,

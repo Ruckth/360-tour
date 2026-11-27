@@ -1,4 +1,5 @@
 import { ConvexError, v } from 'convex/values';
+import { placeCheckoutHolds } from '../../commerce/model';
 import { staffMutation } from '../../auth/model';
 import { assertTenders } from '../../shared/orderMath';
 import { reserveWrites } from '../../lib/readBudget';
@@ -8,11 +9,12 @@ import {
 } from '../private/paymentAttempt';
 import { combinePaymentMethods, paymentEvidence } from '../private/paymentRecovery';
 import { freezeAttemptCatalogue, preflightAttempt } from '../private/attemptPreflight';
+import { reviewedStock, stockReviewMatches } from '../private/paymentCommerce';
 
 export const armPaymentLeg = staffMutation({
   capability: 'checkout',
   args: { ...attemptOwnerArgs, ...paymentLoadArgs, legKey: v.string(), tendered: v.optional(v.union(v.number(), v.null())),
-    updateTendered: v.optional(v.literal(true)), stockInHand: v.optional(v.boolean()) },
+    updateTendered: v.optional(v.literal(true)), stockInHand: v.optional(v.boolean()), stockReview: v.optional(reviewedStock) },
   handler: async (ctx, args) => {
     try {
       const { attempt, order } = await attemptForOwner(ctx, ctx.staff, args);
@@ -48,8 +50,17 @@ export const armPaymentLeg = staffMutation({
       const tendered = args.tendered ?? undefined;
       assertTenders([{ ...leg, received: tendered }], leg.amount);
       const { sale, frozen } = await preflightAttempt(ctx, order, attempt, settings, ctx.staff, tenders, now, kept.length > 0);
-      if (!args.stockInHand && sale.stockShortages.length && !kept.length) {
+      const confirmed = args.stockInHand && !order.stockBranchId || stockReviewMatches(sale.stockShortages, args.stockReview);
+      if (!confirmed && !kept.length) {
         return { status: 'confirm_stock' as const, shortages: sale.stockShortages };
+      }
+      if (sale.branch) {
+        const lines = sale.restock
+          .filter(row => row.holdAtArm)
+          .map(row => ({ variantId: row.variant.id, quantity: row.quantity }));
+        await placeCheckoutHolds(ctx, {
+          orderId: order._id, branchId: sale.branch._id, attemptId: attempt._id, legKey: leg.key, lines, actor: ctx.staff.email,
+        });
       }
       const instructed = { ...leg, tendered, state: 'instructed' as const, instructedAt: now, ...instructionOrigin(attempt) };
       const legs = attempt.legs.map(candidate => candidate.key === leg.key ? instructed : candidate);

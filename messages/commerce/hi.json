@@ -54,6 +54,21 @@
       "loadMore": "और आइटम दिखाएँ",
       "customItem": "कस्टम आइटम"
     },
+    "retail": {
+      "loadingBranches": "बिक्री शाखाएँ लोड हो रही हैं…",
+      "orderBranchUnavailable": "इस ऑर्डर की बिक्री शाखा उपलब्ध नहीं है।",
+      "noBranch": "आपको कोई सक्रिय बिक्री शाखा नहीं सौंपी गई है।",
+      "branch": "बिक्री शाखा",
+      "search": "उत्पाद खोजें",
+      "searchPlaceholder": "नाम या SKU",
+      "loading": "उत्पाद लोड हो रहे हैं…",
+      "noResults": "इस खोज से कोई उत्पाद नहीं मिला।",
+      "loadMore": "और उत्पाद लोड करें",
+      "onHand": "स्टॉक में {count}",
+      "quantityFor": "{name} की मात्रा",
+      "addNamed": "{name} जोड़ें",
+      "add": "जोड़ें"
+    },
     "vouchers": {
       "presetAmount": "{amount} का वाउचर",
       "customAmount": "कस्टम राशि",
@@ -182,6 +197,10 @@
       "enterPartAmount": "पेमेंट {n} की रकम डालें।",
       "leaveRest": "आख़िरी पेमेंट के लिए कुछ रकम छोड़ें, या एक ही पेमेंट करें।",
       "backToOrder": "ऑर्डर पर वापस",
+      "reviewStock": "सामने रखे उत्पादों की जाँच करें",
+      "stockShortage": "{label} · {count} चाहिए · {current} दर्ज हैं",
+      "reviewStockHint": "पुष्टि तभी करें जब सभी इकाइयाँ आपके सामने हों। अंतर को दोबारा गिनती के लिए चिह्नित किया जाएगा।",
+      "confirmStock": "सामने रखे उत्पादों की पुष्टि करें",
       "reviewOrder": "ऑर्डर जाँचें",
       "receivedToday": "आज मिला",
       "receivedOn": "{date} को मिला",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "आइटम रिटर्न",
       "sellable": "बेचने लायक · स्टॉक में वापस",
+      "returnLots": "लौटाए गए बैच",
+      "confirmLotUnits": "उत्पादों पर दिए बैच कोड मिलाएँ। {units} में से {count} इकाइयाँ चुनी गई हैं।",
+      "lotReview": "{units} × बैच {code} · समाप्ति {date}",
+      "expiredLots": "जिन इकाइयों की अवधि समाप्त हो गई है वे स्टॉक में वापस जाएँगी और बिक्री के लिए उपलब्ध नहीं होंगी।",
+      "lotDetails": "समाप्ति {date} · मूल बिक्री से {units} इकाइयाँ",
+      "unitsForLot": "बैच {code} की लौटाई गई इकाइयाँ",
+      "notEnoughLotUnits": "मूल बैचों में वापसी के योग्य कम इकाइयाँ बची हैं।",
+      "lotsUnavailable": "मूल बैचों की जानकारी नहीं मिली। इस वापसी को फिर से खोलें या दोबारा कोशिश करें।",
+      "loadingLots": "मूल बैचों की जाँच हो रही है…",
       "damaged": "खराब · राइट-ऑफ़",
       "restoreSession": "सेशन वापस करें",
       "allUnused": "सभी {count} इस्तेमाल नहीं हुए",
@@ -800,6 +828,40 @@
       "retireTillHint": "खुले पैनल का मिलान होने के बाद बदले गए ब्राउज़र या डिवाइस को बंद करें ताकि बिक्री स्विच खुल सकें।",
       "retireTillReason": "ब्राउज़र या डिवाइस बदला गया",
       "tillRetired": "टिल बंद किया गया"
+    },
+    "stock": {
+      "title": "इन्वेंटरी",
+      "nav": {
+        "balances": "शेष मात्रा",
+        "activity": "गतिविधि",
+        "products": "उत्पाद",
+        "purchasing": "खरीद",
+        "expansion": "स्थानांतरण और लॉट"
+      },
+      "actions": {
+        "receive": "प्राप्त करें",
+        "count": "गिनती करें",
+        "adjust": "समायोजित करें",
+        "requestStock": "स्टॉक का अनुरोध करें",
+        "createOrder": "ऑर्डर बनाएं",
+        "issueOrder": "ऑर्डर जारी करें",
+        "printOrder": "ऑर्डर प्रिंट करें",
+        "reportProblem": "समस्या रिपोर्ट करें",
+        "correctQuantity": "मात्रा सुधारें",
+        "returnToSupplier": "आपूर्तिकर्ता को लौटाएं",
+        "closeRemainder": "शेष बंद करें",
+        "deleteDraft": "ड्राफ्ट हटाएं"
+      },
+      "states": {
+        "onHand": "उपलब्ध",
+        "onOrder": "ऑर्डर पर",
+        "needsRecount": "दोबारा गिनती आवश्यक",
+        "heldForBuyer": "खरीदार के लिए रोका गया",
+        "loadingBranch": "{branch} के लिए स्टॉक लोड हो रहा है…",
+        "selectBranch": "स्टॉक प्रबंधित करने के लिए शाखा चुनें।",
+        "noBalances": "इस शाखा में कोई मिलते-जुलते आइटम नहीं हैं।",
+        "noActivity": "वर्तमान फ़िल्टर से कोई स्टॉक गतिविधि मेल नहीं खाती।"
+      }
     }
   }
 }

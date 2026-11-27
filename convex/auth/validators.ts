@@ -29,6 +29,7 @@ export const staffAccessMyAccessResult = v.object({
   capabilities: v.object({
     marketing: v.boolean(),
     checkout: v.boolean(),
+    stock: v.optional(v.boolean()),
     approve: v.boolean(),
     operations: v.boolean(),
     manageTeam: v.boolean(),

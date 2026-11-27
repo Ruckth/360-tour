@@ -54,9 +54,9 @@ export const adminQuery = customQuery(rawQuery, adminAccess);
 export const adminMutation = customMutation(rawMutation, adminAccess);
 export const adminAction = customAction(rawAction, adminAccess);
 
-const staffAccess = customCtx(async (ctx: IdentityCtx, { capability }: { capability: StaffCapability }) => {
+const staffAccess = customCtx(async (ctx: IdentityCtx, { capability, scope }: { capability: StaffCapability; scope?: 'selectedBranch' }) => {
   operational();
-  return { staff: await requireStaff(ctx, capability) };
+  return { staff: await requireStaff(ctx, capability, scope) };
 });
 export const staffQuery = customQuery(rawQuery, staffAccess);
 export const staffMutation = customMutation(rawMutation, staffAccess);
@@ -102,7 +102,7 @@ export const httpAction: HttpActionBuilder = handler => rawHttpAction((ctx, requ
 );
 // Auth-owned plain ctx implementations. Registrations stay in users.ts/staffAccess.ts.
 export { requireAdmin, requireOwner } from './private/adminAuth';
-export { accessForIdentity, assertCashierDiscount, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+export { accessForIdentity, assertCashierDiscount, canAccessCheckoutOrderBranch, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
 
 export { manualReduction } from '../shared/staffDiscount';
 

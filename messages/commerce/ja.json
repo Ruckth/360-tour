@@ -54,6 +54,21 @@
       "loadMore": "さらに表示",
       "customItem": "手入力商品"
     },
+    "retail": {
+      "loadingBranches": "販売店舗を読み込み中…",
+      "orderBranchUnavailable": "この注文の販売店舗は利用できません。",
+      "noBranch": "有効な販売店舗が割り当てられていません。",
+      "branch": "販売店舗",
+      "search": "商品を検索",
+      "searchPlaceholder": "商品名またはSKU",
+      "loading": "商品を読み込み中…",
+      "noResults": "検索条件に一致する商品がありません。",
+      "loadMore": "さらに商品を表示",
+      "onHand": "在庫数 {count}",
+      "quantityFor": "{name}の数量",
+      "addNamed": "{name}を追加",
+      "add": "追加"
+    },
     "vouchers": {
       "presetAmount": "{amount} ギフト券",
       "customAmount": "金額を指定",
@@ -182,6 +197,10 @@
       "enterPartAmount": "支払い {n} の金額を入力してください。",
       "leaveRest": "最後の支払い分の金額を残すか、1回払いにしてください。",
       "backToOrder": "注文に戻る",
+      "reviewStock": "手元の商品を確認",
+      "stockShortage": "{label} · 必要数 {count} · 記録上の在庫数 {current}",
+      "reviewStockHint": "すべて揃っている場合のみ確定してください。在庫数の差異は再カウントの対象になります。",
+      "confirmStock": "手元の商品を確定",
       "reviewOrder": "注文を確認",
       "receivedToday": "本日受領",
       "receivedOn": "{date} 受領",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "返品",
       "sellable": "販売可能 · 在庫に戻す",
+      "returnLots": "返品ロット",
+      "confirmLotUnits": "商品に記載されたロット番号と照合してください。{units}点中{count}点を選択済みです。",
+      "lotReview": "{units}点 · ロット{code} · 期限 {date}",
+      "expiredLots": "期限切れの商品は在庫に戻り、販売できません。",
+      "lotDetails": "期限 {date} · 元の販売から{units}点",
+      "unitsForLot": "ロット{code}の返品数量",
+      "notEnoughLotUnits": "元のロットに返品できる数量が足りません。",
+      "lotsUnavailable": "元のロットを読み込めませんでした。この返品を開き直すか、再試行してください。",
+      "loadingLots": "元のロットを確認中…",
       "damaged": "破損 · 廃棄",
       "restoreSession": "回数を戻す",
       "allUnused": "未使用 全{count}回",
@@ -800,6 +828,40 @@
       "retireTillHint": "未精算パネルを照合した後、交換済みのブラウザや端末を廃止して販売スイッチのロックを解除します。",
       "retireTillReason": "ブラウザまたは端末を交換",
       "tillRetired": "レジを廃止しました"
+    },
+    "stock": {
+      "title": "在庫",
+      "nav": {
+        "balances": "在庫残高",
+        "activity": "入出庫履歴",
+        "products": "商品",
+        "purchasing": "発注・仕入",
+        "expansion": "移動・ロット"
+      },
+      "actions": {
+        "receive": "入庫",
+        "count": "棚卸",
+        "adjust": "調整",
+        "requestStock": "補充申請",
+        "createOrder": "発注作成",
+        "issueOrder": "発注確定",
+        "printOrder": "発注書印刷",
+        "reportProblem": "問題を報告",
+        "correctQuantity": "数量を訂正",
+        "returnToSupplier": "仕入先へ返品",
+        "closeRemainder": "残数を締切る",
+        "deleteDraft": "下書きを削除"
+      },
+      "states": {
+        "onHand": "実在庫",
+        "onOrder": "発注残",
+        "needsRecount": "再棚卸が必要",
+        "heldForBuyer": "バイヤー確認待ち",
+        "loadingBranch": "{branch} の在庫を読み込み中…",
+        "selectBranch": "在庫を管理する拠点を選択してください。",
+        "noBalances": "この拠点に一致する商品はありません。",
+        "noActivity": "条件に一致する在庫履歴はありません。"
+      }
     }
   }
 }

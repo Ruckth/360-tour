@@ -1,5 +1,6 @@
+import { releaseCheckoutHolds } from '../../commerce/model';
 import { ConvexError, v } from 'convex/values';
-import { canReadCheckoutOrder, staffMutation, type StaffActor } from '../../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, staffMutation, type StaffActor } from '../../auth/model';
 import { markBookingPaid } from '../../bookings/model';
 import { captureAffiliateSnapshot, syncAffiliateCredit } from '../../marketing/model';
 import { assertVisitReturnAvailable, recordAppointmentChange } from '../../services/model';
@@ -19,7 +20,7 @@ import { closeSettledDirectPanel } from '../private/directPanels';
 import { assertCurrentPaymentSource, checkPaymentCart, checkPaymentTotals, isCommerceLine } from '../private/paymentReview';
 import { paymentEvidence } from '../private/paymentRecovery';
 import { preflightAttempt } from '../private/attemptPreflight';
-import { writeCommercePayment } from '../private/paymentCommerce';
+import { reviewedStock, stockReviewMatches, writeCommercePayment } from '../private/paymentCommerce';
 import {
   assertActiveAttempt, attemptForOwner, attemptOwnerArgs, checkoutPaymentSettings, externalTenders,
   needsPaymentCheck, paymentError, paymentRefusal,
@@ -66,7 +67,7 @@ export const settleOrder = staffMutation({
 		const key = args.idempotencyKey.trim();
 		if (key.length < 8 || key.length > 100) throw new ConvexError('Invalid payment attempt');
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canAccessCheckoutOrderBranch(admin, order)) throw new ConvexError('Order not found');
 		const inScope = canReadCheckoutOrder(admin, order);
 		// The original direct cashier can recover a lost acknowledgement for a backdated sale.
 		if (!isOpenOrder(order) && order.vatVersion !== 2 && order.settleKey === key && order.receiptNumber !== undefined &&
@@ -176,7 +177,7 @@ async function writeOrderPayment(
  */
 export const settlePaymentAttempt = staffMutation({
   capability: 'checkout',
-  args: { ...attemptOwnerArgs, stockInHand: v.optional(v.boolean()), notifyGuest: v.optional(v.boolean()) },
+  args: { ...attemptOwnerArgs, stockInHand: v.optional(v.boolean()), stockReview: v.optional(reviewedStock), notifyGuest: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
     let prepared;
     try {
@@ -203,7 +204,8 @@ export const settlePaymentAttempt = staffMutation({
         }
         const checks = await preflightAttempt(ctx, order, attempt, settings, ctx.staff, tenders, now);
         for (const line of checks.cart.lines) if (line.appointmentId) assertVisitReturnAvailable(await checks.cart.appointment(line.appointmentId)); // W2B visit return guard (attempt settlement).
-        if (!tenders.length && !args.stockInHand && checks.sale.stockShortages.length) {
+        const confirmed = args.stockInHand && !order.stockBranchId || stockReviewMatches(checks.sale.stockShortages, args.stockReview);
+        if (!tenders.length && !confirmed) {
           return { status: 'confirm_stock' as const, shortages: checks.sale.stockShortages };
         }
         if (readBudget(ctx).documents > 4000) paymentError('pay_room_first', 'Split this order into smaller payments.');
@@ -225,6 +227,7 @@ export const settlePaymentAttempt = staffMutation({
       key: attempt.key, now, effectiveAt, notifyGuest: args.notifyGuest ?? attempt.notifyGuest, paidShares: sale.snapshots.map(snapshot => snapshot.paidShare), vatBases: sale.snapshots.map(snapshot=>snapshot.vatBase),
     });
     await writeCommercePayment(ctx, sale, ctx.staff.email, now);
+    await releaseCheckoutHolds(ctx, order._id, ctx.staff.email);
     await syncAffiliateCredit(ctx, { orderId: order._id }, ctx.staff.email);
     reserveWrites(ctx, 1);
     await ctx.db.patch(attempt._id, { status: 'settled', updatedAt: now });

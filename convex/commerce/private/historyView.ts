@@ -1,6 +1,7 @@
 import { validate } from 'convex-helpers/validators';
 import type { Doc } from '../../_generated/dataModel';
 import type { CommerceHistoryRow } from './history';
+import { stockActorLabel } from './stockLedger';
 import { structuredGuestFact } from '../validators';
 import { maskVoucherCodes } from '../../shared/voucherCode';
 
@@ -170,6 +171,7 @@ export function staffHistoryEntry(row: CommerceHistoryRow): HistoryEntryView {
   return {
     entryId: row._id, at: row.createdAt, fact: stockFact(row),
     balance: { unit: 'stock', before: row.before, after: row.after },
-    staff: { actorName: row.actor, reason: row.reason ?? null, reasonText: null },
+    staff: { actorName: stockActorLabel(row.actor, row.actorLabel) ?? 'Staff member', reason: row.reasonCode ?? row.reason ?? null,
+      reasonText: row.reasonCode ? row.reason ?? null : null },
   };
 }

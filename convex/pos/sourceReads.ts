@@ -1,22 +1,31 @@
 import { ConvexError, v } from 'convex/values';
-import { staffQuery } from '../auth/model';
+import type { Id } from '../_generated/dataModel';
+import type { QueryCtx } from '../_generated/server';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, requireCashierAction, staffQuery, type StaffActor } from '../auth/model';
 import { appointmentMoney } from '../services/model';
 import { bookingRevision } from '../shared/bookingMoney';
 import { openOrderCharging, type OrderSource } from './private/orderLinks';
 import { bookingBalance, bookingChargeTotal, lineNet, orderTitle } from '../shared/orderMath';
 import { resortLocalParts } from '../shared/time';
-import { canReadCheckoutOrder, requireCashierAction } from '../auth/model';
 import { ATTACH_SCAN, LINK_TARGET, appointmentAttachable, bookingCheckoutBlock, bookingClosed, bookingPayable } from './private/orderModel';
 import { appointmentLinkProblem, bookingLinkProblem } from './private/paidLinkModel';
 import { attachContacts, contactBookings, findSources } from './private/sourceModel';
 import { assertReceiptCorrectionSupported } from './private/orderLifecycle';
+
+async function attachmentOrder(ctx: QueryCtx, actor: StaffActor, orderId?: Id<'orders'>) {
+	if (!orderId) return null;
+	const order = await ctx.db.get(orderId);
+	if (!canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
+	return order;
+}
 
 /** Whether this contact lookup reached its result limit/exhausted its bounded scans. */
 export const attachLookupStatus = staffQuery({
   capability: 'checkout',
 	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const bookings = await contactBookings(ctx, await attachContacts(ctx, args));
+		const order = await attachmentOrder(ctx, ctx.staff, args.orderId);
+		const bookings = await contactBookings(ctx, await attachContacts(ctx, order, args.query));
 		return { complete: bookings.complete, ...(!bookings.complete ? { bookingsIncomplete: true } : {}) };
 	}
 });
@@ -31,10 +40,14 @@ export const listAttachable = staffQuery({
   capability: 'checkout',
 	args: { orderId: v.optional(v.id('orders')), query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const { bookings, appointments } = await findSources(ctx, args);
-		const onOrder = async (source: OrderSource) => {
+		const order = await attachmentOrder(ctx, ctx.staff, args.orderId);
+		const { bookings, appointments } = await findSources(ctx, order, args.query);
+		const charging = async (source: OrderSource, unavailableReason: string | null) => {
 			const other = await openOrderCharging(ctx, source);
-			return other ? { _id: other._id, title: orderTitle(other.orderNumber) } : null;
+			if (other && !canAccessCheckoutOrderBranch(ctx.staff, other)) {
+				return { onOrder: null, unavailableReason: 'Already on another order.' };
+			}
+			return { onOrder: other ? { _id: other._id, title: orderTitle(other.orderNumber) } : null, unavailableReason };
 		};
 		const rows = [];
 		for (const booking of bookings.values()) {
@@ -49,8 +62,7 @@ export const listAttachable = staffQuery({
 				price: bookingChargeTotal(booking),
 				currency: booking.currency,
 				deposit: bookingBalance(booking).paid,
-				unavailableReason: bookingCheckoutBlock(booking),
-				onOrder: await onOrder({ bookingId: booking._id })
+				...await charging({ bookingId: booking._id }, bookingCheckoutBlock(booking)),
 			});
 		}
 		for (const appointment of appointments.values()) {
@@ -66,8 +78,7 @@ export const listAttachable = staffQuery({
 				price: appointment.price,
 				currency: appointment.currency,
 				deposit: 0,
-				unavailableReason: null,
-				onOrder: await onOrder({ appointmentId: appointment._id })
+				...await charging({ appointmentId: appointment._id }, null),
 			});
 		}
 		return rows;
@@ -86,13 +97,13 @@ export const linkCandidates = staffQuery({
 		const actor = ctx.staff;
 		await requireCashierAction(ctx, actor, 'paymentFix');
 		const order = await ctx.db.get(args.orderId);
-		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
+		if (!canReadCheckoutOrder(actor, order)) throw new ConvexError('Order not found');
 		const line = await ctx.db.get(args.lineId);
 		if (!order || order.status !== 'paid' || !line || line.orderId !== order._id) return null;
 		await assertReceiptCorrectionSupported(ctx, order);
 		if (!LINK_TARGET[line.kind] || line.fee) return null;
 		const amount = lineNet(line);
-		const { bookings, appointments } = await findSources(ctx, { orderId: order._id, query: args.query });
+		const { bookings, appointments } = await findSources(ctx, order, args.query);
 		const rows: Array<{
 			kind: 'appointment' | 'booking'; id: string; name: string; detail: string; guestName: string; price: number; owed: number;
 			currency: string; date: string | null; revision: number; problem: string | null;

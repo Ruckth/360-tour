@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
-import { resolveCommerceSettings } from '../commerce/model';
+import { readStockAvailability, resolveCommerceSettings, writeStockMovement } from '../commerce/model';
 import * as budgets from '../lib/readBudget';
 import schema from '../schema';
 import { profitVisits, recordReturnDestination } from '../services/model';
@@ -145,6 +145,92 @@ async function measured<T>(label: string, maxReads: number, maxWrites: number, r
     writes.mockRestore();
   }
 }
+
+it('confirms a physical lot on the receipt, preserves it through approval, and restocks it after expiry', async () => {
+  const { t, owner } = await setup();
+  const cashier = t.withIdentity({ tokenIdentifier: 'lot-cashier', email: 'lot-cashier@example.com', emailVerified: true });
+  const otherBranch = t.withIdentity({ tokenIdentifier: 'other-cashier', email: 'other-cashier@example.com', emailVerified: true });
+  const expiry = now + 60_000;
+  const { orderId, lineId, branchId, variantId, movementId } = await t.run(async ctx => {
+    const branchId = await seedTestBranch(ctx);
+    const otherBranchId = await seedTestBranch(ctx, 'phuket');
+    for (const [name, grantBranch] of [['lot-cashier', branchId], ['other-cashier', otherBranchId]] as const) {
+      await ctx.db.insert('staffGrants', {
+        branchIds: [grantBranch], tokenIdentifier: name, role: 'cashier', email: `${name}@example.com`,
+        createdAt: now, updatedAt: now, updatedByEmail: ownerEmail,
+      });
+    }
+    const categoryId = await ctx.db.insert('productCategories', { name: 'Gifts', sort: 0 });
+    const productId = await ctx.db.insert('products', {
+      categoryId, name: 'Oil', status: 'active', vatProfile: 'standard', options: [],
+      minPrice: 100, maxPrice: 100, variantCount: 1, sort: 0, revision: 0,
+    });
+    const variantId = await ctx.db.insert('productVariants', {
+      productId, optionValueIds: [], label: 'Oil', price: 100, status: 'active', revision: 0,
+    });
+    await ctx.db.insert('stockTracking', { variantId, enabledAt: now, enabledBy: ownerEmail });
+    const scope = { branchId, variantId, actor: ownerEmail };
+    for (const [code, expiresAt] of [['EARLY', expiry], ['LATE', now + day]] as const) {
+      await writeStockMovement(ctx, { ...scope, delta: 1, kind: 'opening', sourceKey: code, lotReceipt: { code, expiresAt } });
+    }
+    const orderId = await receipt(ctx, 1, 200);
+    await ctx.db.patch(orderId, { stockBranchId: branchId });
+    const { movementId } = await writeStockMovement(ctx, { ...scope, delta: -2, kind: 'sale', sourceKey: 'tracked-return-sale', sourceId: orderId });
+    const lineId = await line(ctx, orderId, 'product', 100, {
+      qty: 2, variantId, saleSnapshot: snapshot('Oil', 200, [{
+        ...allocation(200), contentKey: 'oil', label: 'Oil', units: 2, vatProfile: 'standard', stockMovementId: movementId,
+      }]),
+    });
+    await card(ctx, orderId, 200);
+    return { orderId, lineId, branchId, variantId, movementId };
+  });
+
+  const lookup = { orderId, parts: [{ lineId }] };
+  const [original] = await cashier.query(command.lots, lookup);
+  expect(original).toMatchObject({ tracked: true, lots: [{ code: 'EARLY', quantity: 1 }, { code: 'LATE', quantity: 1 }] });
+  await expect(otherBranch.query(command.lots, lookup)).rejects.toThrow('Order not found');
+  await expect(cashier.query(command.lots, { ...lookup, parts: [{ lineId, contentKey: 'forged' }] })).rejects.toThrow('product sold on this receipt');
+
+  const part = { kind: 'line', lineId, units: 1, disposition: 'sellable' } as const;
+  const [early, late] = original.lots;
+  const selected = { ...part, lotAllocations: [{ lotId: early.lotId, quantity: 1 }] };
+  await expect(cashier.query(command.preview, selection(orderId, [part]))).rejects.toThrow('Confirm the lot codes');
+  await expect(cashier.query(command.preview, selection(orderId, [{ ...selected, lotAllocations: [{ lotId: early.lotId, quantity: 2 }] }])))
+    .rejects.toThrow('exceeds the original stock movement');
+  expect(await cashier.query(command.preview, selection(orderId, [selected]))).toMatchObject({
+    amount: 100, rows: [{ parts: [{ lots: [early] }] }],
+  });
+
+  const args = selection(orderId, [selected]);
+  const approved = await cashier.mutation(command.askManager, args);
+  const approval = await t.run(ctx => ctx.db.get(approved.requestId));
+  expect(approval).toMatchObject({ payload: { parts: [selected] } });
+  expect(await cashier.mutation(command.askManager, args)).toMatchObject({ requestId: approved.requestId });
+  await expect(cashier.mutation(command.askManager, { ...args, parts: [{ ...selected, lotAllocations: [{ lotId: late.lotId, quantity: 1 }] }] }))
+    .rejects.toThrow('This key was used for different return details');
+  const decision = await owner.mutation(command.decideApproval, { requestId: approved.requestId, decision: 'approve' });
+  expect(decision).toMatchObject({ status: 'authorized' });
+  if (!('returnId' in decision) || !decision.returnId) throw new Error('Expected an approved pending return.');
+  const returnId = decision.returnId;
+  expect(await t.run(ctx => ctx.db.get(returnId))).toMatchObject({ status: 'authorized', parts: [selected] });
+
+  vi.spyOn(Date, 'now').mockReturnValue(expiry + 1);
+  const held = await cashier.query(command.get, { orderId, returnId, tillId });
+  if (!held) throw new Error('Expected a pending return.');
+  const armed = await cashier.mutation(command.arm, destination(held));
+  const completed = await cashier.mutation(command.recordPayout, payout({ returnId, operatorRevision: armed.operatorRevision }));
+  expect(completed).toMatchObject({ status: 'completed' });
+  expect(await t.run(async ctx => {
+    const returns = await ctx.db.query('stockMovements').withIndex('by_sourceKey', q => q.gte('sourceKey', 'return:').lt('sourceKey', 'return;')).collect();
+    const [posted] = returns;
+    const lots = await ctx.db.query('stockLotMovements').withIndex('by_movementId', q => q.eq('movementId', posted._id)).unique();
+    const balance = await readStockAvailability(ctx, { branchId, variantId, onHand: posted.after });
+    return { count: returns.length, posted, lots, sellable: balance.sellable };
+  })).toMatchObject({
+    count: 1, posted: { after: 1, originalMovementId: movementId }, lots: { allocations: selected.lotAllocations }, sellable: 0,
+  });
+  expect(await cashier.query(command.lots, lookup)).toMatchObject([{ lots: [{ code: 'LATE', quantity: 1 }] }]);
+});
 
 it('returns 15 products and five visits with one payout after 200 earlier refunds, within budget', async () => {
   const { t, owner } = await setup();

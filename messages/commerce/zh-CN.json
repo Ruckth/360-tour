@@ -54,6 +54,21 @@
       "loadMore": "显示更多商品",
       "customItem": "自定义商品"
     },
+    "retail": {
+      "loadingBranches": "正在加载销售门店…",
+      "orderBranchUnavailable": "此订单的销售门店不可用。",
+      "noBranch": "您未被分配到任何启用的销售门店。",
+      "branch": "销售门店",
+      "search": "查找商品",
+      "searchPlaceholder": "名称或 SKU",
+      "loading": "正在加载商品…",
+      "noResults": "没有符合搜索条件的商品。",
+      "loadMore": "加载更多商品",
+      "onHand": "现有库存 {count} 件",
+      "quantityFor": "{name}的数量",
+      "addNamed": "添加{name}",
+      "add": "添加"
+    },
     "vouchers": {
       "presetAmount": "{amount} 礼券",
       "customAmount": "自定义金额",
@@ -182,6 +197,10 @@
       "enterPartAmount": "请输入付款 {n} 的金额。",
       "leaveRest": "请为最后一笔付款留出金额，或改为一次付清。",
       "backToOrder": "返回订单",
+      "reviewStock": "核对手头商品",
+      "stockShortage": "{label} · 需要 {count} 件 · 系统记录 {current} 件",
+      "reviewStockHint": "请仅在所有商品都摆在面前时确认。库存差异将标记为待复盘。",
+      "confirmStock": "确认手头商品",
       "reviewOrder": "检查订单",
       "receivedToday": "今日收款",
       "receivedOn": "{date} 收款",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "退货",
       "sellable": "可再售 · 回库存",
+      "returnLots": "退货批次",
+      "confirmLotUnits": "请核对商品上的批次编号。已选 {count} 件，共 {units} 件。",
+      "lotReview": "{units} 件 × 批次 {code} · 到期日 {date}",
+      "expiredLots": "已过期商品将退回库存并保持不可售状态。",
+      "lotDetails": "到期日 {date} · 原销售中的 {units} 件",
+      "unitsForLot": "批次 {code} 的退货数量",
+      "notEnoughLotUnits": "原批次中符合退货条件的商品数量不足。",
+      "lotsUnavailable": "无法读取原批次信息。请重新打开此退货单或重试。",
+      "loadingLots": "正在核对原批次…",
       "damaged": "已损坏 · 报损",
       "restoreSession": "恢复次数",
       "allUnused": "全部 {count} 次未使用",
@@ -800,6 +828,40 @@
       "retireTillHint": "核对完所有未关闭付款面板后，停用已更换的浏览器或设备，使其不再阻止开启销售开关。",
       "retireTillReason": "已更换浏览器或设备",
       "tillRetired": "已停用收银台"
+    },
+    "stock": {
+      "title": "库存",
+      "nav": {
+        "balances": "库存结余",
+        "activity": "库存流水",
+        "products": "商品",
+        "purchasing": "采购",
+        "expansion": "调拨与批次"
+      },
+      "actions": {
+        "receive": "入库",
+        "count": "盘点",
+        "adjust": "调整",
+        "requestStock": "申请补货",
+        "createOrder": "创建采购单",
+        "issueOrder": "下达采购单",
+        "printOrder": "打印采购单",
+        "reportProblem": "报告问题",
+        "correctQuantity": "更正数量",
+        "returnToSupplier": "退回供应商",
+        "closeRemainder": "关闭余量",
+        "deleteDraft": "删除草稿"
+      },
+      "states": {
+        "onHand": "现有库存",
+        "onOrder": "在途数量",
+        "needsRecount": "需复盘",
+        "heldForBuyer": "待采购处理",
+        "loadingBranch": "正在加载 {branch} 的库存…",
+        "selectBranch": "请选择要管理库存的门店。",
+        "noBalances": "此门店暂无匹配商品。",
+        "noActivity": "当前筛选条件下暂无库存流水。"
+      }
     }
   }
 }

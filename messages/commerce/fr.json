@@ -54,6 +54,21 @@
       "loadMore": "Afficher plus d’articles",
       "customItem": "Article libre"
     },
+    "retail": {
+      "loadingBranches": "Chargement des points de vente…",
+      "orderBranchUnavailable": "Le point de vente de cette commande est indisponible.",
+      "noBranch": "Aucun point de vente actif ne vous est attribué.",
+      "branch": "Point de vente",
+      "search": "Rechercher un produit",
+      "searchPlaceholder": "Nom ou référence",
+      "loading": "Chargement des produits…",
+      "noResults": "Aucun produit ne correspond à cette recherche.",
+      "loadMore": "Charger plus de produits",
+      "onHand": "{count} en stock",
+      "quantityFor": "Quantité pour {name}",
+      "addNamed": "Ajouter {name}",
+      "add": "Ajouter"
+    },
     "vouchers": {
       "presetAmount": "Bon de {amount}",
       "customAmount": "Montant libre",
@@ -182,6 +197,10 @@
       "enterPartAmount": "Saisissez un montant pour le paiement {n}.",
       "leaveRest": "Laissez un montant pour le dernier paiement, ou passez à un paiement unique.",
       "backToOrder": "Retour à la commande",
+      "reviewStock": "Vérifiez les produits devant vous",
+      "stockShortage": "{label} · {count} nécessaires · {current} enregistrés",
+      "reviewStockHint": "Confirmez uniquement si vous avez toutes les unités devant vous. L’écart sera signalé pour un recomptage.",
+      "confirmStock": "Confirmer les articles présents",
       "reviewOrder": "Vérifier la commande",
       "receivedToday": "Reçu aujourd’hui",
       "receivedOn": "Reçu le {date}",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "Retourner des articles",
       "sellable": "Vendable · remis en stock",
+      "returnLots": "Lots retournés",
+      "confirmLotUnits": "Vérifiez que les codes de lot correspondent à ceux des articles. {count} unités sélectionnées sur {units}.",
+      "lotReview": "{units} × lot {code} · expire le {date}",
+      "expiredLots": "Les unités périmées sont remises en stock et restent indisponibles à la vente.",
+      "lotDetails": "Expire le {date} · {units} de la vente initiale",
+      "unitsForLot": "Unités retournées du lot {code}",
+      "notEnoughLotUnits": "Il reste moins d’unités admissibles au retour dans les lots d’origine.",
+      "lotsUnavailable": "Impossible de consulter les lots d’origine. Rouvrez ce retour ou réessayez.",
+      "loadingLots": "Vérification des lots d’origine…",
       "damaged": "Endommagé · passé en perte",
       "restoreSession": "Recréditer la séance",
       "allUnused": "Les {count} non utilisées",
@@ -800,6 +828,40 @@
       "retireTillHint": "Retirez un navigateur ou appareil remplacé une fois ses panneaux ouverts rapprochés afin de débloquer les ventes.",
       "retireTillReason": "Navigateur ou appareil remplacé",
       "tillRetired": "Caisse retirée"
+    },
+    "stock": {
+      "title": "Inventaire",
+      "nav": {
+        "balances": "Soldes",
+        "activity": "Mouvements",
+        "products": "Produits",
+        "purchasing": "Achats",
+        "expansion": "Transferts et lots"
+      },
+      "actions": {
+        "receive": "Réceptionner",
+        "count": "Compter",
+        "adjust": "Ajuster",
+        "requestStock": "Demander du réassort",
+        "createOrder": "Créer une commande",
+        "issueOrder": "Émettre la commande",
+        "printOrder": "Imprimer la commande",
+        "reportProblem": "Signaler un problème",
+        "correctQuantity": "Corriger la quantité",
+        "returnToSupplier": "Retourner au fournisseur",
+        "closeRemainder": "Clôturer le reliquat",
+        "deleteDraft": "Supprimer le brouillon"
+      },
+      "states": {
+        "onHand": "En main",
+        "onOrder": "En commande",
+        "needsRecount": "Recomptage requis",
+        "heldForBuyer": "En attente acheteur",
+        "loadingBranch": "Chargement du stock pour {branch}…",
+        "selectBranch": "Choisissez un établissement pour gérer le stock.",
+        "noBalances": "Aucun article correspondant dans cet établissement.",
+        "noActivity": "Aucun mouvement de stock ne correspond à ce filtre."
+      }
     }
   }
 }

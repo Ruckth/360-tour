@@ -303,7 +303,7 @@ async function applyChange(
   return { status: 'applied', adjustmentId, revision: revisionAfter, effects };
 }
 
-type CatalogueTarget = Extract<AdjustmentTarget, { targetType: 'service' | 'property' }>;
+type CatalogueTarget = Extract<AdjustmentTarget, { targetType: 'service' | 'property' | 'product' | 'variant' }>;
 
 export function catalogueRevision(target: CatalogueTarget, record: { revision?: number }, expectedRevision?: number) {
   const currentRevision = record.revision ?? 0;

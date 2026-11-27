@@ -1,4 +1,4 @@
-import { BedDouble, Building2, CalendarClock, HelpCircle, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
+import { BedDouble, Boxes, Building2, CalendarClock, HelpCircle, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
@@ -49,6 +49,25 @@ export function adminSettingsTab(value: string | null): AdminSettingsTab {
   return ADMIN_SETTINGS_TABS.find((tab) => tab.id === id)?.id ?? "business";
 }
 
+/** Stock sub-pages, in sidebar order. `/admin/stock` opens Balances. */
+export const ADMIN_STOCK_PAGES = [
+  { id: "balances", label: "Balances", keywords: ["inventory", "on hand", "on order", "recount", "receive", "count", "adjust"] },
+  { id: "activity", label: "Activity", keywords: ["movements", "history", "ledger", "corrections", "needs review"] },
+  { id: "products", label: "Products", keywords: ["catalog", "variants", "SKU", "barcode", "archive"] },
+  { id: "purchasing", label: "Purchasing", keywords: ["requests", "PR", "orders", "PO", "suppliers", "receipts", "held goods"] },
+  { id: "expansion", label: "Transfers & Lots", keywords: ["transfers", "lots", "expiry", "holds", "reservations"] },
+] as const;
+export type AdminStockPage = (typeof ADMIN_STOCK_PAGES)[number]["id"];
+const ADMIN_STOCK_DEFAULT: AdminStockPage = "balances";
+
+export function isAdminStockPage(value: string): value is AdminStockPage {
+  return ADMIN_STOCK_PAGES.some((page) => page.id === value);
+}
+
+export function adminStockPath(page: AdminStockPage): string {
+  return `/admin/stock/${page}`;
+}
+
 /** Marketing sub-pages, in sidebar order. `/admin/marketing` opens the dashboard. */
 export const ADMIN_MARKETING_PAGES = [
   { id: "dashboard", label: "Dashboard", keywords: ["report", "ROAS", "conversion", "attribution", "spend", "export"] },
@@ -86,6 +105,13 @@ export const ADMIN_NAV: readonly AdminNavItem[] = [
     })),
   },
   { href: "/admin/checkout", label: "Checkout", icon: ShoppingBag, keywords: ["POS", "pay", "orders", "receipt", "till", "bill"] },
+  {
+    href: adminStockPath(ADMIN_STOCK_DEFAULT),
+    label: "Stock",
+    icon: Boxes,
+    keywords: ["inventory", "warehouse", "goods", "replenish", "purchasing"],
+    children: ADMIN_STOCK_PAGES.map(({ id, label, keywords }) => ({ href: adminStockPath(id), label, keywords })),
+  },
   { href: "/admin/questions", label: "Business facts", shortLabel: "Facts", icon: HelpCircle, keywords: ["questions", "answers", "FAQ"] },
   { href: "/admin/properties", label: "Properties", icon: Building2, keywords: ["villas"] },
   { href: "/admin/leads", label: "Leads", icon: Mail },
@@ -139,6 +165,10 @@ export function adminRedirectPath(pathname: string): string | null {
   if (section === "staff") {
     if (!subpage) return adminStaffTabPath("calendar");
     return isAdminStaffTab(subpage) ? null : ADMIN_HOME;
+  }
+  if (section === "stock") {
+    if (!subpage) return adminStockPath(ADMIN_STOCK_DEFAULT);
+    return isAdminStockPage(subpage) ? null : ADMIN_HOME;
   }
   if (section === "marketing") {
     if (!subpage) return adminMarketingPath(ADMIN_MARKETING_DEFAULT);

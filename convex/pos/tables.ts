@@ -33,6 +33,7 @@ const approvalFields = {
 const orderApprovalFields = {
   ...approvalFields,
   orderId: v.id('orders'),
+  stockBranchId: v.optional(v.id('branches')),
   lineId: v.optional(v.id('orderLines')),
   orderFingerprint: v.string(),
   orderRevision: v.number(),
@@ -91,6 +92,7 @@ export const posTables = {
 	orders: defineTable({
 
 		status: v.union(v.literal('draft'), v.literal('paid'), v.literal('void'), v.literal('discarded')),
+		stockBranchId: v.optional(v.id('branches')),
 
 		orderNumber: v.number(),
 		activeAttemptId: v.optional(v.id('paymentAttempts')),
@@ -237,6 +239,12 @@ export const posTables = {
         }), createdAt: v.number(), updatedAt: v.number(), completedAt: v.optional(v.number())
     }).index('by_sourceId', ['sourceId']).index('by_destinationId_and_status', ['destinationId', 'status']),
 
+
+	/** A retry of a product add must return the same order and line, even from a new-order screen. */
+	retailCartAdds: defineTable({
+		actor: v.string(), clientKey: v.string(), branchId: v.id('branches'), fingerprint: v.string(),
+		orderId: v.id('orders'), lineId: v.id('orderLines'),
+	}).index('by_actor_and_clientKey', ['actor', 'clientKey']),
 
 	orderLines: defineTable({
 		orderId: v.id('orders'),

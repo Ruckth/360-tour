@@ -1,17 +1,18 @@
 import { validate } from 'convex-helpers/validators';
 import { ConvexError, v } from 'convex/values';
-import { staffMutation, canReadCheckoutOrder } from '../../auth/model';
+import { staffMutation, staffQuery, canReadCheckoutOrder } from '../../auth/model';
 import { preparePropertyPriceEdit } from '../../catalog/model';
 import { adjust as dispatchAdjustment, adjustmentEffect, adjustmentKind, adjustmentTarget, executeApprovedAdjustment, type AdjustmentWriter } from '../../commerce/model';
 import { prepareServicePriceEdit } from '../../services/model';
 import { editReasons } from '../../shared/commerce/reasons';
 import { amendedCustomerValidator } from '../../shared/staffTypes';
 import { correctedTender } from '../../shared/financeValidators';
-import { prepareRecollectionTakeBack } from '../private/handoverCustody';
+import { prepareRecollectionTakeBack, readRecollectionTarget, readTakeBackLots } from '../private/handoverCustody';
 import { readOrderProjection } from '../private/orderLifecycle';
 import { checkoutPaymentSettings } from '../private/paymentAttempt';
 import { prepareAmendOrderPayment } from '../private/paymentCorrections';
 import { assertNoOpenReturn } from '../private/returnGuards';
+import { returnLotAllocation, returnLotOption } from '../validators';
 
 const paymentInput = v.object({
   tenders: v.optional(v.array(correctedTender)),
@@ -19,7 +20,7 @@ const paymentInput = v.object({
   customer: v.optional(amendedCustomerValidator),
 });
 const takeBackInput = v.object({
-  contentKey: v.string(), quantity: v.number(), disposition: v.union(v.literal('sellable'), v.literal('damaged')),
+  contentKey: v.string(), quantity: v.number(), disposition: v.union(v.literal('sellable'), v.literal('damaged')), lotAllocations: v.optional(v.array(returnLotAllocation)),
 });
 const serviceInput = v.object({ price: v.number() });
 const propertyInput = v.object({ pricePerNight: v.number() });
@@ -33,7 +34,7 @@ function refuse(code: string, message: string): never {
 }
 
 const writer: AdjustmentWriter = {
-  assertScope: async (ctx, actor, { target, kind, reasonCode }) => {
+  assertScope: async (ctx, actor, { target, kind, input, reasonCode }) => {
     if (reasonCode && !editReasons.some(reason => reason === reasonCode)) {
       refuse('INVALID_ADJUSTMENT_REASON', 'Choose an edit reason from the list.');
     }
@@ -53,6 +54,7 @@ const writer: AdjustmentWriter = {
         if (kind !== 'takeBack') break;
         const handover = await readOrderProjection(ctx, () => ctx.db.get(target.targetId));
         if (!handover || handover.kind !== 'recollect') refuse('ADJUSTMENT_TARGET_MISSING', 'Recollection charge not found.');
+        await readRecollectionTarget(ctx, actor, handover, validate(takeBackInput, input) ? input.contentKey : undefined);
         return;
       }
       case 'service':
@@ -116,6 +118,13 @@ const writer: AdjustmentWriter = {
     refuse('ADJUSTMENT_INVALID_INPUT', 'The edit fields do not match the selected target.');
   },
 };
+
+export const takeBackLots = staffQuery({
+  capability: 'approve',
+  args: { handoverId: v.id('handovers'), contentKey: v.string() },
+  returns: v.object({ tracked: v.boolean(), lots: v.array(returnLotOption) }),
+  handler: (ctx, { handoverId, contentKey }) => readTakeBackLots(ctx, ctx.staff, handoverId, contentKey),
+});
 
 export const adjust = staffMutation({
   capability: 'checkout',

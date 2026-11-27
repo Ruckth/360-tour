@@ -1,7 +1,8 @@
 import { ConvexError, v } from 'convex/values';
+import { releaseCheckoutHolds } from '../../commerce/model';
 import { staffMutation } from '../../auth/model';
 import { reserveWrites } from '../../lib/readBudget';
-import { checkedLeg } from '../private/paymentRecovery';
+import { checkedLeg, paymentEvidence } from '../private/paymentRecovery';
 import { assertTenders, changeDue } from '../../shared/orderMath';
 import {
   assertActiveAttempt, attemptForOwner, attemptOwnerArgs, attemptView, needsPaymentCheck, paymentError, paymentRefusal,
@@ -41,6 +42,12 @@ export const recordPaymentLeg = staffMutation({
       const patch = resolution
         ? { resolution: { ...resolution, giveBackLegs: resolution.giveBackLegs.map(apply) } }
         : { legs: attempt.legs.map(apply) };
+      const next = { ...attempt, ...patch };
+      if ((args.outcome === 'declined' && kind === 'collection' && !next.legs.some(part => part.state === 'planned')) ||
+          (args.outcome === 'taken' && kind === 'give_back')) {
+        const { kept, check } = await paymentEvidence(ctx, next);
+        if (!kept.length && !check.length) await releaseCheckoutHolds(ctx, order._id, ctx.staff.email);
+      }
       reserveWrites(ctx, 1);
       await ctx.db.patch(attempt._id, { ...patch, updatedAt: Date.now() });
       return { status: 'recorded' as const, attempt: attemptView({ ...attempt, ...patch }), replayed: false };

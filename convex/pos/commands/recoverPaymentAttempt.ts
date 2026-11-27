@@ -1,5 +1,6 @@
 import { ConvexError, v, type Infer, type ObjectType } from 'convex/values';
 import { staffMutation, type StaffActor } from '../../auth/model';
+import { releaseCheckoutHolds } from '../../commerce/model';
 import type { MutationCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import { reserveWrites } from '../../lib/readBudget';
@@ -209,6 +210,7 @@ export const beginPaymentSwap = staffMutation({
       if (order.revision !== args.expectedRevision) paymentError('order_changed', 'Review the order again.');
       const { check } = await paymentEvidence(ctx, attempt);
       if (check.length) paymentError('check_previous', 'Check the previous payment first.');
+      await releaseCheckoutHolds(ctx, order._id, ctx.staff.email);
       const refusal = { code: 'swap_requested', message: 'Review the cart after the swap.' };
       reserveWrites(ctx, 1);
       await ctx.db.patch(attempt._id, { status: 'refused', refusal, updatedAt: Date.now() });

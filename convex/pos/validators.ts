@@ -105,9 +105,12 @@ export const returnClaimState = v.union(
   v.literal('unknown'), v.literal('cancelled'),
 );
 export const returnDisposition = v.union(v.literal('sellable'), v.literal('damaged'));
+export const returnLotAllocation = v.object({ lotId: v.id('stockLots'), quantity: v.number() });
+export const returnLotOption = v.object({ ...returnLotAllocation.fields, code: v.string(), expiresAt: v.number() });
+const returnLotAllocations = v.optional(v.array(returnLotAllocation));
 export const returnPart = v.union(
-  v.object({ kind: v.literal('line'), lineId: v.id('orderLines'), units: v.number(), disposition: v.optional(returnDisposition) }),
-  v.object({ kind: v.literal('content'), lineId: v.id('orderLines'), contentKey: v.string(), units: v.number(), disposition: v.optional(returnDisposition) }),
+  v.object({ kind: v.literal('line'), lineId: v.id('orderLines'), units: v.number(), disposition: v.optional(returnDisposition), lotAllocations: returnLotAllocations }),
+  v.object({ kind: v.literal('content'), lineId: v.id('orderLines'), contentKey: v.string(), units: v.number(), disposition: v.optional(returnDisposition), lotAllocations: returnLotAllocations }),
   v.object({ kind: v.literal('cancelPackage'), lineId: v.id('orderLines') }),
   v.object({ kind: v.literal('restoreSession'), lineId: v.id('orderLines'), useId: v.id('sessionUses') }),
 );

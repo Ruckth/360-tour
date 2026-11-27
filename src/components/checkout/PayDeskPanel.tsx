@@ -17,6 +17,7 @@ import {
   useCheckoutBackend,
   useCommerce,
   type ExternalMethod,
+  type InHandConfirmation,
   type LegOutcome,
   type OrderId,
   type OrderView,
@@ -27,6 +28,7 @@ import {
   type RecoveryStep,
 } from "./backend";
 import { amountInput, cashNotes } from "./checkout-ui";
+import { useCommerceCopy } from "./commerce-copy";
 import { collected, deskStep, isUnchecked, methodsWithinRows, reviewedCustomers, showsInstruction, stillToCharge, todayBusinessDate } from "./pay-desk-rules";
 import { instruction, methodName, payCopy, payRefusalText } from "./pay-desk-copy";
 import { CashChange, CheckPrevious, ConnectionNotice, DeskButton, HandOver, InProgressElsewhere, Notice, ProblemNotice, payProblem, type Problem } from "./PayRecovery";
@@ -93,6 +95,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   const [emailChoice, setEmailChoice] = useState<{ value: boolean; revision: number } | null>(null);
   const booking = view.sources.some((source) => source.kind === "booking");
   const lock = useRef(false);
+  const reviewStock = useRef<((review?: InHandConfirmation[]) => Promise<void>) | null>(null);
   const mounted = useRef(true);
   const keys = useRef({ base: newAttemptKey(), n: 0 });
   const nextKey = () => `${keys.current.base}-${++keys.current.n}`;
@@ -134,6 +137,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   async function run(work: () => Promise<unknown>) {
     if (lock.current) return;
     lock.current = true;
+    reviewStock.current = null;
     setBusy(true);
     setProblem(null);
     setRetry(null);
@@ -187,7 +191,11 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
     }
     if (!legKey) return;
     const armed = current;
-    await arm(legKey, async () => (await actions.armLeg({ ...ref(armed), legKey })).instructed);
+    async function armAfterReview(stockReview?: InHandConfirmation[]) {
+      reviewStock.current = armAfterReview;
+      await arm(legKey, async () => (await actions.armLeg({ ...ref(armed), legKey, stockReview })).instructed);
+    }
+    await armAfterReview();
   }
 
   /** One method for the rest: Card → the instruction, then Confirm. */
@@ -241,12 +249,15 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
     if (step?.kind !== "settle" || !attempt || busy || problem) return;
     if (settled.current === attempt.attemptId) return;
     settled.current = attempt.attemptId;
-    void run(async () => {
-      const result = await actions.settleAttempt({ ...ref(attempt), orderId, notifyGuest });
+    const finishing = attempt;
+    async function settleAfterReview(stockReview?: InHandConfirmation[]) {
+      reviewStock.current = settleAfterReview;
+      const result = await actions.settleAttempt({ ...ref(finishing), orderId, stockReview, notifyGuest });
       if (!mounted.current) return;
       if (result.status === "settled") onPaid(orderId);
       else setProblem({ refusal: result.refusal });
-    });
+    }
+    void run(settleAfterReview);
   });
 
   async function back() {
@@ -277,6 +288,14 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
 
   const refusal = problem && "refusal" in problem ? problem.refusal : null;
   const roomFirst = refusal?.code === "SERVER" && refusal.reason === "pay_room_first";
+  const shortages = refusal?.code === "STOCK_CONFIRM_NEEDED" ? refusal.shortages ?? [{
+    variantId: refusal.variantId, label: refusal.variantLabel, quantity: refusal.quantity, onHand: refusal.onHand,
+  }] : null;
+  function confirmStock() {
+    const next = reviewStock.current;
+    if (!shortages || !next) return;
+    void run(() => next(shortages.map(({ variantId, quantity, onHand }) => ({ variantId, quantity, onHandSeen: onHand }))));
+  }
   async function payRoomFirst() {
     roomKey.current ??= newAttemptKey();
     await run(async () => {
@@ -326,7 +345,15 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
         <Recovery attempt={attempt} view={view} busy={busy} run={run} nextKey={nextKey} arm={arm} onLeave={onBack} />
       ) : null}
 
-      {roomFirst ? <Notice title={t("pay.payRoomFirst")}><p>{t("pay.payRoomFirstHint")}</p></Notice> : elsewhere && attempt && refusal?.code === "SERVER" && refusal.reason === "in_progress_elsewhere" ? null : <ProblemNotice problem={problem} />}
+      {shortages ? (
+        <StockReviewNotice
+          shortages={shortages}
+          confirmDisabled={busy || !connected}
+          backDisabled={busy || moneyHeld}
+          onConfirm={confirmStock}
+          onBack={() => void back()}
+        />
+      ) : roomFirst ? <Notice title={t("pay.payRoomFirst")}><p>{t("pay.payRoomFirstHint")}</p></Notice> : elsewhere && attempt && refusal?.code === "SERVER" && refusal.reason === "in_progress_elsewhere" ? null : <ProblemNotice problem={problem} />}
 
       {ownInstruction ? (
         <Instruction key={step.leg.key} leg={step.leg} busy={busy} onTendered={saveCashTendered} onRecord={(outcome, extra) => void record(step.leg, outcome, extra)} />
@@ -673,5 +700,34 @@ function LinkedShop({ shopOrderId, onOpenOrder }: { shopOrderId: OrderId; onOpen
       <span className="font-medium tabular-nums">{t("pay.shopAndSpa", { amount: money(shop.totals.due) })}</span>
       {onOpenOrder ? <Button variant="outline" className="h-11 bg-transparent" onClick={() => onOpenOrder(shopOrderId)}>{t("pay.open")}</Button> : null}
     </div>
+  );
+}
+
+function StockReviewNotice({
+  shortages,
+  confirmDisabled,
+  backDisabled,
+  onConfirm,
+  onBack,
+}: {
+  shortages: readonly { variantId: string; label: string; quantity: number; onHand: number }[];
+  confirmDisabled: boolean;
+  backDisabled: boolean;
+  onConfirm: () => void;
+  onBack: () => void;
+}) {
+  const copy = useCommerceCopy();
+  const stockText = copy.has?.("pay.reviewStock") ? copy.t : t;
+  return (
+    <Notice title={stockText("pay.reviewStock")}>
+      <ul className="list-disc space-y-1 pl-4">
+        {shortages.map(item => <li key={item.variantId}>{stockText("pay.stockShortage", { label: item.label, count: item.quantity, current: item.onHand })}</li>)}
+      </ul>
+      <p>{stockText("pay.reviewStockHint")}</p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" disabled={confirmDisabled} onClick={onConfirm}>{stockText("pay.confirmStock")}</Button>
+        <Button type="button" variant="outline" disabled={backDisabled} onClick={onBack}>{stockText("pay.backToOrder")}</Button>
+      </div>
+    </Notice>
   );
 }

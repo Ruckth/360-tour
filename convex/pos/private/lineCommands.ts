@@ -10,6 +10,7 @@ import { appendBookingHistory } from '../../bookings/model';
 import { syncOrderCouponRedemption } from '../../marketing/model';
 import { orderLineLinks } from './lineLinks';
 import { orderLines } from './orderLines';
+import { assertRetailQuantity, requireRetailBranch, retailError, retailProductLines } from './retailStock';
 import { MAX_QTY, MERGES_QTY, NOTE_MAX, assertDiscount, assertPrice, assertPriceOverride, roundMoney } from '../../shared/orderMath';
 import { assertNoPosRefunds } from './orderRefunds';
 import { changeSchedule } from '../../shared/serviceSchedule';
@@ -98,6 +99,16 @@ export async function executeUpdateLine(ctx: MutationCtx, args: Infer<typeof upd
 			if (!MERGES_QTY[line.kind]) throw new ConvexError('Add another row instead: each service is its own row');
 			if (!Number.isInteger(args.qtyChange) || Math.abs(args.qtyChange) > MAX_QTY) throw new ConvexError('Invalid quantity change');
 			patch.qty = Math.min(Math.max(line.qty + args.qtyChange, 1), MAX_QTY);
+            if (line.kind === 'product') {
+              if (!order.stockBranchId || !line.variantId) retailError('retail_line_unavailable', 'Remove this product and add it again from Products.');
+              if (patch.qty > line.qty) {
+                await requireRetailBranch(ctx, admin, order.stockBranchId);
+                const productLines = await retailProductLines(ctx, order, await orderLines(ctx, order._id), line.variantId);
+                const otherUnits = productLines.reduce((sum, row) => sum + (row._id === line._id ? 0 : row.qty), 0);
+                await assertRetailQuantity(ctx, { branchId: order.stockBranchId, orderId: order._id, variantId: line.variantId,
+                  demand: patch.qty + otherUnits });
+              }
+            }
 		}
 		if (args.discount !== undefined) {
 			if (line.kind === 'booking' && args.discount) throw new ConvexError(ATTACHED_PRICE);
