@@ -91,11 +91,13 @@ test("short mobile viewports can scroll the navigation to Book", async ({ page }
   const menu = header.getByRole("button", { name: "Toggle menu" });
   const book = header.getByRole("link", { name: "Book", exact: true });
 
+  await expect(page.getByTestId("booking-check-in")).toBeVisible();
   await menu.focus();
   await page.keyboard.press("Enter");
   await expect(menu).toHaveAttribute("aria-expanded", "true");
   await expect.poll(async () => (await header.boundingBox())!.height).toBeLessThanOrEqual(320);
-  for (let index = 0; index < await header.getByRole("link").count() - 1; index++) {
+  const menuLinkCount = await header.getByRole("link").count() - 1; // The brand link precedes the toggle.
+  for (let index = 0; index < menuLinkCount; index++) {
     await page.keyboard.press("Tab");
   }
   await expect(book).toBeFocused();
