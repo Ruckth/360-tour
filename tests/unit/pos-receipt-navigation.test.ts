@@ -4,10 +4,12 @@ import { createElement, useSyncExternalStore, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OrderId } from "@/components/checkout/backend";
+import { IntlProvider } from "@/platform/intl";
+import commerceEn from "../../messages/commerce/en.json";
 
 /**
  * H1-10: the real checkout page and CheckoutView over the fixture backend, with a browser-like
- * history stack behind next/navigation. Back from a receipt the checkout redirected to must leave
+ * history stack behind the navigation adapter. Back from a receipt the checkout redirected to must leave
  * the receipt, not land on the paid order's checkout URL that redirects straight back.
  */
 
@@ -63,6 +65,9 @@ function Browser() {
 }
 
 let root: Root;
+const renderBrowser = () => act(async () => root.render(
+  createElement(IntlProvider, { locale: "en", messages: commerceEn, children: createElement(Browser) }),
+));
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(500); });
 const back = async () => {
   await act(async () => browser.router.back());
@@ -97,7 +102,7 @@ it("goes back from the receipt of an order paid at checkout to the page before c
   await settle();
   const { orderId } = await added;
   browser.reset(["/admin/bookings", `/admin/checkout?order=${orderId}`]);
-  await act(async () => root.render(createElement(Browser)));
+  await renderBrowser();
   await settle();
   expect(receiptShown()).toBeNull();
 
@@ -118,7 +123,7 @@ it("goes back from a paid order's link to where it was opened, not into a loop",
   await settle();
   await settled;
   browser.reset(["/admin/bookings", `/admin/checkout?order=${orderId as OrderId}`]);
-  await act(async () => root.render(createElement(Browser)));
+  await renderBrowser();
   await settle();
   expect(receiptShown()).toBe(orderId);
 
