@@ -576,17 +576,34 @@ describe("Stock UI components and workflow regressions", () => {
     await act(async () => button(first.reference)!.click());
     const referenceInput = () => document.querySelector<HTMLInputElement>("#recv-del-ref")!;
     await act(async () => setInputValue(referenceInput(), "DEL-109"));
-    await act(async () => button("Load more orders")!.click());
+    const more = button("Load more orders")!;
+    await act(async () => {
+      more.focus();
+      more.click();
+    });
     expect(loadMore).toHaveBeenCalledWith(STOCK_PAGE_SIZE);
     await renderPage("LoadingMore", [first]);
-    expect(button("Loading more orders")?.disabled).toBe(true);
+    expect(button("Loading more orders")?.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => more.click());
+    expect(loadMore).toHaveBeenCalledTimes(1);
 
     await renderPage("Exhausted", [first, second]);
     expect(button("Load more orders")).toBeUndefined();
     expect(button(first.reference)?.getAttribute("aria-pressed")).toBe("true");
     expect(referenceInput().value).toBe("DEL-109");
+    expect(document.activeElement).toBe(button(second.reference));
     await act(async () => button(second.reference)!.click());
     expect(button(second.reference)?.getAttribute("aria-pressed")).toBe("true");
+
+    await renderPage("CanLoadMore", [first, second]);
+    const nextPage = button("Load more orders")!;
+    await act(async () => {
+      nextPage.focus();
+      nextPage.click();
+      referenceInput().focus();
+    });
+    await renderPage("Exhausted", [first, second, { ...first, _id: "po_3", reference: "PO-0003" }]);
+    expect(document.activeElement).toBe(referenceInput());
   });
 
   it("ReceiveDeliverySheet auto-selects linked replacement holdId and forwards followUp / undercount / OCC retry key", async () => {

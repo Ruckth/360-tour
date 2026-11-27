@@ -5,6 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { CheckCheck, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
 import { SkeletonRows } from "@/components/admin/admin-bulk";
 import { Callout, FieldError, NumberField } from "@/components/admin/marketing/MarketingBits";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -114,6 +115,13 @@ export function ReceivePurchaseOrderSection({
   onLotCodeChange: (lineId: string, val: string) => void;
   onLotExpiryChange: (lineId: string, val: string) => void;
 }) {
+  const loadMoreButton = useRef<HTMLButtonElement>(null);
+  const [ordersBeforeKeyboardLoad, setOrdersBeforeKeyboardLoad] = useState<Set<string> | null>(null);
+  const firstNewOrder = ordersBeforeKeyboardLoad
+    ? orderedOpenOrders.find(order => !ordersBeforeKeyboardLoad.has(order._id))
+    : undefined;
+  const showLoadMore = openOrdersStatus === "CanLoadMore" || openOrdersStatus === "LoadingMore";
+
   return (
     <div className="grid gap-4">
       {!initialOrderId ? (
@@ -134,6 +142,9 @@ export function ReceivePurchaseOrderSection({
                   <li key={po._id}>
                     <button
                       type="button"
+                      ref={po === firstNewOrder ? button => {
+                        if (button && document.activeElement === loadMoreButton.current) button.focus();
+                      } : undefined}
                       aria-pressed={selectedOrderId === po._id}
                       onClick={() => onSelectOrder(po._id)}
                       className={cn(
@@ -158,13 +169,22 @@ export function ReceivePurchaseOrderSection({
               })}
             </ul>
           )}
-          {openOrdersStatus === "CanLoadMore" || openOrdersStatus === "LoadingMore" ? (
+          {/* Keep the paging button mounted until keyboard focus reaches the first new option. */}
+          {showLoadMore || firstNewOrder ? (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              disabled={openOrdersStatus === "LoadingMore"}
-              onClick={onLoadMoreOrders}
+              ref={loadMoreButton}
+              aria-disabled={openOrdersStatus !== "CanLoadMore"}
+              onBlur={() => setOrdersBeforeKeyboardLoad(null)}
+              onClick={event => {
+                if (openOrdersStatus !== "CanLoadMore") return;
+                if (event.detail === 0 && document.activeElement === event.currentTarget) {
+                  setOrdersBeforeKeyboardLoad(new Set(orderedOpenOrders.map(order => order._id)));
+                }
+                onLoadMoreOrders();
+              }}
             >
               {openOrdersStatus === "LoadingMore" ? "Loading more orders…" : "Load more orders"}
             </Button>
