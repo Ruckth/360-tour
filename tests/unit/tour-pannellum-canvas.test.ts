@@ -149,6 +149,14 @@ it("waits for a confirmed open and holds the last room while the feed is disconn
   expect(last().path).toBe(POOL);
 });
 
+it("releases the intro once a scene that finished during a disconnect is confirmed again", async () => {
+  await render({ initialTextureConfirmed: false, inputLocked: true });
+  await act(async () => last().finish());
+  expect(cb.onLoaded).not.toHaveBeenCalled();
+  await render({ initialTextureConfirmed: true, inputLocked: false });
+  expect(cb.onLoaded).toHaveBeenCalledTimes(1);
+});
+
 it("keeps the last room on screen while the next loads, then completes the transition", async () => {
   await act(async () => last().finish());
   await render({ currentRoomId: "pool", previousRoomId: "living", transitioning: true });

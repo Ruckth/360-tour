@@ -129,7 +129,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   const {
     rooms, currentRoomId, transitioning, onTransitionComplete, onLoadError, onStatusChange,
     retrySignal, detailRequest, onDetailStatusChange, initialTextureConfirmed,
-    inputLocked = false, prefetchAllowed = false,
+    inputLocked = false, prefetchAllowed = false, onLoaded,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   // Event handlers run outside React: they read the committed props, never a stale render.
@@ -170,6 +170,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   const wantedRef = useRef(wanted);
   const failedRef = useRef(failedKey);
   const recoveringRef = useRef(false);
+  const waitingForConfirmation = useRef<Scene | null>(null);
   const recoveries = useRef(0);
   const fellBack = useRef(false);
   useLayoutEffect(() => {
@@ -271,9 +272,11 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         setShown(loaded);
         setFading(!!container!.querySelector(".pnlm-fade-img"));
         const current = latest.current;
-        if (current.initialTextureConfirmed && current.currentRoomId === loaded.roomId &&
+        waitingForConfirmation.current = null;
+        if (current.currentRoomId === loaded.roomId &&
           current.rooms.find((item) => item.id === loaded.roomId)?.imagePath === loaded.originalPath) {
-          current.onLoaded();
+          if (current.initialTextureConfirmed) current.onLoaded();
+          else waitingForConfirmation.current = loaded;
         }
         reconcile();
       });
@@ -369,6 +372,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       loadingRef.current = null;
       shownRef.current = null;
       recoveringRef.current = false;
+      waitingForConfirmation.current = null;
     };
     // One viewer per open tour once a first scene exists; later scenes reconcile into it.
   }, [fallback, library, mountViewer, reconcile]);
@@ -402,6 +406,11 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   const detailStatus: PanoramaDetailStatus =
     currentReady && canLoadDetail && !detailWanted && shown?.path !== shown?.originalPath ? "available" : null;
 
+  useEffect(() => {
+    if (!initialTextureConfirmed || !currentReady || !shown || waitingForConfirmation.current !== shown) return;
+    waitingForConfirmation.current = null;
+    onLoaded();
+  }, [currentReady, initialTextureConfirmed, onLoaded, shown]);
   useEffect(() => { onLoadError?.(currentFailed); }, [currentFailed, onLoadError]);
   useEffect(() => { onStatusChange?.(status, shownRoomId); }, [onStatusChange, shownRoomId, status]);
   useEffect(() => { onDetailStatusChange?.(detailStatus); }, [detailStatus, onDetailStatusChange]);

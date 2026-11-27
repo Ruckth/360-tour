@@ -115,7 +115,10 @@ function instrument() {
   addEventListener(
     "touchstart",
     (e) => {
-      if (e.isTrusted && e.target instanceof HTMLCanvasElement && sample.gesture === null) {
+      const target = e.target;
+      const dragSurface = target instanceof HTMLCanvasElement ||
+        (target instanceof HTMLElement && target.matches('[data-testid="tour-pannellum"] .pnlm-dragfix'));
+      if (e.isTrusted && dragSurface && sample.gesture === null) {
         sample.origin = sample.last;
         sample.gesture = performance.now();
         performance.mark("tour_bench:drag_started");
