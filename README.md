@@ -39,7 +39,7 @@ Follow the [admin UX conventions](./docs/guides/admin-ux.md) when changing staff
 
 ## Guest tour renderer trial
 
-On a Vercel Preview, open `/rooms/pool-villa?tour=1&tourRenderer=pannellum` to try Pannellum. The control is `/rooms/pool-villa?tour=1`. For the tap and reopen paths, omit `tour=1` and use the room's Explore button. The current viewer handles a failed trial load. Production URLs always use the current viewer.
+On a Vercel Preview, open `/rooms/pool-villa?tour=1&tourRenderer=pannellum` to try Pannellum. The control is `/rooms/pool-villa?tour=1`. For the tap and reopen paths, omit `tour=1` and use the room's Explore button. The current viewer handles a failed trial load and full-detail requests. Pannellum displays the source panorama orientation, including scenes the current renderer mirrors. Production URLs always use the current viewer.
 
 Run the renderer and fallback checks against the seeded local app:
 

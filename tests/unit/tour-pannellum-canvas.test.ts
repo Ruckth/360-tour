@@ -133,6 +133,22 @@ it("loads only the current room's rendition, then reports it drawn with an acces
   expect(cb.onNavigate).toHaveBeenCalledWith("pool");
 });
 
+it("waits for a confirmed open and holds the last room while the feed is disconnected", async () => {
+  await act(() => root.unmount());
+  root = createRoot(host);
+  viewers = [];
+  await render({ initialTextureConfirmed: false, inputLocked: true });
+  expect(viewers).toHaveLength(0);
+  await render({ initialTextureConfirmed: true, inputLocked: false });
+  expect(last().path).toBe(LIVING);
+  await act(async () => last().finish());
+
+  await render({ initialTextureConfirmed: false, inputLocked: true, currentRoomId: "pool" });
+  expect(last().path).toBe(LIVING);
+  await render({ initialTextureConfirmed: true, inputLocked: false });
+  expect(last().path).toBe(POOL);
+});
+
 it("keeps the last room on screen while the next loads, then completes the transition", async () => {
   await act(async () => last().finish());
   await render({ currentRoomId: "pool", previousRoomId: "living", transitioning: true });
@@ -225,7 +241,10 @@ it("falls back when a lost context is not restored in time", async () => {
 it("prefetches likely next rooms only once the scene accepts input, and destroys the viewer on unmount", async () => {
   await act(async () => last().finish());
   expect(fetch).not.toHaveBeenCalled();
+  vi.useFakeTimers();
   await render({ prefetchAllowed: true });
+  expect(fetch).not.toHaveBeenCalled();
+  await act(async () => vi.advanceTimersByTime(60));
   expect(vi.mocked(fetch).mock.calls.map(([path]) => path)).toEqual([POOL, SUITE]);
   const viewer = last();
   await act(() => root.unmount());

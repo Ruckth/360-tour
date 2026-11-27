@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { TourCanvas, TourSceneStatus } from "@/components/tour/TourCanvas";
 import type { PanoramaDetailStatus } from "@/components/tour/useTourTextures";
 import type { Room } from "@/lib/data/rooms";
-import { markTourBench } from "@/lib/tour/bench";
+import { markTourBench, tourBench } from "@/lib/tour/bench";
 import { choosePanoramaWidth, panoramaRendition, TOUR_CANVAS_DPR } from "@/lib/tour/panoramas";
 import { INITIAL_VIEW, PANNELLUM_STRINGS, pannellumErrorKind, pannellumView, tourHfov } from "@/lib/tour/pannellum-view";
 import { nextRoomPrefetchOrder } from "@/lib/tour/texture-cache";
@@ -15,10 +15,14 @@ export type PannellumTourCanvasProps = ComponentProps<typeof TourCanvas> & {
 };
 
 type Camera = { yaw: number; pitch: number; hfov: number };
+type PanoramaRenderer = {
+  render(pitch: number, yaw: number, hfov: number, options?: { returnImage?: boolean; roll?: number }): unknown;
+};
 type PannellumViewer = {
   on(type: string, listener: (value?: unknown) => void): PannellumViewer;
   addScene(id: string, config: object): PannellumViewer;
   loadScene(id: string, pitch?: number | "same", yaw?: number | "same", hfov?: number | "same"): PannellumViewer;
+  getRenderer(): PanoramaRenderer;
   getYaw(): number;
   getPitch(): number;
   getHfov(): number;
@@ -50,7 +54,7 @@ function loadPannellum(): Promise<PannellumGlobal> {
     return global;
   });
   // A failed chunk can be retried by a later open.
-  pannellumScript.catch(() => { pannellumScript = undefined; });
+  void pannellumScript.catch(() => { pannellumScript = undefined; });
   return pannellumScript;
 }
 
@@ -124,7 +128,8 @@ function hotspotButton(label: string, onClick: () => void) {
 export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanvasProps) {
   const {
     rooms, currentRoomId, transitioning, onTransitionComplete, onLoadError, onStatusChange,
-    retrySignal, detailRequest, onDetailStatusChange, inputLocked = false, prefetchAllowed = false,
+    retrySignal, detailRequest, onDetailStatusChange, initialTextureConfirmed,
+    inputLocked = false, prefetchAllowed = false,
   } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   // Event handlers run outside React: they read the committed props, never a stale render.
@@ -153,6 +158,11 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   const [failedKey, setFailedKey] = useState<string | null>(null);
   const [fading, setFading] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [library, setLibrary] = useState<PannellumGlobal>();
+  const [started, setStarted] = useState(false);
+  const mountViewer = !!library && hasScene && (started || initialTextureConfirmed);
+  // Once mounted, keep the last confirmed room visible if the catalog connection drops.
+  if (mountViewer && !started) setStarted(true);
 
   const viewerRef = useRef<PannellumViewer | null>(null);
   const loadingRef = useRef<Scene | null>(null);
@@ -178,7 +188,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   const reconcile = useCallback(() => {
     const viewer = viewerRef.current;
     const next = wantedRef.current;
-    if (!viewer || !next || loadingRef.current || recoveringRef.current) return;
+    if (!viewer || !next || loadingRef.current || recoveringRef.current || !latest.current.initialTextureConfirmed) return;
     if (shownRef.current?.id === next.id) return;
     if (failedRef.current === `${next.roomId}\n${next.originalPath}`) return;
     loadingRef.current = next;
@@ -186,11 +196,20 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
     viewer.loadScene(next.id, "same", "same", "same");
   }, []);
 
-  // Viewer lifecycle: create on mount (and after a restored context), destroy on unmount.
+  useEffect(() => {
+    let active = true;
+    void loadPannellum().then(
+      (loaded) => { if (active) setLibrary(loaded); },
+      () => { if (active) fallback(); },
+    );
+    return () => { active = false; };
+  }, [fallback]);
+
+  // Viewer lifecycle: create only after confirmation, and destroy on unmount.
   useEffect(() => {
     const container = containerRef.current;
     const first = shownRef.current ?? wantedRef.current;
-    if (!container || !first || !hasScene) return;
+    if (!container || !first || !library || !mountViewer) return;
     let disposed = false;
     let camera: Camera | null = null;
     let restoreTimer: number | undefined;
@@ -221,6 +240,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         scenes: { [scene.id]: sceneConfig(scene, latest) },
       });
       viewerRef.current = viewer;
+      let instrumented: PanoramaRenderer | undefined;
       viewer.on("load", () => {
         if (disposed || viewerRef.current !== viewer) return;
         const loaded = loadingRef.current;
@@ -228,12 +248,30 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
         if (!loaded) return;
         markTourBench("pannellum_scene_loaded");
         shownRef.current = loaded;
+        const probe = tourBench();
+        if (probe) {
+          // The load event precedes the library's first draw. Observe its actual render call,
+          // excluding the offscreen snapshots it uses to build a scene transition.
+          const renderer = viewer.getRenderer();
+          if (renderer !== instrumented) {
+            const draw = renderer.render;
+            renderer.render = (...args) => {
+              const result = draw.apply(renderer, args);
+              const visible = shownRef.current;
+              if (!disposed && viewerRef.current === viewer && visible && !recoveringRef.current && !args[3]?.returnImage) {
+                probe.frame(args[1], visible.roomId);
+              }
+              return result;
+            };
+            instrumented = renderer;
+          }
+        }
         recoveringRef.current = false;
         setRecovering(false);
         setShown(loaded);
         setFading(!!container!.querySelector(".pnlm-fade-img"));
         const current = latest.current;
-        if (current.currentRoomId === loaded.roomId &&
+        if (current.initialTextureConfirmed && current.currentRoomId === loaded.roomId &&
           current.rooms.find((item) => item.id === loaded.roomId)?.imagePath === loaded.originalPath) {
           current.onLoaded();
         }
@@ -289,29 +327,26 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       viewerRef.current?.destroy();
       viewerRef.current = null;
       loadingRef.current = null;
-      void loadPannellum().then((global) => {
-        if (disposed) return;
-        const scene = shownRef.current ?? wantedRef.current;
-        if (!scene) return;
-        try {
-          create(global, scene, camera);
-        } catch {
-          fallback();
-        }
-      }, fallback);
+      const scene = shownRef.current ?? wantedRef.current;
+      if (!scene || !library || !latest.current.initialTextureConfirmed) {
+        fallback();
+        return;
+      }
+      try {
+        create(library, scene, camera);
+      } catch {
+        fallback();
+      }
     }
     container.addEventListener("webglcontextlost", onContextLost, true);
     container.addEventListener("webglcontextrestored", onContextRestored, true);
 
-    void loadPannellum().then((global) => {
-      if (disposed) return;
-      try {
-        create(global, first, null);
-        markTourBench("pannellum_created");
-      } catch {
-        fallback();
-      }
-    }, () => { if (!disposed) fallback(); });
+    try {
+      create(library, first, null);
+      markTourBench("pannellum_created");
+    } catch {
+      fallback();
+    }
 
     const resize = new ResizeObserver(() => {
       const viewer = viewerRef.current;
@@ -336,7 +371,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
       recoveringRef.current = false;
     };
     // One viewer per open tour once a first scene exists; later scenes reconcile into it.
-  }, [fallback, hasScene, reconcile]);
+  }, [fallback, library, mountViewer, reconcile]);
 
   // A new requested room (or a retry) starts a new attempt: earlier failures do not carry over.
   useEffect(() => {
@@ -345,7 +380,7 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
     setOriginalFor(null);
     failedRef.current = null;
   }, [roomKey, retrySignal]);
-  useEffect(() => reconcile(), [reconcile, wanted, failedKey]);
+  useEffect(() => reconcile(), [reconcile, wanted, failedKey, initialTextureConfirmed]);
 
   const currentFailed = roomKey !== null && failedKey === roomKey;
   const currentReady = !!shown && !!room && shown.roomId === room.id && shown.originalPath === room.imagePath &&
@@ -393,10 +428,19 @@ export function PannellumTourCanvas({ onFallback, ...props }: PannellumTourCanva
   useEffect(() => {
     if (!prefetchKey) return;
     const controller = new AbortController();
-    for (const path of prefetchKey.split("\n")) {
-      void fetch(path, { signal: controller.signal }).then((response) => response.blob()).catch(() => undefined);
-    }
-    return () => controller.abort();
+    let afterPaint: number | undefined;
+    const beforePaint = window.requestAnimationFrame(() => {
+      afterPaint = window.requestAnimationFrame(() => {
+        for (const path of prefetchKey.split("\n")) {
+          void fetch(path, { signal: controller.signal }).then((response) => response.blob()).catch(() => undefined);
+        }
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(beforePaint);
+      if (afterPaint !== undefined) window.cancelAnimationFrame(afterPaint);
+      controller.abort();
+    };
   }, [prefetchKey]);
 
   useEffect(() => markTourBench("canvas_mounted"), []);
