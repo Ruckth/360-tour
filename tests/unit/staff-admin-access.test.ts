@@ -46,6 +46,15 @@ describe("navigation by staff role", () => {
     expect(hrefs(nav("cashier", { marketing: true }))).toEqual(["/admin/checkout", "/admin/marketing/dashboard"]);
   });
 
+  it("opens Stock for a cashier with a branch stock grant", () => {
+    const cashier = staffAccessFor("cashier");
+    const granted = { ...cashier, capabilities: { ...cashier.capabilities, stock: true } };
+    expect(hrefs(adminNavFor(granted))).toEqual(["/admin/checkout", "/admin/stock/balances"]);
+    expect(adminTillOnly(granted)).toBe(false);
+    expect(adminAccessRedirect("/admin/stock/purchasing", null, granted)).toBeNull();
+    expect(adminAccessRedirect("/admin/stock/balances", null, cashier)).toBe("/admin/checkout");
+  });
+
   it("gives a manager every section except Team, and Marketing only with a Marketing grant", () => {
     const items = nav("manager");
     expect(hrefs(items)).toEqual(ADMIN_NAV.map((item) => item.href).filter((href) => !href.startsWith("/admin/marketing")));

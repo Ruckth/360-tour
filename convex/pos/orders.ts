@@ -2,7 +2,7 @@ import type { QueryCtx } from '../_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminQuery, staffQuery } from '../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
@@ -15,7 +15,6 @@ import { MAX_ORDER_REFUNDS, lineNet, orderTitle, roundMoney } from '../shared/or
 import { isWalkInLine, orderRefundTotal, orderRefundView, orderRefunds } from './private/orderRefunds';
 import { COMMERCE_LIMITS } from '../shared/commerce/caps';
 import { type OrderPromotionView } from '../shared/posCoupons';
-import { canReadCheckoutOrder } from '../auth/model';
 import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
@@ -146,7 +145,7 @@ export const getOrder = staffQuery({
 		const orderId = ctx.db.normalizeId('orders', args.orderId);
 		if (!orderId) return null;
 		const order = await readOrderProjection(ctx, () => ctx.db.get(orderId));
-		if (!order) return null;
+		if (!order || !canAccessCheckoutOrderBranch(actor, order)) return null;
 		const settled = order.status === 'paid' || order.status === 'void';
 		const activeReturn = order.status === 'paid' ? await openOrderReturn(ctx, orderId) : null;
 		if (!canReadCheckoutOrder(actor, order) && activeReturn?.operator !== actor.tokenIdentifier) return null;
@@ -329,7 +328,8 @@ export const getOrder = staffQuery({
  * Orders with items, newest change first, for the Orders list: unpaid, paid, voided or discarded.
  * Unpaid never includes discarded orders; `discarded` lists them newest discard first.
  */
-export const listOrders = adminQuery({
+export const listOrders = staffQuery({
+	capability: 'operations',
 	args: { filter: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('void'), v.literal('discarded')), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
@@ -345,7 +345,7 @@ export const listOrders = adminQuery({
 		const orders = page.page;
 		const rows = [];
 		for (const order of orders) {
-				rows.push(await orderListRow(ctx, order));
+			if (canAccessCheckoutOrderBranch(ctx.staff, order)) rows.push(await orderListRow(ctx, order));
 		}
 		return { ...page, page: rows };
 	}
@@ -360,7 +360,7 @@ export const findOrderByNumber = staffQuery({
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
 		const order = await readOrderProjection(ctx, () => ctx.db.query('orders')
       .withIndex('by_orderNumber', q => q.eq('orderNumber', args.orderNumber)).first());
-    if (!order) return null;
+    if (!order || !canAccessCheckoutOrderBranch(actor, order)) return null;
     if (canReadCheckoutOrder(actor, order)) return order._id;
     const active = order.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
     return active?.operator === actor.tokenIdentifier ? order._id : null;
@@ -371,7 +371,8 @@ export const findOrderByNumber = staffQuery({
  * A booking's or appointment's orders for its detail screen: where checkout continues (the open
  * order, if any), recent orders and what is owed on the source itself.
  */
-export const ordersForBooking = adminQuery({
+export const ordersForBooking = staffQuery({
+	capability: 'operations',
 	args: sourceArgs,
 	handler: async (ctx, args) => {
 		const source = oneSource(args);
@@ -407,7 +408,9 @@ export const ordersForBooking = adminQuery({
 		if (refunds.length > MAX_STAY_ROWS) throw new ConvexError('Full refund history needs review before showing per-order balances.');
 		// Empty unpaid orders (such as the one made with the booking, when its stay was charged on
 		// another order) are left out, as in the orders list; the active one is returned above.
-		const recent = await ordersForSource(ctx, source, 6);
+		if (active && !canAccessCheckoutOrderBranch(ctx.staff, active)) active = null;
+		const recentOrders = await ordersForSource(ctx, source, 6);
+		const recent = recentOrders.filter(order => canAccessCheckoutOrderBranch(ctx.staff, order));
 		// Discarded orders charge nothing, so they are listed apart rather than as open or settled history.
 		const discarded = recent.filter((order) => order.status === 'discarded');
 		const orders = recent.filter((order) => order.status !== 'discarded' && (order.hasItems || !isOpenOrder(order))).slice(0, 5);
@@ -427,12 +430,18 @@ export const ordersForBooking = adminQuery({
 				voidUnreceived: order.voidUnreceived ?? false
 			});
 		}
+		const knownOrders = new Map(recentOrders.map(order => [order._id, order]));
+		const refundRows = await Promise.all(refunds.slice(0, 10).map(async refund => {
+			const linked = refund.orderId && !ctx.staff.companyScope
+				? knownOrders.get(refund.orderId) ?? await ctx.db.get(refund.orderId)
+				: null;
+			const orderId = linked && !canAccessCheckoutOrderBranch(ctx.staff, linked) ? null : refund.orderId ?? null;
+			return { _id: refund._id, amount: refund.amount, method: refund.method, reason: refund.reason, effectiveAt: refund.effectiveAt, orderId };
+		}));
 		return {
 			balance: { total, paid: roundMoney(paid), owed: Math.max(roundMoney(owed), 0), refunded, credit },
 			/** Recorded refunds on the stay, newest first (none for appointments here; see adminServices). */
-			refunds: refunds.slice(0, 10).map((refund) => ({
-				_id: refund._id, amount: refund.amount, method: refund.method, reason: refund.reason, effectiveAt: refund.effectiveAt, orderId: refund.orderId ?? null
-			})),
+			refunds: refundRows,
 			activeOrder: active ? { _id: active._id, title: orderTitle(active.orderNumber), total: active.total, due: await remaining(ctx, active) } : null,
 			orders: history,
 			/** Discarded orders for this source (they charge nothing until restored), newest first. */
@@ -449,7 +458,7 @@ export const orderHistory = staffQuery({
 	args: { orderId: v.id('orders'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		const actor = ctx.staff;
-		if (actor.role === 'cashier' && !canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
+		if (!canReadCheckoutOrder(actor, await ctx.db.get(args.orderId))) throw new ConvexError('Order not found');
 		const { numItems } = args.paginationOpts;
 		if (!Number.isInteger(numItems) || numItems < 1 || numItems > 50) throw new ConvexError('Page size must be 1–50');
 		return await ctx.db
@@ -466,10 +475,10 @@ export const restoreCheck = staffQuery({
 	args: { orderId: v.id('orders') },
 	handler: async (ctx, args) => {
 		const order = await ctx.db.get(args.orderId);
-		if (!order) return null;
+		if (!order || !canAccessCheckoutOrderBranch(ctx.staff, order)) return null;
 		if (order.status !== 'discarded') return { discarded: null, revision: order.revision, conflicts: [], blocking: 0, rowsLeft: 0 };
 		const lines = await orderLines(ctx, order._id);
-		const conflicts = await restoreConflicts(ctx, order, lines);
+		const conflicts = await restoreConflicts(ctx, order, lines, ctx.staff);
 		const blocking = conflicts.filter((conflict) => conflict.blocking).length;
 		return {
 			discarded: discardedInfo(order),
@@ -483,14 +492,15 @@ export const restoreCheck = staffQuery({
 });
 
 /** Fee rows for an appointment (any order state), newest first, for its detail sheet. */
-export const appointmentFees = adminQuery({
+export const appointmentFees = staffQuery({
+	capability: 'operations',
 	args: { appointmentId: v.id('appointments') },
 	handler: async (ctx, args) => {
 		const rows = await ctx.db.query('orderLines').withIndex('by_feeAppointmentId', (q) => q.eq('feeAppointmentId', args.appointmentId)).order('desc').take(20);
 		const fees = [];
 		for (const line of rows) {
 			const order = await ctx.db.get(line.orderId);
-			if (!order || !line.fee) continue;
+			if (!order || !line.fee || !canAccessCheckoutOrderBranch(ctx.staff, order)) continue;
 			fees.push({
 				lineId: line._id, kind: line.fee.kind, amount: lineNet(line), currency: line.currency, reason: line.fee.reason ?? null, by: line.fee.by, at: line.fee.at,
 				order: { _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), receiptNumber: order.receiptNumber ?? null }

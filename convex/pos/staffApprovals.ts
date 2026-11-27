@@ -2,7 +2,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { QueryCtx } from '../_generated/server';
-import { canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery } from '../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, internalMutation, type MutationCtx, requireCashierAction, staffMutation, staffQuery, type StaffActor } from '../auth/model';
 import { readBudget, reserveWrites } from '../lib/readBudget';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
@@ -20,6 +20,10 @@ function cleanReason(reason: string) {
   const value = reason.trim();
   if (!value || value.length > 500) throw new ConvexError('Give a reason of 1–500 characters.');
   return value;
+}
+
+function canAccessApprovalBranch(actor: StaffActor, request: ApprovalRequest) {
+  return request.kind === 'adjustment' || canAccessCheckoutOrderBranch(actor, request);
 }
 
 /** Identity tokens and raw fingerprints never leave the backend. */
@@ -61,7 +65,7 @@ export const create = staffMutation({
   const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    orderId: order._id, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
+    orderId: order._id, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
@@ -78,7 +82,9 @@ export const approve = staffMutation({
   const request = await ctx.db.get(args.requestId);
   if (!request) throw new ConvexError('Request not found');
   if (isOwnApproval(actor, request)) throw new ConvexError('You cannot approve your own request.');
-  if (!canReviewApproval(actor, request) || !isCheckoutApproval(request)) throw new ConvexError('Request not found');
+  if (!canReviewApproval(actor, request) || !isCheckoutApproval(request) || !canAccessApprovalBranch(actor, request)) {
+    throw new ConvexError('Request not found');
+  }
   if (request.status !== 'pending') return { status: request.status, replayed: true };
   if (request.payload.kind === 'voidPaidSale' && Date.now() < request.expiresAt) {
     const order = await readApprovalDocument(ctx, () => ctx.db.get(request.orderId));
@@ -99,7 +105,8 @@ export const approve = staffMutation({
 export const cancel = staffMutation({ capability: 'checkout', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const request = await ctx.db.get(args.requestId);
-  if (!request || !isCheckoutApproval(request) || request.requesterTokenIdentifier !== actor.tokenIdentifier) throw new Error('Not authorized');
+  if (!request || !isCheckoutApproval(request) || request.requesterTokenIdentifier !== actor.tokenIdentifier ||
+      !canAccessApprovalBranch(actor, request)) throw new Error('Not authorized');
   if (request.status !== 'pending') return { status: request.status };
   const status = await effectiveRequestStatus(ctx, request);
   const next = status === 'pending' ? 'cancelled' : status;
@@ -111,7 +118,8 @@ export const reject = staffMutation({
   capability: 'approve', args: { requestId: v.id('staffApprovalRequests'), reason: v.optional(v.string()) }, handler: async (ctx, args) => {
   const actor = ctx.staff;
   const request = await ctx.db.get(args.requestId);
-  if (!request || !canReviewApproval(actor, request) || !isCheckoutApproval(request)) throw new ConvexError('Request not found');
+  if (!request || !canReviewApproval(actor, request) || !isCheckoutApproval(request) ||
+      !canAccessApprovalBranch(actor, request)) throw new ConvexError('Request not found');
   if (request.status !== 'pending') return { status: request.status };
   const status = await effectiveRequestStatus(ctx, request);
   const next = status === 'pending' ? 'rejected' : status;
@@ -122,14 +130,13 @@ export const reject = staffMutation({
 export const forOrder = staffQuery({
   capability: 'checkout', args: { orderId: v.id('orders') }, handler: async (ctx, args) => {
   const actor = ctx.staff;
-  if (actor.role === 'cashier') {
-    const order = await readOrderProjection(ctx, () => ctx.db.get(args.orderId));
-    if (!canReadCheckoutOrder(actor, order)) {
-      const active = order?.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
-      if (active?.operator !== actor.tokenIdentifier) throw new ConvexError('Order not found');
-      // This receipt subscription lists checkout approvals. Return recovery has its own approval state.
-      return [];
-    }
+  const order = await readOrderProjection(ctx, () => ctx.db.get(args.orderId));
+  if (!order || !canAccessCheckoutOrderBranch(actor, order)) throw new ConvexError('Order not found');
+  if (!canReadCheckoutOrder(actor, order)) {
+    const active = order.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
+    if (active?.operator !== actor.tokenIdentifier) throw new ConvexError('Order not found');
+    // This receipt subscription lists checkout approvals. Return recovery has its own approval state.
+    return [];
   }
   const [recent, pending] = await Promise.all([
     ctx.db.query('staffApprovalRequests').withIndex('by_orderId_and_createdAt', q => q.eq('orderId', args.orderId)).order('desc').take(50),
@@ -180,7 +187,7 @@ export const pending = staffQuery({
   const list: ReturnType<typeof requestView>[] = [];
   let rules: Awaited<ReturnType<typeof cashierRules>> | undefined;
   for await (const request of pendingCheckoutRequests(ctx)) {
-    if (isCheckoutApproval(request) && canReviewApproval(ctx.staff, request)) {
+    if (isCheckoutApproval(request) && canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request)) {
       rules ??= await readApprovalDocument(ctx, () => cashierRules(ctx));
       if (await effectiveRequestStatus(ctx, request, rules) === 'pending') list.push(requestView(request, 'pending'));
     }
@@ -231,9 +238,11 @@ export const pendingPage = staffQuery({
       .paginate({ numItems, cursor: window.cursor, endCursor: window.endCursor, maximumRowsRead: APPROVAL_PAGE_SIZE + 1, maximumBytesRead: 512 * 1024 });
     for (const request of result.page) budget.document(request);
     budget.assert();
+    const screened = result.page.filter(request => request.expiresAt > now &&
+      canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request));
     return {
       ...result,
-      page: await queueRows(ctx, result.page.filter(request => request.expiresAt > now && canReviewApproval(ctx.staff, request))),
+      page: await queueRows(ctx, screened),
       continueCursor: window.wrap(result.continueCursor),
       ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
@@ -243,7 +252,7 @@ export const pendingPage = staffQuery({
 export const detail = staffQuery({
   capability: 'approve', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, { requestId }) => {
     const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
-    if (!request || !canReviewApproval(ctx.staff, request)) return null;
+    if (!request || !canReviewApproval(ctx.staff, request) || !canAccessApprovalBranch(ctx.staff, request)) return null;
     if (request.kind === 'adjustment') {
       const { target, adjustmentKind, input, reasonCode } = request.payload;
       return {
@@ -265,15 +274,16 @@ export const detail = staffQuery({
         },
       };
     }
-    const detail = await checkoutApprovalDetail(ctx, request);
-    return { ...detail, kind: request.kind, request: requestView(request, detail.status) };
+    const detail = await checkoutApprovalDetail(ctx, request, ctx.staff);
+    return detail && { ...detail, kind: request.kind, request: requestView(request, detail.status) };
   },
 });
 
 export const myStatus = staffQuery({
   capability: 'checkout', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, { requestId }) => {
     const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
-    if (!request || request.requesterTokenIdentifier !== ctx.staff.tokenIdentifier) return null;
+    if (!request || request.requesterTokenIdentifier !== ctx.staff.tokenIdentifier ||
+        !canAccessApprovalBranch(ctx.staff, request)) return null;
     return {
       requestId, kind: request.kind, status: await ownApprovalStatus(ctx, ctx.staff, request),
       expiresAt: request.expiresAt, resolvedAt: request.resolvedAt, resolutionReason: request.resolutionReason,

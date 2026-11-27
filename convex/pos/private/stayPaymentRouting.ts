@@ -48,7 +48,7 @@ export async function openShopOrder(
   if (order?.status === 'draft') return order;
   if (!create) return null;
   const room = await paymentGet(ctx, route.roomOrderId);
-  const shop = await insertOrder(ctx, actor, { bookingId, customerId: room?.customerId, parentOrderId: route.roomOrderId });
+  const shop = await insertOrder(ctx, actor, { bookingId, customerId: room?.customerId, stockBranchId: room?.stockBranchId, parentOrderId: route.roomOrderId });
   await updateRoomRoute(ctx, bookingId, actor, { roomOrderId: route.roomOrderId, shopOrderId: shop._id }, false);
   return shop;
 }

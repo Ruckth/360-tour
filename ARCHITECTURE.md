@@ -20,6 +20,7 @@ Use Bun 1.4.5 with Node 22. Run `bun check` to type-check the app, tests and Con
 | `convex/bookings` | Stays, availability, date blocks, iCal, stay payments/refunds and Stripe |
 | `convex/services` | Services, staff/rosters/time off, appointments and their finance |
 | `convex/pos` | Orders/lines/payments/refunds, customers, tills, displays and approval requests |
+| `convex/commerce` | Product catalog, branch stock and its movement ledger, supplier purchasing, lot custody and stock reservations |
 | `convex/marketing` | Campaigns/links/attribution, coupons, affiliates, credits and service profitability. Finance owns effective-dated service costs and monthly service accounts. |
 | `convex/messaging` | Conversations/messages, guest credentials, durable channel ingress and delivery |
 | `convex/concierge` | Turn orchestration, context, prompts, model/tool execution |

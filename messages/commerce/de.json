@@ -54,6 +54,21 @@
       "loadMore": "Weitere Artikel anzeigen",
       "customItem": "Freier Artikel"
     },
+    "retail": {
+      "loadingBranches": "Verkaufsfilialen werden geladen…",
+      "orderBranchUnavailable": "Die Verkaufsfiliale dieses Auftrags ist nicht verfügbar.",
+      "noBranch": "Ihnen ist keine aktive Verkaufsfiliale zugewiesen.",
+      "branch": "Verkaufsfiliale",
+      "search": "Produkt suchen",
+      "searchPlaceholder": "Name oder Artikelnummer",
+      "loading": "Produkte werden geladen…",
+      "noResults": "Keine Produkte entsprechen dieser Suche.",
+      "loadMore": "Weitere Produkte laden",
+      "onHand": "{count} auf Lager",
+      "quantityFor": "Menge für {name}",
+      "addNamed": "{name} hinzufügen",
+      "add": "Hinzufügen"
+    },
     "vouchers": {
       "presetAmount": "Gutschein über {amount}",
       "customAmount": "Freier Betrag",
@@ -182,6 +197,10 @@
       "enterPartAmount": "Betrag für Zahlung {n} eingeben.",
       "leaveRest": "Einen Betrag für die letzte Zahlung übrig lassen oder alles in einer Zahlung kassieren.",
       "backToOrder": "Zurück zur Bestellung",
+      "reviewStock": "Vorliegende Produkte prüfen",
+      "stockShortage": "{label} · {count} benötigt · {current} im System",
+      "reviewStockHint": "Bestätigen Sie nur, wenn alle Stücke vor Ihnen liegen. Die Abweichung wird zur Nachzählung markiert.",
+      "confirmStock": "Vorliegende Artikel bestätigen",
       "reviewOrder": "Bestellung prüfen",
       "receivedToday": "Heute erhalten",
       "receivedOn": "Erhalten am {date}",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "Artikel zurücknehmen",
       "sellable": "Verkäuflich · zurück ins Lager",
+      "returnLots": "Zurückgegebene Chargen",
+      "confirmLotUnits": "Gleichen Sie die Chargencodes auf den Artikeln ab. {count} von {units} Stück ausgewählt.",
+      "lotReview": "{units} × Charge {code} · haltbar bis {date}",
+      "expiredLots": "Abgelaufene Stücke gehen zurück ins Lager und bleiben für den Verkauf gesperrt.",
+      "lotDetails": "Haltbar bis {date} · {units} aus dem ursprünglichen Verkauf",
+      "unitsForLot": "Zurückgegebene Stückzahl für Charge {code}",
+      "notEnoughLotUnits": "In den ursprünglichen Chargen sind weniger Stücke für die Rückgabe verfügbar.",
+      "lotsUnavailable": "Die ursprünglichen Chargen konnten nicht geladen werden. Öffnen Sie die Rückgabe erneut oder versuchen Sie es noch einmal.",
+      "loadingLots": "Ursprüngliche Chargen werden geprüft…",
       "damaged": "Beschädigt · abgeschrieben",
       "restoreSession": "Anwendung gutschreiben",
       "allUnused": "Alle {count} ungenutzt",
@@ -800,6 +828,40 @@
       "retireTillHint": "Melden Sie ein ersetztes Gerät ab, sobald alle offenen Zahlungsfelder abgeglichen sind, damit die Verkaufsschalter freigegeben werden.",
       "retireTillReason": "Browser oder Gerät ersetzt",
       "tillRetired": "Kasse abgemeldet"
+    },
+    "stock": {
+      "title": "Lagerbestand",
+      "nav": {
+        "balances": "Bestände",
+        "activity": "Bewegungen",
+        "products": "Produkte",
+        "purchasing": "Einkauf",
+        "expansion": "Umlagerungen & Chargen"
+      },
+      "actions": {
+        "receive": "Wareneingang",
+        "count": "Zählen",
+        "adjust": "Korrigieren",
+        "requestStock": "Bestand anfordern",
+        "createOrder": "Bestellung anlegen",
+        "issueOrder": "Bestellung ausgeben",
+        "printOrder": "Bestellung drucken",
+        "reportProblem": "Problem melden",
+        "correctQuantity": "Menge korrigieren",
+        "returnToSupplier": "An Lieferant zurücksenden",
+        "closeRemainder": "Restmenge schließen",
+        "deleteDraft": "Entwurf löschen"
+      },
+      "states": {
+        "onHand": "Auf Lager",
+        "onOrder": "Bestellt",
+        "needsRecount": "Nachzählung nötig",
+        "heldForBuyer": "Zur Prüfung zurückgehalten",
+        "loadingBranch": "Lagerbestand für {branch} wird geladen…",
+        "selectBranch": "Wählen Sie eine Filiale für die Bestandsverwaltung.",
+        "noBalances": "Keine passenden Artikel in dieser Filiale.",
+        "noActivity": "Keine Lagerbewegungen für diesen Filter."
+      }
     }
   }
 }

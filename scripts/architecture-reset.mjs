@@ -3,7 +3,7 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { COMMERCE_TABLE_NAMES, PROFITABILITY_TABLE_NAMES, inspectSchema, schemaSourceReader } from './lib/convex-schema.mjs';
+import { inspectSchema, reviewedTableDifferences, schemaSourceReader } from './lib/convex-schema.mjs';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -23,11 +23,9 @@ if (!tables.includes('bills') || !tables.includes('billRefunds') || !tables.incl
 const current = inspectSchema(schemaSourceReader(root));
 const newSchema = current.sources['convex/schema.ts'];
 const newTables = current.tables.map(table => table.name);
-const reviewed = inspectSchema(schemaSourceReader(root, 'f2482a0237e28a82c71b0557ea9422f61233845a'));
-const expectedTables = new Set([...reviewed.tables.map(table => table.name), ...COMMERCE_TABLE_NAMES, ...PROFITABILITY_TABLE_NAMES]);
-if (newTables.length !== expectedTables.size || newTables.some(name => !expectedTables.has(name)) ||
-    !newTables.includes('orders') || newTables.includes('bills') || new Set(newTables).size !== newTables.length) {
-  throw new Error('The current schema must contain the reviewed final table names');
+const tableDifferences = reviewedTableDifferences(current.tables);
+if (tableDifferences.length || !newTables.includes('orders') || newTables.includes('bills')) {
+  throw new Error(['The current schema must match the reviewed table inventory', ...tableDifferences].join('\n'));
 }
 mkdirSync(out, { recursive: true });
 const schemaSources = {};

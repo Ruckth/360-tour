@@ -25,6 +25,7 @@ export function adminPageAllowed(pathname: string, tab: string | null, caps: Sta
   // Unknown paths are redirected by the proxy before they render.
   if (!section) return true;
   if (section === "/admin/checkout") return caps.checkout;
+  if (section === "/admin/stock/balances") return caps.operations || caps.stock === true;
   if (section.startsWith("/admin/marketing")) return caps.marketing;
   if (section === "/admin/settings") return caps.operations && (!isOwnerOnlySettingsTab(adminSettingsTab(tab)) || caps.manageTeam);
   return caps.operations;
@@ -35,7 +36,7 @@ function linkAllowed(href: string, caps: StaffCapabilities) {
   return adminPageAllowed(url.pathname, url.searchParams.get("tab"), caps);
 }
 
-/** The sidebar for this person: a cashier gets Checkout; a manager everything but owner-only pages. */
+/** The sidebar for this person, including any Stock or Marketing access granted to cashiers. */
 export function adminNavFor(access: Access | null | undefined, nav: readonly AdminNavItem[] = ADMIN_NAV): AdminNavItem[] {
   if (!restricted(access)) return [...nav];
   return nav.flatMap((item) => {
@@ -46,8 +47,7 @@ export function adminNavFor(access: Access | null | undefined, nav: readonly Adm
 
 /**
  * Whether this person gets the till alone: no navigation, Sign out in the header. That is a
- * cashier whose only section is Checkout (cashiers don't open bookings, decision U1). A cashier
- * who also has a Marketing grant keeps the navigation.
+ * cashier whose only section is Checkout. A cashier with Stock or Marketing access keeps navigation.
  */
 export function adminTillOnly(access: Access | null | undefined): boolean {
   if (access?.role !== "cashier") return false;

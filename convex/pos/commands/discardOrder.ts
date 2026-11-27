@@ -1,7 +1,7 @@
 import { assertNoActivePayment } from '../private/paymentAttempt';
 import { assertHandoverEditable } from '../private/handoverCustody';
 import { ConvexError, v } from 'convex/values';
-import { staffMutation } from '../../auth/model';
+import { canAccessCheckoutOrderBranch, staffMutation } from '../../auth/model';
 import { attemptKey, cleanReason } from '../../shared/bookingMoney';
 import { orderLines } from '../private/orderLines';
 import { lifecycleArgs, lineSnapshot, logOrder } from '../private/orderModel';
@@ -24,7 +24,7 @@ export const discardOrder = staffMutation({
 		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canAccessCheckoutOrderBranch(admin, order)) throw new ConvexError('Order not found');
 		if (order.status === 'discarded') {
 			if (order.lifecycleKey === key) return { replayed: true };
 			throw new ConvexError('This order is already discarded.');

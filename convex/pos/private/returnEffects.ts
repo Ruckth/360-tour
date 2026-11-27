@@ -2,7 +2,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { recordReturnDestination, releaseReturn, reserveReturn } from '../../services/model';
 import type { StaffActor } from '../../auth/model';
-import { insertVoucherCode } from '../../commerce/model';
+import { writeStockMovement, insertVoucherCode } from '../../commerce/model';
 import { reserveWrites } from '../../lib/readBudget';
 import { appendRecordHistory } from '../../settings/model';
 import { apportionMoney, benefitExpiresAt, COMMERCE_LIMITS, DEFAULT_COMMERCE_SETTINGS, quotePackageVoucherReturn } from '../../shared/commerce';
@@ -11,7 +11,7 @@ import { readOrderProjection } from './orderLifecycle';
 import { planReturnParts, planReturnStock, returnError, returnGet, voucherStatus, type OrderReturn, type ReturnRow } from './returnPlan';
 
 type Parts = Awaited<ReturnType<typeof planReturnParts>>;
-type Stock = Awaited<ReturnType<typeof planReturnStock>>;
+type Stock = Awaited<ReturnType<typeof planReturnStock>>['stock'];
 type Effect = OrderReturn['effectsApplied'][number];
 type HeldHandover = { handover: Doc<'handovers'>; products: Parts['products'] };
 type Voucher = Doc<'vouchers'>;
@@ -240,17 +240,15 @@ export async function finishReturnEffects(
     reserveWrites(ctx, 1);
     await ctx.db.patch(item.line._id, { saleSnapshot: item.snapshot });
   }
-  for (const { stock: level, sellable, damaged } of stock) {
-    if (sellable) {
-      reserveWrites(ctx, 1);
-      await ctx.db.patch(level._id, { onHand: level.onHand + sellable, revision: level.revision + 1 });
-    }
-    reserveWrites(ctx, 1);
-    const movementId = await ctx.db.insert('stockMovements', {
-      branchId: level.branchId, variantId: level.variantId, delta: sellable, before: level.onHand, after: level.onHand + sellable,
-      kind: sellable ? 'return' : 'write_off', sourceKey: `return:${row._id}:${level._id}`,
+  const stockGroups = new Map<Id<'stockLevels'>, number>();
+  for (const { stock: level } of stock) stockGroups.set(level._id, (stockGroups.get(level._id) ?? 0) + 1);
+  for (const { stock: level, movementId: originalMovementId, sellable, damaged, lotAllocations } of stock) {
+    const suffix = stockGroups.get(level._id) === 1 ? level._id : `${level._id}:${originalMovementId}`;
+    const { movementId } = await writeStockMovement(ctx, {
+      branchId: level.branchId, variantId: level.variantId, delta: sellable, originalMovementId, lotAllocations,
+      kind: sellable ? 'return' : 'write_off', sourceKey: `return:${row._id}:${suffix}`, sourceId: row._id,
       reason: `${sellable} sellable, ${damaged} damaged. ${row.reason}`, actor: actor.email, createdAt: now,
-    });
+    }, stockGroups.get(level._id) === 1 ? level : undefined);
     effects.push({ kind: 'stock', movementId });
   }
   for (const { handover, products } of groupHandovers(planned)) {

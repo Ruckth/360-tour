@@ -1,8 +1,10 @@
+import { v, type Infer } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx } from '../../_generated/server';
 import type { StaffActor } from '../../auth/model';
-import { bumpOrderCommerceRevision, insertVoucherCode, type CommerceSettings } from '../../commerce/model';
+import { bumpOrderCommerceRevision, insertVoucherCode, readStockAvailability, writeStockMovement, type CommerceSettings } from '../../commerce/model';
 import { reserveWrites } from '../../lib/readBudget';
+import { requireBranchAccess } from '../../branches/model';
 import {
   allocateGoodwillDiscount, allocateSalePayments, assertCommerceCaps, assertStandaloneVoucherPrice,
   benefitExpiresAt, COMMERCE_LIMITS, DEFAULT_COMMERCE_SETTINGS, freezePackageVatBases, freezeRowVatBase,
@@ -95,7 +97,11 @@ export async function prepareCommercePayment(
     packageValidityDays: terms.packageValidityDays, voucherValidityDays: terms.voucherValidityDays,
   };
   const hasGoods = lines.some(isCommerceLine);
-  const branch = hasGoods || vouchers.length || lines.some(line => line.coverage) ? await defaultPaymentBranch(ctx) : null;
+  const branch = order.stockBranchId ? await requireBranchAccess(ctx, actor, order.stockBranchId) :
+    hasGoods || vouchers.length || lines.some(line => line.coverage) ? await defaultPaymentBranch(ctx) : null;
+  if (order.stockBranchId && branch?.state !== 'active' && !frozen) {
+    paymentError('branch_unavailable', 'The selling branch is unavailable. Review this order before taking payment.');
+  }
   const handovers = hasGoods ? await openHandoversForOrder(ctx, order) : [];
   const handoverByLine = new Map(handovers.map(handover => [
     // A recollection names its new row; a handover moved with its row (Pay the room first) keeps the line.
@@ -284,8 +290,17 @@ export async function prepareCommercePayment(
     const stocks = await paymentRange(ctx, () => ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId',
       q => q.eq('variantId', variant.id).eq('branchId', branch!._id)).take(2));
     if (stocks.length > 1) paymentError('stock_changed', 'There is more than one stock record for this variant.');
-    const [stock] = stocks;
-    return { variant, quantity, stock, before: stock?.onHand ?? 0 };
+    const stock = stocks[0] ?? null;
+    const before = stock?.onHand ?? 0;
+    const availability = await readStockAvailability(ctx, { branchId: branch!._id, variantId: variant.id, onHand: before, orderId: order._id, checkOrderHoldHistory: before < quantity });
+    const protectedStock = availability.tracking || availability.hadOrderHold || availability.held > 0 || availability.reservationId !== undefined;
+    if (protectedStock && (quantity > availability.sellable || availability.reservationQuantity !== undefined && availability.reservationQuantity !== quantity)) {
+      paymentError('stock_unavailable', `${variant.label} has insufficient sellable stock or its reserved quantity changed. Review the order.`);
+    }
+    return {
+      variant, quantity, stock, before, allowNegative: !protectedStock, reservationId: availability.reservationId,
+      holdAtArm: Boolean(order.stockBranchId || protectedStock) && before >= quantity && !availability.reservationId,
+    };
   }));
 
   const funding = await Promise.all((await checkFundingVouchers(ctx, order, lines, vouchers, voucherIssuances > 0 || handovers.some(handover => handover.kind === 'room_bill'), now, branch))
@@ -379,6 +394,20 @@ export async function prepareCommercePayment(
   return { rows, snapshots, terms, payments, funding, restock, stockShortages, usedGrants, branch, catalogFingerprint, frozenCatalogue };
 }
 
+export const reviewedStock = v.array(v.object({ variantId: v.id('productVariants'), quantity: v.number(), onHandSeen: v.number() }));
+
+type Shortage = { variantId: Id<'productVariants'>; quantity: number; onHand: number };
+
+export function stockReviewMatches(shortages: Shortage[], review: Infer<typeof reviewedStock> | undefined) {
+  if (!shortages.length) return true;
+  if (review?.length !== shortages.length) return false;
+  const byVariant = new Map(review.map(row => [row.variantId, row]));
+  return shortages.every(({ variantId, quantity, onHand }) => {
+    const reviewed = byVariant.get(variantId);
+    return reviewed?.quantity === quantity && reviewed.onHandSeen === onHand;
+  });
+}
+
 type SessionDebit = { line: Line; visit: Doc<'appointments'>; before: { paid: number; goodwill: number };
   after: { paid: number; goodwill: number }; bucket: 'paid' | 'goodwill' };
 type SalePlan = Awaited<ReturnType<typeof prepareCommercePayment>>;
@@ -389,16 +418,12 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
   const changedOrders = new Set<Id<'orders'>>([rows[0].line.orderId]);
   const settingsRevision = snapshots[0].settingsRevision;
   const branchId = branch?._id;
-  for (const { variant, quantity, stock, before } of restock) {
-    const after = before - quantity;
-    const update = { onHand: after, needsRecount: after < 0 || stock?.needsRecount || undefined, revision: (stock?.revision ?? 0) + 1 };
-    reserveWrites(ctx, 2);
-    if (stock) await ctx.db.patch(stock._id, update);
-    else await ctx.db.insert('stockLevels', { branchId: branchId!, variantId: variant.id, productId: variant.productId, ...update });
-    const movementId = await ctx.db.insert('stockMovements', {
-      branchId: branchId!, variantId: variant.id, before, after, delta: -quantity, kind: 'sale',
-      sourceKey: `sale:${rows[0].line.orderId}:${variant.id}`, actor, createdAt: now,
-    });
+  for (const { variant, quantity, stock, allowNegative, reservationId } of restock) {
+    const orderId = rows[0].line.orderId;
+    const { movementId } = await writeStockMovement(ctx, {
+      branchId: branchId!, variantId: variant.id, delta: -quantity, kind: 'sale',
+      sourceKey: `sale:${orderId}:${variant.id}`, sourceId: orderId, actor, createdAt: now, allowNegative, reservationId,
+    }, stock);
     movementIds.set(variant.id, movementId);
   }
   for (const { funding: debit, voucher, packageUnusedPaid } of funding) {

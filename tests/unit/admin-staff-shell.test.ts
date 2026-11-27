@@ -131,7 +131,7 @@ it('shows owners every section and Approvals without a count when nothing waits'
   as('owner');
   await render();
   expect(state.replace).not.toHaveBeenCalled();
-  expect(sidebarLinks()).toEqual(['Chats', 'Hotel bookings', 'Staff bookings', 'Checkout', 'Business facts', 'Properties', 'Leads', 'Marketing', 'Settings']);
+  expect(sidebarLinks()).toEqual(['Chats', 'Hotel bookings', 'Staff bookings', 'Checkout', 'Stock', 'Business facts', 'Properties', 'Leads', 'Marketing', 'Settings']);
   expect(approvals()?.textContent).toBe('Approvals');
   expect(document.querySelector('[data-approval-count]')).toBeNull();
 });

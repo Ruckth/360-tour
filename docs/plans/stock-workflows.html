@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BookEase stock workflows</title>
+<style>
+  :root { color-scheme: light dark; --stock-tone: var(--accent, #f0eee5); --stock-ink: var(--accent-foreground, #322c19); --line: var(--border, #a0a2a66b); --subtle: var(--muted-foreground, #626775); --surface: var(--card, #fff); --ink: var(--foreground, #20262f); --curve: var(--radius, 8px); }
+  @media (prefers-color-scheme: dark) { :root { --stock-tone: var(--accent, #333a46); --stock-ink: var(--accent-foreground, #f1f2f5); --subtle: var(--muted-foreground, #aeb7c7); --surface: var(--card, #212530); --ink: var(--foreground, #f1f2f5); } }
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; color: var(--ink); font: 15px/1.46 var(--font-sans, system-ui, sans-serif); }
+  main { max-width: 880px; margin-inline: auto; padding-block: 8px 12px; }
+  h1, h2, h3, p, ul, ol, figure { margin: 0; }
+  h1 { font-size: clamp(1.85rem, 5vw, 2.3rem); letter-spacing: -.045em; line-height: 1.05; }
+  h2 { font-size: 1.25rem; letter-spacing: -.025em; line-height: 1.2; }
+  h3 { font-size: 1rem; line-height: 1.25; }
+  header p { margin-block: 8px 0; max-width: 61ch; }
+  main > section, main > details { margin-block-start: 22px; }
+  .muted, figcaption { color: var(--subtle); }
+  .map { display: grid; grid-template-columns: minmax(0, 1.85fr) 34px minmax(0, 1fr); align-items: stretch; margin-top: 10px; }
+  .box { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: var(--curve); background: var(--surface); }
+  .stock-box { background: var(--stock-tone); color: var(--stock-ink); }
+  .box header { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 8px; }
+  .box header small { font-size: .76rem; }
+  .map-list { display: grid; gap: 4px; padding-left: 0; list-style: none; font-size: .87rem; }
+  .map-list a { font-weight: 650; }
+  .connector { align-self: center; text-align: center; font-size: 1.25rem; color: var(--subtle); }
+  .connector.mobile { display: none; }
+  figcaption { margin-top: 6px; font-size: .82rem; }
+  a { color: inherit; text-underline-offset: 3px; }
+  .section-help { margin-top: 4px; font-size: .86rem; }
+  .scenario-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .scenario-list[hidden] { display: none; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .scenario-list button { min-height: 44px; border: 1px solid var(--line); border-radius: var(--curve); background: var(--surface); font-size: .85rem; padding: 6px 11px; }
+  .scenario-list button[aria-pressed="true"] { background: var(--stock-tone); color: var(--stock-ink); border-color: currentColor; font-weight: 650; }
+  :is(a, button, summary):focus-visible { outline: 2px solid var(--ring, currentColor); outline-offset: 3px; }
+  .scenario { margin-top: 8px; }
+  .scenario[hidden] { display: none; }
+  .scenario-title { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; }
+  .scenario-title span { font-size: .76rem; }
+  .flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; list-style: none; padding: 0; margin-block: 10px; }
+  .flow li { position: relative; border: 1px solid var(--line); padding: 10px; border-radius: 5px; display: grid; align-content: start; gap: 4px; font-size: .84rem; }
+  .flow li + li::before { content: "→"; position: absolute; left: -16px; top: calc(50% - .7em); color: var(--subtle); }
+  .flow li strong { font-size: .88rem; }
+  .flow li span { color: var(--subtle); }
+  .outcome { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 12px; border-top: 1px solid var(--line); padding-top: 8px; font-size: .82rem; }
+  .balance { color: var(--ink); font-size: 1.04rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bars { display: inline-grid; width: 64px; gap: 3px; align-self: center; }
+  .bars i { display: block; width: calc(100% * var(--units) / 13); height: 4px; border-radius: 2px; background: var(--chart-1, #527f86); }
+  .bars i:first-child { opacity: .48; }
+  .table-wrap { margin-top: 9px; }
+  table { border-collapse: collapse; width: 100%; font-size: .87rem; text-align: left; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 9px; vertical-align: top; }
+  thead th { background: var(--stock-tone); color: var(--stock-ink); font-size: .76rem; }
+  tbody th { font-weight: 650; }
+  .pages tbody th { width: 24%; }
+  tbody tr:target { background: var(--stock-tone); color: var(--stock-ink); }
+  details { border-top: 1px solid var(--line); padding-top: 10px; }
+  details + details { margin-top: 10px; }
+  summary { font-weight: 650; cursor: pointer; line-height: 1.4; padding-block: 4px; }
+  details p, details ul, details ol { margin-top: 8px; }
+  details ul, details ol { padding-left: 20px; }
+  details li + li { margin-top: 6px; }
+  .refs { font-size: .83rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 245px), 1fr)); gap: 8px; margin-top: 10px; }
+  .cards p, .cards ul { margin-top: 5px; font-size: .86rem; }
+  .cards ul { padding-left: 18px; }
+  .cards li + li { margin-top: 4px; }
+  .purchase-path { display: flex; flex-wrap: wrap; gap: 6px 15px; padding: 0; list-style: none; margin-top: 10px; }
+  .purchase-path li { display: grid; gap: 3px; flex: 1 1 145px; font-size: .84rem; }
+  .purchase-path strong { font-size: .9rem; }
+  .detail-heading { margin-top: 14px; }
+  .comparison td, .comparison th { width: 33.33%; }
+  @media (max-width: 500px) {
+    .map { grid-template-columns: minmax(0, 1fr); }
+    .map .connector { display: none; }
+    .map .connector.mobile { display: block; line-height: 1.26; }
+    .box { padding: 12px; }
+    th, td { padding-inline: 6px; }
+    .pages tbody th { width: 28%; }
+    .comparison { font-size: .78rem; }
+  }
+  @media (max-width: 360px) {
+    .flow { grid-template-columns: 1fr; gap: 6px; }
+    .flow li + li::before { content: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>BookEase stock workflows</h1>
+    <p>Use <strong>Stock</strong> to receive, count, adjust, and replenish goods for the selected branch. Customer sales and returns stay in Checkout and on sales receipts.</p>
+  </header>
+
+  <section aria-labelledby="map-heading">
+    <h2 id="map-heading">Where the work happens</h2>
+    <figure>
+      <div class="map">
+        <div class="box stock-box">
+          <header><h3>Stock</h3><small>New menu · selected branch</small></header>
+          <ul class="map-list">
+            <li><a href="#balances">Balances</a> · Find, receive, count, adjust</li>
+            <li><a href="#activity">Activity</a> · See what moved and why</li>
+            <li><a href="#products">Products</a> · Set up items and variants</li>
+            <li><a href="#purchasing">Purchasing</a> · Request, order, and receive from suppliers</li>
+          </ul>
+        </div>
+        <span class="connector" aria-hidden="true">⇄</span><span class="connector mobile" aria-hidden="true">↕</span>
+        <div class="box">
+          <header><h3>Checkout</h3><small>Existing menu</small></header>
+          <ul class="map-list">
+            <li><a href="#checkout">Checkout</a> · Look up and sell goods</li>
+            <li><a href="#receipt">Receipt</a> · Record what came back</li>
+          </ul>
+        </div>
+      </div>
+      <figcaption>Checkout reads branch stock. Completed sales and eligible returns write to the same movement history.</figcaption>
+    </figure>
+  </section>
+
+  <section aria-labelledby="flow-heading">
+    <h2 id="flow-heading">Shortest staff paths</h2>
+    <p class="section-help muted">Try a workflow. Each example starts with 8 units on hand at the selected branch.</p>
+    <div class="scenario-list" role="group" aria-label="Stock workflow" hidden>
+      <button type="button" aria-controls="receive" aria-pressed="true">Receive</button>
+      <button type="button" aria-controls="request" aria-pressed="false">Request</button>
+      <button type="button" aria-controls="order" aria-pressed="false">Place order</button>
+      <button type="button" aria-controls="receive-order" aria-pressed="false">Receive from PO</button>
+      <button type="button" aria-controls="correct-receipt" aria-pressed="false">Correct receipt</button>
+      <button type="button" aria-controls="wrong-item" aria-pressed="false">Wrong item</button>
+      <button type="button" aria-controls="supplier-return" aria-pressed="false">Supplier return</button>
+      <button type="button" aria-controls="count" aria-pressed="false">Count</button>
+      <button type="button" aria-controls="adjust" aria-pressed="false">Adjust</button>
+      <button type="button" aria-controls="sell" aria-pressed="false">Sell</button>
+      <button type="button" aria-controls="return" aria-pressed="false">Return</button>
+      <button type="button" aria-controls="transfer" aria-pressed="false">Transfer</button>
+    </div>
+    <div id="flow-examples">
+      <article class="box scenario" id="receive">
+        <div class="scenario-title"><h3>Receive delivery</h3><span class="muted">Stock › Balances · 2 steps</span></div>
+        <ol class="flow">
+          <li><strong>1. Open Receive</strong><span>The branch is filled in. Choose an open order or Receive without PO for opening stock or an allowed unplanned delivery.</span></li>
+          <li><strong>2. Enter quantity and post</strong><span>Add 5 accepted units and post all delivery lines together. For a supplier delivery, record the supplier and delivery reference when available.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 13</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:13"></i></span><span>On hand · Activity records a +5 receipt.</span></p>
+      </article>
+      <article class="box scenario" id="request">
+        <div class="scenario-title"><h3>Request more stock</h3><span class="muted">Stock › Balances · 2 steps for staff</span></div>
+        <ol class="flow">
+          <li><strong>1. Select items and choose Request stock</strong><span>Keep the selected variants and branch. Enter 12 units and an optional need-by date.</span></li>
+          <li><strong>2. Submit request</strong><span>The approver opens the request in Purchasing and approves it or sends it back with a reason. A buyer can then create a prefilled order.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 8</strong><span>The request and order appear in Purchasing. On hand updates when goods are received.</span></p>
+      </article>
+      <article class="box scenario" id="receive-order">
+        <div class="scenario-title"><h3>Receive a partial delivery</h3><span class="muted">Stock › Purchasing › Orders · 2 steps</span></div>
+        <ol class="flow">
+          <li><strong>1. Open order and choose Receive</strong><span>See the ordered variants, branch, supplier, and remaining quantities.</span></li>
+          <li><strong>2. Enter accepted quantities and post</strong><span>Accept 5 of 12 units. Leave undelivered or rejected units outstanding. Record a short or damaged delivery in the receipt.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 13</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:13"></i></span><span>7 still due. The order, supplier receipt, and stock movement link to one another.</span></p>
+      </article>
+      <article class="box scenario" id="order">
+        <div class="scenario-title"><h3>Place an order with a supplier</h3><span class="muted">Stock › Purchasing · 2 steps in BookEase</span></div>
+        <ol class="flow">
+          <li><strong>1. Start order and review lines</strong><span>Start from an approved request or from Orders if the branch allows direct purchases. Confirm the supplier, quantities, and destination.</span></li>
+          <li><strong>2. Issue order</strong><span>Issue saves the supplier-facing version and commits the quantities. Download or print it to share with the supplier.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 8</strong><span>On hand stays at 8. An issued order for 12 adds 12 to On order.</span></p>
+      </article>
+      <article class="box scenario" id="correct-receipt">
+        <div class="scenario-title"><h3>Fix an overcount on a supplier receipt</h3><span class="muted">Supplier receipt · 2 steps for authorized staff</span></div>
+        <ol class="flow">
+          <li><strong>1. Open the receipt and choose Correct quantity</strong><span>The receipt incorrectly says 5 of 12 units arrived. Select the line and enter how many to remove.</span></li>
+          <li><strong>2. Review the change and post</strong><span>Remove 2, add a reason, and preview the new on-hand and outstanding quantities before saving.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 6</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:6"></i></span><span>On hand at correction time. The order now shows 3 accepted and 9 due.</span></p>
+      </article>
+      <article class="box scenario" id="wrong-item">
+        <div class="scenario-title"><h3>Fix a delivery posted against the wrong item</h3><span class="muted">Supplier receipt · 2 postings</span></div>
+        <ol class="flow">
+          <li><strong>1. Correct the incorrect line</strong><span>Review the quantity to remove from the original SKU and post the correction with a reason.</span></li>
+          <li><strong>2. Post the correct receipt</strong><span>Use Receive correct item from the confirmation or History. Choose an eligible order for the actual SKU and branch, or use an authorized direct receipt. The new receipt links to the correction and clears the follow-up flag.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 6</strong><span>On hand for the incorrect SKU. The correct SKU gains 2 when its receipt posts.</span></p>
+      </article>
+      <article class="box scenario" id="supplier-return">
+        <div class="scenario-title"><h3>Send accepted goods back to the supplier</h3><span class="muted">Supplier receipt · 2 steps for stock leads</span></div>
+        <ol class="flow">
+          <li><strong>1. Choose Return to supplier</strong><span>Select the original receipt lines and enter the units and reason.</span></li>
+          <li><strong>2. Post when goods leave</strong><span>Review the stock change and add the supplier reference if available. A buyer can create a separate replacement order.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 6</strong><span>On hand after returning 2. The order retains its accepted quantities.</span></p>
+      </article>
+      <article class="box scenario" id="count">
+        <div class="scenario-title"><h3>Count selected stock</h3><span class="muted">Stock › Balances · 2 steps</span></div>
+        <ol class="flow">
+          <li><strong>1. Open Count and enter 7</strong><span>Start from a row or select several rows and enter the quantities on the shelf.</span></li>
+          <li><strong>2. Review and post</strong><span>Preview the shortfall and add a reason for the difference. If the balance changed during the count, recount the affected item.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 7</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:7"></i></span><span>On hand · Activity records −1 with the reason.</span></p>
+      </article>
+      <article class="box scenario" id="adjust">
+        <div class="scenario-title"><h3>Write off damaged stock</h3><span class="muted">Stock › Balances · 2 steps</span></div>
+        <ol class="flow">
+          <li><strong>1. Open Adjust on the item</strong><span>The branch and variant are filled in.</span></li>
+          <li><strong>2. Select Remove, enter 2, and save</strong><span>Use the Add / Remove control and a positive quantity. Remove offers Damaged, Expired, Lost, or Other. Add offers Found or Other. Other asks for a note.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 6</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:6"></i></span><span>On hand · Activity records −2 with the reason and staff member.</span></p>
+      </article>
+      <article class="box scenario" id="sell">
+        <div class="scenario-title"><h3>Sell at the counter</h3><span class="muted">Checkout · 2 stages</span></div>
+        <ol class="flow">
+          <li><strong>1. Add the variant</strong><span>See the quantity at this branch and add 2 units to the bill.</span></li>
+          <li><strong>2. Complete payment</strong><span>The sale posts the deduction automatically.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 6</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:6"></i></span><span>On hand · Activity records −2 with a link to the sale.</span></p>
+      </article>
+      <article class="box scenario" id="return">
+        <div class="scenario-title"><h3>Return from the receipt</h3><span class="muted">Receipt · 2 stages</span></div>
+        <ol class="flow">
+          <li><strong>1. Choose item and condition</strong><span>Choose a quantity and mark it sellable, damaged, or still with the customer.</span></li>
+          <li><strong>2. Complete the return</strong><span>Reuse the receipt’s refund flow, including approval when required.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 9</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:9"></i></span><span>On hand for 1 sellable return · Damaged or kept items leave stock at 8.</span></p>
+      </article>
+      <article class="box scenario" id="transfer">
+        <div class="scenario-title"><h3>Send stock to another branch</h3><span class="muted">2 handoffs</span></div>
+        <ol class="flow">
+          <li><strong>1. Send at origin</strong><span>Choose the destination and 3 units. Sending creates the transfer and marks it in transit.</span></li>
+          <li><strong>2. Receive at destination</strong><span>Confirm what physically arrived. Keep any shortage visible on the transfer.</span></li>
+        </ol>
+        <p class="outcome"><strong class="balance">8 → 5</strong><span class="bars" aria-hidden="true"><i style="--units:8"></i><i style="--units:5"></i></span><span>At origin · Destination gains 3 when it receives all 3 units.</span></p>
+      </article>
+    </div>
+  </section>
+
+  <section aria-labelledby="pages-heading">
+    <h2 id="pages-heading">What staff can do on each page</h2>
+    <div class="table-wrap">
+      <table class="pages" aria-labelledby="pages-heading">
+        <thead><tr><th scope="col">Page or tab</th><th scope="col">Actions</th></tr></thead>
+        <tbody>
+          <tr id="balances"><th scope="row">Stock › Balances</th><td>Columns show selection, item and SKU, On hand, On order, recount status, and actions. Search the full catalog by name or SKU to find items the branch has never stocked. Receive, request, order, count, or adjust. Each row links to its Activity and open orders.</td></tr>
+          <tr id="activity"><th scope="row">Stock › Activity</th><td>Columns show time, item, movement type and quantity, before and after, staff member, and reason. Filter by date, item, type, staff member, or reason code. Open the source sale, stock operation, or supplier receipt. Authorized staff can correct from the movement or its receipt.</td></tr>
+          <tr id="products"><th scope="row">Stock › Products</th><td>Create, edit, or archive products and their sellable variants. Set price and SKU. Product detail shows edit and archive history. After saving, open Receive with the variant already selected.</td></tr>
+          <tr><th scope="row">Stock › Purchasing</th><td>Switch between Requests and Orders. Open a supplier receipt from its order or Activity. Buyers can find or add a supplier from the order form.</td></tr>
+          <tr id="checkout"><th scope="row">Checkout</th><td>See the selling branch and its quantity, add a product, and take payment. On shortage, confirm physical stock or remove the item. Confirmed discrepancies go to Recount.</td></tr>
+          <tr id="receipt"><th scope="row">Receipt</th><td>Return goods to the original sale branch. Record their condition and complete the applicable refund or approval.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="purchasing">
+    <h2 id="purchasing">Purchasing</h2>
+    <p class="section-help muted">A purchase request (PR) asks for approval. A purchase order (PO) records a supplier commitment. Use the same branch selector across Balances and Purchasing. Supplier invoices, credits, and payments use the existing accounting process.</p>
+    <ol class="purchase-path" aria-label="Purchase request through receiving">
+      <li class="box"><strong>1. Request stock</strong><span>Staff submit the items and quantities needed.</span></li>
+      <li class="box"><strong>2. Approve</strong><span>An approver checks the request or sends it back.</span></li>
+      <li class="box"><strong>3. Issue order</strong><span>A buyer commits the order in BookEase, then shares the issued copy with the supplier.</span></li>
+      <li class="box"><strong>4. Receive</strong><span>Staff post the accepted units. Any remainder stays due until received or closed.</span></li>
+    </ol>
+    <div class="cards" aria-label="Purchasing pages and components">
+      <article class="box">
+        <h3>Requests</h3>
+        <p>Default to My requests for staff and Needs approval for approvers. Search by exact reference or pick an item to see requests that contain it. Requesters see their own requests. Approvers, buyers, and stock leads see requests for branches they cover. Rows show reference, status, requester, and need-by date.</p>
+        <p>Detail opens with the branch, requester, quantities, and next action. Use Overview for the lines and linked orders, and History for changes. A buyer uses <strong>Create order</strong> and selects quantities from the approved amount still available.</p>
+      </article>
+      <article class="box">
+        <h3>Orders</h3>
+        <p>Default to open orders. Show reference, supplier, due date, status, and outstanding line count. Filter by supplier, status, or a selected item. Choose one filter at a time. Held goods is a separate view with unresolved holds from orders of any status. Detail has Overview, Receipts, and History. Overview shows ordered, accepted, and still due on each line.</p>
+        <p>Show one primary action based on role and state, such as <strong>Issue order</strong> or <strong>Receive</strong>. Put Amend and Close remainder in the action menu. Print or download the issued PO from its detail or a prior revision from History.</p>
+      </article>
+      <article class="box">
+        <h3>Request and order editor</h3>
+        <p>Reuse the same variant picker and quantity-row layout. Prefill selected branch and items. On POs, require one supplier and add an expected date, unit costs when known, and supplier reference when available.</p>
+        <p>Use an inline supplier picker. Buyers can add a name and optional contact or choose an existing supplier. A buyer-only Manage suppliers view supports editing, deactivation, and history. Issued orders retain the supplier details they used.</p>
+      </article>
+      <article class="box">
+        <h3>Receive and correct</h3>
+        <p>Use the same receiving form from Balances and Orders. PO rows show what is due and start with blank accepted quantities. Let staff enter quantities by line or explicitly choose Receive all remaining. Show supplier, branch, and delivery reference above the lines.</p>
+        <p>Review totals beside <strong>Post receipt</strong>. Keep typed values on failure. After posting, open the receipt with links back to the order and movements. Show accepted, corrected, and returned units on the receipt line, with the available correction actions.</p>
+      </article>
+    </div>
+    <p class="section-help"><strong>Desktop.</strong> Use tables for lists, full-page request and order details, a wide side sheet for multi-line forms, and a short dialog for deletion or closing the remainder. Put selection checkboxes in the first Balances column and show the selection count and bulk actions above the table. Keep filters, page position, and row focus when staff return from a detail. Put the branch, reference, status, and next action above detail tabs.</p>
+    <p class="section-help"><strong>Phone.</strong> Stack list rows with item or reference, key quantities, status, and the next action visible. Tap Select to show checkboxes and a bottom bar with the selected count and available bulk actions. Multi-line forms use a full-height sheet with the branch and one primary footer action visible. Use labelled numeric inputs and focus the first invalid field. Keep edits when staff return from the item picker or a save fails. Prompt before leaving with unsaved changes or switching branches.</p>
+    <p class="section-help"><strong>Empty and stale states.</strong> When an order has no units due, show the receipt or closure link in place of Receive. If quantities change during a draft or receipt, refresh the latest context and keep typed quantities for review. Show posting progress, a clear success link, or the actionable error beside the affected line.</p>
+
+    <h3 class="detail-heading" id="corrections-heading">Edit, remove, or correct a mistake</h3>
+    <div class="table-wrap">
+      <table class="pages" aria-labelledby="corrections-heading">
+        <thead><tr><th scope="col">Record</th><th scope="col">Available actions and history</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Request</th><td>Edit or delete your draft. Withdraw a pending request to edit it. When it needs changes, revise and resubmit it or discard it with a reason. Once approved, a stock lead can close uncommitted demand with a reason. Follow linked orders to change committed quantities.</td></tr>
+          <tr><th scope="row">Order</th><td>Edit or delete a draft. After issue, use Amend on an open order to update the expected date, unit cost for outstanding units, or outstanding quantity. Share the issued revision with the supplier. Close remainder cancels quantities still due. Keep receipts and prior versions accessible.</td></tr>
+          <tr><th scope="row">Supplier receipt</th><td>Edit the delivery reference or note with a history entry. From any receipt or its Activity entry, correct an overcount or wrong SKU with a reason and preview. Post missing units as a linked receipt against the original order or direct-receipt source. Each original and correction remains visible.</td></tr>
+          <tr><th scope="row">Stock operation</th><td>Correct a posted direct receipt or adjustment from its Activity entry. Review the delta against the current balance and apply a linked correction. Track cumulative corrections against the original adjustment so the same units can be reversed only once. For a posted count, recount against today’s balance. Customer returns use the sale’s refund history and a stock correction if only the recorded stock condition was wrong.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-help">Delete draft asks once and hides the draft from normal lists. History retains a minimal record of who deleted it and when. For saved records, History shows the actor, time, action, reason where required, and changed values. Show corrections next to their originals and give Activity links to both.</p>
+    <p class="section-help">Staff who can view a posted record and lack correction rights see <strong>Report a problem</strong>. The branch stock lead sees the linked report in Activity › Needs review and can post a correction or resolve it with a reason. The reporter sees its status on the original record.</p>
+
+    <h3 class="detail-heading" id="purchasing-permissions">Pilot permissions and reasons</h3>
+    <div class="table-wrap">
+      <table class="pages" aria-labelledby="purchasing-permissions">
+        <thead><tr><th scope="col">Action</th><th scope="col">Who can complete it</th><th scope="col">Reason</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Request stock</th><td>Staff with branch access submit. A different designated approver approves, sends back, or declines.</td><td>Required when sending back, declining, or closing demand.</td></tr>
+          <tr><th scope="row">Issue or amend an order</th><td>Branch buyers issue against approval or use direct ordering if enabled for the branch.</td><td>Required for amendments and closing a remainder.</td></tr>
+          <tr><th scope="row">Receive or count</th><td>Authorized receivers and counters post after reviewing quantities.</td><td>Required for rejected goods, unmatched supplier receipts against the no-PO path, and count variances.</td></tr>
+          <tr><th scope="row">Adjust, correct, or send goods back</th><td>A branch stock lead posts the action after reviewing its effect.</td><td>Required.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-help">Use existing authenticated staff and branch checks, with explicit branch grants for Requester, Approver, Buyer, Receiver/Counter, and Stock lead. Default new stock grants to off. Buyer owns issuance, supplier changes, and closing PO remainders. Stock lead owns posted corrections, supplier returns, and closing PR demand. Admins enable direct orders for buyers and supplier receipts without a PO for receivers per branch. Opening stock has its own reason. Purchasing documents and receipts are branch-scoped. The supplier master is shared, with buyer-only editing and contact details. Give each PR branch an approver and a backup. Any count variance uses a preview. Enforce action and branch checks on lists, detail, history, and writes.</p>
+  </section>
+
+  <details>
+    <summary>Order and receipt rules</summary>
+    <ul>
+      <li><strong>Request states.</strong> Draft → Awaiting approval → Approved, Needs changes, or Declined. A withdrawn request returns to Draft. Edit and resubmit a request that needs changes. Closed, Declined, and Deleted are terminal. A cancelled order releases approved quantity for reuse only while its request is open.</li>
+      <li><strong>Order states.</strong> Draft → Ordered → Partially received → Received. A complete first delivery can go straight to Received. Close remainder creates Closed short when net accepted is positive, or Cancelled when it is zero. If a correction removes the last accepted unit of a Closed short order, its status becomes Cancelled. Drafts make no contribution to On order.</li>
+      <li><strong>Approved quantities.</strong> One approved request can supply multiple orders. Each order uses one supplier, one branch, and at most one source request. Each request-backed order line links to an approved line. Issue order rechecks approval and available quantities before committing demand and exposing the printable PO. If another buyer used the approval first, keep the draft and show the available quantity on each affected line. Committed = ordered − cancelled, including already accepted units. Receiving and corrections on an open order leave commitment unchanged. Any cancellation releases quantity for reuse while the request is open. A closed request remains closed. An increase beyond available approval needs a new approved request and order.</li>
+      <li><strong>Amendment.</strong> Amend applies to Ordered and Partially received POs and existing lines. Preserve each issued revision and which revision governed each receipt. A reduction may cancel up to the amount still due. Use Close remainder when removing all outstanding units on an order. An increase adds new units within the same request line’s available approval or the branch’s direct-order policy. Cost changes apply to future receipts. Keep the original supplier, branch, and variant of an issued line. Close the affected remainder and issue a new order for other items, suppliers, or destinations. Display the expected date from the latest issued revision and record older information in History.</li>
+      <li><strong>Receiving.</strong> Post only accepted units. A zero-accepted delivery can log a rejection and its reason without a stock movement. Keep short, rejected, or damaged quantities due until accepted or closed. Record excess or substitute goods as <strong>Held for buyer</strong> on the receipt. A branch-scoped Held goods queue shows every unresolved hold, including on Received, Closed short, and Cancelled orders. Closing the remainder leaves any hold in the queue. Held units stay outside On hand. Amend an open order for excess of the same item if permitted. For a substitute or a terminal order, issue a separate linked order to accept the goods. The buyer can also record that held goods were declined and returned before acceptance. Clear the hold only when a linked receipt accepts those units or they are declined. When using the without-PO path, show matching open orders first and require the applicable grant and reason to bypass them.</li>
+      <li><strong>Corrections.</strong> Still due = ordered − net accepted − cancelled. Combined corrections and supplier returns cannot exceed the original line’s accepted quantity. Correcting a fully received order increases On order and returns it to Ordered or Partially received according to net accepted. If the remainder was explicitly closed, cancel the newly corrected units in the same write and leave On order at zero. Show the change in any available PR allocation. If a correction would make On hand negative, open a reconciliation report and preserve the inputs. A stock lead can record the physical count as evidence, then explicitly post the correction with a reason and a negative-balance preview. Set Needs recount, keep it visible on Balances, and clear it only after posting a verified count. A physical supplier return cannot use this override.</li>
+      <li><strong>Supplier returns.</strong> Record the stock-out on the supplier receipt when goods leave. Bound it by eligible receipt quantity and current On hand. Keep accepted and still-due quantities unchanged. A stock lead can correct an erroneous return by posting a linked inverse and updating the returned quantity. For replacements, a buyer issues a separately approved or authorized direct order linked to the return.</li>
+      <li><strong>Inactive records and duplicates.</strong> Recheck supplier and item availability when issuing saved orders or increasing quantities. An archived product or variant also blocks PR submission and approval until the lines are revised. Issued orders remain eligible for receipt, correction, return, and closure. Each request, order, or receipt allows one line per variant. Normalize the delivery reference and check it by branch and supplier across direct receipts, linked receipts, and rejected deliveries. A match shows the prior receipt. A separate delivery with the same reference can post after an authorized receiver confirms the match and enters a reason. A rejected delivery resolution links to that prior receipt.</li>
+    </ul>
+  </details>
+
+  <details>
+    <summary>Architecture and performance</summary>
+    <ul>
+      <li><strong>Stock ownership.</strong> Keep purchasing and inventory under Commerce. Use existing variants, branch balances and access checks. Add purchase headers and lines, suppliers, stock operations, supplier receipts, purchasing movement types, branch-scoped hold and correction-report records, and immutable history. Add the stock posting helper to Commerce and expose plain functions through <code>commerce/model.ts</code> for POS to call. Preserve POS sale/return source keys, existing negative-sale rules and recount flags during migration. Existing movement rows keep working without purchase references.</li>
+      <li><strong>Branch history and access.</strong> Add branch authorization to the legacy stock case in <code>commerce/history.ts</code> before surfacing Activity. Serve history from a branch-scoped range and include older entries when their branch can be verified. Use the existing staff/branch access policy for every entry point, including print and direct links. For paged stock endpoints, resolve the selected branch’s grant through the Auth model without loading every assigned branch document for each request.</li>
+      <li><strong>One transaction per action.</strong> Authenticate and check current branch and action grants before looking up a prior result by actor, branch, action, and operation key. Require keys on purchasing mutations, including issue, approval, amendments, and closure. An exact canonical-payload replay returns the original result even after later revisions. A changed payload with the same key fails. For new commands, validate current revisions, allocation, line identity and limits, then commit records, stock movements and balances, purchase counters, and audit together. Use a stable source key per operation line and one stock row per branch and variant.</li>
+      <li><strong>Purchasing lists.</strong> Page 25 headers at a time. Use exact indexed references with a random suffix and no shared sequence counter. Use the branch plus one indexed filter at a time, with caller visibility applied in the index. For item filters, select a variant and page PR or PO lines by branch and variant. Use branch, requester, and variant for the requester’s own items. Then load at most 25 authorized headers. The On order link uses the PO-line index on branch, variant, and open status to skip historical lines. Index holds and reports by branch/status and source. Load and page detail history and receipts only when opened.</li>
+      <li><strong>Activity and receipt reads.</strong> Page Activity by branch and date plus one indexed facet (item, movement type, actor, or structured reason code). Snapshot item label, SKU, actor label and source reference on new movements and item and supplier display data on issued PO lines and receipts. Display safe fallbacks for older movements without snapshots. Read the source document only when opened. Read up to 50 PO lines from one indexed range when posting and use their identity and snapshots with branch balance and incoming-quantity lookups. Keep each issued revision in one bounded snapshot document.</li>
+      <li><strong>Balances search.</strong> Page company-wide variants indexed by product name and normalized SKU. Store these fields on the variant so lists load the visible page without parent product lookups. For large product renames, refresh variant search fields in bounded batches. Backfill existing variants before enabling search. Join only the visible 25 results to the selected branch’s balances and incoming quantities. Show zero for missing rows and create rows on demand when posting. Needs recount is a separate branch-indexed view reading the balance, variant, and incoming quantity per row.</li>
+      <li><strong>Bound writes and contention.</strong> Cap a receipt at 50 received or held entries and 100 lot allocations. Validate safe integer quantities, satang costs and totals, and bounded text. Keep per-line counters and a compact list summary. Update the On order projection per branch and variant in the purchasing transaction only when due changes. Keep it separate from checkout balances. Subscribe only to the active branch and visible page. Load older pages and inactive history on demand. A verified count that clears Needs recount still writes an audit entry when the quantity is unchanged. Keep growing receipts and history out of the order header. Receiving can retry a transaction conflict twice with the same operation key.</li>
+      <li><strong>Load test before enabling.</strong> Seed 10,000 orders, at least 50,000 lines, 100,000 movements and 2,000 variants on an isolated deployment. Put at least half the data in one branch, with 20,000 movements and 500 historical lines on one variant. Run ten concurrent staff sessions with live views, Checkout sales, 50-line receipts sharing the hot variant, order creation, and competing receipts on one PO. Run for at least five minutes and at least 200 samples per measured path. Repeat with twice the historical data at the same load. Include Balances name/SKU and Needs recount, Activity rare movement types, open orders per variant, live refresh, and a buyer with many branch assignments.</li>
+      <li><strong>Performance pass criteria.</strong> Pilot targets are p95 ≤ 500 ms for list queries, ≤ 1 s for a 50-line receipt, and ≤ 2 s for an affected live view to reflect a committed change. Each 25-row list reads at most 150 documents, 60 index ranges or lookups, and 256 KiB. An ordinary untracked 50-line receipt reads at most 350 documents and 225 ranges, and writes at most 350 documents. Qualify tracked receiving separately against the branch’s active lots and holds. The tracked fixture tests 50 new single-lot lines with budgets of 350 documents, 500 ranges and 500 writes. Use the repo’s read-budget instrumentation and Convex deployment metrics to check scans, bytes, retries, and live query executions. Reads for equivalent pages stay within 10% as history doubles. Require zero unrecovered transaction failures for valid work, a clear stale-data response for excess competing receipts, and zero drift in branch balances and incoming totals. Verify an unrelated branch’s view stays unaffected.</li>
+    </ul>
+    <p class="refs"><a href="https://docs.convex.dev/database/reading-data/indexes/">Convex indexes</a> · <a href="https://docs.convex.dev/database/pagination">Pagination</a> · <a href="https://docs.convex.dev/functions/mutation-functions#transactions">Mutation transactions</a> · <a href="https://docs.convex.dev/production/state/limits">Transaction limits</a></p>
+  </details>
+
+  <details>
+    <summary>Ease POS and Dr.Ease comparison</summary>
+    <div class="table-wrap">
+      <table class="comparison" aria-label="Stock workflow comparison">
+        <thead><tr><th scope="col">Ease POS</th><th scope="col">Dr.Ease</th><th scope="col">BookEase proposal</th></tr></thead>
+        <tbody>
+          <tr><td>One Stock menu with balances, counts, transfers, movements, and exceptions.</td><td>Stock overview with separate catalog, receipts, counts, transfers, withdrawals, and reports.</td><td>One menu with Balances, Activity, Products, and Purchasing.</td></tr>
+          <tr><td>Receive and adjust from Stock. Counts have an explicit confirmation.</td><td>Receipts wait for approval. Blind counts go to a manager for variance review.</td><td>Two-stage sheets for daily tasks. Preview the difference before a count posts.</td></tr>
+          <tr><td>Transfer through draft, dispatch, and receipt.</td><td>Inventory can follow clinic usage, lots, and branch custody.</td><td>Automatic sale and return movements. Add branch transfers when needed, with distinct send and receive actions.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Oracle documents request approval and conversion to an order. Business Central documents line-level partial receiving and a linked corrective posting. BookEase uses those patterns in the branch stock workflow.</p>
+    <p class="refs"><a href="https://easepos.co/help/stock" target="_blank" rel="noopener">Ease POS stock guides</a> · <a href="https://drease.co/manuals/owner/05-stock-control.html" target="_blank" rel="noopener">Dr.Ease stock-control guide</a> · <a href="https://docs.oracle.com/cd/E26401_01/doc.122/e48970/T434157T434163.htm">Oracle requisitions</a> · <a href="https://learn.microsoft.com/en-us/dynamics365/business-central/purchasing-how-record-purchases#receive-items-with-a-purchase-order">Microsoft partial receiving</a> · <a href="https://learn.microsoft.com/en-gb/dynamics365/business-central/finance-how-reverse-journal-posting#to-undo-a-quantity-on-a-posted-purchase-receipt">Microsoft receipt corrections</a> · <a href="../research/stock-workflows.md">Research notes</a></p>
+  </details>
+
+  <details>
+    <summary>What to build and verify</summary>
+    <p><strong>Pilot one branch.</strong> Verify that Checkout payments and returns update the pilot branch. Expand after every selling order carries the correct branch and cross-branch tests pass.</p>
+    <ol>
+      <li><strong>Stock foundation.</strong> Build Products, Balances, and Activity. Add the shared posting path, direct receiving with a minimal supplier picker, count, and corrections. Wire the product path into Checkout. Verify opening stock, one sale deduction and one sellable return on retry, and a receipt racing with a sale. Check the movement chain, branch, and recount flag.</li>
+      <li><strong>Orders and receiving.</strong> Pilot direct POs, partial and short receipts, correction, supplier return, and closure. Test 12 ordered → 5 received → 2 corrected → 9 due. Close the balance and correct the last accepted units, leaving zero due. Correct a fully received order and check that the outstanding units return to On order. Race a physical return against a correction on the same line and reject the action that would exceed eligible units. Exercise a blocked negative correction, stock-lead reconciliation, and clearing Needs recount with a posted count. A verified count with zero difference also clears it and leaves an audit entry.</li>
+      <li><strong>Order release gates.</strong> Test invalid second line rollback, duplicate supplier reference confirmation, exact retry after later edits, changed-payload key reuse, revoked-access replay and history, concurrent overreceipt, 50-line success and 51-line rejection. Receive all 10 ordered units while holding 2 excess. Verify the hold stays visible on a Received or closed order. Test both resolutions. Accepting through a linked receipt adds 2 once. Declining leaves On hand as it was. Deactivate a supplier or archive a variant and verify existing issued POs remain receivable while new issuances fail. Run the mixed-load gate with a newly cataloged variant that has no balance and item filters on PRs and POs.</li>
+      <li><strong>Requests and approvals.</strong> Add the branch request queue and approval when a named approver is needed. Verify that two concurrent orders for 6 cannot both allocate against 10 approved, and ordering 6, receiving 4, then cancelling 2 leaves 4 committed and makes 6 available. Closing that request then cancelling more units leaves zero available. Test a stale draft, blocked self-approval, return for revision, resubmission, discard, and draft deletion with history. With a receiver, buyer, and approver, verify the normal and correction flows on phone and desktop.</li>
+      <li><strong>Expand inventory coverage.</strong> Verify dispatch at the origin, partial receipt at the destination, and close-short history for missing units. For lot-tracked items, test receiving with expiry, earliest-expiry-first sale allocation, and a return to its original lot. Checkout holds stock for ten minutes before giving a payment instruction. Verify release on cancellation and consumption on settlement. Route a late payment whose hold has expired through payment recovery if stock is no longer available.</li>
+    </ol>
+    <h3>Before enabling the pilot</h3>
+    <ol>
+      <li>Backfill variant search through <code>commerce/stock:backfillVariantSearch</code> with <code>{"paginationOpts":{"cursor":null,"numItems":25},"continueBatches":true}</code>. Backfill older Activity filters through <code>commerce/stock:backfillMovementFilters</code> in 25-row batches using each returned cursor until <code>isDone</code>.</li>
+      <li>Set stock roles and direct-order and direct-receipt policy for the pilot branch. Switch Checkout to payment attempts and reload all tills. Run <code>node scripts/heavy.mjs node scripts/bench/stock-load.mjs --preset pilot</code> against the disposable local environment. Enable Products after the branch flow and the mixed-load gates pass.</li>
+      <li>Enable lot tracking before entering opening stock or receiving the first delivery for an item that requires lot and expiry records.</li>
+    </ol>
+  </details>
+</main>
+<script>
+  const controls = document.querySelector(".scenario-list");
+  const buttons = [...controls.querySelectorAll("button")];
+  const flows = [...document.querySelectorAll(".scenario")];
+  function showFlow(selected) {
+    const id = selected.getAttribute("aria-controls");
+    for (const button of buttons) {
+      button.setAttribute("aria-pressed", String(button === selected));
+    }
+    for (const flow of flows) {
+      flow.hidden = flow.id !== id;
+    }
+  }
+  for (const button of buttons) {
+    button.addEventListener("click", () => showFlow(button));
+  }
+  showFlow(buttons[0]);
+  controls.hidden = false;
+</script>
+</body>
+</html>

@@ -254,6 +254,8 @@ it('reads one branch\'s stock History through its own index', async () => {
     });
     const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'M', price: 129000, status: 'active', revision: 0 });
     const [here, there] = [await seedTestBranch(ctx, 'beach'), await seedTestBranch(ctx, 'town')];
+    const grant = await ctx.db.query('staffGrants').withIndex('by_email', q => q.eq('email', 'cashier@example.com')).unique();
+    await ctx.db.patch(grant!._id, { branchIds: [here] });
     for (const [branchId, createdAt] of [[here, 1], [there, 2], [here, 3]] as const) {
       await ctx.db.insert('stockMovements', { branchId, variantId, delta: -1, before: 3, after: 2, kind: 'sale', sourceKey: `s${createdAt}`, actor: 'ploy', createdAt });
     }
@@ -263,4 +265,7 @@ it('reads one branch\'s stock History through its own index', async () => {
   expect(page.page).toMatchObject([{ at: 3, fact: { key: 'sold' }, balance: { unit: 'stock', before: 3, after: 2 } }]);
   const rest = await as('cashier').query(api.commerce.history.staffPage, { target: { targetType: 'stock', targetId: stockId }, paginationOpts: { numItems: 20, cursor: page.continueCursor } });
   expect(rest.page.map(entry => entry.at)).toEqual([1]);
+  await expect(as('manager').query(api.commerce.history.staffPage, {
+    target: { targetType: 'stock', targetId: stockId }, paginationOpts: firstPage,
+  })).resolves.toMatchObject({ page: [] });
 });

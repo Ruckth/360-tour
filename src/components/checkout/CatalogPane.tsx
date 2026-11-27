@@ -3,7 +3,7 @@ import { parseMoneyInput } from "@/lib/money-input";
 
 
 import { ChevronDown, Plus, Search, X } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ import { amountInput } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
 import { CheckoutPhoto, KIND_ICONS } from "./CheckoutPhoto";
 
-type Tab = "frequent" | "services" | "rooms" | "extras";
+type CatalogTab = "frequent" | "services" | "rooms" | "extras";
+type Tab = CatalogTab | "products";
 type Tile = {
   key: string;
   kind: CatalogItem["kind"];
@@ -33,7 +34,7 @@ type Tile = {
   options?: ServiceOption[];
 };
 
-const TABS: { value: Tab; label: string }[] = [
+const TABS: { value: CatalogTab; label: string }[] = [
   { value: "frequent", label: "Frequent" },
   { value: "services", label: "Spa" },
   { value: "rooms", label: "Rooms" },
@@ -72,7 +73,7 @@ function catalogTiles(catalog: Catalog) {
   const ranked = catalog.frequent.flatMap((key) => all.get(key) ?? []);
   // Until something has been sold, Frequent shows the first services.
   const frequent = (ranked.length ? ranked : services.slice(0, 8)).map((tile) => ({ ...tile, group: "Frequent" }));
-  return { frequent, services, rooms, extras } satisfies Record<Tab, Tile[]>;
+  return { frequent, services, rooms, extras } satisfies Record<CatalogTab, Tile[]>;
 }
 
 /** Tiles whose name matches the search, from every tab; Frequent repeats the others, so it is left out. */
@@ -93,6 +94,7 @@ export function CatalogPane({
   lines,
   onAdd,
   customNeedsManager = false,
+  products,
   className,
 }: {
   catalog: Catalog | undefined;
@@ -100,9 +102,12 @@ export function CatalogPane({
   onAdd: (item: CatalogItem) => void;
   /** A cashier whose custom items need a manager: the custom item form asks instead of adding. */
   customNeedsManager?: boolean;
+  products?: { label: string; content: ReactNode };
   className?: string;
 }) {
-  const [tab, setTab] = useState<Tab>("frequent");
+  const [selectedTab, setTab] = useState<Tab>("frequent");
+  const tab = selectedTab === "products" && !products ? "frequent" : selectedTab;
+  const tabs = products ? [...TABS, { value: "products" as const, label: products.label }] : TABS;
   const [search, setSearch] = useState("");
   const searchField = useRef<HTMLInputElement>(null);
   // Groups folded by hand, per tab ("services:Massage").
@@ -114,7 +119,7 @@ export function CatalogPane({
   const all = useMemo(() => (catalog ? catalogTiles(catalog) : null), [catalog]);
   const query = search.trim();
   const searching = query.length > 0;
-  const tiles = all ? (searching ? searchTiles(all, query) : all[tab]) : [];
+  const tiles = all && tab !== "products" ? (searching ? searchTiles(all, query) : all[tab]) : [];
   const singleMatch = searching && tiles.length === 1 ? tiles[0] : undefined;
   const flat = searching || tab === "frequent";
   const sections = flat
@@ -161,14 +166,14 @@ export function CatalogPane({
     <section aria-label="Catalog" className={cn("@container flex min-h-0 flex-col", className)}>
       <div className="flex flex-col gap-3 px-4 pt-2 pb-3 sm:px-6 @3xl:flex-row @3xl:items-end @3xl:gap-6">
         <SegmentedTabs
-          tabs={TABS}
+          tabs={tabs}
           value={tab}
           onValueChange={(next) => { setTab(next); setSearch(""); }}
           label="Item type"
           controls="checkout-catalog"
           className="shrink-0 gap-7 border-border/70 [&_[aria-selected=true]]:border-gold-text [&_[role=tab]]:pt-2"
         />
-        <div className="relative min-w-0 flex-1">
+        {tab !== "products" ? <div className="relative min-w-0 flex-1">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             ref={searchField}
@@ -206,9 +211,10 @@ export function CatalogPane({
               <X aria-hidden className="size-4" />
             </Button>
           ) : null}
-        </div>
+        </div> : null}
       </div>
 
+      {tab === "products" ? <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 overflow-y-auto px-4 pb-28 sm:px-6 lg:pb-6">{products?.content}</div> : (
       <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
         {singleMatch ? <p id={`${ids}-search-hint`} className="mb-2 text-xs text-muted-foreground">Press Enter {singleMatch.options ? "to choose a duration" : "to add this item"}.</p> : null}
         {(searching ? tiles.some((tile) => tile.kind === "room") : tab === "rooms") ? (
@@ -267,6 +273,7 @@ export function CatalogPane({
           </>
         )}
       </div>
+      )}
     </section>
   );
 }

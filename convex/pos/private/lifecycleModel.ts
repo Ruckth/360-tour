@@ -1,4 +1,5 @@
 import type { Id } from '../../_generated/dataModel';
+import { canAccessCheckoutOrderBranch, type StaffActor } from '../../auth/model';
 import { liveFees } from './orderLifecycle';
 import { isOpenOrder } from './orderLinks';
 import { linkedOpenOrder, openOrderCharging, type OrderSource } from './orderLinks';
@@ -27,7 +28,7 @@ export type RestoreConflict = {
  * - Not blocking: another open order is also linked to the same booking, or the linked customer was
  *   archived, merged or deleted.
  */
-export async function restoreConflicts(ctx: ReadCtx, order: Order, lines: Line[]): Promise<RestoreConflict[]> {
+export async function restoreConflicts(ctx: ReadCtx, order: Order, lines: Line[], actor: StaffActor): Promise<RestoreConflict[]> {
 	const out: RestoreConflict[] = [];
 	for (const line of lines) {
 		if (!isSourceRow(line)) continue;
@@ -36,9 +37,10 @@ export async function restoreConflicts(ctx: ReadCtx, order: Order, lines: Line[]
 		else if (line.appointmentId) other = await openOrderCharging(ctx, { appointmentId: line.appointmentId }, order._id);
 		else if (line.feeAppointmentId) other = (await liveFees(ctx, line.feeAppointmentId, order._id)).find((fee) => isOpenOrder(fee.order))?.order ?? null;
 		if (other) {
+			const visible = canAccessCheckoutOrderBranch(actor, other) ? { _id: other._id, title: orderTitle(other.orderNumber) } : null;
 			out.push({
 				kind: 'charged_elsewhere', blocking: true, lineId: line._id, name: line.name,
-				message: `${line.name} is now on ${orderTitle(other.orderNumber)}.`, order: { _id: other._id, title: orderTitle(other.orderNumber) }
+				message: `${line.name} is now on ${visible?.title ?? 'another order'}.`, order: visible
 			});
 			continue;
 		}
@@ -48,7 +50,7 @@ export async function restoreConflicts(ctx: ReadCtx, order: Order, lines: Line[]
 	const link: OrderSource | null = order.bookingId ? { bookingId: order.bookingId } : order.appointmentId ? { appointmentId: order.appointmentId } : null;
 	if (link) {
 		const other = await linkedOpenOrder(ctx, link);
-		if (other && other._id !== order._id) {
+		if (other && other._id !== order._id && canAccessCheckoutOrderBranch(actor, other)) {
 			out.push({
 				kind: 'link_shared', blocking: false, lineId: null, name: 'bookingId' in link ? 'Booking' : 'Appointment',
 				message: `${orderTitle(other.orderNumber)} is also open for this booking. Both stay linked; nothing is charged twice.`,

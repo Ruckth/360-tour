@@ -126,6 +126,7 @@ const returnActions: ReturnsDeskActions = {
   release: (args) => write(`${R}release`, args),
 };
 const returns: ReturnsDesk = {
+  useLots: () => [],
   useReturn: (args) => useRead(`${R}get`, args ? returnArgs(args) : "skip"),
   useRequestStatus: (requestId) => useRead("pos/staffApprovals:myStatus", requestId ? { requestId } : "skip"),
   useActions: () => returnActions,

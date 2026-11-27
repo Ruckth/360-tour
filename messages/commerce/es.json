@@ -54,6 +54,21 @@
       "loadMore": "Mostrar más artículos",
       "customItem": "Artículo libre"
     },
+    "retail": {
+      "loadingBranches": "Cargando sucursales de venta…",
+      "orderBranchUnavailable": "La sucursal de venta de este pedido no está disponible.",
+      "noBranch": "No tienes asignada ninguna sucursal de venta activa.",
+      "branch": "Sucursal de venta",
+      "search": "Buscar un producto",
+      "searchPlaceholder": "Nombre o SKU",
+      "loading": "Cargando productos…",
+      "noResults": "Ningún producto coincide con la búsqueda.",
+      "loadMore": "Cargar más productos",
+      "onHand": "{count} en existencias",
+      "quantityFor": "Cantidad de {name}",
+      "addNamed": "Añadir {name}",
+      "add": "Añadir"
+    },
     "vouchers": {
       "presetAmount": "Vale de {amount}",
       "customAmount": "Importe libre",
@@ -182,6 +197,10 @@
       "enterPartAmount": "Introduce un importe para el pago {n}.",
       "leaveRest": "Deja un importe para el último pago o usa un solo pago.",
       "backToOrder": "Volver al pedido",
+      "reviewStock": "Comprueba los productos que tienes delante",
+      "stockShortage": "{label} · {count} necesarios · {current} registrados",
+      "reviewStockHint": "Confirma solo si tienes delante todas las unidades. Se marcará la diferencia para volver a contar las existencias.",
+      "confirmStock": "Confirmar los artículos presentes",
       "reviewOrder": "Revisar pedido",
       "receivedToday": "Recibido hoy",
       "receivedOn": "Recibido el {date}",
@@ -241,6 +260,15 @@
     "returns": {
       "title": "Devolver artículos",
       "sellable": "Vendible · vuelve al stock",
+      "returnLots": "Lotes devueltos",
+      "confirmLotUnits": "Comprueba que coincidan los códigos de lote de los artículos. Se han seleccionado {count} de {units} unidades.",
+      "lotReview": "{units} × lote {code} · caduca el {date}",
+      "expiredLots": "Las unidades caducadas vuelven al inventario y quedan bloqueadas para la venta.",
+      "lotDetails": "Caduca el {date} · {units} de la venta original",
+      "unitsForLot": "Unidades devueltas del lote {code}",
+      "notEnoughLotUnits": "Quedan menos unidades aptas para devolución en los lotes originales.",
+      "lotsUnavailable": "No se pudieron consultar los lotes originales. Vuelve a abrir esta devolución o inténtalo de nuevo.",
+      "loadingLots": "Comprobando los lotes originales…",
       "damaged": "Dañado · dado de baja",
       "restoreSession": "Devolver la sesión",
       "allUnused": "Las {count} sin usar",
@@ -800,6 +828,40 @@
       "retireTillHint": "Retira un navegador o dispositivo reemplazado cuando sus paneles abiertos estén conciliados para desbloquear los interruptores de venta.",
       "retireTillReason": "Navegador o dispositivo reemplazado",
       "tillRetired": "Caja retirada"
+    },
+    "stock": {
+      "title": "Inventario",
+      "nav": {
+        "balances": "Saldos",
+        "activity": "Movimientos",
+        "products": "Productos",
+        "purchasing": "Compras",
+        "expansion": "Traslados y lotes"
+      },
+      "actions": {
+        "receive": "Recibir",
+        "count": "Contar",
+        "adjust": "Ajustar",
+        "requestStock": "Solicitar existencias",
+        "createOrder": "Crear pedido",
+        "issueOrder": "Emitir pedido",
+        "printOrder": "Imprimir pedido",
+        "reportProblem": "Informar un problema",
+        "correctQuantity": "Corregir cantidad",
+        "returnToSupplier": "Devolver al proveedor",
+        "closeRemainder": "Cerrar pendiente",
+        "deleteDraft": "Eliminar borrador"
+      },
+      "states": {
+        "onHand": "Disponible",
+        "onOrder": "En pedido",
+        "needsRecount": "Requiere recuento",
+        "heldForBuyer": "Retenido para compras",
+        "loadingBranch": "Cargando inventario de {branch}…",
+        "selectBranch": "Selecciona una sucursal para gestionar el inventario.",
+        "noBalances": "No hay artículos que coincidan en esta sucursal.",
+        "noActivity": "No hay movimientos de inventario para este filtro."
+      }
     }
   }
 }

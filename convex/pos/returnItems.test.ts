@@ -2,6 +2,7 @@
 import { seedTestBranch } from '../testing/staff.test-support';
 import { afterEach, expect, it, vi } from 'vitest';
 import { api, internal } from '../_generated/api';
+import { writeStockMovement } from '../commerce/model';
 import type { MutationCtx } from '../_generated/server';
 import { creditMoney, syncAffiliateCredit } from '../marketing/model';
 import { DEFAULT_CASHIER_RULES } from '../shared/staffTypes';
@@ -677,5 +678,70 @@ it('takes a sellable recollection unit back exactly once and bumps both orders',
     expect(await ctx.db.get(orderId)).toMatchObject({ commerceRevision: 2 });
     expect(await ctx.db.get(stockId)).toMatchObject({ onHand: 3 });
     expect(await ctx.db.query('stockMovements').take(3)).toHaveLength(2);
+  });
+});
+
+it('requires and records a physical lot for a partial recollection take-back', async () => {
+  const { t, owner, cashier } = await setup();
+  const wrongBranch = t.withIdentity({ tokenIdentifier: 'outside-manager', email: 'outside@example.com', emailVerified: true });
+  const price = 100;
+  const { orderId, movementId } = await t.run(async ctx => {
+    const { branchId, productId } = await catalog(ctx);
+    const otherBranch = await seedTestBranch(ctx, 'phuket');
+    await ctx.db.insert('staffGrants', {
+      role: 'manager', email: 'outside@example.com', tokenIdentifier: 'outside-manager', branchIds: [otherBranch],
+      createdAt: now, updatedAt: now, updatedByEmail: 'owner@example.com',
+    });
+    const orderId = await receipt(ctx, price * 2);
+    await ctx.db.patch(orderId, { stockBranchId: branchId });
+    const variantId = await ctx.db.insert('productVariants', { productId, optionValueIds: [], label: 'Robe', price, status: 'active', revision: 0 });
+    await ctx.db.insert('stockTracking', { variantId, enabledAt: now, enabledBy: 'owner@example.com' });
+    const scope = { branchId, variantId, actor: 'owner@example.com' };
+    for (const [code, expiresAt] of [['FIRST', now + day], ['SECOND', now + 2 * day]] as const) {
+      await writeStockMovement(ctx, { ...scope, delta: 1, kind: 'opening', sourceKey: code, lotReceipt: { code, expiresAt } });
+    }
+    const { movementId } = await writeStockMovement(ctx, { ...scope, delta: -2, kind: 'sale', sourceKey: 'recollection-lot-sale', sourceId: orderId });
+    await line(ctx, orderId, 'product', price, {
+      qty: 2, variantId, saleSnapshot: snapshot('Robe', price * 2, [{
+        ...allocation(price * 2), contentKey: 'product', label: 'Robe', units: 2, vatProfile: 'standard', stockMovementId: movementId,
+      }]),
+    });
+    await payment(ctx, orderId, { amount: price * 2, method: 'card' });
+    return { orderId, movementId };
+  });
+  const { recollectionOrderId } = await owner.mutation(api.pos.commands.voidUnreceivedOrder.voidUnreceivedOrder, {
+    orderId, reason: 'Card was never charged', expectedCorrectionRevision: 0, idempotencyKey: 'void-tracked-sale',
+  });
+  const handover = (await t.run(ctx => ctx.db.query('handovers').first()))!;
+  const commands = api.pos.commands.adjust;
+  const lookup = { handoverId: handover._id, contentKey: 'product' };
+  const { tracked, lots } = await owner.query(commands.takeBackLots, lookup);
+  expect(tracked).toBe(true);
+  expect(lots).toMatchObject([{ code: 'FIRST', quantity: 1 }, { code: 'SECOND', quantity: 1 }]);
+  await expect(cashier.query(commands.takeBackLots, lookup)).rejects.toThrow('Not authorized');
+  await expect(wrongBranch.query(commands.takeBackLots, lookup)).rejects.toThrow('Recollection charge not found');
+
+  const args = {
+    target: { targetType: 'handover' as const, targetId: handover._id }, kind: 'takeBack' as const,
+    input: { contentKey: 'product', quantity: 1, disposition: 'sellable' as const },
+    expectedRevision: handover.revision, clientKey: 'recollection-lot-return', reasonCode: 'staffMistake',
+  };
+  const lotAllocations = [{ lotId: lots[1].lotId, quantity: 1 }];
+  const chosen = { ...args, input: { ...args.input, lotAllocations } };
+  await expect(wrongBranch.mutation(commands.adjust, chosen)).rejects.toThrow('Recollection charge not found');
+  await expect(owner.mutation(commands.adjust, args)).rejects.toThrow('Confirm the lot codes');
+  await expect(owner.mutation(commands.adjust, { ...chosen, input: { ...chosen.input, disposition: 'damaged' } })).rejects.toThrow('Confirm lots only for sellable goods');
+  const posted = await owner.mutation(commands.adjust, chosen);
+  expect(posted).toMatchObject({ status: 'applied', effects: [{ kind: 'stockMovement' }] });
+  expect(await owner.mutation(commands.adjust, chosen)).toEqual(posted);
+  expect(await owner.query(commands.takeBackLots, lookup)).toMatchObject({ lots: [{ code: 'FIRST', quantity: 1 }] });
+  if (posted.status !== 'applied' || posted.effects[0]?.kind !== 'stockMovement') throw new Error('Missing take-back movement.');
+  const takeBackMovementId = posted.effects[0].id;
+  await t.run(async ctx => {
+    expect(await ctx.db.get(takeBackMovementId)).toMatchObject({ kind: 'taken_back', originalMovementId: movementId, delta: 1 });
+    expect(await ctx.db.query('stockLotMovements').withIndex('by_movementId', q => q.eq('movementId', takeBackMovementId)).unique())
+      .toMatchObject({ allocations: lotAllocations });
+    expect(await ctx.db.get(handover._id)).toMatchObject({ withGuest: 1, unpaid: 1, backSellable: 1 });
+    expect(await ctx.db.get(recollectionOrderId!)).toMatchObject({ due: price });
   });
 });

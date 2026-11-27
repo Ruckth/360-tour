@@ -20,6 +20,12 @@ describe("admin routes", () => {
     ["/admin/staff/services", "Staff bookings"],
     ["/admin/checkout", "Checkout"],
     ["/admin/receipt/abc123", "Checkout"],
+    ["/admin/stock/balances", "Stock"],
+    ["/admin/stock/activity", "Stock"],
+    ["/admin/stock/products", "Stock"],
+    ["/admin/stock/purchasing", "Stock"],
+    ["/admin/stock/purchasing/orders/abc123", "Stock"],
+    ["/admin/stock/expansion", "Stock"],
     ["/admin/questions", "Business facts"],
     ["/admin/properties", "Properties"],
     ["/admin/properties/abc123", "Properties"],
@@ -61,6 +67,15 @@ describe("admin routes", () => {
     ["/admin/marketing/links", null],
     ["/admin/marketing/coupons", null],
     ["/admin/marketing/coupons/abc123", null],
+    ["/admin/stock", "/admin/stock/balances"],
+    ["/admin/stock/", "/admin/stock/balances"],
+    ["/admin/stock/unknown", "/admin/chats"],
+    ["/admin/stock/balances", null],
+    ["/admin/stock/activity", null],
+    ["/admin/stock/products", null],
+    ["/admin/stock/purchasing", null],
+    ["/admin/stock/purchasing/orders/po-1", null],
+    ["/admin/stock/expansion", null],
   ] as const)("redirects %s to %s", (path, target) => {
     expect(adminRedirectPath(path)).toBe(target);
   });

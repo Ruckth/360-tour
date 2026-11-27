@@ -45,6 +45,7 @@ it("asks the server for the latest completed return with replacement vouchers", 
 it("shows Replacement vouchers on a returned receipt: each names the voucher it replaces and its last usable day (astra r3 B3, B4)", async () => {
   const lookups: (ReturnLookup | null)[] = [];
   const desk = {
+    useLots: () => [],
     useReturn: (args: ReturnLookup | null) => {
       lookups.push(args);
       return { giftSlips: [

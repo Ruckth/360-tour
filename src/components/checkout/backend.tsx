@@ -427,11 +427,11 @@ export type PayActions = {
    * instead: `instructed` is true only when this call armed the part, the one case where the
    * panel may show a fresh instruction (any other answer shows Check previous payment).
    */
-  armLeg(args: AttemptRef & { legKey: string; stockInHand?: boolean; tendered?: Satang }): Promise<Armed>;
+  armLeg(args: AttemptRef & { legKey: string; stockInHand?: boolean; stockReview?: InHandConfirmation[]; tendered?: Satang }): Promise<Armed>;
   saveCashTendered(args: AttemptRef & { legKey: string; tendered: Satang | null }): Promise<void>;
   recordLeg(args: AttemptRef & { legKey: string; direction?: PaymentLeg["direction"]; outcome: LegOutcome; received?: Satang; reference?: string }): Promise<PaymentAttemptView>;
   /** `notifyGuest`: the cashier's choice to email the booking payment confirmation, as on the direct panel. */
-  settleAttempt(args: AttemptRef & { orderId: OrderId; stockInHand?: boolean; notifyGuest?: boolean }): Promise<SettleResult>;
+  settleAttempt(args: AttemptRef & { orderId: OrderId; stockInHand?: boolean; stockReview?: InHandConfirmation[]; notifyGuest?: boolean }): Promise<SettleResult>;
   /** Keeps the booking email choice on the attempt, so a reload or the till it is handed to settles with it. */
   setEmailChoice(args: AttemptRef & { notifyGuest: boolean }): Promise<void>;
   /** Releases the order when nothing was taken. */
@@ -654,7 +654,7 @@ type RefusalArgs = {
   VOUCHER_NOT_ALLOWED: { reason: "sellsVoucherValue" | "roomStay" };
   VOUCHER_LIMIT: { max: number };
   PAYMENT_ROWS_LIMIT: { max: number };
-  STOCK_CONFIRM_NEEDED: { variantId: Id<"productVariants">; variantLabel: string; onHand: number; quantity: number };
+  STOCK_CONFIRM_NEEDED: { variantId: Id<"productVariants">; variantLabel: string; onHand: number; quantity: number; shortages?: { variantId: Id<"productVariants">; label: string; onHand: number; quantity: number }[] };
   OTHER_BRANCH_STOCK: object;
   OVER_CAP: { cap: "variantsPerProduct" | "packageContents" | "orderRows" | "pins"; max: number };
   ITEM_ARCHIVED: { name: string };
@@ -929,6 +929,8 @@ type ReturnCommand = "preview" | "authorize" | "askManager" | "decideApproval" |
 /** What a return request names: the receipt as reviewed, the till, the reason and the parts. */
 export type ReturnRequestArgs = FunctionArgs<ReturnFns["preview"]>;
 export type ReturnPreview = FunctionReturnType<ReturnFns["preview"]>;
+export type ReturnLotsLookup = FunctionArgs<ReturnFns["lots"]>;
+export type ReturnLotOptions = FunctionReturnType<ReturnFns["lots"]>[number];
 /** The open (or just finished) return as its operator or a manager reads it. */
 export type ReturnRecord = NonNullable<FunctionReturnType<ReturnFns["get"]>>;
 export type ReturnClaim = ReturnRecord["claims"][number];
@@ -949,6 +951,7 @@ export const returnArgs = (args: ReturnLookup) => "completed" in args
 export type ReturnsDesk = {
   /** The return a lookup names (ReturnLookup). undefined while loading, null when there is none. */
   useReturn(args: ReturnLookup | null): ReturnRecord | null | undefined;
+  useLots(args: ReturnLotsLookup | null): ReturnLotOptions[] | Error | undefined;
   /** The signed-in cashier's own request; null when it isn't theirs. */
   useRequestStatus(requestId: ApprovalId | null): ReturnRequestStatus | null | undefined;
   /** Pending return requests for approvers, newest first. [] when this staff member can't approve. */

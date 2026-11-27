@@ -113,13 +113,15 @@ export function oneSource(args: { bookingId?: Id<'bookings'>; appointmentId?: Id
 const swapOwner = v.object({ tillId: v.string(), ...paymentTabArgs });
 export const swapOwnerArgs = { swapOwner: v.optional(swapOwner) };
 type SwapOwner = Infer<typeof swapOwner>;
-type EditActor = Pick<StaffActor, 'email'> & Partial<Pick<StaffActor, 'tokenIdentifier'>>;
+type EditActor = Pick<StaffActor, 'email'> & Partial<Pick<StaffActor, 'tokenIdentifier' | 'companyScope' | 'branchIds'>>;
 
 /** The order to change, created on first use. Paid and void orders never change. */
 export async function editableOrder(ctx: MutationCtx, orderId: Id<'orders'> | undefined, actor: EditActor, swap?: SwapOwner): Promise<Order> {
 	if (!orderId) return await insertOrder(ctx, actor.email);
 	const order = await ctx.db.get(orderId);
-	if (!order) throw new ConvexError('Order not found');
+	if (!order || order.stockBranchId && !actor.companyScope && !actor.branchIds?.includes(order.stockBranchId)) {
+		throw new ConvexError('Order not found');
+	}
 	if (order.status === 'paid') throw new ConvexError('This order is already paid');
 	if (order.status === 'void') throw new ConvexError('This order was voided');
 	if (order.status === 'discarded') throw new ConvexError(DISCARDED_ORDER);
@@ -205,6 +207,7 @@ export async function refreshOrder(ctx: MutationCtx, orderId: Id<'orders'>, coup
 	}
 	await ctx.db.patch(orderId, {
 		...(releaseSource ? { bookingId: undefined, appointmentId: undefined, implicitSourceLink: undefined } : {}),
+		...(order.stockBranchId && !lines.some(line => line.kind === 'product' || line.kind === 'package') ? { stockBranchId: undefined } : {}),
 		itemCount: lines.reduce((n, line) => n + line.qty, 0),
 		total: totals.total,
 		due: totals.due,

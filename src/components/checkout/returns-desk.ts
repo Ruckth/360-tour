@@ -3,7 +3,7 @@ import { refundDueOn } from "convex/shared/commerce/settings";
 import { addDays } from "convex/shared/dates";
 import { resortMidnight, resortTodayIso } from "convex/shared/time";
 import { deviceKey, serverTillId } from "./pay-desk";
-import type { ApprovalId, OrderView, ReturnClaim, ReturnPart, ReturnPreview, ReturnRecord } from "./backend";
+import type { ApprovalId, OrderView, ReturnClaim, ReturnLotOptions, ReturnPart, ReturnPreview, ReturnRecord } from "./backend";
 import type { DeskPart } from "./returnable-parts";
 
 /*
@@ -14,7 +14,7 @@ import type { DeskPart } from "./returnable-parts";
 
 /** Sellable · back to stock, Damaged · written off, or it stays with the guest (no stock change). */
 export type Condition = "sellable" | "damaged" | "guest";
-export type Choice = { units: number; condition: Condition | null };
+export type Choice = { units: number; condition: Condition | null; lotQuantities?: Partial<Record<Id<"stockLots">, number>> };
 export type Choices = Record<string, Choice>;
 
 /**
@@ -39,8 +39,32 @@ export function coveredByWhole(part: DeskPart, choices: Choices) {
   return part.kind !== "whole" && part.kind !== "goods" && Boolean(choices[`${part.lineId}:whole`]);
 }
 
-/** The chosen parts as the server's request, or null while a returned item has no condition. */
-export function chosenParts(parts: DeskPart[], choices: Choices): ReturnPart[] | null {
+export function returnLotKey({ lineId, contentKey }: { lineId: Id<"orderLines">; contentKey?: string | null }) {
+  return contentKey == null ? lineId : `${lineId}:${contentKey}`;
+}
+
+/** A single available lot or the complete remaining quantity leaves no choice of allocation. */
+export function automaticReturnLots(lots: ReturnLotOptions["lots"], units: number) {
+  const total = lots.reduce((sum, lot) => sum + lot.quantity, 0);
+  return total >= units && (lots.length === 1 || total === units);
+}
+
+export function selectedReturnLots(lots: ReturnLotOptions["lots"], choice: Choice) {
+  const automatic = automaticReturnLots(lots, choice.units);
+  return lots.map(({ lotId, quantity }) => ({
+    lotId, quantity: automatic ? Math.min(quantity, choice.units) : choice.lotQuantities?.[lotId] ?? 0,
+  })).filter(lot => lot.quantity > 0);
+}
+
+export function confirmedReturnLots(lots: ReturnLotOptions["lots"], choice: Choice) {
+  const allocations = selectedReturnLots(lots, choice);
+  const limits = new Map(lots.map(lot => [lot.lotId, lot.quantity]));
+  return allocations.reduce((sum, lot) => sum + lot.quantity, 0) === choice.units &&
+    allocations.every(lot => Number.isSafeInteger(lot.quantity) && lot.quantity <= (limits.get(lot.lotId) ?? 0)) ? allocations : null;
+}
+
+/** The chosen parts as the server's request, or null while staff are still entering a choice. */
+export function chosenParts(parts: DeskPart[], choices: Choices, lotOptions?: Map<string, ReturnLotOptions> | null): ReturnPart[] | null {
   const out: ReturnPart[] = [];
   for (const part of parts) {
     const choice = choices[part.partKey];
@@ -48,10 +72,14 @@ export function chosenParts(parts: DeskPart[], choices: Choices): ReturnPart[] |
     if (part.kind === "goods" && !choice.condition) return null;
     const units = Math.min(Math.max(1, Math.round(choice.units)), part.maxUnits);
     const disposition = choice.condition === "sellable" || choice.condition === "damaged" ? choice.condition : undefined;
+    const options = disposition === "sellable" ? lotOptions?.get(part.partKey) : undefined;
+    if (disposition === "sellable" && (lotOptions === null || options?.unavailable)) return null;
+    const lotAllocations = options?.tracked ? confirmedReturnLots(options.lots, { ...choice, units }) : undefined;
+    if (lotAllocations === null) return null;
     const request = part.part;
     if (request.kind === "cancelPackage" || request.kind === "restoreSession") out.push(request);
-    else if (request.kind === "content") out.push({ ...request, units, ...(disposition ? { disposition } : {}) });
-    else if (request.kind === "line") out.push({ ...request, units, ...(disposition ? { disposition } : {}) });
+    else if (request.kind === "content") out.push({ ...request, units, ...(disposition ? { disposition } : {}), ...(lotAllocations ? { lotAllocations } : {}) });
+    else if (request.kind === "line") out.push({ ...request, units, ...(disposition ? { disposition } : {}), ...(lotAllocations ? { lotAllocations } : {}) });
   }
   return out;
 }

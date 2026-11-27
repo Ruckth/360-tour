@@ -3,6 +3,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
 import { useShowOrderOnDisplay } from "@/components/admin/useShowOrderOnDisplay";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
@@ -25,6 +26,7 @@ export default function AdminCheckoutPage() {
 
 function CheckoutPage() {
   const router = useRouter();
+  const { current: workingBranch } = useAdminBranch();
   const params = useSearchParams();
   const source = parseCheckoutSource(params);
   const { openOrderFor } = convexCheckoutBackend.useActions();
@@ -73,6 +75,8 @@ function CheckoutPage() {
 
   return (
     <CheckoutView
+      retail
+      preferredRetailBranchId={workingBranch?.id}
       orderId={orderId}
       onOrderChange={onOrderChange}
       onPaid={onPaid}

@@ -98,13 +98,13 @@ export function payActions(call: AttemptCalls): AttemptActions {
       if (result.status === "refused") refuse(result);
       return attemptView(result.attempt);
     },
-    async armLeg({ legKey, stockInHand, tendered, ...ref }) {
-      const result = await call.arm({ ...await owner(ref), ...tillLoad(), legKey, stockInHand, tendered });
+    async armLeg({ legKey, stockInHand, stockReview, tendered, ...ref }) {
+      const result = await call.arm({ ...await owner(ref), ...tillLoad(), legKey, stockInHand, stockReview, tendered });
       if (result.status === "refused") refuse(result);
       if (result.status === "tendered") throw new Error("Unexpected cash tender update");
       if (result.status === "confirm_stock") {
         const [first] = result.shortages;
-        throw new ConvexError({ code: "STOCK_CONFIRM_NEEDED", variantId: first.variantId, variantLabel: first.label, onHand: first.onHand, quantity: first.quantity } satisfies CommerceRefusal);
+        throw new ConvexError({ code: "STOCK_CONFIRM_NEEDED", variantId: first.variantId, variantLabel: first.label, onHand: first.onHand, quantity: first.quantity, shortages: result.shortages } satisfies CommerceRefusal);
       }
       // Only "instruct" is a fresh instruction; "check_previous" means another call armed a part first.
       return { attempt: attemptView(result.attempt), instructed: result.status === "instruct" };
@@ -121,12 +121,12 @@ export function payActions(call: AttemptCalls): AttemptActions {
       if (result.status === "refused") refuse(result);
       return attemptView(result.attempt);
     },
-    async settleAttempt({ orderId, stockInHand, notifyGuest, ...ref }) {
-      const result = await call.settle({ ...await owner(ref), stockInHand, ...(notifyGuest === undefined ? {} : { notifyGuest }) });
+    async settleAttempt({ orderId, stockInHand, stockReview, notifyGuest, ...ref }) {
+      const result = await call.settle({ ...await owner(ref), stockInHand, stockReview, ...(notifyGuest === undefined ? {} : { notifyGuest }) });
       if (result.status === "settled") return { status: "settled", orderId, receiptNumber: result.receiptNumber };
       if (result.status === "confirm_stock") {
         const [first] = result.shortages;
-        throw new ConvexError({ code: "STOCK_CONFIRM_NEEDED", variantId: first.variantId, variantLabel: first.label, onHand: first.onHand, quantity: first.quantity } satisfies CommerceRefusal);
+        throw new ConvexError({ code: "STOCK_CONFIRM_NEEDED", variantId: first.variantId, variantLabel: first.label, onHand: first.onHand, quantity: first.quantity, shortages: result.shortages } satisfies CommerceRefusal);
       }
       return { status: "refused", refusal: payRefusal(result) };
     },

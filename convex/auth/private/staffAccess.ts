@@ -40,7 +40,7 @@ export type StaffAccess = {
   pendingInvitation: PendingStaffInvitation | null;
 };
 
-export type StaffActor = StaffAccess & { email: string; tokenIdentifier: string };
+export type StaffActor = StaffAccess & { email: string; tokenIdentifier: string; grantId?: Id<'staffGrants'> };
 
 export function staffInvitationExpiry(grant: Doc<'staffGrants'>) {
   return grant.tokenIdentifier || grant.role === 'owner' ? null : grant.inviteExpiresAt ?? grant.createdAt + STAFF_INVITATION_TTL_MS;
@@ -82,9 +82,9 @@ async function pendingOwnerInvitationForEmail(ctx: QueryCtx, email: string): Pro
   return invite?.role === 'owner' ? await pendingStaffInvitation(ctx, invite) : null;
 }
 
-type AccessResolution = { access: StaffAccess; branches: Doc<'branches'>[]; accessReads: number };
+type AccessResolution = { access: StaffAccess; branches: Doc<'branches'>[]; accessReads: number; grantId?: Id<'staffGrants'> };
 
-export async function resolveStaffAccess(ctx: QueryCtx, identity: StaffIdentity | null): Promise<AccessResolution> {
+export async function resolveStaffAccess(ctx: QueryCtx, identity: StaffIdentity | null, scope?: 'selectedBranch'): Promise<AccessResolution> {
   const email = identity?.email?.trim().toLowerCase() || null;
   const tokenIdentifier = identity?.tokenIdentifier ?? null;
   const denied: AccessResolution = {
@@ -100,6 +100,17 @@ export async function resolveStaffAccess(ctx: QueryCtx, identity: StaffIdentity 
   }
 
   const companyScope = grant.role === 'owner';
+  // Selected-branch registrations must authorize the target branch in the handler.
+  // Keep the grant's raw membership IDs and let that check validate the single branch.
+  if (scope === 'selectedBranch') {
+    const role = companyScope || grant.branchIds.length ? grant.role : null;
+    return {
+      access: { ...denied.access, role, companyScope, branchIds: grant.branchIds, capabilities: staffCapabilities(role) },
+      branches: [],
+      accessReads: 1,
+      grantId: grant._id,
+    };
+  }
   const checkPendingOwner = !companyScope && grant.email !== email;
   const [branches, pendingInvitation] = await Promise.all([
     companyScope ? Promise.resolve([]) : listAssignedBranches(ctx, grant.branchIds),
@@ -116,6 +127,7 @@ export async function resolveStaffAccess(ctx: QueryCtx, identity: StaffIdentity 
     },
     branches,
     accessReads,
+    grantId: grant._id,
   };
 }
 
@@ -128,13 +140,13 @@ export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Prom
   return await accessForIdentity(ctx, await ctx.auth.getUserIdentity());
 }
 
-export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability): Promise<StaffActor & { accessReads: number }> {
-  const { access, accessReads } = 'db' in ctx
-    ? await resolveStaffAccess(ctx, await ctx.auth.getUserIdentity())
-    : { access: await staffAccess(ctx), accessReads: 0 };
+export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability, scope?: 'selectedBranch'): Promise<StaffActor & { accessReads: number }> {
+  const { access, accessReads, grantId } = 'db' in ctx
+    ? await resolveStaffAccess(ctx, await ctx.auth.getUserIdentity(), scope)
+    : { access: await staffAccess(ctx), accessReads: 0, grantId: undefined };
   if (!access.email || !access.tokenIdentifier) throw new Error('Not authenticated');
   if (!access.capabilities[capability]) throw new Error('Not authorized');
-  return { ...access, email: access.email, tokenIdentifier: access.tokenIdentifier, accessReads: 'db' in ctx ? accessReads : 0 };
+  return { ...access, email: access.email, tokenIdentifier: access.tokenIdentifier, accessReads: 'db' in ctx ? accessReads : 0, ...(grantId ? { grantId } : {}) };
 }
 
 export async function requireCashierAction(ctx: QueryCtx | MutationCtx, actor: StaffActor, action: CashierAction) {
@@ -153,9 +165,13 @@ export async function assertCashierDiscount(ctx: QueryCtx | MutationCtx, actor: 
   });
 }
 
+export function canAccessCheckoutOrderBranch(actor: StaffActor, order: Pick<Doc<'orders'>, 'stockBranchId'>) {
+  return !order.stockBranchId || actor.companyScope || actor.branchIds.includes(order.stockBranchId);
+}
+
 /** Cashier recall is limited to active checkout and receipts on today's resort business date. */
 export function canReadCheckoutOrder(actor: StaffActor, order: Doc<'orders'> | null) {
-  if (!order) return false;
+  if (!order || !canAccessCheckoutOrderBranch(actor, order)) return false;
   if (actor.role !== 'cashier') return true;
   if (isOpenOrder(order)) return true;
   const settledAt = order.paymentEffectiveAt ?? order.paidAt;

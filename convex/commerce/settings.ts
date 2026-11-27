@@ -85,6 +85,13 @@ export const updateRules = staffMutation({
       }
     }
     const nextSwitches = { ...current.saleSwitches, ...switches };
+    if (switchRank[nextSwitches.products] > switchRank[current.saleSwitches.products]) {
+      const unindexed = await ctx.db.query('productVariants').withIndex('by_active_product', q =>
+        q.eq('status', 'active').eq('productStatus', undefined)).first();
+      if (unindexed) {
+        throw new ConvexError({ code: 'PRODUCT_SEARCH_NOT_READY', message: 'Finish the Stock catalog search backfill before enabling product sales.' });
+      }
+    }
     if (kinds.some(kind => switchRank[nextSwitches[kind]] > switchRank[current.saleSwitches[kind]])) {
       const revision = cutoverRevision(current);
       const tills = revision === null ? null : await paymentTillsAtRevision(ctx, revision, 1);

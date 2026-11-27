@@ -200,7 +200,6 @@ const functionReferenceAllowlist: Record<string, string> = {
   "auth/owners:listOwners": "Deployment CLI enumerates company owner grants.",
   "auth/owners:revokeOwner": "Deployment CLI revokes an owner while retaining another owner grant.",
   "branches/branches:setState": "Staged: Settings › Branches state actions return with the Phuket launch (plan step 7).",
-  "pos/commands/adjust:adjust": "Dormant D19 command for the W3+ desk and catalogue edit sheets.",
   "pos/commands/adjust:approve": "Dormant D19 approval command for the W3+ desk approval panel.",
   "catalog/reviewMaintenance:initialize": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
   "maintenance/aiEval:cancelTestBookings": "Operator command: convex/maintenance/aiEval.ts usage comments.",
@@ -208,6 +207,7 @@ const functionReferenceAllowlist: Record<string, string> = {
   "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
   "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
   "pos/staffApprovals:pending": "Pre-paging response read by admin tabs still on the previous bundle; ApprovalsPanel reads pendingPage. Remove one deploy later.",
+  "commerce/stock:backfillMovementFilters": "Operator command to index historical staff display names and reason codes before enabling Activity filters.",
   "commerce/paymentCutover:closeDirectPanel": "Compatibility for open direct-pay tabs from the prior bundle. The RPC refuses unresolved panels; remove it after cutover reloads those tills.",
 };
 

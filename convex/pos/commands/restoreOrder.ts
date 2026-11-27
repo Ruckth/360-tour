@@ -1,5 +1,5 @@
 import { ConvexError, v } from 'convex/values';
-import { staffMutation } from '../../auth/model';
+import { canAccessCheckoutOrderBranch, staffMutation } from '../../auth/model';
 import { attemptKey } from '../../shared/bookingMoney';
 import { orderLines } from '../private/orderLines';
 import { isOpenOrder } from '../private/orderLinks';
@@ -21,14 +21,14 @@ export const restoreOrder = staffMutation({
 		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
-		if (!order) throw new ConvexError('Order not found');
+		if (!order || !canAccessCheckoutOrderBranch(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'discarded') {
 			if (isOpenOrder(order) && order.lifecycleKey === key) return { replayed: true, removed: [], warnings: [] };
 			throw new ConvexError(isOpenOrder(order) ? 'This order is not discarded.' : order.status === 'paid' ? 'This order is already paid' : 'This order was voided');
 		}
 		if (order.revision !== args.expectedRevision) throw new ConvexError('The order changed since you opened it. Review it and try again.');
 		const lines = await orderLines(ctx, order._id);
-		const conflicts = await restoreConflicts(ctx, order, lines);
+		const conflicts = await restoreConflicts(ctx, order, lines, admin);
 		const blocking = conflicts.filter((conflict) => conflict.blocking);
 		if (blocking.length && !args.removeConflictingRows) {
 			throw new ConvexError(`Not restored: ${blocking.map((conflict) => conflict.message).join(' ')} Restore without ${blocking.length === 1 ? 'that row' : 'those rows'}, or leave the order discarded.`);

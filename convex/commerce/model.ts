@@ -8,3 +8,8 @@ export {
   adjust, catalogueFields, catalogueRevision, executeApprovedAdjustment, recordCatalogueEdit,
   type AdjustmentChange, type AdjustmentWriter,
 } from './private/adjustments';
+export { writeStockMovement } from './private/stockLedger';
+export { hasBranchStockRole } from './private/stockAccess';
+export { placeCheckoutHolds, releaseCheckoutHolds } from './private/stockReservations';
+export { readStockAvailability } from './private/stockAvailability';
+export { readStockReturnLots } from './private/stockExpansionLedger';

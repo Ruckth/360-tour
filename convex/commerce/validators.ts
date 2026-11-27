@@ -10,7 +10,10 @@ export const catalogueStatus = v.union(v.literal('draft'), v.literal('active'), 
 
 export const stockMovementKind = v.union(
   v.literal('opening'), v.literal('sale'), v.literal('room_bill'), v.literal('taken_back'),
-  v.literal('return'), v.literal('write_off'), v.literal('adjust'),
+  v.literal('return'), v.literal('write_off'), v.literal('adjust'), v.literal('count'),
+  v.literal('purchase_receipt'), v.literal('direct_receipt'), v.literal('correction'),
+  v.literal('supplier_return'), v.literal('transfer_out'), v.literal('transfer_in'), v.literal('transfer_short'),
+  v.literal('lot_adjustment'),
 );
 
 export const handoverKind = v.union(v.literal('room_bill'), v.literal('recollect'));

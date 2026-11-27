@@ -29,7 +29,7 @@ async function get<T extends TableNames>(ctx: QueryCtx, id: Id<T>) {
 
 /**
  * Who may open an item's History. A receipt or room charge follows the receipt rule (a cashier sees
- * today's receipts only); a voucher, package or stock card opens wherever staff already reached it.
+ * today's receipts only); a voucher, package or stock card opens only within the staff member's branch scope.
  */
 async function canReadHistory(ctx: QueryCtx, actor: StaffActor, target: AdjustmentTarget) {
   switch (target.targetType) {
@@ -40,8 +40,13 @@ async function canReadHistory(ctx: QueryCtx, actor: StaffActor, target: Adjustme
       return !!handover && canReadCheckoutOrder(actor, await get(ctx, handover.orderId));
     }
     case 'voucher':
-    case 'grant':
-    case 'stock': return true;
+    case 'grant': return true;
+    case 'stock': {
+      const stock = await get(ctx, target.targetId);
+      if (!stock || (!actor.companyScope && !actor.branchIds.includes(stock.branchId))) return false;
+      const branch = await get(ctx, stock.branchId);
+      return branch !== null && branch.state !== 'archived';
+    }
     default: return CATALOGUE.has(target.targetType) && actor.capabilities.operations;
   }
 }

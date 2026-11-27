@@ -32,12 +32,12 @@ async function fixture() {
   const manager = t.withIdentity({ email: 'manager@example.com', emailVerified: true, tokenIdentifier: 'manager' });
   const cashier = t.withIdentity({ email: 'cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
   const ids = await t.run(async ctx => {
+    const branchId = await seedTestBranch(ctx, 'main');
     for (const role of ['cashier', 'manager'] as const) {
-      await ctx.db.insert('staffGrants', { branchIds: [await seedTestBranch(ctx)],
+      await ctx.db.insert('staffGrants', { branchIds: [branchId],
         role, email: `${role}@example.com`, tokenIdentifier: role, createdAt: 1, updatedAt: 1, updatedByEmail: 'owner@example.com',
       });
     }
-    const branchId = await seedTestBranch(ctx, 'main');
     const orderId = await ctx.db.insert('orders', {
       status: 'paid', orderNumber: 1, currency: 'THB', itemCount: 1, hasItems: true,
       total: 50_000, due: 0, revision: 1, paidAt: Date.now(), createdBy: 'cashier', createdAt: 1, updatedAt: 1,

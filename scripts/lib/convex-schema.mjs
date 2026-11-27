@@ -13,6 +13,58 @@ export const COMMERCE_TABLE_NAMES = [
   'voucherTemplates', 'vouchers', 'voucherCodes', 'voucherEntries', 'commerceAdjustments', 'commerceSettings',
   'frequentPins', 'paymentAttempts', 'directPaymentPanels', 'orderReturns', 'returnPayouts',
 ];
+const STOCK_TABLE_GROUPS = {
+  'convex/commerce/stockCoreTables.ts': [
+    'stockGrants', 'stockBranchPolicies', 'stockOperations', 'stockOperationKeys', 'stockCorrections', 'stockProblemReports',
+  ],
+  'convex/commerce/purchasingTables.ts': [
+    'suppliers', 'purchaseRequests', 'purchaseRequestLines', 'purchaseOrders', 'purchaseOrderLines',
+    'purchaseOrderRevisions', 'supplierReceipts', 'supplierReceiptLines', 'supplierReceiptAdjustments', 'purchaseHolds',
+    'stockIncoming', 'purchaseOperations', 'purchaseEvents',
+  ],
+  'convex/commerce/stockExpansionTables.ts': [
+    'stockTracking', 'stockLots', 'stockLotBalances', 'stockLotMovements', 'stockReservations',
+    'stockTransfers', 'stockTransferLines', 'stockTransferEvents',
+  ],
+  'convex/pos/tables.ts': ['retailCartAdds'],
+};
+export const STOCK_TABLES = Object.entries(STOCK_TABLE_GROUPS).flatMap(([source, names]) =>
+  names.map(name => ({ name, source })));
+
+// The guard fixture checks these against the reviewed historical schema. Static CI
+// has a shallow checkout, so the scorecard reads the inventory without git history.
+export const BASE_TABLE_NAMES = [
+  'adminReplyAttempts', 'affiliateCreditChanges', 'affiliateCredits', 'appointmentChanges', 'appointmentFeeAttempts', 'appointmentPaymentCorrections',
+  'appointmentPayments', 'appointmentRefunds', 'appointments', 'availability', 'bookingCreateAttempts', 'bookingPayments',
+  'bookingRefunds', 'bookings', 'businessFacts', 'cashierRules', 'channelEvents', 'chatBrowserHandoffs',
+  'chatStaticSuggestionInteractions', 'chatUnknownQuestions', 'configurationHistoryIndex', 'conversations', 'couponRedemptions', 'couponRefusalDays',
+  'couponVersions', 'coupons', 'customerMergeJobs', 'customers', 'dateBlocks', 'displayDriverLeases',
+  'displayPairLinks', 'displayPresence', 'displays', 'icalSources', 'leads', 'marketingAffiliates',
+  'marketingCampaigns', 'marketingEvents', 'marketingGrants', 'marketingLinks', 'marketingSessionDays', 'marketingSessions',
+  'marketingSpend', 'messages', 'orderAudit', 'orderCorrections', 'orderCounters', 'orderLineLinks',
+  'orderLines', 'orderPayments', 'orderRefunds', 'orders', 'otaRates', 'properties',
+  'rateLimits', 'recordChanges', 'reviewStats', 'reviews', 'rosterBatchItems', 'rosterBatches',
+  'services', 'siteSettings', 'staff', 'staffApprovalRequests', 'staffAvatarUploads', 'staffDays',
+  'staffGrants', 'staffPatternVersions', 'staffTimeOff', 'stripeRefundCharges', 'tills', 'tourScenes',
+  'tourSnippets', 'users',
+];
+
+/** @param {TableSource[]} tables */
+export function reviewedTableDifferences(tables) {
+  const actual = new Map(tables.map(({ name, source }) => [name, source]));
+  const expected = new Set([
+    ...BASE_TABLE_NAMES, ...COMMERCE_TABLE_NAMES, ...PROFITABILITY_TABLE_NAMES,
+    ...STOCK_TABLES.map(({ name }) => name),
+  ]);
+  return [
+    ...[...expected].filter(name => !actual.has(name)).map(name => `Missing table: ${name}`),
+    ...tables.filter(({ name }) => !expected.has(name)).map(({ name }) => `Unexpected table: ${name}`),
+    ...STOCK_TABLES.filter(({ name, source }) => actual.has(name) && actual.get(name) !== source)
+      .map(({ name, source }) => `Wrong owner for ${name}: expected ${source}, found ${actual.get(name)}`),
+  ];
+}
+
+/** @typedef {{name: string, source: string}} TableSource */
 
 /** A reader works on a checkout, a historical git tree, or an in-memory test repository.
  * @param {string} root @param {string} [ref]
@@ -105,7 +157,6 @@ export function inspectSchema(readSource) {
     const value = binding(path, expression.text);
     return value.specifier === 'convex/server' && value.name === name;
   }
-  /** @typedef {{name: string, source: string}} TableSource */
   /** @param {string} path @param {import('typescript').Expression} expression */
   function table(path, expression) {
     // Only unwrap index declarations; do not accept arbitrary wrapper calls.

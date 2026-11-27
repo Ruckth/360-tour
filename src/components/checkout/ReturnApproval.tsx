@@ -124,7 +124,12 @@ export default function ReturnApprovalItem({ request, onResult }: { request: Ret
                         const label = part.kind === "restore" ? t("returns.restoreSession") : detail ? `${part.label} · ${detail}` : part.label;
                         return (
                         <li key={`${part.contentKey ?? part.kind}:${index}`} className="flex justify-between gap-3">
-                          <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
+                          <span className="min-w-0 [overflow-wrap:anywhere]">
+                            {label}
+                            {part.lots?.map(lot => (
+                              <span key={lot.lotId} className="block">{t("returns.lotReview", { code: lot.code, units: lot.quantity, date: date(lot.expiresAt) })}</span>
+                            ))}
+                          </span>
                           <span className="font-sans tabular-nums">{money(part.amount)}</span>
                         </li>
                         );

@@ -1,5 +1,8 @@
+import { purchasingTables } from './purchasingTables';
+import { stockExpansionTables } from './stockExpansionTables';
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { stockCoreTables } from './stockCoreTables';
 import {
   adjustmentConsent, adjustmentEffect, adjustmentFields, adjustmentKind, adjustmentTargets,
   benefitBalances, benefitBucket, benefitPause, catalogueStatus, commerceSaleSource,
@@ -39,10 +42,13 @@ const adjustmentLogFields = {
 };
 
 export const commerceTables = {
+  ...purchasingTables,
+  ...stockExpansionTables,
+  ...stockCoreTables,
 
   productCategories: defineTable({
     name: v.string(), parentId: v.optional(v.id('productCategories')), sort: v.number(),
-  }).index('by_parentId_and_sort', ['parentId', 'sort']),
+  }).index('by_parentId_and_sort', ['parentId', 'sort']).index('by_name', ['name']),
 
   products: defineTable({
     categoryId: v.id('productCategories'),
@@ -57,6 +63,7 @@ export const commerceTables = {
     sort: v.number(),
     revision: v.number(),
   }).index('by_status_and_categoryId_and_sort', ['status', 'categoryId', 'sort'])
+    .index('by_status_and_sort', ['status', 'sort'])
     .searchIndex('search_name', { searchField: 'name', filterFields: ['status', 'categoryId'] }),
 
   productVariants: defineTable({
@@ -69,21 +76,41 @@ export const commerceTables = {
     price: v.number(),
     status: catalogueStatus,
     revision: v.number(),
-  }).index('by_productId', ['productId']).index('by_sku', ['sku']).index('by_barcode', ['barcode']),
+    productName: v.optional(v.string()),
+    normalizedSku: v.optional(v.string()),
+    searchText: v.optional(v.string()),
+    productStatus: v.optional(catalogueStatus),
+    lotTracked: v.optional(v.literal(true)),
+  }).index('by_productId', ['productId']).index('by_sku', ['sku']).index('by_barcode', ['barcode'])
+    .index('by_normalizedSku', ['normalizedSku'])
+    .index('by_active_product', ['status', 'productStatus'])
+    .searchIndex('search_stock', { searchField: 'searchText', filterFields: ['status', 'productStatus'] }),
 
   stockLevels: defineTable({
     branchId: v.id('branches'), productId: v.id('products'), variantId: v.id('productVariants'),
     onHand: v.number(), revision: v.number(), needsRecount: v.optional(v.boolean()),
   }).index('by_branchId_and_productId', ['branchId', 'productId'])
-    .index('by_variantId_and_branchId', ['variantId', 'branchId']),
+    .index('by_variantId_and_branchId', ['variantId', 'branchId'])
+    .index('by_branchId_and_needsRecount', ['branchId', 'needsRecount']),
 
   stockMovements: defineTable({
     branchId: v.id('branches'), variantId: v.id('productVariants'),
     delta: v.number(), before: v.number(), after: v.number(), kind: stockMovementKind,
     sourceKey: v.string(), reason: v.optional(v.string()), actor: v.string(), createdAt: v.number(),
     adjustmentId: v.optional(v.id('commerceAdjustments')),
+    actorLabel: v.optional(v.string()), actorSearch: v.optional(v.string()), reasonCode: v.optional(v.string()),
+    itemLabel: v.optional(v.string()), sku: v.optional(v.string()),
+    sourceRef: v.optional(v.string()), sourceId: v.optional(v.string()),
+    originalMovementId: v.optional(v.id('stockMovements')),
+    fingerprint: v.optional(v.string()),
   }).index('by_variantId_and_createdAt', ['variantId', 'createdAt']).index('by_sourceKey', ['sourceKey'])
-    .index('by_variantId_and_branchId_and_createdAt', ['variantId', 'branchId', 'createdAt']),
+    .index('by_variantId_and_branchId_and_createdAt', ['variantId', 'branchId', 'createdAt'])
+    .index('by_branch_and_date', ['branchId', 'createdAt'])
+    .index('by_branch_and_kind_and_date', ['branchId', 'kind', 'createdAt'])
+    .index('by_branch_and_actor_and_date', ['branchId', 'actorSearch', 'createdAt'])
+    .index('by_branch_and_reason_and_date', ['branchId', 'reasonCode', 'createdAt'])
+    .index('by_branch_and_source', ['branchId', 'sourceId'])
+    .index('by_originalMovementId', ['originalMovementId']),
 
   handovers: defineTable({
     kind: handoverKind,

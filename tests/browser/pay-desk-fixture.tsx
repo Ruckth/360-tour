@@ -16,7 +16,7 @@ import "@/app.css";
  *   mode=attempts|direct   payments mode at first load (direct by default)
  *   paused=1               checkout paused for update (direct only)
  *   scenario=              tea (฿1,200) · big (฿3,000 + ฿2,000) · room (a dense stay with a room-bill tote)
- *                          · tote (a ฿1,900 product sale; window.productSales("off") refuses it after the charge)
+ *                          · tote (a ฿1,900 product sale; shortage=1 tests physical availability review)
  *                          · stay (Anna's Lagoon Pool Villa balance, the guest has an email: the booking confirmation choice)
  *   role=cashier           sign in as a cashier (manager otherwise)
  */
@@ -72,9 +72,10 @@ async function seed(): Promise<OrderId> {
       { alias: "fxcat0shop", table: "productCategories", fields: { name: "Shop", sort: 0 } },
       { alias: "fxprod0tote", table: "products", fields: { categoryId: "fxcat0shop", name: "Beach tote", status: "active", vatProfile: "standard", options: [], minPrice: 190000, maxPrice: 190000, variantCount: 1, sort: 0, revision: 0 } },
       { alias: "fxvar0tote", table: "productVariants", fields: { productId: "fxprod0tote", optionValueIds: [], label: "Beach tote", price: 190000, status: "active", revision: 0 } },
-      { alias: "fxstock0tote", table: "stockLevels", fields: { branchId: branch._id, productId: "fxprod0tote", variantId: "fxvar0tote", onHand: 5, revision: 0 } },
+      { alias: "fxstock0tote", table: "stockLevels", fields: { branchId: branch._id, productId: "fxprod0tote", variantId: "fxvar0tote", onHand: params.has("shortage") ? 0 : 5, revision: 0 } },
     ]);
     await backend.patchFixtureRow("orderLines", lineId, { kind: "product", variantId: "fxvar0tote" });
+    if (params.has("shortage")) await backend.patchFixtureRow("orders", orderId, { stockBranchId: branch._id });
     await productSales("everyone");
     return orderId;
   }
