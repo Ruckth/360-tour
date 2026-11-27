@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { act } from '../support/checkout-act';
-import { createElement, useSyncExternalStore, type ReactNode } from "react";
+import { createElement, useSyncExternalStore, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { OrderId } from "@/components/checkout/backend";
@@ -65,8 +65,9 @@ function Browser() {
 }
 
 let root: Root;
+const intl = { locale: "en", messages: commerceEn, timeZone: "Asia/Bangkok" } as unknown as ComponentProps<typeof IntlProvider>;
 const renderBrowser = () => act(async () => root.render(
-  createElement(IntlProvider, { locale: "en", messages: commerceEn, children: createElement(Browser) }),
+  createElement(IntlProvider, intl, createElement(Browser)),
 ));
 const settle = () => act(async () => { await vi.advanceTimersByTimeAsync(500); });
 const back = async () => {
