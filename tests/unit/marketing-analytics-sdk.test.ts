@@ -159,6 +159,7 @@ it("lifts an opt-out the SDK saved earlier, ends opted out when another tab with
   expect(performanceEvents[0].properties).toEqual({
     token: "phc_test",
     distinct_id: posthog.get_distinct_id(),
+    $process_person_profile: false,
     metric: "tour_ready",
     entry: "tap",
     renderer: "three",
@@ -177,6 +178,7 @@ it("lifts an opt-out the SDK saved earlier, ends opted out when another tab with
   expect(performanceEvents[1].properties).toEqual({
     token: "phc_test",
     distinct_id: posthog.get_distinct_id(),
+    $process_person_profile: false,
     metric: "home_calendar_open",
     trigger: "check_out",
     duration_ms: 21,
