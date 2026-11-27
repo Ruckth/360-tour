@@ -7,6 +7,7 @@ import type { TourRenderer } from "@/lib/tour/renderer";
 export type TourOpenEntry = "direct" | "tap" | "reopen";
 type Pending = { entry: TourOpenEntry; startedAt: number; consent: number };
 type Report = (entry: TourOpenEntry, renderer: TourRenderer, durationMs: number, consent: number) => void;
+const measuredDocuments = new WeakSet<PerformanceEntry>();
 
 /** Start at the trusted click or the actual direct navigation and stop when the selected canvas accepts input. */
 export function useTourOpenTiming(directOnMount: boolean, report: Report) {
@@ -21,12 +22,13 @@ export function useTourOpenTiming(directOnMount: boolean, report: Report) {
   useEffect(() => {
     if (!directOnMount) return;
     const [navigation] = performance.getEntriesByType("navigation");
-    if (!navigation?.name) return;
+    if (!navigation?.name || measuredDocuments.has(navigation)) return;
     const original = new URL(navigation.name);
     const location = window.location;
     // A soft link or a history toggle cannot reuse the document's old time origin.
     if (original.pathname === location.pathname && original.searchParams.get("tour") === "1"
         && new URLSearchParams(location.search).get("tour") === "1") {
+      measuredDocuments.add(navigation);
       start("direct", navigation.startTime);
     }
   }, [directOnMount, start]);

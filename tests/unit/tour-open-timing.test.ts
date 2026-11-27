@@ -73,6 +73,20 @@ describe("guest tour open timing", () => {
     expect(report).toHaveBeenCalledExactlyOnceWith("direct", "pannellum", 1_000, 1);
   });
 
+  it("claims the direct document once even when consent is granted on a later route visit", async () => {
+    window.history.replaceState(null, "", "/rooms/pool-villa?tour=1");
+    navigation.mockReturnValue([{ name: window.location.href, startTime: 0 }]);
+    mayCapture.mockReturnValue(false);
+    const first = await mount(true);
+    first.finish("three");
+    await act(async () => root?.unmount());
+
+    mayCapture.mockReturnValue(true);
+    const later = await mount(true);
+    later.finish("three");
+    expect(report).not.toHaveBeenCalled();
+  });
+
   it("does not attribute a soft tour link to the original page navigation", async () => {
     window.history.replaceState(null, "", "/rooms/pool-villa?tour=1");
     navigation.mockReturnValue([{ name: new URL("/", window.location.href).href, startTime: 0 }]);
