@@ -434,6 +434,50 @@ test("public calendar opens and requests the intended month for each date", asyn
   await expect(checkOut).toHaveAttribute("aria-pressed", "true");
 });
 
+test("public calendar returns keyboard focus to the trigger that opened it", async ({ page }) => {
+  await page.goto("/tests/browser/index.html?mode=public-calendar&crossMonth");
+  const checkIn = page.getByTestId("booking-check-in");
+  const checkOut = page.getByTestId("booking-check-out");
+  const dialog = page.getByRole("dialog", { name: "Choose your arrival and checkout dates." });
+
+  await page.keyboard.press("Tab");
+  await expect(checkIn).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  await expect(checkIn).toHaveAttribute("aria-expanded", "true");
+  await expect(checkOut).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Escape");
+  await expect(checkIn).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  await expect(checkOut).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByText("March 2025", { exact: true })).toBeVisible();
+  await expect(checkOut).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Escape");
+  await expect(checkOut).toBeFocused();
+});
+
+test("public calendar can reopen arrival after advancing to departure and focuses checkout on completion", async ({ page }) => {
+  await page.goto("/tests/browser/index.html?mode=public-calendar&crossMonth");
+  const checkIn = page.getByTestId("booking-check-in");
+  const checkOut = page.getByTestId("booking-check-out");
+  const dialog = page.getByRole("dialog");
+  const day = (date: string) => dialog.locator(`[data-day="${date}"]:not([data-outside]) button`);
+
+  await checkIn.click();
+  await day("2025-02-26").click();
+  await expect(checkOut).toHaveAttribute("aria-expanded", "true");
+  await checkIn.click();
+  await expect(dialog).toBeVisible();
+  await expect(checkIn).toHaveAttribute("aria-expanded", "true");
+  await day("2025-02-27").click();
+  await day("2025-02-28").click();
+  await expect(dialog).toBeHidden();
+  await expect(checkOut).toHaveAttribute("data-selected-date", "2025-02-28");
+  await expect(checkOut).toBeFocused();
+});
+
 test("public calendar puts localized clear controls beside the populated active date", async ({ page }) => {
   await page.goto("/tests/browser/index.html?mode=public-calendar&crossMonth&lang=th");
   const checkInTrigger = page.getByTestId("booking-check-in");
