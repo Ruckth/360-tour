@@ -96,12 +96,11 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
             ))}
           </div>
           <div role="tabpanel" id="villa-tabpanel" aria-labelledby={`villa-tab-${tab}`} className="grid gap-4">
-            {tab === "details" ? (
-              <>
-                <DetailsForm key={data.property._id} property={data.property} />
-                <SlugForm property={data.property} locked={data.slugLocked} />
-              </>
-            ) : tab === "photos" ? (
+            <div key={data.property._id} hidden={tab !== "details"} className="grid gap-4">
+              <DetailsForm property={data.property} />
+              <SlugForm property={data.property} locked={data.slugLocked} />
+            </div>
+            {tab === "photos" ? (
               <PropertyPhotosEditor property={data.property} />
             ) : tab === "tourScenes" ? (
               <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
@@ -114,11 +113,11 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
               </Section>
             ) : tab === "reviews" ? (
               <PropertyReviewsEditor propertyId={data.property._id} />
-            ) : (
+            ) : tab === "calendar" ? (
               <Section title="Calendar sync" description="Import iCal feeds every 30 minutes and export confirmed bookings to other platforms.">
                 <IcalSourcesPanel propertyId={data.property._id} />
               </Section>
-            )}
+            ) : null}
           </div>
           <RecordHistoryPanel entityType="property" entityId={data.property._id} title="Villa history" />
           <HistoryDisclosure hint="deleted villas"><ConfigurationHistoryRecords /></HistoryDisclosure>
@@ -250,9 +249,23 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
   );
 }
 
+function useVillaFormSaver() {
+  const save = useSaver();
+  const [editedSinceSubmit, setEditedSinceSubmit] = useState(false);
+  return {
+    ...save,
+    saved: save.saved && !editedSinceSubmit,
+    markEdited: () => setEditedSinceSubmit(true),
+    run(action: () => Promise<unknown>) {
+      setEditedSinceSubmit(false);
+      return save.run(action);
+    },
+  };
+}
+
 function DetailsForm({ property }: { property: Property }) {
   const update = useMutation(api.catalog.properties.update);
-  const save = useSaver();
+  const save = useVillaFormSaver();
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -281,7 +294,7 @@ function DetailsForm({ property }: { property: Property }) {
 
   return (
     <Section title="Details" description="Used by the AI concierge, the chat channels and the booking flow.">
-      <form onSubmit={submit} className="grid gap-4">
+      <form onSubmit={submit} onChange={save.markEdited} className="grid gap-4">
         <Field label="Name" htmlFor="pr-name">
           <Input id="pr-name" name="name" defaultValue={property.name} required />
         </Field>
@@ -326,7 +339,7 @@ function DetailsForm({ property }: { property: Property }) {
 function SlugForm({ property, locked }: { property: Property; locked: boolean }) {
   const setSlug = useMutation(api.catalog.adminProperties.setSlug);
   const [slug, setSlugValue] = useState(property.slug);
-  const save = useSaver();
+  const save = useVillaFormSaver();
 
   return (
     <Section title="Web address" description="The villa page lives at /rooms/<web address>. Lowercase letters, numbers and dashes.">
@@ -341,9 +354,13 @@ function SlugForm({ property, locked }: { property: Property; locked: boolean })
       ) : (
         <form
           className="flex flex-wrap items-end gap-3"
+          onChange={save.markEdited}
           onSubmit={(event) => {
             event.preventDefault();
-            void save.run(async () => setSlugValue(await setSlug({ propertyId: property._id, slug })));
+            void save.run(async () => {
+              const savedSlug = await setSlug({ propertyId: property._id, slug });
+              setSlugValue((current) => current === slug ? savedSlug : current);
+            });
           }}
         >
           <Field label="Web address" htmlFor="pr-slug" className="min-w-60 flex-1">
