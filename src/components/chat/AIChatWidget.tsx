@@ -147,7 +147,6 @@ function ChatExperienceBody(props: ChatExperienceProps) {
     isTyping,
     messagesStyle,
     floatingContactActionsVisible,
-    floatingContactActionsStyle,
     contactEmail,
     whatsappNumber,
     lineId,
@@ -237,8 +236,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
       {floatingContactActionsVisible ? (
         <div
           data-testid="floating-contact-actions"
-          className="absolute left-4 z-20 md:left-3"
-          style={floatingContactActionsStyle}
+          className="shrink-0 border-t border-border/60 bg-card/95 px-4 py-1.5 backdrop-blur md:px-3"
         >
           <MessagingButtons
             contactEmail={contactEmail}

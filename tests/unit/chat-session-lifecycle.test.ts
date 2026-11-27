@@ -5,6 +5,7 @@ import { jsx } from 'react/jsx-runtime';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
+import { AIChatPage } from '@/components/chat/AIChatWidget';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatShell } from '@/components/chat/ChatShell';
 import { useChatSession } from '@/components/chat/useChatSession';
@@ -151,4 +152,32 @@ it('focuses the overlay while the composer waits and keeps the control the user 
   await act(async () => { await vi.advanceTimersByTimeAsync(220); });
   await act(async () => chat.openChat());
   expect(document.activeElement).toBe(document.querySelector('[data-testid="chat-panel"] textarea'));
+});
+
+it('keeps guest messaging actions in flow between the transcript and composer so they never overlap chat cards', async () => {
+  const node = document.createElement('div');
+  document.body.append(node);
+  root = createRoot(node);
+  await act(async () =>
+    root!.render(
+      createElement(AIChatPage, {
+        contactEmail: 'test@example.com',
+        whatsappNumber: '+66812345678',
+      }),
+    ),
+  );
+
+  const panel = document.querySelector('[data-testid="chat-panel"]')!;
+  const actions = panel.querySelector<HTMLElement>('[data-testid="floating-contact-actions"]')!;
+  const footer = panel.querySelector<HTMLElement>('[data-testid="chat-footer"]')!;
+  const messages = panel.querySelector<HTMLElement>('[data-testid="chat-messages"]')!;
+
+  expect(actions).not.toBeNull();
+  expect(footer.contains(actions)).toBe(false);
+  expect(actions.className).toContain('shrink-0');
+  expect(actions.className).not.toContain('absolute');
+  expect(actions.style.bottom).toBe('');
+  expect(messages.style.paddingBottom).toBe('');
+  expect(actions.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(messages.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

@@ -69,11 +69,6 @@ export function useChatViewport(mode: ChatExperienceMode, open: boolean, mounted
     PAGE_COMPOSER_RESERVE_FALLBACK,
   );
   const floatingContactActionsVisible = !hideAuxiliaryControls;
-  const floatingContactActionsStyle = floatingContactActionsVisible
-    ? {
-        bottom: `calc(${footerReserveHeight}px + 0.75rem)`,
-      }
-    : undefined;
   const chatFooterStyle = overlayComposerDocked
     ? {
         bottom: mobileKeyboardInset,
@@ -106,9 +101,7 @@ export function useChatViewport(mode: ChatExperienceMode, open: boolean, mounted
       ? {
           paddingBottom: `calc(${footerReserveHeight}px + env(safe-area-inset-bottom, 0px))`,
         }
-      : floatingContactActionsVisible
-        ? { paddingBottom: "4.75rem" }
-        : undefined;
+      : undefined;
   useBodyScrollLock(shouldLockScroll);
 
   const updateChatPageViewportHeight = useCallback(() => {
@@ -360,5 +353,5 @@ export function useChatViewport(mode: ChatExperienceMode, open: boolean, mounted
   }, [hideAuxiliaryControls, mounted, mode, open]);
 
 
- return { keyboardLayoutMode, chatPanelStyle, chatMessagesRef, messagesStyle, floatingContactActionsVisible, floatingContactActionsStyle, overlayComposerDocked, pageComposerDocked, chatFooterStyle, hideContactDetails, hideMainComposer, chatFooterRef, contactFormRef, inputRef, focusFooterInput, clearFooterFocusAfterBlur, scrollTranscriptToEnd, isTranscriptNearEnd, onComposerPointerDown: () => { keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight(); } };
+ return { keyboardLayoutMode, chatPanelStyle, chatMessagesRef, messagesStyle, floatingContactActionsVisible, overlayComposerDocked, pageComposerDocked, chatFooterStyle, hideContactDetails, hideMainComposer, chatFooterRef, contactFormRef, inputRef, focusFooterInput, clearFooterFocusAfterBlur, scrollTranscriptToEnd, isTranscriptNearEnd, onComposerPointerDown: () => { keyboardViewportBaselineRef.current ??= getKeyboardViewportBaselineHeight(); } };
 }
