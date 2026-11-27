@@ -60,7 +60,13 @@ const stripPerformanceContext: BeforeSendFn = (event) => {
     event: event.event,
     timestamp: event.timestamp,
     uuid: event.uuid,
-    properties: { token: properties.token, distinct_id: properties.distinct_id, ...timing },
+    properties: {
+      token: properties.token,
+      distinct_id: properties.distinct_id,
+      // PostHog processes person profiles by default when this ingestion flag is absent.
+      $process_person_profile: properties.$process_person_profile === true,
+      ...timing,
+    },
   };
 };
 
