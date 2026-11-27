@@ -101,6 +101,39 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
   test.describe(size, () => {
     test.use({ viewport });
 
+    test("staff calendar keeps a search visible and restores the schedule in one click", async ({ page }) => {
+      await openDesk(page, "?view=staff");
+      if (size !== "phone") await page.getByRole("radio", { name: "List" }).click();
+      const search = page.getByRole("searchbox", { name: "Search appointments" });
+      const ken = chip(page, "Ken Tanaka");
+      const anna = chip(page, "Anna Schmidt");
+      await expect(anna).toBeVisible();
+      await search.fill("Ken");
+      await search.press("Tab");
+      await expect(search).toHaveValue("Ken");
+      await expect(ken).toBeVisible();
+      await expect(anna).toHaveCount(0);
+      await search.fill("Absent guest");
+      const noMatches = page.getByRole("status").filter({ hasText: "No matching appointments in this date range" });
+      await expect(noMatches).toBeVisible();
+      await expect(page.getByText("No appointments.", { exact: true })).toBeHidden();
+      for (const view of ["Day", "Week", "List"]) {
+        if (size === "phone") {
+          await page.getByRole("combobox", { name: "Calendar view" }).click();
+          await page.getByRole("option", { name: view, exact: true }).click();
+        } else {
+          await page.getByRole("radio", { name: view, exact: true }).click();
+        }
+        await expect(noMatches).toBeVisible();
+      }
+      await page.getByRole("button", { name: "Clear search" }).click();
+      await expect(search).toBeFocused();
+      await expect(search).toHaveValue("");
+      await expect(noMatches).toHaveCount(0);
+      await expect(ken).toBeVisible();
+      await expect(anna).toBeVisible();
+    });
+
     test("stay popover: Take payment · Book spa · Details, the rest in ⋯", async ({ page }) => {
       await openDesk(page);
       await chip(page, "Anna Schmidt").click();

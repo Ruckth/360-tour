@@ -1,8 +1,8 @@
 "use client";
 
 import { format } from "date-fns";
-import { ChevronDown, SearchIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { ChevronDown, SearchIcon, X } from "lucide-react";
+import { useRef, type ReactNode } from "react";
 import {
   useEventCalendarNavigation,
   useEventCalendarSettings,
@@ -35,10 +35,12 @@ export function AdminCalendarHeader({
   children,
   compact = false,
   primaryAction,
+  search,
 }: {
   children?: ReactNode;
   compact?: boolean;
   primaryAction?: ReactNode;
+  search?: ReactNode;
 }) {
   const { view, dayCount, availableViews, setView } = useEventCalendarView();
   const { title, date } = useEventCalendarNavigation();
@@ -104,7 +106,8 @@ export function AdminCalendarHeader({
           <EventCalendarNavNext className="size-9 shrink-0 pointer-coarse:size-11" />
           <div className="ms-auto shrink-0">{primaryAction}</div>
         </div>
-        <div className="flex items-center gap-1.5 border-t border-border px-2 py-2 sm:flex-wrap sm:gap-2 sm:px-4">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-2 py-2 sm:gap-2 sm:px-4">
+          {search}
           <div className="sm:hidden">{mobileView}</div>
           {children}
         </div>
@@ -113,21 +116,31 @@ export function AdminCalendarHeader({
   );
 }
 
-/** One search layout for both desk calendars: inline on tablets, a popover on phones. */
-export function AdminCalendarSearch({ label, placeholder, value, onChange, open, onOpenChange, children }: {
+/** A live schedule filter stays visible; the booking lookup can collapse on a phone. */
+export function AdminCalendarSearch({ label, placeholder, value, onChange, inline = false, open, onOpenChange, children }: {
   label: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
+  inline?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   children?: ReactNode;
 }) {
   const phone = useIsMobile(640);
-  const content = <div className="relative min-w-0 flex-1 sm:max-w-60">
+  const field = useRef<HTMLInputElement>(null);
+  const content = <div className={inline ? "relative min-w-0 basis-full sm:flex-1 sm:max-w-60" : "relative min-w-0 flex-1 sm:max-w-60"}>
     <SearchIcon aria-hidden className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-    <Input type="search" aria-label={label} placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className="h-9 ps-9 pointer-coarse:min-h-11" />
+    <Input ref={field} type="search" aria-label={label} placeholder={placeholder} value={value} onChange={event => onChange(event.target.value)} className={inline ? "h-11 ps-9 pe-11 sm:h-9 pointer-coarse:min-h-11 [&::-webkit-search-cancel-button]:hidden" : "h-9 ps-9 pointer-coarse:min-h-11"} />
+    {inline && value ? (
+      <Button type="button" variant="ghost" size="icon" aria-label="Clear search" className="absolute inset-y-0 end-0 h-full w-11" onClick={() => {
+        onChange("");
+        field.current?.focus();
+      }}>
+        <X aria-hidden className="size-4" />
+      </Button>
+    ) : null}
     {children}
   </div>;
-  return phone ? <Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild><Button size="icon" variant="outline" aria-label={label}><SearchIcon aria-hidden className="size-4" /></Button></PopoverTrigger><PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))]">{content}</PopoverContent></Popover> : content;
+  return phone && !inline ? <Popover open={open} onOpenChange={onOpenChange}><PopoverTrigger asChild><Button size="icon" variant="outline" aria-label={label}><SearchIcon aria-hidden className="size-4" /></Button></PopoverTrigger><PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))]">{content}</PopoverContent></Popover> : content;
 }

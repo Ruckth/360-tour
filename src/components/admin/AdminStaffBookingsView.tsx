@@ -240,7 +240,9 @@ function StaffCalendar() {
     [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
   );
 
-  const visibleStarts = appointments.filter(a => a.start < range.to && a.end > range.from && a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
+  const appointmentsInRange = appointments.filter(a => a.start < range.to && a.end > range.from);
+  const noSearchMatches = data !== undefined && search.trim() !== "" && appointmentsInRange.length === 0;
+  const visibleStarts = appointmentsInRange.filter(a => a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
   const firstAppointmentHour = visibleStarts.length ? Math.min(...visibleStarts) : 8;
   // Scroll to the earliest appointment once per range, when data first arrives — never again while staff
   // search, filter or another device books an earlier slot.
@@ -248,7 +250,7 @@ function StaffCalendar() {
   const [initialScroll, setInitialScroll] = useState<{ key: string; hour: number } | null>(null);
   if (data && initialScroll?.key !== scrollKey) setInitialScroll({ key: scrollKey, hour: firstAppointmentHour });
   const scrollToHour = initialScroll?.key === scrollKey ? initialScroll.hour : firstAppointmentHour;
-  const bookedCount = appointments.filter((a) => a.status !== "cancelled" && a.status !== "no_show" && a.start < range.to && a.end > range.from).length;
+  const bookedCount = appointmentsInRange.filter((a) => a.status !== "cancelled" && a.status !== "no_show").length;
   const countByStaff = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of appointments) {
@@ -494,7 +496,7 @@ function StaffCalendar() {
           scrollToHour={Math.max(6, Math.min(22, scrollToHour))}
           i18n={CALENDAR_I18N}
           interactions={{ drag: true, resize: true, selectSlot: false }}
-          classNames={{ event: "[&:has([data-appointment-chip])]:border-l-[3px] [&:has([data-appointment-chip])]:border-l-(--ec-event-color) [&:has([data-appointment-chip])]:bg-card [&:has([data-appointment-chip])]:hover:bg-muted", dayColumn: "[&>div:has([data-calendar-off])]:w-full! [&>div:has([data-calendar-off])]:left-0!" }}
+          classNames={{ noEvents: noSearchMatches ? "hidden" : undefined, event: "[&:has([data-appointment-chip])]:border-l-[3px] [&:has([data-appointment-chip])]:border-l-(--ec-event-color) [&:has([data-appointment-chip])]:bg-card [&:has([data-appointment-chip])]:hover:bg-muted", dayColumn: "[&>div:has([data-calendar-off])]:w-full! [&>div:has([data-calendar-off])]:left-0!" }}
           renderEvent={renderEvent}
           renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
@@ -562,7 +564,7 @@ function StaffCalendar() {
           scrollMode={view === "agenda" && phone ? "page" : "contained"}
           className={view === "agenda" && phone ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
-          <AdminCalendarHeader primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+          <AdminCalendarHeader search={<AdminCalendarSearch inline label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />} primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
                 <Button
                   size="sm"
                   aria-label="New appointment"
@@ -573,7 +575,6 @@ function StaffCalendar() {
                   <span className="sm:hidden">New</span><span className="hidden sm:inline">New appointment</span>
                 </Button>
               </DisabledReason>}>
-            <AdminCalendarSearch label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />
             <span className="hidden items-center gap-1.5 px-1 text-xs text-muted-foreground lg:flex">
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} {bookedCount === 1 ? "appointment" : "appointments"}
@@ -612,6 +613,9 @@ function StaffCalendar() {
             />
             {data === undefined ? <Spinner label="Loading appointments" /> : null}
           </AdminCalendarHeader>
+          <p role="status" className="border-b border-border px-4 py-2 text-sm text-muted-foreground empty:sr-only">
+            {noSearchMatches ? "No matching appointments in this date range." : null}
+          </p>
           {data && (data.staff.length === 0 || activeServices.length === 0) ? (
             <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
               <p className="min-w-0 flex-1 text-muted-foreground">
