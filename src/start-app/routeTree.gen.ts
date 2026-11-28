@@ -25,6 +25,7 @@ import { Route as AdminQuestionsRouteImport } from './routes/admin.questions'
 import { Route as AdminSettingsRouteImport } from './routes/admin.settings'
 import { Route as AdminStaffRouteImport } from './routes/admin.staff'
 import { Route as AdminStockRouteImport } from './routes/admin.stock'
+import { Route as AdminTodayRouteImport } from './routes/admin.today'
 import { Route as DevCheckoutPreviewRouteImport } from './routes/dev.checkout-preview'
 import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$locale}.index'
 import { Route as Char123LocaleChar125ChatRouteImport } from './routes/{-$locale}.chat'
@@ -146,6 +147,11 @@ const AdminStaffRoute = AdminStaffRouteImport.update({
 const AdminStockRoute = AdminStockRouteImport.update({
   id: '/stock',
   path: '/stock',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminTodayRoute = AdminTodayRouteImport.update({
+  id: '/today',
+  path: '/today',
   getParentRoute: () => AdminRoute,
 } as any)
 const DevCheckoutPreviewRoute = DevCheckoutPreviewRouteImport.update({
@@ -393,6 +399,7 @@ export interface FileRoutesByFullPath {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/staff': typeof AdminStaffRouteWithChildren
   '/admin/stock': typeof AdminStockRouteWithChildren
+  '/admin/today': typeof AdminTodayRoute
   '/dev/checkout-preview': typeof DevCheckoutPreviewRoute
   '/{-$locale}/chat': typeof Char123LocaleChar125ChatRoute
   '/{-$locale}/experiences': typeof Char123LocaleChar125ExperiencesRoute
@@ -449,6 +456,7 @@ export interface FileRoutesByTo {
   '/admin/leads': typeof AdminLeadsRoute
   '/admin/questions': typeof AdminQuestionsRoute
   '/admin/settings': typeof AdminSettingsRoute
+  '/admin/today': typeof AdminTodayRoute
   '/dev/checkout-preview': typeof DevCheckoutPreviewRoute
   '/{-$locale}/chat': typeof Char123LocaleChar125ChatRoute
   '/{-$locale}/experiences': typeof Char123LocaleChar125ExperiencesRoute
@@ -510,6 +518,7 @@ export interface FileRoutesById {
   '/admin/settings': typeof AdminSettingsRoute
   '/admin/staff': typeof AdminStaffRouteWithChildren
   '/admin/stock': typeof AdminStockRouteWithChildren
+  '/admin/today': typeof AdminTodayRoute
   '/dev/checkout-preview': typeof DevCheckoutPreviewRoute
   '/{-$locale}/chat': typeof Char123LocaleChar125ChatRoute
   '/{-$locale}/experiences': typeof Char123LocaleChar125ExperiencesRoute
@@ -572,6 +581,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/staff'
     | '/admin/stock'
+    | '/admin/today'
     | '/dev/checkout-preview'
     | '/{-$locale}/chat'
     | '/{-$locale}/experiences'
@@ -628,6 +638,7 @@ export interface FileRouteTypes {
     | '/admin/leads'
     | '/admin/questions'
     | '/admin/settings'
+    | '/admin/today'
     | '/dev/checkout-preview'
     | '/{-$locale}/chat'
     | '/{-$locale}/experiences'
@@ -688,6 +699,7 @@ export interface FileRouteTypes {
     | '/admin/settings'
     | '/admin/staff'
     | '/admin/stock'
+    | '/admin/today'
     | '/dev/checkout-preview'
     | '/{-$locale}/chat'
     | '/{-$locale}/experiences'
@@ -869,6 +881,13 @@ declare module '@tanstack/react-router' {
       path: '/stock'
       fullPath: '/admin/stock'
       preLoaderRoute: typeof AdminStockRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/today': {
+      id: '/admin/today'
+      path: '/today'
+      fullPath: '/admin/today'
+      preLoaderRoute: typeof AdminTodayRouteImport
       parentRoute: typeof AdminRoute
     }
     '/dev/checkout-preview': {
@@ -1251,6 +1270,7 @@ interface AdminRouteChildren {
   AdminSettingsRoute: typeof AdminSettingsRoute
   AdminStaffRoute: typeof AdminStaffRouteWithChildren
   AdminStockRoute: typeof AdminStockRouteWithChildren
+  AdminTodayRoute: typeof AdminTodayRoute
   AdminIndexRoute: typeof AdminIndexRoute
   AdminCheckoutPreviewRoute: typeof AdminCheckoutPreviewRoute
   AdminPropertiesIdRoute: typeof AdminPropertiesIdRoute
@@ -1270,6 +1290,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminSettingsRoute: AdminSettingsRoute,
   AdminStaffRoute: AdminStaffRouteWithChildren,
   AdminStockRoute: AdminStockRouteWithChildren,
+  AdminTodayRoute: AdminTodayRoute,
   AdminIndexRoute: AdminIndexRoute,
   AdminCheckoutPreviewRoute: AdminCheckoutPreviewRoute,
   AdminPropertiesIdRoute: AdminPropertiesIdRoute,

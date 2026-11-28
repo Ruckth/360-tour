@@ -134,23 +134,24 @@ function HotelBookings() {
   // Back still returns to where the link was followed.
   const searchParams = useSearchParams();
   const router = useRouter();
-  const linkedBooking = searchParams.get("booking");
-  const linkedBookingId = linkedBooking || null;
-  function closeBooking() {
-    setSelected(null);
-    if (!linkedBooking) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("booking");
-    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
-  }
   const linkedPanel = hotelPanel(searchParams.get("panel"));
   const calendarsOpen = managingCalendars || linkedPanel === "ota-calendars";
+  // `?booking=<id>` (an admin Search result) opens that stay; its query re-checks access.
+  const linkedBooking = searchParams.get("booking");
+  const linkedBookingId = linkedBooking && /^[a-z0-9]{20,40}$/.test(linkedBooking) ? linkedBooking : null;
+  function closeBooking() {
+    setSelected(null);
+    clearLinkParam("booking");
+  }
+  function clearLinkParam(name: "panel" | "booking") {
+    if (!searchParams.has(name)) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(name);
+    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+  }
   function closeCalendars() {
     setManagingCalendars(false);
-    if (!searchParams.has("panel")) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("panel");
-    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+    clearLinkParam("panel");
   }
   const [managingRates, setManagingRates] = useState(false);
   const toolsTrigger = useRef<HTMLButtonElement>(null);

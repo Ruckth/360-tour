@@ -56,8 +56,17 @@ vi.mock("@/components/reui/event-calendar/event-calendar", () => ({
   EventCalendar: (props: CalendarProps) => { observed.calendar = props; return null; },
   useEventCalendarNavigation: () => ({ navigateToDate: vi.fn() }),
 }));
-vi.mock("@/components/admin/BookingSheet", () => ({ BookingSheet: () => null }));
-vi.mock("@/components/admin/IcalSourcesDialog", () => ({ IcalSourcesDialog: () => null }));
+vi.mock("@/components/admin/BookingSheet", () => ({
+  BookingSheet: ({ bookingId, onClose }: { bookingId: string | null; onClose: () => void }) => (bookingId ? createElement("button", { "data-testid": "booking-sheet", "data-booking": bookingId, onClick: onClose }) : null),
+}));
+vi.mock("@/components/admin/IcalSourcesDialog", () => ({
+  IcalSourcesDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) => (open ? createElement("button", { "data-testid": "ota-calendars", onClick: onClose }, "OTA calendars open") : null),
+}));
+const nav = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
+vi.mock("@/platform/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(nav.search),
+  useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
+}));
 vi.mock("@/components/admin/OtaRatesDialog", () => ({ OtaRatesDialog: () => null }));
 vi.mock("@/components/admin/NewBookingDialog", () => ({
   NewBookingDialog: (props: ComponentProps<typeof NewBookingDialog>) => { observed.draft = props.prefill; return createElement("span", null, "Booking form opened"); },
@@ -142,4 +151,31 @@ it("D18: activating an off-shift block explains it and links to that person's ro
   expect(document.body.textContent).toContain("Mali is not working");
   expect(document.body.textContent).toContain("18:00–23:00");
   expect(document.querySelector<HTMLAnchorElement>('a[href="/admin/staff/roster?date=2026-11-10&staff=staff-2"]')?.textContent).toBe("Open roster week");
+});
+
+it("opens OTA calendars from the setup checklist link and clears the panel on close (N04)", async () => {
+  nav.search = "panel=ota-calendars";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  const dialog = document.querySelector<HTMLButtonElement>('[data-testid="ota-calendars"]');
+  expect(dialog).not.toBeNull();
+  await act(async () => dialog!.click());
+  expect(nav.replace).toHaveBeenCalledWith("/admin/hotel", { scroll: false });
+  nav.search = "panel=bogus";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(document.querySelector('[data-testid="ota-calendars"]')).toBeNull();
+  nav.search = "";
+});
+
+it("opens a stay from an admin Search link and clears the link on close (D03)", async () => {
+  nav.search = "booking=k57booking0000000000000000000001";
+  nav.replace.mockClear();
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  const sheet = document.querySelector<HTMLButtonElement>('[data-testid="booking-sheet"]');
+  expect(sheet?.dataset.booking).toBe("k57booking0000000000000000000001");
+  await act(async () => sheet!.click());
+  expect(nav.replace).toHaveBeenCalledWith("/admin/hotel", { scroll: false });
+  nav.search = "booking=not%20an%20id";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(document.querySelector('[data-testid="booking-sheet"]')).toBeNull();
+  nav.search = "";
 });
