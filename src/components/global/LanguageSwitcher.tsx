@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, ChevronDown } from "lucide-react";
+import { useHydrated } from "@/platform/hydration";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { usePathname, useSearchParams } from "@/platform/navigation";
 import { useSyncExternalStore, type MouseEvent } from "react";
@@ -48,6 +49,7 @@ export function LanguageSwitcher({
   compact?: boolean;
   className?: string;
 }) {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const a11y = useTranslations("A11y");
   const pathname = usePathname();
@@ -92,6 +94,7 @@ export function LanguageSwitcher({
     <Popover>
       <PopoverTrigger
         data-testid="language-switcher"
+        disabled={!hydrated}
         aria-label={a11y("language")}
         className={cn(
           "inline-flex h-9 items-center justify-between gap-2 rounded-full border text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-3 focus:ring-ring/40",

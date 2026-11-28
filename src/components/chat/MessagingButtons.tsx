@@ -2,6 +2,7 @@
 
 import Image from "@/platform/image";
 import { Mail } from "lucide-react";
+import { useHydrated } from "@/platform/hydration";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import {
@@ -31,6 +32,7 @@ export function MessagingButtons({
   lineQrImage?: string;
   quiet?: boolean;
 }) {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const t = useTranslations("Chat");
   const footer = useTranslations("Footer");
@@ -71,6 +73,7 @@ export function MessagingButtons({
           <DialogTrigger asChild>
             <button
               type="button"
+              disabled={!hydrated}
               aria-label="Open LINE chat"
               title="LINE"
               className={cn(linkClassName, "hidden md:inline-flex")}

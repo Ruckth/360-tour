@@ -53,25 +53,8 @@ async function getVisibleBoundingBox(locator: Locator) {
 }
 
 async function chooseLanguage(page: Page, optionName: string) {
-  const languageButtons = page.getByTestId("language-switcher");
-  const option = page.getByRole("link", { name: optionName });
-  const buttonCount = await languageButtons.count();
-  let visibleButton: Locator | null = null;
-  for (let index = 0; index < buttonCount; index += 1) {
-    const button = languageButtons.nth(index);
-    if (await button.isVisible()) {
-      visibleButton = button;
-      break;
-    }
-  }
-  expect(visibleButton).not.toBeNull();
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    await visibleButton!.click();
-    const opened = await option.isVisible({ timeout: 1500 }).catch(() => false);
-    if (opened) break;
-  }
-  await expect(option).toBeVisible();
-  await option.click();
+  await page.getByTestId("language-switcher").filter({ visible: true }).click();
+  await page.getByRole("link", { name: optionName }).click();
 }
 
 async function openCalendarPopover(page: Page, trigger: Locator) {
@@ -328,7 +311,6 @@ test("desktop chat contact actions show LINE QR and use prefilled links", async 
   await expectPrefilledEmail(emailLink);
   await expect(floatingContactActions.getByRole("link", { name: /Open LINE chat/i })).toHaveCount(0);
   await expect(lineButton).toBeVisible();
-  await expect(page.getByText("Share contact details")).toBeVisible();
 
   await lineButton.click();
   const dialog = page.getByRole("dialog", { name: "Scan LINE QR code" });

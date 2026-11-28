@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "@/platform/link";
+import { useHydrated } from "@/platform/hydration";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
@@ -31,6 +32,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   reviews: Review[];
   renderer?: TourRenderer;
 }) {
+  const hydrated = useHydrated();
   const router = useRouter();
   const locale = useLocale();
   const navT = useTranslations("Nav");
@@ -146,6 +148,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
               ) : null}
               <button
                 type="button"
+                disabled={!hydrated}
                 aria-haspopup="dialog"
                 onClick={openTour}
                 onFocus={preloadViewer}
@@ -226,6 +229,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
             <Button
               variant="outline"
               className="mt-3 w-full bg-card py-3 md:hidden"
+              disabled={!hydrated}
               aria-haspopup="dialog"
               onClick={openTour}
               onFocus={preloadViewer}

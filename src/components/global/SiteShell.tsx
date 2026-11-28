@@ -1,5 +1,6 @@
 "use client";
 
+import { useHydrated } from "@/platform/hydration";
 import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
 import { MessageCircle } from "lucide-react";
@@ -29,6 +30,7 @@ const LazyAIChatWidget = dynamic(loadAIChatWidget, { ssr: false });
  * they dispatch `open-concierge-chat`, which mounts the widget with `initialOpen`.
  */
 function IntentionalChatWidget() {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const t = useTranslations("Chat");
   const pathname = usePathname();
@@ -126,6 +128,7 @@ function IntentionalChatWidget() {
         ref={desktopLauncherRef}
         type="button"
         data-testid="chat-launcher-button"
+        disabled={!hydrated}
         onClick={open}
         onPointerEnter={preloadAIChatWidget}
         onFocus={preloadAIChatWidget}

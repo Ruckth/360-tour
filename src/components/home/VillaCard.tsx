@@ -5,6 +5,7 @@ import { calculateDirectQuote } from 'convex/shared/pricing';
 
 import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
+import { useHydrated } from "@/platform/hydration";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useState } from "react";
@@ -37,6 +38,7 @@ export function VillaCard({
   property: PublicVilla;
   storyTagline?: string;
 }) {
+  const hydrated = useHydrated();
   const t = useTranslations("Villa");
   const pricingT = useTranslations("Pricing");
   const a11y = useTranslations("A11y");
@@ -206,6 +208,7 @@ export function VillaCard({
           </ButtonLink>
           <Button
             type="button"
+            disabled={!hydrated}
             aria-haspopup="dialog"
             onClick={(event) => {
               tourOpener.current = event.currentTarget;

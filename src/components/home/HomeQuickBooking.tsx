@@ -1,5 +1,6 @@
 "use client";
 
+import { useHydrated } from "@/platform/hydration";
 import dynamic from "@/platform/dynamic";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useRouter } from "@/platform/navigation";
@@ -29,6 +30,7 @@ function QuickBookingDateSkeleton() {
 }
 
 export function HomeQuickBooking() {
+  const hydrated = useHydrated();
   const bookingT = useTranslations("Booking");
   const navT = useTranslations("Nav");
   const activeLocale = useLocale();
@@ -119,7 +121,7 @@ export function HomeQuickBooking() {
           }}
         />
 
-        <HomeSolidBookButton type="submit">
+        <HomeSolidBookButton type="submit" disabled={!hydrated}>
           {navT("book")}
         </HomeSolidBookButton>
 
