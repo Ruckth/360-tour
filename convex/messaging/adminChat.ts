@@ -579,28 +579,30 @@ async function assertChatDesk(ctx: QueryCtx) {
 	if (!(await canAccessResortDesk(ctx, 'chats'))) throw new Error('Chat desk access required');
 }
 
+const QUEUE_COUNT_CAP = 100;
+
+async function countOpenQueue(ctx: QueryCtx, states: Array<'needs_staff' | 'processing' | undefined>) {
+	let total = 0;
+	for (const state of states) {
+		for (const status of [undefined, 'open'] as const) {
+			if (total === QUEUE_COUNT_CAP) return total;
+			const rows = await ctx.db.query('conversations')
+				.withIndex('by_inboxState_and_adminStatus_and_latestMessageAt', q => q
+					.eq('inboxState', state).eq('adminStatus', status).gte('latestMessageAt', 0))
+				.take(QUEUE_COUNT_CAP - total);
+			total += rows.length;
+		}
+	}
+	return total;
+}
+
 export const queueCounts = adminQuery({
 	args: {},
 	handler: async ctx => {
 		if (!(await canAccessResortDesk(ctx, 'chats'))) return null;
 		if (!(await inboxProjectionReady(ctx))) return null;
-		const count = async (states: Array<'needs_staff' | 'processing' | undefined>) => {
-			const cap = 100;
-			let total = 0;
-			for (const state of states) {
-				for (const status of [undefined, 'open'] as const) {
-					if (total === cap) return cap;
-					const rows = await ctx.db.query('conversations')
-						.withIndex('by_inboxState_and_adminStatus_and_latestMessageAt', q => q
-							.eq('inboxState', state).eq('adminStatus', status).gte('latestMessageAt', 0))
-						.take(cap - total);
-					total += rows.length;
-				}
-			}
-			return total;
-		};
-		// After projection, old non-waiting chats without an explicit inbox state still appear in progress.
-		const [waiting, inProgress] = await Promise.all([count(['needs_staff']), count(['processing', undefined])]);
+		// Projected, non-waiting legacy chats with no state still appear in progress.
+		const [waiting, inProgress] = await Promise.all([countOpenQueue(ctx, ['needs_staff']), countOpenQueue(ctx, ['processing', undefined])]);
 		return { waiting, inProgress };
 	}
 });
@@ -956,34 +958,5 @@ export const deleteArchivedSession = adminMutation({
 			await ctx.scheduler.runAfter(0, internal.messaging.adminChat.deleteSessionChildren, args);
 		}
 		return null;
-	}
-});
-
-/** Rows read for the Needs you badge; a fuller queue shows as "99+". */
-const WAITING_COUNT_SCAN = 100;
-export const WAITING_COUNT_CAP = 99;
-
-/**
- * How many chats are in Needs you, for navigation: the same projection index and predicates as the
- * Needs you queue (`listSessions` status needs_reply, open, non-empty, any channel). Chats carry no
- * branch, so the count covers every chat operations staff can open. Bounded to 100 rows; `capped`
- * means more than 99. Null while the inbox projection is still initializing (no badge, no guess).
- */
-export const waitingCount = adminQuery({
-	args: {},
-	returns: v.union(v.null(), v.object({ count: v.number(), capped: v.boolean() })),
-	handler: async (ctx) => {
-		if (!(await inboxProjectionReady(ctx))) return null;
-		const rows = await ctx.db
-			.query('conversations')
-			.withIndex('by_inboxState_and_lastActivityAt', (q) => q.eq('inboxState', 'needs_staff'))
-			.order('desc')
-			.take(WAITING_COUNT_SCAN);
-		const matches = await filterMatchingSessions(createSessionLookups(ctx), rows, {
-			status: 'needs_reply', adminStatus: 'open', empty: 'non_empty', channel: 'all', now: Date.now()
-		});
-		return matches.length > WAITING_COUNT_CAP
-			? { count: WAITING_COUNT_CAP, capped: true }
-			: { count: matches.length, capped: false };
 	}
 });

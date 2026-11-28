@@ -14,7 +14,7 @@ async function seed(t: ReturnType<typeof convexTest>, rows: Fields[]) {
     for (const row of rows) {
       at += 1000;
       await ctx.db.insert("conversations", {
-        channel: "web", visitorId: `v-${at}`, lastSeenAt: at, lastOpenedAt: at, createdAt: at, adminSortAt: at, latestMessageAt: at,
+        channel: "web", visitorId: `v-${at}`, lastSeenAt: at, lastOpenedAt: at, createdAt: at, adminSortAt: at, ...(row.messageCount === 0 ? {} : { latestMessageAt: at }),
         lastActivityAt: at, inboxProjectionVersion: 1, messageCount: row.messageCount ?? 2,
         ...(row.inboxState ? { inboxState: row.inboxState } : {}), ...(row.adminStatus ? { adminStatus: row.adminStatus } : {}),
       });
@@ -22,7 +22,7 @@ async function seed(t: ReturnType<typeof convexTest>, rows: Fields[]) {
   });
 }
 
-describe("adminChat.waitingCount (D02)", () => {
+describe("adminChat.queueCounts (D02)", () => {
   it("counts the Needs you queue with its own predicates, across pages", async () => {
     const t = convexTest(schema, modules);
     const owner = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
@@ -33,7 +33,7 @@ describe("adminChat.waitingCount (D02)", () => {
       { inboxState: "processing" },
       { inboxState: "done" },
     ]);
-    expect(await owner.query(api.messaging.adminChat.waitingCount, {})).toEqual({ count: 12, capped: false });
+    expect(await owner.query(api.messaging.adminChat.queueCounts, {})).toMatchObject({ waiting: 12 });
     // The queue's first page holds fewer rows than the total; the badge doesn't depend on paging.
     const page = await owner.query(api.messaging.adminChat.listSessions, { status: "needs_reply", adminStatus: "open", paginationOpts: { numItems: 10, cursor: null } });
     expect(page.sessions.length).toBeLessThan(12);
@@ -43,15 +43,15 @@ describe("adminChat.waitingCount (D02)", () => {
     const t = convexTest(schema, modules);
     const owner = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
     await seed(t, Array.from({ length: 101 }, () => ({ inboxState: "needs_staff" as const })));
-    expect(await owner.query(api.messaging.adminChat.waitingCount, {})).toEqual({ count: 99, capped: true });
-    await expect(t.query(api.messaging.adminChat.waitingCount, {})).rejects.toThrow("Not authenticated");
-    await expect(t.withIdentity({ emailVerified: true, email: "x@example.com", tokenIdentifier: "x" }).query(api.messaging.adminChat.waitingCount, {})).rejects.toThrow("Not authorized");
+    expect(await owner.query(api.messaging.adminChat.queueCounts, {})).toMatchObject({ waiting: 100 });
+    await expect(t.query(api.messaging.adminChat.queueCounts, {})).rejects.toThrow("Not authenticated");
+    await expect(t.withIdentity({ emailVerified: true, email: "x@example.com", tokenIdentifier: "x" }).query(api.messaging.adminChat.queueCounts, {})).rejects.toThrow("Not authorized");
   });
 
   it("returns null while the inbox projection is initializing", async () => {
     const t = convexTest(schema, modules);
     const owner = await asTestOwner(t, { emailVerified: true, email: "admin@example.com", tokenIdentifier: "admin" });
     await t.run((ctx) => ctx.db.insert("conversations", { channel: "web", visitorId: "legacy", lastSeenAt: 1, lastOpenedAt: 1, createdAt: 1 }));
-    expect(await owner.query(api.messaging.adminChat.waitingCount, {})).toBeNull();
+    expect(await owner.query(api.messaging.adminChat.queueCounts, {})).toBeNull();
   });
 });

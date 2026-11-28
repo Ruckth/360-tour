@@ -592,6 +592,7 @@ describe("chat desk controls", () => {
     })).rejects.toThrow("Assignment changed");
     await expect(outsider.query(chat.getSessionDetail, { sessionId })).rejects.toThrow("Chat desk access required");
     expect(await outsider.query(chat.queueCounts, {})).toBeNull();
+    await expect(outsider.query(chat.listSessions, { searchQuery: "guest" })).rejects.toThrow("Chat desk access required");
   });
 
   it("caps queue totals independently of list pagination and excludes empty chats", async () => {

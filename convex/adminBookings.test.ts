@@ -52,6 +52,34 @@ async function setup() {
   return { t, admin };
 }
 
+it("keeps resort calendar, booking search and destination records out of other branch desks", async () => {
+  const { t, admin } = await setup();
+  const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+  const actors = [
+    { email: "resort@example.com", tokenIdentifier: "resort", emailVerified: true },
+    { email: "other@example.com", tokenIdentifier: "other", emailVerified: true },
+  ] as const;
+  await t.run(async (ctx) => {
+    const branchIds = [await seedTestBranch(ctx), await seedTestBranch(ctx, "other")];
+    for (const [index, { email, tokenIdentifier }] of actors.entries()) {
+      await ctx.db.insert("staffGrants", {
+        email, tokenIdentifier, role: "manager", branchIds: [branchIds[index]],
+        createdAt: 0, updatedAt: 0, updatedByEmail: adminEmail,
+      });
+    }
+  });
+  const resort = t.withIdentity(actors[0]);
+  const other = t.withIdentity(actors[1]);
+  const args = { from: checkIn, to: checkOut, bookingsOnly: true };
+  const query = { query: stay.guestName };
+  expect((await resort.query(api.bookings.admin.listForAdmin, args)).bookings.map(row => row._id)).toEqual([bookingId]);
+  expect((await resort.query(api.bookings.admin.searchBookings, query)).map(row => row._id)).toEqual([bookingId]);
+  expect(await resort.query(api.bookings.admin.getForAdmin, { bookingId })).toMatchObject({ _id: bookingId });
+  expect((await other.query(api.bookings.admin.listForAdmin, args)).bookings).toEqual([]);
+  expect(await other.query(api.bookings.admin.searchBookings, query)).toEqual([]);
+  expect(await other.query(api.bookings.admin.getForAdmin, { bookingId })).toBeNull();
+});
+
 async function bookedDates(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) =>
     (await ctx.db.query("availability").collect()).filter((a) => a.status === "booked").length,

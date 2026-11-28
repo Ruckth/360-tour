@@ -7,7 +7,7 @@ import { getFunctionName } from "convex/server";
 const mocks = vi.hoisted(() => ({ result: undefined as unknown, args: [] as unknown[] }));
 vi.mock("convex/react", () => ({
   useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
-    expect(getFunctionName(reference)).toBe("messaging/adminChat:waitingCount");
+    expect(getFunctionName(reference)).toBe("messaging/adminChat:queueCounts");
     mocks.args.push(args);
     return args === "skip" ? undefined : mocks.result;
   },
@@ -18,7 +18,7 @@ vi.mock("@/components/ui/sidebar", () => ({ useSidebar: () => ({ setOpenMobile: 
 import { AdminTabBar } from "@/components/admin/AdminNav";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { waitingBadge } from "@/components/admin/waiting-chats";
-import { staffAccessFor } from "./admin-shell-convex";
+import { PHUKET, staffAccessFor } from "./admin-shell-convex";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -38,21 +38,28 @@ const chatsLink = () => host.querySelector<HTMLAnchorElement>('a[href="/admin/ch
 
 describe("Needs you badge in navigation (D02)", () => {
   it("shows the server's count on the Chats tab with an accessible name, from any page", async () => {
-    mocks.result = { count: 3, capped: false };
+    mocks.result = { waiting: 3, inProgress: 0 };
     await act(async () => root.render(createElement(AdminTabBar)));
     expect(chatsLink()?.querySelector('[data-testid="nav-waiting-badge"]')?.textContent).toBe("3");
     expect(chatsLink()?.textContent).toContain(", 3 chats need you");
   });
 
   it("labels a capped count 99+ and keeps navigation without a count", async () => {
-    expect(waitingBadge({ count: 99, capped: true })).toEqual({ text: "99+", label: "99+ chats need you" });
-    expect(waitingBadge({ count: 1, capped: false })?.label).toBe("1 chat needs you");
-    expect(waitingBadge({ count: 0, capped: false })).toBeNull();
+    expect(waitingBadge(100)).toEqual({ text: "99+", label: "99+ chats need you" });
+    expect(waitingBadge(1)?.label).toBe("1 chat needs you");
+    expect(waitingBadge(0)).toBeNull();
     expect(waitingBadge(null)).toBeNull();
     mocks.result = undefined;
     await act(async () => root.render(createElement(AdminTabBar)));
     expect(chatsLink()).not.toBeNull();
     expect(chatsLink()?.querySelector('[data-testid="nav-waiting-badge"]')).toBeNull();
+  });
+
+  it("skips the waiting count for an operations manager outside the resort", async () => {
+    await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager", undefined, [PHUKET]) }, createElement(AdminTabBar))));
+    expect(chatsLink()).toBeNull();
+    expect(mocks.args).toContain("skip");
+    expect(mocks.args.every((args) => args === "skip")).toBe(true);
   });
 
   it("never asks for the count for a person without Chats", async () => {

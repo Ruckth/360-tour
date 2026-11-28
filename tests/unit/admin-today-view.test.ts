@@ -20,7 +20,7 @@ vi.mock("convex/react", () => ({
       const start = resortMidnight(today);
       return { appointments: [{ start: start + 3_600_000, status: "booked" }, { start: start + 7_200_000, status: "cancelled" }, { start: start - 3_600_000, status: "booked" }] };
     }
-    if (name === "messaging/adminChat:waitingCount") return { count: 3, capped: false };
+    if (name === "messaging/adminChat:queueCounts") return { waiting: 3, inProgress: 0 };
     return undefined;
   },
 }));
@@ -29,7 +29,7 @@ vi.mock("@/platform/navigation", () => ({ useSearchParams: () => new URLSearchPa
 import { AdminTodayView } from "@/components/admin/AdminTodayView";
 import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { TodayStrip } from "@/components/admin/TodayStrip";
-import { staffAccessFor } from "./admin-shell-convex";
+import { PHUKET, staffAccessFor } from "./admin-shell-convex";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -54,8 +54,16 @@ describe("Today home (D01)", () => {
     expect(linkCount("/admin/hotel?today=arriving")).toBe("Arriving2");
     expect(linkCount("/admin/hotel?today=leaving")).toBe("Leaving1");
     expect(linkCount("/admin/hotel?today=balanceDue")).toBe("Balance due1");
-    expect(linkCount("/admin/staff/calendar")).toBe("Appointments today1");
+    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBe("Appointments today1");
     expect(linkCount("/admin/chats")).toBe("Needs you3");
+  });
+
+  it("keeps Spa available without exposing Hotel or Chats to a manager outside the resort", async () => {
+    await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager", undefined, [PHUKET]) }, createElement(AdminTodayView))));
+    expect(mocks.calls).toContainEqual(["bookings/admin:listForAdmin", "skip"]);
+    expect(mocks.calls).toContainEqual(["messaging/adminChat:queueCounts", "skip"]);
+    expect(host.querySelectorAll("a")).toHaveLength(1);
+    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBe("Appointments today1");
   });
 
   it("asks for nothing and links nowhere a cashier can't open", async () => {

@@ -54,6 +54,9 @@ export const listForAdmin = adminQuery({
 		bookingsOnly: v.optional(v.boolean()), includeRecordedStays: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) {
+			return { properties: [], bookings: [], blocks: [], dateBlocks: [], complete: true };
+		}
 		assertValidIsoDate(args.from, 'From date');
 		assertValidIsoDate(args.to, 'To date');
 		if (args.to <= args.from) throw new Error('To date must be after from date');
@@ -198,9 +201,10 @@ export const getForAdmin = adminQuery({
 export const searchBookings = adminQuery({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) return [];
 		const raw = args.query.trim();
 		const text = raw.toLowerCase();
-		if (text.length < 2) return [];
+		if (text.length < 2 || text.length > 100) return [];
 		const digits = text.replace(/\D/g, '');
 		const [byPhone, byEmail, byCode, byName, recent] = await Promise.all([
 			digits.length >= 3

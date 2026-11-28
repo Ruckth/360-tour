@@ -68,9 +68,21 @@ export const searchAppointments = adminQuery({
 		const inWindow = [...found.values()].filter((row) => Math.abs(row.start - now) <= SEARCH_WINDOW_DAYS * DAY);
 		const upcoming = inWindow.filter((row) => row.end >= now).sort((a, b) => a.start - b.start);
 		const past = inWindow.filter((row) => row.end < now).sort((a, b) => b.start - a.start);
+		const openable: Doc<'appointments'>[] = [];
+		const staffExists = new Map<Id<'staff'>, boolean>();
+		for (const row of [...upcoming, ...past]) {
+			let exists = staffExists.get(row.staffId);
+			if (exists === undefined) {
+				exists = Boolean(await ctx.db.get(row.staffId));
+				staffExists.set(row.staffId, exists);
+			}
+			// The calendar link resolver requires this staff record, including archived staff.
+			if (exists) openable.push(row);
+			if (openable.length === SEARCH_RESULT_LIMIT) break;
+		}
 		return {
 			windowDays: SEARCH_WINDOW_DAYS,
-			results: [...upcoming, ...past].slice(0, SEARCH_RESULT_LIMIT).map((row) => ({
+			results: openable.map((row) => ({
 				_id: row._id, start: row.start, end: row.end, staffId: row.staffId, serviceId: row.serviceId,
 				guestName: row.guestName, confirmationCode: row.confirmationCode, status: row.status,
 			})),

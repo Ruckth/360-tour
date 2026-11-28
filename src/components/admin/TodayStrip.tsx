@@ -10,10 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useSearchParams } from "@/platform/navigation";
 import { formatMoney } from "./labels";
-import { canEditBooking, paymentText, serverTodayIso } from "./admin-bookings-shared";
+import { canEditBooking, paymentText } from "./admin-bookings-shared";
 
 import { Button } from "@/components/ui/button";
-import { errorText } from "@/lib/staff-bookings";
+import { errorText, resortIsoDate, useNow } from "@/lib/staff-bookings";
 import { useStayCheckout, useStaySpa } from "./stay-spa";
 
 export type TodayGroup = "arriving" | "leaving" | "inHouse" | "balanceDue";
@@ -33,13 +33,14 @@ export function todayGroups(bookings: readonly AdminBooking[], today: string): R
   return { arriving, leaving, inHouse, balanceDue };
 }
 
+export function todayBookingArgs(today: string) {
+  return { from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true, includeRecordedStays: true };
+}
+
 /** Arriving · Leaving · In house · Balance due. A tile lists its guests; a guest opens their stay's actions. */
 export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => string; onOpen: (booking: AdminBooking, element: Element) => void }) {
-  const today = serverTodayIso();
-  // Stays touching today: from yesterday so a check-out today is included.
-  const data = useQuery(api.bookings.admin.listForAdmin, {
-    from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true, includeRecordedStays: true,
-  });
+  const today = resortIsoDate(useNow());
+  const data = useQuery(api.bookings.admin.listForAdmin, todayBookingArgs(today));
   // `?today=arriving` (from the Today page) opens with that group's guests listed.
   const linked = useSearchParams().get("today");
   const [open, setOpen] = useState<TodayGroup | null>(() => GROUPS.find(({ key }) => key === linked)?.key ?? null);

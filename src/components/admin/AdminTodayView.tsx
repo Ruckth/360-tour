@@ -4,13 +4,13 @@ import { api } from "convex/_generated/api";
 import { useQuery } from "convex/react";
 import { BedDouble, CalendarClock, MessageCircle, type LucideIcon } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
-import { addDaysIso } from "@/lib/booking/dates";
-import { resortMidnight } from "@/lib/staff-bookings";
+import { resortIsoDate, resortMidnight, useNow } from "@/lib/staff-bookings";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "@/platform/link";
-import { serverTodayIso } from "./admin-bookings-shared";
+import { staffCalendarHref } from "@/lib/staff-links";
+import { canOpenResortDesk } from "./admin-access";
 import { useStaffAccess } from "./staff-access";
-import { todayGroups, type TodayGroup } from "./TodayStrip";
+import { todayBookingArgs, todayGroups, type TodayGroup } from "./TodayStrip";
 import { waitingBadge } from "./waiting-chats";
 
 const DAY_MS = 86_400_000;
@@ -45,24 +45,27 @@ function CountLink({ href, label, count }: { href: string; label: string; count:
 /**
  * Today for operations staff: each count comes from the same read model as the page it links to,
  * under that page's own server access check. A tile shows only when this person's capabilities
- * open its page; hotel, spa and chats carry no branch, so the counts are company-wide.
+ * open its page. Hotel and Chats are the primary-resort desks, while Spa uses operations access.
  */
 export function AdminTodayView() {
-  const { capabilities } = useStaffAccess();
-  const today = serverTodayIso();
-  const stays = useQuery(api.bookings.admin.listForAdmin, capabilities.bookings ? { from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true } : "skip");
+  const access = useStaffAccess();
+  const canOpenHotel = canOpenResortDesk(access, "bookings");
+  const canOpenChats = canOpenResortDesk(access, "chats");
+  const canOpenSpa = access.capabilities.services;
+  const today = resortIsoDate(useNow());
+  const stays = useQuery(api.bookings.admin.listForAdmin, canOpenHotel ? todayBookingArgs(today) : "skip");
   const start = resortMidnight(today);
-  const schedule = useQuery(api.services.admin.listSchedule, capabilities.services ? { from: start, to: start + DAY_MS } : "skip");
-  const waiting = useQuery(api.messaging.adminChat.waitingCount, capabilities.chats ? {} : "skip");
+  const schedule = useQuery(api.services.admin.listSchedule, canOpenSpa ? { from: start, to: start + DAY_MS } : "skip");
+  const queue = useQuery(api.messaging.adminChat.queueCounts, canOpenChats ? {} : "skip");
 
   const groups = useMemo(() => (stays ? todayGroups(stays.bookings, today) : null), [stays, today]);
   const appointments = schedule?.appointments.filter((appointment) => appointment.start >= start && appointment.start < start + DAY_MS && OPEN_APPOINTMENT.has(appointment.status));
-  const waitingText = waiting === undefined ? undefined : waitingBadge(waiting)?.text ?? (waiting === null ? "—" : "0");
+  const waitingText = queue === undefined ? undefined : waitingBadge(queue?.waiting)?.text ?? (queue === null ? "—" : "0");
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
       <div className="grid gap-4 md:grid-cols-3">
-        {capabilities.bookings ? (
+        {canOpenHotel ? (
           <Tile title="Hotel" icon={BedDouble}>
             {stays?.complete === false ? <p role="status" className="text-xs text-muted-foreground">Some of today’s stays could not be loaded.</p> : null}
             <div className="grid">
@@ -73,12 +76,12 @@ export function AdminTodayView() {
             </div>
           </Tile>
         ) : null}
-        {capabilities.services ? (
+        {canOpenSpa ? (
           <Tile title="Spa" icon={CalendarClock}>
-            <CountLink href="/admin/staff/calendar" label="Appointments today" count={appointments?.length} />
+            <CountLink href={staffCalendarHref({ date: today })} label="Appointments today" count={appointments?.length} />
           </Tile>
         ) : null}
-        {capabilities.chats ? (
+        {canOpenChats ? (
           <Tile title="Chats" icon={MessageCircle}>
             <CountLink href="/admin/chats" label="Needs you" count={waitingText} />
           </Tile>
