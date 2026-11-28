@@ -75,3 +75,15 @@ it("keeps Status, starting at Draft, for a fact that isn't from a question", asy
   await render({});
   expect(statusSelect()?.value).toBe("draft");
 });
+
+it("keeps the full guest question read-only beside the answer while the title is edited (F16)", async () => {
+  const question = `${"Could you tell me whether breakfast is included ".repeat(5)}for a family of five?`;
+  await render({ fromUnknown: { unknownQuestionId, question } });
+  const quote = host.querySelector('blockquote[aria-labelledby="fact-guest-question-label"]')!;
+  expect(quote.textContent).toBe(question);
+  expect(question.length).toBeGreaterThan(160);
+  // The quote sits directly with the answer field, not in the footer.
+  expect(quote.closest("div.grid")?.querySelector("#fact-body")).not.toBeNull();
+  await type("fact-title", "Breakfast");
+  expect(quote.textContent).toBe(question);
+});

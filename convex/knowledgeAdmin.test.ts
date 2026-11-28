@@ -45,6 +45,8 @@ describe("unknown-question review stays available", () => {
     expect(result.groups).toHaveLength(3);
     expect(result.groups[0]).toMatchObject({ normalizedQuestion: "do you have a gym", count: 2, counts: { new: 2, ignored: 0, resolved: 0 } });
     expect(result.groups.flatMap(group => group.channels)).toEqual(["web", "web", "web"]);
+    // F15: the group carries its new reports by property (here none reported a villa).
+    expect(result.groups[0].newByProperty).toEqual([{ count: 2 }]);
 
     const gym = await admin.query(api.concierge.knowledge.adminListUnknownGroups, { status: "new", search: "gym" });
     expect(gym.groups.map(group => group.latest.userQuestion)).toEqual(["Do you have a gym?"]);

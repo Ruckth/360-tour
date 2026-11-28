@@ -10,16 +10,9 @@ import { useRouter } from "@/platform/navigation";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxTrigger } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import {
   BusinessFactFormDialog,
   type FactFormTarget,
@@ -43,7 +36,9 @@ import {
 } from "@/components/admin/admin-chat-format";
 import {
   STRUCTURED_SOURCES,
-  compatibleFacts,
+  factAnswerPreview,
+  factGroupCoverage,
+  factScopeLabel,
   structuredSourceLabel,
   type AdminBusinessFact,
   type AdminFactProperty,
@@ -56,6 +51,7 @@ import { cn } from "@/lib/utils";
 
 const UNKNOWN_STATUSES = ["new", "resolved", "ignored"] as const;
 type MissingInfoFilter = (typeof UNKNOWN_STATUSES)[number] | "all";
+const STATUS_FILTERS: readonly MissingInfoFilter[] = [...UNKNOWN_STATUSES, "all"];
 /** How a report can be resolved from a dropdown: a structured source or an approved fact. */
 const STRUCTURED_PREFIX = "source:";
 const FACT_PREFIX = "fact:";
@@ -314,7 +310,7 @@ export function MissingInformationPanel({
   return (
     // The tab panel supplies the border; round it too so there is only one surface.
     <Card className="overflow-hidden border-0 shadow-none">
-      <div className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-2 border-b border-border px-4 py-2 sm:flex">
+      <div className="flex items-center gap-2 px-4 pt-2">
         <SearchBox
           value={searchInput}
           onChange={setSearchInput}
@@ -322,29 +318,16 @@ export function MissingInformationPanel({
           placeholder="Search reports"
           className="min-w-0! [&_input]:w-full sm:max-w-64"
         />
-        <div className="flex items-center gap-2">
-        <Label htmlFor="missing-status" className="sr-only text-xs text-muted-foreground sm:not-sr-only">Status</Label>
-        <Select
+      </div>
+      {/* Status is a visible filter: one tap switches queue, and bulk actions follow the rows shown. */}
+      <div className="border-b border-border px-4 pt-2">
+        <SegmentedTabs
+          label="Report status"
+          controls="missing-reports"
+          tabs={STATUS_FILTERS.map((value) => ({ value, label: value === "all" ? "All" : STATUS_LABELS.unknownQuestion[value] }))}
           value={status}
-          onValueChange={(value) => setStatus(value as MissingInfoFilter)}
-        >
-          <SelectTrigger
-            id="missing-status"
-            className="h-9 w-full rounded-lg pointer-coarse:min-h-11 sm:w-40"
-            aria-label="Report status"
-          >
-            <span className="flex min-w-0 items-center gap-1"><span className="text-muted-foreground sm:hidden">Status:{" "}</span><SelectValue /></span>
-          </SelectTrigger>
-          <SelectContent>
-            {UNKNOWN_STATUSES.map((option) => (
-              <SelectItem key={option} value={option}>
-                {STATUS_LABELS.unknownQuestion[option]}
-              </SelectItem>
-            ))}
-            <SelectItem value="all">All</SelectItem>
-          </SelectContent>
-        </Select>
-        </div>
+          onValueChange={(value) => { selection.clear(); setStatus(value); }}
+        />
       </div>
 
       {actionError ? (
@@ -415,6 +398,7 @@ export function MissingInformationPanel({
         ) : null}
       </BulkActionBar>
 
+      <div id="missing-reports">
       {result === undefined ? (
         <SkeletonRows label="Loading missing-information reports" />
       ) : groups.length === 0 ? (
@@ -447,7 +431,6 @@ export function MissingInformationPanel({
                 const key = group.normalizedQuestion;
                 const question = group.latest;
                 const hasNew = group.counts.new > 0;
-                const reportPropertyId = question.propertyId;
                 return (
                   <tr
                     key={key}
@@ -514,7 +497,7 @@ export function MissingInformationPanel({
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 lg:flex lg:gap-2">
                           <ResolveFactPicker
                             label={`Resolve "${question.userQuestion}" with a fact or source`}
-                            facts={compatibleFacts(facts, reportPropertyId)}
+                            options={factOptions(facts, group.newByProperty, properties)}
                             disabled={pendingAction !== ""}
                             resolving={pendingAction === `resolve:${key}`}
                             status={approvedFacts.status}
@@ -619,6 +602,7 @@ export function MissingInformationPanel({
           ) : null}
         </div>
       )}
+      </div>
 
       <BusinessFactFormDialog
         target={factTarget}
@@ -630,8 +614,29 @@ export function MissingInformationPanel({
 }
 
 /** Search continues through every approved-fact page, rather than a fixed first 100. */
-function ResolveFactPicker({ label, facts, disabled, resolving, status, loadMore, onResolve }: {
-  label: string; facts: AdminBusinessFact[]; disabled: boolean; resolving: boolean;
+type ResolveOption = { value: string; label: string; detail?: string };
+
+/**
+ * Facts that would resolve at least one new report in the group, labelled with their scope and an
+ * answer preview so same-title facts are distinguishable. A property-scoped fact in a
+ * mixed-property group says how many reports it covers: the server resolves only those.
+ */
+function factOptions(
+  facts: readonly AdminBusinessFact[],
+  newByProperty: AdminUnknownGroup["newByProperty"],
+  properties: readonly AdminFactProperty[],
+): ResolveOption[] {
+  return facts.flatMap((fact) => {
+    const { covered, total } = factGroupCoverage(fact.propertyId, newByProperty);
+    if (covered === 0) return [];
+    const scope = factScopeLabel(fact.propertyId, properties);
+    const partial = covered < total ? ` · Resolves ${covered} of ${total} new reports` : "";
+    return [{ value: `${FACT_PREFIX}${fact._id}`, label: fact.title, detail: `${scope}${partial} — ${factAnswerPreview(fact.body)}` }];
+  });
+}
+
+function ResolveFactPicker({ label, options: factChoices, disabled, resolving, status, loadMore, onResolve }: {
+  label: string; options: ResolveOption[]; disabled: boolean; resolving: boolean;
   status: string; loadMore: () => void; onResolve: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -639,11 +644,12 @@ function ResolveFactPicker({ label, facts, disabled, resolving, status, loadMore
   useEffect(() => {
     if (open && search.trim() && status === "CanLoadMore") loadMore();
   }, [open, search, status, loadMore]);
-  const options = [
-    ...facts.map(fact => ({ value: `${FACT_PREFIX}${fact._id}`, label: fact.title })),
+  const options: ResolveOption[] = [
+    ...factChoices,
     ...STRUCTURED_SOURCES.map(source => ({ value: `${STRUCTURED_PREFIX}${source.value}`, label: `From ${source.label}` })),
   ];
-  const filtered = options.filter(option => option.label.toLowerCase().includes(search.toLowerCase()));
+  const needle = search.toLowerCase();
+  const filtered = options.filter(option => `${option.label} ${option.detail ?? ""}`.toLowerCase().includes(needle));
   return <div className="min-w-0 lg:w-64"><Combobox items={filtered.map(option => option.value)} filter={null} value={null} modal open={open} onOpenChange={next => { setOpen(next); if (!next) setSearch(""); }} onValueChange={value => { if (value) onResolve(value); }} disabled={disabled}>
     <ComboboxTrigger aria-label={label} render={<Button variant="outline" className="h-10 w-full justify-between font-normal text-muted-foreground pointer-coarse:min-h-11 lg:w-64" />}>
       {resolving ? <span role="status">Resolving…</span> : "Resolve…"}
@@ -651,7 +657,7 @@ function ResolveFactPicker({ label, facts, disabled, resolving, status, loadMore
     <ComboboxContent className="w-[min(24rem,calc(100vw-2rem))]">
       <ComboboxInput showTrigger={false} aria-label="Search approved facts and sources" placeholder="Search facts and sources" value={search} onChange={event => setSearch(event.target.value)} className="pointer-coarse:min-h-11" />
       {status === "LoadingFirstPage" ? <p role="status" className="p-3 text-sm text-muted-foreground">Loading approved facts…</p> : <ComboboxEmpty className="p-3 text-sm text-muted-foreground">{status === "LoadingMore" ? "Searching more facts…" : "No matching facts or sources."}</ComboboxEmpty>}
-      <ComboboxList>{filtered.map(option => <ComboboxItem key={option.value} value={option.value} className="pointer-coarse:min-h-11">{option.label}</ComboboxItem>)}</ComboboxList>
+      <ComboboxList>{filtered.map(option => <ComboboxItem key={option.value} value={option.value} className="pointer-coarse:min-h-11"><span className="grid min-w-0 gap-0.5"><span>{option.label}</span>{option.detail ? <span className="text-xs text-muted-foreground">{option.detail}</span> : null}</span></ComboboxItem>)}</ComboboxList>
       {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="ghost" className="w-full" disabled={status === "LoadingMore"} onClick={loadMore}>{status === "LoadingMore" ? "Loading more facts…" : "Load more facts"}</Button> : null}
     </ComboboxContent>
   </Combobox></div>;

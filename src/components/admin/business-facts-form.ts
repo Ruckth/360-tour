@@ -132,6 +132,29 @@ export function compatibleFacts<T extends { propertyId?: Id<"properties"> }>(
   return facts.filter((fact) => isFactCompatibleWithProperty(fact.propertyId, reportPropertyId));
 }
 
+/**
+ * How many of a group's new reports a fact would resolve. The server resolves a property-scoped
+ * fact only against reports for that property, so a mixed-property group can be covered partly.
+ */
+export function factGroupCoverage(
+  factPropertyId: Id<"properties"> | undefined,
+  newByProperty: readonly { propertyId?: Id<"properties">; count: number }[],
+): { covered: number; total: number } {
+  let covered = 0;
+  let total = 0;
+  for (const entry of newByProperty) {
+    total += entry.count;
+    if (isFactCompatibleWithProperty(factPropertyId, entry.propertyId)) covered += entry.count;
+  }
+  return { covered, total };
+}
+
+/** A short single-line preview of a fact's answer for pickers. */
+export function factAnswerPreview(body: string, limit = 90): string {
+  const flat = body.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit - 1).trimEnd()}…` : flat;
+}
+
 /** Scope label for a fact: the property name, or "All properties" when global. */
 export function factScopeLabel(
   propertyId: Id<"properties"> | undefined,

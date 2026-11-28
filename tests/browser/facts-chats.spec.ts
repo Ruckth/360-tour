@@ -62,7 +62,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await open(page, "/tests/browser/questions.html?path=/admin/questions");
       const taps = recorder();
       await taps.tap(page.getByRole("combobox", { name: 'Resolve "Is breakfast included?" with a fact or source' }));
-      await taps.tap(page.getByRole("option", { name: "Breakfast is included" }));
+      await taps.tap(page.getByRole("option", { name: /^Breakfast is included/ }));
       const toast = page.getByTestId("toast");
       await expect(toast).toContainText("Resolved 2 reports with “Breakfast is included”");
       expect(taps.taps).toBe(2);
@@ -128,9 +128,8 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     test("handled reports keep their status and a Reopen button", async ({ page }) => {
       await open(page, "/tests/browser/questions.html?path=/admin/questions");
       await page.getByRole("combobox", { name: 'Resolve "Is breakfast included?" with a fact or source' }).click();
-      await page.getByRole("option", { name: "Breakfast is included" }).click();
-      await page.getByRole("combobox", { name: "Report status" }).click();
-      await page.getByRole("option", { name: "All" }).click();
+      await page.getByRole("option", { name: /^Breakfast is included/ }).click();
+      await page.getByRole("tablist", { name: "Report status" }).getByRole("tab", { name: "All" }).click();
       const card = page.locator("tbody tr").filter({ hasText: "Is breakfast included?" });
       await expect(card).toContainText("Resolved");
       await expect(card.getByRole("button", { name: "Reopen" })).toBeVisible();
