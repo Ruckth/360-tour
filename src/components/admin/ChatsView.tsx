@@ -299,44 +299,53 @@ export function ChatsView() {
   );
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
   const firstPage = listResults["0"];
-  const loadedPages: SessionListResult[] = [];
-  let failedPage: number | undefined;
-  let replacementCursors: Array<string | null> | undefined;
-  // A later page is valid only while its input matches the preceding live boundary.
-  for (let index = 0; index < pageCursors.length; index++) {
-    const page = listResults[String(index)];
-    if (page instanceof Error) {
-      failedPage = index;
-      break;
+  const { sessions, lastPage, failedPage, replacementCursors, loadingOlder } = useMemo(() => {
+    const loadedPages: SessionListResult[] = [];
+    let failedPage: number | undefined;
+    let replacementCursors: Array<string | null> | undefined;
+    // A later page is valid only while its input matches the preceding live boundary.
+    for (let index = 0; index < pageCursors.length; index++) {
+      const page = listResults[String(index)];
+      if (page instanceof Error) {
+        failedPage = index;
+        break;
+      }
+      if (!page) break;
+      loadedPages.push(page);
+      const next = page.continueCursor ?? page.nextCursor ?? null;
+      if (page.isDone || !next) {
+        if (index + 1 < pageCursors.length) replacementCursors = pageCursors.slice(0, index + 1);
+        break;
+      }
+      if (next !== pageCursors[index + 1]) {
+        if (index + 1 < pageDepth) replacementCursors = [...pageCursors.slice(0, index + 1), next];
+        break;
+      }
     }
-    if (!page) break;
-    loadedPages.push(page);
-    const next = page.continueCursor ?? page.nextCursor ?? null;
-    if (page.isDone || !next) {
-      if (index + 1 < pageCursors.length) replacementCursors = pageCursors.slice(0, index + 1);
-      break;
+    const byId = new Map<Id<"conversations">, AdminSession>();
+    for (const page of loadedPages) {
+      for (const session of page.sessions) {
+        if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
+      }
     }
-    if (next !== pageCursors[index + 1]) {
-      if (index + 1 < pageDepth) replacementCursors = [...pageCursors.slice(0, index + 1), next];
-      break;
-    }
-  }
+    return {
+      sessions: [...byId.values()],
+      lastPage: loadedPages.at(-1),
+      failedPage,
+      replacementCursors,
+      loadingOlder: failedPage === undefined && (
+        replacementCursors !== undefined || loadedPages.length < pageCursors.length
+      ),
+    };
+  }, [listResults, pageCursors, pageDepth, now]);
   useEffect(() => {
-    if (replacementCursors) {
-      setPageCursors(current => current === pageCursors ? replacementCursors : current);
-    }
+    if (!replacementCursors) return;
+    let live = true;
+    queueMicrotask(() => {
+      if (live) setPageCursors(current => current === pageCursors ? replacementCursors : current);
+    });
+    return () => { live = false; };
   }, [pageCursors, replacementCursors]);
-  const lastPage = loadedPages.at(-1);
-  const loadingOlder = failedPage === undefined && (
-    replacementCursors !== undefined || loadedPages.length < pageCursors.length
-  );
-  const byId = new Map<Id<"conversations">, AdminSession>();
-  for (const page of loadedPages) {
-    for (const session of page.sessions) {
-      if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
-    }
-  }
-  const sessions = [...byId.values()];
   const liveSessionDetail = useQuery(
     api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",

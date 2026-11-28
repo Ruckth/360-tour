@@ -22,7 +22,7 @@ let root: Root;
 const deleted = vi.fn(), statusChanged = vi.fn();
 async function render(session = initial) {
   const props: ComponentProps<typeof AdminSessionActions> = {
-    session, onDeleted: deleted, onStatusChanged: statusChanged,
+    session, now: 100, onDeleted: deleted, onStatusChanged: statusChanged,
     children: ({ actions, followUp, actionError, replyAction }) => createElement(AdminSessionDetail, {
       selectedSession: session, actions, followUp, actionError, replyAction, messages: [], now: 100, canLoadOlderMessages: false,
       loadOlderMessages: vi.fn(), loadingTranscript: false, loadingOlderMessages: false,
