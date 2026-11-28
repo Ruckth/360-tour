@@ -60,3 +60,17 @@ it('displays a refusal and waits for a second explicit review before starting pa
   expect(mock.mutation.mock.calls[1][1]).toMatchObject({ token: 'new-review' });
   expect(mock.action).toHaveBeenCalledTimes(1);
 });
+it('G23: chat villa prices use each villa’s configured direct discount, matching the booking quote', async () => {
+  const { calculateDirectQuote } = await import('convex/shared/pricing');
+  const row = (slug: string, directDiscountPercent: number) => ({ _id: slug, slug, name: slug, tagline: '', description: '', pricePerNight: 1000000, maxGuests: 4, bedrooms: 1, bathrooms: 1, area: 50, images: [], amenities: [], tourRoomIds: [], currency: 'THB', directDiscountPercent });
+  const rows = [row('ten-percent', 1000), row('no-discount', 0), row('default-fifteen', 1500)];
+  mock.preview = { status: 'idle' };
+  mock.client = { query: async (_ref: unknown, args: unknown) => (args && typeof args === 'object' && !('propertySlug' in args) ? rows : []), mutation: mock.mutation, action: mock.action };
+  await show(createElement(ChatBookingCard, { context: { propertySlug: 'ten-percent' } as never }));
+  const price = (slug: string) => document.querySelector(`[data-testid="chat-villa-price-${slug}"]`)?.firstChild?.textContent;
+  const thb = (baht: number) => new Intl.NumberFormat('en', { style: 'currency', currency: 'THB', maximumFractionDigits: 0 }).format(baht);
+  expect(price('ten-percent')).toBe(thb(9000));
+  expect(price('no-discount')).toBe(thb(10000));
+  expect(price('default-fifteen')).toBe(thb(8500));
+  for (const item of rows) expect(price(item.slug)).toBe(thb(calculateDirectQuote(item, 1).directTotal / 100));
+});
